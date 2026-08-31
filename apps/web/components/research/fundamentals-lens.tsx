@@ -27,12 +27,12 @@ function compact(value: number | null): string {
       }).format(value);
 }
 
-function percentage(value: number | null): string {
+function percentage(value: number | null, directional = false): string {
   return value == null
     ? "—"
     : new Intl.NumberFormat("en-GB", {
         maximumFractionDigits: 1,
-        signDisplay: "exceptZero",
+        signDisplay: directional ? "exceptZero" : "auto",
         style: "percent",
       }).format(value);
 }
@@ -86,8 +86,8 @@ export function FundamentalsLens({
     {
       title: zh ? "增长与盈利" : "Growth and profitability",
       rows: [
-        [zh ? "营收增长" : "Revenue growth", percentage(number(metrics.revenueGrowth))],
-        [zh ? "盈利增长" : "Earnings growth", percentage(number(metrics.earningsGrowth))],
+        [zh ? "营收增长" : "Revenue growth", percentage(number(metrics.revenueGrowth), true)],
+        [zh ? "盈利增长" : "Earnings growth", percentage(number(metrics.earningsGrowth), true)],
         [zh ? "毛利率" : "Gross margin", percentage(number(metrics.grossMargins))],
         [zh ? "营业利润率" : "Operating margin", percentage(number(metrics.operatingMargins))],
         [zh ? "净利率" : "Net margin", percentage(number(metrics.profitMargins))],

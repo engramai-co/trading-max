@@ -29,7 +29,7 @@ import {
   StrategyPerformanceChart,
 } from "@/components/portfolio-charts";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import { gbp, money, pct, ratio, shortDate } from "@/lib/format";
+import { deltaPct, gbp, money, pct, ratio, shortDate } from "@/lib/format";
 import type {
   AccountAnalysisMetrics,
   AccountCode,
@@ -213,14 +213,14 @@ function LegacyAccountAnalysis({ data, selected }: { data: DashboardLens; select
                 fixedView={selected === "A" ? "invest" : "isa"}
               />
               <SimpleGrid cols={{ base: 2, md: 4 }}>
-                <Metric label="TWR" value={pct(risk.twr)} />
+                <Metric label="TWR" value={deltaPct(risk.twr)} />
                 <Metric label="Sharpe" value={ratio(risk.sharpe)} />
                 <Metric label="Sortino" value={ratio(risk.sortino)} />
                 <Metric label="Calmar" value={ratio(risk.calmar)} />
                 <Metric label="IR" value={ratio(risk.informationRatio)} />
                 <Metric label={<Localized zh="年化波动" en="Annual volatility" />} value={pct(risk.volatility)} />
-                <Metric label={<Localized zh="最大回撤" en="Max drawdown" />} tone="red" value={pct(risk.maxDrawdown)} />
-                <Metric label={<Localized zh="当前回撤" en="Current drawdown" />} tone="red" value={pct(risk.currentDrawdown)} />
+                <Metric label={<Localized zh="最大回撤" en="Max drawdown" />} tone="red" value={deltaPct(risk.maxDrawdown)} />
+                <Metric label={<Localized zh="当前回撤" en="Current drawdown" />} tone="red" value={deltaPct(risk.currentDrawdown)} />
               </SimpleGrid>
             </Stack>
           </section>
@@ -292,7 +292,7 @@ function HoldingsSnapshot({
                 <Table.Td fw={700}>{holding.ticker}</Table.Td><Table.Td>{holding.name}</Table.Td>
                 <Table.Td ta="right">{gbp(holding.currentValueGbp, 0)}</Table.Td>
                 <Table.Td ta="right">{pct(accountValue ? holding.currentValueGbp / accountValue : null)}</Table.Td>
-                <Table.Td c={holding.pnlGbp >= 0 ? "green" : "red"} ta="right">{gbp(holding.pnlGbp, 0)} · {pct(holding.pnlPct)}</Table.Td>
+                <Table.Td c={holding.pnlGbp >= 0 ? "green" : "red"} ta="right">{gbp(holding.pnlGbp, 0)} · {deltaPct(holding.pnlPct)}</Table.Td>
                 <Table.Td ta="right">{holding.dilutedCostPerShareNative == null ? "—" : `${money(holding.dilutedCostPerShareNative, holding.priceCurrency, 2)} / ${money(holding.currentPrice, holding.priceCurrency, 2)}`}</Table.Td>
               </Table.Tr>
             ))}

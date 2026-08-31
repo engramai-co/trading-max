@@ -24,17 +24,17 @@ export function pct(value: number | null | undefined, digits = 1) {
     style: "percent",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-    signDisplay: "exceptZero",
   }).format(value);
 }
 
-export function unsignedPct(value: number | null | undefined, digits = 1) {
+export function deltaPct(value: number | null | undefined, digits = 1) {
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat("zh-CN", {
     style: "percent",
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(Math.abs(value));
+    signDisplay: "exceptZero",
+  }).format(value);
 }
 
 export function ratio(value: number | null | undefined, digits = 2) {

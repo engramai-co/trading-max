@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 
 import { Localized, useLocale } from "@/components/locale-provider";
 import { OptionsGammaChart } from "@/components/research/options-gamma-chart";
-import { money, pct, ratio } from "@/lib/format";
+import { deltaPct, money, pct, ratio } from "@/lib/format";
 import type { OptionSnapshot } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
 
@@ -247,7 +247,7 @@ function ContractCells({ contract, reverse = false }: { contract?: Contract; rev
 function LevelMetric({ label, spot, value }: { label: React.ReactNode; spot: number; value?: number | null }) {
   const { locale } = useLocale();
   const distance = value == null || !spot ? null : value / spot - 1;
-  return <div><Text c="dimmed" size="sm">{label}</Text><Text fw={800} size="xl">{value == null ? "—" : money(value, "USD", 0)}</Text><Text c="dimmed" size="xs">{distance == null ? "—" : `${pct(distance)} ${locale === "zh" ? "相对现价" : "vs spot"}`}</Text></div>;
+  return <div><Text c="dimmed" size="sm">{label}</Text><Text fw={800} size="xl">{value == null ? "—" : money(value, "USD", 0)}</Text><Text c="dimmed" size="xs">{distance == null ? "—" : `${deltaPct(distance)} ${locale === "zh" ? "相对现价" : "vs spot"}`}</Text></div>;
 }
 
 function Term({ en, term, zh }: { en: string; term: string; zh: string }) {

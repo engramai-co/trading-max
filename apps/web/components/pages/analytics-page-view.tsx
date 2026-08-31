@@ -27,7 +27,7 @@ import {
 } from "@/components/portfolio-charts";
 import { ViewSwitch } from "@/components/view-switch";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import { pct, ratio } from "@/lib/format";
+import { deltaPct, pct, ratio } from "@/lib/format";
 import {
   mockIntradayMoneyNav,
   mockMoneyNav,
@@ -269,8 +269,8 @@ function RiskAccountCard({
   const { locale } = useLocale();
   const summary = metrics?.annualizedReturn != null && metrics.maxDrawdown != null
     ? locale === "zh"
-      ? `完整历史年化收益 ${pct(metrics.annualizedReturn)}，最大回撤 ${pct(metrics.maxDrawdown)}。`
-      : `Annualised return ${pct(metrics.annualizedReturn)} with a ${pct(metrics.maxDrawdown)} maximum drawdown over the full history.`
+      ? `完整历史年化收益 ${deltaPct(metrics.annualizedReturn)}，最大回撤 ${deltaPct(metrics.maxDrawdown)}。`
+      : `Annualised return ${deltaPct(metrics.annualizedReturn)} with a ${deltaPct(metrics.maxDrawdown)} maximum drawdown over the full history.`
     : locale === "zh" ? "完整历史风险概览。" : "Full-history risk overview.";
   const metricsRows = [
     { label: "TWR", kind: "pct" as const, tone: true, value: metrics?.twr },
@@ -332,7 +332,7 @@ function RiskMetric({
     <div>
       <Text c="dimmed" size="xs">{label}</Text>
       <Text c={colour} fw={700} size="lg">
-        {kind === "pct" ? pct(value) : ratio(value)}
+        {kind === "pct" ? tone || negative ? deltaPct(value) : pct(value) : ratio(value)}
       </Text>
       {note ? <Text c="dimmed" size="xs">{note}</Text> : null}
     </div>
