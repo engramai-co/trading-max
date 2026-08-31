@@ -1,18 +1,12 @@
 name: Auto release
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      commit:
-        description: Commit on main to tag; defaults to the current main commit
-        required: false
-        type: string
 
 concurrency:
-  group: auto-release-${{ github.event.workflow_run.head_sha || inputs.commit || 'main' }}
+  group: auto-release-${{ github.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -22,17 +16,64 @@ permissions:
 jobs:
   release:
     name: Tag and dispatch release
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
+      - name: Wait for protected main checks
+        if: github.event_name == 'push'
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Backend (pytest)"
+            "Frontend (lint, types, tests, build)"
+            "Secret and artifact scan"
+            "Dependency audit"
+          )
+          deadline=$((SECONDS + 900))
+          while true; do
+            runs="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/commits/${COMMIT_SHA}/check-runs?per_page=100")"
+            all_passed=true
+            for name in "${required[@]}"; do
+              conclusion="$(
+                jq -r --arg name "$name" \
+                  '[.check_runs[] | select(.name == $name)][0].conclusion // "pending"' \
+                  <<< "$runs"
+              )"
+              case "$conclusion" in
+                success) ;;
+                failure|cancelled|timed_out|action_required)
+                  echo "required check failed: ${name} (${conclusion})"
+                  exit 1
+                  ;;
+                *) all_passed=false ;;
+              esac
+            done
+            if [ "$all_passed" = true ]; then
+              echo "all protected main checks passed for ${COMMIT_SHA}"
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "timed out waiting for protected main checks"
+              exit 1
+            fi
+            sleep 10
+          done
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.event_name == 'push'
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha || inputs.commit || 'main' }}
+          ref: ${{ github.sha }}
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          ref: main
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

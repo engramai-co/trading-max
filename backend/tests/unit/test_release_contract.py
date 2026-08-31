@@ -74,11 +74,15 @@ def test_repository_version_surfaces_match_version_file() -> None:
     assert set(project_versions().values()) == {expected}
 
 
-def test_auto_release_waits_for_main_ci_and_dispatches_the_full_release() -> None:
+def test_auto_release_waits_for_protected_main_checks_and_dispatches_full_release() -> None:
     workflow = (ROOT / ".github" / "workflows" / "auto-release.yml").read_text(encoding="utf-8")
 
-    assert "workflow_run:" in workflow
-    assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "branches: [main]" in workflow
+    assert "Wait for protected main checks" in workflow
+    assert '"Backend (pytest)"' in workflow
+    assert '"Secret and artifact scan"' in workflow
+    assert "ref: ${{ github.sha }}" in workflow
+    assert "workflow_run" not in workflow
     assert "cancel-in-progress: false" in workflow
     assert "gh workflow run release.yml" in workflow
 
