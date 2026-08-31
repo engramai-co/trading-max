@@ -1,0 +1,211 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  # Keep market-data libraries from spawning resolver threads during tests.
+  PORTFOLIO_YF_THREADS: "0"
+
+jobs:
+  changes:
+    name: Detect operational changes
+    runs-on: ubuntu-latest
+    outputs:
+      operations: ${{ steps.filter.outputs.operations }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Detect migration and deployment changes
+        id: filter
+        uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
+        with:
+          filters: |
+            operations:
+              - ".github/workflows/ci.yml"
+              - "backend/migrations/**"
+              - "backend/src/trading_max/infrastructure/**"
+              - "backend/tests/integration/test_backup_archive.py"
+              - "backend/tests/integration/test_restore_backup.py"
+              - "deploy/**"
+              - "pyproject.toml"
+              - "uv.lock"
+
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-packages --group dev --frozen
+
+      - name: Repository hygiene
+        run: |
+          uv run python tools/check_repository_hygiene.py
+          uv run python tools/check_release_readiness.py
+
+      - name: OpenAPI contract
+        env:
+          PYTHONPATH: .
+        run: uv run python tools/generate_openapi.py --check
+
+      - name: Backend lint
+        run: |
+          uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+          uv run ruff format --check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+
+      - name: Documentation links
+        run: uv run python tools/check_documentation.py
+
+      - name: API test suite
+        run: uv run pytest services/api/tests
+
+      - name: Backend package tests
+        run: uv run pytest backend/tests
+
+      - name: Package entry-point smoke
+        run: uv run python -c "import trading_max; import services.api.trading_max_api.worker_main"
+
+      - name: Build backend distributions
+        run: uv build --package trading-max-backend --out-dir dist/backend
+
+      - name: Python bytecode compile
+        run: uv run python -m compileall -q backend/src services/api tools
+
+  frontend:
+    name: Frontend (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Generated API types
+        run: npm run check:api-types
+
+      - name: Frontend architecture
+        run: npm run check:architecture
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+  operations:
+    name: Migration and deployment contracts
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.operations == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync backend dependencies
+        run: uv sync --all-packages --group dev --frozen
+
+      - name: Install zsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zsh
+
+      - name: Validate macOS shell scripts
+        run: zsh -n deploy/macos/*.sh
+
+      - name: Validate local workstation shell script
+        run: bash -n deploy/local/*.sh
+
+      - name: Validate generic macOS service installer
+        run: uv run ruff check deploy/local/install-macos-service.py
+
+      - name: Validate LaunchAgent property lists
+        run: |
+          uv run python - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          paths = sorted(Path("deploy/macos").glob("*.plist"))
+          assert paths, "no LaunchAgent property lists found"
+          for path in paths:
+              with path.open("rb") as stream:
+                  plistlib.load(stream)
+          PY
+
+      - name: Exercise migrations in a temporary state root
+        run: |
+          uv run python - <<'PY'
+          import tempfile
+          from pathlib import Path
+
+          from trading_max.infrastructure import SqliteDatabase
+
+          with tempfile.TemporaryDirectory() as directory:
+              root = Path(directory)
+              database = SqliteDatabase(
+                  root / "trading_max.db",
+                  migrations_dir=Path("backend/migrations"),
+              )
+              try:
+                  versions = [
+                      row["version"]
+                      for row in database.connection.execute(
+                          "SELECT version FROM schema_migrations ORDER BY version"
+                      ).fetchall()
+                  ]
+              finally:
+                  database.close()
+          assert versions[-1] == "0017_three_scope_jobs.sql", versions
+          PY
+
+      - name: Exercise backup and restore safety contracts
+        run: >
+          uv run pytest
+          backend/tests/integration/test_backup_archive.py
+          backend/tests/integration/test_restore_backup.py
+          services/api/tests/test_macos_deploy_contract.py

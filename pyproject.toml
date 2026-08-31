@@ -1,0 +1,98 @@
+[project]
+name = "trading-max"
+version = "1.2.0"
+description = "Local-first portfolio dashboard, research orchestration API, and artifact store"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.141,<1",
+    "httpx>=0.28,<1",
+    "keyring>=25,<26",
+    "uvicorn[standard]>=0.52,<1",
+    "yfinance>=0.2.54",
+]
+
+[project.urls]
+Documentation = "https://github.com/engramai-co/trading-max#documentation"
+Issues = "https://github.com/engramai-co/trading-max/issues"
+Repository = "https://github.com/engramai-co/trading-max"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "ruff>=0.16,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["backend"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = [".", "backend/src"]
+testpaths = ["services/api/tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["runtime", "apps/web/.next"]
+
+[tool.ruff.lint]
+# Keep the production gate explicit: correctness, import hygiene, common bug
+# patterns, safe modern Python, timezone discipline, pathlib usage, security
+# checks, and Ruff's own high-signal rules. We intentionally do not enable
+# every opinionated plugin; new rule families should be added with their own
+# cleanup pass.
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "B",
+    "UP",
+    "SIM",
+    "C4",
+    "DTZ",
+    "PTH",
+    "RET",
+    "RUF",
+    "S",
+    "ASYNC",
+    "LOG",
+    "T20",
+    "D100",
+    "D104",
+]
+ignore = [
+    "DTZ011", # date.today() is intentional for broker export windows.
+    "PTH123", # explicit encoding is handled at all persisted text boundaries.
+    "RUF001", # financial labels intentionally contain non-ASCII typography.
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use temporary paths, assertion-heavy fixtures, placeholder credentials,
+# and one deliberate interpreter subprocess smoke test by design.
+"backend/tests/**/*.py" = ["D100", "D104", "PTH", "RUF100", "S101", "S105", "S106"]
+"services/api/tests/**/*.py" = [
+    "D100",
+    "D104",
+    "PTH",
+    "RUF100",
+    "S101",
+    "S105",
+    "S106",
+    "S603",
+]
+# These are operator-facing CLIs, so printing a concise result is their API.
+"tools/*.py" = ["T20"]
+# The installed operator CLI intentionally prints concise setup/doctor output.
+"backend/src/trading_max/cli.py" = ["T20"]
+"backend/src/trading_max/onboarding.py" = ["T20"]
+# Host configuration also prints the exact values an operator needs to review.
+"deploy/macos/configure-host.py" = ["T20"]
+"deploy/local/install-macos-service.py" = ["T20"]

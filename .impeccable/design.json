@@ -1,0 +1,215 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-17T21:49:52Z",
+  "title": "Design System: Trading Max",
+  "extensions": {
+    "colorMeta": {
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#1768e5",
+        "tonalRamp": ["oklch(15% 0.18 255)", "oklch(27% 0.18 255)", "oklch(39% 0.18 255)", "oklch(51% 0.18 255)", "oklch(63% 0.18 255)", "oklch(75% 0.18 255)", "oklch(86% 0.18 255)", "oklch(95% 0.18 255)"]
+      },
+      "signal-blue-light": {
+        "role": "primary",
+        "displayName": "Signal Blue Light",
+        "canonical": "#d9e8ff",
+        "tonalRamp": ["oklch(15% 0.05 255)", "oklch(27% 0.05 255)", "oklch(39% 0.05 255)", "oklch(51% 0.05 255)", "oklch(63% 0.05 255)", "oklch(75% 0.05 255)", "oklch(86% 0.05 255)", "oklch(95% 0.05 255)"]
+      },
+      "signal-blue-deep": {
+        "role": "primary",
+        "displayName": "Signal Blue Deep",
+        "canonical": "#1254bc",
+        "tonalRamp": ["oklch(15% 0.16 255)", "oklch(27% 0.16 255)", "oklch(39% 0.16 255)", "oklch(51% 0.16 255)", "oklch(63% 0.16 255)", "oklch(75% 0.16 255)", "oklch(86% 0.16 255)", "oklch(95% 0.16 255)"]
+      },
+      "ledger-navy": {
+        "role": "primary",
+        "displayName": "Ledger Navy",
+        "canonical": "#102a52",
+        "tonalRamp": ["oklch(15% 0.09 255)", "oklch(27% 0.09 255)", "oklch(39% 0.09 255)", "oklch(51% 0.09 255)", "oklch(63% 0.09 255)", "oklch(75% 0.09 255)", "oklch(86% 0.09 255)", "oklch(95% 0.09 255)"]
+      },
+      "ledger-navy-light": {
+        "role": "primary",
+        "displayName": "Ledger Navy Light",
+        "canonical": "#164a8a",
+        "tonalRamp": ["oklch(15% 0.11 255)", "oklch(27% 0.11 255)", "oklch(39% 0.11 255)", "oklch(51% 0.11 255)", "oklch(63% 0.11 255)", "oklch(75% 0.11 255)", "oklch(86% 0.11 255)", "oklch(95% 0.11 255)"]
+      },
+      "cool-canvas": {
+        "role": "neutral",
+        "displayName": "Cool Canvas",
+        "canonical": "#f7f9fc",
+        "tonalRamp": ["oklch(15% 0.01 255)", "oklch(27% 0.01 255)", "oklch(39% 0.01 255)", "oklch(51% 0.01 255)", "oklch(63% 0.01 255)", "oklch(75% 0.01 255)", "oklch(86% 0.01 255)", "oklch(95% 0.01 255)"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["oklch(15% 0 0)", "oklch(27% 0 0)", "oklch(39% 0 0)", "oklch(51% 0 0)", "oklch(63% 0 0)", "oklch(75% 0 0)", "oklch(86% 0 0)", "oklch(95% 0 0)"]
+      },
+      "boundary": {
+        "role": "neutral",
+        "displayName": "Cool Boundary",
+        "canonical": "#dbe4ef",
+        "tonalRamp": ["oklch(15% 0.02 255)", "oklch(27% 0.02 255)", "oklch(39% 0.02 255)", "oklch(51% 0.02 255)", "oklch(63% 0.02 255)", "oklch(75% 0.02 255)", "oklch(86% 0.02 255)", "oklch(95% 0.02 255)"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Financial Ink",
+        "canonical": "#111827",
+        "tonalRamp": ["oklch(15% 0.03 265)", "oklch(27% 0.03 265)", "oklch(39% 0.03 265)", "oklch(51% 0.03 265)", "oklch(63% 0.03 265)", "oklch(75% 0.03 265)", "oklch(86% 0.03 265)", "oklch(95% 0.03 265)"]
+      },
+      "evidence-teal": {
+        "role": "secondary",
+        "displayName": "Evidence Teal",
+        "canonical": "#347985",
+        "tonalRamp": ["oklch(15% 0.10 205)", "oklch(27% 0.10 205)", "oklch(39% 0.10 205)", "oklch(51% 0.10 205)", "oklch(63% 0.10 205)", "oklch(75% 0.10 205)", "oklch(86% 0.10 205)", "oklch(95% 0.10 205)"]
+      },
+      "positive": {
+        "role": "tertiary",
+        "displayName": "Verified Gain",
+        "canonical": "#2f7a49",
+        "tonalRamp": ["oklch(15% 0.12 150)", "oklch(27% 0.12 150)", "oklch(39% 0.12 150)", "oklch(51% 0.12 150)", "oklch(63% 0.12 150)", "oklch(75% 0.12 150)", "oklch(86% 0.12 150)", "oklch(95% 0.12 150)"]
+      },
+      "negative": {
+        "role": "tertiary",
+        "displayName": "Accounted Loss",
+        "canonical": "#b4473a",
+        "tonalRamp": ["oklch(15% 0.14 28)", "oklch(27% 0.14 28)", "oklch(39% 0.14 28)", "oklch(51% 0.14 28)", "oklch(63% 0.14 28)", "oklch(75% 0.14 28)", "oklch(86% 0.14 28)", "oklch(95% 0.14 28)"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Caution Amber",
+        "canonical": "#96630e",
+        "tonalRamp": ["oklch(15% 0.12 78)", "oklch(27% 0.12 78)", "oklch(39% 0.12 78)", "oklch(51% 0.12 78)", "oklch(63% 0.12 78)", "oklch(75% 0.12 78)", "oklch(86% 0.12 78)", "oklch(95% 0.12 78)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Workspace Display", "purpose": "Page orientation and dominant account values." },
+      "title": { "displayName": "Evidence Title", "purpose": "Cards, sections, and progressive disclosure controls." },
+      "body": { "displayName": "Operational Body", "purpose": "Bilingual explanations, tables, settings, and research." },
+      "label": { "displayName": "Status Label", "purpose": "Compact metadata, statuses, and metric labels." }
+    },
+    "shadows": [
+      { "name": "surface-xs", "value": "0 1px 4px rgba(17, 24, 39, 0.04)", "purpose": "Barely raised utility surfaces." },
+      { "name": "surface-sm", "value": "0 4px 14px rgba(17, 24, 39, 0.05)", "purpose": "Low interactive lift." },
+      { "name": "panel-md", "value": "0 10px 28px rgba(17, 24, 39, 0.07)", "purpose": "Important white working panels." },
+      { "name": "panel-lg", "value": "0 18px 48px rgba(17, 24, 39, 0.10)", "purpose": "High-level floating surfaces only." },
+      { "name": "money-anchor", "value": "0 20px 48px rgba(15, 42, 82, 0.22)", "purpose": "Primary account value or metric anchor." },
+      { "name": "active-navigation", "value": "0 9px 20px rgba(23, 104, 229, 0.24)", "purpose": "Current desktop navigation location." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Hover, focus, border, color, and one-pixel lift transitions." },
+      { "name": "chart-update", "value": "240ms ease-out", "purpose": "Data-range and account-view chart updates." }
+    ],
+    "breakpoints": [
+      { "name": "shell-mobile", "value": "48em" },
+      { "name": "two-column", "value": "75em" },
+      { "name": "wide-workspace", "value": "88em" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single clear action in a local task group.",
+      "html": "<button class=\"ds-button-primary\">SAVE CHANGES</button>",
+      "css": ".ds-button-primary { min-height: 44px; padding: 0 18px; border: 0; border-radius: 8px; background: #1768e5; color: #fff; font: 700 15px/1 Inter, sans-serif; transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-button-primary:hover { background: #1254bc; transform: translateY(-1px); } .ds-button-primary:focus-visible { outline: 3px solid #1768e5; outline-offset: 3px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A restrained supporting or reversible action.",
+      "html": "<button class=\"ds-button-secondary\">TEST CONNECTION</button>",
+      "css": ".ds-button-secondary { min-height: 44px; padding: 0 18px; border: 1px solid #dbe4ef; border-radius: 8px; background: #fff; color: #1254bc; font: 700 15px/1 Inter, sans-serif; transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-button-secondary:hover { background: #edf5ff; border-color: #aecfff; } .ds-button-secondary:focus-visible { outline: 3px solid #1768e5; outline-offset: 3px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-standard",
+      "description": "A calm settings or research input with explicit focus.",
+      "html": "<label class=\"ds-field-label\">ACCOUNT LABEL<input class=\"ds-field\" value=\"Invest\"></label>",
+      "css": ".ds-field-label { display: grid; gap: 6px; color: #111827; font: 700 13px/1.5 Inter, sans-serif; } .ds-field { height: 42px; padding: 0 14px; border: 1px solid #dbe4ef; border-radius: 8px; background: #fff; color: #111827; font: 400 16px/1.55 Inter, sans-serif; transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-field:focus-visible { border-color: #1768e5; outline: 3px solid rgba(23, 104, 229, 0.18); outline-offset: 1px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "Compact text-backed account, data, or runtime status.",
+      "html": "<span class=\"ds-status-chip\">DATA AVAILABLE</span>",
+      "css": ".ds-status-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 10px; border-radius: 4px; background: #d9e8ff; color: #1254bc; font: 700 13px/1.5 Inter, sans-serif; letter-spacing: 0.25px; }"
+    },
+    {
+      "name": "Active Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "The user's current location in the desktop operational rail.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\">PERFORMANCE</a>",
+      "css": ".ds-nav-active { display: flex; align-items: center; min-height: 44px; padding: 8px 10px; border-radius: 8px; background: linear-gradient(135deg, #1768e5 0%, #1254bc 100%); box-shadow: 0 9px 20px rgba(23, 104, 229, 0.24); color: #fff; font: 700 15px/1.4 Inter, sans-serif; text-decoration: none; transition: filter 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-nav-active:hover { filter: brightness(1.04); } .ds-nav-active:focus-visible { outline: 3px solid #1768e5; outline-offset: 3px; }"
+    },
+    {
+      "name": "Standard Evidence Card",
+      "kind": "card",
+      "refersTo": "card-standard",
+      "description": "A bounded working surface for holdings, settings, research, or review evidence.",
+      "html": "<article class=\"ds-card\"><h3>Current allocation</h3><p>Broker-native positions and weights.</p></article>",
+      "css": ".ds-card { padding: 20px; border: 1px solid #dbe4ef; border-radius: 16px; background: #fff; color: #111827; font: 400 16px/1.55 Inter, sans-serif; } .ds-card h3 { margin: 0 0 10px; font: 700 18px/1.3 Inter, sans-serif; } .ds-card p { margin: 0; color: #6b7280; } .ds-card:focus-within { outline: 3px solid #1768e5; outline-offset: 3px; }"
+    },
+    {
+      "name": "Money Truth Panel",
+      "kind": "custom",
+      "refersTo": "card-money-anchor",
+      "description": "The signature high-contrast anchor for current account truth.",
+      "html": "<section class=\"ds-money-panel\"><span>COMBINED NATIVE VALUE</span><strong>£12,345.67</strong><small>Synthetic example</small></section>",
+      "css": ".ds-money-panel { display: grid; gap: 20px; min-height: 240px; padding: 20px; border-radius: 32px; background: linear-gradient(135deg, #102a52 0%, #164a8a 100%); box-shadow: 0 20px 48px rgba(15, 42, 82, 0.22); color: #f8fbff; font-family: Inter, sans-serif; } .ds-money-panel span { color: #d9e8ff; font-size: 13px; font-weight: 700; } .ds-money-panel strong { align-self: center; font-size: 44px; font-variant-numeric: tabular-nums; line-height: 1.08; } .ds-money-panel small { align-self: end; color: #d9e8ff; } .ds-money-panel:focus-within { outline: 3px solid #1768e5; outline-offset: 4px; }"
+    },
+    {
+      "name": "Evidence Accordion",
+      "kind": "custom",
+      "description": "Progressive disclosure for strategy, provenance, and account-review depth.",
+      "html": "<details class=\"ds-accordion\"><summary>STRATEGY PERFORMANCE (TWR)</summary><p>Cash-flow-neutral evidence and risk metrics.</p></details>",
+      "css": ".ds-accordion { overflow: hidden; border: 1px solid #dbe4ef; border-radius: 8px; background: #fff; color: #111827; font-family: Inter, sans-serif; } .ds-accordion summary { display: flex; align-items: center; min-height: 48px; padding: 0 14px; cursor: pointer; font-weight: 700; } .ds-accordion[open] summary { background: #edf5ff; color: #113f8f; } .ds-accordion p { margin: 0; padding: 14px; color: #6b7280; } .ds-accordion summary:focus-visible { outline: 3px solid #1768e5; outline-offset: -3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Portfolio Intelligence",
+    "overview": "Trading Max should feel like a calm control surface for financial truth: exact, trustworthy, and visibly under the user's control. It is an operational interface, not a spectacle. Dense account evidence remains scannable because hierarchy, spacing, and a restrained blue vocabulary make the important state obvious before interpretation begins.\n\nThe visual system pairs cool, quiet working surfaces with a small number of high-conviction moments. Signal Blue identifies current state and action; Ledger Navy grounds the most important money facts. The result is layered but restrained, with ambient depth reserved for genuine hierarchy. It must never resemble a speculative trading terminal or a flashy cryptocurrency dashboard.",
+    "keyCharacteristics": [
+      "Calm, precise, trustworthy, and controlled.",
+      "Evidence-dense without feeling crowded.",
+      "Cool working surfaces with selective high-contrast anchors.",
+      "Operational states are explicit in text as well as color.",
+      "Bilingual composition remains equally intentional in Chinese and English."
+    ],
+    "rules": [
+      { "name": "The Signal Rarity Rule", "body": "Signal Blue marks current state, focus, and action; it is not general decoration.", "section": "colors" },
+      { "name": "The Ledger Grounding Rule", "body": "Ledger Navy is reserved for the most important money truth or a compact metric band, never applied to every section.", "section": "colors" },
+      { "name": "The Honest Status Rule", "body": "Semantic color never carries status alone; pair it with a label, icon, sign, or explicit value.", "section": "colors" },
+      { "name": "The Tabular Truth Rule", "body": "All numbers use tabular numerals so money, ratios, dates, and changing values remain aligned.", "section": "typography" },
+      { "name": "The Heading Carries It Rule", "body": "Do not add eyebrow or kicker text above a heading; hierarchy comes from the heading and its spatial context.", "section": "typography" },
+      { "name": "The First-Viewport Rule", "body": "Current account state must be findable before historical interpretation, research, or model commentary.", "section": "layout" },
+      { "name": "The Ambient Hierarchy Rule", "body": "Use depth only when an element is meaningfully above or more important than its neighbors.", "section": "elevation" },
+      { "name": "The One Elevation Signal Rule", "body": "A routine card uses either its quiet boundary or a wide soft shadow; do not stack both treatments by default.", "section": "elevation" },
+      { "name": "The Radius Has Rank Rule", "body": "Larger radii indicate larger structural scope; do not use the 32px money-anchor radius on routine cards.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do make current account state the strongest item in the first viewport.",
+      "Do use Signal Blue for current state, focus, and action.",
+      "Do reserve Ledger Navy for the primary money fact or compact metric band.",
+      "Do show unavailable, partial, retired, and stale states in explicit text.",
+      "Do preserve account-specific semantics and evidence provenance.",
+      "Do maintain keyboard, reduced-motion, mobile, Chinese, and English parity.",
+      "Do use existing Phosphor icons and Trading Max brand assets."
+    ],
+    "donts": [
+      "Don't imitate speculative trading terminals, casino interfaces, or flashy cryptocurrency dashboards.",
+      "Don't use gradient text, decorative grids, fake market imagery, or motion without an operational purpose.",
+      "Don't turn every section into a shadowed card or nest cards as page structure.",
+      "Don't promote model commentary above deterministic account state.",
+      "Don't convert missing evidence into zero, invented content, or reassuring visual polish.",
+      "Don't use color as the only indicator of profit, loss, warning, or status.",
+      "Don't add eyebrow labels above headings or uppercase prose as decoration."
+    ]
+  }
+}

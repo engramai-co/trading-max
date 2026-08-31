@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Trading Max monochrome symbol</title>
+  <desc id="desc">A single-colour geometric T and M monogram.</desc>
+  <path fill="currentColor" d="M176 276h116l208 142 208-142h116v116L594 528v112l-94 70-94-70V528L176 392z"/>
+  <path fill="currentColor" d="M176 276h116v444H176zm532 0h116v444H708z"/>
+  <path fill="currentColor" d="M176 150h648v126H574v296l-74 56-74-56V276H176z"/>
+</svg>

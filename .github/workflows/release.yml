@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing SemVer tag to validate and release
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    name: Validate and publish source release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.tag.outputs.value }}
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-packages --group dev --frozen
+
+      - name: Validate version and repository hygiene
+        run: |
+          uv run python tools/check_release_version.py "${{ steps.tag.outputs.value }}"
+          uv run python tools/check_repository_hygiene.py
+          uv run python tools/check_release_readiness.py --public
+          if [ "${{ github.event.repository.visibility }}" = "public" ]; then
+            uv run python tools/check_public_history.py
+          fi
+          uv run python tools/check_documentation.py
+          uv run python tools/generate_openapi.py --check
+
+      - name: Validate tagged source
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          git fetch origin main --no-tags
+          release_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          git merge-base --is-ancestor "$release_commit" origin/main
+          uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+          uv run ruff format --check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+          uv run pytest services/api/tests backend/tests
+          uv run python -m compileall -q backend/src services/api tools
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Build web release surface
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm run check:api-types
+          npm run check:architecture
+          npm test
+          npm run build
+
+      - name: Create source bundle and checksum
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          git archive --format=tar.gz --prefix="trading-max-${RELEASE_TAG}/" \
+            "$RELEASE_TAG" > "trading-max-${RELEASE_TAG}.tar.gz"
+          sha256sum "trading-max-${RELEASE_TAG}.tar.gz" \
+            > "trading-max-${RELEASE_TAG}.sha256"
+
+      - name: Generate release SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          artifact-name: trading-max-${{ steps.tag.outputs.value }}.spdx.json
+          format: spdx-json
+          output-file: trading-max-${{ steps.tag.outputs.value }}.spdx.json
+
+      - name: Attest public source bundle provenance
+        if: ${{ github.event.repository.visibility == 'public' }}
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: trading-max-${{ steps.tag.outputs.value }}.tar.gz
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber \
+              "trading-max-${RELEASE_TAG}.tar.gz" \
+              "trading-max-${RELEASE_TAG}.sha256" \
+              "trading-max-${RELEASE_TAG}.spdx.json"
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Trading Max ${RELEASE_TAG}" \
+              --generate-notes \
+              "trading-max-${RELEASE_TAG}.tar.gz" \
+              "trading-max-${RELEASE_TAG}.sha256" \
+              "trading-max-${RELEASE_TAG}.spdx.json"
+          fi

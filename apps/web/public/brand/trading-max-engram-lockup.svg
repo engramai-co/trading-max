@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1160" role="img" aria-labelledby="title desc">
+  <title id="title">Trading Max — an Engram project</title>
+  <desc id="desc">Trading Max brand lockup with Engram endorsement.</desc>
+  <g transform="translate(200 50) scale(.6)">
+    <path fill="#2563EB" d="M176 276h116l208 142 208-142h116v116L594 528v112l-94 70-94-70V528L176 392z"/>
+    <path fill="#2563EB" d="M176 276h116v444H176zm532 0h116v444H708z"/>
+    <path fill="#171A21" d="M176 150h648v126H574v296l-74 56-74-56V276H176z"/>
+    <path fill="#22D3EE" d="M466 640l34 26 34-26v94l-34 26-34-26z"/>
+  </g>
+  <text x="700" y="1000" text-anchor="middle" fill="#171A21" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="94" letter-spacing="-3">Trading <tspan font-weight="800">Max</tspan></text>
+  <text x="700" y="1070" text-anchor="middle" fill="#53606F" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="24" letter-spacing="4">AN ENGRAM PROJECT</text>
+</svg>

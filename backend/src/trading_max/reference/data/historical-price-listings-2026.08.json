@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "historical-price-listings-2026.08",
+  "provider": "yahoo-finance-compatible",
+  "asOf": "2026-08-16",
+  "matchPolicy": "exact-isin-only",
+  "records": [
+    {
+      "isin": "XS2675292309",
+      "name": "GraniteShares 3x Long Alphabet Daily ETP",
+      "listings": [
+        {
+          "symbol": "3LGP.L",
+          "quoteCurrency": "GBX",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3LAL.L",
+          "quoteCurrency": "USD",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3LGE.L",
+          "quoteCurrency": "EUR",
+          "mic": "XLON"
+        }
+      ],
+      "sources": [
+        "https://www.londonstockexchange.com/stock/3LGP/graniteshares/company-page",
+        "https://graniteshares.com/uk/etps/3x-leveraged-alphabet-3lal/"
+      ]
+    },
+    {
+      "isin": "XS2399365043",
+      "name": "Leverage Shares 3x Long Taiwan Semiconductor ETP",
+      "listings": [
+        {
+          "symbol": "TS3E.DE",
+          "quoteCurrency": "EUR",
+          "mic": "XFRA"
+        },
+        {
+          "symbol": "TS3E.L",
+          "quoteCurrency": "EUR",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3TSM.L",
+          "quoteCurrency": "GBX",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "TSM3.L",
+          "quoteCurrency": "USD",
+          "mic": "XLON"
+        }
+      ],
+      "sources": [
+        "https://leverageshares.com/documents/factsheet/3x_tsm_factsheet.pdf",
+        "https://leverageshares.com/documents/pdfs/eu/Leverage-Shares-Products.pdf"
+      ]
+    },
+    {
+      "isin": "XS3373449761",
+      "name": "Leverage Shares -5x Short Nasdaq 100 ETP Securities",
+      "listings": [
+        {
+          "symbol": "SQQQ.L",
+          "quoteCurrency": "GBX",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "QQ3S.L",
+          "quoteCurrency": "USD",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "SQQE.L",
+          "quoteCurrency": "EUR",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "QQ3S.DE",
+          "quoteCurrency": "EUR",
+          "mic": "XFRA"
+        }
+      ],
+      "sources": [
+        "https://leverageshares.com/documents/notices/Consolidation-Notice_-5x-Nasdaq-04-June-2026.pdf",
+        "https://leverageshares.com/documents/ft/-5x_qqq_ft_cbi.pdf"
+      ]
+    },
+    {
+      "isin": "XS2472196257",
+      "name": "Leverage Shares 3x Long South Korea ETP Securities",
+      "listings": [
+        {
+          "symbol": "3KOR.L",
+          "quoteCurrency": "GBX",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "KOR3.L",
+          "quoteCurrency": "USD",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3SKE.L",
+          "quoteCurrency": "EUR",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "KOR3.DE",
+          "quoteCurrency": "EUR",
+          "mic": "XFRA"
+        }
+      ],
+      "sources": [
+        "https://leverageshares.com/documents/factsheet/3x_ewy_factsheet.pdf"
+      ]
+    },
+    {
+      "isin": "XS2722160707",
+      "name": "GraniteShares 3x Short Microsoft Daily ETP Securities",
+      "listings": [
+        {
+          "symbol": "3SMP.L",
+          "quoteCurrency": "GBX",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3SMS.L",
+          "quoteCurrency": "USD",
+          "mic": "XLON"
+        },
+        {
+          "symbol": "3SME.L",
+          "quoteCurrency": "EUR",
+          "mic": "XLON"
+        }
+      ],
+      "sources": [
+        "https://graniteshares.com/uk/etps/short-3x-microsoft-3sms/",
+        "https://graniteshares.com/media/s5ple24w/grsh-delisting-notice-enxp-20240925.pdf"
+      ]
+    },
+    {
+      "isin": "US78392B1070",
+      "name": "SK hynix GDR 144A/Reg S 1",
+      "listings": [
+        {
+          "symbol": "HY9H.F",
+          "quoteCurrency": "EUR",
+          "mic": "XFRA"
+        }
+      ],
+      "sources": [
+        "https://live.deutsche-boerse.com/equity/sk-hynix-gdr-144a-regs-1"
+      ]
+    }
+  ]
+}

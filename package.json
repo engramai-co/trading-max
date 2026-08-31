@@ -1,0 +1,24 @@
+{
+  "name": "trading-max",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/engramai-co/trading-max.git"
+  },
+  "bugs": "https://github.com/engramai-co/trading-max/issues",
+  "homepage": "https://github.com/engramai-co/trading-max#readme",
+  "scripts": {
+    "api": "uv run uvicorn services.api.trading_max_api.app:app --host 127.0.0.1 --port 8421",
+    "build": "npm --prefix apps/web run build",
+    "check:api-types": "npm --prefix apps/web run check:api-types",
+    "check:architecture": "npm --prefix apps/web run check:architecture",
+    "dev": "npm --prefix apps/web run dev",
+    "dev:api": "uv run uvicorn services.api.trading_max_api.app:app --reload --host 127.0.0.1 --port 8421",
+    "dev:web": "npm --prefix apps/web run dev",
+    "lint": "npm --prefix apps/web run lint",
+    "start": "npm --prefix apps/web run start",
+    "test": "uv run pytest",
+    "typecheck": "npm --prefix apps/web run typecheck"
+  }
+}

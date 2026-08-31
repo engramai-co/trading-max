@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.engram.trading-max-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__TRADING_MAX_HOME__/Services/trading-max/app/deploy/macos/run-api.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__TRADING_MAX_HOME__/Services/trading-max/app</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>LowPriorityIO</key>
+  <false/>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>SoftResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
+  <key>HardResourceLimits</key>
+  <dict>
+    <key>NumberOfFiles</key>
+    <integer>8192</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__TRADING_MAX_HOME__/Library/Logs/Trading Max/api.log</string>
+  <key>StandardErrorPath</key>
+  <string>__TRADING_MAX_HOME__/Library/Logs/Trading Max/api.error.log</string>
+</dict>
+</plist>

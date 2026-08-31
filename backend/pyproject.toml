@@ -1,0 +1,43 @@
+[project]
+name = "trading-max-backend"
+version = "1.2.0"
+description = "Installable domain, application, and worker package for Trading Max Portfolio"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28,<1",
+    "keyring>=25,<26",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "pydantic>=2.11,<3",
+    "pypdf>=6.15,<7",
+    "xlrd>=2.0,<3",
+    "yfinance>=0.2.54",
+]
+
+[project.urls]
+Documentation = "https://github.com/engramai-co/trading-max#documentation"
+Issues = "https://github.com/engramai-co/trading-max/issues"
+Repository = "https://github.com/engramai-co/trading-max"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+trading-max = "trading_max.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trading_max"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/trading_max/reference/data" = "trading_max/reference/data"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/trading_max",
+    "/pyproject.toml",
+]
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/trading_max/reference/data" = "src/trading_max/reference/data"

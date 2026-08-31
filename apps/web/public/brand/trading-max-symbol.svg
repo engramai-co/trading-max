@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Trading Max symbol</title>
+  <desc id="desc">A geometric T and M monogram in graphite, cobalt blue, and cyan.</desc>
+  <path fill="#2563EB" d="M176 276h116l208 142 208-142h116v116L594 528v112l-94 70-94-70V528L176 392z"/>
+  <path fill="#2563EB" d="M176 276h116v444H176zm532 0h116v444H708z"/>
+  <path fill="#171A21" d="M176 150h648v126H574v296l-74 56-74-56V276H176z"/>
+  <path fill="#22D3EE" d="M466 640l34 26 34-26v94l-34 26-34-26z"/>
+</svg>

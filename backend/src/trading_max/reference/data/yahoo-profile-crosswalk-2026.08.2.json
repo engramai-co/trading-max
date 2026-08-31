@@ -1,0 +1,719 @@
+{
+  "schemaVersion": 1,
+  "provider": "yahoo-finance",
+  "crosswalkVersion": "2026.08.2",
+  "taxonomy": "GICS",
+  "taxonomyVersion": "2026",
+  "matchPolicy": "provider business profile only; never ticker identity",
+  "mappings": [
+    {
+      "profileKey": "advertising-agencies",
+      "targetCode": "50201010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "aerospace-defense",
+      "targetCode": "20101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "agricultural-inputs",
+      "targetCode": "15101030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "air-freight-logistics",
+      "targetCode": "20301010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "airlines",
+      "targetCode": "20302010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "airports-air-services",
+      "targetCode": "20305010",
+      "confidence": 0.82
+    },
+    {
+      "profileKey": "aluminum",
+      "targetCode": "15104010",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "apparel-manufacturing",
+      "targetCode": "25203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "apparel-retail",
+      "targetCode": "25504010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "asset-management",
+      "targetCode": "40203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "auto-manufacturers",
+      "targetCode": "25102010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "auto-parts",
+      "targetCode": "25101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "auto-truck-dealerships",
+      "targetCode": "25504050",
+      "confidence": 0.86
+    },
+    {
+      "profileKey": "banks-diversified",
+      "targetCode": "40101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "banks-regional",
+      "targetCode": "40101015",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "beverages-brewers",
+      "targetCode": "30201010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "beverages-non-alcoholic",
+      "targetCode": "30201030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "beverages-wineries-distilleries",
+      "targetCode": "30201020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "biotechnology",
+      "targetCode": "35201010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "broadcasting",
+      "targetCode": "50201020",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "building-materials",
+      "targetCode": "15102010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "building-products-equipment",
+      "targetCode": "20102010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "capital-markets",
+      "targetCode": "40203020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "chemicals",
+      "targetCode": "15101020",
+      "confidence": 0.72
+    },
+    {
+      "profileKey": "communication-equipment",
+      "targetCode": "45201020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "computer-hardware",
+      "targetCode": "45202030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "confectioners",
+      "targetCode": "30202030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "conglomerates",
+      "targetCode": "20105010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "consulting-services",
+      "targetCode": "20202020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "consumer-electronics",
+      "targetCode": "45202030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "copper",
+      "targetCode": "15104025",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "credit-services",
+      "targetCode": "40202010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "department-stores",
+      "targetCode": "25503010",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "diagnostics-research",
+      "targetCode": "35203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "discount-stores",
+      "targetCode": "30101040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "drug-manufacturers-general",
+      "targetCode": "35202010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "drug-manufacturers-specialty-generic",
+      "targetCode": "35202010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "education-training-services",
+      "targetCode": "25302010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "electrical-equipment-parts",
+      "targetCode": "20104010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "electronic-components",
+      "targetCode": "45203015",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "electronic-gaming-multimedia",
+      "targetCode": "50202020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "electronics-computer-distribution",
+      "targetCode": "45203030",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "engineering-construction",
+      "targetCode": "20103010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "entertainment",
+      "targetCode": "50202010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "farm-heavy-construction-machinery",
+      "targetCode": "20106010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "farm-products",
+      "targetCode": "30202010",
+      "confidence": 0.84
+    },
+    {
+      "profileKey": "financial-conglomerates",
+      "targetCode": "40201030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "financial-data-stock-exchanges",
+      "targetCode": "40203040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "financial-services",
+      "targetCode": "40201020",
+      "confidence": 0.72
+    },
+    {
+      "profileKey": "food-distribution",
+      "targetCode": "30101020",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "footwear-accessories",
+      "targetCode": "25203020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "furnishings-fixtures-appliances",
+      "targetCode": "25201020",
+      "confidence": 0.68
+    },
+    {
+      "profileKey": "gambling",
+      "targetCode": "25301010",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "gold",
+      "targetCode": "15104030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "grocery-stores",
+      "targetCode": "30101030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "health-information-services",
+      "targetCode": "35102015",
+      "confidence": 0.78
+    },
+    {
+      "profileKey": "healthcare-plans",
+      "targetCode": "35102030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "home-improvement-retail",
+      "targetCode": "25504030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "household-personal-products",
+      "targetCode": "30302010",
+      "confidence": 0.62
+    },
+    {
+      "profileKey": "industrial-distribution",
+      "targetCode": "20107010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "information-technology-services",
+      "targetCode": "45102010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "infrastructure-operations",
+      "targetCode": "20305020",
+      "confidence": 0.62
+    },
+    {
+      "profileKey": "insurance-brokers",
+      "targetCode": "40301010",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "insurance-diversified",
+      "targetCode": "40301030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "insurance-life",
+      "targetCode": "40301020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "insurance-property-casualty",
+      "targetCode": "40301040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "insurance-reinsurance",
+      "targetCode": "40301050",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "insurance-specialty",
+      "targetCode": "40301040",
+      "confidence": 0.65
+    },
+    {
+      "profileKey": "integrated-freight-logistics",
+      "targetCode": "20301010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "internet-content-information",
+      "targetCode": "50203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "internet-retail",
+      "targetCode": "25503030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "leisure",
+      "targetCode": "25202010",
+      "confidence": 0.7
+    },
+    {
+      "profileKey": "lodging",
+      "targetCode": "25301020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "luxury-goods",
+      "targetCode": "25203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "marine-shipping",
+      "targetCode": "20303010",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "medical-care-facilities",
+      "targetCode": "35102020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "medical-devices",
+      "targetCode": "35101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "medical-distribution",
+      "targetCode": "35102010",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "medical-instruments-supplies",
+      "targetCode": "35101020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "oil-gas-e-p",
+      "targetCode": "10102020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "oil-gas-equipment-services",
+      "targetCode": "10101020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "oil-gas-integrated",
+      "targetCode": "10102010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "oil-gas-midstream",
+      "targetCode": "10102040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "oil-gas-refining-marketing",
+      "targetCode": "10102030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "other-industrial-metals-mining",
+      "targetCode": "15104020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "other-precious-metals-mining",
+      "targetCode": "15104040",
+      "confidence": 0.84
+    },
+    {
+      "profileKey": "packaged-foods",
+      "targetCode": "30202030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "packaging-containers",
+      "targetCode": "15103020",
+      "confidence": 0.7
+    },
+    {
+      "profileKey": "paper-paper-products",
+      "targetCode": "15105020",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "personal-care-products",
+      "targetCode": "30302010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "pharmaceutical-retailers",
+      "targetCode": "30101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "publishing",
+      "targetCode": "50201040",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "railroads",
+      "targetCode": "20304010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "real-estate-development",
+      "targetCode": "60201030",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "real-estate-diversified",
+      "targetCode": "60201030",
+      "confidence": 0.65
+    },
+    {
+      "profileKey": "real-estate-services",
+      "targetCode": "60201040",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "reit-diversified",
+      "targetCode": "60101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "reit-healthcare-facilities",
+      "targetCode": "60105010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "reit-industrial",
+      "targetCode": "60102510",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "reit-office",
+      "targetCode": "60104010",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "reit-retail",
+      "targetCode": "60107010",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "reit-specialty",
+      "targetCode": "60108010",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "rental-leasing-services",
+      "targetCode": "20107010",
+      "confidence": 0.62
+    },
+    {
+      "profileKey": "residential-construction",
+      "targetCode": "25201030",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "resorts-casinos",
+      "targetCode": "25301010",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "restaurants",
+      "targetCode": "25301040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "scientific-technical-instruments",
+      "targetCode": "45203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "security-protection-services",
+      "targetCode": "20201080",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "semiconductor-equipment-materials",
+      "targetCode": "45301010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "semiconductors",
+      "targetCode": "45301020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "software-application",
+      "targetCode": "45103010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "software-infrastructure",
+      "targetCode": "45103020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "solar",
+      "targetCode": "45301020",
+      "confidence": 0.7
+    },
+    {
+      "profileKey": "specialty-business-services",
+      "targetCode": "20201070",
+      "confidence": 0.72
+    },
+    {
+      "profileKey": "specialty-chemicals",
+      "targetCode": "15101050",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "specialty-industrial-machinery",
+      "targetCode": "20106020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "specialty-retail",
+      "targetCode": "25504040",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "steel",
+      "targetCode": "15104050",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "telecom-services",
+      "targetCode": "50101020",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "textile-manufacturing",
+      "targetCode": "25203030",
+      "confidence": 0.9
+    },
+    {
+      "profileKey": "thermal-coal",
+      "targetCode": "10102050",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "tobacco",
+      "targetCode": "30203010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "tools-accessories",
+      "targetCode": "20106020",
+      "confidence": 0.74
+    },
+    {
+      "profileKey": "travel-services",
+      "targetCode": "25301020",
+      "confidence": 0.72
+    },
+    {
+      "profileKey": "trucking",
+      "targetCode": "20304030",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "uranium",
+      "targetCode": "10102050",
+      "confidence": 0.72
+    },
+    {
+      "profileKey": "utilities-diversified",
+      "targetCode": "55103010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "utilities-independent-power-producers",
+      "targetCode": "55105010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "utilities-regulated-electric",
+      "targetCode": "55101010",
+      "confidence": 0.88
+    },
+    {
+      "profileKey": "utilities-regulated-gas",
+      "targetCode": "55102010",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "utilities-regulated-water",
+      "targetCode": "55104010",
+      "confidence": 0.94
+    },
+    {
+      "profileKey": "utilities-renewable",
+      "targetCode": "55105020",
+      "confidence": 0.92
+    },
+    {
+      "profileKey": "waste-management",
+      "targetCode": "20201050",
+      "confidence": 0.9
+    }
+  ],
+  "titleMappings": [
+    {
+      "sector": "communication services",
+      "industry": "internet content & information",
+      "targetCode": "50203010",
+      "confidence": 0.88
+    },
+    {
+      "sector": "financial services",
+      "industry": "financial data & stock exchanges",
+      "targetCode": "40203040",
+      "confidence": 0.88
+    },
+    {
+      "sector": "industrials",
+      "industry": "electrical equipment & parts",
+      "targetCode": "20104010",
+      "confidence": 0.88
+    },
+    {
+      "sector": "technology",
+      "industry": "semiconductor equipment & materials",
+      "targetCode": "45301010",
+      "confidence": 0.88
+    },
+    {
+      "sector": "technology",
+      "industry": "semiconductors",
+      "targetCode": "45301020",
+      "confidence": 0.88
+    },
+    {
+      "sector": "technology",
+      "industry": "software - application",
+      "targetCode": "45103010",
+      "confidence": 0.88
+    },
+    {
+      "sector": "technology",
+      "industry": "software - infrastructure",
+      "targetCode": "45103020",
+      "confidence": 0.88
+    }
+  ]
+}

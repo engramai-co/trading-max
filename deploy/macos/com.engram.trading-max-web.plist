@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.engram.trading-max-web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__TRADING_MAX_HOME__/Services/trading-max/app/deploy/macos/run-web.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__TRADING_MAX_HOME__/Services/trading-max/app</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>__TRADING_MAX_HOME__/Library/Logs/Trading Max/web.log</string>
+  <key>StandardErrorPath</key>
+  <string>__TRADING_MAX_HOME__/Library/Logs/Trading Max/web.error.log</string>
+</dict>
+</plist>

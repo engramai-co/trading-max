@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Trading Max social preview</title>
+  <desc id="desc">Trading Max local-first portfolio intelligence social preview.</desc>
+  <rect width="1200" height="630" fill="#F4F2E8"/>
+  <g transform="translate(92 82) scale(.42)">
+    <path fill="#2563EB" d="M176 276h116l208 142 208-142h116v116L594 528v112l-94 70-94-70V528L176 392z"/>
+    <path fill="#2563EB" d="M176 276h116v444H176zm532 0h116v444H708z"/>
+    <path fill="#171A21" d="M176 150h648v126H574v296l-74 56-74-56V276H176z"/>
+    <path fill="#22D3EE" d="M466 640l34 26 34-26v94l-34 26-34-26z"/>
+  </g>
+  <text x="470" y="285" fill="#171A21" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="86" letter-spacing="-3">Trading <tspan font-weight="800">Max</tspan></text>
+  <text x="474" y="354" fill="#53606F" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="28" letter-spacing="4">LOCAL-FIRST PORTFOLIO INTELLIGENCE</text>
+  <path d="M474 399h560" stroke="#CBD5E1" stroke-width="2"/>
+  <text x="474" y="448" fill="#53606F" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="24">Private by default · research you can inspect</text>
+</svg>

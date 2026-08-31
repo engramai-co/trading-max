@@ -1,0 +1,1457 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-08-09",
+  "revision": 1,
+  "companies": [
+    {
+      "ticker": "ARM",
+      "name": "Arm Holdings plc",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.14,
+          "exit_fcf_multiple": 40.0,
+          "revenue_cagr": 0.235,
+          "share_cagr": 0.0125,
+          "target_fcf_margin": 0.41
+        },
+        "bear": {
+          "discount_rate": 0.16,
+          "exit_fcf_multiple": 30.0,
+          "revenue_cagr": 0.135,
+          "share_cagr": 0.02,
+          "target_fcf_margin": 0.305
+        },
+        "bull": {
+          "discount_rate": 0.13,
+          "exit_fcf_multiple": 50.0,
+          "revenue_cagr": 0.325,
+          "share_cagr": 0.0075,
+          "target_fcf_margin": 0.495
+        }
+      }
+    },
+    {
+      "ticker": "MRVL",
+      "name": "Marvell Technology, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.196,
+          "target_fcf_margin": 0.17,
+          "discount_rate": 0.15072,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.276,
+          "target_fcf_margin": 0.22,
+          "discount_rate": 0.13072,
+          "exit_fcf_multiple": 35.046,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.276,
+          "target_fcf_margin": 0.28,
+          "discount_rate": 0.11072,
+          "exit_fcf_multiple": 35.046,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "AVGO",
+      "name": "Broadcom Inc.",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.11,
+          "exit_fcf_multiple": 28.0,
+          "revenue_cagr": 0.18,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.435
+        },
+        "bear": {
+          "discount_rate": 0.13,
+          "exit_fcf_multiple": 20.0,
+          "revenue_cagr": 0.09,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.365
+        },
+        "bull": {
+          "discount_rate": 0.1,
+          "exit_fcf_multiple": 36.0,
+          "revenue_cagr": 0.275,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.475
+        }
+      }
+    },
+    {
+      "ticker": "CRDO",
+      "name": "Credo Technology Group Holding Ltd",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.13786,
+          "discount_rate": 0.15295,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.18786,
+          "discount_rate": 0.13295,
+          "exit_fcf_multiple": 27.53345,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.24786,
+          "discount_rate": 0.11295,
+          "exit_fcf_multiple": 27.53345,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "CBRS",
+      "name": "Cerebras Systems Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.104,
+          "discount_rate": 0.11176,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.154,
+          "discount_rate": 0.09176,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.214,
+          "discount_rate": 0.07176,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "AMD",
+      "name": "Advanced Micro Devices, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.16405,
+          "discount_rate": 0.15253,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.21405,
+          "discount_rate": 0.13253,
+          "exit_fcf_multiple": 31.26546,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.501,
+          "target_fcf_margin": 0.27405,
+          "discount_rate": 0.11253,
+          "exit_fcf_multiple": 31.26546,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "INTC",
+      "name": "Intel Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.174,
+          "target_fcf_margin": 0.03533,
+          "discount_rate": 0.14518,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.254,
+          "target_fcf_margin": 0.08533,
+          "discount_rate": 0.12518,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.254,
+          "target_fcf_margin": 0.14533,
+          "discount_rate": 0.10518,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "SNPS",
+      "name": "Synopsys, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.32,
+          "target_fcf_margin": 0.25,
+          "discount_rate": 0.11672,
+          "exit_fcf_multiple": 24.07278,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.4,
+          "target_fcf_margin": 0.3,
+          "discount_rate": 0.09672,
+          "exit_fcf_multiple": 24.07278,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.419,
+          "target_fcf_margin": 0.36,
+          "discount_rate": 0.07672,
+          "exit_fcf_multiple": 25.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "TSEM",
+      "name": "Tower Semiconductor Ltd.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.157,
+          "target_fcf_margin": 0.04758,
+          "discount_rate": 0.10789,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.237,
+          "target_fcf_margin": 0.09758,
+          "discount_rate": 0.08789,
+          "exit_fcf_multiple": 38.80945,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.237,
+          "target_fcf_margin": 0.15758,
+          "discount_rate": 0.07,
+          "exit_fcf_multiple": 38.80945,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "LRCX",
+      "name": "Lam Research Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.08302,
+          "discount_rate": 0.15209,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.13302,
+          "discount_rate": 0.13209,
+          "exit_fcf_multiple": 27.01467,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.19302,
+          "discount_rate": 0.11209,
+          "exit_fcf_multiple": 27.01467,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "ON",
+      "name": "ON Semiconductor Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.012,
+          "target_fcf_margin": 0.17,
+          "discount_rate": 0.14169,
+          "exit_fcf_multiple": 17.9642,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.092,
+          "target_fcf_margin": 0.22,
+          "discount_rate": 0.12169,
+          "exit_fcf_multiple": 17.9642,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.28,
+          "discount_rate": 0.10169,
+          "exit_fcf_multiple": 18.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "AMAT",
+      "name": "Applied Materials, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.034,
+          "target_fcf_margin": 0.05475,
+          "discount_rate": 0.1426,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.114,
+          "target_fcf_margin": 0.10475,
+          "discount_rate": 0.1226,
+          "exit_fcf_multiple": 31.55133,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.16475,
+          "discount_rate": 0.1026,
+          "exit_fcf_multiple": 31.55133,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "GLW",
+      "name": "Corning Incorporated",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.086,
+          "target_fcf_margin": 0.03,
+          "discount_rate": 0.11703,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.166,
+          "target_fcf_margin": 0.0433,
+          "discount_rate": 0.09703,
+          "exit_fcf_multiple": 38.34759,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.166,
+          "target_fcf_margin": 0.1033,
+          "discount_rate": 0.07703,
+          "exit_fcf_multiple": 38.34759,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "NOK",
+      "name": "Nokia Oyj",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.004,
+          "target_fcf_margin": 0.03,
+          "discount_rate": 0.09888,
+          "exit_fcf_multiple": 18.83603,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.084,
+          "target_fcf_margin": 0.058,
+          "discount_rate": 0.07888,
+          "exit_fcf_multiple": 18.83603,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.118,
+          "discount_rate": 0.07,
+          "exit_fcf_multiple": 18.83603,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "ANET",
+      "name": "Arista Networks, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.13,
+          "discount_rate": 0.14375,
+          "exit_fcf_multiple": 19.2,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.18,
+          "discount_rate": 0.12375,
+          "exit_fcf_multiple": 36.68817,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.377,
+          "target_fcf_margin": 0.24,
+          "discount_rate": 0.10375,
+          "exit_fcf_multiple": 36.68817,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "AAOI",
+      "name": "Applied Optoelectronics, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.076,
+          "discount_rate": 0.15078,
+          "exit_fcf_multiple": 19.2,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.126,
+          "discount_rate": 0.13078,
+          "exit_fcf_multiple": 29.47197,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.186,
+          "discount_rate": 0.11078,
+          "exit_fcf_multiple": 29.47197,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "COHR",
+      "name": "Coherent Corp.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.125,
+          "target_fcf_margin": 0.125,
+          "discount_rate": 0.14915,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.205,
+          "target_fcf_margin": 0.175,
+          "discount_rate": 0.12915,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.205,
+          "target_fcf_margin": 0.235,
+          "discount_rate": 0.10915,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "LITE",
+      "name": "Lumentum Holdings Inc.",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.13,
+          "exit_fcf_multiple": 30.0,
+          "revenue_cagr": 0.175,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.24
+        },
+        "bear": {
+          "discount_rate": 0.15,
+          "exit_fcf_multiple": 22.0,
+          "revenue_cagr": 0.065,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.165
+        },
+        "bull": {
+          "discount_rate": 0.12,
+          "exit_fcf_multiple": 38.0,
+          "revenue_cagr": 0.275,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.3
+        }
+      }
+    },
+    {
+      "ticker": "CSCO",
+      "name": "Cisco Systems, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.04,
+          "target_fcf_margin": 0.10291,
+          "discount_rate": 0.11005,
+          "exit_fcf_multiple": 19.2,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.12,
+          "target_fcf_margin": 0.15291,
+          "discount_rate": 0.09005,
+          "exit_fcf_multiple": 25.32108,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.21291,
+          "discount_rate": 0.07005,
+          "exit_fcf_multiple": 25.32108,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "CIEN",
+      "name": "Ciena Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.07586,
+          "discount_rate": 0.12709,
+          "exit_fcf_multiple": 19.2,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.12586,
+          "discount_rate": 0.10709,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.395,
+          "target_fcf_margin": 0.18586,
+          "discount_rate": 0.08709,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "ALAB",
+      "name": "Astera Labs, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.03,
+          "discount_rate": 0.15293,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.07647,
+          "discount_rate": 0.13293,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.13647,
+          "discount_rate": 0.11293,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "APLD",
+      "name": "Applied Digital Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.125,
+          "discount_rate": 0.12632,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.175,
+          "discount_rate": 0.10632,
+          "exit_fcf_multiple": 14.4,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.235,
+          "discount_rate": 0.08632,
+          "exit_fcf_multiple": 18.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "VRT",
+      "name": "Vertiv Holdings Co",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.12,
+          "exit_fcf_multiple": 30.0,
+          "revenue_cagr": 0.135,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.18
+        },
+        "bear": {
+          "discount_rate": 0.14,
+          "exit_fcf_multiple": 22.0,
+          "revenue_cagr": 0.07,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.14
+        },
+        "bull": {
+          "discount_rate": 0.11,
+          "exit_fcf_multiple": 38.0,
+          "revenue_cagr": 0.19,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.21
+        }
+      }
+    },
+    {
+      "ticker": "DELL",
+      "name": "Dell Technologies Inc.",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.13,
+          "exit_fcf_multiple": 18.0,
+          "revenue_cagr": 0.08,
+          "share_cagr": -0.025,
+          "target_fcf_margin": 0.065
+        },
+        "bear": {
+          "discount_rate": 0.15,
+          "exit_fcf_multiple": 14.0,
+          "revenue_cagr": 0.03,
+          "share_cagr": -0.005,
+          "target_fcf_margin": 0.045
+        },
+        "bull": {
+          "discount_rate": 0.12,
+          "exit_fcf_multiple": 22.0,
+          "revenue_cagr": 0.135,
+          "share_cagr": -0.035,
+          "target_fcf_margin": 0.085
+        }
+      }
+    },
+    {
+      "ticker": "CLS",
+      "name": "Celestica Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.03,
+          "discount_rate": 0.13689,
+          "exit_fcf_multiple": 16.15004,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.04675,
+          "discount_rate": 0.11689,
+          "exit_fcf_multiple": 16.15004,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.624,
+          "target_fcf_margin": 0.10675,
+          "discount_rate": 0.09689,
+          "exit_fcf_multiple": 18.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "NBIS",
+      "name": "Nebius Group N.V.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.32,
+          "target_fcf_margin": 0.16,
+          "discount_rate": 0.12317,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.4,
+          "target_fcf_margin": 0.21,
+          "discount_rate": 0.10317,
+          "exit_fcf_multiple": 20.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.27,
+          "discount_rate": 0.08317,
+          "exit_fcf_multiple": 25.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "CRWV",
+      "name": "CoreWeave, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.32,
+          "target_fcf_margin": 0.16,
+          "discount_rate": 0.0934,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.4,
+          "target_fcf_margin": 0.21,
+          "discount_rate": 0.0734,
+          "exit_fcf_multiple": 20.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.27,
+          "discount_rate": 0.07,
+          "exit_fcf_multiple": 25.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "SNDK",
+      "name": "Sandisk Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.13,
+          "discount_rate": 0.113,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.18,
+          "discount_rate": 0.093,
+          "exit_fcf_multiple": 12.8,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.24,
+          "discount_rate": 0.073,
+          "exit_fcf_multiple": 16.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "STX",
+      "name": "Seagate Technology Holdings plc",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.10939,
+          "discount_rate": 0.1512,
+          "exit_fcf_multiple": 14.67834,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.15939,
+          "discount_rate": 0.1312,
+          "exit_fcf_multiple": 14.67834,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.485,
+          "target_fcf_margin": 0.21939,
+          "discount_rate": 0.1112,
+          "exit_fcf_multiple": 16.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "WDC",
+      "name": "Western Digital Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.12946,
+          "discount_rate": 0.15239,
+          "exit_fcf_multiple": 13.64334,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.17946,
+          "discount_rate": 0.13239,
+          "exit_fcf_multiple": 13.64334,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.438,
+          "target_fcf_margin": 0.23946,
+          "discount_rate": 0.11239,
+          "exit_fcf_multiple": 16.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "MU",
+      "name": "Micron Technology, Inc.",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.14,
+          "exit_fcf_multiple": 14.0,
+          "revenue_cagr": 0.1,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.33
+        },
+        "bear": {
+          "discount_rate": 0.16,
+          "exit_fcf_multiple": 10.0,
+          "revenue_cagr": 0.02,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.205
+        },
+        "bull": {
+          "discount_rate": 0.13,
+          "exit_fcf_multiple": 18.0,
+          "revenue_cagr": 0.165,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.42
+        }
+      }
+    },
+    {
+      "ticker": "CRWD",
+      "name": "CrowdStrike Holdings, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.176,
+          "target_fcf_margin": 0.25,
+          "discount_rate": 0.12448,
+          "exit_fcf_multiple": 30.0,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.256,
+          "target_fcf_margin": 0.3,
+          "discount_rate": 0.10448,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.256,
+          "target_fcf_margin": 0.36,
+          "discount_rate": 0.08448,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "NET",
+      "name": "Cloudflare, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.279,
+          "target_fcf_margin": 0.22506,
+          "discount_rate": 0.14344,
+          "exit_fcf_multiple": 30.0,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.359,
+          "target_fcf_margin": 0.27506,
+          "discount_rate": 0.12344,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.359,
+          "target_fcf_margin": 0.33506,
+          "discount_rate": 0.10344,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "ORCL",
+      "name": "Oracle Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.126,
+          "target_fcf_margin": 0.16,
+          "discount_rate": 0.12536,
+          "exit_fcf_multiple": 13.50027,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.206,
+          "target_fcf_margin": 0.21,
+          "discount_rate": 0.10536,
+          "exit_fcf_multiple": 20.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.206,
+          "target_fcf_margin": 0.27,
+          "discount_rate": 0.08536,
+          "exit_fcf_multiple": 25.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "IBM",
+      "name": "International Business Machines Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": -0.069,
+          "target_fcf_margin": 0.12439,
+          "discount_rate": 0.09092,
+          "exit_fcf_multiple": 18.00999,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.011,
+          "target_fcf_margin": 0.17439,
+          "discount_rate": 0.07092,
+          "exit_fcf_multiple": 18.00999,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.23439,
+          "discount_rate": 0.07,
+          "exit_fcf_multiple": 18.00999,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "SOFI",
+      "name": "SoFi Technologies, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.12,
+          "target_fcf_margin": 0.055,
+          "discount_rate": 0.14203,
+          "exit_fcf_multiple": 14.4,
+          "share_cagr": 0.01
+        },
+        "base": {
+          "revenue_cagr": 0.2,
+          "target_fcf_margin": 0.105,
+          "discount_rate": 0.12203,
+          "exit_fcf_multiple": 22.62934,
+          "share_cagr": 0.005
+        },
+        "bull": {
+          "revenue_cagr": 0.426,
+          "target_fcf_margin": 0.165,
+          "discount_rate": 0.10203,
+          "exit_fcf_multiple": 22.62934,
+          "share_cagr": 0.0
+        }
+      }
+    },
+    {
+      "ticker": "NFLX",
+      "name": "Netflix, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.054,
+          "target_fcf_margin": 0.23,
+          "discount_rate": 0.13497,
+          "exit_fcf_multiple": 19.4217,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.134,
+          "target_fcf_margin": 0.28,
+          "discount_rate": 0.11497,
+          "exit_fcf_multiple": 19.4217,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.34,
+          "discount_rate": 0.09497,
+          "exit_fcf_multiple": 22.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "HOOD",
+      "name": "Robinhood Markets, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.12,
+          "target_fcf_margin": 0.055,
+          "discount_rate": 0.13429,
+          "exit_fcf_multiple": 14.4,
+          "share_cagr": 0.01
+        },
+        "base": {
+          "revenue_cagr": 0.2,
+          "target_fcf_margin": 0.105,
+          "discount_rate": 0.11429,
+          "exit_fcf_multiple": 29.29217,
+          "share_cagr": 0.005
+        },
+        "bull": {
+          "revenue_cagr": 0.323,
+          "target_fcf_margin": 0.165,
+          "discount_rate": 0.09429,
+          "exit_fcf_multiple": 29.29217,
+          "share_cagr": 0.0
+        }
+      }
+    },
+    {
+      "ticker": "APP",
+      "name": "AppLovin Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.2,
+          "discount_rate": 0.15044,
+          "exit_fcf_multiple": 16.29508,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.25,
+          "discount_rate": 0.13044,
+          "exit_fcf_multiple": 16.29508,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.528,
+          "target_fcf_margin": 0.31,
+          "discount_rate": 0.11044,
+          "exit_fcf_multiple": 18.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "FIG",
+      "name": "Figma, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.32,
+          "target_fcf_margin": 0.25,
+          "discount_rate": 0.11274,
+          "exit_fcf_multiple": 30.0,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.4,
+          "target_fcf_margin": 0.3,
+          "discount_rate": 0.09274,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.482,
+          "target_fcf_margin": 0.36,
+          "discount_rate": 0.07274,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "RDDT",
+      "name": "Reddit, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.32,
+          "target_fcf_margin": 0.19401,
+          "discount_rate": 0.15294,
+          "exit_fcf_multiple": 16.79155,
+          "share_cagr": 0.02
+        },
+        "base": {
+          "revenue_cagr": 0.4,
+          "target_fcf_margin": 0.24401,
+          "discount_rate": 0.13294,
+          "exit_fcf_multiple": 20.0,
+          "share_cagr": 0.015
+        },
+        "bull": {
+          "revenue_cagr": 0.611,
+          "target_fcf_margin": 0.30401,
+          "discount_rate": 0.11294,
+          "exit_fcf_multiple": 25.0,
+          "share_cagr": 0.01
+        }
+      }
+    },
+    {
+      "ticker": "COIN",
+      "name": "Coinbase Global, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": -0.1,
+          "target_fcf_margin": 0.1,
+          "discount_rate": 0.14068,
+          "exit_fcf_multiple": 14.4,
+          "share_cagr": 0.01
+        },
+        "base": {
+          "revenue_cagr": -0.1,
+          "target_fcf_margin": 0.15,
+          "discount_rate": 0.12068,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.21,
+          "discount_rate": 0.10068,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.0
+        }
+      }
+    },
+    {
+      "ticker": "GEV",
+      "name": "GE Vernova Inc.",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.12,
+          "exit_fcf_multiple": 22.0,
+          "revenue_cagr": 0.09,
+          "share_cagr": -0.005,
+          "target_fcf_margin": 0.15
+        },
+        "bear": {
+          "discount_rate": 0.14,
+          "exit_fcf_multiple": 16.0,
+          "revenue_cagr": 0.04,
+          "share_cagr": 0.0,
+          "target_fcf_margin": 0.09
+        },
+        "bull": {
+          "discount_rate": 0.11,
+          "exit_fcf_multiple": 27.0,
+          "revenue_cagr": 0.14,
+          "share_cagr": -0.01,
+          "target_fcf_margin": 0.19
+        }
+      }
+    },
+    {
+      "ticker": "BE",
+      "name": "Bloom Energy Corporation",
+      "source": "legacy-manual",
+      "updated_at": null,
+      "scenarios": {
+        "base": {
+          "discount_rate": 0.16,
+          "exit_fcf_multiple": 25.0,
+          "revenue_cagr": 0.325,
+          "share_cagr": 0.015,
+          "target_fcf_margin": 0.135
+        },
+        "bear": {
+          "discount_rate": 0.18,
+          "exit_fcf_multiple": 18.0,
+          "revenue_cagr": 0.175,
+          "share_cagr": 0.03,
+          "target_fcf_margin": 0.065
+        },
+        "bull": {
+          "discount_rate": 0.14,
+          "exit_fcf_multiple": 32.0,
+          "revenue_cagr": 0.475,
+          "share_cagr": 0.005,
+          "target_fcf_margin": 0.19
+        }
+      }
+    },
+    {
+      "ticker": "OKLO",
+      "name": "Oklo Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.12,
+          "target_fcf_margin": 0.09,
+          "discount_rate": 0.13302,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.01
+        },
+        "base": {
+          "revenue_cagr": 0.2,
+          "target_fcf_margin": 0.14,
+          "discount_rate": 0.11302,
+          "exit_fcf_multiple": 16.0,
+          "share_cagr": 0.005
+        },
+        "bull": {
+          "revenue_cagr": 0.2,
+          "target_fcf_margin": 0.2,
+          "discount_rate": 0.09302,
+          "exit_fcf_multiple": 20.0,
+          "share_cagr": 0.0
+        }
+      }
+    },
+    {
+      "ticker": "IREN",
+      "name": "IREN Limited",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": -0.08,
+          "target_fcf_margin": 0.055,
+          "discount_rate": 0.13452,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.01
+        },
+        "base": {
+          "revenue_cagr": -0.0,
+          "target_fcf_margin": 0.105,
+          "discount_rate": 0.11452,
+          "exit_fcf_multiple": 9.6,
+          "share_cagr": 0.005
+        },
+        "bull": {
+          "revenue_cagr": 0.15,
+          "target_fcf_margin": 0.165,
+          "discount_rate": 0.09452,
+          "exit_fcf_multiple": 12.0,
+          "share_cagr": 0.0
+        }
+      }
+    },
+    {
+      "ticker": "MP",
+      "name": "MP Materials Corp.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.125,
+          "discount_rate": 0.15395,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.175,
+          "discount_rate": 0.13395,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.235,
+          "discount_rate": 0.11395,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "CAT",
+      "name": "Caterpillar Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.16,
+          "target_fcf_margin": 0.03,
+          "discount_rate": 0.13516,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.24,
+          "target_fcf_margin": 0.06756,
+          "discount_rate": 0.11516,
+          "exit_fcf_multiple": 26.34517,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.24,
+          "target_fcf_margin": 0.12756,
+          "discount_rate": 0.09516,
+          "exit_fcf_multiple": 26.34517,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "IONQ",
+      "name": "IonQ, Inc.",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.22,
+          "target_fcf_margin": 0.076,
+          "discount_rate": 0.15271,
+          "exit_fcf_multiple": 8.0,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.3,
+          "target_fcf_margin": 0.126,
+          "discount_rate": 0.13271,
+          "exit_fcf_multiple": 12.8,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.7,
+          "target_fcf_margin": 0.186,
+          "discount_rate": 0.11271,
+          "exit_fcf_multiple": 16.0,
+          "share_cagr": 0.005
+        }
+      }
+    },
+    {
+      "ticker": "RKLB",
+      "name": "Rocket Lab Corporation",
+      "source": "seed-v1",
+      "updated_at": null,
+      "scenarios": {
+        "bear": {
+          "revenue_cagr": 0.27,
+          "target_fcf_margin": 0.125,
+          "discount_rate": 0.15277,
+          "exit_fcf_multiple": 21.6,
+          "share_cagr": 0.015
+        },
+        "base": {
+          "revenue_cagr": 0.35,
+          "target_fcf_margin": 0.175,
+          "discount_rate": 0.13277,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.01
+        },
+        "bull": {
+          "revenue_cagr": 0.635,
+          "target_fcf_margin": 0.235,
+          "discount_rate": 0.11277,
+          "exit_fcf_multiple": 40.0,
+          "share_cagr": 0.005
+        }
+      }
+    }
+  ]
+}
