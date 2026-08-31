@@ -38,6 +38,7 @@ import { AllocationChart } from "@/components/portfolio-charts";
 import { StatusChip } from "@/components/status-chip";
 import { TimelineCoverage } from "@/components/timeline-coverage";
 import {
+  gapBridgeSegments,
   latestNaturalDayIntradayPoints,
   naturalCalendarTimeline,
   summarizeTimelineCoverage,
@@ -334,7 +335,11 @@ function PortfolioHeroCard({
   );
   const focusedTimeline = useMemo(() => {
     if (coverage.firstObservedIndex == null || coverage.lastObservedIndex == null) {
-      return { categories: dtdTimeline.categories, values: dtdTimelineValues };
+      return {
+        categories: dtdTimeline.categories,
+        rowIndexes: dtdTimeline.rowIndexes,
+        values: dtdTimelineValues,
+      };
     }
     const start = coverage.firstObservedIndex === 0
       ? 0
@@ -342,9 +347,24 @@ function PortfolioHeroCard({
     const end = coverage.lastObservedIndex + 1;
     return {
       categories: dtdTimeline.categories.slice(start, end),
+      rowIndexes: dtdTimeline.rowIndexes.slice(start, end),
       values: dtdTimelineValues.slice(start, end),
     };
-  }, [coverage.firstObservedIndex, coverage.lastObservedIndex, dtdTimeline.categories, dtdTimelineValues]);
+  }, [
+    coverage.firstObservedIndex,
+    coverage.lastObservedIndex,
+    dtdTimeline.categories,
+    dtdTimeline.rowIndexes,
+    dtdTimelineValues,
+  ]);
+  const dtdGapBridges = useMemo(
+    () => gapBridgeSegments(
+      focusedTimeline.rowIndexes,
+      anchors,
+      (_point, index) => dtdValues[index] ?? null,
+    ),
+    [anchors, dtdValues, focusedTimeline.rowIndexes],
+  );
   const firstObservedTime = firstAnchor
     ? formatDate(firstAnchor.date, locale, { hour: "2-digit", minute: "2-digit", timeZone })
     : null;
@@ -395,20 +415,60 @@ function PortfolioHeroCard({
         splitLine: { show: false },
         type: "value",
       },
-      series: [{
-        areaStyle: { color: chartColours.canvas, opacity: 0.04 },
-        data: focusedTimeline.values,
-        lineStyle: { color: chartColours.canvas, width: 2.2 },
-        name: dtdLabel,
-        itemStyle: { borderColor: chartColours.canvas, borderWidth: 2, color: chartColours.brand },
-        showSymbol: anchors.length === 1,
-        smooth: 0.16,
-        symbol: "circle",
-        symbolSize: 9,
-        type: "line",
-      }],
+      series: [
+        ...(dtdGapBridges.length ? [{
+          animation: false,
+          data: Array.from<number | null>({ length: focusedTimeline.categories.length }).fill(null),
+          emphasis: { disabled: true },
+          markLine: {
+            data: dtdGapBridges.map((bridge) => ([
+              { coord: [focusedTimeline.categories[bridge.fromIndex], bridge.fromValue] },
+              { coord: [focusedTimeline.categories[bridge.toIndex], bridge.toValue] },
+            ] as [
+              { coord: [string, number] },
+              { coord: [string, number] },
+            ])),
+            label: { show: false },
+            lineStyle: {
+              color: chartColours.canvas,
+              opacity: 0.68,
+              type: "dashed" as const,
+              width: 1.6,
+            },
+            silent: true,
+            symbol: ["none", "none"] as [string, string],
+          },
+          showSymbol: false,
+          silent: true,
+          type: "line" as const,
+          z: 1,
+        }] : []),
+        {
+          areaStyle: { color: chartColours.canvas, opacity: 0.04 },
+          connectNulls: false,
+          data: focusedTimeline.values,
+          lineStyle: { color: chartColours.canvas, width: 2.2 },
+          name: dtdLabel,
+          itemStyle: { borderColor: chartColours.canvas, borderWidth: 2, color: chartColours.brand },
+          showSymbol: anchors.length === 1,
+          smooth: 0.16,
+          symbol: "circle",
+          symbolSize: 9,
+          type: "line",
+          z: 2,
+        },
+      ],
     };
-  }, [anchors, chartColours, dtdLabel, dtdValues, focusedTimeline.categories, focusedTimeline.values, locale]);
+  }, [
+    anchors,
+    chartColours,
+    dtdGapBridges,
+    dtdLabel,
+    dtdValues,
+    focusedTimeline.categories,
+    focusedTimeline.values,
+    locale,
+  ]);
   const chartRef = useECharts(option);
 
   return (

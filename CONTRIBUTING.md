@@ -29,6 +29,18 @@ or development commands at a production state directory.
 
 ## Before submitting a change
 
+Every pull request is one releasable change. Before opening or updating it:
+
+1. advance `VERSION` by exactly one SemVer increment;
+2. align the Python packages, npm packages and locks, backend `__version__`,
+   and generated OpenAPI version with `VERSION`;
+3. promote the change into a dated `CHANGELOG.md` section for that version.
+
+Use PATCH for compatible fixes and maintenance, MINOR for compatible features,
+and MAJOR for breaking API, configuration, database, or deployment changes.
+Documentation-only and dependency-only pull requests follow the same contract;
+there are no unreleased lanes on `main`.
+
 ```bash
 uv sync --all-packages --group dev --frozen
 uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
@@ -45,6 +57,8 @@ uv run python tools/generate_openapi.py --check
 uv run python tools/check_repository_hygiene.py
 uv run python tools/check_release_readiness.py
 uv run python tools/check_documentation.py
+uv run python tools/check_version_consistency.py
+uv run python tools/check_changelog_entry.py --expected "$(tr -d '[:space:]' < VERSION)"
 ```
 
 Public release maintainers additionally run:
@@ -71,6 +85,9 @@ project's [Apache License 2.0](LICENSE). Use GitHub Issues for public technical
 discussion and follow [SECURITY.md](SECURITY.md) for private vulnerability
 reports.
 
-Release tags use complete Semantic Versioning tags such as `v1.0.0`. Bug fixes
-use PATCH, compatible features use MINOR, and breaking
-API/config/database/deployment changes use MAJOR.
+After protected `main` CI succeeds, the repository automatically creates an
+annotated `vMAJOR.MINOR.PATCH` tag from the matching changelog notes and
+dispatches the complete Release workflow. That workflow re-runs backend and
+frontend validation, builds the source archive, checksum and SBOM, attests the
+public source bundle, and publishes the GitHub Release. Do not create release
+tags by hand during the normal contribution flow.

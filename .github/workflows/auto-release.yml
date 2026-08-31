@@ -1,0 +1,84 @@
+name: Auto release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit on main to tag; defaults to the current main commit
+        required: false
+        type: string
+
+concurrency:
+  group: auto-release-${{ github.event.workflow_run.head_sha || inputs.commit || 'main' }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  release:
+    name: Tag and dispatch release
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || inputs.commit || 'main' }}
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate releasable main commit
+        id: release
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor HEAD origin/main
+
+          version="$(tr -d '[:space:]' < VERSION)"
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)"
+          if [ -z "$previous_tag" ]; then
+            echo "no prior SemVer tag is reachable from this commit"
+            exit 1
+          fi
+          if [ -n "$previous_tag" ]; then
+            python tools/check_version_bump.py --base "${previous_tag#v}" --head "$version"
+          else
+            python tools/check_version_bump.py --initial --head "$version"
+          fi
+          python tools/check_version_consistency.py --expected "$version"
+          python tools/check_changelog_entry.py --expected "$version"
+          python tools/extract_release_notes.py CHANGELOG.md "$version" > /tmp/release-notes.md
+
+          tag="v${version}"
+          commit="$(git rev-parse HEAD)"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tagged_commit="$(git rev-list -n 1 "$tag")"
+            if [ "$tagged_commit" != "$commit" ]; then
+              echo "$tag already points to $tagged_commit, not $commit"
+              exit 1
+            fi
+          else
+            git config user.name "engram-bot"
+            git config user.email "engram-bot@users.noreply.github.com"
+            git tag -a "$tag" -F /tmp/release-notes.md
+            git push origin "$tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch complete release validation and publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: gh workflow run release.yml --ref main --field tag="$RELEASE_TAG"

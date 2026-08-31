@@ -24,7 +24,7 @@ body:
   - type: input
     attributes:
       label: Version
-      placeholder: v1.2.0 or full commit SHA
+      placeholder: v1.0.0 or full commit SHA
     validations:
       required: true
   - type: textarea

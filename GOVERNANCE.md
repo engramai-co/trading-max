@@ -22,9 +22,10 @@ supported deployment surface take priority over feature count.
 
 ## Merge policy
 
-Changes merge through reviewed pull requests after required CI and Security
-checks pass. Direct pushes are reserved for repository recovery and security
-incidents and must be documented afterward.
+Changes merge through reviewed pull requests after required CI, Security, and
+Release contract checks pass. Every merged pull request advances SemVer and is
+published by the automated release workflow. Direct pushes are reserved for
+repository recovery and security incidents and must be documented afterward.
 
 ## Maintainers
 
