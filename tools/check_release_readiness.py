@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINEERING_FILES = (
+    ".github/workflows/auto-release.yml",
+    ".github/workflows/release-contract.yml",
     ".github/ISSUE_TEMPLATE/bug.yml",
     ".github/ISSUE_TEMPLATE/feature.yml",
     ".github/PULL_REQUEST_TEMPLATE.md",
@@ -24,6 +26,7 @@ ENGINEERING_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "TRADEMARKS.md",
     "VISION.md",
+    "VERSION",
     "docs/installation/local-installation.md",
     "docs/operations/agent-local-deployment-runbook.md",
 )

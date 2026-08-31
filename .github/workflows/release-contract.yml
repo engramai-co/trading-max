@@ -1,0 +1,75 @@
+name: Release contract
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: release-contract-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-contract:
+    name: Release contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve base and proposed versions
+        id: versions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if git cat-file -e "${BASE_SHA}:VERSION" 2>/dev/null; then
+            base_version="$(git show "${BASE_SHA}:VERSION" | tr -d '[:space:]')"
+            initial="false"
+          else
+            base_version=""
+            initial="true"
+          fi
+          head_version="$(tr -d '[:space:]' < VERSION)"
+          echo "base=${base_version}" >> "$GITHUB_OUTPUT"
+          echo "head=${head_version}" >> "$GITHUB_OUTPUT"
+          echo "initial=${initial}" >> "$GITHUB_OUTPUT"
+
+      - name: Require one SemVer increment
+        env:
+          BASE_VERSION: ${{ steps.versions.outputs.base }}
+          HEAD_VERSION: ${{ steps.versions.outputs.head }}
+          INITIAL_VERSION: ${{ steps.versions.outputs.initial }}
+        run: |
+          if [ "$INITIAL_VERSION" = "true" ]; then
+            python tools/check_version_bump.py --initial --head "$HEAD_VERSION"
+          else
+            python tools/check_version_bump.py --base "$BASE_VERSION" --head "$HEAD_VERSION"
+          fi
+
+      - name: Require aligned package versions
+        run: python tools/check_version_consistency.py --expected "${{ steps.versions.outputs.head }}"
+
+      - name: Require a dated changelog release
+        run: python tools/check_changelog_entry.py --expected "${{ steps.versions.outputs.head }}"
+
+      - name: Validate release notes and tag availability
+        env:
+          VERSION: ${{ steps.versions.outputs.head }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+            echo "release tag v${VERSION} already exists"
+            exit 1
+          fi
+          python tools/extract_release_notes.py CHANGELOG.md "$VERSION" > /tmp/release-notes.md
+          test -s /tmp/release-notes.md
+          cat /tmp/release-notes.md

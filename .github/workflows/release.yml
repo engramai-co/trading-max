@@ -50,8 +50,13 @@ jobs:
         run: uv sync --all-packages --group dev --frozen
 
       - name: Validate version and repository hygiene
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
         run: |
-          uv run python tools/check_release_version.py "${{ steps.tag.outputs.value }}"
+          uv run python tools/check_release_version.py "$RELEASE_TAG"
+          uv run python tools/check_changelog_entry.py --expected "${RELEASE_TAG#v}"
+          uv run python tools/extract_release_notes.py \
+            CHANGELOG.md "${RELEASE_TAG#v}" > /tmp/release-notes.md
           uv run python tools/check_repository_hygiene.py
           uv run python tools/check_release_readiness.py --public
           if [ "${{ github.event.repository.visibility }}" = "public" ]; then
@@ -117,6 +122,10 @@ jobs:
           RELEASE_TAG: ${{ steps.tag.outputs.value }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Trading Max ${RELEASE_TAG}" \
+              --notes-file /tmp/release-notes.md
             gh release upload "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber \
@@ -128,7 +137,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
               --title "Trading Max ${RELEASE_TAG}" \
-              --generate-notes \
+              --notes-file /tmp/release-notes.md \
               "trading-max-${RELEASE_TAG}.tar.gz" \
               "trading-max-${RELEASE_TAG}.sha256" \
               "trading-max-${RELEASE_TAG}.spdx.json"
