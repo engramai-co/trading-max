@@ -83,6 +83,8 @@ def test_auto_release_waits_for_protected_main_checks_and_dispatches_full_releas
     assert '"Secret and artifact scan"' in workflow
     assert "ref: ${{ github.sha }}" in workflow
     assert "workflow_run" not in workflow
+    assert "no prior SemVer tag is reachable" not in workflow
+    assert "python tools/check_version_bump.py --initial" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "gh workflow run release.yml" in workflow
 
