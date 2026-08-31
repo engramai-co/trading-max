@@ -221,6 +221,18 @@ export function formatPercent(
   if (value == null || !Number.isFinite(value)) return "—";
   return new Intl.NumberFormat(localeTag(locale), {
     maximumFractionDigits,
+    style: "percent",
+  }).format(value);
+}
+
+export function formatDeltaPercent(
+  value: number | null | undefined,
+  locale: Locale,
+  maximumFractionDigits = 1,
+) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(localeTag(locale), {
+    maximumFractionDigits,
     signDisplay: "exceptZero",
     style: "percent",
   }).format(value);

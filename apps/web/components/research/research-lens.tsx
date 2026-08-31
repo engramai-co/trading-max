@@ -29,7 +29,7 @@ import {
   ValuationPriceChart,
   ValuationSensitivityChart,
 } from "@/components/research/valuation-charts";
-import { gbp, money, pct, ratio, shortDate } from "@/lib/format";
+import { deltaPct, gbp, money, pct, ratio, shortDate } from "@/lib/format";
 import type {
   OptionSnapshot,
   PriceSeriesPoint,
@@ -184,7 +184,7 @@ function OverviewLens({
         />
         <Metric
           label="EV 5Y"
-          value={valuation?.ev5Upside == null ? "—" : pct(valuation.ev5Upside)}
+          value={valuation?.ev5Upside == null ? "—" : deltaPct(valuation.ev5Upside)}
         />
         <Metric
           label={<Localized zh="组合敞口" en="Portfolio exposure" />}
@@ -220,7 +220,7 @@ function OverviewLens({
                   label={<Localized zh="距 52 周高点" en="From 52-week high" />}
                   value={technical?.drawdown52w == null
                     ? "—"
-                    : pct(technical.drawdown52w)}
+                    : deltaPct(technical.drawdown52w)}
                 />
                 <Metric
                   label={<Localized zh="估值结论" en="Valuation verdict" />}
@@ -307,11 +307,11 @@ function TechnicalLens({
           />
           <Metric
             label={<Localized zh="20 日涨跌" en="20D return" />}
-            value={technical.return20d == null ? "—" : pct(technical.return20d)}
+            value={technical.return20d == null ? "—" : deltaPct(technical.return20d)}
           />
           <Metric
             label={<Localized zh="63 日涨跌" en="63D return" />}
-            value={technical.return63d == null ? "—" : pct(technical.return63d)}
+            value={technical.return63d == null ? "—" : deltaPct(technical.return63d)}
           />
           <Metric
             label={<Localized zh="ATR / 现价" en="ATR / price" />}
@@ -502,7 +502,7 @@ function ValuationLens({ valuation }: { valuation: ValuationRow | null }) {
                   : money(row.value, valuation.currency, 2)}
               </Table.Td>
               <Table.Td ta="right">
-                {row.revenueCagr == null ? "—" : pct(row.revenueCagr)}
+                {row.revenueCagr == null ? "—" : deltaPct(row.revenueCagr)}
               </Table.Td>
               <Table.Td ta="right">
                 {row.targetFcfMargin == null ? "—" : pct(row.targetFcfMargin)}
@@ -522,7 +522,7 @@ function ValuationLens({ valuation }: { valuation: ValuationRow | null }) {
               <Text fw={800}>{row.value == null ? "—" : money(row.value, valuation.currency, 2)}</Text>
             </Group>
             <SimpleGrid cols={3} mt="sm">
-              <Metric label={<Localized zh="营收增速" en="Revenue CAGR" />} value={row.revenueCagr == null ? "—" : pct(row.revenueCagr)} />
+              <Metric label={<Localized zh="营收增速" en="Revenue CAGR" />} value={row.revenueCagr == null ? "—" : deltaPct(row.revenueCagr)} />
               <Metric label={<Localized zh="现金流率" en="FCF margin" />} value={row.targetFcfMargin == null ? "—" : pct(row.targetFcfMargin)} />
               <Metric label={<Localized zh="折现率" en="Discount rate" />} value={row.discountRate == null ? "—" : pct(row.discountRate)} />
             </SimpleGrid>

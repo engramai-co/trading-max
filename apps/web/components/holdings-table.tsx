@@ -21,7 +21,7 @@ import { useMemo, useState } from "react";
 
 import { CompanyMark } from "@/components/company-mark";
 import { useLocale } from "@/components/locale-provider";
-import { gbp, money, pct, unsignedPct } from "@/lib/format";
+import { deltaPct, gbp, money, pct } from "@/lib/format";
 import type { Holding } from "@/lib/types";
 
 export type HoldingSort = "value" | "pnl" | "allocation" | "ticker";
@@ -203,12 +203,12 @@ export function HoldingsTable({
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <Text c={holding.pnlGbp >= 0 ? "green" : "red"} fw={700} size="sm">{gbp(holding.pnlGbp, 2)}</Text>
-                      <Text c={holding.pnlGbp >= 0 ? "green" : "red"} size="xs">{pct(holding.pnlPct)}</Text>
+                      <Text c={holding.pnlGbp >= 0 ? "green" : "red"} size="xs">{deltaPct(holding.pnlPct)}</Text>
                     </div>
                   </Group>
                   <Group gap="xs" wrap="nowrap">
                     <Progress aria-hidden="true" color="brand" flex={1} size="sm" value={Math.min(100, holding.allocationPct * 100)} />
-                    <Text fw={700} size="xs">{unsignedPct(holding.allocationPct)}</Text>
+                    <Text fw={700} size="xs">{pct(holding.allocationPct)}</Text>
                   </Group>
                 </Stack>
               </Paper>
@@ -280,12 +280,12 @@ export function HoldingsTable({
                     </Table.Td>
                     <Table.Td c={holding.pnlGbp >= 0 ? "green" : "red"} ta="right">
                       <Text fw={700}>{gbp(holding.pnlGbp, 2)}</Text>
-                      <Text size="xs">{pct(holding.pnlPct)}</Text>
+                      <Text size="xs">{deltaPct(holding.pnlPct)}</Text>
                     </Table.Td>
                     <Table.Td ta="right">
                       <Group justify="flex-end" wrap="nowrap">
                         <Progress aria-hidden="true" color="brand" size="sm" value={Math.min(100, holding.allocationPct * 100)} w={72} />
-                        <Text fw={700} size="sm">{unsignedPct(holding.allocationPct)}</Text>
+                        <Text fw={700} size="sm">{pct(holding.allocationPct)}</Text>
                       </Group>
                     </Table.Td>
                   </Table.Tr>

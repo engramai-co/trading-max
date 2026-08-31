@@ -44,7 +44,7 @@ import {
   summarizeTimelineCoverage,
 } from "@/lib/chart-domain";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import { gbp, pct } from "@/lib/format";
+import { deltaPct, gbp, pct } from "@/lib/format";
 import {
   mockIntradayMoneyNav,
   mockMoneyNav,
@@ -193,7 +193,7 @@ function OverviewHeroMock({
         { label: <Localized zh="已投资" en="Invested" />, value: gbp(activeAccount ? activeAccount.totalValueGbp - activeAccount.cashGbp : value - cash, 0) },
         { label: <Localized zh="现金" en="Cash" />, value: gbp(activeAccount?.cashGbp ?? cash, 0) },
         { label: <Localized zh="浮动盈亏" en="Unrealized P&L" />, value: gbp(activeAccount?.unrealizedPnlGbp ?? Number(latest.totalNetPnlGbp ?? 0), 0) },
-        { label: <Localized zh="当前回撤" en="Current drawdown" />, tone: selectedDrawdown != null && selectedDrawdown < 0 ? "negative" : undefined, value: pct(selectedDrawdown) },
+        { label: <Localized zh="当前回撤" en="Current drawdown" />, tone: selectedDrawdown != null && selectedDrawdown < 0 ? "negative" : undefined, value: deltaPct(selectedDrawdown) },
       ];
   return (
     <Stack gap="md">
@@ -524,7 +524,7 @@ function PortfolioHeroCard({
             <Group gap="xs" mt={3} wrap="nowrap">
               {dtdChange == null ? null : positiveDtd ? <TrendUp aria-hidden="true" size={18} /> : <TrendDown aria-hidden="true" size={18} />}
               <Text className={dtdChange == null ? undefined : `tm-tone-inverse-${positiveDtd ? "positive" : "negative"}`} c={dtdChange == null ? "brand.1" : undefined} fw={750}>
-                {dtdChange == null ? "—" : <>{gbp(dtdChange, 0)} · {pct(dtdChangeRate, 2)}</>}
+                {dtdChange == null ? "—" : <>{gbp(dtdChange, 0)} · {deltaPct(dtdChangeRate, 2)}</>}
               </Text>
             </Group>
           </div>
@@ -532,7 +532,7 @@ function PortfolioHeroCard({
             <Text c="brand.1" fw={700} size="xs"><Localized zh="上一交易日" en="Previous trading day" /></Text>
             <Group gap="xs" mt={3} wrap="nowrap">
               {positiveModelDay ? <TrendUp aria-hidden="true" size={18} /> : <TrendDown aria-hidden="true" size={18} />}
-              <Text className={`tm-tone-inverse-${positiveModelDay ? "positive" : "negative"}`} fw={750}>{pct(dayReturn, 2)}</Text>
+              <Text className={`tm-tone-inverse-${positiveModelDay ? "positive" : "negative"}`} fw={750}>{deltaPct(dayReturn, 2)}</Text>
               <Text c="brand.1" size="xs">{modelDayAsOf ? formatDate(modelDayAsOf, locale, { day: "numeric", month: "short" }) : "—"}</Text>
             </Group>
           </div>
@@ -554,8 +554,8 @@ function PortfolioHeroCard({
           {option ? (
             <div
               aria-label={locale === "zh"
-                ? `${dtdLabel}：${dtdChange == null ? "暂无变化值" : `${gbp(dtdChange, 0)}，${pct(dtdChangeRate, 2)}`}；观测 ${firstObservedTime ?? "—"} 至 ${lastObservedTime ?? "—"}`
-                : `${dtdLabel}: ${dtdChange == null ? "change unavailable" : `${gbp(dtdChange, 0)}, ${pct(dtdChangeRate, 2)}`}; observed ${firstObservedTime ?? "—"} to ${lastObservedTime ?? "—"}`}
+                ? `${dtdLabel}：${dtdChange == null ? "暂无变化值" : `${gbp(dtdChange, 0)}，${deltaPct(dtdChangeRate, 2)}`}；观测 ${firstObservedTime ?? "—"} 至 ${lastObservedTime ?? "—"}`
+                : `${dtdLabel}: ${dtdChange == null ? "change unavailable" : `${gbp(dtdChange, 0)}, ${deltaPct(dtdChangeRate, 2)}`}; observed ${firstObservedTime ?? "—"} to ${lastObservedTime ?? "—"}`}
               className="tm-hero-trend-chart"
               ref={chartRef}
               role="img"
@@ -625,7 +625,7 @@ function OverviewLens({ data }: { data: DashboardLens }) {
         { label: <Localized zh="已投资" en="Invested" />, value: activeAccount ? gbp(activeAccount.investedGbp, 0) : data.totalInvestedGbp == null ? "—" : gbp(data.totalInvestedGbp, 0) },
         { label: <Localized zh="现金" en="Cash" />, value: activeAccount ? gbp(activeAccount.cashGbp, 0) : data.totalCashGbp == null ? "—" : gbp(data.totalCashGbp, 0) },
         { label: <Localized zh="浮动盈亏" en="Unrealized P&L" />, value: activeAccount ? gbp(activeAccount.unrealizedPnlGbp, 0) : data.totalUnrealizedPnlGbp == null ? "—" : gbp(data.totalUnrealizedPnlGbp, 0) },
-        { label: <Localized zh="当前回撤" en="Current drawdown" />, tone: currentDrawdown != null && currentDrawdown < 0 ? "negative" : undefined, value: pct(currentDrawdown) },
+        { label: <Localized zh="当前回撤" en="Current drawdown" />, tone: currentDrawdown != null && currentDrawdown < 0 ? "negative" : undefined, value: deltaPct(currentDrawdown) },
       ];
 
   return (
@@ -785,7 +785,7 @@ function OverviewLowerDeck({
                 <Metric
                   label={<Localized zh="今日" en="Today" />}
                   tone={(account.dailyReturn ?? 0) >= 0 ? "positive" : "negative"}
-                  value={pct(account.dailyReturn, 2)}
+                  value={deltaPct(account.dailyReturn, 2)}
                 />
                 <Metric
                   label={<Localized zh="浮动盈亏" en="Unrealized P&L" />}
@@ -854,7 +854,7 @@ function OverviewLowerDeck({
                   : <Localized zh="现价最接近模型基准" en="Price closest to model base" />
                 : <Localized zh="估值信号不可用" en="Valuation signal unavailable" />}
               tone="grape"
-              value={valuationRisk?.ev5Upside != null ? `${valuationRisk.ticker} · ${pct(valuationRisk.ev5Upside)}` : <Localized zh="无覆盖持仓" en="No covered holding" />}
+              value={valuationRisk?.ev5Upside != null ? `${valuationRisk.ticker} · ${deltaPct(valuationRisk.ev5Upside)}` : <Localized zh="无覆盖持仓" en="No covered holding" />}
             />
             <OverviewSignalRow
               company={signalCompany(valuationOpportunity?.ticker)}
@@ -864,7 +864,7 @@ function OverviewLowerDeck({
                 ? <Localized zh="模型上行空间最高" en="Highest model upside" />
                 : <Localized zh="上行信号不可用" en="Upside signal unavailable" />}
               tone="teal"
-              value={valuationOpportunity?.ev5Upside != null ? `${valuationOpportunity.ticker} · ${pct(valuationOpportunity.ev5Upside)}` : <Localized zh="无其他覆盖持仓" en="No other covered holding" />}
+              value={valuationOpportunity?.ev5Upside != null ? `${valuationOpportunity.ticker} · ${deltaPct(valuationOpportunity.ev5Upside)}` : <Localized zh="无其他覆盖持仓" en="No other covered holding" />}
             />
           </Paper>
         </section>
@@ -920,7 +920,7 @@ function AccountTrend({ account, nav }: { account: "A" | "B"; nav: NavPoint[] })
     <Paper className="tm-account-trend" p="sm" radius="md">
       <Group justify="space-between" mb={4} wrap="nowrap">
         <Text fw={680} size="xs"><Localized zh="近 30 日" en="Last 30 days" /></Text>
-        <Text className={`tm-tone-${(change ?? 0) >= 0 ? "positive" : "negative"}`} fw={730} size="xs">{pct(change, 1)}</Text>
+        <Text className={`tm-tone-${(change ?? 0) >= 0 ? "positive" : "negative"}`} fw={730} size="xs">{deltaPct(change, 1)}</Text>
       </Group>
       {option ? <div aria-label={locale === "zh" ? `${account} 账户近 30 日价值轨迹` : `${account} account value over 30 days`} className="tm-account-trend-chart" ref={chartRef} role="img" /> : (
         <Group className="tm-account-trend-empty" justify="center"><Text size="xs"><Localized zh="暂无足够记录" en="Not enough history yet" /></Text></Group>

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { compact, gbp, money, pct, ratio, unsignedPct } from "@/lib/format";
+import { compact, deltaPct, gbp, money, pct, ratio } from "@/lib/format";
 import {
   formatCompactCurrency,
   formatDateTime,
+  formatDeltaPercent,
+  formatPercent,
   formatScheduleTimes,
 } from "@/ui/formatters";
 
@@ -12,11 +14,22 @@ describe("shared financial formatters", () => {
     ["gbp", () => gbp(Number.NaN)],
     ["money", () => money(Number.POSITIVE_INFINITY)],
     ["pct", () => pct(Number.NaN)],
-    ["unsignedPct", () => unsignedPct(Number.NEGATIVE_INFINITY)],
+    ["deltaPct", () => deltaPct(Number.NEGATIVE_INFINITY)],
+    ["formatPercent", () => formatPercent(Number.POSITIVE_INFINITY, "en")],
+    ["formatDeltaPercent", () => formatDeltaPercent(Number.NaN, "zh")],
     ["ratio", () => ratio(Number.NaN)],
     ["compact", () => compact(Number.POSITIVE_INFINITY)],
   ])("renders unavailable text for non-finite %s values", (_name, render) => {
     expect(render()).toBe("—");
+  });
+
+  it("keeps level percentages unsigned and direction signs exclusive to changes", () => {
+    expect(pct(0.217)).toBe("21.7%");
+    expect(pct(-0.217)).toBe("-21.7%");
+    expect(deltaPct(0.217)).toBe("+21.7%");
+    expect(deltaPct(-0.217)).toBe("-21.7%");
+    expect(formatPercent(0.217, "en")).toBe("21.7%");
+    expect(formatDeltaPercent(0.217, "en")).toBe("+21.7%");
   });
 
   it("renders compact currency axis labels with lower-case units", () => {

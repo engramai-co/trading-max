@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-01
+
+### Fixed
+
+- Render allocations, weights, shares, rates, volatility, margins, and other
+  level percentages without a leading plus sign, while preserving explicit
+  positive and negative signs for returns, P&L, drawdowns, growth, and other
+  directional changes.
+
 ## [1.0.0] - 2026-09-01
 
 ### Added

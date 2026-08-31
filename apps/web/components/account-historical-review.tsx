@@ -24,7 +24,7 @@ import {
   MoneyPerformanceChart,
   StrategyPerformanceChart,
 } from "@/components/portfolio-charts";
-import { gbp, pct, ratio, shortDate } from "@/lib/format";
+import { deltaPct, gbp, pct, ratio, shortDate } from "@/lib/format";
 import type {
   AccountReview,
   CfdAccountReview,
@@ -57,6 +57,10 @@ function optionalGbp(value: unknown, digits = 2) {
 
 function optionalPct(value: unknown, digits = 1) {
   return pct(finite(value), digits);
+}
+
+function optionalDeltaPct(value: unknown, digits = 1) {
+  return deltaPct(finite(value), digits);
 }
 
 function optionalRatio(value: unknown, digits = 2) {
@@ -265,7 +269,7 @@ function ReviewHero({
         <SimpleGrid cols={{ base: 2, md: 4 }}>
           <Metric label={<Localized zh="累计净入金" en="Net external flows" />} value={optionalGbp(money.net_external_flows_gbp)} />
           <Metric label={<Localized zh="净盈亏" en="Net P&L" />} tone={tone(netPnl)} value={optionalGbp(netPnl)} />
-          <Metric label={<Localized zh="净盈亏率" en="Net P&L rate" />} tone={tone(finite(money.net_pnl_rate))} value={optionalPct(money.net_pnl_rate)} />
+          <Metric label={<Localized zh="净盈亏率" en="Net P&L rate" />} tone={tone(finite(money.net_pnl_rate))} value={optionalDeltaPct(money.net_pnl_rate)} />
           <Metric label={<Localized zh="最大英镑回撤" en="Max money drawdown" />} tone="red" value={optionalGbp(money.max_pnl_drawdown_gbp)} />
         </SimpleGrid>
       </Stack>
@@ -509,15 +513,15 @@ function StrategyRiskPanel({
             fixedView={accountCode === "A" ? "invest" : "isa"}
           />
           <SimpleGrid cols={{ base: 2, md: 4 }}>
-            <Metric label="TWR" value={optionalPct(metrics.twr_total_return)} />
+            <Metric label="TWR" value={optionalDeltaPct(metrics.twr_total_return)} />
             <Metric label="Sharpe" value={optionalRatio(metrics.sharpe_sonia)} />
             <Metric label="Sortino" value={optionalRatio(metrics.sortino_sonia)} />
             <Metric label="Calmar" value={optionalRatio(metrics.calmar_ratio)} />
             <Metric label="IR" value={optionalRatio(metrics.information_ratio)} />
-            <Metric label={<Localized zh="年化收益" en="Annualized return" />} value={optionalPct(metrics.annualized_return)} />
+            <Metric label={<Localized zh="年化收益" en="Annualized return" />} value={optionalDeltaPct(metrics.annualized_return)} />
             <Metric label={<Localized zh="年化波动" en="Annualized volatility" />} value={optionalPct(metrics.annualized_volatility)} />
-            <Metric label={<Localized zh="最大回撤" en="Max drawdown" />} tone="red" value={optionalPct(metrics.max_drawdown)} />
-            <Metric label={<Localized zh="当前回撤" en="Current drawdown" />} tone="red" value={optionalPct(metrics.current_drawdown)} />
+            <Metric label={<Localized zh="最大回撤" en="Max drawdown" />} tone="red" value={optionalDeltaPct(metrics.max_drawdown)} />
+            <Metric label={<Localized zh="当前回撤" en="Current drawdown" />} tone="red" value={optionalDeltaPct(metrics.current_drawdown)} />
             <Metric label={<Localized zh="有效区间" en="Periods" />} value={count(metrics.periods)} />
             <Metric label={<Localized zh="基准" en="Benchmark" />} value={metrics.benchmark_ticker === "VUAG" ? "VOO" : metrics.benchmark_ticker ?? "—"} />
             <Metric label={<Localized zh="净值质量" en="NAV quality" />} value={metrics.nav_quality ?? "—"} />
@@ -1164,8 +1168,8 @@ function CfdResultPanel({ review }: { review: CfdAccountReview }) {
           <Metric label={<Localized zh="隔夜利息" en="Overnight interest" />} tone="red" value={gbp(pnl.overnightInterest, 2)} />
           <Metric label={<Localized zh="股息调整" en="Dividend adjustment" />} tone={tone(pnl.dividendAdjustment)} value={gbp(pnl.dividendAdjustment, 2)} />
           <Metric label={<Localized zh="净已实现损益" en="Net realised P&L" />} tone={tone(pnl.netRealisedPnl)} value={gbp(pnl.netRealisedPnl, 2)} />
-          <Metric label={<Localized zh="融资拖累 / 毛结果" en="Financing drag / gross" />} value={optionalPct(pnl.financingDragToGrossRatio)} />
-          <Metric label={<Localized zh="融资拖累 / 净结果" en="Financing drag / net" />} value={optionalPct(pnl.financingDragToNetRatio)} />
+          <Metric label={<Localized zh="融资拖累 / 毛结果" en="Financing drag / gross" />} value={optionalDeltaPct(pnl.financingDragToGrossRatio)} />
+          <Metric label={<Localized zh="融资拖累 / 净结果" en="Financing drag / net" />} value={optionalDeltaPct(pnl.financingDragToNetRatio)} />
         </SimpleGrid>
       </div>
     </Stack>
@@ -1403,8 +1407,8 @@ function CfdStructuralPanel({ review }: { review: CfdAccountReview }) {
       <SimpleGrid cols={{ base: 2, md: 4 }}>
         <Metric label={<Localized zh="已平仓名义本金" en="Closed notional" />} value={gbp(diagnostics.totalClosedNotional, 2)} />
         <Metric label={<Localized zh="平均已平仓名义本金" en="Average closed notional" />} value={optionalGbp(diagnostics.averageClosedNotional)} />
-        <Metric label={<Localized zh="净结果 / 名义本金" en="Net realised / notional" />} value={optionalPct(diagnostics.netRealisedToNotionalRatio)} />
-        <Metric label={<Localized zh="融资成本 / 名义本金" en="Financing cost / notional" />} value={optionalPct(diagnostics.financingCostToNotionalRatio)} />
+        <Metric label={<Localized zh="净结果 / 名义本金" en="Net realised / notional" />} value={optionalDeltaPct(diagnostics.netRealisedToNotionalRatio)} />
+        <Metric label={<Localized zh="融资成本 / 名义本金" en="Financing cost / notional" />} value={optionalDeltaPct(diagnostics.financingCostToNotionalRatio)} />
         <Metric label={<Localized zh="最佳交易集中度" en="Best-trade concentration" />} value={optionalPct(diagnostics.bestTradeConcentration)} />
         <Metric label={<Localized zh="前三交易集中度" en="Top-three concentration" />} value={optionalPct(diagnostics.topThreeTradeConcentration)} />
         <Metric label={<Localized zh="移除最佳交易后" en="Without best trade" />} tone={tone(diagnostics.netWithoutBestTrade)} value={optionalGbp(diagnostics.netWithoutBestTrade)} />

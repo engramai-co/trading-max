@@ -51,6 +51,7 @@ import {
   formatCompactCurrency,
   formatCurrency,
   formatDate,
+  formatDeltaPercent,
   formatPercent,
 } from "@/ui/formatters";
 
@@ -640,7 +641,7 @@ export function MoneyPerformanceChart({
       formatCurrency(Number(value), locale, "GBP", 2);
     const pnlTooltip = pnlDisplayMode === "money"
       ? currencyTooltip
-      : (value: unknown) => formatPercent(Number(value), locale, 2);
+      : (value: unknown) => formatDeltaPercent(Number(value), locale, 2);
     const rateValue = (value: number, contributions: number) =>
       rateBase == null
         ? netPnlRate(value, contributions)
@@ -764,8 +765,8 @@ export function MoneyPerformanceChart({
             : rebasedWindow
             ? locale === "zh" ? "区间净盈亏" : "Period net P&L"
             : locale === "zh" ? "累计净盈亏" : "Cumulative net P&L";
-          const resultRate = formatPercent(pnlRate, locale, 2);
-          const drawdownRateText = formatPercent(drawdownRate, locale, 2);
+          const resultRate = formatDeltaPercent(pnlRate, locale, 2);
+          const drawdownRateText = formatDeltaPercent(drawdownRate, locale, 2);
           const basis = rateBase == null
             ? ""
             : `<div style="display:flex;justify-content:space-between;gap:24px;color:${chartColours.axis};font-size:12px"><span>${locale === "zh" ? "百分比资金基准" : "Percentage capital base"}</span><span>${formatCurrency(rateBase, locale, "GBP", 0)}</span></div>`;
@@ -803,8 +804,8 @@ export function MoneyPerformanceChart({
       ],
       yAxis: [
         { axisLabel: { color: chartColours.axis, formatter: (value: number) => valueChangeMode ? formatDetailedMoneyAxis(value, locale) : formatCompactCurrency(value, locale, "GBP") }, gridIndex: 0, name: valueChangeMode ? locale === "zh" ? "账户价值 / 起始值" : "Account value / opening value" : locale === "zh" ? "净值 / 净入金" : "NAV / contributions", nameGap: 8, nameTextStyle: { color: chartColours.axis, fontSize: 11 }, scale: true, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
-        { axisLabel: { color: chartColours.axis, formatter: (value: number) => pnlDisplayMode === "money" ? formatCompactCurrency(value, locale, "GBP") : formatPercent(value, locale, 1) }, gridIndex: 1, name: pnlLabel, nameGap: 8, nameTextStyle: { color: chartColours.axis, fontSize: 11 }, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
-        { axisLabel: { color: chartColours.axis, formatter: (value: number) => pnlDisplayMode === "money" ? formatCompactCurrency(value, locale, "GBP") : formatPercent(value, locale, 1) }, gridIndex: 2, max: 0, name: drawdownLabel, nameGap: 8, nameTextStyle: { color: chartColours.axis, fontSize: 11 }, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
+        { axisLabel: { color: chartColours.axis, formatter: (value: number) => pnlDisplayMode === "money" ? formatCompactCurrency(value, locale, "GBP") : formatDeltaPercent(value, locale, 1) }, gridIndex: 1, name: pnlLabel, nameGap: 8, nameTextStyle: { color: chartColours.axis, fontSize: 11 }, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
+        { axisLabel: { color: chartColours.axis, formatter: (value: number) => pnlDisplayMode === "money" ? formatCompactCurrency(value, locale, "GBP") : formatDeltaPercent(value, locale, 1) }, gridIndex: 2, max: 0, name: drawdownLabel, nameGap: 8, nameTextStyle: { color: chartColours.axis, fontSize: 11 }, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
       ],
       series: [
         ...bridgeSeries(internalGapBridges.nav, colour, 0, 0, 1.5),
@@ -1128,12 +1129,12 @@ export function MoneyPerformanceChart({
                           <Table.Td ta="right">
                             {pnlDisplayMode === "money"
                               ? formatCurrency(row.pnl, locale, "GBP", 0)
-                              : formatPercent(rateFor(row.pnl, row.contributions), locale, 1)}
+                              : formatDeltaPercent(rateFor(row.pnl, row.contributions), locale, 1)}
                           </Table.Td>
                           <Table.Td ta="right">
                             {pnlDisplayMode === "money"
                               ? formatCurrency(row.drawdown, locale, "GBP", 0)
-                              : formatPercent(rateFor(row.drawdown, row.contributions), locale, 1)}
+                              : formatDeltaPercent(rateFor(row.drawdown, row.contributions), locale, 1)}
                           </Table.Td>
                         </Table.Tr>
                       ))}
@@ -1177,7 +1178,7 @@ function MoneyMetric({
       </Text>
       {secondaryLabel ? (
         <Text c={colour ?? (onDark ? "brand.1" : "dimmed")} size="xs">
-          {secondaryLabel} · {formatPercent(secondaryValue, locale, 1)}
+          {secondaryLabel} · {formatDeltaPercent(secondaryValue, locale, 1)}
         </Text>
       ) : null}
     </div>
@@ -1322,15 +1323,15 @@ export function StrategyPerformanceChart({
       },
       tooltip: {
         trigger: "axis",
-        valueFormatter: (value) => formatPercent(Number(value), locale, 2),
+        valueFormatter: (value) => formatDeltaPercent(Number(value), locale, 2),
       },
       xAxis: [
         { axisLabel: { color: chartColours.axis, show: false }, axisLine: { show: false }, data: rows.map((row) => row.date), gridIndex: 0, type: "category" },
         { axisLabel: { color: chartColours.axis, formatter: (value: string) => labels.get(value) ?? dateLabel(value, locale, timeZone), hideOverlap: true }, axisLine: { show: false }, data: rows.map((row) => row.date), gridIndex: 1, type: "category" },
       ],
       yAxis: [
-        { axisLabel: { color: chartColours.axis, formatter: (value: number) => formatPercent(value, locale, 1) }, gridIndex: 0, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
-        { axisLabel: { color: chartColours.axis, formatter: (value: number) => formatPercent(value, locale, 1) }, gridIndex: 1, max: 0, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
+        { axisLabel: { color: chartColours.axis, formatter: (value: number) => formatDeltaPercent(value, locale, 1) }, gridIndex: 0, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
+        { axisLabel: { color: chartColours.axis, formatter: (value: number) => formatDeltaPercent(value, locale, 1) }, gridIndex: 1, max: 0, splitLine: { lineStyle: { color: chartColours.grid, type: "dashed" } }, type: "value" },
       ],
       series: [
         { areaStyle: { color: colour, opacity: 0.1 }, data: rows.map((row) => row.value), lineStyle: { color: colour, width: 2 }, name: "TWR", showSymbol: false, smooth: 0.16, type: "line", xAxisIndex: 0, yAxisIndex: 0 },
@@ -1357,16 +1358,16 @@ export function StrategyPerformanceChart({
     <Stack gap="md">
       <Group justify="space-between" wrap="wrap">
         <Group gap="lg" wrap="wrap">
-          <Text fw={700}>TWR <Text c={(latest ?? 0) >= 0 ? "green" : "red"} component="span">{formatPercent(latest, locale)}</Text></Text>
+          <Text fw={700}>TWR <Text c={(latest ?? 0) >= 0 ? "green" : "red"} component="span">{formatDeltaPercent(latest, locale)}</Text></Text>
           {activeBenchmarks.map((label) => {
             const latestBenchmark = rows.at(-1)?.benchmarks[label] ?? null;
             return (
               <Text fw={700} key={label}>
-                {label} <Text c={(latestBenchmark ?? 0) >= 0 ? "green" : "red"} component="span">{formatPercent(latestBenchmark, locale)}</Text>
+                {label} <Text c={(latestBenchmark ?? 0) >= 0 ? "green" : "red"} component="span">{formatDeltaPercent(latestBenchmark, locale)}</Text>
               </Text>
             );
           })}
-          <Text fw={700}>{locale === "zh" ? "最大回撤" : "Max drawdown"} <Text c="red" component="span">{formatPercent(maxDrawdown, locale)}</Text></Text>
+          <Text fw={700}>{locale === "zh" ? "最大回撤" : "Max drawdown"} <Text c="red" component="span">{formatDeltaPercent(maxDrawdown, locale)}</Text></Text>
         </Group>
         {!hideControls && !mobile ? (
           <Stack align="flex-end" gap="xs">
@@ -1472,11 +1473,11 @@ export function StrategyPerformanceChart({
                     {rows.slice(-5).reverse().map((row) => (
                       <Table.Tr key={row.date}>
                         <Table.Td>{formatDate(row.date, locale)}</Table.Td>
-                        <Table.Td ta="right">{formatPercent(row.value, locale, 2)}</Table.Td>
+                        <Table.Td ta="right">{formatDeltaPercent(row.value, locale, 2)}</Table.Td>
                         {activeBenchmarks.map((label) => (
-                          <Table.Td key={label} ta="right">{formatPercent(row.benchmarks[label], locale, 2)}</Table.Td>
+                          <Table.Td key={label} ta="right">{formatDeltaPercent(row.benchmarks[label], locale, 2)}</Table.Td>
                         ))}
-                        <Table.Td ta="right">{formatPercent(row.drawdown, locale, 2)}</Table.Td>
+                        <Table.Td ta="right">{formatDeltaPercent(row.drawdown, locale, 2)}</Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>

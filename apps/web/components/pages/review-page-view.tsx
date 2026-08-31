@@ -16,7 +16,7 @@ import { LensContent, LensError, LensSkeleton } from "@/components/lens-state";
 import { Localized, useLocale } from "@/components/locale-provider";
 import { PageHeader } from "@/components/page-header";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import { gbp, pct, shortDate } from "@/lib/format";
+import { deltaPct, gbp, shortDate } from "@/lib/format";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 
 export function ReviewPageView() {
@@ -73,8 +73,8 @@ function ReviewHub({ data }: { data: DashboardLens }) {
               available={Boolean(invest || data.risk?.A)}
               metrics={[
                 [<Localized key="value" zh="账户价值" en="Account value" />, invest ? gbp(invest.totalValueGbp, 2) : "—"],
-                ["TWR", pct(data.risk?.A?.twr)],
-                [<Localized key="drawdown" zh="当前回撤" en="Current drawdown" />, pct(data.risk?.A?.currentDrawdown)],
+                ["TWR", deltaPct(data.risk?.A?.twr)],
+                [<Localized key="drawdown" zh="当前回撤" en="Current drawdown" />, deltaPct(data.risk?.A?.currentDrawdown)],
               ]}
               name="Invest"
               scope={data.brokerAsOf ? shortDate(data.brokerAsOf, locale) : "—"}
@@ -85,8 +85,8 @@ function ReviewHub({ data }: { data: DashboardLens }) {
               available={Boolean(isa || data.risk?.B)}
               metrics={[
                 [<Localized key="value" zh="账户价值" en="Account value" />, isa ? gbp(isa.totalValueGbp, 2) : "—"],
-                ["TWR", pct(data.risk?.B?.twr)],
-                [<Localized key="drawdown" zh="当前回撤" en="Current drawdown" />, pct(data.risk?.B?.currentDrawdown)],
+                ["TWR", deltaPct(data.risk?.B?.twr)],
+                [<Localized key="drawdown" zh="当前回撤" en="Current drawdown" />, deltaPct(data.risk?.B?.currentDrawdown)],
               ]}
               name="ISA"
               scope={data.brokerAsOf ? shortDate(data.brokerAsOf, locale) : "—"}
