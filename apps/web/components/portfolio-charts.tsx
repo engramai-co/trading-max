@@ -25,7 +25,6 @@ import { Localized, useLocale, useMessages } from "@/components/locale-provider"
 import { TimelineCoverage } from "@/components/timeline-coverage";
 import {
   axisTimestampLabels,
-  cropCumulativeMoneyOutcome,
   detailedTimestampLabel,
   gapBridgeSegments,
   latestNaturalDayIntradayPoints,
@@ -34,6 +33,7 @@ import {
   omitPortfolioWeekendDisplayWindow,
   portfolioCalendarDateKey,
   portfolioIntradayDisplayIntervalMinutes,
+  rebaseMoneyOutcome,
   relativeMoneyRate,
   stableMoneyRateBase,
   summarizeTimelineCoverage,
@@ -485,16 +485,7 @@ export function MoneyPerformanceChart({
     }
     const source = daily;
     const start = source.at(-1) ? rangeStart(source.at(-1)!.date, range) : null;
-    const visible = cropCumulativeMoneyOutcome(source.map((point) => ({
-      contributions: Number(point[keys.contributions]),
-      date: point.date,
-      drawdown: Number(point[keys.drawdown]),
-      nav: Number(point[keys.nav]),
-      overnight: view === "cfd" && typeof point.cfdOvernightInterestGbp === "number"
-        ? point.cfdOvernightInterestGbp
-        : null,
-      pnl: Number(point[keys.pnl]),
-    })), start);
+    const visible = start ? source.filter((point) => point.date >= start) : source;
     if (visible.length < 2) {
       return {
         anchors: latestIntraday.length,
@@ -508,16 +499,31 @@ export function MoneyPerformanceChart({
       anchors: latestIntraday.length,
       displayIntervalMinutes: null,
       intraday: false,
-      rows: visible,
+      rows: visible.map((point) => ({
+        contributions: Number(point[keys.contributions]),
+        date: point.date,
+        drawdown: Number(point[keys.drawdown]),
+        nav: Number(point[keys.nav]),
+        overnight: view === "cfd" && typeof point.cfdOvernightInterestGbp === "number"
+          ? point.cfdOvernightInterestGbp
+          : null,
+        pnl: Number(point[keys.pnl]),
+      })),
       valueChangeMode: false,
     };
   }, [carriedCfdValue, data, intradayData, range, view]);
-  // Daily ranges crop the visible timeline, but the money result remains the
-  // actual cumulative account outcome. Rebasing here would erase gains or
-  // losses that pre-date the selected window, including carried CFD P&L from
-  // the all-account view. Short intraday ranges build value-change rows above.
-  const rows = rawRows;
+  const rebasedWindow = range !== "MAX";
+  const rows = useMemo(
+    () => rebasedWindow ? rebaseMoneyOutcome(rawRows) : rawRows,
+    [rawRows, rebasedWindow],
+  );
   const rateBase = useMemo(
+    () => rebasedWindow || view === "cfd"
+      ? stableMoneyRateBase(rawRows, rebasedWindow)
+      : null,
+    [rawRows, rebasedWindow, view],
+  );
+  const cumulativeRateBase = useMemo(
     () => view === "cfd" ? stableMoneyRateBase(rawRows, false) : null,
     [rawRows, view],
   );
@@ -526,6 +532,7 @@ export function MoneyPerformanceChart({
       ? netPnlRate(value, contributions)
       : relativeMoneyRate(value, rateBase);
   const latest = rows.at(-1) ?? null;
+  const opening = rawRows.at(0) ?? null;
   const maxDrawdown = rows.reduce((minimum, point) => Math.min(minimum, point.drawdown), 0);
   const latestNetPnlRate = latest
     ? rateFor(latest.pnl, latest.contributions)
@@ -537,7 +544,11 @@ export function MoneyPerformanceChart({
     const rate = rateFor(point.drawdown, point.contributions);
     return rate == null ? minimum : minimum == null ? rate : Math.min(minimum, rate);
   }, null);
-  const displayedContributions = latest?.contributions ?? null;
+  const displayedContributions = latest == null
+    ? null
+    : rebasedWindow && opening
+      ? latest.contributions - opening.contributions
+      : latest.contributions;
   const firstCarriedIndex = view === "household" && cfdCutoffDate
     ? rows.findIndex((row) => row.date.slice(0, 10) > cfdCutoffDate)
     : -1;
@@ -610,16 +621,24 @@ export function MoneyPerformanceChart({
     const pnlLabel = pnlDisplayMode === "money"
       ? valueChangeMode
         ? locale === "zh" ? "区间价值变化" : "Period value change"
+        : rebasedWindow
+        ? locale === "zh" ? "区间净盈亏" : "Period net P&L"
         : locale === "zh" ? "净盈亏" : "Net P&L"
       : valueChangeMode
         ? locale === "zh" ? "区间价值变化率" : "Period value-change rate"
+        : rebasedWindow
+        ? locale === "zh" ? "区间净盈亏率" : "Period net P&L rate"
         : locale === "zh" ? "净盈亏率" : "Net P&L rate";
     const drawdownLabel = pnlDisplayMode === "money"
       ? valueChangeMode
         ? locale === "zh" ? "价值变化回撤" : "Value-change drawdown"
+        : rebasedWindow
+        ? locale === "zh" ? "区间盈亏回撤" : "Period P&L drawdown"
         : locale === "zh" ? "盈亏回撤" : "P&L drawdown"
       : valueChangeMode
         ? locale === "zh" ? "价值变化回撤率" : "Value-change drawdown rate"
+        : rebasedWindow
+        ? locale === "zh" ? "区间盈亏回撤率" : "Period drawdown rate"
         : locale === "zh" ? "盈亏回撤率" : "P&L drawdown rate";
     const overnightLabel = locale === "zh" ? "累计隔夜融资" : "Cumulative overnight financing";
     const currencyTooltip = (value: unknown) =>
@@ -734,18 +753,35 @@ export function MoneyPerformanceChart({
           const rowPosition = rowIndex.get(row.date) ?? dataIndex;
           const pnlRate = pnlRates[rowPosition] ?? null;
           const drawdownRate = drawdownRates[rowPosition] ?? null;
+          const cumulativeRow = !valueChangeMode && rebasedWindow
+            ? rawRows[rowPosition] ?? null
+            : null;
+          const cumulativeRate = cumulativeRow == null
+            ? null
+            : cumulativeRateBase == null
+              ? netPnlRate(cumulativeRow.pnl, cumulativeRow.contributions)
+              : relativeMoneyRate(cumulativeRow.pnl, cumulativeRateBase);
           const flow = valueChangeMode
             ? openingContributions
+            : rebasedWindow
+            ? row.contributions - openingContributions
             : row.contributions;
           const flowLabel = valueChangeMode
             ? locale === "zh" ? "区间起始价值" : "Opening period value"
+            : rebasedWindow
+            ? locale === "zh" ? "区间净资金流" : "Period net cash flow"
             : contributionLabel;
           const pnlTone = row.pnl < 0 ? chartColours.negative : chartColours.positive;
           const resultLabel = valueChangeMode
             ? locale === "zh" ? "区间价值变化" : "Period value change"
+            : rebasedWindow
+            ? locale === "zh" ? "区间净盈亏" : "Period net P&L"
             : locale === "zh" ? "累计净盈亏" : "Cumulative net P&L";
           const resultRate = formatDeltaPercent(pnlRate, locale, 2);
           const drawdownRateText = formatDeltaPercent(drawdownRate, locale, 2);
+          const cumulativeResult = cumulativeRow == null
+            ? ""
+            : `<div style="display:flex;justify-content:space-between;gap:24px;align-items:baseline"><span>${view === "cfd" ? locale === "zh" ? "累计净已实现损益" : "Cumulative net realised P&L" : locale === "zh" ? "累计净盈亏" : "Cumulative net P&L"}</span><strong style="color:${cumulativeRow.pnl < 0 ? chartColours.negative : chartColours.positive}">${formatCurrency(cumulativeRow.pnl, locale, "GBP", 2)} · ${formatDeltaPercent(cumulativeRate, locale, 2)}</strong></div>`;
           const basis = rateBase == null
             ? ""
             : `<div style="display:flex;justify-content:space-between;gap:24px;color:${chartColours.axis};font-size:12px"><span>${locale === "zh" ? "百分比资金基准" : "Percentage capital base"}</span><span>${formatCurrency(rateBase, locale, "GBP", 0)}</span></div>`;
@@ -760,6 +796,7 @@ export function MoneyPerformanceChart({
             <div style="margin-bottom:12px;color:${chartColours.axis};font-size:13px">${detailedTimestampLabel(row.date, locale, timeZone)}</div>
             <div style="display:grid;gap:8px;padding:10px;border-radius:10px;background:${chartColours.grid}">
               <div style="display:flex;justify-content:space-between;gap:24px;align-items:baseline"><strong>${resultLabel}</strong><strong style="color:${pnlTone};font-size:16px">${formatCurrency(row.pnl, locale, "GBP", 2)} · ${resultRate}</strong></div>
+              ${cumulativeResult}
               <div style="display:flex;justify-content:space-between;gap:24px;align-items:baseline"><span>${valueChangeMode ? locale === "zh" ? "价值变化回撤" : "Value-change drawdown" : locale === "zh" ? "当前盈亏回撤" : "Current P&L drawdown"}</span><strong style="color:${chartColours.negative}">${formatCurrency(row.drawdown, locale, "GBP", 2)} · ${drawdownRateText}</strong></div>
             </div>
             <div style="display:grid;gap:6px;margin-top:10px">
@@ -851,7 +888,7 @@ export function MoneyPerformanceChart({
         { areaStyle: { color: chartColours.negative, opacity: intraday ? 0.05 : 0.12 }, data: drawdownData, lineStyle: { color: chartColours.negative, width: 1.6 }, name: drawdownLabel, showSymbol: false, smooth: intraday ? false : 0.1, tooltip: { valueFormatter: pnlTooltip }, type: "line", xAxisIndex: 2, yAxisIndex: 2 },
       ],
     };
-  }, [carriedLineStartIndex, cfdCutoffDate, cfdStatus?.isStale, chartColours, displayTimeline, firstCarriedIndex, intraday, locale, pnlDisplayMode, range, rateBase, rawRows, rows, showCarryTransition, timeZone, timelineCoverage, valueChangeMode, view]);
+  }, [carriedLineStartIndex, cfdCutoffDate, cfdStatus?.isStale, chartColours, cumulativeRateBase, displayTimeline, firstCarriedIndex, intraday, locale, pnlDisplayMode, range, rateBase, rawRows, rebasedWindow, rows, showCarryTransition, timeZone, timelineCoverage, valueChangeMode, view]);
   const chartRef = useECharts(option);
   const valueMetricLabel = view === "cfd"
     ? locale === "zh" ? "当前已实现权益" : "Current realised equity"
@@ -860,6 +897,10 @@ export function MoneyPerformanceChart({
       : locale === "zh" ? "当前净值" : "Current NAV";
   const contributionMetricLabel = valueChangeMode
     ? locale === "zh" ? "日内现金流" : "Intraday cash flow"
+    : rebasedWindow
+    ? view === "cfd"
+      ? locale === "zh" ? "区间账户资金流" : "Period account cash flow"
+      : locale === "zh" ? "区间外部净流入" : "Period external net flow"
     : view === "cfd"
       ? locale === "zh" ? "账户累计资金流" : "Account cash flow"
     : view === "household"
@@ -867,19 +908,31 @@ export function MoneyPerformanceChart({
       : locale === "zh" ? "累计净入金" : "Net contributions";
   const pnlMetricLabel = valueChangeMode
     ? locale === "zh" ? "区间价值变化" : "Period value change"
+    : rebasedWindow
+    ? view === "cfd"
+      ? locale === "zh" ? "区间净已实现损益" : "Period net realised P&L"
+      : locale === "zh" ? "区间净盈亏" : "Period net P&L"
     : view === "cfd"
       ? locale === "zh" ? "累计净已实现损益" : "Net realised P&L"
     : locale === "zh" ? "净盈亏" : "Net P&L";
   const rateBasisLabel = valueChangeMode
     ? locale === "zh" ? "相对首个可用锚点" : "vs first available anchor"
+    : rebasedWindow
+    ? Math.abs(opening?.nav ?? 0) >= 0.01
+      ? locale === "zh" ? "相对区间起始价值" : "vs opening value"
+      : locale === "zh" ? "相对稳定资金基准" : "vs stable capital base"
     : view === "cfd"
       ? locale === "zh" ? "相对稳定资金基准" : "vs stable capital base"
       : locale === "zh" ? "相对累计净入金" : "vs net contributions";
   const currentDrawdownLabel = valueChangeMode
     ? locale === "zh" ? "当前价值变化回撤" : "Current value-change drawdown"
+    : rebasedWindow
+    ? locale === "zh" ? "当前区间回撤" : "Current period drawdown"
     : locale === "zh" ? "当前盈亏回撤" : "Current P&L drawdown";
   const maxDrawdownLabel = valueChangeMode
     ? locale === "zh" ? "最大价值变化回撤" : "Max value-change drawdown"
+    : rebasedWindow
+    ? locale === "zh" ? "最大区间回撤" : "Max period drawdown"
     : locale === "zh" ? "最大盈亏回撤" : "Max P&L drawdown";
 
   return (
@@ -1027,6 +1080,10 @@ export function MoneyPerformanceChart({
                 {valueChangeMode ? (
                   <Badge color="gray" variant="light">
                     <Localized zh="未现金流调整" en="Not cash-flow adjusted" />
+                  </Badge>
+                ) : rebasedWindow ? (
+                  <Badge color="blue" variant="light">
+                    <Localized zh="区间起点 = 0" en="Period starts at 0" />
                   </Badge>
                 ) : null}
                 {!hideControls ? <Group align="center" gap="xs" wrap="nowrap">

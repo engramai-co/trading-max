@@ -4,11 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-09-02
+
 ### Fixed
 
-- Preserve cumulative all-account net P&L across daily chart ranges so CFD
-  gains and losses remain included instead of being cancelled at the visible
-  window's first point.
+- Distinguish selected-period and cumulative net P&L in money-chart tooltips,
+  keeping range-relative performance intact while making carried CFD results
+  visible in the all-account context.
 
 ## [1.0.4] - 2026-09-01
 
