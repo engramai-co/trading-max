@@ -8187,6 +8187,13 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "tradeMarkers": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchTradeMarker"
+            },
+            "title": "Trademarkers",
+            "type": "array"
           }
         },
         "required": [
@@ -8450,6 +8457,90 @@
           "generatedAt"
         ],
         "title": "ResearchTimelinePoint",
+        "type": "object"
+      },
+      "ResearchTradeMarker": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "enum": [
+                "invest",
+                "isa"
+              ],
+              "type": "string"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "buyAveragePrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyaverageprice"
+          },
+          "buyOrders": {
+            "title": "Buyorders",
+            "type": "integer"
+          },
+          "buyQuantity": {
+            "title": "Buyquantity",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "B",
+              "S",
+              "T"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "sellAveragePrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sellaverageprice"
+          },
+          "sellOrders": {
+            "title": "Sellorders",
+            "type": "integer"
+          },
+          "sellQuantity": {
+            "title": "Sellquantity",
+            "type": "number"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "date",
+          "kind",
+          "accounts",
+          "buyOrders",
+          "sellOrders",
+          "buyQuantity",
+          "sellQuantity",
+          "buyAveragePrice",
+          "sellAveragePrice"
+        ],
+        "title": "ResearchTradeMarker",
         "type": "object"
       },
       "ReviewAttribution": {
@@ -12020,7 +12111,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "openapi": "3.1.0",
   "paths": {

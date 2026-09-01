@@ -230,6 +230,13 @@ def test_research_price_series_is_scoped_and_bounded(
 ) -> None:
     store = ArtifactStore(tmp_path / "runtime")
     manifest = typed_fixture(research_root, store)
+    marker_artifact = manifest.artifacts[0].model_copy(
+        update={
+            "key": "account/trade_markers.json",
+            "sha256": "trade-marker-fixture",
+        }
+    )
+    manifest = manifest.model_copy(update={"artifacts": [*manifest.artifacts, marker_artifact]})
     ledger = ResearchLedger(store, WatchlistStore(tmp_path / "watchlist.json"))
     raw = {
         "as_of": "2026-08-11",
@@ -259,7 +266,39 @@ def test_research_price_series_is_scoped_and_bounded(
             },
         ],
     }
-    monkeypatch.setattr(ledger, "_read_optional", lambda *_args: raw)
+    markers = {
+        "rows": [
+            {
+                "ticker": "BE",
+                "date": "2026-08-04",
+                "kind": "B",
+                "accounts": ["invest"],
+                "buy_orders": 1,
+                "sell_orders": 0,
+                "buy_quantity": 2,
+                "sell_quantity": 0,
+                "buy_average_price": 4.25,
+                "sell_average_price": None,
+            },
+            {
+                "ticker": "BE",
+                "date": "2026-08-01",
+                "kind": "S",
+                "accounts": ["isa"],
+                "buy_orders": 0,
+                "sell_orders": 1,
+                "buy_quantity": 0,
+                "sell_quantity": 1,
+                "buy_average_price": None,
+                "sell_average_price": 1.25,
+            },
+        ]
+    }
+    monkeypatch.setattr(
+        ledger,
+        "_read_optional",
+        lambda _manifest, key: markers if key == "account/trade_markers.json" else raw,
+    )
 
     result = ledger.price_series("be", manifest, limit=2)
 
@@ -269,6 +308,7 @@ def test_research_price_series_is_scoped_and_bounded(
         "2026-08-04",
         "2026-08-05",
     ]
+    assert [(marker.date, marker.kind) for marker in result.trade_markers] == [("2026-08-04", "B")]
 
 
 def test_unconfigured_llm_does_not_block_data_plane_readiness(

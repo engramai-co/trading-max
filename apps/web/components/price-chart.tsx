@@ -11,7 +11,7 @@ import {
   priceChartWindow,
   type PriceChartRange,
 } from "@/lib/price-chart";
-import type { PriceSeriesPoint } from "@/lib/types";
+import type { PriceSeriesPoint, ResearchTradeMarker } from "@/lib/types";
 import { ChartShell } from "@/ui/charts/chart-shell";
 import { useChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
@@ -26,6 +26,7 @@ export function PriceChart({
   points = [],
   showControls = true,
   ticker,
+  tradeMarkers = [],
 }: {
   compact?: boolean;
   currency: string;
@@ -34,6 +35,7 @@ export function PriceChart({
   points?: PriceSeriesPoint[];
   showControls?: boolean;
   ticker: string;
+  tradeMarkers?: ResearchTradeMarker[];
 }) {
   const { locale } = useLocale();
   const chartColours = useChartColours();
@@ -61,6 +63,8 @@ export function PriceChart({
   const option = useMemo<EChartsOption | null>(() => {
     if (chartPoints.length < 2 || !chartWindow) return null;
     const dates = chartPoints.map((point) => point.date);
+    const pointsByDate = new Map(chartPoints.map((point) => [point.date, point]));
+    const visibleMarkers = tradeMarkers.filter((marker) => pointsByDate.has(marker.date));
     const rising = summaryPoints.at(-1)!.close >= summaryPoints[0].close;
     const primary = rising ? chartColours.positive : chartColours.negative;
     return {
@@ -103,6 +107,88 @@ export function PriceChart({
                 color0: chartColours.negative,
               },
               name: ticker,
+              markPoint: visibleMarkers.length
+                ? {
+                    data: visibleMarkers.map((marker) => {
+                      const point = pointsByDate.get(marker.date)!;
+                      const belowCandle = marker.kind === "B";
+                      return {
+                        coord: [
+                          marker.date,
+                          belowCandle ? point.low ?? point.close : point.high ?? point.close,
+                        ],
+                        itemStyle: {
+                          color: marker.kind === "B"
+                            ? chartColours.brand
+                            : marker.kind === "S"
+                            ? chartColours.negative
+                            : chartColours.warning,
+                        },
+                        label: {
+                          color: marker.kind === "T"
+                            ? chartColours.tooltip
+                            : chartColours.canvas,
+                          fontSize: 11,
+                          fontWeight: 800,
+                          formatter: marker.kind,
+                        },
+                        marker,
+                        name: marker.kind,
+                        symbol: "roundRect",
+                        symbolOffset: [0, belowCandle ? 14 : -14],
+                        symbolSize: [22, 20],
+                        value: marker.kind,
+                      };
+                    }),
+                    tooltip: {
+                      backgroundColor: chartColours.tooltip,
+                      borderWidth: 0,
+                      confine: true,
+                      formatter: (params: unknown) => {
+                        const marker = (
+                          params as { data?: { marker?: ResearchTradeMarker } }
+                        ).data?.marker;
+                        if (!marker) return "";
+                        const accountLabel = marker.accounts
+                          .map((account) => account === "isa" ? "ISA" : "Invest")
+                          .join(" + ");
+                        const formatQuantity = (value: number) =>
+                          new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-GB", {
+                            maximumFractionDigits: 4,
+                          }).format(value);
+                        const formatPrice = (value: number | null) =>
+                          value == null
+                            ? "—"
+                            : new Intl.NumberFormat("en-GB", {
+                                currency,
+                                maximumFractionDigits: 4,
+                                style: "currency",
+                              }).format(value);
+                        const lines = [
+                          `<strong>${marker.date} · ${marker.kind}</strong>`,
+                        ];
+                        if (marker.buyOrders) {
+                          lines.push(
+                            locale === "zh"
+                              ? `买入 ${marker.buyOrders} 笔 · ${formatQuantity(marker.buyQuantity)} 股 · 均价 ${formatPrice(marker.buyAveragePrice)}`
+                              : `Bought ${marker.buyOrders} · ${formatQuantity(marker.buyQuantity)} shares · avg ${formatPrice(marker.buyAveragePrice)}`,
+                          );
+                        }
+                        if (marker.sellOrders) {
+                          lines.push(
+                            locale === "zh"
+                              ? `卖出 ${marker.sellOrders} 笔 · ${formatQuantity(marker.sellQuantity)} 股 · 均价 ${formatPrice(marker.sellAveragePrice)}`
+                              : `Sold ${marker.sellOrders} · ${formatQuantity(marker.sellQuantity)} shares · avg ${formatPrice(marker.sellAveragePrice)}`,
+                          );
+                        }
+                        if (accountLabel) lines.push(accountLabel);
+                        return lines.join("<br/>");
+                      },
+                      textStyle: { color: chartColours.canvas },
+                      trigger: "item",
+                    },
+                  }
+                : undefined,
               type: "candlestick",
             }
           : {
@@ -193,6 +279,7 @@ export function PriceChart({
     locale,
     summaryPoints,
     ticker,
+    tradeMarkers,
   ]);
   const chartRef = useECharts(option, "research");
 

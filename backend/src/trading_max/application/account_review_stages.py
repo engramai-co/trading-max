@@ -9,7 +9,11 @@ from typing import Any
 import pandas as pd
 
 from trading_max.analytics.account_review import build_account_review
-from trading_max.analytics.ledger import load_transactions, reconstruct_campaigns
+from trading_max.analytics.ledger import (
+    load_transactions,
+    reconstruct_campaigns,
+    transaction_marker_rows,
+)
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import latest_export_path
@@ -22,7 +26,7 @@ class AccountReviewStage:
     """Bind existing authoritative lenses into one review artifact."""
 
     name = "accounts.review"
-    version = "account-review-stage-v1"
+    version = "account-review-stage-v2"
     required_for = frozenset({"all", "accounts"})
     dependencies = (
         "accounts.snapshot",
@@ -209,6 +213,8 @@ class AccountReviewStage:
         )
         classifications = self._classification_by_ticker(lookthrough)
         reviews: dict[str, dict[str, Any]] = {}
+        positions_by_account: dict[str, list[dict[str, Any]]] = {}
+        transactions_by_account: dict[str, pd.DataFrame] = {}
         dependencies = [lookthrough_id]
         warnings: list[str] = list(lookthrough_warnings)
 
@@ -233,6 +239,7 @@ class AccountReviewStage:
                 for warning in (*account_warnings, *performance_warnings, *nav_warnings)
             )
             transactions = self._transactions(profile)
+            transactions_by_account[profile] = transactions
             campaigns, _ = reconstruct_campaigns(transactions)
             for campaign in campaigns:
                 classification = classifications.get(
@@ -252,6 +259,7 @@ class AccountReviewStage:
                     classifications.get(str(raw.get("ticker") or "").strip().upper(), {})
                 )
                 positions.append(position)
+            positions_by_account[profile] = positions
             review = build_account_review(
                 account_code=code,
                 account_kind=kind,
@@ -291,7 +299,29 @@ class AccountReviewStage:
                 warnings=warnings,
             ),
         )
-        return StageResult(artifacts=(stored.ref,), warnings=tuple(warnings))
+        marker_rows = transaction_marker_rows(
+            transactions_by_account,
+            (position for positions in positions_by_account.values() for position in positions),
+        )
+        marker_artifact = self.artifacts.put_json(
+            key="account/trade_markers.json",
+            payload={
+                "schema_version": 1,
+                "calculation_version": "trade-markers-v1",
+                "rows": marker_rows,
+            },
+            kind="trade_markers",
+            producer_version=self.version,
+            dependency_artifact_ids=sorted(set(dependencies)),
+            quality=ArtifactQuality(
+                status="verified",
+                coverage=f"{len(marker_rows)} marker days",
+            ),
+        )
+        return StageResult(
+            artifacts=(stored.ref, marker_artifact.ref),
+            warnings=tuple(warnings),
+        )
 
 
 __all__ = ["AccountReviewStage"]

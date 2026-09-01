@@ -14,6 +14,7 @@ from trading_max.analytics.ledger import (
     load_transactions,
     policy_metrics,
     reconstruct_campaigns,
+    transaction_marker_rows,
 )
 
 
@@ -69,6 +70,71 @@ def test_load_transactions_rejects_conflicting_duplicate_id(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="conflicting rows"):
         load_transactions([first, second])
+
+
+def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
+    tmp_path: Path,
+) -> None:
+    invest = tmp_path / "invest.csv"
+    isa = tmp_path / "isa.csv"
+    isin = "US0000000001"
+    _write_export_with_isin(
+        invest,
+        [
+            f"b1,Market buy,2026-08-01T10:00:00Z,{isin},OLD,Example,1,100,100,0,",
+            f"b2,Market buy,2026-08-01T11:00:00Z,{isin},OLD,Example,3,110,330,0,",
+            f"s1,Market sell,2026-08-02T12:00:00Z,{isin},OLD,Example,2,120,240,0,20",
+            "d1,Dividend (Dividend),2026-08-03T12:00:00Z,,OTHER,Other,1,0,1,0,",
+        ],
+    )
+    _write_export_with_isin(
+        isa,
+        [
+            f"b3,Market buy,2026-08-02T09:00:00Z,{isin},OLD,Example,1,118,118,0,",
+            "x1,Market buy,2026-08-02T09:00:00Z,US9999999999,SOLD,Sold,1,10,10,0,",
+        ],
+    )
+
+    markers = transaction_marker_rows(
+        {
+            "invest": load_transactions([invest]),
+            "isa": load_transactions([isa]),
+        },
+        [
+            {
+                "ticker": "NEW",
+                "broker_ticker": "NEW_US_EQ",
+                "isin": isin,
+            }
+        ],
+    )
+
+    assert markers == [
+        {
+            "ticker": "NEW",
+            "date": "2026-08-01",
+            "accounts": ["invest"],
+            "buy_orders": 2,
+            "sell_orders": 0,
+            "buy_quantity": 4.0,
+            "sell_quantity": 0.0,
+            "kind": "B",
+            "buy_average_price": 107.5,
+            "sell_average_price": None,
+        },
+        {
+            "ticker": "NEW",
+            "date": "2026-08-02",
+            "accounts": ["invest", "isa"],
+            "buy_orders": 1,
+            "sell_orders": 1,
+            "buy_quantity": 1.0,
+            "sell_quantity": 2.0,
+            "kind": "T",
+            "buy_average_price": 118.0,
+            "sell_average_price": 120.0,
+        },
+    ]
 
 
 def test_reconstruct_campaigns_keeps_split_legs_and_dividends_in_open_campaign(

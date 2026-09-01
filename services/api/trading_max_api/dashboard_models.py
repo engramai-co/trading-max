@@ -748,6 +748,19 @@ class PriceSeriesPoint(ApiModel):
     sma200: float | None
 
 
+class ResearchTradeMarker(ApiModel):
+    ticker: str
+    date: str
+    kind: Literal["B", "S", "T"]
+    accounts: list[Literal["invest", "isa"]]
+    buy_orders: int
+    sell_orders: int
+    buy_quantity: float
+    sell_quantity: float
+    buy_average_price: float | None
+    sell_average_price: float | None
+
+
 class BenchmarkPricePoint(ApiModel):
     date: str
     close: float
@@ -759,6 +772,7 @@ class ResearchPriceSeries(ApiModel):
     currency: str
     available_sessions: int
     points: list[PriceSeriesPoint]
+    trade_markers: list[ResearchTradeMarker] = Field(default_factory=list)
 
 
 class TechnicalRow(ApiModel):
