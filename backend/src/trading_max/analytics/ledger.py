@@ -114,24 +114,24 @@ def load_transactions(paths: Iterable[Path]) -> pd.DataFrame:
 
 def transaction_marker_rows(
     account_transactions: Mapping[str, pd.DataFrame],
-    current_positions: Iterable[Mapping[str, object]],
+    known_positions: Iterable[Mapping[str, object]],
 ) -> list[dict[str, Any]]:
-    """Aggregate real broker fills into B/S/T markers for current holdings.
+    """Aggregate real broker fills into B/S/T markers for researched holdings.
 
     The marker vocabulary follows the convention used by Chinese broker apps:
     B means buy-only, S means sell-only, and T means both directions occurred
-    for the same security on the same UTC trading date. Current position ISINs
-    and broker tickers resolve historical aliases without guessing securities.
+    for the same security on the same UTC trading date. Known position ISINs
+    and broker tickers resolve historical aliases; otherwise the immutable
+    broker-export ticker is retained so a previously held watchlist security
+    can still expose its real fill history.
     """
 
-    held_tickers: set[str] = set()
     ticker_aliases: dict[str, str] = {}
     isin_aliases: dict[str, str] = {}
-    for position in current_positions:
+    for position in known_positions:
         canonical = _normalized_security_value(position.get("ticker"))
         if not canonical:
             continue
-        held_tickers.add(canonical)
         for value in (position.get("ticker"), position.get("broker_ticker")):
             alias = _normalized_security_value(value)
             if alias:
@@ -149,10 +149,8 @@ def transaction_marker_rows(
                 continue
             isin = _normalized_security_value(row.get("ISIN"))
             raw_ticker = _normalized_security_value(row.get("Ticker"))
-            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker)
-            if ticker is None and raw_ticker in held_tickers:
-                ticker = raw_ticker
-            if ticker not in held_tickers:
+            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker) or raw_ticker
+            if not ticker:
                 continue
             timestamp = row.get("Time")
             if not isinstance(timestamp, pd.Timestamp) or pd.isna(timestamp):

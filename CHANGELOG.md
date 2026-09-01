@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-01
+
+### Changed
+
+- Preserve real B, S, and T fill markers for previously held securities while
+  they remain in the research watchlist, without adding historical tickers to
+  the watchlist automatically.
+
 ## [1.0.3] - 2026-09-01
 
 ### Added

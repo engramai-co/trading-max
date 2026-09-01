@@ -134,6 +134,18 @@ def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
             "buy_average_price": 118.0,
             "sell_average_price": 120.0,
         },
+        {
+            "ticker": "SOLD",
+            "date": "2026-08-02",
+            "accounts": ["isa"],
+            "buy_orders": 1,
+            "sell_orders": 0,
+            "buy_quantity": 1.0,
+            "sell_quantity": 0.0,
+            "kind": "B",
+            "buy_average_price": 10.0,
+            "sell_average_price": None,
+        },
     ]
 
 

@@ -204,20 +204,22 @@ def test_account_review_stage_consumes_typed_lenses_and_publishes_both_accounts(
     markers = artifacts.get_json(result.artifacts[1].artifact_id)
     assert markers.ref.key == "account/trade_markers.json"
     assert markers.ref.kind == "trade_markers"
-    assert markers.payload["rows"] == [
-        {
-            "ticker": "HOLD",
-            "date": "2026-08-01",
-            "accounts": ["invest", "isa"],
-            "buy_orders": 2,
-            "sell_orders": 0,
-            "buy_quantity": 2.0,
-            "sell_quantity": 0.0,
-            "kind": "B",
-            "buy_average_price": 100.0,
-            "sell_average_price": None,
-        }
-    ]
+    marker_rows = markers.payload["rows"]
+    assert {row["ticker"] for row in marker_rows} == {"HOLD", "LOSS", "WIN"}
+    assert next(row for row in marker_rows if row["ticker"] == "HOLD") == {
+        "ticker": "HOLD",
+        "date": "2026-08-01",
+        "accounts": ["invest", "isa"],
+        "buy_orders": 2,
+        "sell_orders": 0,
+        "buy_quantity": 2.0,
+        "sell_quantity": 0.0,
+        "kind": "B",
+        "buy_average_price": 100.0,
+        "sell_average_price": None,
+    }
+    assert any(row["ticker"] == "WIN" and row["kind"] == "S" for row in marker_rows)
+    assert any(row["ticker"] == "LOSS" and row["kind"] == "S" for row in marker_rows)
 
 
 def test_account_review_stage_is_registered_after_all_authoritative_lenses(
