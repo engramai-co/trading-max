@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
   PRICE_CHART_RANGES,
+  priceChartRangePoints,
   priceChartWindow,
   type PriceChartRange,
 } from "@/lib/price-chart";
@@ -21,6 +22,7 @@ export function PriceChart({
   compact = false,
   currency,
   defaultRange = "1y",
+  panHistory = false,
   points = [],
   showControls = true,
   ticker,
@@ -28,6 +30,7 @@ export function PriceChart({
   compact?: boolean;
   currency: string;
   defaultRange?: PriceChartRange;
+  panHistory?: boolean;
   points?: PriceSeriesPoint[];
   showControls?: boolean;
   ticker: string;
@@ -37,12 +40,15 @@ export function PriceChart({
   const [range, setRange] = useState<PriceChartRange>(defaultRange);
   const [mode, setMode] = useState<ChartMode>("candles");
   const candles = mode === "candles";
-  const chartWindow = useMemo(() => priceChartWindow(points, range), [points, range]);
-  const summaryPoints = useMemo(() => {
-    const sessions = PRICE_CHART_RANGES.find((item) => item.key === range)?.sessions
-      ?? 252;
-    return Number.isFinite(sessions) ? points.slice(-sessions) : points;
-  }, [points, range]);
+  const summaryPoints = useMemo(
+    () => priceChartRangePoints(points, range),
+    [points, range],
+  );
+  const chartPoints = panHistory ? points : summaryPoints;
+  const chartWindow = useMemo(
+    () => priceChartWindow(chartPoints, range),
+    [chartPoints, range],
+  );
   const summary = useMemo(() => {
     if (summaryPoints.length < 2) return null;
     const first = summaryPoints[0].close;
@@ -50,11 +56,11 @@ export function PriceChart({
     return first ? { change: (last - first) / Math.abs(first), last } : null;
   }, [summaryPoints]);
   const canPanHistory = Boolean(
-    showControls && chartWindow && chartWindow.startIndex > 0,
+    panHistory && chartWindow && chartWindow.startIndex > 0,
   );
   const option = useMemo<EChartsOption | null>(() => {
-    if (points.length < 2 || !chartWindow) return null;
-    const dates = points.map((point) => point.date);
+    if (chartPoints.length < 2 || !chartWindow) return null;
+    const dates = chartPoints.map((point) => point.date);
     const rising = summaryPoints.at(-1)!.close >= summaryPoints[0].close;
     const primary = rising ? chartColours.positive : chartColours.negative;
     return {
@@ -84,7 +90,7 @@ export function PriceChart({
       series: [
         candles
           ? {
-              data: points.map((point) => [
+              data: chartPoints.map((point) => [
                 point.open ?? point.close,
                 point.close,
                 point.low ?? point.close,
@@ -101,28 +107,28 @@ export function PriceChart({
             }
           : {
               areaStyle: { color: `${primary}22` },
-              data: points.map((point) => point.close),
+              data: chartPoints.map((point) => point.close),
               lineStyle: { color: primary, width: 2 },
               name: ticker,
               showSymbol: false,
               type: "line",
             },
         {
-          data: points.map((point) => point.sma50),
+          data: chartPoints.map((point) => point.sma50),
           lineStyle: { color: chartColours.accent, width: 1.3 },
           name: "SMA 50",
           showSymbol: false,
           type: "line",
         },
         {
-          data: points.map((point) => point.sma200),
+          data: chartPoints.map((point) => point.sma200),
           lineStyle: { color: chartColours.secondary, width: 1.3 },
           name: "SMA 200",
           showSymbol: false,
           type: "line",
         },
         {
-          data: points.map((point) => point.volume),
+          data: chartPoints.map((point) => point.volume),
           itemStyle: { color: chartColours.border },
           name: locale === "zh" ? "成交量" : "Volume",
           type: "bar",
@@ -180,11 +186,11 @@ export function PriceChart({
   }, [
     candles,
     canPanHistory,
+    chartPoints,
     chartColours,
     chartWindow,
     currency,
     locale,
-    points,
     summaryPoints,
     ticker,
   ]);
