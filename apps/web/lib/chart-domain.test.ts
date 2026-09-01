@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   axisTimestampLabels,
-  cropCumulativeMoneyOutcome,
   latestNaturalDayIntradayPoints,
   netPnlRate,
   paddedDrawdownDomain,
   paddedPriceDomain,
   paddedReturnDomain,
   portfolioIntradayDisplayIntervalMinutes,
+  rebaseMoneyOutcome,
   relativeMoneyRate,
   gapAwareTimeSeries,
   gapBridgeSegments,
@@ -242,17 +242,44 @@ describe("chart percent domains", () => {
     expect(laterIntraday).toMatch(/\d{2}:\d{2}/);
   });
 
-  it("crops daily ranges without cancelling cumulative CFD loss", () => {
+  it("rebases a selected window and rebuilds drawdown from its own peak", () => {
     const rows = [
-      { contributions: 23_505.79, date: "2026-01-01", drawdown: -4_400, nav: 22_416.86, pnl: -1_088.93 },
-      { contributions: 23_505.79, date: "2026-07-29", drawdown: -4_783.87, nav: 22_887.25, pnl: -618.54 },
+      { contributions: 10_000, date: "2026-08-10", drawdown: -700, nav: 11_200, pnl: 1_200 },
+      { contributions: 10_300, date: "2026-08-11", drawdown: -550, nav: 11_650, pnl: 1_350 },
+      { contributions: 10_300, date: "2026-08-12", drawdown: -650, nav: 11_550, pnl: 1_250 },
     ];
 
-    const visible = cropCumulativeMoneyOutcome(rows, "2026-07-01");
+    expect(rebaseMoneyOutcome(rows)).toEqual([
+      { ...rows[0], drawdown: 0, pnl: 0 },
+      { ...rows[1], drawdown: 0, pnl: 150 },
+      { ...rows[2], drawdown: -100, pnl: 50 },
+    ]);
+  });
 
-    expect(visible).toEqual([rows[1]]);
-    expect(visible[0].pnl).toBe(-618.54);
-    expect(netPnlRate(visible[0].pnl, visible[0].contributions)).toBeLessThan(0);
+  it("keeps period improvement distinct from cumulative all-account loss", () => {
+    const investIsaPnl = -128.74363748;
+    const cfdPnl = -489.8;
+    const rows = [
+      {
+        contributions: 23_505.79,
+        date: "2026-01-01",
+        drawdown: -4_400,
+        nav: 22_416.86,
+        pnl: -1_088.93026338,
+      },
+      {
+        contributions: 23_505.79,
+        date: "2026-07-29",
+        drawdown: -4_783.87,
+        nav: 22_887.25,
+        pnl: investIsaPnl + cfdPnl,
+      },
+    ];
+
+    const period = rebaseMoneyOutcome(rows);
+
+    expect(rows[1].pnl).toBeCloseTo(-618.54363748);
+    expect(period[1].pnl).toBeCloseTo(470.3866259);
   });
 
   it("uses opening NAV for a selected-period percentage baseline", () => {
