@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-01
+
+### Added
+
+- Make the research workbench's technical candlestick chart horizontally
+  draggable, so shorter ranges can browse earlier sessions without refetching
+  data or driving React updates during the gesture.
+
 ## [1.0.1] - 2026-09-01
 
 ### Fixed

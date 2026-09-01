@@ -5,21 +5,16 @@ import type { EChartsOption } from "echarts";
 import { useMemo, useState } from "react";
 
 import { useLocale } from "@/components/locale-provider";
+import {
+  PRICE_CHART_RANGES,
+  priceChartWindow,
+  type PriceChartRange,
+} from "@/lib/price-chart";
 import type { PriceSeriesPoint } from "@/lib/types";
 import { ChartShell } from "@/ui/charts/chart-shell";
 import { useChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
 
-const RANGES = [
-  { key: "1m", sessions: 21 },
-  { key: "3m", sessions: 63 },
-  { key: "6m", sessions: 126 },
-  { key: "1y", sessions: 252 },
-  { key: "2y", sessions: 504 },
-  { key: "max", sessions: Number.POSITIVE_INFINITY },
-] as const;
-
-type RangeKey = (typeof RANGES)[number]["key"];
 type ChartMode = "candles" | "line";
 
 export function PriceChart({
@@ -32,34 +27,56 @@ export function PriceChart({
 }: {
   compact?: boolean;
   currency: string;
-  defaultRange?: RangeKey;
+  defaultRange?: PriceChartRange;
   points?: PriceSeriesPoint[];
   showControls?: boolean;
   ticker: string;
 }) {
   const { locale } = useLocale();
   const chartColours = useChartColours();
-  const [range, setRange] = useState<RangeKey>(defaultRange);
+  const [range, setRange] = useState<PriceChartRange>(defaultRange);
   const [mode, setMode] = useState<ChartMode>("candles");
   const candles = mode === "candles";
-  const visible = useMemo(() => {
-    const sessions = RANGES.find((item) => item.key === range)?.sessions ?? 252;
+  const chartWindow = useMemo(() => priceChartWindow(points, range), [points, range]);
+  const summaryPoints = useMemo(() => {
+    const sessions = PRICE_CHART_RANGES.find((item) => item.key === range)?.sessions
+      ?? 252;
     return Number.isFinite(sessions) ? points.slice(-sessions) : points;
   }, [points, range]);
   const summary = useMemo(() => {
-    if (visible.length < 2) return null;
-    const first = visible[0].close;
-    const last = visible.at(-1)!.close;
+    if (summaryPoints.length < 2) return null;
+    const first = summaryPoints[0].close;
+    const last = summaryPoints.at(-1)!.close;
     return first ? { change: (last - first) / Math.abs(first), last } : null;
-  }, [visible]);
+  }, [summaryPoints]);
+  const canPanHistory = Boolean(
+    showControls && chartWindow && chartWindow.startIndex > 0,
+  );
   const option = useMemo<EChartsOption | null>(() => {
-    if (visible.length < 2) return null;
-    const dates = visible.map((point) => point.date);
-    const rising = visible.at(-1)!.close >= visible[0].close;
+    if (points.length < 2 || !chartWindow) return null;
+    const dates = points.map((point) => point.date);
+    const rising = summaryPoints.at(-1)!.close >= summaryPoints[0].close;
     const primary = rising ? chartColours.positive : chartColours.negative;
     return {
       animation: false,
       axisPointer: { link: [{ xAxisIndex: "all" }] },
+      dataZoom: canPanHistory
+        ? [{
+            cursorGrab: "grab",
+            cursorGrabbing: "grabbing",
+            endValue: chartWindow.endValue,
+            filterMode: "filter",
+            moveOnMouseMove: true,
+            moveOnMouseWheel: false,
+            preventDefaultMouseMove: true,
+            startValue: chartWindow.startValue,
+            throttle: 32,
+            type: "inside",
+            xAxisIndex: [0, 1],
+            zoomLock: true,
+            zoomOnMouseWheel: false,
+          }]
+        : undefined,
       grid: [
         { bottom: "25%", left: 12, right: 64, top: 18 },
         { bottom: 8, height: "14%", left: 12, right: 64 },
@@ -67,7 +84,7 @@ export function PriceChart({
       series: [
         candles
           ? {
-              data: visible.map((point) => [
+              data: points.map((point) => [
                 point.open ?? point.close,
                 point.close,
                 point.low ?? point.close,
@@ -84,28 +101,28 @@ export function PriceChart({
             }
           : {
               areaStyle: { color: `${primary}22` },
-              data: visible.map((point) => point.close),
+              data: points.map((point) => point.close),
               lineStyle: { color: primary, width: 2 },
               name: ticker,
               showSymbol: false,
               type: "line",
             },
         {
-          data: visible.map((point) => point.sma50),
+          data: points.map((point) => point.sma50),
           lineStyle: { color: chartColours.accent, width: 1.3 },
           name: "SMA 50",
           showSymbol: false,
           type: "line",
         },
         {
-          data: visible.map((point) => point.sma200),
+          data: points.map((point) => point.sma200),
           lineStyle: { color: chartColours.secondary, width: 1.3 },
           name: "SMA 200",
           showSymbol: false,
           type: "line",
         },
         {
-          data: visible.map((point) => point.volume),
+          data: points.map((point) => point.volume),
           itemStyle: { color: chartColours.border },
           name: locale === "zh" ? "成交量" : "Volume",
           type: "bar",
@@ -160,7 +177,17 @@ export function PriceChart({
         },
       ],
     };
-  }, [candles, chartColours, currency, locale, ticker, visible]);
+  }, [
+    candles,
+    canPanHistory,
+    chartColours,
+    chartWindow,
+    currency,
+    locale,
+    points,
+    summaryPoints,
+    ticker,
+  ]);
   const chartRef = useECharts(option, "research");
 
   if (points.length < 2) {
@@ -210,8 +237,11 @@ export function PriceChart({
             />
             <SegmentedControl
               aria-label={locale === "zh" ? "价格区间" : "Price range"}
-              data={RANGES.map((item) => ({ label: item.key.toUpperCase(), value: item.key }))}
-              onChange={(value) => setRange(value as RangeKey)}
+              data={PRICE_CHART_RANGES.map((item) => ({
+                label: item.key.toUpperCase(),
+                value: item.key,
+              }))}
+              onChange={(value) => setRange(value as PriceChartRange)}
               size="xs"
               value={range}
             />
@@ -226,7 +256,14 @@ export function PriceChart({
         ariaLabel={`${ticker} ${locale === "zh" ? "价格与成交量图" : "price and volume chart"}`}
         height={compact ? 284 : 440}
       >
-        <div ref={chartRef} style={{ height: "100%", width: "100%" }} />
+        <div
+          ref={chartRef}
+          style={{
+            height: "100%",
+            touchAction: canPanHistory ? "pan-y" : "auto",
+            width: "100%",
+          }}
+        />
       </ChartShell>
     </Stack>
   );
