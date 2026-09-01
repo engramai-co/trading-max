@@ -16,6 +16,7 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchPriceSeries,
     ResearchShell,
+    ResearchTradeMarker,
 )
 from .models import (
     ArtifactInfo,
@@ -280,8 +281,8 @@ class ResearchLedger:
         # research overview re-parses every research JSON per snapshot.
         self._row_cache: dict[tuple[str, str], list[JsonObject]] = {}
         self._price_series_cache: dict[
-            tuple[str, str],
-            tuple[str, str, list[PriceSeriesPoint]],
+            tuple[str, str, str],
+            tuple[str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
         ] = {}
         self._history_lock = threading.RLock()
         self._history_signature: tuple[str | None, ...] | None = None
@@ -1279,19 +1280,24 @@ class ResearchLedger:
     ) -> ResearchPriceSeries:
         ticker = _canonical_ticker(ticker)
         artifact = _artifact(manifest, "research/technical.json")
+        marker_artifact = _artifact(manifest, "account/trade_markers.json")
         cache_key = (
             artifact.sha256 if artifact is not None else manifest.run_id,
+            marker_artifact.sha256 if marker_artifact is not None else "",
             ticker,
         )
         cached = self._price_series_cache.get(cache_key)
         if cached is not None:
-            as_of, currency, all_points = cached
+            as_of, currency, all_points, all_markers = cached
+            points = all_points[-limit:]
+            visible_dates = {point.date for point in points}
             return ResearchPriceSeries(
                 ticker=ticker,
                 as_of=as_of,
                 currency=currency,
                 available_sessions=len(all_points),
-                points=all_points[-limit:],
+                points=points,
+                trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
             )
         raw = self._read_optional(manifest, "research/technical.json")
         raw_rows = raw.get("rows")
@@ -1315,13 +1321,33 @@ class ResearchLedger:
         ]
         as_of = str(source.get("as_of") or raw.get("as_of") or "")
         currency = str(source.get("currency") or "USD")
+        raw_markers = (
+            self._read_optional(manifest, "account/trade_markers.json")
+            if marker_artifact is not None
+            else {}
+        )
+        marker_rows = raw_markers.get("rows")
+        all_markers = [
+            ResearchTradeMarker.model_validate(marker)
+            for marker in (marker_rows if isinstance(marker_rows, list) else [])
+            if isinstance(marker, dict)
+            and _canonical_ticker(str(marker.get("ticker") or "")) == ticker
+        ]
         if len(self._price_series_cache) >= 128:
             self._price_series_cache.clear()
-        self._price_series_cache[cache_key] = (as_of, currency, all_points)
+        self._price_series_cache[cache_key] = (
+            as_of,
+            currency,
+            all_points,
+            all_markers,
+        )
+        points = all_points[-limit:]
+        visible_dates = {point.date for point in points}
         return ResearchPriceSeries(
             ticker=ticker,
             as_of=as_of,
             currency=currency,
             available_sessions=len(all_points),
-            points=all_points[-limit:],
+            points=points,
+            trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
         )

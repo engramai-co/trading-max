@@ -7,7 +7,7 @@ discovery.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -99,12 +99,112 @@ def load_transactions(paths: Iterable[Path]) -> pd.DataFrame:
     if combined["Time"].isna().any():
         raise ValueError("Trading 212 export contains an invalid Time (UTC) value")
     combined["Shares"] = pd.to_numeric(combined["No. of shares"], errors="coerce")
+    combined["PriceN"] = (
+        pd.to_numeric(combined["Price / share"], errors="coerce")
+        if "Price / share" in combined
+        else pd.Series(float("nan"), index=combined.index)
+    )
     combined["TotalN"] = pd.to_numeric(combined["Total"], errors="coerce").fillna(0.0)
     combined["FeeN"] = pd.to_numeric(
         combined.get("Currency conversion fee", 0), errors="coerce"
     ).fillna(0.0)
     combined["ResultN"] = pd.to_numeric(combined.get("Result", 0), errors="coerce").fillna(0.0)
     return combined.sort_values("Time").reset_index(drop=True)
+
+
+def transaction_marker_rows(
+    account_transactions: Mapping[str, pd.DataFrame],
+    current_positions: Iterable[Mapping[str, object]],
+) -> list[dict[str, Any]]:
+    """Aggregate real broker fills into B/S/T markers for current holdings.
+
+    The marker vocabulary follows the convention used by Chinese broker apps:
+    B means buy-only, S means sell-only, and T means both directions occurred
+    for the same security on the same UTC trading date. Current position ISINs
+    and broker tickers resolve historical aliases without guessing securities.
+    """
+
+    held_tickers: set[str] = set()
+    ticker_aliases: dict[str, str] = {}
+    isin_aliases: dict[str, str] = {}
+    for position in current_positions:
+        canonical = _normalized_security_value(position.get("ticker"))
+        if not canonical:
+            continue
+        held_tickers.add(canonical)
+        for value in (position.get("ticker"), position.get("broker_ticker")):
+            alias = _normalized_security_value(value)
+            if alias:
+                ticker_aliases[alias] = canonical
+        isin = _normalized_security_value(position.get("isin"))
+        if isin:
+            isin_aliases[isin] = canonical
+
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for account, transactions in account_transactions.items():
+        for _, row in transactions.iterrows():
+            action = row.get("Action")
+            side = "buy" if is_buy(action) else "sell" if is_sell(action) else None
+            if side is None:
+                continue
+            isin = _normalized_security_value(row.get("ISIN"))
+            raw_ticker = _normalized_security_value(row.get("Ticker"))
+            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker)
+            if ticker is None and raw_ticker in held_tickers:
+                ticker = raw_ticker
+            if ticker not in held_tickers:
+                continue
+            timestamp = row.get("Time")
+            if not isinstance(timestamp, pd.Timestamp) or pd.isna(timestamp):
+                continue
+            key = (ticker, timestamp.strftime("%Y-%m-%d"))
+            marker = grouped.setdefault(
+                key,
+                {
+                    "ticker": ticker,
+                    "date": key[1],
+                    "accounts": set(),
+                    "buy_orders": 0,
+                    "sell_orders": 0,
+                    "buy_quantity": 0.0,
+                    "sell_quantity": 0.0,
+                    "buy_price_quantity": 0.0,
+                    "sell_price_quantity": 0.0,
+                    "buy_priced_quantity": 0.0,
+                    "sell_priced_quantity": 0.0,
+                },
+            )
+            marker["accounts"].add(str(account).strip().lower())
+            marker[f"{side}_orders"] += 1
+            quantity = row.get("Shares")
+            quantity_value = abs(float(quantity)) if pd.notna(quantity) else 0.0
+            marker[f"{side}_quantity"] += quantity_value
+            price = row.get("PriceN")
+            if pd.notna(price) and quantity_value > 0:
+                marker[f"{side}_price_quantity"] += float(price) * quantity_value
+                marker[f"{side}_priced_quantity"] += quantity_value
+
+    rows: list[dict[str, Any]] = []
+    for marker in grouped.values():
+        has_buys = marker["buy_orders"] > 0
+        has_sells = marker["sell_orders"] > 0
+        kind = "T" if has_buys and has_sells else "B" if has_buys else "S"
+        buy_priced_quantity = marker.pop("buy_priced_quantity")
+        sell_priced_quantity = marker.pop("sell_priced_quantity")
+        buy_price_quantity = marker.pop("buy_price_quantity")
+        sell_price_quantity = marker.pop("sell_price_quantity")
+        marker["kind"] = kind
+        marker["accounts"] = sorted(marker["accounts"])
+        marker["buy_quantity"] = round(marker["buy_quantity"], 8)
+        marker["sell_quantity"] = round(marker["sell_quantity"], 8)
+        marker["buy_average_price"] = (
+            round(buy_price_quantity / buy_priced_quantity, 8) if buy_priced_quantity else None
+        )
+        marker["sell_average_price"] = (
+            round(sell_price_quantity / sell_priced_quantity, 8) if sell_priced_quantity else None
+        )
+        rows.append(marker)
+    return sorted(rows, key=lambda row: (row["date"], row["ticker"]))
 
 
 @dataclass
@@ -522,4 +622,5 @@ __all__ = [
     "policy_metrics",
     "reconstruct_campaigns",
     "summarize_campaigns",
+    "transaction_marker_rows",
 ]

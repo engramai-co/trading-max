@@ -377,6 +377,7 @@ export function ResearchPageView({
         priceSeriesLoading={needsPrices && prices.isPending}
         showValuationAssumptions={!mock}
         ticker={activeTicker}
+        tradeMarkers={instrument?.held ? prices.data?.tradeMarkers ?? [] : []}
         view={activeView}
       />
     </Stack>

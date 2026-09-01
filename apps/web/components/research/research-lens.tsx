@@ -34,6 +34,7 @@ import type {
   OptionSnapshot,
   PriceSeriesPoint,
   ResearchLensSnapshot,
+  ResearchTradeMarker,
   TechnicalRow,
   ValuationRow,
 } from "@/lib/types";
@@ -54,6 +55,7 @@ export function ResearchLens({
   priceSeries,
   priceSeriesError,
   priceSeriesLoading,
+  tradeMarkers,
   referencePrice,
   showValuationAssumptions = true,
   ticker,
@@ -65,6 +67,7 @@ export function ResearchLens({
   priceSeries: PriceSeriesPoint[];
   priceSeriesError: boolean;
   priceSeriesLoading: boolean;
+  tradeMarkers: ResearchTradeMarker[];
   referencePrice?: number | null;
   showValuationAssumptions?: boolean;
   ticker: string;
@@ -96,6 +99,7 @@ export function ResearchLens({
           priceSeries={priceSeries}
           priceSeriesError={priceSeriesError}
           priceSeriesLoading={priceSeriesLoading}
+          tradeMarkers={tradeMarkers}
           technical={technical}
           valuation={valuation}
         />
@@ -107,6 +111,7 @@ export function ResearchLens({
           priceSeriesLoading={priceSeriesLoading}
           technical={technical}
           ticker={ticker}
+          tradeMarkers={tradeMarkers}
         />
       ) : null}
       {view === "valuation" ? (
@@ -162,6 +167,7 @@ function OverviewLens({
   priceSeriesError,
   priceSeriesLoading,
   technical,
+  tradeMarkers,
   valuation,
 }: {
   payload: ResearchLensSnapshot;
@@ -169,6 +175,7 @@ function OverviewLens({
   priceSeriesError: boolean;
   priceSeriesLoading: boolean;
   technical: TechnicalRow | null;
+  tradeMarkers: ResearchTradeMarker[];
   valuation: ValuationRow | null;
 }) {
   return (
@@ -205,6 +212,7 @@ function OverviewLens({
               points={priceSeries}
               showControls={false}
               ticker={payload.ticker}
+              tradeMarkers={tradeMarkers}
             />
           </Paper>
         </Grid.Col>
@@ -250,12 +258,14 @@ function TechnicalLens({
   priceSeriesLoading,
   technical,
   ticker,
+  tradeMarkers,
 }: {
   priceSeries: PriceSeriesPoint[];
   priceSeriesError: boolean;
   priceSeriesLoading: boolean;
   technical: TechnicalRow | null;
   ticker: string;
+  tradeMarkers: ResearchTradeMarker[];
 }) {
   if (!technical) return <Missing />;
   return (
@@ -344,6 +354,7 @@ function TechnicalLens({
           panHistory
           points={priceSeries}
           ticker={ticker}
+          tradeMarkers={tradeMarkers}
         />
         <Divider />
         <Stack gap="xs">
@@ -371,6 +382,7 @@ function PriceSeriesPanel({
   points,
   showControls = true,
   ticker,
+  tradeMarkers,
 }: {
   compact?: boolean;
   currency: string;
@@ -381,6 +393,7 @@ function PriceSeriesPanel({
   points: PriceSeriesPoint[];
   showControls?: boolean;
   ticker: string;
+  tradeMarkers: ResearchTradeMarker[];
 }) {
   if (loading) {
     return (
@@ -418,6 +431,7 @@ function PriceSeriesPanel({
       points={points}
       showControls={showControls}
       ticker={ticker}
+      tradeMarkers={tradeMarkers}
     />
   );
 }

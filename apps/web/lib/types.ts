@@ -48,6 +48,8 @@ export type TechnicalRow = ApiSchemas["TechnicalRow"];
 
 export type PriceSeriesPoint = ApiSchemas["PriceSeriesPoint"];
 
+export type ResearchTradeMarker = ApiSchemas["ResearchTradeMarker"];
+
 export type BenchmarkPricePoint = ApiSchemas["BenchmarkPricePoint"];
 
 export type ResearchPriceSeries = ApiSchemas["ResearchPriceSeries"];

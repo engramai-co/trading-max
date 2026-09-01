@@ -180,7 +180,7 @@ def test_account_review_stage_consumes_typed_lenses_and_publishes_both_accounts(
     )
 
     assert result.warnings == ()
-    assert len(result.artifacts) == 1
+    assert len(result.artifacts) == 2
     stored = artifacts.get_json(result.artifacts[0].artifact_id)
     assert stored.ref.key == "account/account_reviews.json"
     assert stored.ref.kind == "account_review"
@@ -201,6 +201,23 @@ def test_account_review_stage_consumes_typed_lenses_and_publishes_both_accounts(
             review["ending_risk"]["exposures"]["industry"]["buckets"][0]["label"]
             == "Information Technology"
         )
+    markers = artifacts.get_json(result.artifacts[1].artifact_id)
+    assert markers.ref.key == "account/trade_markers.json"
+    assert markers.ref.kind == "trade_markers"
+    assert markers.payload["rows"] == [
+        {
+            "ticker": "HOLD",
+            "date": "2026-08-01",
+            "accounts": ["invest", "isa"],
+            "buy_orders": 2,
+            "sell_orders": 0,
+            "buy_quantity": 2.0,
+            "sell_quantity": 0.0,
+            "kind": "B",
+            "buy_average_price": 100.0,
+            "sell_average_price": None,
+        }
+    ]
 
 
 def test_account_review_stage_is_registered_after_all_authoritative_lenses(

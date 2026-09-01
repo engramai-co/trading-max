@@ -3710,6 +3710,8 @@ export interface components {
             points: components["schemas"]["PriceSeriesPoint"][];
             /** Ticker */
             ticker: string;
+            /** Trademarkers */
+            tradeMarkers?: components["schemas"]["ResearchTradeMarker"][];
         };
         /**
          * ResearchShell
@@ -3804,6 +3806,32 @@ export interface components {
             valuation?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ResearchTradeMarker */
+        ResearchTradeMarker: {
+            /** Accounts */
+            accounts: ("invest" | "isa")[];
+            /** Buyaverageprice */
+            buyAveragePrice: number | null;
+            /** Buyorders */
+            buyOrders: number;
+            /** Buyquantity */
+            buyQuantity: number;
+            /** Date */
+            date: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "B" | "S" | "T";
+            /** Sellaverageprice */
+            sellAveragePrice: number | null;
+            /** Sellorders */
+            sellOrders: number;
+            /** Sellquantity */
+            sellQuantity: number;
+            /** Ticker */
+            ticker: string;
         };
         /** ReviewAttribution */
         ReviewAttribution: {

@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-01
+
+### Added
+
+- Mark real Trading 212 fill days on held-security candlestick charts as B
+  (buy only), S (sell only), or T (both directions), with account, order,
+  quantity, and weighted-average fill details on hover.
+
 ### Fixed
 
 - Keep the research overview candlestick chart fixed to its labelled one-month
