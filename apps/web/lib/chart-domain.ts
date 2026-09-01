@@ -356,24 +356,15 @@ export type MoneyOutcomeChartPoint = {
 };
 
 /**
- * Re-express a cumulative money outcome inside a selected window. The first
- * visible point becomes zero and drawdown is rebuilt from the window's own
- * running P&L peak. This is still a money result, not TWR.
+ * Crop a cumulative money series without changing its financial meaning.
+ * Date ranges control the visible timeline; they must not reset cumulative
+ * P&L because doing so can hide pre-window gains or losses from one account.
  */
-export function rebaseMoneyOutcome<T extends MoneyOutcomeChartPoint>(rows: T[]) {
-  const opening = rows.at(0);
-  if (!opening) return [];
-
-  let pnlPeak = 0;
-  return rows.map((row) => {
-    const pnl = row.pnl - opening.pnl;
-    pnlPeak = Math.max(pnlPeak, pnl);
-    return {
-      ...row,
-      drawdown: Math.min(pnl - pnlPeak, 0),
-      pnl,
-    };
-  });
+export function cropCumulativeMoneyOutcome<T extends MoneyOutcomeChartPoint>(
+  rows: T[],
+  start: string | null,
+) {
+  return start ? rows.filter((row) => row.date >= start) : rows;
 }
 
 /**
