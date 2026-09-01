@@ -94,7 +94,7 @@ const mockCompanies: Array<[string, string, string, string?]> = [
 ];
 
 const mockHeldTickers = new Set([
-  "AAPL", "AMZN", "ARM", "AVGO", "BE", "GOOGL", "LITE", "MU", "NVDA", "VRT",
+  "AAPL", "AMZN", "AVGO", "BE", "GOOGL", "LITE", "MU", "NVDA", "VRT",
 ]);
 
 const mockInstruments: ResearchShell["instruments"] = mockCompanies.map(([
