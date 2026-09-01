@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep the research overview candlestick chart fixed to its labelled one-month
+  window while reserving draggable history for the dedicated technical view.
+
 ## [1.0.2] - 2026-09-01
 
 ### Added

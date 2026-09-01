@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { priceChartWindow } from "@/lib/price-chart";
+import { priceChartRangePoints, priceChartWindow } from "@/lib/price-chart";
 
 const points = Array.from({ length: 504 }, (_, index) => ({
   date: `session-${String(index + 1).padStart(3, "0")}`,
 }));
 
 describe("research price chart windows", () => {
+  it("keeps the overview chart fixed to its labelled one-month range", () => {
+    expect(priceChartRangePoints(points, "1m")).toEqual(points.slice(-21));
+  });
+
   it.each([
     ["1m", 483],
     ["3m", 441],

@@ -2,7 +2,7 @@ name: Release contract
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
 concurrency:
   group: release-contract-${{ github.event.pull_request.number }}
@@ -42,7 +42,14 @@ jobs:
           echo "head=${head_version}" >> "$GITHUB_OUTPUT"
           echo "initial=${initial}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release policy
+        id: policy
+        env:
+          HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix:no-release') }}
+        run: echo "hotfix=${HOTFIX}" >> "$GITHUB_OUTPUT"
+
       - name: Require one SemVer increment
+        if: steps.policy.outputs.hotfix != 'true'
         env:
           BASE_VERSION: ${{ steps.versions.outputs.base }}
           HEAD_VERSION: ${{ steps.versions.outputs.head }}
@@ -54,13 +61,24 @@ jobs:
             python tools/check_version_bump.py --base "$BASE_VERSION" --head "$HEAD_VERSION"
           fi
 
+      - name: Validate same-version hotfix
+        if: steps.policy.outputs.hotfix == 'true'
+        env:
+          BASE_VERSION: ${{ steps.versions.outputs.base }}
+          HEAD_VERSION: ${{ steps.versions.outputs.head }}
+        run: |
+          test "$BASE_VERSION" = "$HEAD_VERSION"
+          python tools/check_unreleased_changelog.py
+
       - name: Require aligned package versions
         run: python tools/check_version_consistency.py --expected "${{ steps.versions.outputs.head }}"
 
       - name: Require a dated changelog release
+        if: steps.policy.outputs.hotfix != 'true'
         run: python tools/check_changelog_entry.py --expected "${{ steps.versions.outputs.head }}"
 
       - name: Validate release notes and tag availability
+        if: steps.policy.outputs.hotfix != 'true'
         env:
           VERSION: ${{ steps.versions.outputs.head }}
         run: |

@@ -18,6 +18,15 @@ export type PriceChartWindow = {
   startValue: string;
 };
 
+export function priceChartRangePoints<T>(
+  points: ReadonlyArray<T>,
+  range: PriceChartRange,
+): ReadonlyArray<T> {
+  const sessions = PRICE_CHART_RANGES.find((item) => item.key === range)?.sessions
+    ?? 252;
+  return Number.isFinite(sessions) ? points.slice(-sessions) : points;
+}
+
 export function priceChartWindow(
   points: ReadonlyArray<Pick<PriceSeriesPoint, "date">>,
   range: PriceChartRange,

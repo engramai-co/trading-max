@@ -41,6 +41,12 @@ and MAJOR for breaking API, configuration, database, or deployment changes.
 Documentation-only and dependency-only pull requests follow the same contract;
 there are no unreleased lanes on `main`.
 
+For an urgent regression in the currently released version, a maintainer may
+apply the `hotfix:no-release` label. That narrowly scoped exception must keep
+all version surfaces unchanged and add a categorized entry under `Unreleased`.
+It does not create another tag or GitHub Release for the existing version;
+ordinary pull requests still require exactly one SemVer increment.
+
 ```bash
 uv sync --all-packages --group dev --frozen
 uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py

@@ -341,6 +341,7 @@ function TechnicalLens({
           currency={technical.currency}
           error={priceSeriesError}
           loading={priceSeriesLoading}
+          panHistory
           points={priceSeries}
           ticker={ticker}
         />
@@ -366,6 +367,7 @@ function PriceSeriesPanel({
   defaultRange = "1y",
   error,
   loading,
+  panHistory = false,
   points,
   showControls = true,
   ticker,
@@ -375,6 +377,7 @@ function PriceSeriesPanel({
   defaultRange?: "1m" | "3m" | "6m" | "1y" | "2y" | "max";
   error: boolean;
   loading: boolean;
+  panHistory?: boolean;
   points: PriceSeriesPoint[];
   showControls?: boolean;
   ticker: string;
@@ -411,6 +414,7 @@ function PriceSeriesPanel({
       compact={compact}
       currency={currency}
       defaultRange={defaultRange}
+      panHistory={panHistory}
       points={points}
       showControls={showControls}
       ticker={ticker}

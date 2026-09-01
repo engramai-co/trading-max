@@ -87,6 +87,15 @@ def test_auto_release_waits_for_protected_main_checks_and_dispatches_full_releas
     assert "python tools/check_version_bump.py --initial" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "gh workflow run release.yml" in workflow
+    assert 'echo "release=false"' in workflow
+
+
+def test_release_contract_allows_only_explicit_same_version_hotfixes() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-contract.yml").read_text(encoding="utf-8")
+
+    assert "hotfix:no-release" in workflow
+    assert 'test "$BASE_VERSION" = "$HEAD_VERSION"' in workflow
+    assert "python tools/check_unreleased_changelog.py" in workflow
 
 
 def test_release_actions_are_pinned_to_full_commit_shas() -> None:
