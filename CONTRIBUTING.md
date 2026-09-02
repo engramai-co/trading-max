@@ -50,7 +50,8 @@ or development commands at a production state directory.
 
 ## Before submitting a change
 
-Every pull request is one releasable change. Before opening or updating it:
+Changes to the installed product are releasable changes. Before opening or
+updating a product pull request:
 
 1. advance `VERSION` by exactly one SemVer increment;
 2. align the Python packages, npm packages and locks, backend `__version__`,
@@ -59,8 +60,11 @@ Every pull request is one releasable change. Before opening or updating it:
 
 Use PATCH for compatible fixes and maintenance, MINOR for compatible features,
 and MAJOR for breaking API, configuration, database, or deployment changes.
-Documentation-only and dependency-only pull requests follow the same contract;
-there are no unreleased lanes on `main`.
+Documentation, screenshots, repository metadata, CI tooling, and test-only
+changes keep the current product version and do not create a release. The
+release-scope check classifies those paths explicitly and treats unknown paths
+as product changes. Dependency and runtime configuration changes remain product
+changes and require a version increment.
 
 For an urgent regression in the currently released version, a maintainer may
 apply the `hotfix:no-release` label. That narrowly scoped exception must keep

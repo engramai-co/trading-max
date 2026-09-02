@@ -9,6 +9,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 DEPLOY_SCRIPT = ROOT / "deploy" / "macos" / "deploy.sh"
+PRODUCTION_SMOKE_SCRIPT = ROOT / "deploy" / "macos" / "production-smoke.sh"
 GIT = shutil.which("git")
 if GIT is None:  # pragma: no cover - Git is a repository test prerequisite.
     raise RuntimeError("git executable is required")
@@ -94,3 +95,10 @@ def test_deploy_accepts_only_commits_reachable_from_main(
     rejected = _run_deploy_validation(checkout, untrusted)
     assert rejected.returncode == 65
     assert "is not reachable from origin/main" in rejected.stdout
+
+
+def test_production_smoke_checks_dynamic_web_routes() -> None:
+    script = PRODUCTION_SMOKE_SCRIPT.read_text(encoding="utf-8")
+
+    assert '"/health"' in script
+    assert '"/analytics"' in script

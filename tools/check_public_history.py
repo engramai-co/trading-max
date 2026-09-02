@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 GIT = shutil.which("git")
 if GIT is None:
     raise RuntimeError("git executable is required")
-ALLOWED_BINARY_PREFIXES = ("apps/web/public/brand/",)
+ALLOWED_BINARY_PREFIXES = (
+    "apps/web/public/brand/",
+    "docs/assets/",
+)
 ALLOWED_DATA_PREFIXES = ("backend/src/trading_max/reference/data/",)
 BLOCKED_ROOTS = (".impeccable/critique/", ".impeccable/live/", "docs/handoffs/")
 BLOCKED_COMPONENTS = {

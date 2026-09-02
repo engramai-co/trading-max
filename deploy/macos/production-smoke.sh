@@ -37,5 +37,9 @@ payload = json.load(sys.stdin)
 if not payload.get("runId") or not payload.get("artifacts"):
     raise SystemExit(f"snapshot contract is incomplete: {payload}")
 '
-curl --fail --silent --show-error --max-time 15 "$WEB_BASE/" >/dev/null
+# A static root response is not enough: an interrupted Next.js build can leave
+# the server process alive while route manifests for dynamic pages are missing.
+for path in "/" "/health" "/analytics"; do
+  curl --fail --silent --show-error --max-time 15 "$WEB_BASE$path" >/dev/null
+done
 printf '%s\n' "Trading Max read-only production smoke passed"

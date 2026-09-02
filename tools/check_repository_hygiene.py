@@ -68,7 +68,10 @@ BLOCKED_BINARY_SUFFIXES = {
     ".sqlite",
     ".sqlite3",
 }
-ALLOWED_PUBLIC_BINARY_PREFIXES = ("apps/web/public/brand/",)
+ALLOWED_PUBLIC_BINARY_PREFIXES = (
+    "apps/web/public/brand/",
+    "docs/assets/",
+)
 ALLOWED_REFERENCE_DATA_PREFIXES = ("backend/src/trading_max/reference/data/",)
 
 

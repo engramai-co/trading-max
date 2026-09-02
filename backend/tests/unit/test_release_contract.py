@@ -10,6 +10,7 @@ from tools.release_contract import (
     validate_project_versions,
     validate_version_increment,
 )
+from tools.release_scope import is_non_product_path, normalize_version_surface, release_required
 
 
 def test_public_release_baseline_is_exactly_one_zero_zero() -> None:
@@ -90,12 +91,76 @@ def test_auto_release_waits_for_protected_main_checks_and_dispatches_full_releas
     assert 'echo "release=false"' in workflow
 
 
-def test_release_contract_allows_only_explicit_same_version_hotfixes() -> None:
+def test_release_contract_supports_non_product_changes_and_explicit_hotfixes() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-contract.yml").read_text(encoding="utf-8")
 
     assert "hotfix:no-release" in workflow
+    assert "Resolve release scope" in workflow
+    assert "steps.scope.outputs.release_required" in workflow
+    assert "Preserve the product version for non-product changes" in workflow
     assert 'test "$BASE_VERSION" = "$HEAD_VERSION"' in workflow
     assert "python tools/check_unreleased_changelog.py" in workflow
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "README.md",
+        "docs/assets/research-overview-1080p.png",
+        ".github/workflows/release-contract.yml",
+        "tools/check_release_scope.py",
+        "deploy/macos/production-smoke.sh",
+        "backend/tests/unit/test_release_contract.py",
+        "apps/web/lib/chart-domain.test.ts",
+    ],
+)
+def test_non_product_paths_do_not_require_a_release(path: str) -> None:
+    assert is_non_product_path(path)
+    assert not release_required([path])
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "apps/web/components/portfolio-charts.tsx",
+        "backend/src/trading_max/analytics/performance.py",
+        "services/api/trading_max_api/app.py",
+        "deploy/macos/deploy.sh",
+        "apps/web/package.json",
+    ],
+)
+def test_product_paths_require_a_release(path: str) -> None:
+    assert not is_non_product_path(path)
+    assert release_required(["README.md", path])
+
+
+@pytest.mark.parametrize(
+    ("path", "before", "after"),
+    [
+        ("VERSION", "1.0.4\n", "1.0.5\n"),
+        (
+            "package.json",
+            '{"name":"trading-max","version":"1.0.4","private":true}',
+            '{"name":"trading-max","version":"1.0.5","private":true}',
+        ),
+        (
+            "pyproject.toml",
+            '[project]\nname = "trading-max"\nversion = "1.0.4"\n',
+            '[project]\nname = "trading-max"\nversion = "1.0.5"\n',
+        ),
+        (
+            "backend/src/trading_max/__init__.py",
+            '__version__ = "1.0.4"\n',
+            '__version__ = "1.0.5"\n',
+        ),
+    ],
+)
+def test_version_only_surface_changes_do_not_create_product_scope(
+    path: str,
+    before: str,
+    after: str,
+) -> None:
+    assert normalize_version_surface(path, before) == normalize_version_surface(path, after)
 
 
 def test_release_actions_are_pinned_to_full_commit_shas() -> None:

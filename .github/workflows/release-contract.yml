@@ -24,6 +24,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Resolve release scope
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python tools/check_release_scope.py \
+            --base "$BASE_SHA" \
+            --head HEAD \
+            --github-output "$GITHUB_OUTPUT"
+
       - name: Resolve base and proposed versions
         id: versions
         env:
@@ -46,10 +56,19 @@ jobs:
         id: policy
         env:
           HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix:no-release') }}
-        run: echo "hotfix=${HOTFIX}" >> "$GITHUB_OUTPUT"
+          RELEASE_REQUIRED: ${{ steps.scope.outputs.release_required }}
+        run: |
+          if [ "$HOTFIX" = "true" ]; then
+            mode="hotfix"
+          elif [ "$RELEASE_REQUIRED" = "true" ]; then
+            mode="release"
+          else
+            mode="non-product"
+          fi
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
 
       - name: Require one SemVer increment
-        if: steps.policy.outputs.hotfix != 'true'
+        if: steps.policy.outputs.mode == 'release'
         env:
           BASE_VERSION: ${{ steps.versions.outputs.base }}
           HEAD_VERSION: ${{ steps.versions.outputs.head }}
@@ -62,7 +81,7 @@ jobs:
           fi
 
       - name: Validate same-version hotfix
-        if: steps.policy.outputs.hotfix == 'true'
+        if: steps.policy.outputs.mode == 'hotfix'
         env:
           BASE_VERSION: ${{ steps.versions.outputs.base }}
           HEAD_VERSION: ${{ steps.versions.outputs.head }}
@@ -70,15 +89,22 @@ jobs:
           test "$BASE_VERSION" = "$HEAD_VERSION"
           python tools/check_unreleased_changelog.py
 
+      - name: Preserve the product version for non-product changes
+        if: steps.policy.outputs.mode == 'non-product'
+        env:
+          BASE_VERSION: ${{ steps.versions.outputs.base }}
+          HEAD_VERSION: ${{ steps.versions.outputs.head }}
+        run: test "$BASE_VERSION" = "$HEAD_VERSION"
+
       - name: Require aligned package versions
         run: python tools/check_version_consistency.py --expected "${{ steps.versions.outputs.head }}"
 
       - name: Require a dated changelog release
-        if: steps.policy.outputs.hotfix != 'true'
+        if: steps.policy.outputs.mode == 'release'
         run: python tools/check_changelog_entry.py --expected "${{ steps.versions.outputs.head }}"
 
       - name: Validate release notes and tag availability
-        if: steps.policy.outputs.hotfix != 'true'
+        if: steps.policy.outputs.mode == 'release'
         env:
           VERSION: ${{ steps.versions.outputs.head }}
         run: |
