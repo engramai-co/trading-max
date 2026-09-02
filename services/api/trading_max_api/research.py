@@ -68,6 +68,9 @@ SOURCE_TERMS: dict[str, tuple[str, ...]] = {
     "VRT": ("vrt_", "vertiv"),
 }
 
+CURRENT_MARKET_KEY = "research/market_snapshot.json"
+LEGACY_MARKET_KEY = "research/daily_market.json"
+
 
 def _artifact(
     manifest: SnapshotManifest,
@@ -362,6 +365,16 @@ class ResearchLedger:
                 return cached
         return []
 
+    def _market_rows(self, manifest: SnapshotManifest) -> list[JsonObject]:
+        """Read the typed market snapshot, retaining legacy-only compatibility."""
+
+        return self._cached_rows(
+            manifest,
+            CURRENT_MARKET_KEY,
+            _market_rows,
+            fallback_key=LEGACY_MARKET_KEY,
+        )
+
     def status(
         self,
         manifest: SnapshotManifest,
@@ -372,8 +385,14 @@ class ResearchLedger:
         states: list[ResearchArtifactState] = []
         rank = {"unknown": 0, "fresh": 1, "aging": 2, "stale": 3}
         overall = "unknown"
+        has_current_market = _artifact(manifest, CURRENT_MARKET_KEY) is not None
         for artifact in manifest.artifacts:
             if not artifact.key.startswith("research/"):
+                continue
+            # ``daily_market.json`` was the pre-typed market artifact. Once a
+            # typed market snapshot exists it is superseded, not a second
+            # freshness requirement for the same data boundary.
+            if artifact.key == LEGACY_MARKET_KEY and has_current_market:
                 continue
             age, freshness = _freshness(artifact, now)
             warnings = list(artifact.warnings)
@@ -405,10 +424,7 @@ class ResearchLedger:
         self,
         manifest: SnapshotManifest,
     ) -> list[ResearchInstrument]:
-        market_raw = self._read_optional(manifest, "research/daily_market.json")
-        if not market_raw:
-            market_raw = self._read_optional(manifest, "research/market_snapshot.json")
-        market = _market_rows(market_raw)
+        market = self._market_rows(manifest)
         technical = _technical_rows(self._read_optional(manifest, "research/technical.json"))
         valuations = _valuation_rows(self._read_optional(manifest, "research/valuation.json"))
         options_raw = self._read_optional(manifest, "research/options.json")
@@ -619,15 +635,7 @@ class ResearchLedger:
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
         ticker = _canonical_ticker(ticker)
-        market = _find(
-            self._cached_rows(
-                manifest,
-                "research/daily_market.json",
-                _market_rows,
-                fallback_key="research/market_snapshot.json",
-            ),
-            ticker,
-        )
+        market = _find(self._market_rows(manifest), ticker)
         technical = _find(
             self._cached_rows(manifest, "research/technical.json", _technical_rows),
             ticker,
@@ -763,15 +771,7 @@ class ResearchLedger:
         """
 
         ticker = _canonical_ticker(ticker)
-        market = _find(
-            self._cached_rows(
-                manifest,
-                "research/daily_market.json",
-                _market_rows,
-                fallback_key="research/market_snapshot.json",
-            ),
-            ticker,
-        )
+        market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -870,7 +870,8 @@ class ResearchLedger:
             artifact_hashes = tuple(
                 _artifact(manifest, key).sha256 if _artifact(manifest, key) else None
                 for key in (
-                    "research/daily_market.json",
+                    CURRENT_MARKET_KEY,
+                    LEGACY_MARKET_KEY,
                     "research/technical.json",
                     "research/options.json",
                     "research/valuation.json",
@@ -884,15 +885,7 @@ class ResearchLedger:
             # points. Building a full ticker snapshot here would also read
             # fundamentals, earnings, broker and look-through artifacts for
             # every historical run, which dominated the research page latency.
-            market = _find(
-                self._cached_rows(
-                    manifest,
-                    "research/daily_market.json",
-                    _market_rows,
-                    fallback_key="research/market_snapshot.json",
-                ),
-                ticker,
-            )
+            market = _find(self._market_rows(manifest), ticker)
             technical = _find(
                 self._cached_rows(manifest, "research/technical.json", _technical_rows),
                 ticker,

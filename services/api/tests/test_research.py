@@ -64,6 +64,49 @@ def test_research_freshness_is_per_artifact(
     assert by_kind["valuation"].data_as_of == "2026-08-01"
 
 
+def test_typed_market_supersedes_legacy_market_for_values_and_freshness(
+    tmp_path: Path,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    legacy = store.immutable_artifacts.put_json(
+        key="research/daily_market.json",
+        payload={
+            "as_of": "2026-08-06",
+            "rows": [{"t": "BE", "spot": 228.96, "ccy": "USD"}],
+        },
+        kind="market",
+        as_of="2026-08-06",
+        producer_version="legacy-import-v1",
+    )
+    current = store.immutable_artifacts.put_json(
+        key="research/market_snapshot.json",
+        payload={
+            "as_of": "2026-09-02",
+            "technical": {"rows": [{"ticker": "BE", "price": 209.52, "currency": "USD"}]},
+        },
+        kind="market",
+        as_of="2026-09-02",
+        producer_version="market-snapshot-v5",
+    )
+    store.immutable_snapshots.publish(
+        scope="research",
+        source="test",
+        artifacts=[legacy, current],
+    )
+    manifest = store.latest_manifest()
+    assert manifest is not None
+    ledger = ResearchLedger(store, WatchlistStore(tmp_path / "runtime"))
+
+    snapshot = ledger.ticker_snapshot("BE", manifest)
+    status = ledger.status(manifest, now=datetime(2026, 9, 3, 12, tzinfo=UTC))
+
+    assert snapshot.market is not None
+    assert snapshot.market["spot"] == 209.52
+    assert snapshot.market["asOf"] == "2026-09-02"
+    assert status.overall_freshness == "fresh"
+    assert [artifact.key for artifact in status.artifacts] == ["research/market_snapshot.json"]
+
+
 def test_timeline_deduplicates_account_only_snapshots(
     research_root: Path,
     tmp_path: Path,

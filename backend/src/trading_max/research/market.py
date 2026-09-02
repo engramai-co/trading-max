@@ -39,6 +39,9 @@ class TechnicalResearchBatch(DomainModel):
     tickers: list[str]
     rows: list[TechnicalResearchArtifact]
     benchmark_series: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    benchmark_currency: str | None = None
+    benchmark_return_basis: str | None = None
+    benchmark_fx_ticker: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -57,6 +60,38 @@ class OptionsResearchBatch(DomainModel):
 HistoryLoader = Callable[[str, str], pd.DataFrame]
 OptionsLoader = Callable[[str, str, float], OptionsResearchArtifact]
 AdrLoader = Callable[[str, pd.DataFrame, str], dict[str, Any] | None]
+
+
+def _gbp_benchmark_series(
+    asset_frame: pd.DataFrame,
+    gbp_usd_frame: pd.DataFrame,
+    *,
+    sessions: int = 2_000,
+) -> list[dict[str, Any]]:
+    """Return an adjusted USD benchmark from a GBP investor's perspective.
+
+    ``GBPUSD=X`` is quoted as USD per GBP, so an adjusted USD close is divided
+    by the FX close. Each leg is forward-filled independently across the union
+    of their genuine sessions. This preserves FX-only weekdays without
+    inventing weekend observations or future prices.
+    """
+
+    if asset_frame.empty or gbp_usd_frame.empty:
+        return []
+
+    def daily_close(frame: pd.DataFrame, name: str) -> pd.Series:
+        values = pd.to_numeric(frame["Close"], errors="coerce").to_numpy()
+        index = pd.DatetimeIndex([timestamp.date() for timestamp in frame.index])
+        return pd.Series(values, index=index, name=name).groupby(level=0).last()
+
+    asset = daily_close(asset_frame, "asset_usd")
+    fx = daily_close(gbp_usd_frame, "usd_per_gbp")
+    aligned = pd.concat([asset, fx], axis=1, sort=True).sort_index().ffill().dropna()
+    aligned = aligned[(aligned["asset_usd"] > 0) & (aligned["usd_per_gbp"] > 0)]
+    if aligned.empty:
+        return []
+    gbp = pd.DataFrame({"Close": aligned["asset_usd"] / aligned["usd_per_gbp"]})
+    return price_series(gbp, {}, sessions=sessions)
 
 
 def _default_history(ticker: str, period: str) -> pd.DataFrame:
@@ -109,12 +144,23 @@ class MarketResearchService:
         warnings: list[str] = []
         option_warnings: list[str] = []
         benchmark_series: dict[str, list[dict[str, Any]]] = {}
+        try:
+            gbp_usd_frame = self.history_loader("GBPUSD=X", history_period)
+        except Exception as exc:
+            gbp_usd_frame = pd.DataFrame()
+            warnings.append(
+                f"GBPUSD=X: benchmark FX history unavailable ({type(exc).__name__}: {exc})"
+            )
         for benchmark in ("VOO", "QQQ", "VT"):
             try:
                 frame = benchmark_frames.get(benchmark)
                 if frame is None:
                     frame = self.history_loader(benchmark, history_period)
-                benchmark_series[benchmark] = price_series(frame, {}, sessions=2_000)
+                benchmark_series[benchmark] = _gbp_benchmark_series(
+                    frame,
+                    gbp_usd_frame,
+                    sessions=2_000,
+                )
             except Exception as exc:
                 warnings.append(
                     f"{benchmark}: benchmark history unavailable ({type(exc).__name__}: {exc})"
@@ -156,6 +202,9 @@ class MarketResearchService:
             tickers=universe,
             rows=technical_rows,
             benchmark_series=benchmark_series,
+            benchmark_currency="GBP",
+            benchmark_return_basis="auto_adjusted_close",
+            benchmark_fx_ticker="GBPUSD=X",
             warnings=warnings + option_warnings,
         )
         options_batch = OptionsResearchBatch(

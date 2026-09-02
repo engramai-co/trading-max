@@ -528,7 +528,7 @@ def test_reconcile_accepts_typed_market_snapshot(tmp_path: Path) -> None:
     class TypedStore:
         def read_json(self, _run_id: str, key: str) -> dict:
             if key == "research/daily_market.json":
-                raise FileNotFoundError(key)
+                return {"rows": [{"t": "OLD", "spot": 1}]}
             if key == "research/market_snapshot.json":
                 return {"technical": {"rows": [{"ticker": "BE", "price": 25}]}}
             if key == "research/technical.json":
