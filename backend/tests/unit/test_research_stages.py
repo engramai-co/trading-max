@@ -25,6 +25,18 @@ from trading_max.worker import StageExecutionError
 
 def _history(ticker: str, _period: str) -> pd.DataFrame:
     index = pd.date_range("2023-01-01", periods=760, freq="B", tz=UTC)
+    if ticker == "GBPUSD=X":
+        close = np.full(len(index), 2.0)
+        return pd.DataFrame(
+            {
+                "Open": close,
+                "High": close,
+                "Low": close,
+                "Close": close,
+                "Volume": np.zeros(len(index)),
+            },
+            index=index,
+        )
     base = {"SPY": 400.0, "QQQ": 350.0, "SOXX": 450.0}.get(ticker, 100.0)
     close = base + np.linspace(0, 25, len(index))
     return pd.DataFrame(
@@ -106,6 +118,8 @@ def test_research_stages_use_one_immutable_market_input(tmp_path) -> None:
     }
     assert set(technical_payload["benchmark_series"]) == {"VOO", "QQQ", "VT"}
     assert len(technical_payload["benchmark_series"]["VOO"]) == 760
+    assert technical_payload["benchmark_currency"] == "GBP"
+    assert technical_payload["benchmark_return_basis"] == "auto_adjusted_close"
     assert options_result.artifacts[0].key == "research/options.json"
     assert adr_result.artifacts[0].key == "research/adr.json"
     assert technical_result.artifacts[0].dependency_artifact_ids == [market_ref.artifact_id]

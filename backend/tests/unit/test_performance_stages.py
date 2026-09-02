@@ -32,6 +32,8 @@ NAV_WITH_EMPTY_INITIAL_TWR = (
 def _seed_nav(
     tmp_path: Path,
     nav: str = NAV,
+    *,
+    technical: dict | None = None,
 ) -> tuple[ContentAddressedArtifactStore, SnapshotStore]:
     artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
     snapshots = SnapshotStore(tmp_path)
@@ -45,6 +47,15 @@ def _seed_nav(
         )
         for code in ("A", "B")
     ]
+    if technical is not None:
+        refs.append(
+            artifacts.put_json(
+                key="research/technical.json",
+                payload=technical,
+                kind="technical",
+                producer_version="fixture-v1",
+            )
+        )
     snapshots.publish(scope="accounts", source="fixture", artifacts=refs)
     return artifacts, snapshots
 
@@ -146,3 +157,65 @@ def test_account_performance_stage_bases_empty_initial_twr_at_one(
     assert payload["A"]["twr_total_return"] == pytest.approx(0.01505)
     assert payload["A"]["max_drawdown"] == pytest.approx(0.0)
     assert payload["A"]["net_external_flows_gbp"] == pytest.approx(2000)
+
+
+def test_account_performance_stage_aligns_gbp_adjusted_voo_for_information_ratio(
+    tmp_path: Path,
+) -> None:
+    technical = {
+        "benchmark_currency": "GBP",
+        "benchmark_return_basis": "auto_adjusted_close",
+        "benchmark_series": {
+            "VOO": [
+                {"date": "2026-08-01", "close": 100.0},
+                {"date": "2026-08-02", "close": 101.0},
+                {"date": "2026-08-03", "close": 102.0},
+            ]
+        },
+    }
+    artifacts, snapshots = _seed_nav(tmp_path, technical=technical)
+
+    result = AccountPerformanceStage(artifacts, snapshots).run(
+        StageContext(job_id="job", scope="accounts")
+    )
+
+    payload = artifacts.get_json(
+        next(
+            ref.artifact_id
+            for ref in result.artifacts
+            if ref.key == "account/synthetic_nav_metrics.json"
+        )
+    ).payload["A"]
+    assert payload["information_ratio"] is not None
+    assert payload["benchmark_ticker"] == "VOO"
+    assert payload["benchmark_total_return"] == pytest.approx(0.02)
+    assert payload["benchmark_currency"] == "GBP"
+
+
+def test_account_performance_stage_rejects_unconverted_benchmark(tmp_path: Path) -> None:
+    technical = {
+        "benchmark_currency": "USD",
+        "benchmark_return_basis": "auto_adjusted_close",
+        "benchmark_series": {
+            "VOO": [
+                {"date": "2026-08-01", "close": 100.0},
+                {"date": "2026-08-02", "close": 101.0},
+                {"date": "2026-08-03", "close": 102.0},
+            ]
+        },
+    }
+    artifacts, snapshots = _seed_nav(tmp_path, technical=technical)
+
+    result = AccountPerformanceStage(artifacts, snapshots).run(
+        StageContext(job_id="job", scope="accounts")
+    )
+
+    payload = artifacts.get_json(
+        next(
+            ref.artifact_id
+            for ref in result.artifacts
+            if ref.key == "account/synthetic_nav_metrics.json"
+        )
+    ).payload["A"]
+    assert payload["information_ratio"] is None
+    assert payload["benchmark_ticker"] is None

@@ -600,13 +600,15 @@ class WatchlistStore:
     ) -> None:
         selected = {_canonical_ticker(ticker) for ticker in tickers}
         try:
-            market = store.read_json(manifest.run_id, "research/daily_market.json")
+            market = store.read_json(
+                manifest.run_id,
+                "research/market_snapshot.json",
+            )
         except FileNotFoundError:
+            market = {}
+        if not market:
             try:
-                market = store.read_json(
-                    manifest.run_id,
-                    "research/market_snapshot.json",
-                )
+                market = store.read_json(manifest.run_id, "research/daily_market.json")
             except FileNotFoundError:
                 market = {}
         try:

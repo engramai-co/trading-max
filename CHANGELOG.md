@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-09-03
+
+### Fixed
+
+- Prefer the current typed market snapshot throughout the research workbench
+  and freshness status, while retaining legacy market data only as a fallback.
+- Compare account TWR with auto-adjusted VOO, QQQ, and VT series translated
+  into GBP, and calculate VOO benchmark return and information ratio over the
+  account's aligned daily valuation intervals.
+
 ## [1.0.6] - 2026-09-03
 
 ### Added
