@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-09-02
+
+### Changed
+
+- Reduce the public documentation surface to current user, contributor, and
+  architecture contracts; consolidate scope and governance into the primary
+  guides and remove superseded research and generated design records.
+- Ignore local agent, editor, benchmark, research, design-QA, build, test, and
+  coverage artifacts, with repository-hygiene checks preventing them from
+  returning to the public tree.
+
 ### Fixed
 
 - Distinguish selected-period and cumulative net P&L in money-chart tooltips,

@@ -1,11 +1,32 @@
 # Contributing
 
-Thank you for improving Trading Max. Read [GOVERNANCE.md](GOVERNANCE.md) and
+Thank you for improving Trading Max. Read
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before participating.
 
 Open an issue before implementing a material feature, provider integration,
 schema change, or deployment change. Small bug fixes and documentation
 corrections may go directly to a pull request.
+
+## Governance and maintainership
+
+Trading Max is an Engram-led open-source project. Yuhan Wang is the current
+project lead and release owner, with final responsibility for product scope and
+releases while the maintainer team is small.
+
+- Documentation, tests, and backwards-compatible fixes may be approved by one
+  maintainer.
+- User-facing features and material data-model changes require an issue or RFC
+  covering motivation, alternatives, migration, privacy, and test impact.
+- Breaking API, configuration, database, deployment, governance, or licensing
+  changes require an explicit major-version or policy decision.
+- Security fixes may be developed privately and disclosed after a patched
+  release is available.
+
+Maintainers protect financial correctness, privacy, recoverability, backwards
+compatibility, CI, releases, and security response. Issues are triaged and
+community pull requests reviewed on a best-effort basis. Consistent
+contributors who demonstrate good judgement in these areas may be invited to
+maintain the project.
 
 ## Development setup
 

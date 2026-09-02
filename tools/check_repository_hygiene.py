@@ -33,10 +33,29 @@ BLOCKED_NAMES = {
     "secrets.json",
 }
 PRIVATE_DOCUMENT_ROOTS = (
+    ".codegraph/",
+    ".codex/",
+    ".cursor/",
+    ".github/hooks/",
+    ".impeccable/",
+    "design-system/",
+    "docs/internal/",
+    "docs/research/",
     ".impeccable/critique/",
     ".impeccable/live/",
     "docs/handoffs/",
 )
+PRIVATE_DOCUMENT_NAMES = {
+    "DESIGN.md",
+    "PRODUCT.md",
+    "design-qa.md",
+    "local-performance-baseline-and-benchmark-matrix.md",
+    "local-performance-baseline-results-2026-08-29.md",
+    "typescript-full-stack-migration-plan.md",
+}
+PRIVATE_TOOL_PATHS = {
+    "apps/web/scripts/run-browser-baseline.mjs",
+}
 HARDCODED_HOME_MARKERS = ("/Users/", "/home/")
 PRIVATE_MARKERS = (".ts.net",)
 BLOCKED_BINARY_SUFFIXES = {
@@ -75,6 +94,9 @@ def violations() -> list[str]:
     found: list[str] = []
     for path in tracked_files():
         parts = Path(path).parts
+        if Path(path).name in PRIVATE_DOCUMENT_NAMES or path in PRIVATE_TOOL_PATHS:
+            found.append(f"{path}: private working artifact")
+            continue
         if path.startswith(PRIVATE_DOCUMENT_ROOTS):
             found.append(f"{path}: private working document")
             continue
