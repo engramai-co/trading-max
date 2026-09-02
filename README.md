@@ -1,68 +1,62 @@
-# Trading Max Portfolio
+<p align="center">
+  <img src="apps/web/public/brand/trading-max-social.svg" alt="Trading Max — local-first portfolio intelligence" width="100%">
+</p>
 
-Trading Max is a local-first, single-user portfolio intelligence application.
-It combines read-only Trading 212 account data, portfolio analytics, ETF
-look-through, market research, valuation, options structure, and optional LLM
-analysis in one auditable workspace.
+<h1 align="center">Trading Max</h1>
 
-> **Status:** V1 beta. The supported boundary is a local, single-user macOS
-> installation. The project is read-only and does not provide investment,
-> tax, legal, brokerage, or uptime advice.
+<p align="center">
+  <strong>Your Trading 212 portfolio, performance, holdings, and research in one private workspace.</strong>
+</p>
 
-The canonical repository is
-[`engramai-co/trading-max`](https://github.com/engramai-co/trading-max).
-Protected `main` accepts only owner-authorized pull requests with green CI and
-Security checks.
+<p align="center">
+  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/engramai-co/trading-max?style=flat-square&color=2563EB"></a>
+  <a href="https://github.com/engramai-co/trading-max/actions/workflows/ci.yml"><img alt="CI status" src="https://img.shields.io/github/actions/workflow/status/engramai-co/trading-max/ci.yml?branch=main&style=flat-square&label=build"></a>
+  <a href="LICENSE"><img alt="Apache 2.0 licence" src="https://img.shields.io/github/license/engramai-co/trading-max?style=flat-square&color=171A21"></a>
+  <img alt="macOS 13 or newer" src="https://img.shields.io/badge/macOS-13%2B-171A21?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Read-only broker access" src="https://img.shields.io/badge/broker%20access-read--only-16A34A?style=flat-square">
+</p>
 
-## V1 at a glance
+<p align="center">
+  <a href="#install-with-codex">Install</a> ·
+  <a href="#what-you-get">Features</a> ·
+  <a href="docs/installation/local-installation.md">Installation guide</a> ·
+  <a href="SUPPORT.md">Support</a> ·
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
 
-- responsive Next.js dashboard and FastAPI control plane;
-- read-only Trading 212 Invest and Stocks ISA ingestion;
-- immutable snapshots, cash-flow-aware performance, ETF look-through, and GICS
-  classification;
-- per-ticker technical, valuation, fundamentals, estimates, financials,
-  options, and research-ledger lenses;
-- durable refresh jobs, health/readiness views, backups, and safe restore;
-- OS credential-store-backed Trading 212, OpenCode, and DeepSeek settings;
-- local foreground operation plus an optional per-user macOS service.
+Trading Max turns read-only Trading 212 data into a portfolio you can inspect:
+actual profit and loss, cash-flow-aware returns, ETF look-through, allocation,
+risk, and per-security research. It runs on your computer, keeps credentials in
+your operating system's credential store, and never places trades.
 
-```text
-Browser ──> Next.js BFF ──> FastAPI ──> durable worker
-                              │               │
-                              ├── SQLite      ├── Trading 212
-                              ├── snapshots   ├── market research
-                              └── artifacts   └── optional LLM providers
-```
+<p align="center">
+  <img src="docs/assets/trading-max-research-overview-1080p.jpg" alt="Trading Max research workbench showing a security overview, candlestick chart, trade markers, and research signals" width="100%">
+</p>
 
-State and credentials stay outside the Git checkout. Failed refreshes never
-replace the last valid immutable snapshot, and the product never places trades.
+<p align="center"><sub>Research overview shown with synthetic sample data.</sub></p>
 
-## Install locally
+## Install with Codex
 
-Clone the repository, open the checkout in Codex, and give it one setup request:
+Clone the repository and open the folder in Codex:
 
 ```bash
 git clone https://github.com/engramai-co/trading-max.git
 cd trading-max
 ```
 
+Then ask Codex:
+
 ```text
 Set this project up completely for local use.
 ```
 
-The repository-scoped
-[`trading-max-onboard`](.agents/skills/trading-max-onboard/SKILL.md) skill and
-[`AGENTS.md`](AGENTS.md) tell Codex to perform the locked installation and
-production build, initialize external state, start the app on loopback, and
-verify the local processes without asking for more setup instructions.
+Codex installs and verifies the app, then opens Settings. Enter your own
+read-only Trading 212 credentials there—not in chat—and run the first refresh.
 
-Codex then opens the locally deployed Settings page. The user enters, tests,
-and saves their own read-only Trading 212 API credentials there, never in chat.
-After the first refresh completes and account totals are plausible, setup is
-finished. An external LLM key is optional and is not required to start using
-the deterministic product path.
+## Install manually
 
-For a guided manual installation:
+You need macOS 13+, Git, Python 3.12, [uv](https://docs.astral.sh/uv/), and
+Node.js 22 LTS.
 
 ```bash
 git clone https://github.com/engramai-co/trading-max.git
@@ -70,85 +64,55 @@ cd trading-max
 uv run --package trading-max-backend trading-max onboard
 ```
 
-Requirements and platform support are documented in the
-[local installation guide](docs/installation/local-installation.md). macOS is
-the first-class V1 target; Linux desktop requires a Secret Service-compatible
-keyring. Windows and unattended headless Linux are not production-supported in
-V1.
-
-## Local development
+The guided installer builds the app, stores its state outside the repository,
+and opens the local dashboard. For later foreground starts:
 
 ```bash
-uv sync --all-packages --group dev --frozen
-npm --prefix apps/web ci --no-audit --no-fund
-
-npm run dev:api
-PORTFOLIO_BACKEND_URL=http://127.0.0.1:8421 npm run dev
+deploy/local/start.sh
 ```
 
-Use a synthetic external state root for development. Never point tests or
-manual development commands at production state.
+Trading Max is available at [http://127.0.0.1:3413](http://127.0.0.1:3413).
+See the [installation guide](docs/installation/local-installation.md) for Linux,
+Windows preview, custom state locations, background services, and recovery.
 
-## Repository layout
+## What you get
 
-| Path | Responsibility |
-|---|---|
-| `apps/web` | Next.js interface and server-side backend proxy |
-| `services/api` | FastAPI routes, settings, projections, and schedulers |
-| `backend` | Domain, ingestion, analytics, research, storage, and worker |
-| `contracts` | Generated OpenAPI contract consumed by the frontend |
-| `deploy/local` | Supported local workstation runtime |
-| `deploy/macos` | Advanced operator-managed macOS service profile |
-| `docs` | Architecture, installation, and local operations |
+- **One portfolio view** — combine Invest and Stocks ISA accounts while keeping
+  account-level detail available.
+- **Performance you can explain** — actual P&L, cash-flow-aware TWR, drawdown,
+  and market benchmark comparisons.
+- **Holdings beneath the ticker** — direct positions, ETF look-through,
+  countries, sectors, GICS classifications, and concentration.
+- **Seven research lenses** — overview, technicals, valuation, fundamentals,
+  estimates, financials, and options, including real trade markers where data
+  is available.
+- **Recoverable local data** — immutable snapshots, visible refresh health,
+  backups, and safe restore.
 
-## Documentation
+Optional model providers can add narrative synthesis. Portfolio ingestion,
+analytics, and the research workspace remain usable without an LLM key.
 
-- [System overview](docs/architecture/system-overview.md)
-- [API and contract guide](docs/api/README.md)
-- [Local installation](docs/installation/local-installation.md)
-- [Coding-agent onboarding](docs/operations/agent-local-deployment-runbook.md)
-- [Interface-lens architecture](docs/architecture/interface-lenses.md)
-- [Security Master and GICS](docs/architecture/security-master-and-gics.md)
-- [LLM synthesis](docs/architecture/llm-synthesis.md)
-- [Contributing and release checks](CONTRIBUTING.md)
+## Private and read-only by design
+
+- Trading Max requests read-only broker access and has no order-placement path.
+- Credentials stay in Keychain or the platform credential manager.
+- Portfolio state, logs, snapshots, and provider responses stay outside Git.
+- The web app and API listen on loopback by default.
+- A failed refresh cannot replace the last valid snapshot.
+
+V1 is a local, single-user application with macOS as its first-class platform.
+It is not a hosted service and does not provide investment, tax, legal,
+brokerage, or uptime advice. Read [Privacy](PRIVACY.md), [Security](SECURITY.md),
+and [Support](SUPPORT.md) before using real account data.
+
+## Project links
+
+- [Installation and first refresh](docs/installation/local-installation.md)
 - [Provider and data-source notices](THIRD_PARTY_NOTICES.md)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Licence](LICENSE) and [trademark policy](TRADEMARKS.md)
 
-Project policy is defined in [SECURITY.md](SECURITY.md),
-[PRIVACY.md](PRIVACY.md), [SUPPORT.md](SUPPORT.md),
-and [TRADEMARKS.md](TRADEMARKS.md).
-
-## Scope boundary
-
-V1 does not provide brokerage order placement, public-internet hosting,
-multi-user authentication, tenancy, or a hosted service. This repository does
-not contain user credentials, account data, provider downloads, or remote-host
-configuration. Local installations run in the foreground or as explicitly
-configured user-managed services.
-
-Trading Max stays local-first, read-only, explainable, and recoverable. Current
-work focuses on first-run reliability, backup visibility, update provenance,
-and broader synthetic end-to-end coverage. Automated trading, invented values
-for missing data, and unsupported provider integrations remain explicit
-non-goals. Feature proposals should explain user value, data provenance,
-privacy impact, failure behaviour, and ongoing maintenance cost.
-
-## Providers, data, and affiliation
-
-Trading Max contains independently written adapters for the official Trading
-212 Public API and optional third-party research providers. It depends on the
-open-source `yfinance` package but does not copy, bundle, or redistribute Yahoo
-Finance market data. It does not ship broker data, portfolio snapshots, cached
-provider responses, company logos, or model output.
-
-Provider access remains subject to each provider's terms and the permissions
-selected by the local user. Trading Max is not affiliated with or endorsed by
-Trading 212, Yahoo, Bloomberg/OpenFIGI, any ETF issuer, or any model provider.
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the complete source and
-attribution matrix.
-
-## Licence
-
-Trading Max source code is available under the
-[Apache License 2.0](LICENSE). The licence does not grant permission to use the
-Trading Max or Engram names or marks to imply endorsement; see
-[TRADEMARKS.md](TRADEMARKS.md).
+Trading Max is open source under the Apache License 2.0. It is not affiliated
+with or endorsed by Trading 212, Yahoo, Bloomberg/OpenFIGI, any ETF issuer, or
+any model provider.
