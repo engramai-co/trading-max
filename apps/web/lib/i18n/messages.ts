@@ -319,9 +319,9 @@ const zhSource = {
     integrationRemoved: "连接已断开。",
     operationFailed: "操作失败，请检查连接和凭据。",
     workload: {
-      portfolio: "组合分析",
-      ticker: "个股分析",
-      taxonomy: "分类归属",
+      portfolio: "组合摘要",
+      ticker: "个股摘要",
+      taxonomy: "标的搜索与分类",
     },
   },
 } as const;
@@ -637,9 +637,9 @@ export const en: Messages = {
     integrationRemoved: "Connection disconnected.",
     operationFailed: "Operation failed; check the connection and credentials.",
     workload: {
-      portfolio: "Portfolio analysis",
-      ticker: "Ticker analysis",
-      taxonomy: "Taxonomy assignment",
+      portfolio: "Portfolio summary",
+      ticker: "Ticker summary",
+      taxonomy: "Security search & classification",
     },
   },
 };

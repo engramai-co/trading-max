@@ -9,7 +9,14 @@ from trading_max.synthesis.providers import create_provider
 
 from .config import Settings
 from .credentials import CredentialStore, CredentialStoreError
-from .llm_routing import DEFAULT_ROUTE, PROVIDER_REGISTRY, LLMRoute, LLMRouteError, parse_route
+from .llm_routing import (
+    DEFAULT_ROUTE,
+    PROVIDER_REGISTRY,
+    LLMRoute,
+    LLMRouteError,
+    default_route,
+    parse_route,
+)
 from .settings import SettingsRepository
 
 
@@ -95,6 +102,62 @@ def make_provider_factory(
 
     _legacy_opencode_migration(preferences, credentials)
 
+    def credential_for(route: LLMRoute) -> tuple[str | None, CredentialStoreError | None]:
+        spec = PROVIDER_REGISTRY[route.provider]
+        integration = preferences.get_integration(route.provider)
+        if integration is not None and not integration.enabled:
+            return None, None
+        try:
+            secret = credentials.get(spec.credential_ref)
+        except CredentialStoreError as exc:
+            secret = None
+            credential_error: CredentialStoreError | None = exc
+        else:
+            credential_error = None
+        if not secret:
+            secret = (
+                settings.opencode_api_key
+                if route.provider == "opencode"
+                else settings.deepseek_api_key
+            )
+        return secret, credential_error
+
+    def available_route(
+        preferred: LLMRoute,
+    ) -> tuple[LLMRoute, str | None, CredentialStoreError | None]:
+        """Use the preferred route, then the other configured approved provider.
+
+        This fallback happens before any provider request. It avoids making an
+        optional model look required when a user configured only one of the two
+        supported services, without silently duplicating a failed paid request.
+        """
+
+        candidates = [preferred]
+        for provider in PROVIDER_REGISTRY:
+            if provider == preferred.provider:
+                continue
+            integration = preferences.get_integration(provider)
+            model = (
+                integration.model
+                if integration is not None
+                and integration.model in PROVIDER_REGISTRY[provider].models
+                else None
+            )
+            candidates.append(
+                LLMRoute(
+                    provider=provider,
+                    model=model or default_route(provider).model,
+                )
+            )
+
+        credential_error: CredentialStoreError | None = None
+        for route in candidates:
+            secret, error = credential_for(route)
+            credential_error = credential_error or error
+            if secret:
+                return route, secret, credential_error
+        return preferred, None, credential_error
+
     def build(workload: str | None = None) -> Any:
         strict = workload is not None
         try:
@@ -106,30 +169,9 @@ def make_provider_factory(
                     f"configured LLM route is invalid for {workload}: {exc}",
                 ) from exc
             route = parse_route(DEFAULT_ROUTE)
+        route, secret, credential_store_error = available_route(route)
         spec = PROVIDER_REGISTRY[route.provider]
         integration = preferences.get_integration(route.provider)
-
-        credential_store_error: CredentialStoreError | None = None
-        try:
-            secret = credentials.get(spec.credential_ref)
-        except CredentialStoreError as exc:
-            # App construction, OpenAPI generation, and health checks must
-            # remain available on hosts without a native credential backend.
-            # A strict analysis request still fails explicitly below unless
-            # the configured runtime mode is the deterministic fake provider.
-            credential_store_error = exc
-            secret = None
-        if not secret:
-            if route.provider == "opencode":
-                secret = settings.opencode_api_key
-            elif route.provider == "deepseek":
-                secret = settings.deepseek_api_key
-        if not secret and settings.llm_provider == route.provider:
-            secret = (
-                settings.opencode_api_key
-                if route.provider == "opencode"
-                else settings.deepseek_api_key
-            )
         if not secret:
             if settings.llm_provider == "fake":
                 return _annotate_provider(
@@ -157,12 +199,6 @@ def make_provider_factory(
                 adapter="fake",
                 provider_revision=None,
                 effective_route="fake/trading-max-fake-v1",
-            )
-
-        if integration is not None and not integration.enabled and strict:
-            raise ProviderRuntimeError(
-                "provider_not_configured",
-                f"{route.provider} integration is disabled",
             )
 
         if route.provider == "opencode":

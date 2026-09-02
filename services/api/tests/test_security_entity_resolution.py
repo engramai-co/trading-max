@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from services.api.trading_max_api.provider_runtime import ProviderRuntimeError
 from services.api.trading_max_api.security_entity_resolution import (
@@ -12,7 +13,8 @@ from services.api.trading_max_api.security_entity_resolution import (
 )
 
 
-def test_opencode_resolver_runs_one_websearch_tool_call() -> None:
+@pytest.mark.parametrize("provider_name", ["opencode", "deepseek"])
+def test_resolver_runs_one_websearch_tool_call(provider_name: str) -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -107,10 +109,14 @@ def test_opencode_resolver_runs_one_websearch_tool_call() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     provider = SimpleNamespace(
         api_key="not-a-secret",
-        base_url="https://opencode.ai/zen/go/v1",
+        base_url=(
+            "https://opencode.ai/zen/go/v1"
+            if provider_name == "opencode"
+            else "https://api.deepseek.com"
+        ),
         fake=False,
         model="deepseek-v4-flash",
-        name="opencode",
+        name=provider_name,
     )
     resolver = OpenCodeWebSearchResolver(lambda _: provider, http_client=client)
 

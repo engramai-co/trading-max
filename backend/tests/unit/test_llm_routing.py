@@ -20,7 +20,12 @@ def test_route_parser_rejects_unknown_provider_and_model() -> None:
     with pytest.raises(LLMRouteError, match="unknown LLM provider"):
         parse_route("openrouter/some-model")
     with pytest.raises(LLMRouteError, match="not approved"):
-        parse_route("deepseek/deepseek-v4-flash")
+        parse_route("deepseek/unknown-model")
+
+
+def test_direct_deepseek_keeps_legacy_routes_and_exposes_current_models() -> None:
+    assert parse_route("deepseek/deepseek-v4-flash").model == "deepseek-v4-flash"
+    assert parse_route("deepseek/deepseek-chat").model == "deepseek-chat"
 
 
 def test_provider_registry_is_safe_frontend_metadata() -> None:

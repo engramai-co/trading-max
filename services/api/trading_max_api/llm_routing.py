@@ -63,8 +63,15 @@ PROVIDER_REGISTRY: dict[LLMProvider, ProviderSpec] = {
         label="DeepSeek",
         adapter="openai-chat",
         base_url="https://api.deepseek.com",
-        models=("deepseek-chat", "deepseek-reasoner"),
-        default_model="deepseek-chat",
+        # Keep the legacy aliases valid for existing installations while
+        # offering the current direct-API models to new connections.
+        models=(
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ),
+        default_model="deepseek-v4-flash",
         credential_ref="deepseek:default",
     ),
 }
