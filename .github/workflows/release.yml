@@ -59,11 +59,18 @@ jobs:
             CHANGELOG.md "${RELEASE_TAG#v}" > /tmp/release-notes.md
           uv run python tools/check_repository_hygiene.py
           uv run python tools/check_release_readiness.py --public
-          if [ "${{ github.event.repository.visibility }}" = "public" ]; then
-            uv run python tools/check_public_history.py
-          fi
           uv run python tools/check_documentation.py
           uv run python tools/generate_openapi.py --check
+
+      - name: Validate current public-history policy
+        if: ${{ github.event.repository.visibility == 'public' }}
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          policy_root="$RUNNER_TEMP/trading-max-main-policy"
+          git worktree add --detach "$policy_root" origin/main
+          python "$policy_root/tools/check_public_history.py"
+          git worktree remove --force "$policy_root"
 
       - name: Validate tagged source
         env:

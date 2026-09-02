@@ -175,3 +175,11 @@ def test_release_actions_are_pinned_to_full_commit_shas() -> None:
             reference = line.split("@", maxsplit=1)[-1].split()[0]
             assert len(reference) == 40
             assert all(character in "0123456789abcdef" for character in reference)
+
+
+def test_historical_releases_use_the_current_public_history_policy() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    assert "Validate current public-history policy" in workflow
+    assert 'git worktree add --detach "$policy_root" origin/main' in workflow
+    assert 'python "$policy_root/tools/check_public_history.py"' in workflow
