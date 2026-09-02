@@ -100,5 +100,6 @@ def test_deploy_accepts_only_commits_reachable_from_main(
 def test_production_smoke_checks_dynamic_web_routes() -> None:
     script = PRODUCTION_SMOKE_SCRIPT.read_text(encoding="utf-8")
 
+    assert 'for route in "/" "/health" "/analytics"' in script
     assert '"/health"' in script
     assert '"/analytics"' in script

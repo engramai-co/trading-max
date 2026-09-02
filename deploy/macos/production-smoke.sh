@@ -39,7 +39,7 @@ if not payload.get("runId") or not payload.get("artifacts"):
 '
 # A static root response is not enough: an interrupted Next.js build can leave
 # the server process alive while route manifests for dynamic pages are missing.
-for path in "/" "/health" "/analytics"; do
-  curl --fail --silent --show-error --max-time 15 "$WEB_BASE$path" >/dev/null
+for route in "/" "/health" "/analytics"; do
+  curl --fail --silent --show-error --max-time 15 "$WEB_BASE$route" >/dev/null
 done
 printf '%s\n' "Trading Max read-only production smoke passed"
