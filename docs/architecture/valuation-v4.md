@@ -6,8 +6,9 @@
 target prices. It refuses unsupported methods and keeps analyst consensus as a
 separate market reference.
 
-The evidence and design rationale are recorded under
-`docs/research/valuation-engine-2026-08-22/`.
+The rules below are the authoritative public design contract. Historical
+research notes and intermediate design drafts are not part of the product
+documentation.
 
 ## Automatic lens
 
@@ -65,4 +66,3 @@ may resume only when a later model earns `ready` through documented validation.
 - probability-adjusted scenario valuation for young/pre-revenue firms;
 - peer-relative valuation after reproducible peer selection and metric
   normalisation exist.
-

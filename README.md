@@ -107,7 +107,6 @@ manual development commands at production state.
 - [API and contract guide](docs/api/README.md)
 - [Local installation](docs/installation/local-installation.md)
 - [Coding-agent onboarding](docs/operations/agent-local-deployment-runbook.md)
-- [Local workstation security model](docs/operations/local-workstation.md)
 - [Interface-lens architecture](docs/architecture/interface-lenses.md)
 - [Security Master and GICS](docs/architecture/security-master-and-gics.md)
 - [LLM synthesis](docs/architecture/llm-synthesis.md)
@@ -116,7 +115,7 @@ manual development commands at production state.
 
 Project policy is defined in [SECURITY.md](SECURITY.md),
 [PRIVACY.md](PRIVACY.md), [SUPPORT.md](SUPPORT.md),
-[GOVERNANCE.md](GOVERNANCE.md), and [TRADEMARKS.md](TRADEMARKS.md).
+and [TRADEMARKS.md](TRADEMARKS.md).
 
 ## Scope boundary
 
@@ -125,6 +124,13 @@ multi-user authentication, tenancy, or a hosted service. This repository does
 not contain user credentials, account data, provider downloads, or remote-host
 configuration. Local installations run in the foreground or as explicitly
 configured user-managed services.
+
+Trading Max stays local-first, read-only, explainable, and recoverable. Current
+work focuses on first-run reliability, backup visibility, update provenance,
+and broader synthetic end-to-end coverage. Automated trading, invented values
+for missing data, and unsupported provider integrations remain explicit
+non-goals. Feature proposals should explain user value, data provenance,
+privacy impact, failure behaviour, and ongoing maintenance cost.
 
 ## Providers, data, and affiliation
 

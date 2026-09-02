@@ -4,18 +4,55 @@
 !.env.example
 .venv/
 .pytest_cache/
+.mypy_cache/
+.hypothesis/
+.tox/
+.nox/
+.ruff_cache/
 __pycache__/
 *.py[cod]
+*.egg-info/
 
-.impeccable/critique/
-.impeccable/config.local.json
-.impeccable/live/
+# Local agent, editor, and design-tool state
+.codegraph/
+.codex/
+.cursor/
+.impeccable/
+**/.impeccable/
+.github/hooks/
+.idea/
+.vscode/
+
+# Internal working documents and generated design evidence
+/PRODUCT.md
+/DESIGN.md
+/design-qa.md
+/design-system/
+**/design-qa.md
+/docs/internal/
+/docs/research/
+/docs/architecture/local-performance-baseline*
+/docs/architecture/typescript-full-stack-migration-plan.md
+/apps/web/scripts/run-browser-baseline.mjs
+
+# Local benchmarks and research workspaces
 /benchmarks/
 /research_*/
 
-apps/web/.next/
+# Build, dependency, test, and coverage artifacts
+**/.next/
+**/node_modules/
+.turbo/
+.cache/
+coverage/
+**/coverage/
+htmlcov/
+playwright-report/
+test-results/
+blob-report/
+dist/
+build/
 apps/web/.run/
-apps/web/node_modules/
 apps/web/tsconfig.tsbuildinfo
 
 runtime/
@@ -28,3 +65,6 @@ snapshots/
 *.sqlite
 *.sqlite3
 *.log
+*.tmp
+*.swp
+*.swo
