@@ -27,7 +27,12 @@ class WebEntityResolution:
 
 
 class OpenCodeWebSearchResolver:
-    """Run an OpenCode chat-completions tool loop with only web search exposed."""
+    """Run an approved model tool loop with only one web search exposed.
+
+    The historical class name remains public for compatibility. Runtime routing
+    may supply OpenCode or direct DeepSeek; both use the same bounded,
+    OpenAI-compatible tool-call contract.
+    """
 
     def __init__(
         self,
@@ -43,23 +48,23 @@ class OpenCodeWebSearchResolver:
     @staticmethod
     def _message(payload: Any) -> dict[str, Any]:
         if not isinstance(payload, dict):
-            raise ValueError("OpenCode response is not an object")
+            raise ValueError("model response is not an object")
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices:
-            raise ValueError("OpenCode response contains no choices")
+            raise ValueError("model response contains no choices")
         message = choices[0].get("message")
         if not isinstance(message, dict):
-            raise ValueError("OpenCode response contains no message")
+            raise ValueError("model response contains no message")
         return message
 
     @staticmethod
     def _decode_json_content(message: dict[str, Any]) -> dict[str, Any]:
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
-            raise ValueError("OpenCode response contains no JSON content")
+            raise ValueError("model response contains no JSON content")
         decoded = json.loads(content)
         if not isinstance(decoded, dict):
-            raise ValueError("OpenCode entity resolution must be an object")
+            raise ValueError("entity resolution must be an object")
         return decoded
 
     @staticmethod
@@ -141,7 +146,9 @@ class OpenCodeWebSearchResolver:
             provider = self.provider_factory("taxonomy")
         except ProviderRuntimeError:
             return None
-        if getattr(provider, "name", "") != "opencode" or getattr(provider, "fake", False):
+        if getattr(provider, "name", "") not in {"opencode", "deepseek"} or getattr(
+            provider, "fake", False
+        ):
             return None
         api_key = getattr(provider, "api_key", "")
         base_url = str(getattr(provider, "base_url", "")).rstrip("/")

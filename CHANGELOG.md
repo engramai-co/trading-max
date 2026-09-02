@@ -4,6 +4,22 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-03
+
+### Added
+
+- Restore optional OpenCode and direct DeepSeek connections in Settings for
+  fuzzy security search, automatic classification, and research summaries.
+
+### Changed
+
+- Keep account, market, and deterministic identity sources ahead of model use,
+  and fall back to the other configured approved model service before an
+  optional research request begins.
+- Allow either OpenCode or direct DeepSeek to perform the final bounded entity
+  resolution step with one web search, while preserving full operation without
+  any model credentials.
+
 ## [1.0.5] - 2026-09-02
 
 ### Fixed

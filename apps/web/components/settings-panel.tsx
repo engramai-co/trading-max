@@ -13,7 +13,6 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
   ThemeIcon,
   Title,
 } from "@mantine/core";
@@ -25,6 +24,7 @@ import {
   Key,
   LockKey,
   Plug,
+  Sparkle,
   Trash,
   UploadSimple,
   Warning,
@@ -75,6 +75,7 @@ type RoutePolicyDraft = {
   overrides: { portfolio: string; ticker: string; taxonomy: string };
   revision: number;
 };
+type RouteOption = { value: string; label: string };
 type AutomationDraft = {
   liveEnabled: boolean;
   performanceEnabled: boolean;
@@ -100,13 +101,26 @@ const DEFAULT_LLM_PROVIDERS: LLMProviderDescriptor[] = [
     label: "DeepSeek",
     adapter: "openai-chat",
     baseUrl: "https://api.deepseek.com",
-    models: ["deepseek-chat", "deepseek-reasoner"],
-    defaultModel: "deepseek-chat",
+    models: [
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+      "deepseek-chat",
+      "deepseek-reasoner",
+    ],
+    defaultModel: "deepseek-v4-flash",
   },
 ];
 
-// Archived until the Agent Workspace redesign defines the model-provider experience.
-const SHOW_ARCHIVED_LLM_SETTINGS = false;
+function formatModelLabel(model: string) {
+  return model
+    .split("-")
+    .map((part) => {
+      if (part.toLowerCase() === "deepseek") return "DeepSeek";
+      if (/^v\d+$/i.test(part)) return part.toUpperCase();
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(" ");
+}
 
 function integration(
   overview: IntegrationOverview | null,
@@ -211,11 +225,14 @@ export function SettingsPanel({
     opencode: idleTest(),
     deepseek: idleTest(),
   });
-  const routeOptions = llmProviders.flatMap((provider) =>
-    provider.models.map((model) => `${provider.provider}/${model}`),
+  const routeOptions: RouteOption[] = llmProviders.flatMap((provider) =>
+    provider.models.map((model) => ({
+      value: `${provider.provider}/${model}`,
+      label: `${provider.label} · ${formatModelLabel(model)}`,
+    })),
   );
   const initialRoutePolicy = initial?.llmRoutePolicy ?? {
-    defaultRoute: routeOptions[0] ?? "opencode/deepseek-v4-flash",
+    defaultRoute: routeOptions[0]?.value ?? "opencode/deepseek-v4-flash",
     overrides: {},
     revision: 1,
     updatedAt: "",
@@ -245,16 +262,19 @@ export function SettingsPanel({
         }
       : null,
   );
+  const configuredLlmCount = (["opencode", "deepseek"] as const).filter(
+    (provider) => integration(overview, provider)?.configured,
+  ).length;
   const hasUnsavedChanges =
     Boolean(
       trading212.invest.apiKeyId ||
         trading212.invest.secretKey ||
         trading212.isa.apiKeyId ||
         trading212.isa.secretKey ||
-        (SHOW_ARCHIVED_LLM_SETTINGS && (llm.opencode.apiKey || llm.deepseek.apiKey)),
+        llm.opencode.apiKey ||
+        llm.deepseek.apiKey,
     ) ||
-    (SHOW_ARCHIVED_LLM_SETTINGS &&
-      ((Object.keys(llm) as LLMProvider[]).some(
+    ((Object.keys(llm) as LLMProvider[]).some(
         (provider) =>
           llm[provider].model !==
           (savedLlm(provider)?.model ?? providerDescriptor(provider).defaultModel),
@@ -262,7 +282,7 @@ export function SettingsPanel({
         routePolicy.defaultRoute !== initialRoutePolicy.defaultRoute ||
         Object.entries(routePolicy.overrides).some(
           ([workload, value]) => value !== (initialRoutePolicy.overrides[workload] ?? ""),
-        ))) ||
+        )) ||
     Boolean(
       automation &&
         automationDraft &&
@@ -770,82 +790,6 @@ export function SettingsPanel({
             );
           })}
 
-          {SHOW_ARCHIVED_LLM_SETTINGS ? (["opencode", "deepseek"] as const).map((provider) => {
-            const descriptor = providerDescriptor(provider);
-            const item = integration(overview, provider);
-            const values = llm[provider];
-            const test = llmTests[provider];
-            const complete = Boolean(values.apiKey && values.model);
-            return (
-              <Card h="100%" key={provider}>
-                <Stack gap="md">
-                <Group align="flex-start" justify="space-between" wrap="nowrap">
-                  <Stack gap={4}>
-                    <Title order={3}>{descriptor.label}</Title>
-                    <Badge color={item?.configured ? "green" : "gray"} w="fit-content">
-                      {item?.configured ? messages.settings.configured : messages.settings.notConfigured}
-                    </Badge>
-                  </Stack>
-                  <ThemeIcon color={item?.configured ? "green" : "gray"} variant="light"><Key size={19} /></ThemeIcon>
-                </Group>
-                <Accordion defaultValue={null} variant="contained">
-                  <Accordion.Item value={provider}>
-                    <Accordion.Control>
-                      {item?.configured ? messages.settings.manageConnection : messages.settings.setupConnection}
-                    </Accordion.Control>
-                    <Accordion.Panel>
-                <Stack gap="md">
-                <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                  <SecretInput
-                    id={`${provider}-api-key`}
-                    label={messages.settings.apiKey}
-                    onChange={(value) => updateLlm(provider, "apiKey", value)}
-                    value={values.apiKey}
-                  />
-                  <Select data={descriptor.models} id={`${provider}-model`} label={messages.settings.model} onChange={(value) => value && updateLlm(provider, "model", value)} value={values.model} />
-                  <TextInput id={`${provider}-base-url`} label={messages.settings.baseUrl} readOnly value={descriptor.baseUrl} />
-                </SimpleGrid>
-                <Group wrap="wrap">
-                  <TestBadge state={test} />
-                  {test.status === "idle" ? <Text c="dimmed" size="xs">{messages.settings.testRequired}</Text> : null}
-                </Group>
-                <Group>
-                  <Button
-                    disabled={isBusy(provider) || !complete}
-                    loading={isBusy(provider)}
-                    onClick={() => void testLlm(provider)}
-                    variant="default"
-                  >
-                    {messages.settings.test}
-                  </Button>
-                  <Button
-                    disabled={isBusy(provider) || test.status !== "passed"}
-                    onClick={() => void saveLlm(provider)}
-                  >
-                    {messages.settings.saveConnection}
-                  </Button>
-                  {item?.configured && (
-                    <Button
-                      aria-label={messages.settings.disconnect}
-                      color="red"
-                      disabled={isBusy(provider)}
-                      leftSection={<Trash size={18} />}
-                      onClick={() => void disconnectLlm(provider)}
-                      variant="subtle"
-                    >
-                      {messages.settings.disconnect}
-                    </Button>
-                  )}
-                </Group>
-                <Text c="dimmed" size="xs">{messages.settings.noSecretReturned}</Text>
-                </Stack>
-                    </Accordion.Panel>
-                  </Accordion.Item>
-                </Accordion>
-                </Stack>
-              </Card>
-            );
-          }) : null}
         </SimpleGrid>
 
         <CfdImportCard
@@ -863,15 +807,148 @@ export function SettingsPanel({
           uploads={cfdUploads}
         />
 
-        {SHOW_ARCHIVED_LLM_SETTINGS ? (
-          <RoutingPolicyCard
-            busy={isBusy("routePolicy")}
-            onChange={updateRoutePolicy}
-            onSave={() => void saveRoutePolicy()}
-            options={routeOptions}
-            value={routePolicy}
-          />
-        ) : null}
+        <Accordion mt="lg" variant="contained">
+          <Accordion.Item value="optional-research-services">
+            <Accordion.Control>
+              <Group align="center" justify="space-between" pr="md" wrap="nowrap">
+                <Group gap="sm" wrap="nowrap">
+                  <ThemeIcon color="violet" size="lg" variant="light">
+                    <Sparkle size={20} weight="fill" />
+                  </ThemeIcon>
+                  <div>
+                    <Title order={3}>
+                      {locale === "zh" ? "可选研究增强" : "Optional research enhancements"}
+                    </Title>
+                    <Text c="dimmed" size="sm">
+                      {locale === "zh"
+                        ? "模糊标的搜索、自动分类和摘要"
+                        : "Fuzzy security search, classification, and summaries"}
+                    </Text>
+                  </div>
+                </Group>
+                <Badge color={configuredLlmCount ? "green" : "gray"} variant="light">
+                  {configuredLlmCount
+                    ? locale === "zh" ? `已连接 ${configuredLlmCount} 个` : `${configuredLlmCount} connected`
+                    : locale === "zh" ? "可选" : "Optional"}
+                </Badge>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="lg">
+                <Text size="sm">
+                  {locale === "zh"
+                    ? "无需配置即可完整使用；连接后只在确定性流程无法完成时启用。"
+                    : "Trading Max works without these services. When connected, they run only after deterministic paths cannot finish the task."}
+                </Text>
+                <SimpleGrid cols={{ base: 1, lg: 2 }}>
+                  {(["opencode", "deepseek"] as const).map((provider) => {
+                    const descriptor = providerDescriptor(provider);
+                    const item = integration(overview, provider);
+                    const values = llm[provider];
+                    const test = llmTests[provider];
+                    const complete = Boolean(values.apiKey && values.model);
+                    return (
+                      <Card h="100%" key={provider} withBorder>
+                        <Stack gap="md">
+                          <Group align="flex-start" justify="space-between" wrap="nowrap">
+                            <Stack gap={4}>
+                              <Group gap="xs" wrap="nowrap">
+                                <Title order={3}>{descriptor.label}</Title>
+                                <ContextHelp
+                                  content={messages.settings.noSecretReturned}
+                                  label={locale === "zh" ? `${descriptor.label} 凭据说明` : `${descriptor.label} credential details`}
+                                  title={locale === "zh" ? "密钥保存在本机" : "Key stored on this device"}
+                                />
+                              </Group>
+                              <Text c="dimmed" size="sm">
+                                {provider === "opencode"
+                                  ? locale === "zh" ? "通过 OpenCode Go 使用 DeepSeek" : "DeepSeek through OpenCode Go"
+                                  : locale === "zh" ? "直接连接 DeepSeek" : "Direct DeepSeek connection"}
+                              </Text>
+                            </Stack>
+                            <Badge color={item?.configured ? "green" : "gray"}>
+                              {item?.configured ? messages.settings.configured : messages.settings.notConfigured}
+                            </Badge>
+                          </Group>
+
+                          <SecretInput
+                            id={`${provider}-api-key`}
+                            label={messages.settings.apiKey}
+                            onChange={(value) => updateLlm(provider, "apiKey", value)}
+                            value={values.apiKey}
+                          />
+                          <Select
+                            data={descriptor.models.map((model) => ({
+                              value: model,
+                              label: formatModelLabel(model),
+                            }))}
+                            id={`${provider}-model`}
+                            label={messages.settings.model}
+                            onChange={(value) => value && updateLlm(provider, "model", value)}
+                            value={values.model}
+                          />
+                          <Group wrap="wrap">
+                            <TestBadge state={test} />
+                            {test.status === "idle" ? (
+                              <Text c="dimmed" size="xs">{messages.settings.testRequired}</Text>
+                            ) : null}
+                          </Group>
+                          <Group wrap="wrap">
+                            <Button
+                              disabled={isBusy(provider) || !complete}
+                              loading={isBusy(provider)}
+                              onClick={() => void testLlm(provider)}
+                              variant="default"
+                            >
+                              {messages.settings.test}
+                            </Button>
+                            <Button
+                              disabled={isBusy(provider) || test.status !== "passed"}
+                              onClick={() => void saveLlm(provider)}
+                            >
+                              {messages.settings.saveConnection}
+                            </Button>
+                            {item?.configured ? (
+                              <Button
+                                aria-label={messages.settings.disconnect}
+                                color="red"
+                                disabled={isBusy(provider)}
+                                leftSection={<Trash size={18} />}
+                                onClick={() => void disconnectLlm(provider)}
+                                variant="subtle"
+                              >
+                                {messages.settings.disconnect}
+                              </Button>
+                            ) : null}
+                          </Group>
+                        </Stack>
+                      </Card>
+                    );
+                  })}
+                </SimpleGrid>
+
+                {configuredLlmCount ? (
+                  <Accordion variant="separated">
+                    <Accordion.Item value="advanced-routing">
+                      <Accordion.Control>
+                        {locale === "zh" ? "高级选择" : "Advanced selection"}
+                      </Accordion.Control>
+                      <Accordion.Panel>
+                        <RoutingPolicyCard
+                          busy={isBusy("routePolicy")}
+                          onChange={updateRoutePolicy}
+                          onSave={() => void saveRoutePolicy()}
+                          options={routeOptions}
+                          value={routePolicy}
+                        />
+                      </Accordion.Panel>
+                    </Accordion.Item>
+                  </Accordion>
+                ) : null}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
       </section>
 
       <AutomationSettingsCard
@@ -1323,29 +1400,22 @@ function RoutingPolicyCard({
   busy: boolean;
   onChange: (field: "defaultRoute" | "portfolio" | "ticker" | "taxonomy", value: string) => void;
   onSave: () => void;
-  options: string[];
+  options: RouteOption[];
   value: RoutePolicyDraft;
 }) {
   const { locale } = useLocale();
   const messages = useMessages();
   return (
-    <Card mt="lg">
-      <Stack gap="md">
-        <Group align="flex-start" justify="space-between" wrap="nowrap">
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Title order={3}>{locale === "zh" ? "LLM 路由策略" : "LLM routing policy"}</Title>
-            <Text c="dimmed" size="sm">
-              {locale === "zh"
-                ? "按工作负载选择 provider/model；后端只允许 registry 中的安全路由。"
-                : "Choose a provider/model per workload; the backend only accepts trusted registry routes."}
-            </Text>
-          </div>
-          <ThemeIcon color="brand" variant="light"><Plug size={19} /></ThemeIcon>
-        </Group>
+    <Stack gap="md">
+        <Text size="sm">
+          {locale === "zh"
+            ? "为不同研究任务选择首选服务；未单独指定时跟随默认选择。"
+            : "Choose a preferred service for each research task. Unspecified tasks follow the default."}
+        </Text>
         <SimpleGrid cols={{ base: 1, md: 2 }}>
           <Select
             data={options}
-            label={locale === "zh" ? "默认路由" : "Default route"}
+            label={locale === "zh" ? "默认选择" : "Default selection"}
             onChange={(next) => next && onChange("defaultRoute", next)}
             value={value.defaultRoute}
           />
@@ -1354,7 +1424,7 @@ function RoutingPolicyCard({
               clearable
               data={options}
               key={workload}
-              label={locale === "zh" ? messages.settings.workload[workload] : workload[0].toUpperCase() + workload.slice(1)}
+              label={messages.settings.workload[workload]}
               onChange={(next) => onChange(workload, next ?? "")}
               placeholder={locale === "zh" ? "跟随默认路由" : "Use default route"}
               value={value.overrides[workload] || null}
@@ -1362,9 +1432,8 @@ function RoutingPolicyCard({
           ))}
         </SimpleGrid>
         <Button disabled={busy || !value.defaultRoute} loading={busy} onClick={onSave}>
-          {locale === "zh" ? "保存路由策略" : "Save routing policy"}
+          {locale === "zh" ? "保存选择" : "Save selection"}
         </Button>
       </Stack>
-    </Card>
   );
 }
