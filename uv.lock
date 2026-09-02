@@ -675,7 +675,7 @@ wheels = [
 
 [[package]]
 name = "trading-max"
-version = "1.0.5"
+version = "1.0.6"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
@@ -708,7 +708,7 @@ dev = [
 
 [[package]]
 name = "trading-max-backend"
-version = "1.0.5"
+version = "1.0.6"
 source = { editable = "backend" }
 dependencies = [
     { name = "httpx" },

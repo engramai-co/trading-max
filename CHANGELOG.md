@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-02
+
+### Changed
+
+- Rebuild the public README as a user-facing product entry with a prominent
+  brand hero, concise project badges, a one-request Codex setup path, a compact
+  manual install, and links to the detailed contributor and operator guides.
+
 ## [1.0.5] - 2026-09-02
 
 ### Changed
