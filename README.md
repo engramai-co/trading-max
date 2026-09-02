@@ -29,11 +29,38 @@ actual profit and loss, cash-flow-aware returns, ETF look-through, allocation,
 risk, and per-security research. It runs on your computer, keeps credentials in
 your operating system's credential store, and never places trades.
 
-<p align="center">
-  <img src="docs/assets/trading-max-research-overview-1080p.jpg" alt="Trading Max research workbench showing a security overview, candlestick chart, trade markers, and research signals" width="100%">
-</p>
+## Inside Trading Max
 
-<p align="center"><sub>Research overview shown with synthetic sample data.</sub></p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/trading-max-overview-1080p.jpg" alt="Trading Max portfolio overview" width="100%">
+      <br><sub>Portfolio overview</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/trading-max-holdings-1080p.jpg" alt="Trading Max holdings table" width="100%">
+      <br><sub>Holdings</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/assets/trading-max-analytics-1080p.jpg" alt="Trading Max performance and risk analytics" width="100%">
+      <br><sub>Performance &amp; risk</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/assets/trading-max-review-1080p.jpg" alt="Trading Max account review" width="100%">
+      <br><sub>Account review</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="docs/assets/trading-max-research-1080p.jpg" alt="Trading Max research workbench showing Bloom Energy market data, candlesticks, valuation, and research signals" width="100%">
+      <br><sub>Seven-lens security research</sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center"><sub>Broker accounts, positions, amounts, and trade markers use sample data. Security research uses public market data.</sub></p>
 
 ## Install with Codex
 
