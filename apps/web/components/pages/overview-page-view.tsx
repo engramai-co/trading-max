@@ -820,17 +820,10 @@ function OverviewLowerDeck({
         </section>
 
         <section aria-labelledby="signals-title">
-          <Group align="flex-end" justify="space-between" mb="sm">
-            <div>
-              <Title id="signals-title" order={2} size="h3">
-                <Localized zh="研究信号" en="Research signals" />
-              </Title>
-              <Text c="dimmed" mt={2} size="xs">
-                {researchAsOf
-                  ? <><Localized zh="证据截至" en="Evidence through" /> {formatDate(researchAsOf, locale, { day: "numeric", month: "short", year: "numeric" })}</>
-                  : <Localized zh="暂无研究覆盖" en="No research coverage" />}
-              </Text>
-            </div>
+          <Group justify="space-between" mb="sm">
+            <Title id="signals-title" order={2} size="h3">
+              <Localized zh="研究信号" en="Research signals" />
+            </Title>
             <Pulse aria-hidden="true" size={22} />
           </Group>
           <Paper className="tm-overview-signal-list" radius="lg" withBorder>
@@ -866,6 +859,20 @@ function OverviewLowerDeck({
               tone="teal"
               value={valuationOpportunity?.ev5Upside != null ? `${valuationOpportunity.ticker} · ${deltaPct(valuationOpportunity.ev5Upside)}` : <Localized zh="无其他覆盖持仓" en="No other covered holding" />}
             />
+            <Group
+              className="tm-overview-signal-meta"
+              justify="flex-end"
+              mih={34}
+              px="md"
+              py={6}
+              style={{ borderTop: "1px solid var(--tm-border)" }}
+            >
+              <Text c="dimmed" size="xs">
+                {researchAsOf
+                  ? <><Localized zh="证据截至" en="Evidence through" /> {formatDate(researchAsOf, locale, { day: "numeric", month: "short", year: "numeric" })}</>
+                  : <Localized zh="暂无研究覆盖" en="No research coverage" />}
+              </Text>
+            </Group>
           </Paper>
         </section>
       </SimpleGrid>
