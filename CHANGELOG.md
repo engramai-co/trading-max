@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-04
+
+### Fixed
+
+- Align the overview's account-review and research-signal cards by moving the
+  research evidence date into a quiet footer beneath the signal rows.
+
 ## [1.0.7] - 2026-09-03
 
 ### Fixed
