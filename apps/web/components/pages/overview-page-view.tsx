@@ -245,7 +245,6 @@ function OverviewHeroMock({
           { ev5Upside: 0.07, ticker: "SEMI" },
         ]}
         cfdStatus={{ accountStatus: "retired", isStale: false }}
-        researchAsOf="2026-08-17"
       />
     </Stack>
   );
@@ -666,7 +665,6 @@ function OverviewLens({ data }: { data: DashboardLens }) {
         nav={data.nav ?? []}
         reviewSummaries={data.reviewSummaries ?? []}
         cfdStatus={data.cfd ? { accountStatus: data.cfd.accountStatus, isStale: data.cfd.isStale } : undefined}
-        researchAsOf={data.researchAsOf}
         technical={data.technical ?? []}
         valuations={data.valuations ?? []}
       />
@@ -712,7 +710,6 @@ function OverviewLowerDeck({
   nav,
   reviewSummaries,
   cfdStatus,
-  researchAsOf,
   technical,
   valuations,
 }: {
@@ -721,11 +718,9 @@ function OverviewLowerDeck({
   nav: NavPoint[];
   reviewSummaries: OverviewReviewSummary[];
   cfdStatus?: CfdStatus;
-  researchAsOf: string | null;
   technical: Array<{ score: number; ticker: string }>;
   valuations: Array<{ ev5Upside: number | null; ticker: string }>;
 }) {
-  const { locale } = useLocale();
   const heldTickers = new Set(holdings.map((holding) => holding.ticker));
   const holdingsByTicker = new Map(holdings.map((holding) => [holding.ticker, holding]));
   const weakest = technical
@@ -859,20 +854,6 @@ function OverviewLowerDeck({
               tone="teal"
               value={valuationOpportunity?.ev5Upside != null ? `${valuationOpportunity.ticker} · ${deltaPct(valuationOpportunity.ev5Upside)}` : <Localized zh="无其他覆盖持仓" en="No other covered holding" />}
             />
-            <Group
-              className="tm-overview-signal-meta"
-              justify="flex-end"
-              mih={34}
-              px="md"
-              py={6}
-              style={{ borderTop: "1px solid var(--tm-border)" }}
-            >
-              <Text c="dimmed" size="xs">
-                {researchAsOf
-                  ? <><Localized zh="证据截至" en="Evidence through" /> {formatDate(researchAsOf, locale, { day: "numeric", month: "short", year: "numeric" })}</>
-                  : <Localized zh="暂无研究覆盖" en="No research coverage" />}
-              </Text>
-            </Group>
           </Paper>
         </section>
       </SimpleGrid>

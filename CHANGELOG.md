@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove the repeated research evidence date from the overview signal card;
+  the page-level freshness status remains the single source of that context.
+
 ## [1.0.8] - 2026-09-04
 
 ### Fixed
