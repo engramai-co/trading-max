@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-04
+
+### Changed
+
+- Redesign the analyst lens around an interactive five-band recommendation
+  consensus, rating trends, recent firm actions, and revenue and EPS forecasts.
+- Pair the prior 12 months of actual prices with clearly labelled low, mean,
+  and high reference rays for Yahoo's approximately 12-month targets, plus
+  target summaries and point-level hover details.
+
 ### Fixed
 
 - Remove the repeated research evidence date from the overview signal card;

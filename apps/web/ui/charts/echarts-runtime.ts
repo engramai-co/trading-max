@@ -5,6 +5,7 @@ import {
 } from "echarts/charts";
 import {
   AxisPointerComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
@@ -19,6 +20,7 @@ registerModules([
   LineChart,
   PieChart,
   AxisPointerComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   MarkLineComponent,
