@@ -1,4 +1,10 @@
-import { CandlestickChart, HeatmapChart } from "echarts/charts";
+import {
+  CandlestickChart,
+  CustomChart,
+  GaugeChart,
+  HeatmapChart,
+  ScatterChart,
+} from "echarts/charts";
 import {
   DataZoomInsideComponent,
   MarkPointComponent,
@@ -8,8 +14,11 @@ import { use as registerModules } from "echarts/core";
 
 registerModules([
   CandlestickChart,
+  CustomChart,
   DataZoomInsideComponent,
+  GaugeChart,
   HeatmapChart,
   MarkPointComponent,
+  ScatterChart,
   VisualMapComponent,
 ]);

@@ -1,6 +1,6 @@
 [project]
 name = "trading-max-backend"
-version = "1.0.8"
+version = "1.1.0"
 description = "Installable domain, application, and worker package for Trading Max Portfolio"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"

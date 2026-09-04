@@ -179,7 +179,7 @@ export async function loadMockResearchLens(
   };
   return {
     alerts: [],
-    analyst: null,
+    analyst: buildMockAnalyst(),
     events: [latestEvent],
     financials: null,
     fundamentals: null,
@@ -378,6 +378,55 @@ export async function loadMockResearchPrices(
 
 function stagedDelay(milliseconds: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function buildMockAnalyst(): NonNullable<ResearchLensSnapshot["analyst"]> {
+  return {
+    earningsEstimate: [
+      { avg: 0.72, growth: 0.41, high: 0.83, low: 0.61, numberOfAnalysts: 13, period: "0y", yearAgoEps: 0.51 },
+      { avg: 1.18, growth: 0.64, high: 1.36, low: 0.98, numberOfAnalysts: 14, period: "+1y", yearAgoEps: 0.72 },
+    ],
+    earningsHistory: [
+      { epsActual: 0.19, epsDifference: 0.04, epsEstimate: 0.15, quarter: "2026-06-30", surprisePercent: 0.267 },
+      { epsActual: 0.14, epsDifference: 0.03, epsEstimate: 0.11, quarter: "2026-03-31", surprisePercent: 0.273 },
+      { epsActual: 0.12, epsDifference: 0.02, epsEstimate: 0.1, quarter: "2025-12-31", surprisePercent: 0.2 },
+      { epsActual: 0.08, epsDifference: -0.01, epsEstimate: 0.09, quarter: "2025-09-30", surprisePercent: -0.111 },
+      { epsActual: 0.07, epsDifference: 0.01, epsEstimate: 0.06, quarter: "2025-06-30", surprisePercent: 0.167 },
+    ],
+    epsRevisions: [
+      { current: 0.19, downLast30days: 1, period: "0q", upLast30days: 5, upLast7days: 2 },
+      { current: 0.24, downLast30days: 0, period: "+1q", upLast30days: 4, upLast7days: 1 },
+      { current: 0.72, downLast30days: 2, period: "0y", upLast30days: 7, upLast7days: 3 },
+      { current: 1.18, downLast30days: 1, period: "+1y", upLast30days: 8, upLast7days: 2 },
+    ],
+    priceTargets: { current: 201.45, high: 390, low: 96, mean: 274.6, median: 265 },
+    recommendations: [
+      { buy: 9, hold: 4, period: "0m", sell: 1, strongBuy: 16, strongSell: 0 },
+      { buy: 9, hold: 5, period: "-1m", sell: 1, strongBuy: 15, strongSell: 0 },
+      { buy: 10, hold: 5, period: "-2m", sell: 1, strongBuy: 14, strongSell: 0 },
+      { buy: 10, hold: 5, period: "-3m", sell: 1, strongBuy: 13, strongSell: 0 },
+      { buy: 11, hold: 5, period: "-4m", sell: 1, strongBuy: 12, strongSell: 0 },
+      { buy: 11, hold: 6, period: "-5m", sell: 1, strongBuy: 11, strongSell: 0 },
+      { buy: 10, hold: 7, period: "-6m", sell: 1, strongBuy: 11, strongSell: 0 },
+      { buy: 10, hold: 7, period: "-7m", sell: 2, strongBuy: 10, strongSell: 0 },
+      { buy: 10, hold: 8, period: "-8m", sell: 2, strongBuy: 9, strongSell: 0 },
+      { buy: 9, hold: 8, period: "-9m", sell: 2, strongBuy: 9, strongSell: 0 },
+      { buy: 9, hold: 9, period: "-10m", sell: 2, strongBuy: 8, strongSell: 0 },
+      { buy: 8, hold: 10, period: "-11m", sell: 2, strongBuy: 8, strongSell: 0 },
+    ],
+    revenueEstimate: [
+      { avg: 4_050_000_000, growth: 0.62, high: 4_200_000_000, low: 3_900_000_000, numberOfAnalysts: 15, period: "0y", yearAgoRevenue: 2_500_000_000 },
+      { avg: 6_100_000_000, growth: 0.506, high: 6_800_000_000, low: 5_500_000_000, numberOfAnalysts: 16, period: "+1y", yearAgoRevenue: 4_050_000_000 },
+    ],
+    upgradesDowngrades: [
+      { Action: "maintains", Firm: "RBC Capital", FromGrade: "Outperform", GradeDate: "2026-08-20", ToGrade: "Outperform", currentPriceTarget: 315, priceTargetAction: "raises", priorPriceTarget: 275 },
+      { Action: "maintains", Firm: "Morgan Stanley", FromGrade: "Overweight", GradeDate: "2026-08-14", ToGrade: "Overweight", currentPriceTarget: 290, priceTargetAction: "raises", priorPriceTarget: 250 },
+      { Action: "maintains", Firm: "J.P. Morgan", FromGrade: "Overweight", GradeDate: "2026-08-05", ToGrade: "Overweight", currentPriceTarget: 280, priceTargetAction: "raises", priorPriceTarget: 240 },
+      { Action: "reiterates", Firm: "BofA Securities", FromGrade: "Buy", GradeDate: "2026-07-29", ToGrade: "Buy", currentPriceTarget: 300, priceTargetAction: "maintains", priorPriceTarget: 300 },
+      { Action: "maintains", Firm: "Wells Fargo", FromGrade: "Equal-Weight", GradeDate: "2026-07-18", ToGrade: "Equal-Weight", currentPriceTarget: 220, priceTargetAction: "raises", priorPriceTarget: 190 },
+      { Action: "maintains", Firm: "Jefferies", FromGrade: "Hold", GradeDate: "2026-07-08", ToGrade: "Hold", currentPriceTarget: 205, priceTargetAction: "lowers", priorPriceTarget: 215 },
+    ],
+  };
 }
 
 function buildMockOptions(ticker: string): NonNullable<ResearchLensSnapshot["options"]> {
