@@ -61,6 +61,7 @@ type Props = {
   selectedTicker: string;
   onSelectTicker: (ticker: string) => void;
   onTickerAdded?: (security: SecuritySearchResult) => void;
+  onTickerRemoved?: (ticker: string) => void;
   pendingTicker?: string | null;
   headless?: boolean;
   mock?: boolean;
@@ -120,6 +121,7 @@ export function WatchlistNavigator({
   selectedTicker,
   onSelectTicker,
   onTickerAdded,
+  onTickerRemoved,
   pendingTicker,
 }: Props) {
   const { locale } = useLocale();
@@ -146,6 +148,7 @@ export function WatchlistNavigator({
   const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [addingTicker, setAddingTicker] = useState<string | null>(null);
+  const [removingTicker, setRemovingTicker] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const combobox = useCombobox();
@@ -332,13 +335,30 @@ export function WatchlistNavigator({
   }
 
   async function remove(ticker: string) {
-    if (mock) return;
-    const response = await fetch(
-      `/api/backend/watchlist/${encodeURIComponent(ticker)}`,
-      { method: "DELETE" },
-    );
-    if (!response.ok) throw new Error(`remove ${response.status}`);
-    router.refresh();
+    if (mock || removingTicker) return;
+    setRemovingTicker(ticker);
+    setOperationError(null);
+    try {
+      const response = await fetch(
+        `/api/backend/watchlist/${encodeURIComponent(ticker)}`,
+        {
+          body: JSON.stringify({ action: "remove" }),
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        },
+      );
+      if (!response.ok) throw new Error(`remove ${response.status}`);
+      onTickerRemoved?.(ticker);
+      router.refresh();
+    } catch {
+      setOperationError(
+        zh
+          ? `未能删除 ${ticker}，请重试。`
+          : `${ticker} was not removed. Try again.`,
+      );
+    } finally {
+      setRemovingTicker(null);
+    }
   }
 
   const libraryView = (
@@ -427,6 +447,12 @@ export function WatchlistNavigator({
             </Text>
           </Group>
 
+          {operationError ? (
+            <Text aria-live="assertive" c="red" mb="md" role="alert" size="sm">
+              {operationError}
+            </Text>
+          ) : null}
+
           {groupedVisible.length ? groupedVisible.map(([letter, letterInstruments]) => (
             <Box
               className="tm-security-letter-group"
@@ -450,7 +476,13 @@ export function WatchlistNavigator({
                     withBorder
                   >
                     <LoadingOverlay
-                      visible={pending && instrument.ticker === (pendingTicker ?? selectedTicker)}
+                      visible={
+                        removingTicker === instrument.ticker
+                        || (
+                          pending
+                          && instrument.ticker === (pendingTicker ?? selectedTicker)
+                        )
+                      }
                     />
                     <Group gap={0} justify="space-between" wrap="nowrap">
                       <UnstyledButton
@@ -500,8 +532,10 @@ export function WatchlistNavigator({
                           <Menu.Dropdown>
                             <Menu.Item
                               color="red"
-                              disabled={mock}
-                              leftSection={<Trash size={16} />}
+                              disabled={mock || removingTicker !== null}
+                              leftSection={removingTicker === instrument.ticker
+                                ? <Loader size={16} />
+                                : <Trash size={16} />}
                               onClick={() => void remove(instrument.ticker)}
                             >
                               {zh ? "从标的库删除" : "Remove from library"}

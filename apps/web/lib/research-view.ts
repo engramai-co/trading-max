@@ -1,5 +1,20 @@
 import type { ResearchInstrument } from "@/lib/types";
 
+export function mergeResearchInstruments(
+  sources: ResearchInstrument[][],
+  removedTickers: ReadonlySet<string> = new Set(),
+): ResearchInstrument[] {
+  const merged = new Map<string, ResearchInstrument>();
+  for (const instruments of sources) {
+    for (const instrument of instruments) {
+      if (!removedTickers.has(instrument.ticker)) {
+        merged.set(instrument.ticker, instrument);
+      }
+    }
+  }
+  return Array.from(merged.values());
+}
+
 export function filterAndPrioritizeResearchInstruments(
   instruments: ResearchInstrument[],
   category: string,

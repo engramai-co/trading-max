@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Make Security Library removal use the supported watchlist mutation, remove
+  the saved ticker from the live directory immediately, and surface failures
+  instead of silently leaving the row unchanged.
+
 ## [1.1.0] - 2026-09-04
 
 ### Changed

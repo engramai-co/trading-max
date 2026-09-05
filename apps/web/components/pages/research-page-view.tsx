@@ -29,6 +29,9 @@ import {
 } from "@/lib/mock-research";
 import { fetchResearchPrices } from "@/lib/research-prices";
 import {
+  mergeResearchInstruments,
+} from "@/lib/research-view";
+import {
   researchLensQueryKey,
   researchPricesQueryKey,
 } from "@/lib/research-query";
@@ -95,6 +98,9 @@ export function ResearchPageView({
   const [activeView, setActiveView] = useState(view);
   const [pickerSignal, setPickerSignal] = useState(0);
   const [optimisticInstruments, setOptimisticInstruments] = useState<ResearchInstrument[]>([]);
+  const [removedTickers, setRemovedTickers] = useState<Set<string>>(
+    () => new Set(),
+  );
   const optimisticTickers = useMemo(
     () => new Set(optimisticInstruments.map((item) => item.ticker)),
     [optimisticInstruments],
@@ -112,13 +118,22 @@ export function ResearchPageView({
     refetchOnWindowFocus: true,
     staleTime: 10_000,
   });
-  const instruments = useMemo(() => {
-    const merged = new Map<string, ResearchInstrument>();
-    for (const item of shell.instruments) merged.set(item.ticker, item);
-    for (const item of optimisticInstruments) merged.set(item.ticker, item);
-    for (const item of liveShell.data?.instruments ?? []) merged.set(item.ticker, item);
-    return Array.from(merged.values());
-  }, [liveShell.data?.instruments, optimisticInstruments, shell.instruments]);
+  const instruments = useMemo(
+    () => mergeResearchInstruments(
+      [
+        shell.instruments,
+        optimisticInstruments,
+        liveShell.data?.instruments ?? [],
+      ],
+      removedTickers,
+    ),
+    [
+      liveShell.data?.instruments,
+      optimisticInstruments,
+      removedTickers,
+      shell.instruments,
+    ],
+  );
   const instrument = instruments.find((item) => item.ticker === activeTicker);
   const researchPending = instrument ? researchWorkIsPending(instrument) : false;
   const researchFailed = instrument?.status === "failed";
@@ -191,6 +206,12 @@ export function ResearchPageView({
 
   function addTicker(security: SecuritySearchResult) {
     const localPreviewLabel = locale === "zh" ? "本地预览" : "Local preview";
+    setRemovedTickers((current) => {
+      if (!current.has(security.ticker)) return current;
+      const next = new Set(current);
+      next.delete(security.ticker);
+      return next;
+    });
     setOptimisticInstruments((current) => {
       if (instruments.some((item) => item.ticker === security.ticker)) return current;
       const nextOrder = Math.max(0, ...instruments.map((item) => item.order)) + 1;
@@ -210,6 +231,20 @@ export function ResearchPageView({
       ];
     });
     selectTicker(security.ticker);
+  }
+
+  function removeTicker(tickerToRemove: string) {
+    const fallback = instruments.find(
+      (item) => item.ticker !== tickerToRemove && item.held,
+    ) ?? instruments.find((item) => item.ticker !== tickerToRemove);
+    setRemovedTickers((current) => new Set(current).add(tickerToRemove));
+    setOptimisticInstruments((current) => (
+      current.filter((item) => item.ticker !== tickerToRemove)
+    ));
+    if (activeTicker === tickerToRemove && fallback) {
+      selectTicker(fallback.ticker);
+    }
+    void queryClient.invalidateQueries({ queryKey: ["research-shell"] });
   }
 
   function selectView(next: ResearchView) {
@@ -363,6 +398,7 @@ export function ResearchPageView({
         instruments={instruments}
         mock={mock}
         onTickerAdded={addTicker}
+        onTickerRemoved={removeTicker}
         onSelectTicker={selectTicker}
         openSignal={pickerSignal}
         selectedTicker={activeTicker}
