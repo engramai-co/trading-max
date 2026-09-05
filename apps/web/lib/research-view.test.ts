@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   filterAndPrioritizeResearchInstruments,
+  mergeResearchInstruments,
   normalizedFundamentalMetrics,
 } from "@/lib/research-view";
 import type { ResearchInstrument } from "@/lib/types";
@@ -40,6 +41,27 @@ describe("filterAndPrioritizeResearchInstruments", () => {
         ({ ticker }) => ticker,
       ),
     ).toEqual(["HELD2", "WATCH1", "WATCH2"]);
+  });
+});
+
+describe("mergeResearchInstruments", () => {
+  it("lets fresher sources replace the initial snapshot", () => {
+    const initial = instrument("XPEV", "autos");
+    const live = { ...initial, name: "XPeng" };
+
+    expect(mergeResearchInstruments([[initial], [live]])).toEqual([live]);
+  });
+
+  it("keeps a removed ticker out even when it remains in the initial snapshot", () => {
+    const held = instrument("ARM", "chips", true);
+    const removed = instrument("XPEV", "autos");
+
+    expect(
+      mergeResearchInstruments(
+        [[held, removed], [removed]],
+        new Set(["XPEV"]),
+      ),
+    ).toEqual([held]);
   });
 });
 

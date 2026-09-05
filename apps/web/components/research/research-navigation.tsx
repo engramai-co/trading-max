@@ -9,6 +9,7 @@ export function ResearchNavigation({
   mock,
   onSelectTicker,
   onTickerAdded,
+  onTickerRemoved,
   openSignal,
   selectedTicker,
 }: {
@@ -17,6 +18,7 @@ export function ResearchNavigation({
   mock?: boolean;
   onSelectTicker: (ticker: string) => void;
   onTickerAdded: (security: SecuritySearchResult) => void;
+  onTickerRemoved: (ticker: string) => void;
   openSignal: number;
   selectedTicker: string;
 }) {
@@ -28,6 +30,7 @@ export function ResearchNavigation({
       mock={mock}
       onSelectTicker={onSelectTicker}
       onTickerAdded={onTickerAdded}
+      onTickerRemoved={onTickerRemoved}
       openSignal={openSignal}
       selectedTicker={selectedTicker}
     />
