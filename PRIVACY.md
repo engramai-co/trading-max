@@ -20,11 +20,15 @@ browser.
 
 ## Data sent to providers
 
-Trading Max communicates only with providers the local user configures:
+Account connections and optional model routes are user-configured. Research
+also uses built-in public providers when the user requests or refreshes data:
 
 - Trading 212 receives its API credential and account-data requests;
-- market-data and instrument-identity providers receive ticker, identifier, or
-  issuer queries;
+- Yahoo-compatible market and instrument-identity providers receive ticker,
+  search, identifier, or issuer queries;
+- public filing and issuer endpoints receive document requests, including
+  SEC EDGAR and supported issuer or filing mirrors;
+- server-proxied company-logo services receive a ticker or domain request;
 - OpenCode or DeepSeek receives the bounded portfolio or research context
   needed for an explicitly configured analysis route.
 

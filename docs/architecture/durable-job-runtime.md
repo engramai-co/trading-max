@@ -42,7 +42,10 @@ A failed job leaves the previous successful snapshot untouched.
 false on the host. Production uses
 `com.engram.trading-max-worker` so API restarts cannot interrupt execution.
 
-The deployment script installs/restarts the worker LaunchAgent when the plist
-exists and removes it during rollback to a revision that predates the worker.
+The advanced macOS deployer requires already provisioned API, web, and worker
+services. It builds in isolation and retains the previous runtime and service
+definitions; rollback restores them without rebuilding. This is a compatible
+upgrade path, not an installer for a pre-worker deployment. See the
+[deployment guide](../../deploy/macos/README.md).
 CI installs all uv workspace packages so the `trading_max` backend package is
 available to both the API and worker LaunchAgents.

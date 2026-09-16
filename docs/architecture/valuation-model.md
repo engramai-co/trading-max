@@ -1,4 +1,4 @@
-# Valuation engine v4
+# Valuation model
 
 ## Decision
 
@@ -13,7 +13,7 @@ documentation.
 ## Automatic lens
 
 The current provider exposes a `freeCashflow` measure but not the complete
-operating reinvestment bridge required for verified FCFF. V4 therefore treats
+operating reinvestment bridge required for verified FCFF. The model therefore treats
 that field as a levered free-cash-flow proxy and pairs it with cost of equity.
 It does not subtract net debt from the resulting equity value.
 

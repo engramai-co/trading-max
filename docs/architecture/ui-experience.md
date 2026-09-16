@@ -6,9 +6,8 @@ Trading Max is a private, read-only portfolio intelligence workspace. Users need
 to understand what they own, separate investment performance from cash movements,
 revisit account decisions, and research securities using identifiable evidence.
 
-The September 2026 rebuild takes this product intent as its design input. All
-previous presentation components, page compositions, chart configurations, and
-styles are removed. The new implementation lives in `apps/web/workspace`.
+The implementation lives in `apps/web/workspace`. Shared chart infrastructure,
+typed snapshots, and provider boundaries support the interface independently.
 
 ## Information architecture
 
@@ -18,7 +17,7 @@ styles are removed. The new implementation lives in `apps/web/workspace`.
 | Holdings | Account filters, search and sort, position details; companies, countries, industries and ETF source coverage |
 | Performance | Money and contributions, rebased portfolio and benchmark returns, monthly TWR, drawdown and risk statistics |
 | Review | Account selection, money reconciliation, realized attribution, trade quality, phases and ending risk |
-| Research | A searchable universe and eight independent perspectives: overview, technicals, valuation, fundamentals, financials, analyst estimates, options and journal |
+| Research | A searchable list and seven views: overview, financials/business, price/technicals, estimates/events, valuation, options and journal |
 | Data status | Readiness, worker and snapshot status, queued updates, task history and stage details |
 | Connections | Broker credentials, optional model providers and per-lens assignments, CFD imports, schedules and personal preferences |
 
@@ -104,8 +103,9 @@ without reverting or migrating account state.
 ## Verification
 
 Development uses an isolated synthetic state directory and loopback API/web ports.
-Representative research artifacts and account reviews come from synthetic data;
-no real broker credentials or account screenshots are used. Browser verification
+Automated tests use synthetic fixtures. Interactive acceptance simulates only
+Trading 212 inputs and uses real research adapters. No real broker credentials
+or real-account screenshots are used in the public preview. Browser verification
 covers primary routes and inner views, charts, filters, drawers, tables, settings,
 keyboard navigation, languages, appearances, and narrow layouts. Live broker and
 model-provider authentication requires the user's credentials and is not exercised

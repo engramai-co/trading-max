@@ -1,12 +1,7 @@
-# Research presentation revision — September 2026
+# Research presentation
 
-## Status and motivation
-
-The September 14 refinement implements the product owner's accepted review of
-research charts, navigation and valuation editing. The earlier comparative audit
-identified feature gaps; this iteration makes those capabilities easier to use.
-It does not claim feature parity with TradingView or Stock Analysis. The personal
-HTML tutorial remains outside the application and repository.
+This document defines the current research interface. The [user guide](../guides/research.md)
+explains how to use it; this page records its data and interaction boundaries.
 
 ## Navigation and chart responsibilities
 
@@ -96,8 +91,9 @@ is required. OpenAPI and TypeScript contracts are generated together. Old
 snapshots without dividend-coverage metadata use a conservative first-year rule.
 Research stays on the real Yahoo-compatible and filing adapters; only the
 existing Trading 212 preview ingestion is mocked. No new market-data mock is
-introduced. Runtime snapshots, company-logo caches, private models and browser
-screenshots stay outside Git. The personal tutorial is not shipped with the app.
+introduced. Runtime snapshots, company-logo caches and private models stay outside Git.
+Reviewed documentation screenshots use hypothetical broker inputs; personal
+tutorials and operational screenshots stay outside the public repository.
 
 ## Validation
 
@@ -109,6 +105,5 @@ closes, preview horizon/provenance and saved-model reason roundtrips.
 Acceptance requires backend and frontend checks, a production build, and browser
 checks of the three technical sections, simple/full chart controls, actual range
 coverage, business modes, dividend/share presentation, model editing, list pin,
-logo, keyboard interaction and narrow layouts. Browser verification uses the
-existing preview and does not create disposable research-model entries in the
-user's journal. Write behavior is tested with isolated synthetic fixtures.
+logo, keyboard interaction and narrow layouts. Browser verification uses an isolated broker-only preview. Write behavior is
+tested in its disposable state, never in the user's production journal.

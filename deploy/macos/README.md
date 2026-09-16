@@ -54,8 +54,11 @@ It also enables broker-value intraday anchors around the clock, seven days a
 week in Europe/London. One idempotent slot runs every 600 seconds and retains 40 days
 in `account/nav/intraday_anchors.json`. This path only reads live account
 values; it does not request Trading 212 history exports or run research/LLM
-stages. Because the live snapshot has no verified cash-flow stream, short-range
-charts label the result as value change rather than TWR. Disable it safely with
+stages. Unified history supports cash-flow-aware money P&L when reconciled
+evidence covers the interval; it does not certify intraday TWR. The legacy host
+default of 40 days is shorter than 3M: set retention to at least 120 days for
+the full three-month view. Existing explicit settings survive upgrades. See
+[valuation history](../../docs/architecture/unified-nav-history.md). Disable collection with
 `TRADING_MAX_INTRADAY_ENABLED=false`.
 
 It must be mode `0600`. Snapshots, artifacts, the SQLite queue, and broker raw
