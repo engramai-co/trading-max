@@ -66,9 +66,13 @@ class StoredSnapshot:
 class SnapshotStore:
     """Publish and read manifests without filesystem-time discovery."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self, root: Path, *, artifacts: ContentAddressedArtifactStore | None = None
+    ) -> None:
         self.root = root.expanduser().resolve()
-        self.artifacts = ContentAddressedArtifactStore(self.root / "artifacts")
+        self.artifacts = artifacts or ContentAddressedArtifactStore(self.root / "artifacts")
+        if self.artifacts.root != self.root / "artifacts":
+            raise ValueError("snapshot artifact store must use the same state root")
         self.snapshots_root = self.root / "snapshots"
         self.latest_path = self.root / "latest.json"
 
@@ -120,10 +124,7 @@ class SnapshotStore:
             raise SnapshotIntegrityError(f"invalid snapshot manifest: {run_id}") from exc
         if verify_artifacts:
             for ref in manifest.artifacts:
-                if ref.media_type == "application/json":
-                    self.artifacts.get_json(ref.artifact_id)
-                else:
-                    self.artifacts.get_bytes(ref.artifact_id)
+                self.artifacts.get_ref(ref.artifact_id)
         return StoredSnapshot(manifest=manifest, path=path)
 
     def list(self, *, limit: int = 100) -> list[StoredSnapshot]:

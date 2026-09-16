@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-09-16
+
+### Fixed
+
+- Coalesce identical in-flight research and artifact reads without serializing
+  unrelated securities behind a network lock. Bound cached entries and avoid
+  retaining failed requests as successful results.
+- Revalidate immutable artifact and snapshot files when their file metadata
+  changes so a previous successful read cannot hide a replaced or corrupt file.
+
 ## [1.3.1] - 2026-09-16
 
 ### Fixed

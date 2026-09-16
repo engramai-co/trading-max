@@ -19,6 +19,8 @@ from typing import Any
 
 from trading_max.domain import ArtifactQuality, ArtifactRef
 
+from .singleflight import SingleFlightCache
+
 JsonObject = dict[str, Any]
 
 
@@ -108,6 +110,7 @@ class ContentAddressedArtifactStore:
     def __init__(self, root: Path) -> None:
         self.root = root.expanduser().resolve()
         self.content_root = self.root / "sha256"
+        self._verified_refs: SingleFlightCache[tuple, ArtifactRef] = SingleFlightCache(256)
 
     def path_for(self, artifact_id: str) -> Path:
         if len(artifact_id) != 64 or any(
@@ -169,6 +172,7 @@ class ContentAddressedArtifactStore:
             # with a different timestamp on an idempotent publish.
             return self.get_json(digest)
         _atomic_write(path, content)
+        self._verified_refs.get_or_compute(self._ref_key(digest), lambda: ref.model_copy(deep=True))
         return StoredArtifact(ref=ref, payload=dict(payload), path=path)
 
     def get_json(self, artifact_id: str) -> StoredArtifact:
@@ -278,13 +282,31 @@ class ContentAddressedArtifactStore:
             raise ArtifactIntegrityError(f"byte artifact digest mismatch: {artifact_id}")
         return StoredBytes(ref=ref, path=path)
 
+    def _ref_key(self, artifact_id: str) -> tuple:
+
+        path = self.path_for(artifact_id)
+        metadata_path = path.with_name(f"{artifact_id}.meta.json")
+
+        def stamp(file: Path) -> tuple:
+            stat = file.stat()
+            return stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+        return (artifact_id, stamp(path), stamp(metadata_path) if metadata_path.is_file() else None)
+
     def get_ref(self, artifact_id: str) -> ArtifactRef:
         """Validate and return the reference for either artifact media type."""
+        path = self.path_for(artifact_id)
+        metadata_path = path.with_name(f"{artifact_id}.meta.json")
+        key = self._ref_key(artifact_id)
 
-        metadata_path = self.path_for(artifact_id).with_name(f"{artifact_id}.meta.json")
-        if metadata_path.is_file():
-            return self.get_bytes(artifact_id).ref
-        return self.get_json(artifact_id).ref
+        def validate() -> ArtifactRef:
+            if metadata_path.is_file():
+                return self.get_bytes(artifact_id).ref
+            return self.get_json(artifact_id).ref
+
+        # Reuse only a reference already verified against unchanged file bytes.
+        # A replacement, edit, or deleted file forces validation again.
+        return self._verified_refs.get_or_compute(key, validate).model_copy(deep=True)
 
 
 __all__ = [
