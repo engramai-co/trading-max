@@ -57,6 +57,7 @@ export function FinancialWorkbench({
   const period =
     periods.find((p) => p.id === params.get("period")) ?? periods.at(-1);
   const chart = params.get("metricGroup") ?? "income";
+  const weightedShares = params.get("shareBasis") === "weighted";
   const get = factIndex(facts);
   const label = (key: string) =>
     metricNames[key]
@@ -79,7 +80,9 @@ export function FinancialWorkbench({
     cashflow: ["operatingCashflow", "capex", "freeCashflow"],
     balance: ["cash", "debt"],
     returns: ["roe", "roa"],
-    shares: ["shareCount", "dilutedShares"],
+    shares: weightedShares
+      ? ["basicShares", "dilutedShares"]
+      : ["shareCount", "dilutedShares"],
     allocation: ["freeCashflow", "buybacks", "dividends"],
   };
   const chartMetrics = groups[chart] ?? groups.income;
@@ -213,7 +216,7 @@ export function FinancialWorkbench({
                   chart === "shares"
                     ? t(
                         "期末股数是时点余额，平均股数是期间加权值，两者的差额不代表稀释。EPS 股数视图对照同期间基本与摊薄平均股数；TTM 使用四个季度平均值。",
-                        "Period-end shares are a balance; weighted-average shares cover a period. Their difference is not dilution. TTM uses four-quarter means.",
+                        "Period-end shares are a balance; weighted-average shares cover a period. Their difference is not dilution. The EPS view compares basic and diluted averages for the same period; TTM uses four-quarter means.",
                       )
                     : undefined
                 }
@@ -252,6 +255,25 @@ export function FinancialWorkbench({
                   />
                 }
               >
+                {chart === "shares" && (
+                  <Segments
+                    label={t("股数口径", "Share-count basis")}
+                    value={weightedShares ? "weighted" : "outstanding"}
+                    onChange={(v) =>
+                      update({ shareBasis: v === "weighted" ? v : null })
+                    }
+                    options={[
+                      {
+                        value: "outstanding",
+                        label: t("期末与平均股数", "Period-end & average"),
+                      },
+                      {
+                        value: "weighted",
+                        label: t("EPS 加权股数", "EPS weighted averages"),
+                      },
+                    ]}
+                  />
+                )}
                 <Plot
                   label={t("经营历史", "Operating history")}
                   height={320}

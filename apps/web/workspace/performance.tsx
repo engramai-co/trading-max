@@ -11,7 +11,6 @@ import type { TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
 import {
   currency,
-  difference,
   inRange,
   navNumber,
   observedNav,
@@ -42,8 +41,9 @@ import {
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
-import { HistoryCoverage, HistoryHelp } from "./history-coverage";
+import { HistoryCoverage } from "./history-coverage";
 import { selectPortfolioHistory } from "./portfolio-history";
+import { portfolioMoney } from "./portfolio-money";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
@@ -141,24 +141,8 @@ export function PerformanceContent({
   const points = view === "returns" ? returnsPoints : availablePoints;
   const first = points[0],
     last = points.at(-1);
-  const change =
-    points.length > 1
-      ? difference(navNumber(first, scope), navNumber(last, scope))
-      : null;
-  const contributions =
-    points.length > 1
-      ? difference(
-          navNumber(first, scope, "NetContributionsGbp"),
-          navNumber(last, scope, "NetContributionsGbp"),
-        )
-      : null;
-  const pnl =
-    points.length > 1
-      ? difference(
-          navNumber(first, scope, "NetPnlGbp"),
-          navNumber(last, scope, "NetPnlGbp"),
-        )
-      : null;
+  const money = portfolioMoney(points, scope);
+  const { contributions, pnl } = money;
   const twr =
     points.length > 1
       ? periodReturn(
@@ -195,13 +179,11 @@ export function PerformanceContent({
         )
       : []),
   ];
-  const moneyDrawdown = drawdowns(
-    points.map((p) => isIntraday ? navNumber(p, scope) : navNumber(p, scope, "NetPnlGbp")),
-  );
-  const valueChanges = points.map((p) => difference(navNumber(first, scope), navNumber(p, scope)));
-  const valueChangePercents = valueChanges.map((value) => value != null && (navNumber(first, scope) ?? 0) > 0 ? value / navNumber(first, scope)! : null);
-  const moneyDrawdownPercents = drawdowns(valueChangePercents, true);
-  const periodPnls = points.map((p) => difference(navNumber(first, scope, "NetPnlGbp"), navNumber(p, scope, "NetPnlGbp")));
+  const moneyDrawdown = money.drawdown;
+  const valueChanges = money.valueChanges;
+  const valueChangePercents = money.valueChangePercents;
+  const moneyDrawdownPercents = money.drawdownPercents;
+  const periodPnls = money.pnls;
   const modelComparisons = points.map((point) => {
     if (scope === "invest") return point.investModelValueGbp ?? null;
     if (scope === "isa") return point.isaModelValueGbp ?? null;
@@ -218,7 +200,7 @@ export function PerformanceContent({
       ? returnLines
       : [
           {
-            name: moneyUnit === "percent" ? t("价值变化", "Value change") : isIntraday ? t("账户估值", "Account valuation") : t("账户价值", "Account value"),
+            name: moneyUnit === "percent" ? t("价值变化", "Value change") : t("账户价值", "Account value"),
             values: points.map((p) =>
               moneyUnit === "gbp"
                 ? navNumber(p, scope)
@@ -229,45 +211,34 @@ export function PerformanceContent({
             ),
             area: true,
           },
-          ...(isIntraday
-            ? [{ name: t("期初价值", "Opening value"), colour: "accent" as const, dashed: true,
-              values: points.map(() => moneyUnit === "gbp" ? navNumber(first, scope) : (navNumber(first, scope) ?? 0) > 0 ? 0 : null) }]
-            : [
-                {
-                  name: moneyUnit === "percent" ? t("净入金变化", "Contribution change") : t("累计净入金", "Cumulative net contributions"),
-                  values: points.map((p) =>
-                    moneyUnit === "gbp"
-                      ? navNumber(p, scope, "NetContributionsGbp")
-                      : (navNumber(first, scope) ?? 0) > 0 &&
-                          navNumber(p, scope, "NetContributionsGbp") != null &&
-                          navNumber(first, scope, "NetContributionsGbp") != null
-                        ? (navNumber(p, scope, "NetContributionsGbp")! -
-                            navNumber(first, scope, "NetContributionsGbp")!) /
-                          navNumber(first, scope)!
-                        : null,
-                  ),
-                  colour: "accent" as const,
-                  dashed: true,
-                },
-              ]),
+          {
+            name: moneyUnit === "percent" ? t("净入金变化", "Contribution change") : t("累计净入金", "Cumulative net contributions"),
+            values: points.map((p, i) => moneyUnit === "gbp"
+              ? navNumber(p, scope, "NetContributionsGbp")
+              : money.opening != null && money.opening > 0 && money.periodFlows[i] != null
+                ? money.periodFlows[i]! / money.opening : null),
+            colour: "accent",
+            dashed: true,
+          },
         ];
   const timelineLayers: TimelineLayer[] = [
     {
       label:
         view === "money"
-          ? moneyUnit === "percent" ? isIntraday ? t("相对期初价值变化", "Value change from opening") : t("价值与入金变化", "Value & contribution change") : isIntraday ? t("账户估值", "Account valuation") : t("价值与入金", "Value & contributions")
+          ? moneyUnit === "percent" ? t("价值与入金变化", "Value & contribution change") : t("价值与入金", "Value & contributions")
           : t("收益对比", "Return comparison"),
       lines: principalLines,
       percentage: view === "returns" || moneyUnit === "percent",
     },
-    ...(view === "money" && !isIntraday
+    ...(view === "money"
       ? [
           {
             label: t("区间净盈亏", "Period P&L"),
+            percentage: moneyUnit === "percent",
             lines: [
               {
                 name: t("净盈亏", "Net P&L"),
-                values: periodPnls,
+                values: moneyUnit === "percent" ? money.pnlPercents : periodPnls,
                 area: true,
               },
             ],
@@ -275,16 +246,16 @@ export function PerformanceContent({
         ]
       : []),
     {
-      label: isIntraday ? t("价值回撤", "Value drawdown") : t("期间回撤", "Period drawdown"),
-      percentage: view === "returns" || (isIntraday && moneyUnit === "percent"),
+      label: view === "money" ? t("盈亏回撤", "P&L drawdown") : t("期间回撤", "Period drawdown"),
+      percentage: view === "returns" || moneyUnit === "percent",
       drawdown: true,
       lines:
         view === "returns"
           ? returnDrawdowns
           : [
               {
-                name: isIntraday ? t("价值回撤", "Value drawdown") : t("盈亏回撤", "P&L drawdown"),
-                values: isIntraday && moneyUnit === "percent" ? moneyDrawdownPercents : moneyDrawdown,
+                name: t("盈亏回撤", "P&L drawdown"),
+                values: moneyUnit === "percent" ? moneyDrawdownPercents : moneyDrawdown,
                 colour: "negative",
                 area: true,
               },
@@ -298,20 +269,16 @@ export function PerformanceContent({
     primary: view === "returns"
       ? returnLines.map((line) => ({ label: line.name, values: line.values, percentage: true, signed: true }))
       : [
-          { label: isIntraday ? t("区间价值变化", "Value change") : t("区间净盈亏", "Period P&L"), values: isIntraday ? valueChanges : periodPnls, percentages: isIntraday ? valueChangePercents : undefined, signed: true },
-          { label: isIntraday ? t("价值回撤", "Value drawdown") : t("盈亏回撤", "P&L drawdown"), values: moneyDrawdown, percentages: isIntraday ? moneyDrawdownPercents : undefined, signed: true },
+          { label: t("区间净盈亏", "Period P&L"), values: periodPnls, percentages: money.pnlPercents, signed: true },
+          { label: t("盈亏回撤", "P&L drawdown"), values: moneyDrawdown, percentages: moneyDrawdownPercents, signed: true },
         ],
     secondary: view === "returns"
       ? returnDrawdowns.map((line) => ({ label: `${line.name} · ${t("回撤", "drawdown")}`, values: line.values, percentage: true, signed: true }))
       : [
-          { label: isIntraday ? t("账户估值", "Account valuation") : t("账户价值", "Account value"), values: points.map((p) => navNumber(p, scope)) },
+          { label: t("账户价值", "Account value"), values: points.map((p) => navNumber(p, scope)) },
           { label: t("期初价值", "Opening value"), values: points.map(() => navNumber(first, scope)) },
-          ...(isIntraday
-            ? []
-            : [
-                { label: t("累计净入金", "Cumulative net contributions"), values: points.map((p) => navNumber(p, scope, "NetContributionsGbp")) },
-                { label: t("区间净入金", "Net contributions in period"), values: points.map((p) => difference(navNumber(first, scope, "NetContributionsGbp"), navNumber(p, scope, "NetContributionsGbp"))) },
-              ]),
+          { label: t("累计净入金", "Cumulative net contributions"), values: points.map((p) => navNumber(p, scope, "NetContributionsGbp")) },
+          { label: t("区间净入金", "Net contributions in period"), values: money.periodFlows },
         ],
   };
   return (
@@ -360,13 +327,13 @@ export function PerformanceContent({
           <Panel
             title={
               view === "money"
-                ? isIntraday ? t("账户估值与回撤", "Account valuation & drawdown") : t("账户价值与盈亏", "Account value & P&L")
+                ? t("账户价值与盈亏", "Account value & P&L")
                 : t("收益对比", "Return comparison")
             }
-            help={view === "money" && isIntraday ? <HistoryHelp /> : (
+            help={(
               <p>{view === "money" ? t(
-                "净盈亏已扣除净入金，回撤从区间内盈亏高点计算。“相对期初 %”以期初账户价值为分母，不等于投资收益率。",
-                "P&L excludes net contributions; drawdown is measured from its period high. From opening % uses opening account value as the base, not an investment return.",
+                "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。出入金记录覆盖不足时，盈亏留空。“相对期初 %”以期初账户价值为分母，不等于投资收益率。",
+                "Every range uses ending value minus opening value minus net contributions. Drawdown is measured from the period P&L high. P&L is unavailable where cash-flow coverage is incomplete. From opening % uses opening account value as the base, not an investment return.",
               ) : t(
                 "TWR 剔除出入金影响，与基准从共同起点比较。回撤从所选区间内的收益高点计算。",
                 "TWR removes cash-flow effects and shares a starting date with benchmarks. Drawdown is measured from the return high within the selected period.",
@@ -393,41 +360,18 @@ export function PerformanceContent({
                 value={currency(navNumber(last, scope), "GBP", 2)}
               />
               <Metric
-                label={
-                  isIntraday
-                    ? t("区间价值变化", "Value change")
-                    : t("区间净入金", "Net contributions in period")
-                }
-                value={currency(
-                  isIntraday ? change : contributions,
-                  "GBP",
-                  2,
-                )}
-                tone={isIntraday ? tone(change) : undefined}
+                label={t("区间净入金", "Net contributions in period")}
+                value={currency(contributions, "GBP", 2)}
               />
               <Metric
-                label={
-                  isIntraday
-                    ? t("当前价值回撤", "Current value drawdown")
-                    : t("区间净盈亏", "P&L in period")
-                }
-                value={
-                  isIntraday ? currency(points.length > 1 ? moneyDrawdown.at(-1) : null, "GBP", 2) : currency(pnl, "GBP", 2)
-                }
-                tone={isIntraday ? "down" : tone(pnl)}
+                label={t("区间净盈亏", "P&L in period")}
+                value={currency(pnl, "GBP", 2)}
+                tone={tone(pnl)}
               />
               <Metric
-                label={
-                  view === "returns"
-                    ? t("区间 TWR", "Time-weighted return")
-                    : isIntraday ? t("最大价值回撤", "Maximum value drawdown") : t("期初价值", "Opening value")
-                }
-                value={
-                  view === "returns"
-                    ? percent(twr, true, 2)
-                    : currency(isIntraday ? points.length > 1 ? minimumObserved(moneyDrawdown) : null : navNumber(first, scope), "GBP", 2)
-                }
-                tone={view === "returns" ? tone(twr) : isIntraday ? "down" : undefined}
+                label={view === "returns" ? t("区间 TWR", "Time-weighted return") : t("最大盈亏回撤", "Maximum P&L drawdown")}
+                value={view === "returns" ? percent(twr, true, 2) : currency(money.maxDrawdown, "GBP", 2)}
+                tone={view === "returns" ? tone(twr) : "down"}
               />
             </div>
             {view === "money" && (
@@ -489,7 +433,7 @@ export function PerformanceContent({
                 ] : []}
                 label={
                   view === "money"
-                    ? isIntraday ? t("日内价值与回撤", "Intraday value and drawdown") : t(
+                    ? t(
                         "价值、盈亏与回撤的同日对照",
                         "Value, P&L and drawdown on a shared timeline",
                       )
@@ -500,7 +444,7 @@ export function PerformanceContent({
                 }
               />
             <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />
-            {!isIntraday && (
+            {view === "returns" && (
               <>
                 <div
                   className="mx-metric-grid"

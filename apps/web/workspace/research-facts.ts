@@ -28,6 +28,7 @@ export const metricNames: Record<string, [string, string]> = {
   dividends: ["已付股息", "Dividends paid"],
   shareCount: ["期末股数", "Period-end shares"],
   dilutedShares: ["摊薄平均股数", "Diluted weighted shares"],
+  basicShares: ["基本平均股数", "Basic weighted shares"],
   grossMargin: ["毛利率", "Gross margin"],
   operatingMargin: ["营业利润率", "Operating margin"],
   netMargin: ["净利率", "Net margin"],

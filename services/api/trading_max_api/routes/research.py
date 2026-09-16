@@ -41,7 +41,7 @@ from ..models import (
     WatchlistState,
 )
 from ..research_funds import FundResearch
-from ..research_journal import ResearchJournal, ResearchNoteInput
+from ..research_journal import ResearchJournal, ResearchModelSaveRequest, ResearchNoteInput
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
 
@@ -49,6 +49,7 @@ from .dependencies import app_service, latest_or_503, require_write_auth
 def _valuation_preview(
     ticker: str, request: Request, inputs: ValuationPreviewRequest | None = None
 ) -> ValuationPreview:
+    default_source = "user-input"
     lens = app_service(request, "research").lens_snapshot(
         ticker, "valuation", latest_or_503(request)
     )
@@ -92,6 +93,11 @@ def _valuation_preview(
         evidence=[*revenue.evidence, *fcf.evidence],
     )
     if inputs is None:
+        default_source = (
+            "sector-template"
+            if stored.get("assumptionSource") == "sector-template"
+            else "configured-scenarios"
+        )
         references = []
         try:
             scenarios = {
@@ -155,6 +161,7 @@ def _valuation_preview(
             (c for c in configured.companies if c.ticker.upper() == ticker.upper()), None
         )
         if company and company.source == "manual":
+            default_source = "configured-scenarios"
             references = []
             for key, value in company.scenarios.items():
                 if key in scenarios:
@@ -167,6 +174,8 @@ def _valuation_preview(
                         }
                     )
         saved = app_service(request, "research_journal").load(ticker).models
+        if saved:
+            default_source = "saved-model"
         inputs = (
             ValuationPreviewRequest(
                 scenarios={k: v.inputs for k, v in saved[0].preview.scenarios.items()},
@@ -177,7 +186,9 @@ def _valuation_preview(
             else ValuationPreviewRequest(scenarios=scenarios, references=references)
         )
     try:
-        return preview(basis, inputs)
+        result = preview(basis, inputs)
+        result.default_source = default_source
+        return result
     except ValueError as exc:
         raise HTTPException(
             status_code=409 if str(exc) == "research-data-version-changed" else 422, detail=str(exc)
@@ -240,10 +251,11 @@ def research_note_update(
     dependencies=[Depends(require_write_auth)],
 )
 def research_model_save(
-    ticker: str, body: ValuationPreviewRequest, request: Request
+    ticker: str, body: ResearchModelSaveRequest, request: Request
 ) -> ResearchJournal:
-    result = _valuation_preview(ticker, request, body)
-    return app_service(request, "research_journal").save_model(result)
+    inputs = ValuationPreviewRequest.model_validate(body.model_dump(exclude={"reason"}))
+    result = _valuation_preview(ticker, request, inputs)
+    return app_service(request, "research_journal").save_model(result, body.reason)
 
 
 @router.get("/v1/research", response_model=ResearchOverview)

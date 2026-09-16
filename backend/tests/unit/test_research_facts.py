@@ -159,3 +159,26 @@ def test_option_missing_oi_is_preserved_and_not_used_as_zero():
     summary = _expiry_summary(clean, "2099-01-01", 100)
     assert summary["call_open_interest"] is None
     assert summary["open_interest_coverage"] == 1
+
+
+def test_basic_and_diluted_share_averages_keep_their_period_basis():
+    raw = statements()
+    ends = ["2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"]
+    raw["quarterlyIncomeStatement"] += [
+        {"index": "Basic Average Shares", **dict(zip(ends, [90, 91, 92, 93, 94], strict=True))},
+        {
+            "index": "Diluted Average Shares",
+            **dict(zip(ends, [100, 101, 102, 103, 104], strict=True)),
+        },
+    ]
+    raw["quarterlyBalanceSheet"].append(
+        {"index": "Ordinary Shares Number", **dict.fromkeys(ends, 85)}
+    )
+    facts = build_financial_facts(raw, {"financialCurrency": "USD"})
+    basic = observation(facts, "basicShares")
+    assert basic.value == 92.5
+    assert basic.unit == "shares"
+    assert basic.currency is None
+    assert observation(facts, "dilutedShares").value == 102.5
+    assert observation(facts, "shareCount").value == 85
+    assert not any(o.metric == "dilution" for o in facts.observations)

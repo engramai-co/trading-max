@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from trading_max.analytics.cash_flow_history import AccountCashFlowHistory
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
     HistoryLoader,
@@ -77,7 +80,7 @@ class AccountNavStage:
     """Backfill or append trusted, cash-flow-aware account NAV histories."""
 
     name = "accounts.nav"
-    version = "nav-v4"
+    version = "nav-v5"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -198,12 +201,59 @@ class AccountNavStage:
                 previous.path.read_bytes() if previous is not None else None,
                 producer_version=(previous_ref.producer_version if previous_ref else None),
             )
+            flow_key = f"account/nav/cash_flows_{code.lower()}.json"
+            previous_flows = _previous_json(self.artifacts, self.snapshots, flow_key)
+            ledger_source = self._historical_export(profile)
+            cash_source = self._cash_transactions(profile)
+            digest = hashlib.sha256()
+            for source in (ledger_source, cash_source):
+                digest.update(source.read_bytes() if source is not None else b"absent")
+                digest.update(b"\0")
+            source_digest = digest.hexdigest()
+            account_state_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "cash": account.payload.get("cash_gbp"),
+                        "positions": sorted(
+                            (str(p.get("isin") or p.get("ticker")), p.get("quantity"))
+                            for p in account.payload.get("positions", [])
+                        ),
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            prior_flows = (
+                AccountCashFlowHistory.model_validate(previous_flows.payload)
+                if previous_flows is not None
+                else None
+            )
+            current_time = datetime.fromisoformat(
+                str(account.payload["fetched_at"]).replace("Z", "+00:00")
+            )
+            flow_coverage_current = (
+                prior_flows is not None
+                and prior_flows.verified
+                and prior_flows.source_digest == source_digest
+                and current_time >= prior_flows.covered_until
+                and prior_flows.account_state_digest == account_state_digest
+            )
+            # A legacy value-only ledger is not evidence that its dated cash
+            # history can be replayed. Preserve that established append path;
+            # only extend already eligible reconstructions between upgrades.
+            can_extend_flows = previous is not None and any(
+                row.get("PerformanceStatus") == "eligible"
+                for row in csv.DictReader(io.StringIO(previous.path.read_text(encoding="utf-8")))
+            )
             reconstruction = None
             try:
                 fetched_at = datetime.fromisoformat(
                     str(account.payload["fetched_at"]).replace("Z", "+00:00")
                 ).astimezone(UTC)
-                export_path = self._historical_export(profile) if is_initial_baseline else None
+                export_path = (
+                    ledger_source
+                    if is_initial_baseline or (can_extend_flows and not flow_coverage_current)
+                    else None
+                )
                 if export_path is not None:
                     kwargs = {"history_loader": self.history_loader} if self.history_loader else {}
                     reconstruction = reconstruct_historical_nav(
@@ -294,6 +344,32 @@ class AccountNavStage:
                 ),
             )
             refs.append(stored.ref)
+            flow_history = reconstruction.cash_flows if reconstruction is not None else prior_flows
+            # Mark-only refreshes use the same reconciled ledger and unchanged
+            # cash/quantities. Reuse that evidence without re-fetching all prices.
+            if flow_history is not None and (reconstruction is not None or flow_coverage_current):
+                flows = self.artifacts.put_json(
+                    key=flow_key,
+                    payload=flow_history.model_copy(
+                        update={
+                            "source_digest": source_digest,
+                            "account_state_digest": account_state_digest,
+                            "covered_until": fetched_at,
+                        }
+                    ).model_dump(mode="json", by_alias=False),
+                    kind="account_cash_flows",
+                    as_of=fetched_at.isoformat(),
+                    producer_version=self.version,
+                    dependency_artifact_ids=[stored.ref.artifact_id],
+                    quality=ArtifactQuality(
+                        status="verified" if flow_history.verified else "warning",
+                        coverage="dated external cash flows using the daily ledger's GBP amounts",
+                        warnings=quality_warnings if not flow_history.verified else [],
+                    ),
+                )
+                refs.append(flows.ref)
+            elif previous_flows is not None:
+                refs.append(previous_flows.ref)
         return StageResult(artifacts=tuple(refs), warnings=tuple(warnings))
 
 

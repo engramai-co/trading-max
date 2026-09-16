@@ -149,6 +149,7 @@ METRICS: dict[str, tuple[str, ...]] = {
     "dividends": ("Cash Dividends Paid", "Common Stock Dividend Paid"),
     "shareCount": ("Ordinary Shares Number", "Share Issued"),
     "dilutedShares": ("Diluted Average Shares",),
+    "basicShares": ("Basic Average Shares",),
 }
 STOCK_METRICS = {"cash", "debt", "equity", "tangibleEquity", "assets", "shareCount"}
 
@@ -253,7 +254,7 @@ def build_financial_facts(
                 "perShare"
                 if metric == "eps"
                 else "shares"
-                if metric in {"shareCount", "dilutedShares"}
+                if metric in {"shareCount", "dilutedShares", "basicShares"}
                 else "currency"
             )
             observations[metric] = MetricObservation(
@@ -316,7 +317,7 @@ def build_financial_facts(
                 if all(item.value is not None for item in selected)
                 else None
             )
-            if metric == "dilutedShares" and value is not None:
+            if metric in {"dilutedShares", "basicShares"} and value is not None:
                 value /= 4
             target[metric] = items[-1].model_copy(
                 update={
@@ -328,7 +329,7 @@ def build_financial_facts(
                     "formula": "period-end balance"
                     if metric in STOCK_METRICS
                     else "mean of four quarters"
-                    if metric == "dilutedShares"
+                    if metric in {"dilutedShares", "basicShares"}
                     else "sum of four non-overlapping quarters",
                     "evidence": [ref for item in selected for ref in item.evidence],
                 }

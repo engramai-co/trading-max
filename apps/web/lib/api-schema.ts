@@ -4310,6 +4310,28 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ResearchModelSaveRequest */
+        ResearchModelSaveRequest: {
+            /** Dataversion */
+            dataVersion?: string | null;
+            /**
+             * Horizon
+             * @default 5
+             * @enum {integer}
+             */
+            horizon: 5 | 10;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** References */
+            references?: components["schemas"]["AssumptionReference"][];
+            /** Scenarios */
+            scenarios: {
+                [key: string]: components["schemas"]["ScenarioInputs"];
+            };
+        };
         /** ResearchNote */
         ResearchNote: {
             /** Id */
@@ -5123,6 +5145,11 @@ export interface components {
             id: string;
             preview: components["schemas"]["ValuationPreview"];
             /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
              * Savedat
              * Format: date-time
              */
@@ -5307,27 +5334,51 @@ export interface components {
         /** TechnicalRow */
         TechnicalRow: {
             adrResearch: components["schemas"]["AdrResearch"] | null;
+            /** Adx */
+            adx?: number | null;
             /** Asof */
             asOf: string;
+            /** Atr */
+            atr?: number | null;
             /** Atrpct */
             atrPct: number | null;
+            /** Averagevolume20D */
+            averageVolume20d?: number | null;
+            /** Bollingerlower */
+            bollingerLower?: number | null;
+            /** Bollingerposition */
+            bollingerPosition?: number | null;
+            /** Bollingerupper */
+            bollingerUpper?: number | null;
+            /** Bollingerwidth */
+            bollingerWidth?: number | null;
             /** Currency */
             currency: string;
             /** Drawdown52W */
             drawdown52w: number | null;
+            /** High52W */
+            high52w?: number | null;
             historyCoverage: components["schemas"]["HistoryCoverage"];
+            /** Low52W */
+            low52w?: number | null;
             /** Macd */
             macd: number | null;
             /** Macdhistogram */
             macdHistogram: number | null;
             /** Macdsignal */
             macdSignal: number | null;
+            /** Minusdi */
+            minusDi?: number | null;
+            /** Plusdi */
+            plusDi?: number | null;
             /** Price */
             price: number;
             /** Relativestrength */
             relativeStrength?: {
                 [key: string]: unknown;
             };
+            /** Relativevolume20D */
+            relativeVolume20d?: number | null;
             /** Resistance20 */
             resistance20: number | null;
             /** Return20D */
@@ -5360,6 +5411,10 @@ export interface components {
             sma50: number | null;
             /** State */
             state: string;
+            /** Stochasticd */
+            stochasticD?: number | null;
+            /** Stochastick */
+            stochasticK?: number | null;
             /** Support20 */
             support20: number | null;
             /** Ticker */
@@ -5368,6 +5423,8 @@ export interface components {
             trendStrength?: {
                 [key: string]: unknown;
             };
+            /** Volume */
+            volume?: number | null;
             /** Yearpaths */
             yearPaths?: {
                 [key: string]: {
@@ -5583,6 +5640,8 @@ export interface components {
         /** ValuationPreview */
         ValuationPreview: {
             basis: components["schemas"]["FrozenValuationBasis"];
+            /** Defaultsource */
+            defaultSource?: ("saved-model" | "configured-scenarios" | "sector-template" | "user-input") | null;
             /**
              * Formulaversion
              * @default equity-proxy-projection-v1
@@ -6988,7 +7047,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ValuationPreviewRequest"];
+                "application/json": components["schemas"]["ResearchModelSaveRequest"];
             };
         };
         responses: {
