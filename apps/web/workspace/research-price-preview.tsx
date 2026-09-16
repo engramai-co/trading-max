@@ -59,7 +59,7 @@ export function PricePreview({
                 color: c.axis,
                 hideOverlap: true,
                 interval: Math.max(0, Math.ceil(points.length / 7) - 1),
-                formatter: (date: string) => date.slice(5, 10),
+                formatter: (date: string) => date.slice(0, 10),
               },
             },
             yAxis: {
