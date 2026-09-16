@@ -8,19 +8,26 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 import yfinance as yf
 
+from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import fingerprint, number
+
+logger = logging.getLogger(__name__)
 
 REVENUE_TAGS = {
     "revenuefromcontractwithcustomerexcludingassessedtax",
@@ -383,7 +390,9 @@ def match_periods(raw: dict[str, Any], periods: list[dict[str, Any]]) -> list[di
 class ResearchEvidenceProvider:
     def __init__(self, cache_root: Path) -> None:
         self.root = cache_root
-        self.lock = threading.Lock()
+        self.documents: SingleFlightCache[str, str] = SingleFlightCache(4)
+        self.parsed_filings: SingleFlightCache[str, dict[str, Any]] = SingleFlightCache(32)
+        self.document_slots = threading.BoundedSemaphore(3)
 
     def _document(self, url: str) -> str:
         parsed = urlparse(url)
@@ -393,26 +402,74 @@ class ResearchEvidenceProvider:
             "www.apple.com",
         }:
             raise ValueError("unsupported-filing-host")
-        path = self.root / (hashlib.sha256(url.encode()).hexdigest() + ".html")
-        if path.is_file():
-            return path.read_text()
-        with self.lock:
-            response = httpx.get(
-                url,
-                timeout=25,
-                headers={
-                    "User-Agent": "TradingMax research https://github.com/engramai-co/trading-max"
-                },
+
+        def load() -> str:
+            path = self.root / (hashlib.sha256(url.encode()).hexdigest() + ".html")
+            if path.is_file():
+                return path.read_text()
+            with self.document_slots:
+                response = httpx.get(
+                    url,
+                    timeout=25,
+                    headers={
+                        "User-Agent": "TradingMax research https://github.com/engramai-co/trading-max"
+                    },
+                )
+                response.raise_for_status()
+                if len(response.content) > 25_000_000:
+                    raise ValueError("filing-exceeds-size-limit")
+                self._write_cache(path, response.text)
+                return response.text
+
+        return self.documents.get_or_compute(url, load)
+
+    @staticmethod
+    def _write_cache(path: Path, content: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(mode="w", dir=path.parent, suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+            try:
+                handle.write(content)
+                handle.flush()
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def _filing(self, filing: dict[str, Any]) -> dict[str, Any] | None:
+        form = filing["type"]
+        url = (filing.get("exhibits") or {}).get(form)
+        if not url:
+            return None
+        key = fingerprint([url, str(filing["date"]), form, "inline-parser-v1"])
+
+        def load() -> dict[str, Any]:
+            path = self.root / (key + ".parsed.json")
+            with suppress(OSError, ValueError):
+                saved = json.loads(path.read_text())
+                if all(k in saved for k in ("periods", "segments", "observations", "publishedAt")):
+                    return saved
+            parsed = parse_filing(
+                self._document(url), url=url, filed_at=str(filing["date"]), form=form
             )
-            response.raise_for_status()
-            if len(response.content) > 25_000_000:
-                raise ValueError("filing-exceeds-size-limit")
-            self.root.mkdir(parents=True, exist_ok=True)
-            path.write_text(response.text)
-            return response.text
+            self._write_cache(path, json.dumps(parsed))
+            return parsed
+
+        return self.parsed_filings.get_or_compute(key, load)
+
+    def _filings(self, selected: list[dict[str, Any]]) -> list[dict[str, Any] | Exception | None]:
+        # Bound external requests, keep provider order for deterministic merging,
+        # and retain each failure independently rather than dropping other filings.
+        def read(filing):
+            try:
+                return self._filing(filing)
+            except (ValueError, OSError, httpx.HTTPError) as exc:
+                return exc
+
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-filing") as pool:
+            return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v6"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v7"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(cache.read_text())
         proxy = yf.Ticker(ticker)
@@ -455,36 +512,38 @@ class ResearchEvidenceProvider:
                 selected.append(filing)
             periods, segments = [], {}
             releases = []
-            for filing in selected:
-                form = filing["type"]
-                url = (filing.get("exhibits") or {}).get(form)
-                if not url:
-                    continue
-                try:
-                    parsed = parse_filing(
-                        self._document(url), url=url, filed_at=str(filing["date"]), form=form
-                    )
-                    periods.extend(parsed["periods"])
-                    releases.append(parsed)
-                    for segment in parsed["segments"]:
-                        identity = (
-                            segment["kind"],
-                            segment["periodEnd"],
-                            segment["member"],
-                            segment["axis"],
-                            segment["currency"],
-                        )
-                        # Newest filed restatement wins in this snapshot only.
-                        if (
-                            identity not in segments
-                            or segments[identity]["publishedAt"] < segment["publishedAt"]
-                        ):
-                            segments[identity] = segment
-                except (ValueError, httpx.HTTPError) as exc:
+            started = time.perf_counter()
+            for parsed in self._filings(selected):
+                if isinstance(parsed, Exception):
                     result["status"]["filingContent"] = {
                         "state": "missing",
-                        "reason": type(exc).__name__,
+                        "reason": type(parsed).__name__,
                     }
+                    continue
+                if parsed is None:
+                    continue
+                periods.extend(parsed["periods"])
+                releases.append(parsed)
+                for segment in parsed["segments"]:
+                    identity = (
+                        segment["kind"],
+                        segment["periodEnd"],
+                        segment["member"],
+                        segment["axis"],
+                        segment["currency"],
+                    )
+                    # Newest filed restatement wins in this snapshot only.
+                    if (
+                        identity not in segments
+                        or segments[identity]["publishedAt"] < segment["publishedAt"]
+                    ):
+                        segments[identity] = segment
+            logger.info(
+                "research_filings ticker=%s count=%d duration_ms=%.1f",
+                ticker,
+                len(selected),
+                (time.perf_counter() - started) * 1000,
+            )
             result["segments"] = list(segments.values())
             result["filings"] = link_filing_periods(result["filings"], releases)
             annual_revenue = {}
@@ -537,7 +596,7 @@ class ResearchEvidenceProvider:
         except Exception as exc:
             result["status"]["filings"] = {"state": "missing", "reason": type(exc).__name__}
         try:
-            dividends = proxy.dividends
+            dividends = proxy.get_dividends(period="max")
             dividend_code = (proxy.get_history_metadata() or {}).get("currency")
             dividend_scale = 0.01 if dividend_code in {"GBp", "GBX"} else 1
             dividend_code = "GBP" if dividend_scale == 0.01 else dividend_code
@@ -552,6 +611,12 @@ class ResearchEvidenceProvider:
                 for day, value in dividends.items()
                 if value is not None
             ][-120:]
+            result["dividendCoverage"] = {
+                "hasEarlierRecords": len(dividends) > 120,
+                "start": result["dividends"][0]["date"] if result["dividends"] else None,
+                "end": str(datetime.now(UTC).date()),
+                "basis": "provider-adjusted-per-share",
+            }
         except Exception as exc:
             result["status"]["dividends"] = {"state": "missing", "reason": type(exc).__name__}
         try:

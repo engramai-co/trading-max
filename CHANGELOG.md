@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-09-16
+
+### Fixed
+
+- Correct historical market sessions and technical calculations across exchange holidays and partial trading days.
+- Preserve filing evidence and use split-consistent real price histories for research calculations.
+
 ## [1.3.2] - 2026-09-16
 
 ### Fixed

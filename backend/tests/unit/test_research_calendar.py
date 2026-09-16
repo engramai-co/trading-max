@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from trading_max.research.calendar import completed_months
+from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.technical import _rsi, price_series
 
 
@@ -44,3 +44,17 @@ def test_indicator_warmup_is_missing_and_exported_rsi_matches_snapshot_calculati
     assert all(p["rsi14"] is None for p in result[:14])
     assert result[-1]["rsi14"] == _rsi(frame.Close).iloc[-1] == 100
     assert all(p["macdSignal"] is None for p in result[:33])
+
+
+def test_daily_observations_wait_for_actual_close_including_short_sessions():
+    frame = pd.DataFrame(
+        {"Close": [100, 101]},
+        index=pd.to_datetime(["2024-07-02", "2024-07-03"]).tz_localize("America/New_York"),
+    )
+    frame.attrs["exchange"] = "NYQ"
+    assert len(completed_daily_bars(frame, now=pd.Timestamp("2024-07-03T16:59:00Z"))) == 1
+    assert len(completed_daily_bars(frame, now=pd.Timestamp("2024-07-03T17:01:00Z"))) == 2
+    assert len(frame) == 2
+    frame.attrs.clear()
+    assert len(completed_daily_bars(frame, now=pd.Timestamp("2024-07-03T20:01:00Z"))) == 1
+    assert len(completed_daily_bars(frame, now=pd.Timestamp("2024-07-04T20:01:00Z"))) == 2
