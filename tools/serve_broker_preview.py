@@ -121,6 +121,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--port", type=int, default=8424)
+    parser.add_argument("--web-port", type=int, default=3415)
     args = parser.parse_args()
     state = args.state_root.expanduser().resolve()
     if not (state / "BROKER_MOCK_ONLY").is_file() or (state / "SYNTHETIC_DEMO_ONLY").exists():
@@ -140,7 +141,7 @@ def main() -> None:
             api_port=args.port,
             embedded_worker=False,
             llm_provider="deepseek",
-            allowed_origins=("http://127.0.0.1:3415", "http://127.0.0.1:3416"),
+            allowed_origins=(f"http://127.0.0.1:{args.web_port}",),
         ),
         credential_store=InMemoryCredentialStore(),
     )

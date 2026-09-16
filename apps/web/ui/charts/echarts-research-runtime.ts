@@ -7,6 +7,7 @@ import {
 } from "echarts/charts";
 import {
   DataZoomInsideComponent,
+  DataZoomSliderComponent,
   MarkPointComponent,
   VisualMapComponent,
 } from "echarts/components";
@@ -16,6 +17,7 @@ registerModules([
   CandlestickChart,
   CustomChart,
   DataZoomInsideComponent,
+  DataZoomSliderComponent,
   GaugeChart,
   HeatmapChart,
   MarkPointComponent,

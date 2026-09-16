@@ -92,7 +92,8 @@ def test_research_quote_metadata_and_listing_identity_are_consistent(tmp_path, q
     assert lens.market["currency"] == expected_currency
     assert lens.market["analystMedian"] == (1.2 if quote_currency == "GBp" else 120)
     assert lens.market["enterpriseValue"] == 5000
-    assert not {"research/financials.json", "research/options.json"}.intersection(reads)
+    # Valuation now reconciles statement cash flow before model preview.
+    assert "research/options.json" not in reads
     prices = ledger.price_series("FUND.L", manifest)
     assert prices.ticker == "FUND.L" and prices.currency == expected_currency
     assert prices.points[0].close == 100

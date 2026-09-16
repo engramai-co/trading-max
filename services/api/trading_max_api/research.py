@@ -7,6 +7,16 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
+from trading_max.research.facts import (
+    DatasetClock,
+    ResearchCapability,
+    ResearchContext,
+    build_financial_facts,
+    fingerprint,
+    make_quote,
+)
+from trading_max.research.option_terms import chain_availability
+
 from .artifacts import ArtifactStore
 from .dashboard import _option_rows, _technical_rows, _valuation_rows
 from .dashboard_models import (
@@ -263,6 +273,8 @@ def _enrich_fundamentals(
         if technical is not None:
             item["seasonality"] = list(technical.get("seasonality") or [])
             item["seasonalityCoverage"] = dict(technical.get("seasonalityCoverage") or {})
+            item["seasonalityMatrix"] = list(technical.get("seasonalityMatrix") or [])
+            item["yearPaths"] = dict(technical.get("yearPaths") or {})
         # Reported-versus-estimate history lives in the analyst artifact; the
         # earnings calendar only carries the upcoming event, which left the
         # fundamentals earnings card with a date and nothing else.
@@ -304,6 +316,7 @@ class ResearchLedger:
         # rows can be memoized by sha256. The timeline and model history walk
         # the same handful of artifacts across many snapshots; without this the
         # research overview re-parses every research JSON per snapshot.
+        self._facts_cache: dict[tuple, Any] = {}
         self._row_cache: dict[tuple[str, str], list[JsonObject]] = {}
         self._price_series_cache: dict[
             tuple[str, str, str],
@@ -676,6 +689,15 @@ class ResearchLedger:
         direct = float(position.get("directValueGbp") or direct_from_broker)
         indirect = float(position.get("indirectValueGbp") or 0.0)
         exposure = float(position.get("valueGbp") or direct + indirect)
+        fund_sources = {str(s.get("ticker", "")): s for s in lookthrough.get("sources", [])}
+        contributors = [
+            {
+                **item,
+                "asOf": fund_sources.get(str(item.get("ticker", "")), {}).get("asOf"),
+                "sourceUrl": fund_sources.get(str(item.get("ticker", "")), {}).get("sourceUrl"),
+            }
+            for item in position.get("etfContributors", [])
+        ]
         return PortfolioImpact(
             ticker=ticker,
             total_value_gbp=total_value,
@@ -687,7 +709,7 @@ class ResearchLedger:
             holding_accounts=holding_accounts,
             country=position.get("country"),
             industry=position.get("industry"),
-            etf_contributors=list(position.get("etfContributors") or []),
+            etf_contributors=contributors,
         )
 
     def ticker_snapshot(
@@ -833,6 +855,142 @@ class ResearchLedger:
             generated_at=manifest.created_at.isoformat(),
             market=market,
         )
+        fundamental = (
+            _find(
+                self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows),
+                ticker,
+            )
+            or {}
+        )
+        metrics = fundamental.get("metrics") or {}
+        asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
+        is_fund = asset_type in {"ETF", "MUTUALFUND"}
+        is_financial = any(
+            word in str(fundamental.get("industry") or metrics.get("industry") or "").lower()
+            for word in ("banks", "banking", "insurance")
+        )
+        coverage_row = _find(
+            self._cached_rows(manifest, "research/coverage.json", _fundamentals_rows), ticker
+        )
+        dataset_coverage = coverage_row.get("datasets", {}) if coverage_row else None
+        datasets = []
+        for name in (
+            "technical",
+            "fundamentals",
+            "financials",
+            "analyst",
+            "valuation",
+            "options",
+            "earnings",
+        ):
+            ref = _artifact(manifest, "research/" + name + ".json")
+            clock = dataset_coverage.get(name) if dataset_coverage is not None else None
+            if dataset_coverage is not None:
+                clock = dict(clock or {"state": "missing"})
+                if name != "financials" and clock.get("state") == "available":
+                    last = clock.get("fetchedAt") or clock.get("lastSuccessfulAt")
+                    try:
+                        fetched = datetime.fromisoformat(last)
+                        fetched = (
+                            fetched.replace(tzinfo=UTC)
+                            if fetched.tzinfo is None
+                            else fetched.astimezone(UTC)
+                        )
+                        age = (datetime.now(UTC) - fetched).total_seconds() / 86400
+                        if age > FRESHNESS_DAYS[name][1]:
+                            clock.update(state="stale", reason="refresh-overdue")
+                    except (ValueError, TypeError):
+                        clock.update(state="stale", reason="refresh-time-unavailable")
+                datasets.append(DatasetClock(dataset=name, **clock))
+                continue
+            if ref is None:
+                datasets.append(DatasetClock(dataset=name))
+                continue
+            parser = {
+                "technical": _technical_rows,
+                "fundamentals": _fundamentals_rows,
+                "financials": _financials_rows,
+                "analyst": _analyst_rows,
+                "valuation": _valuation_rows,
+                "options": _option_rows,
+                "earnings": _fundamentals_rows,
+            }[name]
+            if not _find(self._cached_rows(manifest, "research/" + name + ".json", parser), ticker):
+                datasets.append(DatasetClock(dataset=name, reason="security-not-covered"))
+                continue
+            _, freshness = _freshness(ref, datetime.now(UTC))
+            # A financial period does not go stale simply because no new filing
+            # is due. Quote/options age and failed refreshes remain independent.
+            state = "available" if name == "financials" or freshness != "stale" else "stale"
+            datasets.append(
+                DatasetClock(
+                    dataset=name,
+                    as_of=ref.data_as_of,
+                    fetched_at=ref.generated_at.isoformat() if ref.generated_at else None,
+                    last_successful_at=ref.generated_at.isoformat() if ref.generated_at else None,
+                    state=state,
+                    reason="; ".join(ref.warnings) or None,
+                    version=ref.sha256,
+                )
+            )
+        capabilities = []
+        for task in (
+            "overview",
+            "fundamentals",
+            "technical",
+            "analyst",
+            "valuation",
+            "options",
+            "ledger",
+        ):
+            inappropriate = is_fund and task in {"analyst", "valuation"}
+            capabilities.append(
+                ResearchCapability(
+                    task=task,
+                    state="notApplicable"
+                    if inappropriate
+                    else "available"
+                    if any(
+                        d.dataset == task and d.state in {"available", "stale"} for d in datasets
+                    )
+                    or task in {"overview", "ledger"}
+                    else "missing",
+                    reason="fund-research"
+                    if inappropriate
+                    else "financial-company-requires-equity-model"
+                    if is_financial and task == "valuation"
+                    else None,
+                    intervals=["1d"] if task == "technical" else [],
+                )
+            )
+        payload.context = ResearchContext(
+            quote=make_quote(ticker, market or {}, fundamental),
+            asset_type=asset_type,
+            capabilities=capabilities,
+            datasets=datasets,
+        )
+        if view in {"overview", "valuation", "fundamentals", "analyst", "ledger"}:
+            financial_row = (
+                _find(
+                    self._cached_rows(manifest, "research/financials.json", _financials_rows),
+                    ticker,
+                )
+                or {}
+            )
+            raw = financial_row.get("financials") or {}
+            ref = _artifact(manifest, "research/financials.json")
+            facts_key = (ticker, ref.sha256 if ref else fingerprint(raw), fingerprint(metrics))
+            if facts_key not in self._facts_cache:
+                if len(self._facts_cache) > 128:
+                    self._facts_cache.clear()
+                self._facts_cache[facts_key] = build_financial_facts(
+                    raw,
+                    metrics,
+                    source_version=ref.sha256 if ref else None,
+                    period_evidence=raw.get("periodEvidence"),
+                )
+            payload.financial_facts = self._facts_cache[facts_key]
+            payload.research_evidence = raw.get("evidence") or {}
 
         if view in {"overview", "technical"}:
             payload.technical = _find(
@@ -862,6 +1020,10 @@ class ResearchLedger:
                 ),
                 ticker,
             )
+            if payload.options:
+                payload.options["availability"] = chain_availability(
+                    payload.options["capturedAt"], payload.options["expiries"]
+                )
         if view == "fundamentals":
             payload.fundamentals = _find(
                 _enrich_fundamentals(
@@ -886,7 +1048,7 @@ class ResearchLedger:
                 ticker,
             )
             payload.financials = financials_row.get("financials") if financials_row else None
-        if view == "analyst":
+        if view in {"analyst", "fundamentals", "ledger"}:
             analyst_row = _find(
                 self._cached_rows(
                     manifest,
@@ -896,6 +1058,13 @@ class ResearchLedger:
                 ticker,
             )
             payload.analyst = analyst_row.get("analyst") if analyst_row else None
+            if payload.analyst:
+                payload.analyst = {
+                    **payload.analyst,
+                    "providerRecommendationKey": metrics.get("recommendationKey"),
+                    "providerRecommendationMean": metrics.get("recommendationMean"),
+                    "providerRecommendationCount": metrics.get("numberOfAnalystOpinions"),
+                }
         if view in {"overview", "ledger"}:
             events = self.events(ticker, manifest)
             payload.latest_event = events[0] if events else None
@@ -909,6 +1078,19 @@ class ResearchLedger:
         # readable. Re-validate once before returning so nested dictionaries
         # become their declared Pydantic models and response serialization can
         # never silently drift from the OpenAPI contract.
+        # A legacy snapshot has no coverage index. Only claim a lens is usable
+        # after its own security row has actually been loaded.
+        if dataset_coverage is None:
+            field = {
+                "fundamentals": "financials",
+                "technical": "technical",
+                "analyst": "analyst",
+                "valuation": "valuation",
+                "options": "options",
+            }.get(view)
+            for capability in payload.context.capabilities:
+                if capability.task == view and capability.state != "notApplicable" and field:
+                    capability.state = "available" if getattr(payload, field, None) else "missing"
         if payload.technical and market:
             payload.technical = {**payload.technical, "currency": market.get("currency") or ""}
         return ResearchLensSnapshot.model_validate(payload.__dict__)
@@ -1350,6 +1532,12 @@ class ResearchLedger:
                 available_sessions=len(all_points),
                 points=points,
                 trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
+                events=[
+                    {"date": p.date, "kind": kind, "value": value, "currency": currency}
+                    for p in points
+                    for kind, value in (("dividend", p.dividend), ("split", p.split))
+                    if value
+                ],
             )
         raw = self._read_optional(manifest, "research/technical.json")
         raw_rows = raw.get("rows")
@@ -1395,4 +1583,10 @@ class ResearchLedger:
             available_sessions=len(all_points),
             points=points,
             trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
+            events=[
+                {"date": p.date, "kind": kind, "value": value, "currency": currency}
+                for p in points
+                for kind, value in (("dividend", p.dividend), ("split", p.split))
+                if value
+            ],
         )

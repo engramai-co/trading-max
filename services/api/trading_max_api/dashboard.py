@@ -393,6 +393,10 @@ def _technical_rows(raw: JsonObject) -> list[JsonObject]:
                 "seasonality": [
                     dict(item) for item in row.get("seasonality", []) if isinstance(item, dict)
                 ],
+                "seasonalityMatrix": list(row.get("seasonality_matrix") or []),
+                "yearPaths": dict(row.get("year_paths") or {}),
+                "relativeStrength": dict(row.get("relative_strength") or {}),
+                "trendStrength": dict(row.get("trend_strength") or {}),
                 "seasonalityCoverage": {
                     "basis": str((row.get("seasonality_coverage") or {}).get("basis") or ""),
                     "firstSession": str(
@@ -451,6 +455,9 @@ def _option_rows(raw: JsonObject) -> list[JsonObject]:
         result.append(
             {
                 "ticker": str(entry.get("ticker")),
+                "currency": entry.get("currency"),
+                "modelInputs": entry.get("model_inputs") or {},
+                "availableExpiries": entry.get("available_expiries") or [],
                 "spot": _number(entry.get("spot")),
                 "expiryCount": _number(entry.get("expiry_count")),
                 "capturedAt": str(entry.get("captured_at") or entry.get("captured_at_utc") or ""),
@@ -474,6 +481,15 @@ def _option_rows(raw: JsonObject) -> list[JsonObject]:
                     {
                         "expiry": str(row.get("expiry") or ""),
                         "daysToExpiry": _nullable(row.get("days_to_expiry")),
+                        "expiryInstant": row.get("expiry_instant"),
+                        "netGex": _nullable(row.get("net_gex_1pct_proxy")),
+                        "gammaCoverage": int(row.get("gamma_coverage") or 0),
+                        "contractCount": int(row.get("contract_count") or 0),
+                        "gammaFlip": _nullable(row.get("gamma_flip")),
+                        "gammaProfile": [
+                            {"spot": point["spot"], "netGex": point["net_gex_1pct"]}
+                            for point in row.get("gamma_profile", [])
+                        ],
                         "callOpenInterest": _nullable(row.get("call_open_interest")),
                         "putOpenInterest": _nullable(row.get("put_open_interest")),
                         "putCallOiRatio": _nullable(row.get("put_call_oi_ratio")),
@@ -503,6 +519,18 @@ def _option_rows(raw: JsonObject) -> list[JsonObject]:
                         "volume": _nullable(row.get("volume")),
                         "impliedVolatility": _nullable(row.get("iv")),
                         "inTheMoney": bool(row.get("in_the_money", False)),
+                        "lastTradeAt": row.get("last_trade_at"),
+                        "quoteAsOf": row.get("quote_as_of"),
+                        "openInterestAsOf": row.get("open_interest_as_of"),
+                        "multiplier": _nullable(row.get("multiplier")),
+                        "exerciseStyle": row.get("exercise_style"),
+                        "settlement": row.get("settlement"),
+                        "expiryInstant": row.get("expiry_instant"),
+                        "termsState": row.get("terms_state") or "unsupported",
+                        "currency": row.get("currency"),
+                        "gamma": _nullable(row.get("gamma")),
+                        "delta": _nullable(row.get("delta")),
+                        "gex1pct": _nullable(row.get("gex_1pct")),
                     }
                     for row in contract_rows
                     if isinstance(row, dict) and row.get("side") in {"call", "put"}
@@ -525,7 +553,7 @@ def _valuation_rows(raw: JsonObject) -> list[JsonObject]:
             {
                 "ticker": str(row.get("ticker") or row.get("t") or ""),
                 "asOf": str(row.get("as_of") or raw.get("as_of") or ""),
-                "currency": str(row.get("currency") or row.get("ccy") or "USD"),
+                "currency": str(row.get("currency") or row.get("ccy") or ""),
                 "spot": spot,
                 "ev5": ev5,
                 "ev10": ev10,
@@ -548,6 +576,7 @@ def _valuation_rows(raw: JsonObject) -> list[JsonObject]:
                 "valueRange": row.get("valueRange") or {},
                 "valueRange10": row.get("valueRange10") or {},
                 "scenarios": row.get("scenarios") or {},
+                "assumptions": row.get("assumptions") or {},
                 "terminalCheck": row.get("terminalCheck") or {},
                 "sensitivity": row.get("sensitivity") or None,
             }

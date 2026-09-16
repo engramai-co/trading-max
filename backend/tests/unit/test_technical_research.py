@@ -86,6 +86,9 @@ def test_options_gex_proxy_is_signed_by_contract_side() -> None:
             "volume": [10.0, 10.0],
             "iv": [0.3, 0.3],
             "years": [0.25, 0.25],
+            "multiplier": [100, 100],
+            "risk_free_rate": [0.04, 0.04],
+            "dividend_yield": [0, 0],
             "side": ["call", "put"],
         }
     )
@@ -132,5 +135,17 @@ def test_option_contract_rows_preserve_observed_chain_fields() -> None:
             "volume": 31.0,
             "iv": 0.42,
             "in_the_money": True,
+            "last_trade_at": None,
+            "quote_as_of": None,
+            "open_interest_as_of": None,
+            "multiplier": None,
+            "exercise_style": None,
+            "settlement": None,
+            "expiry_instant": None,
+            "terms_state": "unsupported",
+            "currency": None,
+            "gamma": None,
+            "delta": None,
+            "gex_1pct": None,
         }
     ]

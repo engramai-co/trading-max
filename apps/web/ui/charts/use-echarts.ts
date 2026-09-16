@@ -2,7 +2,7 @@
 
 import { useComputedColorScheme } from "@mantine/core";
 import type { ECharts, EChartsOption } from "echarts";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 
 type EChartsRuntime = typeof import("@/ui/charts/echarts-runtime");
 export type EChartsRuntimeProfile = "core" | "research";
@@ -31,10 +31,16 @@ export function preloadEChartsRuntime(profile: EChartsRuntimeProfile = "core") {
 export function useECharts(
   option: EChartsOption | null,
   profile: EChartsRuntimeProfile = "core",
+  controller?: RefObject<ECharts | null>,
+  onZoom?: (chart: ECharts) => void,
 ) {
+  const zoomCallback = useRef(onZoom);
+  useEffect(() => {
+    zoomCallback.current = onZoom;
+  }, [onZoom]);
   const colourScheme = useComputedColorScheme("light");
   const themedOption = useMemo(
-    () => option ? { ...option, darkMode: colourScheme === "dark" } : null,
+    () => (option ? { ...option, darkMode: colourScheme === "dark" } : null),
     [colourScheme, option],
   );
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -54,26 +60,33 @@ export function useECharts(
     let initializing = false;
     const initialize = async () => {
       if (
-        !active
-        || chartRef.current
-        || initializing
-        || canvas.clientWidth === 0
-        || canvas.clientHeight === 0
-      ) return;
+        !active ||
+        chartRef.current ||
+        initializing ||
+        canvas.clientWidth === 0 ||
+        canvas.clientHeight === 0
+      )
+        return;
 
       initializing = true;
       try {
         const { init } = await loadEChartsRuntime(profile);
         if (
-          !active
-          || chartRef.current
-          || canvas.clientWidth === 0
-          || canvas.clientHeight === 0
-        ) return;
+          !active ||
+          chartRef.current ||
+          canvas.clientWidth === 0 ||
+          canvas.clientHeight === 0
+        )
+          return;
         const chart = init(canvas, undefined, { renderer: "canvas" });
         chartRef.current = chart;
+        chart.on("datazoom", () => zoomCallback.current?.(chart));
+        if (controller) controller.current = chart;
         if (latestOptionRef.current) {
-          chart.setOption(latestOptionRef.current, { lazyUpdate: true, notMerge: true });
+          chart.setOption(latestOptionRef.current, {
+            lazyUpdate: true,
+            notMerge: true,
+          });
           requestAnimationFrame(() => {
             if (!active) return;
             canvas.dataset.tmChartReady = "true";
@@ -96,12 +109,16 @@ export function useECharts(
       resizeObserver.disconnect();
       chartRef.current?.dispose();
       chartRef.current = null;
+      if (controller) controller.current = null;
     };
-  }, [hasOption, profile]);
+  }, [hasOption, profile, controller]);
 
   useEffect(() => {
     if (themedOption) {
-      chartRef.current?.setOption(themedOption, { lazyUpdate: true, notMerge: true });
+      chartRef.current?.setOption(themedOption, {
+        lazyUpdate: true,
+        notMerge: true,
+      });
       if (chartRef.current && canvasRef.current) {
         canvasRef.current.dataset.tmChartReady = "true";
       }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import type { ResearchLensSnapshot } from "@/lib/types";
+import { Button } from "@mantine/core";
 import {
   compact,
   currency,
@@ -13,12 +13,39 @@ import {
   str,
   tone,
 } from "./data";
-import { estimateGroups } from "./research-display";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
+import { estimateGroups } from "./research-display";
+import { useRouteState } from "./route-state";
+
+export function forecastPeriodLabel(
+  analyst: Record<string, unknown>,
+  value: unknown,
+  t: ReturnType<typeof useCopy>,
+) {
+  const fiscal = objects(analyst.fiscalPeriods).find((p) => p.period === value);
+  const end = str(fiscal?.endDate);
+  if (end)
+    return (
+      (str(value).endsWith("y")
+        ? t("财年截至 ", "FY ending ")
+        : t("季度截至 ", "Quarter ending ")) + end
+    );
+  const relative =
+    {
+      "0q": t("本季度", "Current quarter"),
+      "+1q": t("下季度", "Next quarter"),
+      "0y": t("本财年", "Current year"),
+      "+1y": t("下财年", "Next year"),
+    }[str(value)] ?? str(value);
+  const asOf = str(analyst.asOf).slice(0, 10);
+  return relative + (asOf ? " · " + asOf : "");
+}
 
 export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
-  const [period, setPeriod] = useState("quarter");
+  const { params, update } = useRouteState("push");
+  const period =
+    params.get("estimateFrequency") === "year" ? "year" : "quarter";
   const analyst = object(data.analyst);
   const measures = [
     {
@@ -34,13 +61,25 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
       prior: "yearAgoRevenue",
     },
   ];
-  const label = (value: unknown) =>
-    ({
-      "0q": t("本季度", "Current quarter"),
-      "+1q": t("下季度", "Next quarter"),
-      "0y": t("本财年", "Current year"),
-      "+1y": t("下财年", "Next year"),
-    })[str(value)] ?? str(value);
+  const label = (value: unknown) => {
+    const fiscal = objects(analyst.fiscalPeriods).find(
+      (p) => p.period === value,
+    );
+    const end = str(fiscal?.endDate);
+    if (end)
+      return str(value).endsWith("y")
+        ? t("财年截至 ", "FY ending ") + end
+        : t("季度截至 ", "Quarter ending ") + end;
+    const relative =
+      {
+        "0q": t("本季度", "Current quarter"),
+        "+1q": t("下季度", "Next quarter"),
+        "0y": t("本财年", "Current year"),
+        "+1y": t("下财年", "Next year"),
+      }[str(value)] ?? str(value);
+    const asOf = str(analyst.asOf).slice(0, 10);
+    return relative + (asOf ? " · " + asOf : "");
+  };
   return (
     <Panel
       title={t("盈利与营收预期", "Earnings & revenue estimates")}
@@ -52,7 +91,7 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
         <Segments
           label={t("预期报告周期", "Estimate reporting period")}
           value={period}
-          onChange={setPeriod}
+          onChange={(v) => update({ estimateFrequency: v })}
           options={[
             { value: "quarter", label: t("季度", "Quarterly") },
             { value: "year", label: t("年度", "Annual") },
@@ -137,6 +176,33 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                           <td key={i}>{number(row.numberOfAnalysts, 0)}</td>
                         ))}
                       </tr>
+                      {measure.revenue && period === "year" && (
+                        <tr>
+                          <th scope="row">
+                            {t("估值参考", "Valuation reference")}
+                          </th>
+                          {rows.map((row, i) => (
+                            <td key={i}>
+                              {numeric(row.growth) != null ? (
+                                <Button
+                                  size="compact-xs"
+                                  variant="subtle"
+                                  onClick={() =>
+                                    update({
+                                      view: "valuation",
+                                      estimateRef: str(row.period ?? row.index),
+                                    })
+                                  }
+                                >
+                                  {t("带入模型参考", "Use as model reference")}
+                                </Button>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

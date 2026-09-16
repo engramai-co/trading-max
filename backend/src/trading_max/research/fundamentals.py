@@ -18,6 +18,7 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.research.facts import build_financial_facts
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -27,6 +28,32 @@ AnalystLoader = Callable[[str], Mapping[str, Any]]
 FinancialsLoader = Callable[[str], Mapping[str, Any]]
 
 FUNDAMENTAL_KEYS = (
+    "lastFiscalYearEnd",
+    "nextFiscalYearEnd",
+    "mostRecentQuarter",
+    "regularMarketTime",
+    "regularMarketPreviousClose",
+    "regularMarketPrice",
+    "marketState",
+    "exchangeTimezoneName",
+    "fullExchangeName",
+    "exchangeDataDelayedBy",
+    "fundCurrency",
+    "yield",
+    "annualReportExpenseRatio",
+    "totalAssets",
+    "fundFamily",
+    "category",
+    "fundInceptionDate",
+    "navPrice",
+    "dateShortInterest",
+    "sharesShort",
+    "sharesShortPriorMonth",
+    "sharesShortPreviousMonthDate",
+    "exDividendDate",
+    "dividendDate",
+    "trailingAnnualDividendRate",
+    "trailingAnnualDividendYield",
     "longBusinessSummary",
     "quoteType",
     "marketCap",
@@ -193,8 +220,10 @@ def _frame_to_records(frame: Any) -> list[dict[str, Any]]:
 
 
 def _default_analyst(ticker: str) -> Mapping[str, Any]:
+    from .analyst_evidence import attach_forecast_periods, earnings_events
+
     proxy = yf.Ticker(ticker)
-    return {
+    result = {
         "priceTargets": _json_safe(dict(proxy.analyst_price_targets or {})),
         "recommendations": _frame_to_records(
             proxy.recommendations_summary
@@ -209,6 +238,31 @@ def _default_analyst(ticker: str) -> Mapping[str, Any]:
         "epsTrend": _frame_to_records(proxy.eps_trend),
         "epsRevisions": _frame_to_records(proxy.eps_revisions),
     }
+    # DataFrame helpers omit endDate. Retain the provider period from the
+    # already-fetched response; never infer it from today's calendar date.
+    trends = getattr(proxy._analysis, "_earnings_trend", None) or []
+    result["fiscalPeriods"] = [
+        {
+            "period": row.get("period"),
+            "endDate": row.get("endDate"),
+            "earningsCurrency": row.get("earningsCurrency"),
+            "revenueCurrency": row.get("revenueCurrency"),
+        }
+        for row in trends
+        if isinstance(row, Mapping)
+    ]
+    result["asOf"] = datetime.now(UTC).isoformat()
+    attach_forecast_periods(result, trends)
+    try:
+        info = proxy.info or {}
+        result["reportingCurrency"] = info.get("financialCurrency")
+        result["earningsEvents"] = earnings_events(
+            _frame_to_records(proxy.get_earnings_dates(limit=40)),
+            timezone=info.get("exchangeTimezoneName"),
+        )
+    except Exception as exc:
+        result["eventStatus"] = {"state": "missing", "reason": type(exc).__name__}
+    return result
 
 
 def _default_financials(ticker: str) -> Mapping[str, Any]:
@@ -239,12 +293,14 @@ class YFinanceResearchService:
         fx_loader: FxLoader = _default_fx,
         analyst_loader: AnalystLoader = _default_analyst,
         financials_loader: FinancialsLoader = _default_financials,
+        evidence_loader: Callable[[str, JsonObject], JsonObject] | None = None,
     ) -> None:
         self.info_loader = info_loader
         self.calendar_loader = calendar_loader
         self.fx_loader = fx_loader
         self.analyst_loader = analyst_loader
         self.financials_loader = financials_loader
+        self.evidence_loader = evidence_loader
 
     def fundamentals(
         self,
@@ -359,6 +415,22 @@ class YFinanceResearchService:
         for ticker in universe:
             try:
                 payload = dict(self.financials_loader(ticker))
+                if self.evidence_loader is not None:
+                    try:
+                        evidence = self.evidence_loader(ticker, payload)
+                        payload.update(
+                            {
+                                "evidence": evidence,
+                                "periodEvidence": evidence.get("periodEvidence", []),
+                                "segments": evidence.get("segments", []),
+                            }
+                        )
+                    except Exception as exc:
+                        # Original statements remain available when a supplemental
+                        # source fails. Failure is attached to that dataset only.
+                        payload["evidence"] = {
+                            "status": {"state": "missing", "reason": type(exc).__name__}
+                        }
                 rows.append(
                     {
                         "ticker": ticker,
@@ -387,6 +459,7 @@ def build_valuation(
     *,
     assumptions: Mapping[str, Any] | None = None,
     fx_loader: FxLoader | None = None,
+    financials: Mapping[str, Any] | None = None,
 ) -> ValuationBatch:
     """Calculate evidence-gated scenario valuation lenses.
 
@@ -405,6 +478,11 @@ def build_valuation(
     fundamental_rows = {
         str(row.get("ticker", "")).upper(): row
         for row in fundamentals.get("rows", [])
+        if isinstance(row, Mapping)
+    }
+    financial_rows = {
+        str(row.get("ticker", "")).upper(): row.get("financials") or {}
+        for row in (financials or {}).get("rows", [])
         if isinstance(row, Mapping)
     }
     tickers = [str(item).upper() for item in technical.get("tickers", [])]
@@ -429,11 +507,27 @@ def build_valuation(
         spot = _number(tech.get("price"))
         total_revenue = _number(metrics.get("totalRevenue"))
         free_cashflow = _number(metrics.get("freeCashflow"))
+        facts = (
+            build_financial_facts(financial_rows.get(ticker, {}), metrics)
+            if financials is not None
+            else None
+        )
+        ttm_values = (
+            {o.metric: o for o in facts.observations if o.period_id == facts.latest_ttm}
+            if facts
+            else {}
+        )
+        if facts is not None:
+            total_revenue = ttm_values.get("revenue").value if ttm_values.get("revenue") else None
+            free_cashflow = (
+                ttm_values.get("freeCashflow").value if ttm_values.get("freeCashflow") else None
+            )
         shares = _positive_number(metrics.get("sharesOutstanding"))
         market_cap = _positive_number(metrics.get("marketCap"))
         if shares is None and market_cap is not None and spot:
             shares = market_cap / spot
-        quote_currency = str(fundamental.get("currency") or "USD")
+        quote_currency = str(fundamental.get("currency") or "")
+        quote_currency = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
         report_currency = str(
             metrics.get("financialCurrency")
             or fundamental.get("financialCurrency")
@@ -459,10 +553,43 @@ def build_valuation(
         )
         cost_of_equity, discount_inputs = _company_cost_of_equity(metrics, sector)
         reported_growth = _number(metrics.get("revenueGrowth"))
+        growth_basis = "provider-latest-quarter-yoy-legacy"
+        if facts is not None:
+            revenue_by_id = {
+                o.period_id: o.value
+                for o in facts.observations
+                if o.metric == "revenue" and o.value is not None and o.value > 0
+            }
+            annual = sorted(
+                (p for p in facts.periods if p.kind == "annual" and p.id in revenue_by_id),
+                key=lambda p: p.provider_end,
+            )[-4:]
+            elapsed_years = (
+                (
+                    date.fromisoformat(annual[-1].provider_end)
+                    - date.fromisoformat(annual[0].provider_end)
+                ).days
+                / 365.25
+                if len(annual) >= 2
+                else 0
+            )
+            historical_growth = (
+                (revenue_by_id[annual[-1].id] / revenue_by_id[annual[0].id]) ** (1 / elapsed_years)
+                - 1
+                if elapsed_years >= 0.9
+                else None
+            )
+            growth_basis = (
+                "reported-annual-revenue-cagr"
+                if historical_growth is not None
+                else "explicit-assumption-required"
+            )
+        else:
+            historical_growth = reported_growth
         growth_capped = reported_growth is not None and reported_growth > sector.growth_cap
         base_growth = (
-            min(max(reported_growth, -0.10), sector.growth_cap)
-            if reported_growth is not None
+            min(max(historical_growth, -0.10), sector.growth_cap)
+            if historical_growth is not None
             else None
         )
         current_fcf_margin = (
@@ -521,11 +648,21 @@ def build_valuation(
             "sharesOutstanding": shares,
             "baseRevenueGrowth": base_growth,
             "reportedRevenueGrowth": reported_growth,
+            "growthBasis": growth_basis,
+            "financialFactsVersion": facts.version if facts else None,
+            "cashflowReconciliation": facts.reconciliation if facts else None,
+            "inputEvidence": {
+                name: observation.model_dump(mode="json")
+                for name, observation in ttm_values.items()
+                if name in {"revenue", "freeCashflow"}
+            },
             "freeCashflowMargin": current_fcf_margin,
             "normalizedFcfMargin": normalized_margin,
             "discountRate": cost_of_equity,
             "discountRateType": "cost-of-equity",
-            "cashFlowType": "levered-free-cash-flow-proxy",
+            "cashFlowType": "operating-cash-flow-less-capex-equity-proxy"
+            if facts
+            else "levered-free-cash-flow-proxy",
             "matureGrowth": DCF_MATURE_GROWTH,
             "shareCagr": sector.share_cagr,
             "fxRate": fx_rate if fx_rate else None,
@@ -539,6 +676,12 @@ def build_valuation(
             and total_revenue is not None
             and shares is not None
             and fx_rate != 0.0
+            and bool(quote_currency)
+            and (
+                facts is None
+                or base_growth is not None
+                or _complete_scenario_overrides(scenario_overrides)
+            )
             and sector.method != "analyst"
         )
         positive_fcf = current_fcf_margin is not None and current_fcf_margin > 0
@@ -562,7 +705,7 @@ def build_valuation(
                 revenue=total_revenue,
                 shares=shares,
                 base_growth=base_growth,
-                reported_growth=reported_growth,
+                reported_growth=historical_growth,
                 start_margin=start_margin,
                 profile=sector,
                 wacc=cost_of_equity,
@@ -674,7 +817,9 @@ def build_valuation(
                     "analystTargetsAreReferenceOnly": True,
                     "validationStatus": "not-backtested",
                 },
-                "source": "trading-max-valuation-v4",
+                "source": "trading-max-valuation-v5"
+                if financials is not None
+                else "trading-max-valuation-v4",
             }
         )
     return ValuationBatch(

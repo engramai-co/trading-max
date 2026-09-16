@@ -11,6 +11,7 @@ from trading_max.infrastructure import (
     SnapshotStore,
     StoredSnapshot,
 )
+from trading_max.research.coverage import merge_rows, row_clocks
 from trading_max.research.fundamentals import (
     AnalystBatch,
     EarningsBatch,
@@ -88,28 +89,7 @@ def merge_partial_rows(
 
     if previous is None or not refreshed:
         return payload
-    previous_rows = previous.get("rows")
-    new_rows = payload.get("rows")
-    if not isinstance(previous_rows, list) or not isinstance(new_rows, list):
-        return payload
-    replaced = {_canonical(ticker) for ticker in refreshed}
-    # Anything the job recomputed is authoritative, including a ticker that
-    # legitimately produced no row this run.
-    carried = [
-        row
-        for row in previous_rows
-        if isinstance(row, dict)
-        and _canonical(str(row.get("ticker") or row.get("t") or "")) not in replaced
-    ]
-    if not carried:
-        return payload
-    merged = dict(payload)
-    merged["rows"] = [*carried, *new_rows]
-    previous_tickers = previous.get("tickers")
-    new_tickers = payload.get("tickers")
-    if isinstance(previous_tickers, list) and isinstance(new_tickers, list):
-        merged["tickers"] = list(dict.fromkeys([*previous_tickers, *new_tickers]))
-    return merged
+    return merge_rows(previous, payload, refreshed)
 
 
 def merge_partial_market_snapshot(
@@ -146,7 +126,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v5"
+    version = "market-snapshot-v7"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -271,7 +251,7 @@ class TechnicalArtifactStage:
     """Project technical rows from the immutable market input."""
 
     name = "research.technical"
-    version = "technical-v6"
+    version = "technical-v7"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -320,7 +300,7 @@ class OptionsArtifactStage:
     """Project options positioning from the same market input as technical."""
 
     name = "research.options"
-    version = "options-v2"
+    version = "options-v4"
     required_for = frozenset({"all", "research"})
     dependencies = ("research.technical",)
 
@@ -419,7 +399,7 @@ class FundamentalsArtifactStage:
     """Fetch and normalize fundamentals for the current watchlist."""
 
     name = "research.fundamentals"
-    version = "fundamentals-v3"
+    version = "fundamentals-v6"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -474,7 +454,7 @@ class FinancialsArtifactStage:
     """Fetch annual and quarterly financial statements."""
 
     name = "research.financials"
-    version = "financials-v1"
+    version = "financials-v3"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -524,7 +504,7 @@ class AnalystArtifactStage:
     """Fetch analyst consensus estimates, ratings and target prices."""
 
     name = "research.analyst"
-    version = "analyst-v1"
+    version = "analyst-v4"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -579,9 +559,9 @@ class ValuationArtifactStage:
     """
 
     name = "research.valuation"
-    version = "valuation-v4"
+    version = "valuation-v5"
     required_for = frozenset({"all", "research"})
-    dependencies = ("research.technical", "research.fundamentals")
+    dependencies = ("research.technical", "research.fundamentals", "research.financials")
 
     def __init__(
         self,
@@ -642,11 +622,13 @@ class ValuationArtifactStage:
                 "valuation requires current technical and fundamentals artifacts",
             )
         try:
+            financials = _upstream_json(self.artifacts, context, "research/financials.json")
             batch = build_valuation(
                 technical.payload,
                 fundamentals.payload,
                 assumptions=self._previous_assumptions(),
                 fx_loader=self.fx_loader,
+                financials=financials.payload if financials else {},
             )
             ValuationBatch.model_validate(batch.model_dump(mode="json"))
         except (KeyError, TypeError, ValueError) as exc:
@@ -663,6 +645,7 @@ class ValuationArtifactStage:
             dependency_artifact_ids=[
                 technical.ref.artifact_id,
                 fundamentals.ref.artifact_id,
+                *([financials.ref.artifact_id] if financials else []),
             ],
             quality=ArtifactQuality(
                 status=_quality_status(batch.warnings),
@@ -771,7 +754,7 @@ class TypedPublishSnapshotStage:
         artifact with a single row and make every other ticker look unresearched.
         """
 
-        if previous is None or context.scope != "research" or not context.tickers:
+        if previous is None or context.scope not in {"research", "all"}:
             return new_refs
         previous_by_key = {ref.key: ref for ref in previous.manifest.artifacts}
         merged_refs = []
@@ -793,13 +776,13 @@ class TypedPublishSnapshotStage:
                 merged_payload = merge_partial_market_snapshot(
                     previous_payload,
                     current.payload,
-                    refreshed=context.tickers,
+                    refreshed=context.tickers or tuple(current.payload.get("tickers") or ()),
                 )
             else:
                 merged_payload = merge_partial_rows(
                     previous_payload,
                     current.payload,
-                    refreshed=context.tickers,
+                    refreshed=context.tickers or tuple(current.payload.get("tickers") or ()),
                 )
             if merged_payload is current.payload:
                 merged_refs.append(ref)
@@ -835,6 +818,29 @@ class TypedPublishSnapshotStage:
             context=context,
         )
         refs_by_key.update({ref.key: ref for ref in new_refs})
+        if context.scope in {"all", "research"}:
+            coverage: dict[str, dict] = {}
+            for key, ref in refs_by_key.items():
+                if key not in MERGEABLE_RESEARCH_KEYS or key == "research/market_snapshot.json":
+                    continue
+                raw = self.artifacts.get_json(ref.artifact_id).payload
+                name = key.removeprefix("research/").removesuffix(".json")
+                for ticker, clock in row_clocks(
+                    raw, generated_at=ref.generated_at.isoformat()
+                ).items():
+                    coverage.setdefault(ticker, {})[name] = clock
+            capability_ref = self.artifacts.put_json(
+                key="research/coverage.json",
+                payload={
+                    "rows": [
+                        {"ticker": ticker, "datasets": datasets}
+                        for ticker, datasets in coverage.items()
+                    ]
+                },
+                kind="research-coverage",
+                producer_version="research-coverage-v1",
+            ).ref
+            refs_by_key[capability_ref.key] = capability_ref
         refs = list(refs_by_key.values())
         published = self.snapshots.publish(
             scope=context.scope,
