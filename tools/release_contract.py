@@ -66,6 +66,30 @@ def validate_initial_version(head_value: str) -> None:
         raise ReleaseContractError(f"the first VERSION baseline must be 1.0.0, got {head_value}")
 
 
+def resolve_release_policy(
+    *,
+    base: str,
+    head: str,
+    product: bool,
+    documentation: bool,
+    hotfix: bool = False,
+    documentation_release: bool = False,
+) -> str:
+    """A maintainer may explicitly release documentation as one patch only."""
+    if documentation_release:
+        if hotfix:
+            raise ReleaseContractError("documentation release conflicts with hotfix:no-release")
+        if product or not documentation:
+            raise ReleaseContractError(
+                "documentation release requires actual documentation and no product changes"
+            )
+        before, after = parse_semver(base), parse_semver(head)
+        if after != (before[0], before[1], before[2] + 1):
+            raise ReleaseContractError("documentation release must advance exactly one PATCH")
+        return "release"
+    return "hotfix" if hotfix else "release" if product else "non-product"
+
+
 def _read_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 

@@ -57,15 +57,18 @@ jobs:
         env:
           HOTFIX: ${{ contains(github.event.pull_request.labels.*.name, 'hotfix:no-release') }}
           RELEASE_REQUIRED: ${{ steps.scope.outputs.release_required }}
+          DOCUMENTATION_RELEASE: ${{ contains(github.event.pull_request.labels.*.name, 'release:documentation') }}
+          DOCUMENTATION_CHANGED: ${{ steps.scope.outputs.documentation_changed }}
+          BASE_VERSION: ${{ steps.versions.outputs.base }}
+          HEAD_VERSION: ${{ steps.versions.outputs.head }}
         run: |
-          if [ "$HOTFIX" = "true" ]; then
-            mode="hotfix"
-          elif [ "$RELEASE_REQUIRED" = "true" ]; then
-            mode="release"
-          else
-            mode="non-product"
-          fi
-          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+          python tools/check_release_policy.py \
+            --base "$BASE_VERSION" --head "$HEAD_VERSION" \
+            --product "$RELEASE_REQUIRED" \
+            --documentation "$DOCUMENTATION_CHANGED" \
+            --hotfix "$HOTFIX" \
+            --documentation-release "$DOCUMENTATION_RELEASE" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Require one SemVer increment
         if: steps.policy.outputs.mode == 'release'

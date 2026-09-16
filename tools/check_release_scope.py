@@ -64,6 +64,7 @@ def main() -> int:
     paths = changed_paths(arguments.base, arguments.head)
     changed_product_paths = product_paths(arguments.base, arguments.head, paths)
     required = bool(changed_product_paths)
+    documentation = any(path == "README.md" or path.startswith("docs/") for path in paths)
     label = "product release required" if required else "non-product change; release skipped"
     print(label)
     for path in changed_product_paths:
@@ -72,6 +73,7 @@ def main() -> int:
     if arguments.github_output is not None:
         with arguments.github_output.open("a", encoding="utf-8") as output:
             output.write(f"release_required={'true' if required else 'false'}\n")
+            output.write(f"documentation_changed={'true' if documentation else 'false'}\n")
     return 0
 
 

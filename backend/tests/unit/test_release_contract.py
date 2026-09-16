@@ -6,6 +6,7 @@ from tools.release_contract import (
     extract_release_notes,
     find_changelog_release,
     project_versions,
+    resolve_release_policy,
     validate_initial_version,
     validate_project_versions,
     validate_version_increment,
@@ -100,6 +101,55 @@ def test_release_contract_supports_non_product_changes_and_explicit_hotfixes() -
     assert "Preserve the product version for non-product changes" in workflow
     assert 'test "$BASE_VERSION" = "$HEAD_VERSION"' in workflow
     assert "python tools/check_unreleased_changelog.py" in workflow
+
+
+def test_ordinary_documentation_changes_still_do_not_release():
+    assert (
+        resolve_release_policy(base="1.4.0", head="1.4.0", product=False, documentation=True)
+        == "non-product"
+    )
+
+
+def test_explicit_documentation_patch_uses_normal_release_gates():
+    assert (
+        resolve_release_policy(
+            base="1.4.0",
+            head="1.4.1",
+            product=False,
+            documentation=True,
+            documentation_release=True,
+        )
+        == "release"
+    )
+    workflow = (ROOT / ".github/workflows/release-contract.yml").read_text()
+    assert "release:documentation" in workflow
+    assert "Require aligned package versions" in workflow
+    assert "Validate release notes and tag availability" in workflow
+
+
+@pytest.mark.parametrize(
+    "head,product,documentation,hotfix",
+    [
+        ("1.4.0", False, True, False),
+        ("1.4.2", False, True, False),
+        ("1.5.0", False, True, False),
+        ("1.4.1", True, True, False),
+        ("1.4.1", False, False, False),
+        ("1.4.1", False, True, True),
+    ],
+)
+def test_documentation_label_cannot_bypass_scope_or_patch_rules(
+    head, product, documentation, hotfix
+):
+    with pytest.raises(ReleaseContractError):
+        resolve_release_policy(
+            base="1.4.0",
+            head=head,
+            product=product,
+            documentation=documentation,
+            hotfix=hotfix,
+            documentation_release=True,
+        )
 
 
 @pytest.mark.parametrize(
