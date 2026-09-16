@@ -1,9 +1,9 @@
-# Research workspace V2 implementation RFC
+# Research workspace
 
-The September 2026 comparative audit identified 77 issues in research data,
-financial interpretation, navigation, charts, and accessibility. This change
-implements that audit in the existing product, keeping broker ingestion and
-research lenses independent.
+The 1.x workspace organizes real provider data into independent research lenses,
+keeping broker ingestion and portfolio snapshots separate. See the
+[user guide](../guides/research.md) for the workflow and the
+[presentation contract](research-presentation.md) for chart responsibilities.
 
 ## Decisions
 
@@ -37,7 +37,8 @@ Provider caches, filings, portfolios, watchlists, notes and model runs remain in
 the external state root. Private evidence is excluded from shareable URL state.
 No credentials or real-account data belong in fixtures or Git. Existing preview
 state is preserved and an isolated build is verified before changing its launcher.
-Local commits provide rollback; no public release, push or new service is implied.
+Published releases preserve additive contracts and existing external state.
+Operator-managed macOS upgrades retain the previous installed runtime for rollback.
 New model versions and notes share one atomic journal store. Saving a research
 model does not rewrite the older background valuation-assumption configuration.
 The latest saved research inputs initialize the next preview, while the saved
@@ -45,8 +46,7 @@ quote, financial observations, growth references and worksheet remain frozen.
 
 ## Validation
 
-Each audit ID has an implementation and evidence entry in the external acceptance
-ledger. Synthetic domain tests cover period identity, cash-flow reconciliation,
+Synthetic domain tests cover period identity, cash-flow reconciliation,
 currency conversion, sparse data and model reproducibility. API and UI checks
 cover partial failures, research state, charts, keyboard and narrow viewports.
 Repository checks run before the final local deployment. An issue is not closed

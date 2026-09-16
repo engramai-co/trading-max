@@ -239,7 +239,7 @@ curl -fsSI http://127.0.0.1:3413/
 ## 5. Connect read-only data providers
 
 The onboarding wizard can configure providers directly. If you skipped them,
-open **Settings → External connections** in the browser.
+open **Settings → Accounts & data** in the browser.
 
 For each connection:
 

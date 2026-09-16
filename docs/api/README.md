@@ -49,7 +49,12 @@ values.
 - A stage failure records its stage, timing, return code, and error while leaving
   the previous valid snapshot available.
 - Research payloads include provenance and freshness metadata where the source
-  contract supports it.
+  contract supports it. Detail requests bind to the loaded context revision
+  so a quote, financial basis, and saved model are not silently mixed.
+- Requested price range, effective bar interval, and actual returned coverage
+  are distinct. A successful bounded response can still have partial history.
+- Client cancellation and bounded provider deadlines prevent abandoned requests
+  from occupying a view indefinitely; failure remains local to its lens.
 
 ## Contract checks
 

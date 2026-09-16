@@ -3,7 +3,7 @@
 The canonical implementation is
 `backend/src/trading_max/research/technical.py`.
 
-It returns immutable-looking Pydantic artifacts for:
+It returns typed Pydantic artifacts for:
 
 - adjusted daily OHLCV history and explicit coverage warnings;
 - SMA/EMA, MACD, RSI, stochastic, Bollinger, ATR, ADX/DMI, volume/OBV,
@@ -18,6 +18,3 @@ The module never splices an ADR chart into its home-market series. It keeps
 history coverage explicit and raises `MarketDataError` when the minimum
 history or option chain cannot be obtained. The options GEX convention is
 stored in the artifact because public OI does not disclose dealer inventory.
-
-The old dated technical script remains a compatibility entry point until a
-fixture-by-fixture comparison is complete; it must not gain new calculations.

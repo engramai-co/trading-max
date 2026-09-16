@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-16
+
+### Changed
+- Rebuild the README around the current portfolio and research workspace, with reviewed broker-only demonstration screenshots and direct installation and guide links.
+- Add a documentation index and practical portfolio, research, valuation, options, and data-convention guides.
+- Align architecture, privacy, and recovery documentation with unified cash-flow-aware P&L, independent research lenses, source coverage, and retained macOS releases.
+- Replace internal iteration names and obsolete interface screenshots with documentation for the shipped 1.x product.
+
 ## [1.4.0] - 2026-09-16
 
 ### Added

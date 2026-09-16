@@ -1,6 +1,6 @@
 # System overview
 
-Trading Max V1 is a local-first, single-user application with four runtime
+Trading Max 1.x is a local-first, single-user application with four runtime
 layers:
 
 ```text
@@ -58,10 +58,13 @@ once after process recovery; missed intraday slots are never replayed.
 
 ## Performance semantics
 
-Official daily account series use verified cash-flow-aware calculations.
-Intraday anchors do not contain complete cash-flow coverage, so short-range
-surfaces label them as value change rather than TWR. Longer ranges use the
-official daily series.
+All money/P&L ranges share ending value, net contributions, period net P&L,
+and maximum P&L drawdown. Short ranges use the unified intraday valuation
+history; longer ranges use daily values. Reconciled timestamped cash-flow
+evidence qualifies the P&L calculation. Missing evidence leaves P&L unavailable.
+The independent daily performance path remains authoritative for TWR; a
+percentage of opening account value is not TWR. See
+[unified NAV history](unified-nav-history.md).
 
 ## LLM boundary
 
