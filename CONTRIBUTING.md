@@ -72,10 +72,17 @@ all version surfaces unchanged and add a categorized entry under `Unreleased`.
 It does not create another tag or GitHub Release for the existing version;
 ordinary pull requests still require exactly one SemVer increment.
 
+A maintainer may explicitly select `release:documentation` for a substantial
+README or documentation milestone. This requires actual changes to `README.md`
+or `docs/`, no installed-product changes, exactly one PATCH increment, all
+version surfaces aligned, dated release notes, and an unused release tag.
+The normal CI and Release checks still run. It cannot be combined with
+`hotfix:no-release`; ordinary documentation changes continue without a release.
+
 ```bash
 uv sync --all-packages --group dev --frozen
-uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
-uv run ruff format --check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+uv run ruff check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
+uv run ruff format --check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
 uv run pytest services/api/tests backend/tests
 npm --prefix apps/web ci --no-audit --no-fund
 npm --prefix apps/web run check:api-types
