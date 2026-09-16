@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.7] - 2026-09-16
+
+### Fixed
+
+- Stabilize scenario comparisons against the current price and preserve their actual relative distances.
+- Edit assumptions in percentage units, preserve intermediate input safely, and compare changes using the same horizon.
+- Keep model saves tied to the submitted inputs and prevent stale previews from being saved during recalculation.
+
 ## [1.3.6] - 2026-09-16
 
 ### Fixed

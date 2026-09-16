@@ -1,7 +1,12 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Group, NumberInput, Select } from "@mantine/core";
+import {
+  Button,
+  Group,
+  NumberInput,
+  Select,
+} from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
   keepPreviousData,
@@ -9,8 +14,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useState } from "react";
-import { Plot } from "./charts";
+import { useMemo, useState } from "react";
+import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import {
   api,
   compact,
@@ -22,7 +27,6 @@ import {
   objects,
   percent,
   str,
-  tone,
 } from "./data";
 import {
   Empty,
@@ -93,7 +97,10 @@ export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnaps
   return (
     <>
       <ModelEditor key={query.data.id} initial={query.data} data={data} revision={revision} />
-      <FilingMultiples data={data} />
+      <details className="mx-model-detail">
+        <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
+        <FilingMultiples data={data} />
+      </details>
     </>
   );
 }
@@ -119,25 +126,33 @@ function ModelEditor({
     Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
   );
   const [selected, setSelected] = useState<string>("base");
+  const [activeField, setActiveField] =
+    useState<keyof ScenarioInput>("revenueCagr");
+  const [draftValue, setDraftValue] = useState<number | string | null>(null);
+  const [invalidInput, setInvalidInput] = useState(false);
   const [worksheet, setWorksheet] = useState<string>("base");
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
   >(initial.references ?? []);
-  const reference = useQuery(researchLensQuery(initial.basis.ticker, "analyst", revision ?? data.runId));
+  const reference = useQuery({
+    ...researchLensQuery(initial.basis.ticker, "analyst", revision ?? data.runId),
+  });
   const analyst = object(reference.data?.analyst);
   const estimate = objects(analyst.revenueEstimate).find(
     (r) => str(r.period ?? r.index) === params.get("estimateRef"),
   );
   const estimateGrowth = numeric(estimate?.growth);
-  const [debounced] = useDebouncedValue(
-    {
+  const liveRequest = useMemo(
+    () => ({
       scenarios: inputs,
       horizon,
       dataVersion: initial.basis.dataVersion,
       references,
-    },
-    250,
+    }),
+    [inputs, horizon, initial.basis.dataVersion, references],
   );
+  const [debounced] = useDebouncedValue(liveRequest, 250);
+  const liveFingerprint = JSON.stringify(liveRequest);
   const request = JSON.stringify(debounced);
   const query = useQuery({
     queryKey: ["valuation-preview", initial.id, request],
@@ -146,29 +161,60 @@ function ModelEditor({
         `/research/${encodeURIComponent(initial.basis.ticker)}/valuation-preview`,
         { ...jsonRequest("POST", debounced), signal },
       ),
+    initialData: request === JSON.stringify({
+      scenarios: Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
+      horizon: initial.horizon,
+      dataVersion: initial.basis.dataVersion,
+      references: initial.references ?? [],
+    }) ? initial : undefined,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
     retry: false,
   });
-  const result = query.data ?? initial;
-  const busy =
-    query.isFetching ||
-    JSON.stringify(debounced.scenarios) !== JSON.stringify(inputs) ||
-    debounced.horizon !== horizon;
-  const [saved, setSaved] = useState(false);
-  const save = useMutation({
-    mutationFn: () =>
-      api(
-        `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
-        jsonRequest("POST", {
-          scenarios: inputs,
+  const baseline = useQuery({
+    queryKey: ["valuation-preview", initial.id, JSON.stringify({
+      scenarios: Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
+      horizon,
+      dataVersion: initial.basis.dataVersion,
+      references: initial.references ?? [],
+    })],
+    queryFn: ({ signal }) =>
+      api<Preview>(
+        `/research/${encodeURIComponent(initial.basis.ticker)}/valuation-preview`,
+        { ...jsonRequest("POST", {
+          scenarios: Object.fromEntries(
+            keys.map((k) => [k, initial.scenarios[k].inputs]),
+          ),
           horizon,
           dataVersion: initial.basis.dataVersion,
-          references,
-        }),
+          references: initial.references ?? [],
+        }), signal },
       ),
-    onSuccess: async () => {
-      setSaved(true);
+    enabled: horizon !== initial.horizon,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const initialAtHorizon =
+    horizon === initial.horizon ? initial : baseline.data;
+  const result = query.data ?? initial;
+  const busy = invalidInput || query.isFetching || request !== liveFingerprint;
+  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
+  const saved = savedFingerprint === liveFingerprint;
+  const save = useMutation({
+    mutationFn: (payload: typeof liveRequest) =>
+      api(
+        `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
+        jsonRequest("POST", payload),
+      ),
+    onSuccess: async (_result, payload) => {
+      setSavedFingerprint(
+        JSON.stringify({
+          scenarios: payload.scenarios,
+          horizon: payload.horizon,
+          dataVersion: payload.dataVersion,
+          references: payload.references,
+        }),
+      );
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
       });
@@ -232,12 +278,233 @@ function ModelEditor({
     },
   ];
   const base = result.scenarios.base;
+  const current = result.scenarios[selected] ?? base;
+  const sourceLabel = t("模型初始假设", "Initial assumptions");
+  const referencePeriod = data.financialFacts?.periods.find(
+    (p) => p.id === data.financialFacts?.latestTtm,
+  );
+  const latestFact = (metric: string) =>
+    data.financialFacts?.observations.find(
+      (o) =>
+        o.periodId === data.financialFacts?.latestTtm && o.metric === metric,
+    )?.value;
   const projection = result.scenarios[worksheet] ?? base;
   return (
     <>
-      <div className="mx-model-workbench" aria-busy={busy}>
+      <div className="mx-model-reference-grid">
         <Panel
-          title={t("模型假设", "Model assumptions")}
+          title={t("经营参考", "Operating reference")}
+          action={
+            <span className="mx-unit">
+              {referencePeriod?.label} · {result.basis.currency}
+            </span>
+          }
+          help={t(
+            "模型从最近四个完整季度的经营现金流减资本开支出发，使用股权资本成本。它是股权现金流代理，没有完整建模借款、偿债和回购融资；现金、债务不在结果上直接加减。目标现金流率在三年内逐渐达到；十年模式第六年起增长逐渐收敛至 3%。",
+            "The model starts with operating cash flow less capital expenditure over four complete quarters and discounts at cost of equity. It is an equity cash-flow proxy, without a complete borrowing, repayment or buyback financing model. Cash and debt are not directly added or subtracted. Margins converge over three years; ten-year growth fades toward 3% from year six.",
+          )}
+        >
+          <div className="mx-metric-grid">
+            <Metric
+              label={t("TTM 营收", "TTM revenue")}
+              value={compact(result.basis.revenue)}
+            />
+            <Metric
+              label={t("TTM 现金流率", "TTM cash-flow margin")}
+              value={percent(result.basis.startMargin, false, 2)}
+            />
+          </div>
+          <details className="mx-chart-data">
+            <summary>
+              {t("基数与资本结构", "Basis & capital structure")}
+            </summary>
+            <Facts
+              rows={[
+                [
+                  t("模型股数", "Model share count"),
+                  number(result.basis.shares, 0),
+                ],
+                [
+                  t("现金及短期投资", "Cash & short-term investments"),
+                  compact(latestFact("cash")) +
+                    " " +
+                    (data.financialFacts?.currency ?? ""),
+                ],
+                [
+                  t("总债务", "Total debt"),
+                  compact(latestFact("debt")) +
+                    " " +
+                    (data.financialFacts?.currency ?? ""),
+                ],
+              ]}
+            />
+            <a
+              className="mx-text-link"
+              href={`/research?ticker=${encodeURIComponent(data.ticker)}&view=fundamentals&financialMode=cash&frequency=ttm`}
+            >
+              {t("查看现金流与披露", "View cash flow & disclosures")} ↗
+            </a>
+          </details>
+        </Panel>
+        <GrowthContext data={data} analyst={analyst} />
+      </div>
+      <div className="mx-model-workbench" aria-busy={busy}>
+        <div className="mx-model-output">
+          <Panel
+            title={t("情景估值", "Scenario valuation")}
+            id="valuation-results"
+            action={
+              <Group gap="xs">
+                <Button
+                  className="mx-model-jump"
+                  component="a"
+                  href="#valuation-assumptions"
+                  variant="subtle"
+                  size="compact-xs"
+                >
+                  {t("调整假设", "Adjust assumptions")}
+                </Button>
+                <Segments
+                  label={t("模型周期", "Model horizon")}
+                  value={String(horizon)}
+                  onChange={(v) => update({ horizon: v })}
+                  options={[
+                    { value: "5", label: t("5 年", "5 years") },
+                    { value: "10", label: t("10 年", "10 years") },
+                  ]}
+                />
+                <span role="status" className="mx-preview-status">
+                  {invalidInput
+                    ? t("请完成输入", "Complete the input")
+                    : busy
+                      ? t("计算中…", "Calculating…")
+                      : ""}
+                </span>
+              </Group>
+            }
+          >
+            <ValuationScenarioComparison
+              preview={result}
+              selected={selected}
+              onSelect={(key) => {
+                setSelected(key);
+                setDraftValue(null);
+                setInvalidInput(false);
+              }}
+            />
+            {initialAtHorizon &&
+              !busy &&
+              !query.isError &&
+              inputs[selected] &&
+              JSON.stringify(inputs[selected]) !==
+                JSON.stringify(initial.scenarios[selected].inputs) && (
+                <div className="mx-model-change" role="status">
+                  <span>
+                    {scenarioNames[selected]} ·{" "}
+                    {t("相对初始假设", "vs initial assumptions")}
+                  </span>
+                  <strong>
+                    {currency(
+                      current.value -
+                        initialAtHorizon.scenarios[selected].value,
+                      result.basis.currency,
+                      2,
+                    )}{" "}
+                    / {t("股", "share")}
+                  </strong>
+                </div>
+              )}
+            {query.isError && (
+              <p role="alert">
+                {t(
+                  "预览计算失败，当前仍为上次结果。",
+                  "Preview failed. The previous result is retained.",
+                )}
+              </p>
+            )}
+            <details className="mx-disclosure">
+              <summary>{t("比较情景假设", "Compare scenario assumptions")}</summary>
+            <div
+              className="mx-table-scroll"
+              tabIndex={0}
+              role="region"
+              aria-label={t("情景对照", "Scenario comparison")}
+            >
+              <table className="mx-financial-table">
+                <thead>
+                  <tr>
+                    <th>{t("情景", "Scenario")}</th>
+                    <th>{t("增长", "Growth")}</th>
+                    <th>{t("现金流率", "FCF margin")}</th>
+                    <th>{t("折现率", "Discount")}</th>
+                    <th>{t("价值", "Value")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {keys.map((k) => (
+                    <tr key={k}>
+                      <th>{scenarioNames[k]}</th>
+                      <td>{percent(result.scenarios[k].inputs.revenueCagr)}</td>
+                      <td>
+                        {percent(result.scenarios[k].inputs.targetFcfMargin)}
+                      </td>
+                      <td>
+                        {percent(result.scenarios[k].inputs.discountRate)}
+                      </td>
+                      <td>
+                        {currency(
+                          result.scenarios[k].value,
+                          result.basis.currency,
+                          2,
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            </details>
+          </Panel>
+          <Panel
+            title={t("价格隐含的增长", "Growth implied by price")}
+            help={t(
+              "固定基准情景的现金流率、股数、终值倍数和折现率，仅求解让模型价值等于现价的前五年增长率。",
+              "Only initial growth changes; the other base assumptions stay fixed while solving for the current price.",
+            )}
+          >
+            <div className="mx-model-growth">
+              <Metric
+                label={t("模型假设", "Assumed growth")}
+                value={percent(base.inputs.revenueCagr)}
+              />
+              <span aria-hidden>→</span>
+              <Metric
+                label={t("价格隐含增长", "Price-implied growth")}
+                value={
+                  result.impliedGrowthBound === "above"
+                    ? ">80%"
+                    : result.impliedGrowthBound === "below"
+                      ? "<−30%"
+                      : percent(result.impliedGrowth)
+                }
+              />
+            </div>
+          </Panel>
+        </div>
+        <Panel
+          title={t("调整假设", "Adjust assumptions")}
+          id="valuation-assumptions"
+          action={
+            <Button
+              className="mx-model-jump"
+              component="a"
+              href="#valuation-results"
+              variant="subtle"
+              size="compact-xs"
+            >
+              {t("查看结果", "View results")}
+            </Button>
+          }
           className="mx-model-inputs"
           help={t(
             "现金流来自四季报表的经营现金流减资本开支，作为股权现金流代理，与股权资本成本配对。十年模型从第六年逐渐收敛至 3% 增长。",
@@ -247,7 +514,11 @@ function ModelEditor({
           <Segments
             label={t("编辑情景", "Edit scenario")}
             value={selected}
-            onChange={setSelected}
+            onChange={(v) => {
+              setSelected(v);
+              setDraftValue(null);
+              setInvalidInput(false);
+            }}
             options={keys.map((key) => ({
               value: key,
               label: scenarioNames[key],
@@ -288,7 +559,9 @@ function ModelEditor({
                       adjustment: 0,
                     },
                   ]);
-                  setSaved(false);
+                  setActiveField("revenueCagr");
+                  setDraftValue(null);
+                  setInvalidInput(false);
                   update({ estimateRef: null });
                 }}
               >
@@ -299,51 +572,114 @@ function ModelEditor({
               </Button>
             </div>
           )}
-          <div className="mx-model-fields">
+          <div
+            className="mx-assumption-picker"
+            aria-label={t("选择要调整的假设", "Choose an assumption to adjust")}
+          >
             {fields.map((field) => (
-              <NumberInput
-                key={selected + field.key}
-                label={field.label}
-                value={Number(
-                  (inputs[selected][field.key] * field.scale).toFixed(3),
-                )}
-                onChange={(v) => {
-                  if (
-                    typeof v === "number" &&
-                    v >= field.min &&
-                    v <= field.max
-                  ) {
-                    setInputs((previous) => ({
-                      ...previous,
-                      [selected]: {
-                        ...previous[selected],
-                        [field.key]: v / field.scale,
-                      },
-                    }));
-                    setSaved(false);
-                    if (field.key === "revenueCagr")
-                      setReferences((v) =>
-                        v.filter((r) => r.scenario !== selected),
-                      );
-                  }
+              <button
+                key={field.key}
+                type="button"
+                aria-pressed={activeField === field.key}
+                onClick={() => {
+                  setActiveField(field.key);
+                  setDraftValue(null);
+                  setInvalidInput(false);
                 }}
-                min={field.min}
-                max={field.max}
-                step={field.key === "exitFcfMultiple" ? 1 : 0.5}
-                decimalScale={2}
-                suffix={field.suffix}
-              />
+              >
+                <span>{field.label}</span>
+                <strong>
+                  {number(inputs[selected][field.key] * field.scale, 2)}
+                  {field.suffix}
+                </strong>
+              </button>
             ))}
           </div>
+          <div className="mx-model-fields">
+            {fields
+              .filter((field) => field.key === activeField)
+              .map((field) => (
+                <NumberInput
+                  key={selected + field.key}
+                  label={field.label}
+                  value={
+                    draftValue ??
+                    Number(
+                      (inputs[selected][field.key] * field.scale).toFixed(3),
+                    )
+                  }
+                  error={
+                    invalidInput
+                      ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
+                      : undefined
+                  }
+                  onChange={(v) => {
+                    setDraftValue(v);
+                    const value = numeric(v);
+                    setInvalidInput(
+                      value == null || value < field.min || value > field.max,
+                    );
+                    if (
+                      value != null &&
+                      value >= field.min &&
+                      value <= field.max
+                    ) {
+                      setInputs((previous) => ({
+                        ...previous,
+                        [selected]: {
+                          ...previous[selected],
+                          [field.key]: value / field.scale,
+                        },
+                      }));
+                      if (field.key === "revenueCagr")
+                        setReferences((v) =>
+                          v.filter((r) => r.scenario !== selected),
+                        );
+                    }
+                  }}
+                  min={field.min}
+                  max={field.max}
+                  step={field.key === "exitFcfMultiple" ? 1 : 0.5}
+                  decimalScale={2}
+                  suffix={field.suffix}
+                />
+              ))}
+          </div>
+          <details className="mx-model-sources">
+            <summary>{t("参数依据", "Assumption sources")}</summary>
+            <Facts
+              rows={fields.map((field) => {
+                const ref = references.find((r) => r.scenario === selected);
+                const changed =
+                  inputs[selected][field.key] !==
+                  initial.scenarios[selected].inputs[field.key];
+                return [
+                  field.label,
+                  field.key === "revenueCagr" && ref
+                    ? `${ref.source === "historical-revenue-cagr" ? t("历史营收 CAGR", "Historical revenue CAGR") : t("营收共识", "Revenue consensus")} · ${ref.period}`
+                    : changed
+                      ? t("本次调整", "Current edit")
+                      : sourceLabel,
+                ];
+              })}
+            />
+            <p>
+              {t(
+                "增长先应用五年；目标现金流率用三年达到。股数变化为负表示减少；终值倍数与股权资本成本是情景假设。",
+                "Growth applies for five years and the target margin is reached over three. Negative share-count change means fewer shares. The terminal multiple and cost of equity are scenario assumptions.",
+              )}
+            </p>
+          </details>
           <Button
             variant="subtle"
             onClick={() => {
+              setDraftValue(null);
+              setInvalidInput(false);
               setInputs(
                 Object.fromEntries(
                   keys.map((k) => [k, initial.scenarios[k].inputs]),
                 ),
               );
-              setSaved(false);
               setReferences(initial.references ?? []);
             }}
           >
@@ -351,7 +687,7 @@ function ModelEditor({
           </Button>
           <Button
             fullWidth
-            onClick={() => save.mutate()}
+            onClick={() => save.mutate(liveRequest)}
             loading={save.isPending}
             disabled={busy || query.isError || saved}
           >
@@ -365,368 +701,213 @@ function ModelEditor({
             </p>
           )}
         </Panel>
-        <div className="mx-model-output">
-          <GrowthContext data={data} analyst={analyst} />
-          <Panel
-            title={t("情景估值", "Scenario valuation")}
-            action={
-              <Group gap="xs">
-                <Segments
-                  label={t("模型周期", "Model horizon")}
-                  value={String(horizon)}
-                  onChange={(v) => update({ horizon: v })}
-                  options={[
-                    { value: "5", label: t("5 年", "5 years") },
-                    { value: "10", label: t("10 年", "10 years") },
-                  ]}
-                />
-                <span role="status" className="mx-preview-status">
-                  {busy ? t("计算中…", "Calculating…") : ""}
-                </span>
-              </Group>
-            }
-          >
-            <div className="mx-metric-grid mx-metric-grid-three">
-              <Metric
-                label={t("现价", "Spot")}
-                value={currency(result.basis.spot, result.basis.currency, 2)}
-              />
-              <Metric
-                label={t("基准情景", "Base scenario")}
-                value={currency(base.value, result.basis.currency, 2)}
-              />
-              <Metric
-                label={t("与现价相比", "Against spot")}
-                value={percent(base.upside, true, 2)}
-                tone={tone(base.upside)}
-              />
-            </div>
-            {query.isError && (
-              <p role="alert">
-                {t(
-                  "预览计算失败，当前仍为上次结果。",
-                  "Preview failed. The previous result is retained.",
-                )}
-              </p>
-            )}
-            <Plot
-              research
-              label={t(
-                "三种估值情景与现价",
-                "Three valuation scenarios and spot",
-              )}
-              height={250}
-              option={(c) => ({
-                grid: { left: 50, right: 100, bottom: 35, top: 22 },
-                xAxis: {
-                  type: "value",
-                  min: 0,
-                  axisLabel: { color: c.axis },
-                  splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
-                },
-                yAxis: {
-                  type: "category",
-                  data: keys.map((k) => scenarioNames[k]),
-                  axisLine: { show: false },
-                  axisTick: { show: false },
-                  axisLabel: { color: c.text },
-                },
-                tooltip: {
-                  trigger: "item",
-                  formatter: (p) => {
-                    const point = Array.isArray(p) ? p[0] : p;
-                    const item = result.scenarios[keys[point.dataIndex]];
-                    return `${scenarioNames[keys[point.dataIndex]]}\n${currency(item.value, result.basis.currency, 2)}\n${percent(item.upside, true, 2)}`;
-                  },
-                },
-                series: [
-                  {
-                    type: "scatter",
-                    symbolSize: 13,
-                    itemStyle: { color: c.brand },
-                    data: keys.map((k, i) => [result.scenarios[k].value, i]),
-                    label: {
-                      show: true,
-                      position: "right",
-                      color: c.text,
-                      formatter: (p) =>
-                        currency(
-                          result.scenarios[keys[p.dataIndex]].value,
-                          result.basis.currency,
-                          2,
-                        ),
-                    },
-                    markLine: {
-                      silent: true,
-                      symbol: "none",
-                      data: [{ xAxis: result.basis.spot }],
-                      lineStyle: { color: c.axis, type: "dashed" },
-                      label: { formatter: t("现价", "Spot"), color: c.axis },
-                    },
-                  },
-                ],
-              })}
-            />
-            <div
-              className="mx-table-scroll"
-              tabIndex={0}
-              role="region"
-              aria-label={t("情景对照", "Scenario comparison")}
-            >
-              <table className="mx-financial-table">
-                <thead>
-                  <tr>
-                    <th>{t("情景", "Scenario")}</th>
-                    <th>{t("增长", "Growth")}</th>
-                    <th>{t("现金流率", "FCF margin")}</th>
-                    <th>{t("折现率", "Discount")}</th>
-                    <th>{t("价值", "Value")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keys.map((k) => (
-                    <tr key={k}>
-                      <th>{scenarioNames[k]}</th>
-                      <td>{percent(result.scenarios[k].inputs.revenueCagr)}</td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.targetFcfMargin)}
-                      </td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.discountRate)}
-                      </td>
-                      <td>
-                        {currency(
-                          result.scenarios[k].value,
-                          result.basis.currency,
-                          2,
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-          <Panel
-            title={t("价格隐含的增长", "Growth implied by price")}
-            help={t(
-              "固定基准情景的现金流率、股数、终值倍数和折现率，仅求解让模型价值等于现价的前五年增长率。",
-              "Only initial growth changes; the other base assumptions stay fixed while solving for the current price.",
-            )}
-          >
-            <div className="mx-model-growth">
-              <Metric
-                label={t("模型假设", "Assumed growth")}
-                value={percent(base.inputs.revenueCagr)}
-              />
-              <span aria-hidden>→</span>
-              <Metric
-                label={t("价格隐含增长", "Price-implied growth")}
-                value={
-                  result.impliedGrowthBound === "above"
-                    ? ">80%"
-                    : result.impliedGrowthBound === "below"
-                      ? "<−30%"
-                      : percent(result.impliedGrowth)
-                }
-              />
-            </div>
-          </Panel>
-        </div>
       </div>
-      <Panel
-        title={t("增长 × 折现率", "Growth × cost of equity")}
-        action={
-          <span className="mx-unit">
-            {result.horizon}
-            {t(" 年", " years")} · {result.basis.currency}
-          </span>
-        }
-      >
-        <div
-          className="mx-table-scroll"
-          tabIndex={0}
-          role="region"
-          aria-label={t("二维敏感性矩阵", "Two-dimensional sensitivity matrix")}
+      <details className="mx-model-detail">
+        <summary>{t("敏感性分析", "Sensitivity analysis")}</summary>
+        <Panel
+          title={t("增长 × 折现率", "Growth × cost of equity")}
+          action={
+            <span className="mx-unit">
+              {result.horizon}
+              {t(" 年", " years")} · {result.basis.currency}
+            </span>
+          }
         >
-          <table className="mx-sensitivity-matrix">
-            <thead>
-              <tr>
-                <th>{t("折现率 / 增长", "Discount / growth")}</th>
-                {result.sensitivity.slice(0, 5).map((cell, i) => (
-                  <th key={i}>{percent(cell.growth)}</th>
+          <div
+            className="mx-table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label={t(
+              "二维敏感性矩阵",
+              "Two-dimensional sensitivity matrix",
+            )}
+          >
+            <table className="mx-sensitivity-matrix">
+              <thead>
+                <tr>
+                  <th>{t("折现率 / 增长", "Discount / growth")}</th>
+                  {result.sensitivity.slice(0, 5).map((cell, i) => (
+                    <th key={i}>{percent(cell.growth)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[0, 1, 2, 3, 4].map((row) => (
+                  <tr key={row}>
+                    <th>{percent(result.sensitivity[row * 5].discountRate)}</th>
+                    {result.sensitivity
+                      .slice(row * 5, row * 5 + 5)
+                      .map((cell, col) => (
+                        <td
+                          key={col}
+                          data-base={(row === 2 && col === 2) || undefined}
+                          data-direction={
+                            cell.upside >= 0 ? "positive" : "negative"
+                          }
+                        >
+                          <strong>{number(cell.value, 2)}</strong>
+                          <span>{percent(cell.upside, true, 1)}</span>
+                        </td>
+                      ))}
+                  </tr>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[0, 1, 2, 3, 4].map((row) => (
-                <tr key={row}>
-                  <th>{percent(result.sensitivity[row * 5].discountRate)}</th>
-                  {result.sensitivity
-                    .slice(row * 5, row * 5 + 5)
-                    .map((cell, col) => (
-                      <td
-                        key={col}
-                        data-base={(row === 2 && col === 2) || undefined}
-                        data-direction={
-                          cell.upside >= 0 ? "positive" : "negative"
-                        }
-                      >
-                        <strong>{number(cell.value, 2)}</strong>
-                        <span>{percent(cell.upside, true, 1)}</span>
-                      </td>
-                    ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-      <Panel
-        title={t("年度计算底稿", "Annual projection")}
-        action={
-          <Select
-            aria-label={t("底稿情景", "Projection scenario")}
-            value={worksheet}
-            onChange={(v) => setWorksheet(v ?? "base")}
-            data={keys.map((k) => ({ value: k, label: scenarioNames[k] }))}
-          />
-        }
-      >
-        <div
-          className="mx-table-scroll"
-          tabIndex={0}
-          role="region"
-          aria-label={t("现金流预测明细", "Cash-flow projection details")}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      </details>
+      <details className="mx-model-detail">
+        <summary>
+          {t("年度计算底稿与来源", "Annual worksheet & sources")}
+        </summary>
+        <Panel
+          title={t("年度计算底稿", "Annual projection")}
+          action={
+            <Select
+              aria-label={t("底稿情景", "Projection scenario")}
+              value={worksheet}
+              onChange={(v) => setWorksheet(v ?? "base")}
+              data={keys.map((k) => ({ value: k, label: scenarioNames[k] }))}
+            />
+          }
         >
-          <table className="mx-financial-table">
-            <thead>
-              <tr>
-                <th>{t("年份", "Year")}</th>
-                <th>{t("增长", "Growth")}</th>
-                <th>{t("营收", "Revenue")}</th>
-                <th>{t("现金流率", "FCF margin")}</th>
-                <th>{t("现金流", "Cash flow")}</th>
-                <th>{t("股数", "Shares")}</th>
-                <th>{t("每股现金流", "FCF / share")}</th>
-                <th>{t("折现后每股值", "PV / share")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projection.years.map((y) => (
-                <tr key={y.year}>
-                  <th>{y.year}</th>
-                  <td>{percent(y.growth)}</td>
-                  <td>{compact(y.revenue)}</td>
-                  <td>{percent(y.fcfMargin)}</td>
-                  <td>{compact(y.freeCashflow)}</td>
-                  <td>{compact(y.shares)}</td>
-                  <td>{number(y.cashflowPerShare, 2)}</td>
-                  <td>{number(y.presentValue, 2)}</td>
+          <div
+            className="mx-table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label={t("现金流预测明细", "Cash-flow projection details")}
+          >
+            <table className="mx-financial-table">
+              <thead>
+                <tr>
+                  <th>{t("年份", "Year")}</th>
+                  <th>{t("增长", "Growth")}</th>
+                  <th>{t("营收", "Revenue")}</th>
+                  <th>{t("现金流率", "FCF margin")}</th>
+                  <th>{t("现金流", "Cash flow")}</th>
+                  <th>{t("股数", "Shares")}</th>
+                  <th>{t("每股现金流", "FCF / share")}</th>
+                  <th>{t("折现后每股值", "PV / share")}</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th colSpan={6}>
-                  {t("预测现金流现值", "Projected cash-flow present value")}
-                </th>
-                <td colSpan={2}>
-                  {currency(
-                    projection.operatingValue,
-                    result.basis.currency,
-                    2,
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <th colSpan={6}>
-                  {t("终值现值", "Terminal present value")} ·{" "}
-                  {percent(projection.terminalContribution)}
-                </th>
-                <td colSpan={2}>
-                  {currency(
-                    projection.terminalPresentValue,
-                    result.basis.currency,
-                    2,
-                  )}
-                </td>
-              </tr>
-              <tr>
-                <th colSpan={6}>{t("每股价值", "Value per share")}</th>
-                <td colSpan={2}>
-                  {currency(projection.value, result.basis.currency, 2)}
-                </td>
-              </tr>
-              {projection.equityFloorAdjustment > 0 && (
+              </thead>
+              <tbody>
+                {projection.years.map((y) => (
+                  <tr key={y.year}>
+                    <th>{y.year}</th>
+                    <td>{percent(y.growth)}</td>
+                    <td>{compact(y.revenue)}</td>
+                    <td>{percent(y.fcfMargin)}</td>
+                    <td>{compact(y.freeCashflow)}</td>
+                    <td>{compact(y.shares)}</td>
+                    <td>{number(y.cashflowPerShare, 2)}</td>
+                    <td>{number(y.presentValue, 2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
                 <tr>
                   <th colSpan={6}>
-                    {t("股权零下限调整", "Equity zero-floor adjustment")}
+                    {t("预测现金流现值", "Projected cash-flow present value")}
                   </th>
                   <td colSpan={2}>
                     {currency(
-                      projection.equityFloorAdjustment,
+                      projection.operatingValue,
                       result.basis.currency,
                       2,
                     )}
                   </td>
                 </tr>
-              )}
-            </tfoot>
-          </table>
-        </div>
-        <details className="mx-chart-data">
-          <summary>{t("输入与来源", "Inputs & sources")}</summary>
-          <dl className="mx-evidence-inputs">
-            <dt>{t("起始营收", "Starting revenue")}</dt>
-            <dd>{currency(result.basis.revenue, result.basis.currency, 0)}</dd>
-            <dt>{t("起始现金流率", "Starting FCF margin")}</dt>
-            <dd>{percent(result.basis.startMargin, false, 2)}</dd>
-            <dt>{t("股数", "Shares outstanding")}</dt>
-            <dd>{number(result.basis.shares, 0)}</dd>
-          </dl>
-          <ul className="mx-source-list">
-            {(result.references ?? []).map((reference, i) => (
-              <li key={`reference-${i}`}>
-                <strong>
-                  {scenarioNames[reference.scenario]} ·{" "}
-                  {reference.source === "historical-revenue-cagr"
-                    ? t("历史营收 CAGR", "Historical revenue CAGR")
-                    : t("营收共识参考", "Revenue consensus reference")}
-                </strong>
-                <span>
-                  {reference.period} ·{" "}
-                  {percent(
-                    reference.referenceValue ?? reference.value,
-                    false,
-                    2,
+                <tr>
+                  <th colSpan={6}>
+                    {t("终值现值", "Terminal present value")} ·{" "}
+                    {percent(projection.terminalContribution)}
+                  </th>
+                  <td colSpan={2}>
+                    {currency(
+                      projection.terminalPresentValue,
+                      result.basis.currency,
+                      2,
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <th colSpan={6}>{t("每股价值", "Value per share")}</th>
+                  <td colSpan={2}>
+                    {currency(projection.value, result.basis.currency, 2)}
+                  </td>
+                </tr>
+                {projection.equityFloorAdjustment > 0 && (
+                  <tr>
+                    <th colSpan={6}>
+                      {t("股权零下限调整", "Equity zero-floor adjustment")}
+                    </th>
+                    <td colSpan={2}>
+                      {currency(
+                        projection.equityFloorAdjustment,
+                        result.basis.currency,
+                        2,
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+          </div>
+          <details className="mx-chart-data">
+            <summary>{t("输入与来源", "Inputs & sources")}</summary>
+            <dl className="mx-evidence-inputs">
+              <dt>{t("起始营收", "Starting revenue")}</dt>
+              <dd>
+                {currency(result.basis.revenue, result.basis.currency, 0)}
+              </dd>
+              <dt>{t("起始现金流率", "Starting FCF margin")}</dt>
+              <dd>{percent(result.basis.startMargin, false, 2)}</dd>
+              <dt>{t("股数", "Shares outstanding")}</dt>
+              <dd>{number(result.basis.shares, 0)}</dd>
+            </dl>
+            <ul className="mx-source-list">
+              {(result.references ?? []).map((reference, i) => (
+                <li key={`reference-${i}`}>
+                  <strong>
+                    {scenarioNames[reference.scenario]} ·{" "}
+                    {reference.source === "historical-revenue-cagr"
+                      ? t("历史营收 CAGR", "Historical revenue CAGR")
+                      : t("营收共识参考", "Revenue consensus reference")}
+                  </strong>
+                  <span>
+                    {reference.period} ·{" "}
+                    {percent(
+                      reference.referenceValue ?? reference.value,
+                      false,
+                      2,
+                    )}
+                    {!!reference.adjustment &&
+                      ` · ${t("情景调整", "Scenario adjustment")} ${number(reference.adjustment * 100, 2)} pp`}
+                  </span>
+                  {(reference.evidence ?? []).map((e, j) =>
+                    e.url ? (
+                      <a key={j} href={e.url} rel="noreferrer" target="_blank">
+                        {e.publishedAt ?? t("原始披露", "Original filing")} ↗
+                      </a>
+                    ) : null,
                   )}
-                  {!!reference.adjustment &&
-                    ` · ${t("情景调整", "Scenario adjustment")} ${number(reference.adjustment * 100, 2)} pp`}
-                </span>
-                {(reference.evidence ?? []).map((e, j) =>
-                  e.url ? (
-                    <a key={j} href={e.url} rel="noreferrer" target="_blank">
-                      {e.publishedAt ?? t("原始披露", "Original filing")} ↗
+                </li>
+              ))}
+              {result.basis.evidence?.map((e, i) => (
+                <li key={i}>
+                  <strong>{e.field}</strong>
+                  <span>{e.source}</span>
+                  {e.url && (
+                    <a href={e.url} rel="noreferrer" target="_blank">
+                      {t("原始披露", "Original filing")} ↗
                     </a>
-                  ) : null,
-                )}
-              </li>
-            ))}
-            {result.basis.evidence?.map((e, i) => (
-              <li key={i}>
-                <strong>{e.field}</strong>
-                <span>{e.source}</span>
-                {e.url && (
-                  <a href={e.url} rel="noreferrer" target="_blank">
-                    {t("原始披露", "Original filing")} ↗
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
-        </details>
-      </Panel>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </Panel>
+      </details>
     </>
   );
 }
