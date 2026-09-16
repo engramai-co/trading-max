@@ -12,7 +12,17 @@ from trading_max.analytics.historical_nav import (
     HistoryLoader,
     reconstruct_historical_nav,
 )
-from trading_max.analytics.intraday import append_intraday_anchor
+from trading_max.analytics.intraday import (
+    IntradayAnchor,
+    append_intraday_anchor,
+    floor_bucket,
+    merge_valuation_history,
+)
+from trading_max.analytics.intraday_reconstruction import (
+    CachedIntradayPriceLoader,
+    IntradayPriceLoader,
+    reconstruct_intraday_account,
+)
 from trading_max.analytics.nav import append_valuation
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
@@ -35,11 +45,11 @@ def _upstream_json(
 ):
     for artifact_id in context.upstream_artifact_ids:
         try:
-            stored = artifacts.get_json(artifact_id)
+            ref = artifacts.get_ref(artifact_id)
         except FileNotFoundError:
             continue
-        if stored.ref.key == key:
-            return stored
+        if ref.key == key:
+            return artifacts.get_json(artifact_id)
     return None
 
 
@@ -288,11 +298,11 @@ class AccountNavStage:
 
 
 class AccountIntradayNavStage:
-    """Append one bounded broker-value anchor without changing daily NAV."""
+    """Publish one valuation history for both broker collection and backfilling."""
 
     name = "accounts.intraday_nav"
-    version = "intraday-nav-v1"
-    required_for = frozenset({"intraday"})
+    version = "valuation-history-v3"
+    required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
     def __init__(
@@ -301,12 +311,16 @@ class AccountIntradayNavStage:
         snapshots: SnapshotStore,
         *,
         interval_seconds: int = 600,
-        retention_days: int = 40,
+        retention_days: int = 120,
+        state_root: Path | None = None,
+        history_loader: IntradayPriceLoader | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.snapshots = snapshots
         self.interval_seconds = interval_seconds
         self.retention_days = retention_days
+        self.state_root = state_root
+        self.history_loader = history_loader
 
     def run(self, context: StageContext) -> StageResult:
         accounts: dict[str, dict] = {}
@@ -333,6 +347,10 @@ class AccountIntradayNavStage:
         previous = _previous_json(
             self.artifacts,
             self.snapshots,
+            "account/nav/valuation_history.json",
+        ) or _previous_json(
+            self.artifacts,
+            self.snapshots,
             "account/nav/intraday_anchors.json",
         )
         if previous is not None:
@@ -355,8 +373,63 @@ class AccountIntradayNavStage:
             "live broker snapshots do not include verified cash-flow coverage; "
             "intraday value changes must not be labelled TWR"
         )
+        warnings = [warning]
+        if context.scope != "intraday" and self.state_root is not None:
+            loader = self.history_loader or CachedIntradayPriceLoader(
+                self.state_root / "cache" / "nav-prices"
+            )
+            modeled = {}
+            for code, profile in (("A", "invest"), ("B", "isa")):
+                try:
+                    export = latest_export_path(profile, data_root=self.state_root / "trading212")
+                    if export is None:
+                        continue
+                    modeled[code] = reconstruct_intraday_account(
+                        export_path=export,
+                        account=accounts[code],
+                        history_loader=loader,
+                        cash_transactions_path=latest_cash_transactions_path(
+                            profile,
+                            data_root=self.state_root / "trading212",
+                        ),
+                        retention_days=self.retention_days,
+                    )
+                except Exception as exc:
+                    warnings.append(f"{profile} intraday reconstruction unavailable: {exc}")
+            if "A" in modeled and "B" in modeled:
+                a, b = modeled["A"], modeled["B"]
+                points = []
+                for stamp in a.index.intersection(b.index):
+                    invest, isa = a.loc[stamp], b.loc[stamp]
+                    points.append(
+                        IntradayAnchor(
+                            observed_at=stamp.to_pydatetime(),
+                            bucket_at=floor_bucket(stamp.to_pydatetime(), self.interval_seconds),
+                            invest_value_gbp=float(invest.value),
+                            isa_value_gbp=float(isa.value),
+                            total_value_gbp=float(invest.value + isa.value),
+                            invest_cash_gbp=float(invest.cash),
+                            isa_cash_gbp=float(isa.cash),
+                            source="reconstructed",
+                            includes_extended_hours=True,
+                            cadence_seconds=int(max(invest.cadence, isa.cadence)),
+                            price_cadence_seconds=int(max(invest.price_cadence, isa.price_cadence)),
+                            source_artifact_ids=dependencies[:2],
+                        )
+                    )
+                series = merge_valuation_history(
+                    series,
+                    points,
+                    generated_at=series.generated_at,
+                    interval_seconds=self.interval_seconds,
+                    retention_days=self.retention_days,
+                )
+                if not points:
+                    warnings.append(
+                        "no overlapping intraday market coverage; broker observations retained"
+                    )
         stored = self.artifacts.put_json(
-            key="account/nav/intraday_anchors.json",
+            key="account/nav/valuation_history.json",
             payload=series.model_dump(mode="json", by_alias=False),
             kind="intraday_nav",
             as_of=(series.points[-1].observed_at.isoformat() if series.points else None),
@@ -364,13 +437,13 @@ class AccountIntradayNavStage:
             dependency_artifact_ids=dependencies,
             quality=ArtifactQuality(
                 status="warning",
-                coverage="14-day rolling broker-value anchors",
-                warnings=[warning],
+                coverage=f"{self.retention_days}-day unified observed and reconstructed valuations",
+                warnings=warnings,
             ),
         )
         return StageResult(
             artifacts=(stored.ref,),
-            warnings=(warning,),
+            warnings=tuple(warnings),
             metadata={
                 "anchor_count": len(series.points),
                 "flow_unverified_count": sum(

@@ -219,3 +219,43 @@ def test_account_performance_stage_rejects_unconverted_benchmark(tmp_path: Path)
     ).payload["A"]
     assert payload["information_ratio"] is None
     assert payload["benchmark_ticker"] is None
+
+
+@pytest.mark.parametrize("previous", [None, 200.0])
+def test_account_performance_prefers_current_job_benchmark(tmp_path: Path, previous) -> None:
+    def benchmark(last):
+        return {
+            "benchmark_currency": "GBP",
+            "benchmark_return_basis": "auto_adjusted_close",
+            "benchmark_series": {
+                "VOO": [
+                    {"date": "2026-08-01", "close": 100.0},
+                    {"date": "2026-08-02", "close": 101.0},
+                    {"date": "2026-08-03", "close": last},
+                ]
+            },
+        }
+
+    artifacts, snapshots = _seed_nav(tmp_path, technical=benchmark(previous) if previous else None)
+    current = artifacts.put_json(
+        key="research/technical.json",
+        payload=benchmark(103.0),
+        kind="technical",
+        producer_version="fixture-v2",
+    )
+    result = AccountPerformanceStage(artifacts, snapshots).run(
+        StageContext(
+            job_id="job",
+            scope="all",
+            upstream_artifact_ids=(current.ref.artifact_id,),
+        )
+    )
+    payload = artifacts.get_json(
+        next(
+            ref.artifact_id
+            for ref in result.artifacts
+            if ref.key == "account/synthetic_nav_metrics.json"
+        )
+    ).payload["A"]
+    assert payload["benchmark_total_return"] == pytest.approx(0.03)
+    assert payload["information_ratio"] is not None

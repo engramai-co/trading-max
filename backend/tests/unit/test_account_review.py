@@ -7,6 +7,20 @@ import pytest
 from trading_max.analytics.account_review import build_account_review
 
 
+def test_active_positions_fall_back_to_ticker_when_isin_is_missing():
+    from trading_max.analytics.account_review import _active_position_counts
+
+    rows = pd.DataFrame(
+        [
+            {"Action": "Market buy", "Shares": 2, "ISIN": float("nan"), "Ticker": "AAA"},
+            {"Action": "Market buy", "Shares": 3, "ISIN": pd.NA, "Ticker": "BBB"},
+            {"Action": "Market sell", "Shares": 2, "ISIN": None, "Ticker": "AAA"},
+            {"Action": "Market buy", "Shares": 1, "ISIN": None, "Ticker": None},
+        ]
+    )
+    assert _active_position_counts(rows) == [1, 2, 1]
+
+
 def _transactions() -> pd.DataFrame:
     rows = [
         {

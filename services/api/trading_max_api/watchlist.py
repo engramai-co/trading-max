@@ -78,8 +78,7 @@ class SecuritySearchError(RuntimeError):
 
 
 def _canonical_ticker(value: str) -> str:
-    ticker = value.strip().upper()
-    return ticker[:-2] if ticker.endswith(".L") else ticker
+    return value.strip().upper()
 
 
 def _atomic_json(path: Path, payload: object) -> None:

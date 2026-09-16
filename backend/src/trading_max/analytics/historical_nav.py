@@ -98,6 +98,66 @@ class SupplementalCashEvent:
     external_flow: bool
 
 
+@dataclass(frozen=True)
+class LedgerEvent:
+    """The same timestamped economics for daily and intraday valuation."""
+
+    timestamp: pd.Timestamp
+    identity: str | None
+    quantity: float
+    currency: str
+    cash: float
+    external: bool
+
+
+def ledger_events(
+    transactions: pd.DataFrame, supplemental: list[SupplementalCashEvent]
+) -> list[LedgerEvent]:
+    events = []
+    for row in transactions.itertuples(index=False):
+        action = str(row.Action).strip().lower()
+        amount = float(row.TotalN)
+        if not math.isfinite(amount):
+            raise HistoricalNavError("non-finite ledger cash amount")
+        quantity = 0.0
+        if pd.notna(row.Shares):
+            if "buy" in action or action == "stock split open":
+                quantity = float(row.Shares)
+            elif "sell" in action or action == "stock split close":
+                quantity = -float(row.Shares)
+            elif abs(amount) > 1e-9 and action not in (
+                EXTERNAL_FLOW_ACTIONS | CASH_INCOME_ACTIONS | CASH_ADJUSTMENT_ACTIONS
+            ):
+                raise HistoricalNavError(f"unsupported security action: {row.Action}")
+        cash = (
+            -amount
+            if "buy" in action
+            else (0.0 if action in {"stock split open", "stock split close"} else amount)
+        )
+        events.append(
+            LedgerEvent(
+                timestamp=row.Time,
+                identity=row.SecurityIdentity,
+                quantity=quantity,
+                currency=str(row.TotalCurrency),
+                cash=cash,
+                external=action in EXTERNAL_FLOW_ACTIONS,
+            )
+        )
+    events.extend(
+        LedgerEvent(
+            timestamp=event.timestamp,
+            identity=None,
+            quantity=0.0,
+            currency=event.currency,
+            cash=event.amount,
+            external=event.external_flow,
+        )
+        for event in supplemental
+    )
+    return sorted(events, key=lambda event: event.timestamp)
+
+
 def _default_history(symbol: str, start: date, end: date) -> pd.DataFrame:
     raw = yf.download(
         symbol,
@@ -593,17 +653,11 @@ def reconstruct_historical_nav(
         history_loader=history_loader,
     )
 
+    events = ledger_events(transactions, supplemental_events)
     quantity_delta = pd.DataFrame(0.0, index=days, columns=identities)
-    for row in transactions.itertuples(index=False):
-        identity = row.SecurityIdentity
-        shares = row.Shares
-        if not identity or pd.isna(shares):
-            continue
-        action = str(row.Action).lower()
-        if "buy" in action or action == "stock split open":
-            quantity_delta.loc[row.BusinessDate, identity] += float(shares)
-        elif "sell" in action or action == "stock split close":
-            quantity_delta.loc[row.BusinessDate, identity] -= float(shares)
+    for event in events:
+        if event.identity and event.quantity:
+            quantity_delta.loc[_business_date(event.timestamp), event.identity] += event.quantity
     quantities = quantity_delta.cumsum().mask(lambda frame: frame.abs() < 1e-7, 0.0)
 
     for identity, position in current_positions.items():
@@ -702,40 +756,13 @@ def reconstruct_historical_nav(
     cash_delta = pd.DataFrame(0.0, index=days, columns=sorted(wallet_currencies))
     external_flow = pd.Series(0.0, index=days)
     weighted_flow = pd.Series(0.0, index=days)
-    for row in transactions.itertuples(index=False):
-        action = str(row.Action)
-        lower = action.strip().lower()
-        amount = float(row.TotalN)
-        cash_change = 0.0
-        if "buy" in lower:
-            cash_change = -amount
-        elif "sell" in lower or (
-            lower in EXTERNAL_FLOW_ACTIONS
-            or lower in CASH_INCOME_ACTIONS
-            or lower in CASH_ADJUSTMENT_ACTIONS
-        ):
-            cash_change = amount
-        elif lower not in {"stock split close", "stock split open"} and abs(amount) > 1e-9:
-            # Broker exports include cash-only rows such as ADR fees, dividend
-            # adjustments and currency-conversion charges.  They change cash
-            # but are not external capital flows and therefore remain P&L.
-            if pd.notna(row.Shares):
-                raise HistoricalNavError(f"unsupported security action: {action}")
-            cash_change = amount
-        business_day = row.BusinessDate
-        currency = str(row.TotalCurrency)
-        cash_delta.loc[business_day, currency] += cash_change
-        if lower in EXTERNAL_FLOW_ACTIONS:
-            amount_gbp = amount / float(cash_fx.loc[business_day, currency])
-            external_flow.loc[business_day] += amount_gbp
-            weighted_flow.loc[business_day] += amount_gbp * _event_weight(row.Time, business_day)
-    for event in supplemental_events:
+    for event in events:
         business_day = _business_date(event.timestamp)
         if business_day not in cash_delta.index:
             raise HistoricalNavError("wallet cash event falls outside the reconstructed ledger")
-        cash_delta.loc[business_day, event.currency] += event.amount
-        if event.external_flow:
-            amount_gbp = event.amount / float(cash_fx.loc[business_day, event.currency])
+        cash_delta.loc[business_day, event.currency] += event.cash
+        if event.external:
+            amount_gbp = event.cash / float(cash_fx.loc[business_day, event.currency])
             external_flow.loc[business_day] += amount_gbp
             weighted_flow.loc[business_day] += amount_gbp * _event_weight(
                 event.timestamp,

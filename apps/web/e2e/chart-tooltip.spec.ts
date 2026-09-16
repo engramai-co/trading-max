@@ -1,0 +1,94 @@
+import { expect, test } from "@playwright/test";
+import type { NavPoint } from "../lib/types";
+
+// Complete ten-minute broker observations over the selected trading days.
+// Market providers are not involved in this synthetic interaction fixture.
+const start = Date.UTC(2026, 5, 7, 23);
+const observations = Array.from({ length: 93 * 144 }, (_, index): NavPoint => {
+  const time = start + index * 600_000;
+  const value = 10_000 + index + Math.sin(index / 8) * 120;
+  return {
+    date: new Date(time).toISOString(),
+    total: value, invest: value * 0.6, isa: value * 0.4,
+    intraday: true, valuationSource: "broker", cadenceSeconds: 600,
+    flowStatus: "unverified", cfd: null, household: null,
+    investTwr: null, isaTwr: null, totalTwr: null,
+    investDrawdown: null, isaDrawdown: null, totalDrawdown: null, cfdProxyDrawdown: null,
+  };
+}).filter((point) => {
+  const weekday = new Date(Date.parse(point.date) + 3_600_000).getUTCDay();
+  return weekday !== 0 && weekday !== 6;
+});
+
+test.describe("performance tooltip", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/dashboard/lens/analytics", (route) => route.fulfill({ json: {
+      runId: "synthetic-tooltip", brokerAsOf: observations.at(-1)!.date,
+      nav: [], intradayNav: observations,
+    } }));
+  });
+
+  test("stays visible between sampled points on either linked chart", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Continuous mouse hover is verified on desktop.");
+    test.setTimeout(45_000);
+    await page.goto("/analytics");
+    const chart = page.locator("[data-tm-chart-ready=true]").first();
+    await expect(chart).toBeVisible();
+    for (const range of ["5D", "1M", "3M"]) {
+      await page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: range, exact: true }).click();
+      await chart.scrollIntoViewIfNeeded();
+      const box = (await chart.boundingBox())!;
+      for (let index = 0; index < 24; index++) {
+        await page.mouse.move(box.x + 64 + (box.width - 76) * (index + 0.37) / 24, box.y + (index % 2 ? 330 : 175));
+        // Wait longer than the chart's hide delay: a brief show followed by a
+        // hide between buckets is the regression this test must catch.
+        await page.waitForTimeout(160);
+        expect(await page.locator(".mx-chart-tooltip").isVisible()).toBe(true);
+      }
+      await expect(page.locator(".mx-chart-tooltip__header")).toContainText(range);
+    }
+    await page.mouse.move(230, 160);
+    await expect(page.locator(".mx-chart-tooltip")).toBeHidden();
+  });
+
+  test("keeps the tapped card inside a narrow chart", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Touch interaction is verified on mobile.");
+    await page.goto("/analytics");
+    const chart = page.locator("[data-tm-chart-ready=true]").first();
+    await expect(chart).toBeVisible();
+    await chart.scrollIntoViewIfNeeded();
+    const box = (await chart.boundingBox())!;
+    await page.touchscreen.tap(box.x + box.width * 0.7, box.y + 175);
+    const tooltip = page.locator(".mx-chart-tooltip");
+    await expect(tooltip).toBeVisible();
+    const card = (await tooltip.boundingBox())!;
+    expect(card.x).toBeGreaterThanOrEqual(box.x);
+    expect(card.x + card.width).toBeLessThanOrEqual(box.x + box.width + 1);
+    expect(await tooltip.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+
+  test("shows no reading inside an unrecorded interval and resumes after the gap", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Gap hover is verified on desktop.");
+    await page.route("**/api/backend/dashboard/lens/analytics", (route) => route.fulfill({ json: {
+      runId: "synthetic-tooltip-gap", brokerAsOf: observations.at(-1)!.date,
+      nav: [], intradayNav: observations.filter((point) => {
+        const hour = new Date(Date.parse(point.date) + 3_600_000).getUTCHours();
+        return hour < 9 || hour >= 16;
+      }),
+    } }));
+    await page.goto("/analytics");
+    await page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: "1D", exact: true }).click();
+    const chart = page.locator("[data-tm-chart-ready=true]").first();
+    await expect(chart).toBeVisible();
+    await chart.scrollIntoViewIfNeeded();
+    const box = (await chart.boundingBox())!;
+    for (const [position, visible] of [[0.3, true], [0.55, false], [0.8, true]] as const) {
+      await page.mouse.move(box.x + 64 + (box.width - 76) * position, box.y + 175);
+      await expect(page.locator(".mx-chart-tooltip")).toBeVisible({ visible });
+    }
+  });
+});

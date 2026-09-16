@@ -1,25 +1,38 @@
 "use client";
-
-import { Alert, Button, Group, Stack, Text } from "@mantine/core";
-import { ArrowClockwise, House, WarningCircle } from "@phosphor-icons/react";
+import { Button, Group } from "@mantine/core";
 import Link from "next/link";
-import { useEffect } from "react";
-
-import { useLocale } from "@/components/locale-provider";
-
-export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  const { locale } = useLocale();
-  useEffect(() => console.error(error), [error]);
+import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
+export default function ErrorPage({
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  const t = useCopy();
   return (
-    <Alert color="red" icon={<WarningCircle size={24} />} title={locale === "zh" ? "页面无法加载" : "Page could not load"}>
-      <Stack gap="md">
-        <Text>{locale === "zh" ? "请重试，或返回总览继续查看其他数据。" : "Try again, or return to the overview to view other data."}</Text>
-        <Group>
-          <Button leftSection={<ArrowClockwise size={17} />} onClick={reset}>{locale === "zh" ? "重试" : "Retry"}</Button>
-          <Button component={Link} href="/" leftSection={<House size={17} />} variant="default">{locale === "zh" ? "返回总览" : "Back to overview"}</Button>
-        </Group>
-        {error.digest ? <Text c="dimmed" size="xs">{locale === "zh" ? "错误编号" : "Error reference"}: {error.digest}</Text> : null}
-      </Stack>
-    </Alert>
+    <Page
+      title={t("这一页暂时无法显示", "This page could not be displayed")}
+    >
+      <Panel>
+        <Empty
+          title={t(
+            "尝试重新加载",
+            "Try reloading",
+          )}
+          description={t(
+            "重新加载此页面，或返回总览查看其他数据。",
+            "Reload this page, or return to the overview to explore other data.",
+          )}
+          action={
+            <Group>
+              <Button onClick={reset}>{t("重新加载", "Reload page")}</Button>
+              <Button component={Link} href="/" variant="default">
+                {t("返回总览", "Back to overview")}
+              </Button>
+            </Group>
+          }
+        />
+      </Panel>
+    </Page>
   );
 }

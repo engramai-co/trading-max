@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.models import SnapshotManifest
 from services.api.trading_max_api.research import (
@@ -13,6 +15,93 @@ from services.api.trading_max_api.research import (
     _market_rows,
 )
 from services.api.trading_max_api.watchlist import WatchlistStore
+
+
+@pytest.mark.parametrize("quote_currency", ["GBP", "USD", "", "GBp"])
+def test_research_quote_metadata_and_listing_identity_are_consistent(tmp_path, quote_currency):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    store = ArtifactStore(tmp_path)
+    watchlist = WatchlistStore(tmp_path)
+    watchlist.add(
+        SecuritySearchResult(
+            ticker="FUND.L", name="Synthetic Fund", exchange="LSE", bloomberg_ticker="", figi=""
+        )
+    )
+    payloads = {
+        "research/market_snapshot.json": {
+            "technical": {
+                "rows": [
+                    {"ticker": "FUND.L", "price": 100, "currency": "USD" if quote_currency else ""}
+                ]
+            }
+        },
+        "research/technical.json": {
+            "rows": [
+                {
+                    "ticker": "FUND.L",
+                    "price": 100,
+                    "as_of": "2026-01-01",
+                    "price_series": [
+                        {
+                            "date": "2026-01-01",
+                            "close": 100,
+                            **dict.fromkeys(
+                                ["open", "high", "low", "volume", "sma20", "sma50", "sma200"]
+                            ),
+                        }
+                    ],
+                }
+            ]
+        },
+        "research/fundamentals.json": {
+            "rows": [
+                {
+                    "ticker": "FUND.L",
+                    "currency": quote_currency,
+                    "metrics": {"targetMedianPrice": 120, "enterpriseValue": 5000},
+                }
+            ]
+        },
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": {"positions": [{"ticker": "FUND.L"}]}}
+        },
+        "account/lookthrough_metrics.json": {"positions": [{"ticker": "FUND", "valueGbp": 250}]},
+    }
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime.now(UTC),
+        artifacts=[],
+    )
+    ledger = ResearchLedger(store, watchlist)
+    reads = []
+
+    def read(_manifest, key):
+        reads.append(key)
+        return payloads.get(key, {})
+
+    ledger._read_optional = read
+    listing = ledger.directory_instruments(manifest)[0]
+    assert listing.held and listing.exposure_gbp == 250
+    assert not any(key.startswith("research/") for key in reads)
+    lens = ledger.lens_snapshot("FUND.L", "valuation", manifest)
+    assert lens.ticker == "FUND.L"
+    expected_currency = "GBP" if quote_currency == "GBp" else quote_currency
+    assert lens.market["currency"] == expected_currency
+    assert lens.market["analystMedian"] == (1.2 if quote_currency == "GBp" else 120)
+    assert lens.market["enterpriseValue"] == 5000
+    assert not {"research/financials.json", "research/options.json"}.intersection(reads)
+    prices = ledger.price_series("FUND.L", manifest)
+    assert prices.ticker == "FUND.L" and prices.currency == expected_currency
+    assert prices.points[0].close == 100
+    assert ledger.lens_snapshot("FUND", "valuation", manifest).ticker == "FUND.L"
+    payloads["account/lookthrough_metrics.json"] = {"positions": []}
+    payloads["account/broker_snapshot_metrics.json"]["accounts"]["A"]["positions"][0][
+        "current_value_gbp"
+    ] = 375
+    assert ledger.directory_instruments(manifest)[0].exposure_gbp == 375
 
 
 def test_research_ledger_builds_ticker_snapshot_and_provenance(

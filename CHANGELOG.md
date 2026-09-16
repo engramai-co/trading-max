@@ -4,11 +4,49 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-16
+
+### Added
+
+- Rebuild the portfolio workspace with account summaries, holdings and ETF
+  look-through, performance comparisons, account journals, and independent
+  security research views.
+- Reconstruct portfolio value on a ten-minute intraday timeline, including
+  available extended-hours prices, and preserve collected broker observations.
+- Add an isolated broker preview that uses synthetic Trading 212 inputs with
+  real market, FX, benchmark, and research providers.
+- Expand official Vanguard and iShares holdings adapters while preserving
+  bonds, cash, derivatives, and issuer exposure.
+
+### Changed
+
+- Introduce a consistent blue visual identity, light and dark themes,
+  bilingual navigation, responsive layouts, and keyboard support.
+- Organize research by financial meaning, reduce repeated explanatory copy,
+  and keep metric definitions and provenance available in context.
+- Display 1D, 5D, 1M, and 3M charts at fixed ten-minute, thirty-minute,
+  hourly, and two-hour intervals while retaining ten-minute source records.
+
 ### Fixed
 
-- Make Security Library removal use the supported watchlist mutation, remove
-  the saved ticker from the live directory immediately, and surface failures
-  instead of silently leaving the row unchanged.
+- Include reference data once in backend wheels and source distributions so
+  rebuilding an installation archive succeeds with current build tooling.
+- Preserve official and manually reviewed industry classifications when an
+  expired company profile is refreshed from a public market-data provider.
+- Keep performance hover cards stable and theme-aware; join compatible broker
+  and reconstructed observations without hiding genuine missing-data gaps.
+- Preserve exchange-qualified securities, quote and statement currencies,
+  financial units, and missing values across research and account views.
+- Correct holdings sorting, analyst rating bands, period alignment, account
+  history coverage, review units, and classification enrichment.
+- Preserve newer settings drafts during saves, report validation failures,
+  and restore focus after closing nested overlays.
+
+### Security
+
+- Update Next.js, image-processing and YAML dependencies to patched releases,
+  and update the test runner to a supported patched release. Keep the existing
+  read-only broker, external-state, and operating-system credential boundaries.
 
 ## [1.1.0] - 2026-09-04
 

@@ -27,6 +27,7 @@ describe("chart percent domains", () => {
       "1D": 10,
       "1W": 30,
       "1M": 60,
+      "3M": 60,
     });
     expect(Object.values(portfolioIntradayDisplayIntervalMinutes)).not.toContain(5);
   });
@@ -144,30 +145,30 @@ describe("chart percent domains", () => {
   });
 
   it("hides only the approved London weekend display window", () => {
-    expect(isPortfolioWeekendDisplayTimestamp("2026-08-29T00:59:00Z")).toBe(true);
+    expect(isPortfolioWeekendDisplayTimestamp("2026-08-28T22:59:00Z")).toBe(true);
     expect(isPortfolioWeekendDisplayTimestamp("2026-08-29T01:00:00Z")).toBe(false);
     expect(isPortfolioWeekendDisplayTimestamp("2026-08-30T20:59:00Z")).toBe(false);
-    expect(isPortfolioWeekendDisplayTimestamp("2026-08-30T21:00:00Z")).toBe(true);
+    expect(isPortfolioWeekendDisplayTimestamp("2026-08-30T23:00:00Z")).toBe(true);
 
-    expect(isPortfolioWeekendDisplayTimestamp("2026-12-05T01:59:00Z")).toBe(true);
+    expect(isPortfolioWeekendDisplayTimestamp("2026-12-04T23:59:00Z")).toBe(true);
     expect(isPortfolioWeekendDisplayTimestamp("2026-12-05T02:00:00Z")).toBe(false);
     expect(isPortfolioWeekendDisplayTimestamp("2026-12-06T21:59:00Z")).toBe(false);
-    expect(isPortfolioWeekendDisplayTimestamp("2026-12-06T22:00:00Z")).toBe(true);
+    expect(isPortfolioWeekendDisplayTimestamp("2026-12-07T00:00:00Z")).toBe(true);
   });
 
   it("compresses the quiet weekend without turning it into a coverage gap", () => {
     const timeline = omitPortfolioWeekendDisplayWindow({
       categories: [
-        "2026-08-29T00:30:00Z",
+        "2026-08-28T22:30:00Z",
         "2026-08-29T01:00:00Z",
         "2026-08-30T20:30:00Z",
-        "2026-08-30T21:00:00Z",
+        "2026-08-30T23:00:00Z",
       ],
       rowIndexes: [0, 1, 2, 3],
     });
 
     expect(timeline).toEqual({
-      categories: ["2026-08-29T00:30:00Z", "2026-08-30T21:00:00Z"],
+      categories: ["2026-08-28T22:30:00Z", "2026-08-30T23:00:00Z"],
       rowIndexes: [0, 3],
     });
     expect(summarizeTimelineCoverage(timeline.categories, timeline.rowIndexes).gaps).toEqual([]);

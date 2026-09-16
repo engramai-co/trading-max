@@ -2930,6 +2930,8 @@ export interface components {
         };
         /** NavPoint */
         NavPoint: {
+            /** Cadenceseconds */
+            cadenceSeconds?: number | null;
             /** Cfd */
             cfd: number | null;
             /** Cfdnetcontributionsgbp */
@@ -2965,6 +2967,8 @@ export interface components {
             householdTransferMatchStatus?: ("verified" | "partial") | null;
             /** Householdunmatchedinternaltransfergbp */
             householdUnmatchedInternalTransferGbp?: number | null;
+            /** Includesextendedhours */
+            includesExtendedHours?: boolean | null;
             /**
              * Intraday
              * @default false
@@ -2974,6 +2978,8 @@ export interface components {
             invest: number | null;
             /** Investdrawdown */
             investDrawdown: number | null;
+            /** Investmodelvaluegbp */
+            investModelValueGbp?: number | null;
             /** Investnetcontributionsgbp */
             investNetContributionsGbp?: number | null;
             /** Investnetpnlgbp */
@@ -2986,6 +2992,8 @@ export interface components {
             isa: number | null;
             /** Isadrawdown */
             isaDrawdown: number | null;
+            /** Isamodelvaluegbp */
+            isaModelValueGbp?: number | null;
             /** Isanetcontributionsgbp */
             isaNetContributionsGbp?: number | null;
             /** Isanetpnlgbp */
@@ -2994,6 +3002,12 @@ export interface components {
             isaPnlDrawdownGbp?: number | null;
             /** Isatwr */
             isaTwr: number | null;
+            /** Modelat */
+            modelAt?: string | null;
+            /** Modelpricecadenceseconds */
+            modelPriceCadenceSeconds?: number | null;
+            /** Pricecadenceseconds */
+            priceCadenceSeconds?: number | null;
             /** Total */
             total: number | null;
             /** Totaldrawdown */
@@ -3006,6 +3020,8 @@ export interface components {
             totalPnlDrawdownGbp?: number | null;
             /** Totaltwr */
             totalTwr: number | null;
+            /** Valuationsource */
+            valuationSource?: ("broker" | "reconstructed") | null;
         };
         /** NightlySchedule */
         NightlySchedule: {

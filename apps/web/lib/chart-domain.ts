@@ -29,6 +29,7 @@ export const portfolioIntradayDisplayIntervalMinutes = {
   "1D": 10,
   "1W": 30,
   "1M": 60,
+  "3M": 60,
 } as const;
 const zonedDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -112,10 +113,8 @@ export function portfolioCalendarDateKey(
 }
 
 /**
- * Keep the short-range chart on the useful market week without discarding
- * retained observations. The boundary is deliberately expressed in London
- * wall-clock time: Saturday before 02:00 and Sunday from 22:00 remain visible,
- * while the quiet interval between them is compressed out of the display.
+ * Fold weekend dates out of the portfolio's London working-week display.
+ * This is a presentation rule; retained observations and cash flows stay intact.
  */
 export function isPortfolioWeekendDisplayTimestamp(
   value: string | number,
@@ -124,13 +123,7 @@ export function isPortfolioWeekendDisplayTimestamp(
   const parts = zonedDateTimeParts(value, timeZone);
   if (!parts) return true;
   const dayOfWeek = new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
-  const minuteOfDay = parts.hour * 60 + parts.minute;
-  const saturdayQuietStart = 2 * 60;
-  const sundayDisplayResume = 22 * 60;
-
-  if (dayOfWeek === 6) return minuteOfDay < saturdayQuietStart;
-  if (dayOfWeek === 0) return minuteOfDay >= sundayDisplayResume;
-  return true;
+  return dayOfWeek !== 6 && dayOfWeek !== 0;
 }
 
 export function omitPortfolioWeekendDisplayWindow(
@@ -180,6 +173,7 @@ export function naturalCalendarTimeline<T extends { date: string }>(
   fillThroughDayEnd: boolean,
   includeLatestObservationBucket = false,
   timeZone = DEFAULT_PORTFOLIO_TIME_ZONE,
+  referenceAt?: string,
 ) {
   const parsed = rows
     .map((row, index) => ({ index, timestamp: Date.parse(row.date) }))
@@ -188,8 +182,11 @@ export function naturalCalendarTimeline<T extends { date: string }>(
   const latest = parsed.at(-1);
   if (!latest) return { categories: [] as string[], rowIndexes: [] as Array<number | null> };
 
-  const latestParts = zonedDateTimeParts(latest.timestamp, timeZone);
-  const latestBounds = naturalDayBounds(rows[latest.index].date, timeZone);
+  const reference = referenceAt && Number.isFinite(Date.parse(referenceAt))
+    ? referenceAt : rows[latest.index].date;
+  const latestTimestamp = Date.parse(reference);
+  const latestParts = zonedDateTimeParts(latestTimestamp, timeZone);
+  const latestBounds = naturalDayBounds(reference, timeZone);
   if (!latestParts || !latestBounds) {
     return { categories: [] as string[], rowIndexes: [] as Array<number | null> };
   }
@@ -207,7 +204,7 @@ export function naturalCalendarTimeline<T extends { date: string }>(
   const intervalMs = Math.max(1, intervalMinutes) * 60_000;
   const endTimestamp = fillThroughDayEnd
     ? Date.parse(latestBounds.end)
-    : startTimestamp + Math.floor((latest.timestamp - startTimestamp) / intervalMs) * intervalMs;
+    : startTimestamp + Math.floor((latestTimestamp - startTimestamp) / intervalMs) * intervalMs;
   if (!Number.isFinite(startTimestamp) || !Number.isFinite(endTimestamp)) {
     return { categories: [] as string[], rowIndexes: [] as Array<number | null> };
   }

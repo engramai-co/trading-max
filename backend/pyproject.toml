@@ -1,6 +1,6 @@
 [project]
 name = "trading-max-backend"
-version = "1.1.0"
+version = "1.2.0"
 description = "Installable domain, application, and worker package for Trading Max Portfolio"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
@@ -29,15 +29,11 @@ trading-max = "trading_max.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/trading_max"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/trading_max/reference/data" = "trading_max/reference/data"
+artifacts = ["src/trading_max/reference/data/*.json"]
 
 [tool.hatch.build.targets.sdist]
+artifacts = ["src/trading_max/reference/data/*.json"]
 include = [
     "/src/trading_max",
     "/pyproject.toml",
 ]
-
-[tool.hatch.build.targets.sdist.force-include]
-"src/trading_max/reference/data" = "src/trading_max/reference/data"

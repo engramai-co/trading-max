@@ -245,7 +245,7 @@ def _nav_series(
 
 
 def _intraday_nav_points(payload: JsonObject | None) -> list[JsonObject]:
-    """Project rolling broker anchors into the dashboard NAV shape."""
+    """Project unified valuations, retaining provenance and native precision."""
 
     if not isinstance(payload, dict):
         return []
@@ -265,6 +265,14 @@ def _intraday_nav_points(payload: JsonObject | None) -> list[JsonObject]:
             {
                 "date": str(observed),
                 "intraday": True,
+                "valuationSource": str(raw.get("source") or "broker"),
+                "cadenceSeconds": int(raw.get("cadence_seconds") or 600),
+                "priceCadenceSeconds": raw.get("price_cadence_seconds"),
+                "includesExtendedHours": raw.get("includes_extended_hours"),
+                "modelAt": raw.get("model_at"),
+                "modelPriceCadenceSeconds": raw.get("model_price_cadence_seconds"),
+                "investModelValueGbp": _nullable(raw.get("invest_model_value_gbp")),
+                "isaModelValueGbp": _nullable(raw.get("isa_model_value_gbp")),
                 "flowStatus": str(raw.get("flow_status") or "unverified"),
                 "invest": invest,
                 "isa": isa,
@@ -332,7 +340,7 @@ def _technical_rows(raw: JsonObject) -> list[JsonObject]:
             {
                 "ticker": str(row.get("ticker")),
                 "asOf": str(row.get("as_of") or raw.get("as_of") or ""),
-                "currency": str(row.get("currency") or "USD"),
+                "currency": str(row.get("currency") or ""),
                 "historyCoverage": {
                     "requestedPeriod": str(coverage.get("requested_period") or ""),
                     "availableSessions": _number(coverage.get("available_sessions")),
@@ -762,10 +770,13 @@ def build_dashboard_data(
     try:
         intraday_nav = store.read_json(
             run_id,
-            "account/nav/intraday_anchors.json",
+            "account/nav/valuation_history.json",
         )
     except (FileNotFoundError, TypeError, ValueError):
-        intraday_nav = None
+        try:
+            intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
+        except (FileNotFoundError, TypeError, ValueError):
+            intraday_nav = None
     try:
         account_analysis_raw = store.read_json(run_id, "account/analysis_metrics.json")
     except FileNotFoundError:
@@ -1047,10 +1058,9 @@ def build_dashboard_data(
         "cfd": cfd_summary,
         "cfdReview": cfd_analysis_raw,
         "holdings": holdings,
-        # Keep canonical daily NAV and unverified broker intraday anchors as
-        # separate contract fields. Mixing them made long-horizon NAV charts
-        # silently change frequency and allowed raw value changes to masquerade
-        # as short-range performance.
+        # Compatible resolution projections. Intraday now includes both
+        # reconstructed and observed valuations, with explicit provenance.
+        # Neither source certifies cash-flow-adjusted returns.
         "nav": _nav_series(nav_a, nav_b, nav_c),
         "intradayNav": _intraday_nav_points(intraday_nav),
         "risk": {

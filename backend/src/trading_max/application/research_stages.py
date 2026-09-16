@@ -146,7 +146,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v4"
+    version = "market-snapshot-v5"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -205,7 +205,7 @@ class TechnicalResearchStage:
     """Publish technical and options batches from one typed provider call."""
 
     name = "research.technical"
-    version = "technical-v2"
+    version = "technical-v3"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -271,7 +271,7 @@ class TechnicalArtifactStage:
     """Project technical rows from the immutable market input."""
 
     name = "research.technical"
-    version = "technical-v5"
+    version = "technical-v6"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -419,7 +419,7 @@ class FundamentalsArtifactStage:
     """Fetch and normalize fundamentals for the current watchlist."""
 
     name = "research.fundamentals"
-    version = "fundamentals-v2"
+    version = "fundamentals-v3"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 

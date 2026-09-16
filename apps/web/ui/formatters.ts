@@ -9,6 +9,7 @@ export function localeTag(locale: Locale) {
 }
 
 const zonedPartFormatters = new Map<string, Intl.DateTimeFormat>();
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 
 export function formatDate(
   value: Date | number | string,
@@ -21,7 +22,16 @@ export function formatDate(
 ) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.valueOf())) return "—";
-  return new Intl.DateTimeFormat(localeTag(locale), options).format(date);
+  // Dense chart timelines reuse a small set of formats across thousands of
+  // timestamps. Avoid constructing an Intl formatter for every label.
+  const key = JSON.stringify([locale, options]);
+  let formatter = dateFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(localeTag(locale), options);
+    if (dateFormatters.size >= 64) dateFormatters.clear();
+    dateFormatters.set(key, formatter);
+  }
+  return formatter.format(date);
 }
 
 export function formatDateTime(

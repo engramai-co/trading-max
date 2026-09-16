@@ -417,7 +417,7 @@ class YahooFinanceSecurityProfileProvider:
         quote_type = _text(row.get("quoteType")).upper() if row is not None else ""
         search_sector = _text(row.get("sector")) if row is not None else ""
         search_industry = _text(row.get("industry")) if row is not None else ""
-        if search_sector and search_industry:
+        if search_sector and search_industry and security.country:
             return MarketSecurityProfile(
                 symbol=symbol,
                 name=(
@@ -836,7 +836,13 @@ class SecurityMasterEnricher:
             profile_industry=profile_industry,
             profile_industry_key=profile_industry_key,
             profile_crosswalk_version=PROFILE_CROSSWALK_VERSION,
-            gics=gics or (existing.gics if existing else None),
+            gics=(
+                existing.gics
+                if existing is not None
+                and existing.gics is not None
+                and existing.gics.method in {"official", "manual"}
+                else gics or (existing.gics if existing else None)
+            ),
             source=profile.source,
             as_of=profile.as_of,
         )
@@ -1000,6 +1006,17 @@ class SecurityMasterEnricher:
                 )
             )
             if requires_identity_backfill:
+                pending.append((candidate, existing))
+                continue
+            if (
+                existing is not None
+                and "yahoo-finance" in existing.source
+                and not existing.country_of_risk
+                and not (existing.gics and existing.gics.method in {"official", "manual"})
+                and not is_fund_instrument(
+                    quote_type=existing.security_type,
+                )
+            ):
                 pending.append((candidate, existing))
                 continue
             if resolved.gics is not None and existing is not None and self._is_fresh(existing):

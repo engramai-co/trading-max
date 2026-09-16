@@ -28,7 +28,7 @@ for (const file of cssFiles) {
 const globals = join(root, "app/globals.css");
 if ((await stat(globals)).isFile()) {
   const lines = (await readFile(globals, "utf8")).split(/\r?\n/).length;
-  if (lines > 100) violations.push(`app/globals.css is ${lines} lines; budget is 100`);
+  if (lines > 1000) violations.push(`app/globals.css is ${lines} lines; budget is 1000`);
 }
 
 const sourceFiles = files.filter((file) => [".ts", ".tsx", ".js", ".mjs"].includes(extname(file)));

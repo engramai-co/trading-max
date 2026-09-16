@@ -87,7 +87,9 @@ jobs:
         run: uv run python -c "import trading_max; import services.api.trading_max_api.worker_main"
 
       - name: Build backend distributions
-        run: uv build --package trading-max-backend --out-dir dist/backend
+        run: |
+          uv build --package trading-max-backend --out-dir dist/backend
+          uv run python tools/check_backend_distribution.py dist/backend
 
       - name: Python bytecode compile
         run: uv run python -m compileall -q backend/src services/api tools

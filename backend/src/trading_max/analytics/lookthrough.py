@@ -140,7 +140,7 @@ def _number(value: Any, fallback: float = 0.0) -> float:
 
 
 def _country(isin: str) -> str:
-    return COUNTRY_BY_ISIN_PREFIX.get(isin[:2].upper(), "Other markets")
+    return COUNTRY_BY_ISIN_PREFIX.get(isin[:2].upper(), "Unclassified")
 
 
 def _industry(supplied: Any = None) -> str:

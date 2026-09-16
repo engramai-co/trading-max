@@ -53,7 +53,7 @@ class PortfolioLookthroughStage:
     """Publish direct and ETF-underlying exposure with explicit coverage."""
 
     name = "portfolio.lookthrough"
-    version = "lookthrough-v8"
+    version = "lookthrough-v9"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot", "reference.security_master")
 

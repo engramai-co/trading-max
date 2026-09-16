@@ -71,17 +71,19 @@ def test_dashboard_contract_is_built_from_snapshot(
     assert "artifacts" not in payload
 
 
+@pytest.mark.parametrize("history_key", ["intraday_anchors", "valuation_history"])
 def test_dashboard_exposes_intraday_value_anchors_separately_without_fake_twr(
     research_root: Path,
     tmp_path: Path,
     typed_fixture,
+    history_key: str,
 ) -> None:
     store = ArtifactStore(tmp_path / "runtime")
     typed_fixture(research_root, store)
     previous = store.immutable_snapshots.latest()
     assert previous is not None
     anchor = store.immutable_artifacts.put_json(
-        key="account/nav/intraday_anchors.json",
+        key=f"account/nav/{history_key}.json",
         payload={
             "schema_version": 1,
             "generated_at": "2026-08-01T20:20:00Z",
@@ -90,6 +92,9 @@ def test_dashboard_exposes_intraday_value_anchors_separately_without_fake_twr(
             "points": [
                 {
                     "observed_at": "2026-08-01T20:10:00Z",
+                    "source": "reconstructed",
+                    "cadence_seconds": 600,
+                    "price_cadence_seconds": 3600,
                     "bucket_at": "2026-08-01T20:10:00Z",
                     "invest_value_gbp": 1210,
                     "isa_value_gbp": 805,
@@ -130,6 +135,10 @@ def test_dashboard_exposes_intraday_value_anchors_separately_without_fake_twr(
     assert intraday[-1]["total"] == 2030
     assert intraday[-1]["totalTwr"] is None
     assert intraday[-1]["flowStatus"] == "unverified"
+    assert intraday[0]["valuationSource"] == "reconstructed"
+    assert intraday[0]["cadenceSeconds"] == 600
+    assert intraday[0]["priceCadenceSeconds"] == 3600
+    assert intraday[-1]["valuationSource"] == "broker"
 
 
 def test_dashboard_overlays_live_totals_and_only_reconciled_positions(

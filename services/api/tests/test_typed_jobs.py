@@ -216,6 +216,15 @@ def test_typed_account_job_declares_nav_before_performance() -> None:
     assert names.index("reference.security_master") < names.index("portfolio.lookthrough")
     assert names.index("accounts.snapshot") < names.index("portfolio.lookthrough")
     assert names.index("accounts.nav") < names.index("accounts.performance")
+    assert names.index("accounts.snapshot") < names.index("accounts.intraday_nav")
+    assert names.index("accounts.intraday_nav") < names.index("snapshot.publish")
+
+
+def test_full_refresh_reconstructs_intraday_and_uses_current_market_benchmark() -> None:
+    names = [name for name, _ in stage_plan("all", skip_sync=True)]
+    assert names.index("accounts.snapshot") < names.index("accounts.intraday_nav")
+    assert names.index("research.technical") < names.index("accounts.performance")
+    assert names.index("accounts.performance") < names.index("accounts.review")
 
 
 def test_intraday_job_is_account_only_and_cannot_skip_broker_sync() -> None:
