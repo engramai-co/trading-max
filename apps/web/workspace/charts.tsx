@@ -176,6 +176,10 @@ export function Plot({
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
+            if (pinned || reading) {
+              event.preventDefault();
+              event.stopPropagation();
+            }
             dismiss();
             return;
           }
@@ -391,6 +395,7 @@ export function HistoryChart({
       intraday && !multipleDays
         ? { hour: "2-digit", minute: "2-digit", timeZone }
         : {
+            year: "numeric",
             day: "numeric",
             month: "short",
             timeZone: intraday ? timeZone : "UTC",
@@ -459,7 +464,8 @@ export function HistoryChart({
                 locale,
                 intraday
                   ? {
-                                month: "short",
+                      year: "numeric",
+                      month: "short",
                       day: "numeric",
                       hour: "2-digit",
                       minute: "2-digit",
@@ -467,7 +473,8 @@ export function HistoryChart({
                       timeZoneName: "short",
                     }
                   : {
-                                month: "short",
+                      year: "numeric",
+                      month: "short",
                       day: "numeric",
                       timeZone: "UTC",
                     },

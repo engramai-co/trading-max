@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-09-16
+
+### Fixed
+
+- Include years on multi-year timelines and keep intraday labels in the exchange timezone.
+- Use consistent dates in axis labels and chart readings while keeping single-session axes compact.
+- Dismiss chart readouts before their enclosing dialog and give help dialogs an explicit keyboard focus target.
+
 ## [1.3.7] - 2026-09-16
 
 ### Fixed

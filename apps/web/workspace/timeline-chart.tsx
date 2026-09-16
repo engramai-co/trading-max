@@ -55,7 +55,7 @@ export function TimelineChart({
             formatDate(time, locale, {
               ...(intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)
                 ? { hour: "2-digit", minute: "2-digit" }
-                : { day: "numeric", month: "short" }),
+                : { year: "numeric", day: "numeric", month: "short" }),
               timeZone: intraday ? timeZone : "UTC",
             }),
             timeline, details, (time) => formatDate(time, locale, intraday

@@ -74,6 +74,7 @@ export function Help({
         <div className="mx-help-heading">
           <strong>{label}</strong>
           <CloseButton
+            data-autofocus
             size="sm"
             aria-label={t("关闭说明", "Close explanation")}
             data-mantine-stop-propagation="true"

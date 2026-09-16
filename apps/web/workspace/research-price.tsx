@@ -110,7 +110,11 @@ export function PriceHistory({
   const isIntraday = actualInterval.endsWith("m"),
     dates = points.map((p) => p.date);
   const intradayDateFormatter = new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-    month: "short", day: "numeric",
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZone: query.data?.timezone ?? "UTC",
+  });
+  const clockFormatter = new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
     hour: "2-digit", minute: "2-digit",
     timeZone: query.data?.timezone ?? "UTC",
   });
@@ -687,7 +691,9 @@ export function PriceHistory({
                     padding: [0, 8],
                     color: c.axis,
                     formatter: (d: string) =>
-                      isIntraday ? formatDate(d) : d.slice(5),
+                      isIntraday && dates[0]?.slice(0, 10) === dates.at(-1)?.slice(0, 10)
+                        ? clockFormatter.format(new Date(d))
+                        : formatDate(d),
                   },
                 })),
                 yAxis: panes.map((pane, i) => ({
