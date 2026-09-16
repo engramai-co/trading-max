@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.9] - 2026-09-16
+
+### Fixed
+
+- Build macOS upgrades in independent release directories while the active app remains available.
+- Retain complete installed runtimes and restore them on cutover failures without rebuilding or downloading dependencies.
+- Preserve credentials during deployment, verify a consistent state backup, and cover additional dynamic routes in the production smoke check.
+- Record interrupted deployments for explicit recovery and serialize host upgrades with a process lock.
+- Retain the supported Node 22 executable per release, isolate Python build environments, and expand service paths safely.
+
 ## [1.3.8] - 2026-09-16
 
 ### Fixed

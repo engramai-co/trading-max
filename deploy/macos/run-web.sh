@@ -22,4 +22,8 @@ export PORTFOLIO_BACKEND_TOKEN="${PORTFOLIO_BACKEND_TOKEN:-${TRADING_MAX_API_TOK
 cd "$SERVICE_ROOT/app"
 export HOSTNAME="127.0.0.1"
 export PORT="3413"
+if [[ -x "$SERVICE_ROOT/app/.node-runtime/node" ]]; then
+  exec "$SERVICE_ROOT/app/.node-runtime/node" apps/web/.next/standalone/server.js
+fi
+# Compatibility for a host provisioned before releases retained their runtime.
 exec /usr/bin/env node apps/web/.next/standalone/server.js
