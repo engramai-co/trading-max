@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
+import { useQuery } from "@tanstack/react-query";
 import { ratingSummary, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
 import {
@@ -76,16 +76,16 @@ export function AnalystExpectations({ data }: { data: ResearchLensSnapshot }) {
   const summary = ratingSummary(objects(analyst.recommendations));
   const targets = targetSnapshot(
     object(analyst.priceTargets),
-    object(analyst.priceTargets).current ?? market.spot ?? data.valuation?.spot,
+    data.context?.quote.price ?? market.spot ?? data.valuation?.spot,
   );
-  const code = str(market.currency) || "USD";
+  const code = data.context?.quote.currency ?? str(market.currency);
   const median = targets.rows.find((row) => row.key === "median")!;
   const ratingLabels = [
     t("强烈买入", "Strong buy"),
     t("买入", "Buy"),
     t("持有", "Hold"),
-    t("弱于大市", "Underperform"),
     t("卖出", "Sell"),
+    t("强烈卖出", "Strong sell"),
   ];
   const targetLabels = {
     low: t("低位", "Low"),
@@ -93,10 +93,20 @@ export function AnalystExpectations({ data }: { data: ResearchLensSnapshot }) {
     median: t("中位数", "Median"),
     high: t("高位", "High"),
   };
+  const providerKey = str(analyst.providerRecommendationKey)
+    .toLowerCase()
+    .replaceAll("_", "");
+  const providerIndex = [
+    "strongbuy",
+    "buy",
+    "hold",
+    "sell",
+    "strongsell",
+  ].indexOf(providerKey);
   const consensus =
-    summary.score == null
-      ? t("暂无共识", "Consensus unavailable")
-      : ratingLabels[Math.round(summary.score) - 1];
+    providerIndex >= 0
+      ? ratingLabels[providerIndex]
+      : t("评级分布", "Rating distribution");
   const historicalPeriod = /^-\d+m$/.test(summary.period)
     ? Math.abs(parseInt(summary.period))
     : null;

@@ -1589,6 +1589,78 @@
         "title": "ArtifactInfo",
         "type": "object"
       },
+      "AssumptionReference": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "default": 0,
+            "title": "Adjustment",
+            "type": "number"
+          },
+          "asOf": {
+            "title": "Asof",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "metric": {
+            "const": "revenueGrowth",
+            "default": "revenueGrowth",
+            "title": "Metric",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "referenceValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencevalue"
+          },
+          "scenario": {
+            "enum": [
+              "bear",
+              "base",
+              "bull"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "source": {
+            "default": "yahoo-finance-consensus",
+            "enum": [
+              "yahoo-finance-consensus",
+              "historical-revenue-cagr"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "scenario",
+          "period",
+          "asOf",
+          "value"
+        ],
+        "title": "AssumptionReference",
+        "type": "object"
+      },
       "AutomationSettings": {
         "properties": {
           "dailyReconciliationLocalTime": {
@@ -4081,6 +4153,99 @@
         "title": "DashboardResponse",
         "type": "object"
       },
+      "DatasetClock": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "fetchedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetchedat"
+          },
+          "lastAttemptAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastattemptat"
+          },
+          "lastSuccessfulAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessfulat"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "default": "missing",
+            "enum": [
+              "available",
+              "missing",
+              "notApplicable",
+              "unsupported",
+              "stale",
+              "invalid"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "dataset"
+        ],
+        "title": "DatasetClock",
+        "type": "object"
+      },
       "DeepSeekIntegrationCandidate": {
         "properties": {
           "apiKey": {
@@ -4147,6 +4312,714 @@
           "validationToken"
         ],
         "title": "DeepSeekIntegrationRequest",
+        "type": "object"
+      },
+      "EvidenceRef": {
+        "additionalProperties": false,
+        "properties": {
+          "accession": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accession"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedat"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "field",
+          "version"
+        ],
+        "title": "EvidenceRef",
+        "type": "object"
+      },
+      "FinancialFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "latestTtm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestttm"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/MetricObservation"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialPeriod"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "reconciliation": {
+            "additionalProperties": true,
+            "title": "Reconciliation",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "currency"
+        ],
+        "title": "FinancialFacts",
+        "type": "object"
+      },
+      "FinancialPeriod": {
+        "additionalProperties": false,
+        "properties": {
+          "actualEnd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualend"
+          },
+          "actualStart": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualstart"
+          },
+          "components": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "fiscalHalf": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscalhalf"
+          },
+          "fiscalQuarter": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscalquarter"
+          },
+          "fiscalYear": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscalyear"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "identityStatus": {
+            "default": "provider",
+            "enum": [
+              "reported",
+              "provider",
+              "derived"
+            ],
+            "title": "Identitystatus",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "annual",
+              "quarterly",
+              "ttm",
+              "semiannual",
+              "irregular"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "providerEnd": {
+            "title": "Providerend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "providerEnd"
+        ],
+        "title": "FinancialPeriod",
+        "type": "object"
+      },
+      "FrozenValuationBasis": {
+        "additionalProperties": false,
+        "properties": {
+          "cashFlowType": {
+            "const": "operating-cash-flow-less-capex-equity-proxy",
+            "default": "operating-cash-flow-less-capex-equity-proxy",
+            "title": "Cashflowtype",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "dataVersion": {
+            "title": "Dataversion",
+            "type": "string"
+          },
+          "discountRateType": {
+            "const": "cost-of-equity",
+            "default": "cost-of-equity",
+            "title": "Discountratetype",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "quoteId": {
+            "title": "Quoteid",
+            "type": "string"
+          },
+          "revenue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revenue",
+            "type": "number"
+          },
+          "shares": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shares",
+            "type": "number"
+          },
+          "spot": {
+            "exclusiveMinimum": 0.0,
+            "title": "Spot",
+            "type": "number"
+          },
+          "startMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Startmargin",
+            "type": "number"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "quoteId",
+          "dataVersion",
+          "currency",
+          "spot",
+          "revenue",
+          "shares",
+          "startMargin"
+        ],
+        "title": "FrozenValuationBasis",
+        "type": "object"
+      },
+      "FundHolding": {
+        "additionalProperties": false,
+        "properties": {
+          "assetClass": {
+            "default": "Equity",
+            "title": "Assetclass",
+            "type": "string"
+          },
+          "compositeFigi": {
+            "default": "",
+            "title": "Compositefigi",
+            "type": "string"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "figi": {
+            "default": "",
+            "title": "Figi",
+            "type": "string"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "isin": {
+            "default": "",
+            "title": "Isin",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "shareClassFigi": {
+            "default": "",
+            "title": "Shareclassfigi",
+            "type": "string"
+          },
+          "ticker": {
+            "default": "",
+            "title": "Ticker",
+            "type": "string"
+          },
+          "weightPct": {
+            "title": "Weightpct",
+            "type": "number"
+          }
+        },
+        "required": [
+          "weightPct"
+        ],
+        "title": "FundHolding",
+        "type": "object"
+      },
+      "FundResearch": {
+        "properties": {
+          "annualReturns": {
+            "items": {
+              "$ref": "#/components/schemas/FundReturnYear"
+            },
+            "title": "Annualreturns",
+            "type": "array"
+          },
+          "baseCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basecurrency"
+          },
+          "domicile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domicile"
+          },
+          "expenseRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expenseratio"
+          },
+          "fetchedAt": {
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "hedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedging"
+          },
+          "holdings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inception": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inception"
+          },
+          "incomeUse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incomeuse"
+          },
+          "indexName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexname"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "methodology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methodology"
+          },
+          "replication": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replication"
+          },
+          "returnBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnbasis"
+          },
+          "returnCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returncurrency"
+          },
+          "shareCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharecurrency"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "state": {
+            "default": "available",
+            "title": "State",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "totalAssetsAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalassetsasof"
+          },
+          "totalAssetsLabel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalassetslabel"
+          },
+          "trackingError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingerror"
+          },
+          "trackingErrorState": {
+            "default": "daily-nav-and-index-history-unavailable",
+            "title": "Trackingerrorstate",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ticker",
+          "fetchedAt"
+        ],
+        "title": "FundResearch",
+        "type": "object"
+      },
+      "FundReturnYear": {
+        "properties": {
+          "benchmarkReturn": {
+            "title": "Benchmarkreturn",
+            "type": "number"
+          },
+          "navReturn": {
+            "title": "Navreturn",
+            "type": "number"
+          },
+          "trackingDifference": {
+            "title": "Trackingdifference",
+            "type": "number"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "navReturn",
+          "benchmarkReturn",
+          "trackingDifference"
+        ],
+        "title": "FundReturnYear",
+        "type": "object"
+      },
+      "FundSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "title": "Asof",
+            "type": "string"
+          },
+          "cacheSchemaVersion": {
+            "default": 1,
+            "title": "Cacheschemaversion",
+            "type": "integer"
+          },
+          "countryWeights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Countryweights",
+            "type": "object"
+          },
+          "fetchedAt": {
+            "default": "",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/FundHolding"
+            },
+            "title": "Holdings",
+            "type": "array"
+          },
+          "industryAsOf": {
+            "default": "",
+            "title": "Industryasof",
+            "type": "string"
+          },
+          "industryWeights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Industryweights",
+            "type": "object"
+          },
+          "issuer": {
+            "default": "",
+            "title": "Issuer",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "default": "",
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "asOf"
+        ],
+        "title": "FundSnapshot",
         "type": "object"
       },
       "GammaPoint": {
@@ -5846,6 +6719,116 @@
         "title": "LookthroughSource",
         "type": "object"
       },
+      "MetricObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          },
+          "formulaVersion": {
+            "default": "financial-facts-v1",
+            "title": "Formulaversion",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "periodId": {
+            "title": "Periodid",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "missing",
+              "notApplicable",
+              "unsupported",
+              "stale",
+              "invalid"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "default": "currency",
+            "enum": [
+              "currency",
+              "perShare",
+              "shares",
+              "ratio"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "metric",
+          "value",
+          "periodId",
+          "basis",
+          "state"
+        ],
+        "title": "MetricObservation",
+        "type": "object"
+      },
       "NavPoint": {
         "properties": {
           "cadenceSeconds": {
@@ -6386,6 +7369,59 @@
         "title": "NightlySchedule",
         "type": "object"
       },
+      "NoteRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/ResearchNoteInput"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "savedAt",
+          "content"
+        ],
+        "title": "NoteRevision",
+        "type": "object"
+      },
+      "OptionAvailability": {
+        "properties": {
+          "currentExpiries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Currentexpiries",
+            "type": "array"
+          },
+          "evaluatedAt": {
+            "title": "Evaluatedat",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "current",
+              "historical"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluatedAt",
+          "state"
+        ],
+        "title": "OptionAvailability",
+        "type": "object"
+      },
       "OptionContractSnapshot": {
         "properties": {
           "ask": {
@@ -6421,9 +7457,75 @@
             ],
             "title": "Contractsymbol"
           },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "exerciseStyle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exercisestyle"
+          },
           "expiry": {
             "title": "Expiry",
             "type": "string"
+          },
+          "expiryInstant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiryinstant"
+          },
+          "gamma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gamma"
+          },
+          "gex1pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gex1Pct"
           },
           "impliedVolatility": {
             "anyOf": [
@@ -6452,6 +7554,28 @@
             ],
             "title": "Lastprice"
           },
+          "lastTradeAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasttradeat"
+          },
+          "multiplier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Multiplier"
+          },
           "openInterest": {
             "anyOf": [
               {
@@ -6462,6 +7586,39 @@
               }
             ],
             "title": "Openinterest"
+          },
+          "openInterestAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openinterestasof"
+          },
+          "quoteAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteasof"
+          },
+          "settlement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement"
           },
           "side": {
             "enum": [
@@ -6474,6 +7631,11 @@
           "strike": {
             "title": "Strike",
             "type": "number"
+          },
+          "termsState": {
+            "default": "unsupported",
+            "title": "Termsstate",
+            "type": "string"
           },
           "volume": {
             "anyOf": [
@@ -6541,6 +7703,11 @@
             ],
             "title": "Callwall"
           },
+          "contractCount": {
+            "default": 0,
+            "title": "Contractcount",
+            "type": "integer"
+          },
           "daysToExpiry": {
             "anyOf": [
               {
@@ -6556,6 +7723,40 @@
             "title": "Expiry",
             "type": "string"
           },
+          "expiryInstant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiryinstant"
+          },
+          "gammaCoverage": {
+            "default": 0,
+            "title": "Gammacoverage",
+            "type": "integer"
+          },
+          "gammaFlip": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gammaflip"
+          },
+          "gammaProfile": {
+            "items": {
+              "$ref": "#/components/schemas/GammaPoint"
+            },
+            "title": "Gammaprofile",
+            "type": "array"
+          },
           "maxPain": {
             "anyOf": [
               {
@@ -6566,6 +7767,17 @@
               }
             ],
             "title": "Maxpain"
+          },
+          "netGex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netgex"
           },
           "putCallOiRatio": {
             "anyOf": [
@@ -6631,6 +7843,23 @@
       },
       "OptionSnapshot": {
         "properties": {
+          "availability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OptionAvailability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "availableExpiries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Availableexpiries",
+            "type": "array"
+          },
           "callWall": {
             "anyOf": [
               {
@@ -6652,6 +7881,17 @@
             },
             "title": "Contracts",
             "type": "array"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "expiries": {
             "items": {
@@ -6703,6 +7943,11 @@
               }
             ],
             "title": "Maxpain"
+          },
+          "modelInputs": {
+            "additionalProperties": true,
+            "title": "Modelinputs",
+            "type": "object"
           },
           "netGex": {
             "anyOf": [
@@ -7086,6 +8331,17 @@
             "title": "Date",
             "type": "string"
           },
+          "dividend": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend"
+          },
           "high": {
             "anyOf": [
               {
@@ -7108,6 +8364,39 @@
             ],
             "title": "Low"
           },
+          "macd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macd"
+          },
+          "macdHistogram": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macdhistogram"
+          },
+          "macdSignal": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Macdsignal"
+          },
           "open": {
             "anyOf": [
               {
@@ -7118,6 +8407,17 @@
               }
             ],
             "title": "Open"
+          },
+          "rsi14": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rsi14"
           },
           "sma20": {
             "anyOf": [
@@ -7152,6 +8452,17 @@
             ],
             "title": "Sma50"
           },
+          "split": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Split"
+          },
           "volume": {
             "anyOf": [
               {
@@ -7176,6 +8487,213 @@
           "sma200"
         ],
         "title": "PriceSeriesPoint",
+        "type": "object"
+      },
+      "ProjectionYear": {
+        "additionalProperties": false,
+        "properties": {
+          "cashflowPerShare": {
+            "title": "Cashflowpershare",
+            "type": "number"
+          },
+          "discountFactor": {
+            "title": "Discountfactor",
+            "type": "number"
+          },
+          "fcfMargin": {
+            "title": "Fcfmargin",
+            "type": "number"
+          },
+          "freeCashflow": {
+            "title": "Freecashflow",
+            "type": "number"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "presentValue": {
+            "title": "Presentvalue",
+            "type": "number"
+          },
+          "revenue": {
+            "title": "Revenue",
+            "type": "number"
+          },
+          "shares": {
+            "title": "Shares",
+            "type": "number"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "growth",
+          "revenue",
+          "fcfMargin",
+          "freeCashflow",
+          "shares",
+          "cashflowPerShare",
+          "discountFactor",
+          "presentValue"
+        ],
+        "title": "ProjectionYear",
+        "type": "object"
+      },
+      "QuoteSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "changePct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changepct"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "delayMinutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delayminutes"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange"
+          },
+          "fundBaseCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundbasecurrency"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "quoteUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteunit"
+          },
+          "reportingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportingcurrency"
+          },
+          "session": {
+            "default": "unknown",
+            "title": "Session",
+            "type": "string"
+          },
+          "source": {
+            "default": "yahoo-finance",
+            "title": "Source",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "required": [
+          "id",
+          "ticker",
+          "price",
+          "currency",
+          "quoteUnit"
+        ],
+        "title": "QuoteSnapshot",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -7489,6 +9007,105 @@
           "freshness"
         ],
         "title": "ResearchArtifactState",
+        "type": "object"
+      },
+      "ResearchCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "firstPeriod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firstperiod"
+          },
+          "intervals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Intervals",
+            "type": "array"
+          },
+          "lastPeriod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastperiod"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "missing",
+              "notApplicable",
+              "unsupported",
+              "stale",
+              "invalid"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "state"
+        ],
+        "title": "ResearchCapability",
+        "type": "object"
+      },
+      "ResearchContext": {
+        "additionalProperties": false,
+        "properties": {
+          "assetType": {
+            "title": "Assettype",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetClock"
+            },
+            "title": "Datasets",
+            "type": "array"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/QuoteSnapshot"
+          }
+        },
+        "required": [
+          "quote",
+          "assetType"
+        ],
+        "title": "ResearchContext",
         "type": "object"
       },
       "ResearchDirectoryInstrument": {
@@ -7942,6 +9559,39 @@
         "title": "ResearchInstrument",
         "type": "object"
       },
+      "ResearchJournal": {
+        "additionalProperties": false,
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/SavedResearchModel"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchNote"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "default": 1,
+            "title": "Schemaversion",
+            "type": "integer"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "ResearchJournal",
+        "type": "object"
+      },
       "ResearchLensSnapshot": {
         "description": "Data for one research lens only.\n\nThe workbench intentionally does not preload every lens.  Optional fields\nare populated according to ``view`` and keep the response contract typed\nwithout shipping unrelated artifacts to the browser.",
         "properties": {
@@ -7964,12 +9614,32 @@
             ],
             "title": "Analyst"
           },
+          "context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/ResearchEvent"
             },
             "title": "Events",
             "type": "array"
+          },
+          "financialFacts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinancialFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "financials": {
             "anyOf": [
@@ -8047,6 +9717,11 @@
                 "type": "null"
               }
             ]
+          },
+          "researchEvidence": {
+            "additionalProperties": true,
+            "title": "Researchevidence",
+            "type": "object"
           },
           "runId": {
             "title": "Runid",
@@ -8182,6 +9857,110 @@
         "title": "ResearchModelRun",
         "type": "object"
       },
+      "ResearchNote": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/NoteRevision"
+            },
+            "title": "Revisions",
+            "type": "array"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ticker",
+          "revisions"
+        ],
+        "title": "ResearchNote",
+        "type": "object"
+      },
+      "ResearchNoteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "evidenceUrls": {
+            "items": {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Evidenceurls",
+            "type": "array"
+          },
+          "expectedRevision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedrevision"
+          },
+          "invalidation": {
+            "default": "",
+            "maxLength": 10000,
+            "title": "Invalidation",
+            "type": "string"
+          },
+          "modelId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelid"
+          },
+          "reviewDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewdate"
+          },
+          "thesis": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Thesis",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ResearchNoteInput",
+        "type": "object"
+      },
       "ResearchOverview": {
         "properties": {
           "alerts": {
@@ -8257,6 +10036,16 @@
       },
       "ResearchPriceSeries": {
         "properties": {
+          "actualInterval": {
+            "default": "1d",
+            "title": "Actualinterval",
+            "type": "string"
+          },
+          "adjustment": {
+            "default": "split-and-dividend-adjusted",
+            "title": "Adjustment",
+            "type": "string"
+          },
           "asOf": {
             "title": "Asof",
             "type": "string"
@@ -8265,9 +10054,60 @@
             "title": "Availablesessions",
             "type": "integer"
           },
+          "benchmarkSeries": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/BenchmarkPricePoint"
+              },
+              "type": "array"
+            },
+            "title": "Benchmarkseries",
+            "type": "object"
+          },
+          "coverageReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coveragereason"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "exchangeCalendar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchangecalendar"
+          },
+          "fetchedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetchedat"
           },
           "points": {
             "items": {
@@ -8276,9 +10116,30 @@
             "title": "Points",
             "type": "array"
           },
+          "requestedInterval": {
+            "default": "1d",
+            "title": "Requestedinterval",
+            "type": "string"
+          },
+          "session": {
+            "default": "regular",
+            "title": "Session",
+            "type": "string"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
           },
           "tradeMarkers": {
             "items": {
@@ -10349,6 +12210,137 @@
         "title": "RiskMetrics",
         "type": "object"
       },
+      "SavedResearchModel": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/ValuationPreview"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "savedAt",
+          "preview"
+        ],
+        "title": "SavedResearchModel",
+        "type": "object"
+      },
+      "ScenarioInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "discountRate": {
+            "maximum": 0.6,
+            "minimum": 0.01,
+            "title": "Discountrate",
+            "type": "number"
+          },
+          "exitFcfMultiple": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Exitfcfmultiple",
+            "type": "number"
+          },
+          "revenueCagr": {
+            "maximum": 2.0,
+            "minimum": -0.8,
+            "title": "Revenuecagr",
+            "type": "number"
+          },
+          "shareCagr": {
+            "maximum": 1.0,
+            "minimum": -0.3,
+            "title": "Sharecagr",
+            "type": "number"
+          },
+          "targetFcfMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Targetfcfmargin",
+            "type": "number"
+          }
+        },
+        "required": [
+          "revenueCagr",
+          "targetFcfMargin",
+          "discountRate",
+          "exitFcfMultiple",
+          "shareCagr"
+        ],
+        "title": "ScenarioInputs",
+        "type": "object"
+      },
+      "ScenarioProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "equityFloorAdjustment": {
+            "default": 0,
+            "title": "Equityflooradjustment",
+            "type": "number"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ScenarioInputs"
+          },
+          "operatingValue": {
+            "title": "Operatingvalue",
+            "type": "number"
+          },
+          "terminalContribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalcontribution"
+          },
+          "terminalPresentValue": {
+            "title": "Terminalpresentvalue",
+            "type": "number"
+          },
+          "terminalValue": {
+            "title": "Terminalvalue",
+            "type": "number"
+          },
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionYear"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "inputs",
+          "years",
+          "operatingValue",
+          "terminalValue",
+          "terminalPresentValue",
+          "terminalContribution",
+          "value",
+          "upside"
+        ],
+        "title": "ScenarioProjection",
+        "type": "object"
+      },
       "SecuritySearchResponse": {
         "properties": {
           "correctedQuery": {
@@ -10505,6 +12497,35 @@
           "values"
         ],
         "title": "SensitivityAxis",
+        "type": "object"
+      },
+      "SensitivityCell": {
+        "additionalProperties": false,
+        "properties": {
+          "discountRate": {
+            "title": "Discountrate",
+            "type": "number"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "growth",
+          "discountRate",
+          "value",
+          "upside"
+        ],
+        "title": "SensitivityCell",
         "type": "object"
       },
       "SnapshotManifest": {
@@ -10736,6 +12757,11 @@
             "title": "Price",
             "type": "number"
           },
+          "relativeStrength": {
+            "additionalProperties": true,
+            "title": "Relativestrength",
+            "type": "object"
+          },
           "resistance20": {
             "anyOf": [
               {
@@ -10783,6 +12809,27 @@
           "score": {
             "title": "Score",
             "type": "number"
+          },
+          "seasonality": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Seasonality",
+            "type": "array"
+          },
+          "seasonalityCoverage": {
+            "additionalProperties": true,
+            "title": "Seasonalitycoverage",
+            "type": "object"
+          },
+          "seasonalityMatrix": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Seasonalitymatrix",
+            "type": "array"
           },
           "signals": {
             "items": {
@@ -10842,6 +12889,22 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "trendStrength": {
+            "additionalProperties": true,
+            "title": "Trendstrength",
+            "type": "object"
+          },
+          "yearPaths": {
+            "additionalProperties": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": "Yearpaths",
+            "type": "object"
           }
         },
         "required": [
@@ -11340,6 +13403,151 @@
         "title": "ValuationCompanyAssumptions",
         "type": "object"
       },
+      "ValuationPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/FrozenValuationBasis"
+          },
+          "formulaVersion": {
+            "default": "equity-proxy-projection-v1",
+            "title": "Formulaversion",
+            "type": "string"
+          },
+          "horizon": {
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impliedGrowth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowth"
+          },
+          "impliedGrowthBound": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below",
+                  "above"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthbound"
+          },
+          "impliedGrowthReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthreason"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioProjection"
+            },
+            "title": "Scenarios",
+            "type": "object"
+          },
+          "sensitivity": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityCell"
+            },
+            "title": "Sensitivity",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "basis",
+          "horizon",
+          "scenarios",
+          "sensitivity",
+          "impliedGrowth"
+        ],
+        "title": "ValuationPreview",
+        "type": "object"
+      },
+      "ValuationPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dataVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataversion"
+          },
+          "horizon": {
+            "default": 5,
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionReference"
+            },
+            "maxItems": 3,
+            "title": "References",
+            "type": "array"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioInputs"
+            },
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Scenarios",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scenarios"
+        ],
+        "title": "ValuationPreviewRequest",
+        "type": "object"
+      },
       "ValuationRow": {
         "properties": {
           "analystMedian": {
@@ -11356,6 +13564,11 @@
           "asOf": {
             "title": "Asof",
             "type": "string"
+          },
+          "assumptions": {
+            "additionalProperties": true,
+            "title": "Assumptions",
+            "type": "object"
           },
           "baseGrowth": {
             "anyOf": [
@@ -12203,7 +14416,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13506,6 +15719,233 @@
         ]
       }
     },
+    "/v1/research/{ticker}/fund": {
+      "get": {
+        "operationId": "research_fund_v1_research__ticker__fund_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundResearch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Fund",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/research/{ticker}/journal": {
+      "get": {
+        "operationId": "research_journal_v1_research__ticker__journal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJournal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Journal",
+        "tags": [
+          "research"
+        ]
+      },
+      "post": {
+        "operationId": "research_note_create_v1_research__ticker__journal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchNoteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJournal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Note Create",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/research/{ticker}/journal/{note_id}": {
+      "put": {
+        "operationId": "research_note_update_v1_research__ticker__journal__note_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchNoteInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJournal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Note Update",
+        "tags": [
+          "research"
+        ]
+      }
+    },
     "/v1/research/{ticker}/lens/{view}": {
       "get": {
         "operationId": "research_lens_v1_research__ticker__lens__view__get",
@@ -13634,6 +16074,72 @@
         "tags": [
           "research"
         ]
+      },
+      "post": {
+        "operationId": "research_model_save_v1_research__ticker__models_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJournal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Model Save",
+        "tags": [
+          "research"
+        ]
       }
     },
     "/v1/research/{ticker}/portfolio-impact": {
@@ -13701,6 +16207,22 @@
               "minimum": 2,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": false,
+            "schema": {
+              "default": "1d",
+              "enum": [
+                "15m",
+                "60m",
+                "1d",
+                "1wk"
+              ],
+              "title": "Interval",
+              "type": "string"
             }
           }
         ],
@@ -13785,6 +16307,98 @@
           }
         },
         "summary": "Research Timeline",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/research/{ticker}/valuation-preview": {
+      "get": {
+        "operationId": "valuation_preview_defaults_v1_research__ticker__valuation_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Valuation Preview Defaults",
+        "tags": [
+          "research"
+        ]
+      },
+      "post": {
+        "operationId": "valuation_preview_calculate_v1_research__ticker__valuation_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Valuation Preview Calculate",
         "tags": [
           "research"
         ]

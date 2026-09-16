@@ -1,6 +1,11 @@
 "use client";
 
-import { quoteValue } from "./financial-values";
+import type {
+  ResearchLensSnapshot,
+  ResearchShell,
+  SecuritySearchResponse,
+  SecuritySearchResult,
+} from "@/lib/types";
 import {
   ActionIcon,
   Button,
@@ -13,35 +18,24 @@ import {
   Stack,
   TextInput,
 } from "@mantine/core";
+import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import {
   ArrowClockwise,
+  CaretLeft,
+  CaretRight,
   DotsThree,
   List,
   MagnifyingGlass,
   Plus,
+  PushPin,
   Trash,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { resolveResearchIdentity } from "./research-identity";
-import type {
-  ResearchLensSnapshot,
-  ResearchShell,
-  SecuritySearchResponse,
-  SecuritySearchResult,
-} from "@/lib/types";
-import {
-  api,
-  currency,
-  jsonRequest,
-  object,
-  numeric,
-  percent,
-  tone,
-} from "./data";
+import { api, currency, jsonRequest, object, percent, tone } from "./data";
+import { quoteValue } from "./financial-values";
 import {
   Empty,
-  Freshness,
   Instrument,
   Notice,
   Page,
@@ -52,19 +46,22 @@ import {
   Tag,
   useCopy,
 } from "./foundation";
-import { useRouteState } from "./route-state";
-import { PriceHistory } from "./research-price";
 import {
+  AnalystView,
   CompanyOverview,
   TechnicalView,
-  FundamentalsView,
-  FinancialStatements,
-  AnalystView,
-  ResearchLedger,
 } from "./research-company";
-import { ValuationView, OptionsView } from "./research-models";
-import { Narrative } from "./narrative";
+import { ResearchComparison } from "./research-compare";
+import { FinancialWorkbench } from "./research-financials";
+import { FundWorkbench } from "./research-funds";
+import { resolveResearchIdentity } from "./research-identity";
+import { ResearchNotebook } from "./research-notebook";
+import { OptionsView } from "./research-options";
+import { PriceHistory } from "./research-price";
+import { PricePreview } from "./research-price-preview";
 import { Seasonality } from "./research-seasonality";
+import { ValuationWorkbench } from "./research-valuation-workbench";
+import { useRouteState } from "./route-state";
 
 export type ResearchTab =
   | "overview"
@@ -87,8 +84,14 @@ const researchTabs: ResearchTab[] = [
 ];
 export function ResearchWorkspace() {
   const t = useCopy();
-  const { params, update } = useRouteState();
+  const { params, update } = useRouteState("push");
+  const wide = useMediaQuery("(min-width: 1280px)");
+  const [pinned, setPinned] = useLocalStorage({
+    key: "mx-research-list-pinned",
+    defaultValue: false,
+  });
   const [finder, setFinder] = useState(false);
+  const [finderQuery, setFinderQuery] = useState("");
   const [universeOpen, setUniverseOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [heldOnly, setHeldOnly] = useState(false);
@@ -182,6 +185,21 @@ export function ResearchWorkspace() {
       .map(([, data]) => data)
       .find((data) => data?.ticker === ticker);
   const market = object(quote?.market);
+  const isFund = ["ETF", "MUTUALFUND"].includes(
+    quote?.context?.assetType ?? "",
+  );
+  useEffect(() => {
+    if (isFund && (tab === "valuation" || tab === "analyst"))
+      update({ view: "overview" });
+  }, [isFund, tab, update]);
+  const exploreHolding = (symbol: string) => {
+    const target = instruments.find((i) => i.ticker === symbol);
+    if (target) update({ ticker: target.ticker, view: null, fromFund: ticker });
+    else {
+      setFinderQuery(symbol);
+      setFinder(true);
+    }
+  };
   const displayed = instruments
     .filter(
       (i) =>
@@ -304,25 +322,15 @@ export function ResearchWorkspace() {
     </>
   );
   const titles: Record<ResearchTab, string> = {
-    overview: t("全貌", "Overview"),
-    technical: t("技术走势", "Technicals"),
+    overview: t("概览", "Overview"),
+    technical: t("价格与技术", "Price & technicals"),
     valuation: t("估值模型", "Valuation"),
-    fundamentals: t("经营质量", "Fundamentals"),
+    fundamentals: t("财务与业务", "Financials & business"),
     financials: t("财务报表", "Financials"),
-    analyst: t("市场预期", "Estimates"),
+    analyst: t("预期与事件", "Estimates & events"),
     options: t("期权结构", "Options"),
     ledger: t("研究记录", "Journal"),
   };
-  const narrative = {
-    overview: "watchlist_opportunity_map",
-    technical: "technical_regime",
-    valuation: "valuation_scenario",
-    fundamentals: "fundamental_health",
-    financials: "financial_statements",
-    analyst: "analyst_consensus",
-    options: "options_positioning",
-    ledger: "thesis_change",
-  } as const;
   return (
     <Page
       className="mx-research-page"
@@ -333,7 +341,7 @@ export function ResearchWorkspace() {
             className="mx-universe-toggle"
             variant="default"
             leftSection={<List size={17} />}
-            onClick={() => setUniverseOpen(true)}
+            onClick={() => (wide ? setPinned(!pinned) : setUniverseOpen(true))}
           >
             {t("研究清单", "Research list")}
           </Button>
@@ -351,7 +359,18 @@ export function ResearchWorkspace() {
       ) : shell.isError ? (
         <QueryError retry={shell.refetch} />
       ) : (
-        <div className="mx-research-layout">
+        <div
+          className="mx-research-layout"
+          data-pinned={(pinned && wide) || undefined}
+        >
+          {pinned && wide && (
+            <aside
+              className="mx-research-universe"
+              aria-label={t("研究清单", "Research list")}
+            >
+              {universe}
+            </aside>
+          )}
           <div className="mx-research-content">
             {candidates.length ? (
               <Panel title={t("选择要查看的上市证券", "Choose a listing")}>
@@ -408,6 +427,22 @@ export function ResearchWorkspace() {
               </Panel>
             ) : (
               <>
+                {params.get("fromFund") && (
+                  <Button
+                    variant="subtle"
+                    size="compact-sm"
+                    onClick={() =>
+                      update({
+                        ticker: params.get("fromFund"),
+                        view: "fundamentals",
+                        fromFund: null,
+                      })
+                    }
+                  >
+                    {t("返回基金持仓", "Back to fund holdings")} ·{" "}
+                    {params.get("fromFund")}
+                  </Button>
+                )}
                 <Panel className="mx-security-panel">
                   <div className="mx-security-header">
                     <div className="mx-security-name">
@@ -415,54 +450,144 @@ export function ResearchWorkspace() {
                         <h2>{selected.name || ticker}</h2>
                         <div className="mx-security-meta">
                           <strong>{ticker}</strong>
-                          <span>{selected.exchange}</span>
+                          <span>
+                            {quote?.context?.quote.exchange ||
+                              (
+                                {
+                                  NMS: "NASDAQ",
+                                  NGM: "NASDAQ",
+                                  NCM: "NASDAQ",
+                                  NYQ: "NYSE",
+                                  LSE: "London Stock Exchange",
+                                } as Record<string, string>
+                              )[selected.exchange] ||
+                              selected.exchange}
+                          </span>
                           {selected.held && (
                             <Tag tone="good">
                               {t("已持有 ", "Held ") +
                                 currency(selected.exposureGbp)}
                             </Tag>
                           )}
-                          <Freshness
-                            date={String(
-                              market.asOf ??
-                                quote?.generatedAt ??
-                                shell.data?.status.generatedAt ??
-                                "",
-                            )}
-                          />
                         </div>
                       </div>
                     </div>
                     <div className="mx-security-price">
                       <strong>
                         {quoteValue(
-                          market.spot ??
+                          quote?.context?.quote.price ??
+                            market.spot ??
                             quote?.technical?.price ??
                             quote?.valuation?.spot,
-                          market.currency ||
-                            quote?.technical?.currency ||
-                            quote?.valuation?.currency,
+                          quote?.context?.quote.currency || market.currency,
+
                           t("币种未提供", "Currency unavailable"),
                         )}
                       </strong>
-                      {numeric(market.dayReturn) != null && (
-                        <small className={"mx-" + tone(market.dayReturn)}>
-                          {percent(market.dayReturn, true, 2)} ·{" "}
-                          {t("最近交易日", "Latest session")}
+                      {quote?.context?.quote.changePct != null && (
+                        <small
+                          className={
+                            "mx-" + tone(quote.context.quote.changePct)
+                          }
+                        >
+                          {percent(quote.context.quote.changePct, true, 2)} ·{" "}
+                          {quoteValue(
+                            quote.context.quote.change,
+                            quote.context.quote.currency,
+                            "—",
+                          )}
+                        </small>
+                      )}
+                      {quote?.context?.quote.asOf && (
+                        <small>
+                          {new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: quote.context.quote.timezone ?? "UTC",
+                            timeZoneName: "short",
+                          }).format(new Date(quote.context.quote.asOf))}{" "}
+                          ·{" "}
+                          {(
+                            {
+                              regular: t("常规交易", "Regular session"),
+                              closed: t("收盘", "Closed"),
+                              post: t("盘后", "Post-market"),
+                              pre: t("盘前", "Pre-market"),
+                            } as Record<string, string>
+                          )[quote.context.quote.session] ??
+                            t("最近报价", "Latest quote")}
+                          {quote.context.quote.delayMinutes
+                            ? ` · ${quote.context.quote.delayMinutes} min`
+                            : ""}
                         </small>
                       )}
                     </div>
                   </div>
                   <div className="mx-research-controls">
                     <Group gap="xs">
+                      <ResearchComparison
+                        ticker={ticker}
+                        instruments={instruments}
+                      />
+                      <ActionIcon
+                        aria-label={t("上一只证券", "Previous security")}
+                        disabled={
+                          displayed.findIndex((i) => i.ticker === ticker) <= 0
+                        }
+                        onClick={() =>
+                          selectTicker(
+                            displayed[
+                              displayed.findIndex((i) => i.ticker === ticker) -
+                                1
+                            ].ticker,
+                          )
+                        }
+                      >
+                        <CaretLeft size={18} />
+                      </ActionIcon>
+                      <ActionIcon
+                        aria-label={t("下一只证券", "Next security")}
+                        disabled={
+                          displayed.findIndex((i) => i.ticker === ticker) < 0 ||
+                          displayed.findIndex((i) => i.ticker === ticker) >=
+                            displayed.length - 1
+                        }
+                        onClick={() =>
+                          selectTicker(
+                            displayed[
+                              displayed.findIndex((i) => i.ticker === ticker) +
+                                1
+                            ].ticker,
+                          )
+                        }
+                      >
+                        <CaretRight size={18} />
+                      </ActionIcon>
+                      {wide && (
+                        <ActionIcon
+                          aria-label={t("固定研究清单", "Pin research list")}
+                          aria-pressed={pinned}
+                          onClick={() => setPinned(!pinned)}
+                        >
+                          <PushPin size={17} />
+                        </ActionIcon>
+                      )}
                       <Button
+                        aria-label={t("更新研究", "Update research")}
                         variant="default"
                         size="xs"
                         leftSection={<ArrowClockwise size={14} />}
                         loading={operation.isPending || fetching}
                         onClick={() => operation.mutate({ action: "refresh" })}
                       >
-                        {t("更新研究", "Update research")}
+                        <span className="mx-action-long">
+                          {t("更新研究", "Update research")}
+                        </span>
+                        <span className="mx-action-short">
+                          {t("更新", "Update")}
+                        </span>
                       </Button>
                       <Menu shadow="md">
                         <Menu.Target>
@@ -507,14 +632,36 @@ export function ResearchWorkspace() {
                 </Panel>
                 <Tabs
                   label={t("证券研究视角", "Security research perspective")}
-                  value={tab}
+                  value={tab === "financials" ? "fundamentals" : tab}
                   onChange={(v) =>
                     update({ view: v === "overview" ? null : v })
                   }
-                  options={researchTabs.map((value) => ({
-                    value,
-                    label: titles[value],
-                  }))}
+                  options={(
+                    [
+                      "overview",
+                      "fundamentals",
+                      "technical",
+                      "analyst",
+                      "valuation",
+                      "options",
+                      "ledger",
+                    ] as ResearchTab[]
+                  )
+                    .filter(
+                      (value) =>
+                        !(
+                          ["ETF", "MUTUALFUND"].includes(
+                            quote?.context?.assetType ?? "",
+                          ) && ["valuation", "analyst"].includes(value)
+                        ),
+                    )
+                    .map((value) => ({
+                      value,
+                      label:
+                        isFund && value === "fundamentals"
+                          ? t("持仓与跟踪", "Holdings & tracking")
+                          : titles[value],
+                    }))}
                 />
                 {operation.isError && (
                   <Notice tone="bad">
@@ -563,14 +710,22 @@ export function ResearchWorkspace() {
                     <>
                       {tab === "overview" && (
                         <>
-                          <PriceHistory
+                          <PricePreview
                             ticker={ticker}
                             runId={selected.lastRunId ?? lens.data.runId}
                           />
-                          <CompanyOverview
-                            data={lens.data}
-                            context={context.data}
-                          />
+                          {isFund ? (
+                            <FundWorkbench
+                              overview
+                              data={context.data ?? lens.data}
+                              onExplore={exploreHolding}
+                            />
+                          ) : (
+                            <CompanyOverview
+                              data={lens.data}
+                              context={context.data}
+                            />
+                          )}
                         </>
                       )}
                       {tab === "technical" && (
@@ -579,29 +734,41 @@ export function ResearchWorkspace() {
                             ticker={ticker}
                             runId={selected.lastRunId ?? lens.data.runId}
                             technical
+                            context={context.data}
                           />
                           <TechnicalView data={lens.data} />
                           {context.data && <Seasonality data={context.data} />}
                         </>
                       )}
                       {tab === "valuation" && (
-                        <ValuationView data={lens.data} />
+                        <ValuationWorkbench data={lens.data} />
                       )}
-                      {tab === "fundamentals" && (
-                        <FundamentalsView data={lens.data} />
-                      )}
-                      {tab === "financials" && (
-                        <FinancialStatements data={lens.data} />
-                      )}
+                      {tab === "fundamentals" &&
+                        (isFund ? (
+                          <FundWorkbench
+                            data={lens.data}
+                            onExplore={exploreHolding}
+                          />
+                        ) : (
+                          <FinancialWorkbench data={lens.data} />
+                        ))}
+                      {tab === "financials" &&
+                        (isFund ? (
+                          <FundWorkbench
+                            data={lens.data}
+                            onExplore={exploreHolding}
+                          />
+                        ) : (
+                          <FinancialWorkbench
+                            data={lens.data}
+                            initialMode="income"
+                          />
+                        ))}
                       {tab === "analyst" && <AnalystView data={lens.data} />}
                       {tab === "options" && <OptionsView data={lens.data} />}
-                      {tab === "ledger" && <ResearchLedger data={lens.data} />}
-                      <Narrative
-                        snapshot={lens.data.runId}
-                        lens={narrative[tab]}
-                        page={tab === "overview" ? "research" : tab}
-                        ticker={ticker}
-                      />
+                      {tab === "ledger" && (
+                        <ResearchNotebook key={ticker} data={lens.data} />
+                      )}
                     </>
                   )
                 )}
@@ -621,11 +788,13 @@ export function ResearchWorkspace() {
       <SecurityFinder
         opened={finder}
         onClose={() => setFinder(false)}
-        initial={selected ? "" : ticker}
+        key={finderQuery}
+        initial={finderQuery || (selected ? "" : ticker)}
         onAdded={async (value) => {
           await shell.refetch();
-          update({ ticker: value });
+          update({ ticker: value, fromFund: isFund ? ticker : null });
           setFinder(false);
+          setFinderQuery("");
         }}
       />
       <Modal

@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-16
+
+### Added
+
+- Add financial facts with annual, quarterly, and trailing periods, business
+  and geographic segments, filing references, and comparability checks.
+- Add independent research workflows for forecasts, analyst evidence, company
+  events, options structure, fund exposure, valuation, and research notes.
+- Add saved valuation models with source assumptions and financial context,
+  plus research comparisons and evidence-linked financial views.
+- Add price history and events, seasonality sample selection, exchange-aware
+  calendars, and corporate-action context.
+
+### Fixed
+
+- Keep missing evidence and incomplete history visible rather than replacing
+  them with fabricated figures, and show the selected seasonality sample.
+- Preserve the previous release's security, reference-data packaging, and
+  authoritative-classification fixes throughout the research expansion.
+
 ## [1.2.0] - 2026-09-16
 
 ### Added

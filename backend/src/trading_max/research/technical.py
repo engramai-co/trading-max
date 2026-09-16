@@ -18,6 +18,8 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.research.calendar import completed_months
+from trading_max.research.option_terms import contract_terms, treasury_rate
 
 
 class MarketDataError(RuntimeError):
@@ -44,6 +46,8 @@ class TechnicalResearchArtifact(DomainModel):
     relative_strength: dict[str, Any]
     seasonality: list[dict[str, float | int]]
     seasonality_coverage: dict[str, Any]
+    seasonality_matrix: list[dict[str, Any]] = Field(default_factory=list)
+    year_paths: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     price_series: list[dict[str, Any]] = Field(default_factory=list)
     technical_score: int = Field(ge=0, le=100)
     technical_state: str
@@ -63,6 +67,9 @@ class OptionsResearchArtifact(DomainModel):
     gamma_proxy: dict[str, Any]
     expiries: list[dict[str, Any]]
     contracts: list[dict[str, Any]] = Field(default_factory=list)
+    currency: str | None = None
+    available_expiries: list[str] = Field(default_factory=list)
+    model_inputs: dict[str, Any] = Field(default_factory=dict)
 
 
 OPTION_CONTRACT_MULTIPLIER = 100
@@ -126,11 +133,21 @@ def _pct_distance(price: float | None, reference: float | None) -> float | None:
     return _finite(price / reference - 1, 6)
 
 
+def _completed_month_returns(close: pd.Series, *, as_of: date | None = None) -> pd.Series:
+    """Exclude MTD and missing months; never forward-fill a missing baseline."""
+    now = (
+        pd.Timestamp(as_of).tz_localize("UTC") + pd.Timedelta(days=1)
+        if as_of
+        else pd.Timestamp.now(tz="UTC")
+    )
+    return completed_months(close, exchange=close.attrs.get("exchange"), now=now)
+
+
 def _monthly_seasonality(close: pd.Series) -> list[dict[str, float | int]]:
+    returns = _completed_month_returns(close)
     monthly = close.resample("ME").last().dropna()
     if len(monthly) < 24:
         return []
-    returns = monthly.pct_change().dropna()
     result: list[dict[str, float | int]] = []
     for month, values in returns.groupby(returns.index.month):
         clean = values.dropna()
@@ -152,21 +169,42 @@ def _monthly_seasonality(close: pd.Series) -> list[dict[str, float | int]]:
 
 def _seasonality_coverage(close: pd.Series) -> dict[str, Any]:
     clean = close.dropna()
-    monthly = clean.resample("ME").last().dropna()
     return {
         "basis": "full-listing-history",
         "first_session": str(clean.index[0].date()) if len(clean) else None,
         "last_session": str(clean.index[-1].date()) if len(clean) else None,
         "daily_sessions": len(clean),
-        "monthly_observations": max(len(monthly) - 1, 0),
+        "monthly_observations": len(_completed_month_returns(close)),
+        "excludes_incomplete_month": True,
     }
+
+
+def yearly_paths(close: pd.Series) -> dict[str, list[dict[str, Any]]]:
+    """Observed, adjusted daily paths anchored to the preceding year-end close."""
+    clean = close.dropna()
+    result = {}
+    for year, rows in clean.groupby(clean.index.year):
+        if year < clean.index[-1].year - 19:
+            continue
+        previous = clean[clean.index.year == year - 1]
+        if previous.empty or previous.iloc[-1] <= 0:
+            continue
+        result[str(year)] = [
+            {
+                "date": str(stamp.date()),
+                "day": stamp.strftime("%m-%d"),
+                "return": float(price / previous.iloc[-1] - 1),
+            }
+            for stamp, price in rows.items()
+        ]
+    return result
 
 
 def price_series(
     frame: pd.DataFrame,
     sma: dict[str, pd.Series],
     *,
-    sessions: int = 504,
+    sessions: int = 2_000,
 ) -> list[dict[str, Any]]:
     """Export the recent OHLC window so the workbench can draw real candles.
 
@@ -177,6 +215,13 @@ def price_series(
     if frame.empty:
         return []
     window = frame.tail(sessions)
+    close_history = frame["Close"]
+    rsi = _rsi(close_history)
+    macd = (
+        close_history.ewm(span=12, adjust=False, min_periods=12).mean()
+        - close_history.ewm(span=26, adjust=False, min_periods=26).mean()
+    )
+    signal = macd.ewm(span=9, adjust=False, min_periods=9).mean()
     sma20 = sma.get("sma20")
     sma50 = sma.get("sma50")
     sma200 = sma.get("sma200")
@@ -187,12 +232,20 @@ def price_series(
             continue
         points.append(
             {
-                "date": str(timestamp.date()),
+                "date": timestamp.isoformat()
+                if frame.attrs.get("intraday")
+                else str(timestamp.date()),
+                "rsi14": _finite(rsi.get(timestamp)),
+                "macd": _finite(macd.get(timestamp)),
+                "macdSignal": _finite(signal.get(timestamp)),
+                "macdHistogram": _finite((macd - signal).get(timestamp)),
                 "open": _finite(row.get("Open")),
                 "high": _finite(row.get("High")),
                 "low": _finite(row.get("Low")),
                 "close": close,
                 "volume": _finite(row.get("Volume"), 0),
+                "dividend": _finite(row.get("Dividends")),
+                "split": _finite(row.get("Stock Splits")),
                 "sma20": _finite(sma20.get(timestamp)) if sma20 is not None else None,
                 "sma50": _finite(sma50.get(timestamp)) if sma50 is not None else None,
                 "sma200": _finite(sma200.get(timestamp)) if sma200 is not None else None,
@@ -226,6 +279,8 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
     scale = 0.01 if quote_currency in {"GBp", "GBX"} else PRICE_SCALE.get(ticker, 1.0)
+    frame.attrs["exchange"] = str(metadata.get("exchangeName") or "")
+    frame.attrs["timezone"] = str(metadata.get("exchangeTimezoneName") or "")
     frame.attrs["currency"] = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
     if scale != 1.0:
         frame[["Open", "High", "Low", "Close"]] *= scale
@@ -311,8 +366,7 @@ def _rsi(close: pd.Series, length: int = 14) -> pd.Series:
     rs = avg_gain / avg_loss.replace(0, np.nan)
     output = 100 - 100 / (1 + rs)
     output = output.mask((avg_gain == 0) & (avg_loss == 0), 50.0)
-    output = output.mask((avg_gain > 0) & (avg_loss == 0), 100.0)
-    return output.fillna(50.0)
+    return output.mask((avg_gain > 0) & (avg_loss == 0), 100.0)
 
 
 def _adx_dmi(
@@ -622,6 +676,11 @@ def analyze_ticker(
         },
         "seasonality": _monthly_seasonality(close),
         "seasonality_coverage": _seasonality_coverage(close),
+        "seasonality_matrix": [
+            {"year": int(timestamp.year), "month": int(timestamp.month), "return": float(value)}
+            for timestamp, value in _completed_month_returns(close).items()
+        ],
+        "year_paths": yearly_paths(close),
         "price_series": price_series(frame, sma),
     }
     score, state = technical_score(metrics)
@@ -638,29 +697,53 @@ def _normal_pdf(x: np.ndarray) -> np.ndarray:
     return np.exp(-0.5 * x * x) / math.sqrt(2 * math.pi)
 
 
-def _option_gex(options: pd.DataFrame, spot: float) -> pd.Series:
+def _option_greeks(options: pd.DataFrame, spot: float) -> tuple[np.ndarray, np.ndarray]:
+    count = len(options)
+    gamma, delta = np.full(count, np.nan), np.full(count, np.nan)
     if options.empty or spot <= 0:
-        return pd.Series(dtype=float)
-    sigma = options["iv"].to_numpy(dtype=float)
-    strike = options["strike"].to_numpy(dtype=float)
-    years = options["years"].to_numpy(dtype=float)
-    oi = options["open_interest"].to_numpy(dtype=float)
-    valid = (sigma > 0) & (strike > 0) & (years > 0) & (oi > 0)
-    values = np.zeros(len(options), dtype=float)
+        return gamma, delta
+
+    def values(name: str) -> np.ndarray:
+        return pd.to_numeric(
+            options.get(name, pd.Series(np.nan, index=options.index)), errors="coerce"
+        ).to_numpy(dtype=float)
+
+    sigma, strike, years, rate, dividend = (
+        values(key) for key in ("iv", "strike", "years", "risk_free_rate", "dividend_yield")
+    )
+    valid = (sigma > 0) & (strike > 0) & (years > 0) & np.isfinite(rate) & np.isfinite(dividend)
     if valid.any():
-        s, k, v, t, open_interest = spot, strike[valid], sigma[valid], years[valid], oi[valid]
-        d1 = (np.log(s / k) + (RISK_FREE_RATE + 0.5 * v * v) * t) / (v * np.sqrt(t))
-        gamma = _normal_pdf(d1) / (s * v * np.sqrt(t))
-        gex = gamma * open_interest * OPTION_CONTRACT_MULTIPLIER * s * s * 0.01
-        side = options.loc[valid, "side"].to_numpy()
-        values[valid] = np.where(side == "call", gex, -gex)
+        k, v, t, r, q = strike[valid], sigma[valid], years[valid], rate[valid], dividend[valid]
+        d1 = (np.log(spot / k) + (r - q + 0.5 * v * v) * t) / (v * np.sqrt(t))
+        discount = np.exp(-q * t)
+        gamma[valid] = discount * _normal_pdf(d1) / (spot * v * np.sqrt(t))
+        cdf = np.array([0.5 * (1 + math.erf(x / math.sqrt(2))) for x in d1])
+        delta[valid] = discount * np.where(
+            options.loc[valid, "side"].to_numpy() == "call", cdf, cdf - 1
+        )
+    return gamma, delta
+
+
+def _option_gex(options: pd.DataFrame, spot: float) -> pd.Series:
+    gamma, _ = _option_greeks(options, spot)
+    oi = pd.to_numeric(
+        options.get("open_interest", pd.Series(np.nan, index=options.index)), errors="coerce"
+    ).to_numpy(dtype=float)
+    multiplier = pd.to_numeric(
+        options.get("multiplier", pd.Series(np.nan, index=options.index)), errors="coerce"
+    ).to_numpy(dtype=float)
+    valid = np.isfinite(gamma) & (oi >= 0) & (multiplier > 0)
+    values = np.full(len(options), np.nan)
+    if valid.any():
+        signed = np.where(options.loc[valid, "side"].to_numpy() == "call", 1.0, -1.0)
+        values[valid] = gamma[valid] * oi[valid] * multiplier[valid] * spot * spot * 0.01 * signed
     return pd.Series(values, index=options.index, dtype=float)
 
 
 def _option_wall(options: pd.DataFrame, field: str) -> dict[str, float | None]:
     if options.empty or field not in options:
         return {"strike": None, field: None}
-    grouped = options.groupby("strike", dropna=True)[field].sum().dropna()
+    grouped = options.groupby("strike", dropna=True)[field].sum(min_count=1).dropna()
     if grouped.empty or grouped.max() <= 0:
         return {"strike": None, field: None}
     strike = float(grouped.idxmax())
@@ -672,7 +755,7 @@ def _gamma_wall(options: pd.DataFrame, spot: float, side: str) -> dict[str, floa
     if selected.empty:
         return {"strike": None, "gex_1pct_absolute": None}
     selected["gex_1pct_absolute"] = _option_gex(selected, spot).abs()
-    grouped = selected.groupby("strike")["gex_1pct_absolute"].sum().dropna()
+    grouped = selected.groupby("strike")["gex_1pct_absolute"].sum(min_count=1).dropna()
     if grouped.empty or grouped.max() <= 0:
         return {"strike": None, "gex_1pct_absolute": None}
     strike = float(grouped.idxmax())
@@ -685,6 +768,9 @@ def _gamma_wall(options: pd.DataFrame, spot: float, side: str) -> dict[str, floa
 def _oi_weighted_iv(options: pd.DataFrame) -> float | None:
     if options.empty:
         return None
+    options = options[
+        options["iv"].notna() & (options["iv"] > 0) & options["open_interest"].notna()
+    ]
     total_oi = float(options["open_interest"].sum())
     if total_oi <= 0:
         return None
@@ -710,7 +796,7 @@ def _max_pain(options: pd.DataFrame) -> float | None:
 def _gamma_profile(
     options: pd.DataFrame, spot: float
 ) -> tuple[list[dict[str, float | None]], float | None]:
-    if options.empty or spot <= 0:
+    if options.empty or spot <= 0 or not _option_gex(options, spot).notna().any():
         return [], None
     grid = np.linspace(spot * 0.75, spot * 1.25, 101)
     values = [float(_option_gex(options, float(hypothetical)).sum()) for hypothetical in grid]
@@ -736,20 +822,35 @@ def _gamma_profile(
     )
 
 
-def _expiry_summary(options: pd.DataFrame, expiry: str, spot: float) -> dict[str, Any]:
+def _expiry_summary(
+    options: pd.DataFrame, expiry: str, spot: float, *, captured_at: datetime | None = None
+) -> dict[str, Any]:
     calls, puts = options[options["side"].eq("call")], options[options["side"].eq("put")]
     signed_gex = _option_gex(options, spot)
-    call_gex = float(signed_gex.loc[calls.index].sum()) if len(calls) else 0.0
-    put_gex = float(-signed_gex.loc[puts.index].sum()) if len(puts) else 0.0
-    call_oi, put_oi = float(calls["open_interest"].sum()), float(puts["open_interest"].sum())
-    call_volume, put_volume = float(calls["volume"].sum()), float(puts["volume"].sum())
+    call_gex = float(signed_gex.loc[calls.index].sum(min_count=1)) if len(calls) else 0.0
+    put_gex = float(-signed_gex.loc[puts.index].sum(min_count=1)) if len(puts) else 0.0
+
+    def complete_sum(frame: pd.DataFrame, field: str) -> float:
+        return float(frame[field].sum()) if frame[field].notna().all() else float("nan")
+
+    call_oi, put_oi = complete_sum(calls, "open_interest"), complete_sum(puts, "open_interest")
+    call_volume, put_volume = complete_sum(calls, "volume"), complete_sum(puts, "volume")
+    capture = captured_at or datetime.now(UTC)
+    instants = options.get("expiry_instant", pd.Series(dtype=str)).dropna()
+    instant = str(instants.iloc[0]) if len(instants) and expiry != "aggregate" else None
     dte = (
-        max((date.fromisoformat(expiry) - date.today()).days, 0) if expiry != "aggregate" else None
+        max(0, math.ceil((datetime.fromisoformat(instant) - capture).total_seconds() / 86400))
+        if instant
+        else None
     )
+    profile, flip = _gamma_profile(options, spot)
     call_iv, put_iv = _oi_weighted_iv(calls), _oi_weighted_iv(puts)
     return {
         "expiry": expiry,
         "days_to_expiry": dte,
+        "expiry_instant": instant,
+        "gamma_profile": profile,
+        "gamma_flip": flip,
         "call_open_interest": _finite(call_oi, 0),
         "put_open_interest": _finite(put_oi, 0),
         "put_call_oi_ratio": _finite(put_oi / call_oi if call_oi else np.nan, 4),
@@ -768,11 +869,26 @@ def _expiry_summary(options: pd.DataFrame, expiry: str, spot: float) -> dict[str
         "max_pain_proxy": _max_pain(options),
         "call_gex_1pct": _finite(call_gex, 0),
         "put_gex_1pct_absolute": _finite(put_gex, 0),
-        "net_gex_1pct_proxy": _finite(float(signed_gex.sum()), 0),
+        "net_gex_1pct_proxy": _finite(float(signed_gex.sum(min_count=1)), 0),
+        "open_interest_coverage": int(options["open_interest"].notna().sum()),
+        "contract_count": len(options),
+        "gamma_coverage": int(signed_gex.notna().sum()),
     }
 
 
-def _clean_contracts(frame: pd.DataFrame, side: str, expiry: date) -> pd.DataFrame:
+def _clean_contracts(
+    frame: pd.DataFrame,
+    side: str,
+    expiry: date,
+    *,
+    captured_at: datetime | None = None,
+    underlying: str = "",
+    asset_type: str = "",
+    exchange: str = "",
+    currency: str | None = None,
+    risk_free_rate: float | None = None,
+    dividend_yield: float | None = None,
+) -> pd.DataFrame:
     if frame.empty:
         return pd.DataFrame(
             columns=[
@@ -814,15 +930,46 @@ def _clean_contracts(frame: pd.DataFrame, side: str, expiry: date) -> pd.DataFra
     if "in_the_money" not in selected:
         selected["in_the_money"] = False
     selected["in_the_money"] = selected["in_the_money"].fillna(False).astype(bool)
-    selected["open_interest"] = selected["open_interest"].fillna(0.0)
-    selected["volume"] = selected["volume"].fillna(0.0)
-    selected["iv"] = selected["iv"].fillna(0.0)
-    selected = selected[(selected["strike"] > 0) & (selected["open_interest"] >= 0)]
-    selected["years"] = max((expiry - date.today()).days, 1) / 365.0
+    selected = selected[
+        (selected["strike"] > 0)
+        & ((selected["open_interest"] >= 0) | selected["open_interest"].isna())
+    ]
+    selected["last_trade_at"] = selected.get("lastTradeDate")
+    capture = captured_at or datetime.now(UTC)
+    terms = [
+        contract_terms(
+            str(row.get("contract_symbol") or ""),
+            str(row.get("contractSize") or ""),
+            underlying,
+            asset_type,
+            exchange,
+            expiry,
+        )
+        for row in selected.to_dict("records")
+    ]
+    for key in (
+        "multiplier",
+        "exercise_style",
+        "settlement",
+        "expiry_instant",
+        "terms_state",
+        "terms_source",
+    ):
+        selected[key] = [row[key] for row in terms]
+    selected["years"] = [
+        max((datetime.fromisoformat(value) - capture).total_seconds(), 0) / (365 * 86400)
+        if value
+        else np.nan
+        for value in selected["expiry_instant"]
+    ]
+    selected["risk_free_rate"] = risk_free_rate
+    selected["dividend_yield"] = dividend_yield
+    selected["currency"] = currency
     selected["side"] = side
     return selected[
         [
             "contract_symbol",
+            "last_trade_at",
             "strike",
             "last_price",
             "bid",
@@ -833,6 +980,15 @@ def _clean_contracts(frame: pd.DataFrame, side: str, expiry: date) -> pd.DataFra
             "in_the_money",
             "years",
             "side",
+            "multiplier",
+            "exercise_style",
+            "settlement",
+            "expiry_instant",
+            "terms_state",
+            "terms_source",
+            "risk_free_rate",
+            "dividend_yield",
+            "currency",
         ]
     ].reset_index(drop=True)
 
@@ -855,6 +1011,20 @@ def _contract_rows(options: pd.DataFrame) -> list[dict[str, Any]]:
                 "volume": _finite(row.get("volume"), 0),
                 "iv": _finite(row.get("iv"), 6),
                 "in_the_money": bool(row.get("in_the_money", False)),
+                "last_trade_at": str(row["last_trade_at"])
+                if pd.notna(row.get("last_trade_at"))
+                else None,
+                "quote_as_of": None,
+                "open_interest_as_of": None,
+                "multiplier": _finite(row.get("multiplier")),
+                "exercise_style": row.get("exercise_style"),
+                "settlement": row.get("settlement"),
+                "expiry_instant": row.get("expiry_instant"),
+                "terms_state": row.get("terms_state", "unsupported"),
+                "currency": row.get("currency"),
+                "gamma": _finite(row.get("gamma"), 8),
+                "delta": _finite(row.get("delta"), 6),
+                "gex_1pct": _finite(row.get("gex_1pct"), 2),
             }
         )
     return rows
@@ -871,13 +1041,30 @@ def analyze_options(
     """Analyze public option OI/walls/GEX without implying dealer inventory."""
 
     security = yf.Ticker(yf_ticker)
+    captured = datetime.now(UTC)
+    info = security.info
+    rate = treasury_rate(captured.date().isoformat())
+    raw_yield = info.get("trailingAnnualDividendYield")
+    dividend_yield = (
+        float(raw_yield) if raw_yield is not None and 0 <= float(raw_yield) <= 1 else 0.0
+    )
+    terms = {
+        "captured_at": captured,
+        "underlying": yf_ticker,
+        "asset_type": str(info.get("quoteType") or ""),
+        "exchange": str(info.get("exchange") or ""),
+        "currency": info.get("currency"),
+        "risk_free_rate": rate["value"],
+        "dividend_yield": dividend_yield,
+    }
     expiries: list[tuple[date, str]] = []
-    for raw in security.options or ():
+    available = list(security.options or ())
+    for raw in available:
         try:
             expiry = date.fromisoformat(raw)
         except ValueError:
             continue
-        if 0 <= (expiry - date.today()).days <= max_days:
+        if 0 <= (expiry - captured.date()).days <= max_days:
             expiries.append((expiry, raw))
     expiries = sorted(expiries)[:max_expiries]
     if not expiries:
@@ -886,31 +1073,47 @@ def analyze_options(
     contracts: list[pd.DataFrame] = []
     for expiry_date, raw_expiry in expiries:
         chain = security.option_chain(raw_expiry)
-        calls = _clean_contracts(chain.calls, "call", expiry_date)
-        puts = _clean_contracts(chain.puts, "put", expiry_date)
+        calls = _clean_contracts(chain.calls, "call", expiry_date, **terms)
+        puts = _clean_contracts(chain.puts, "put", expiry_date, **terms)
         options = pd.concat([calls, puts], ignore_index=True)
         if options.empty:
             continue
-        expiry_rows.append(_expiry_summary(options, raw_expiry, spot))
+        expiry_rows.append(_expiry_summary(options, raw_expiry, spot, captured_at=captured))
         options["expiry"] = raw_expiry
         contracts.append(options)
     if not contracts:
         raise MarketDataError(f"no valid option contracts returned for {label}")
     all_options = pd.concat(contracts, ignore_index=True)
-    aggregate = _expiry_summary(all_options, "aggregate", spot)
+    all_options["gamma"], all_options["delta"] = _option_greeks(all_options, spot)
+    all_options["gex_1pct"] = _option_gex(all_options, spot)
+    aggregate = _expiry_summary(all_options, "aggregate", spot, captured_at=captured)
     profile, flip = _gamma_profile(all_options, spot)
     return OptionsResearchArtifact(
         ticker=label,
         yf_ticker=yf_ticker,
         spot=_finite(spot, 2) or spot,
-        captured_at=datetime.now(UTC),
+        captured_at=captured,
+        currency=info.get("currency"),
+        available_expiries=available,
+        model_inputs={
+            "formulaVersion": "bs-gex-v2",
+            "rate": rate,
+            "dividendYield": dividend_yield,
+            "dividendYieldBasis": "trailingAnnualDividendYield"
+            if raw_yield is not None
+            else "zero-dividend assumption",
+            "volatilityConvention": "sticky strike",
+            "pricingModel": "European Black-Scholes proxy for American contracts",
+            "signConvention": "calls positive, puts negative; not observed dealer inventory",
+            "units": "currency delta notional per 1% underlying move",
+        },
         expiry_count=len(expiry_rows),
         expiry_range=[expiry_rows[0]["expiry"], expiry_rows[-1]["expiry"]],
         aggregate=aggregate,
         gamma_proxy={
             "convention": (
-                "call GEX positive, put GEX negative; assumes dealers are net "
-                "short options and is not a measurement of dealer inventory"
+                "call GEX positive, put GEX negative; a signed-OI convention, "
+                "not a measurement of dealer inventory"
             ),
             "gamma_regime": (
                 "positive gamma proxy"

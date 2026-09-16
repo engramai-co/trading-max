@@ -38,6 +38,9 @@ from .logging_setup import configure_logging
 from .models import ResearchOverview, SnapshotManifest
 from .provider_runtime import ProviderRuntimeError, make_provider_factory
 from .research import ResearchLedger
+from .research_funds import FundResearchService
+from .research_journal import ResearchJournalStore
+from .research_prices import SecurityPriceHistory
 from .routes.analysis import router as analysis_router
 from .routes.imports import router as imports_router
 from .routes.operations import router as operations_router
@@ -364,6 +367,9 @@ def create_app(
     app.state.research = research
     app.state.security_search = security_search
     app.state.valuation_assumptions = valuation_assumptions
+    app.state.security_prices = SecurityPriceHistory(settings.data_root)
+    app.state.research_journal = ResearchJournalStore(settings.data_root)
+    app.state.research_funds = FundResearchService(settings.data_root)
     app.state.validation_secret = validation_secret
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
+from trading_max.research.facts import FinancialFacts, ResearchContext
 
 from .models import (
     ApiModel,
@@ -746,6 +747,12 @@ class AdrResearch(ApiModel):
 
 class PriceSeriesPoint(ApiModel):
     date: str
+    rsi14: float | None = None
+    macd: float | None = None
+    macd_signal: float | None = None
+    macd_histogram: float | None = None
+    dividend: float | None = None
+    split: float | None = None
     open: float | None
     high: float | None
     low: float | None
@@ -776,6 +783,16 @@ class BenchmarkPricePoint(ApiModel):
 
 class ResearchPriceSeries(ApiModel):
     ticker: str
+    requested_interval: str = "1d"
+    actual_interval: str = "1d"
+    timezone: str | None = None
+    exchange_calendar: str | None = None
+    session: str = "regular"
+    adjustment: str = "split-and-dividend-adjusted"
+    coverage_reason: str | None = None
+    fetched_at: str | None = None
+    benchmark_series: dict[str, list[BenchmarkPricePoint]] = Field(default_factory=dict)
+    events: list[dict[str, Any]] = Field(default_factory=list)
     as_of: str
     currency: str
     available_sessions: int
@@ -806,6 +823,12 @@ class TechnicalRow(ApiModel):
     return63d: float | None
     atr_pct: float | None
     signals: list[str]
+    seasonality: list[dict[str, Any]] = Field(default_factory=list)
+    seasonality_coverage: dict[str, Any] = Field(default_factory=dict)
+    seasonality_matrix: list[dict[str, Any]] = Field(default_factory=list)
+    year_paths: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    relative_strength: dict[str, Any] = Field(default_factory=dict)
+    trend_strength: dict[str, Any] = Field(default_factory=dict)
 
 
 class GammaPoint(ApiModel):
@@ -815,6 +838,12 @@ class GammaPoint(ApiModel):
 
 class OptionExpirySnapshot(ApiModel):
     expiry: str
+    expiry_instant: str | None = None
+    net_gex: float | None = None
+    gamma_coverage: int = 0
+    contract_count: int = 0
+    gamma_flip: float | None = None
+    gamma_profile: list[GammaPoint] = Field(default_factory=list)
     days_to_expiry: int | None = None
     call_open_interest: float | None = None
     put_open_interest: float | None = None
@@ -830,6 +859,15 @@ class OptionExpirySnapshot(ApiModel):
 
 class OptionContractSnapshot(ApiModel):
     expiry: str
+    multiplier: float | None = None
+    exercise_style: str | None = None
+    settlement: str | None = None
+    expiry_instant: str | None = None
+    terms_state: str = "unsupported"
+    currency: str | None = None
+    gamma: float | None = None
+    delta: float | None = None
+    gex_1pct: float | None = None
     side: Literal["call", "put"]
     contract_symbol: str | None = None
     strike: float
@@ -840,10 +878,23 @@ class OptionContractSnapshot(ApiModel):
     volume: float | None = None
     implied_volatility: float | None = None
     in_the_money: bool = False
+    last_trade_at: str | None = None
+    quote_as_of: str | None = None
+    open_interest_as_of: str | None = None
+
+
+class OptionAvailability(ApiModel):
+    evaluated_at: str
+    state: Literal["current", "historical"]
+    current_expiries: list[str] = Field(default_factory=list)
 
 
 class OptionSnapshot(ApiModel):
     ticker: str
+    currency: str | None = None
+    model_inputs: dict[str, Any] = Field(default_factory=dict)
+    available_expiries: list[str] = Field(default_factory=list)
+    availability: OptionAvailability | None = None
     spot: float
     expiry_count: int
     captured_at: str
@@ -889,6 +940,7 @@ class ValuationSensitivity(ApiModel):
 
 class ValuationRow(ApiModel):
     ticker: str
+    assumptions: dict[str, Any] = Field(default_factory=dict)
     as_of: str
     currency: str
     spot: float
@@ -972,6 +1024,9 @@ class ResearchLensSnapshot(ApiModel):
     view: ResearchLensName
     run_id: str
     generated_at: str
+    context: ResearchContext | None = None
+    financial_facts: FinancialFacts | None = None
+    research_evidence: dict[str, Any] = Field(default_factory=dict)
     market: dict[str, Any] | None = None
     technical: TechnicalRow | None = None
     valuation: ValuationRow | None = None

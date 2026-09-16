@@ -11,6 +11,7 @@ from trading_max.infrastructure import (
     SnapshotStore,
     StoredSnapshot,
 )
+from trading_max.research.disclosures import ResearchEvidenceProvider
 from trading_max.research.fundamentals import YFinanceResearchService
 from trading_max.research.market import MarketResearchService
 
@@ -63,7 +64,11 @@ class TypedWorkerRuntime:
         self.state_root = state_root.expanduser().resolve()
         self.on_snapshot_published = on_snapshot_published
         self.market_service = market_service or MarketResearchService()
-        self.research_service = research_service or YFinanceResearchService()
+        self.research_service = research_service or YFinanceResearchService(
+            evidence_loader=ResearchEvidenceProvider(
+                self.state_root / "research-cache" / "disclosures"
+            )
+        )
         self.lookthrough_service = lookthrough_service
         self.taxonomy_provider = taxonomy_provider or RawTaxonomyCatalogProvider(self.state_root)
         self.valuation_assumptions = valuation_assumptions

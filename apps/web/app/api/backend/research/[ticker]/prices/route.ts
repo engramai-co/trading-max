@@ -9,15 +9,23 @@ export async function GET(
   context: { params: Promise<{ ticker: string }> },
 ) {
   const { ticker } = await context.params;
-  const requested = Number(new URL(request.url).searchParams.get("limit") ?? 504);
+  const requested = Number(
+    new URL(request.url).searchParams.get("limit") ?? 504,
+  );
   if (!Number.isInteger(requested) || requested < 2 || requested > 2_000) {
     return NextResponse.json(
       { detail: "limit must be an integer between 2 and 2000" },
       { status: 400 },
     );
   }
+  const interval = new URL(request.url).searchParams.get("interval") ?? "1d";
+  if (!["15m", "60m", "1d", "1wk"].includes(interval))
+    return NextResponse.json(
+      { detail: "Unsupported interval" },
+      { status: 400 },
+    );
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/prices?limit=${requested}`,
+    `/v1/research/${encodeURIComponent(ticker)}/prices?limit=${requested}&interval=${interval}`,
     undefined,
     request.headers.get("accept-encoding"),
   );

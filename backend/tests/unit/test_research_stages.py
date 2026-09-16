@@ -114,7 +114,8 @@ def test_research_stages_use_one_immutable_market_input(tmp_path) -> None:
         "first_session": "2023-01-02",
         "last_session": "2025-11-28",
         "daily_sessions": 760,
-        "monthly_observations": 34,
+        "monthly_observations": 33,
+        "excludes_incomplete_month": True,
     }
     assert set(technical_payload["benchmark_series"]) == {"VOO", "QQQ", "VT"}
     assert len(technical_payload["benchmark_series"]["VOO"]) == 760

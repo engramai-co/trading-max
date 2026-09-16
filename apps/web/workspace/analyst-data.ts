@@ -4,17 +4,16 @@ export const ratingKeys = [
   "strongBuy",
   "buy",
   "hold",
-  "underperform",
   "sell",
+  "strongSell",
 ] as const;
 export const targetKeys = ["low", "mean", "median", "high"] as const;
 
 export function normalizeRatingRow(row: Json): Json {
-  if (!Object.hasOwn(row, "strongSell")) return row;
-  // Yahoo names the last two bands sell/strongSell; the existing view model
-  // names them underperform/sell. Keep missing counts missing.
-  const { strongSell, sell, ...rest } = row;
-  return { ...rest, underperform: sell, sell: strongSell };
+  if (Object.hasOwn(row, "strongSell") || !Object.hasOwn(row, "underperform"))
+    return row;
+  const { underperform, sell, ...rest } = row;
+  return { ...rest, sell: underperform, strongSell: sell };
 }
 
 export function ratingSummary(rows: Json[]) {
