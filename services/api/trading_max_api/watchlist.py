@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import difflib
 import json
 import os
 import re
@@ -10,6 +9,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,11 +32,20 @@ from .models import (
     WatchlistItem,
     WatchlistState,
 )
+from .security_search_matching import (
+    SearchCandidate,
+    company_key,
+    index_candidates,
+    match_score,
+    merge_candidates,
+    quote_candidates,
+)
 
 if TYPE_CHECKING:
     from .security_entity_resolution import WebEntityResolution
 
 OPENFIGI_SEARCH_URL = "https://api.openfigi.com/v3/search"
+OPENFIGI_MAPPING_URL = "https://api.openfigi.com/v3/mapping"
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 EQUITY_INDEX_CACHE_TTL_SECONDS = 7 * 24 * 3600
 TICKER_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,14}$")
@@ -692,6 +701,7 @@ class SecuritySearchService:
         )
         self.entity_resolver = entity_resolver
         self._cache: dict[str, tuple[float, SecuritySearchResponse]] = {}
+        self._identity_cache: dict[str, tuple[float, list[SecuritySearchResult]]] = {}
         self._lock = threading.Lock()
         self._index: tuple[float, list[tuple[str, str]]] | None = None
 
@@ -751,16 +761,17 @@ class SecuritySearchService:
         cached = self._index
         if cached is not None and time.monotonic() - cached[0] < self.index_ttl:
             return cached[1]
+        entries: list[tuple[str, str]] = []
         try:
             if self.index_path.exists():
-                age = time.monotonic() - self.index_path.stat().st_mtime
+                age = time.time() - self.index_path.stat().st_mtime
+                payload = json.loads(self.index_path.read_text(encoding="utf-8"))
+                entries = [
+                    (str(item.get("name") or "").casefold(), str(item.get("ticker") or ""))
+                    for item in payload
+                    if isinstance(item, dict) and item.get("ticker") and item.get("name")
+                ]
                 if age < self.index_ttl:
-                    payload = json.loads(self.index_path.read_text(encoding="utf-8"))
-                    entries = [
-                        (str(item.get("name") or "").casefold(), str(item.get("ticker") or ""))
-                        for item in payload
-                        if isinstance(item, dict) and item.get("ticker") and item.get("name")
-                    ]
                     self._index = (time.monotonic(), entries)
                     return entries
             response = httpx.get(
@@ -773,7 +784,7 @@ class SecuritySearchService:
             )
             response.raise_for_status()
             rows = response.json()
-            entries: list[tuple[str, str]] = []
+            fresh_entries: list[tuple[str, str]] = []
             for value in rows.values():
                 if not isinstance(value, dict):
                     continue
@@ -781,51 +792,61 @@ class SecuritySearchService:
                 ticker = str(value.get("ticker") or "").strip().upper()
                 if not name or not TICKER_PATTERN.fullmatch(ticker):
                     continue
-                entries.append((name.casefold(), ticker))
-            entries.sort(key=lambda item: item[0])
-            payload = [{"name": name, "ticker": ticker} for name, ticker in entries]
-            self.index_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.index_path.with_suffix(".json.tmp")
-            temporary.write_text(
-                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                encoding="utf-8",
+                fresh_entries.append((name.casefold(), ticker))
+            entries = sorted(fresh_entries, key=lambda item: item[0])
+            _atomic_json(
+                self.index_path, [{"name": name, "ticker": ticker} for name, ticker in entries]
             )
-            temporary.replace(self.index_path)
             self._index = (time.monotonic(), entries)
             return entries
         except Exception:
-            # A missing index only disables typo correction; normal search
-            # still works, so failures here are deliberately non-fatal.
-            self._index = (time.monotonic(), [])
-            return []
+            # Previously downloaded entries remain useful for suggestions when
+            # SEC is unavailable. Every suggestion still needs live identity
+            # verification. Retry the index later, rather than waiting a week.
+            self._index = (time.monotonic() - self.index_ttl + min(60, self.index_ttl), entries)
+            return entries
 
-    def _openfigi_results(self, normalized: str, limit: int) -> list[SecuritySearchResult]:
-        """Run one OpenFIGI search and normalise its rows."""
+    def _openfigi_post(self, url: str, jobs: dict | list) -> dict | list:
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Trading Max security-search/1",
+        }
+        if api_key := os.getenv("TRADING_MAX_OPENFIGI_API_KEY", ""):
+            headers["X-OPENFIGI-APIKEY"] = api_key
         try:
             response = httpx.post(
-                OPENFIGI_SEARCH_URL,
-                json={
-                    "query": normalized,
-                    "exchCode": "US",
-                    "marketSecDes": "Equity",
-                },
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": "Trading Max-Portfolio/0.1",
-                },
+                url,
+                json=jobs,
+                headers=headers,
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            payload = response.json()
+            return response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise SecuritySearchError(f"OpenFIGI search failed: {exc}") from exc
 
+    def _openfigi_results(self, normalized: str, limit: int) -> list[SecuritySearchResult]:
+        payload = self._openfigi_post(
+            OPENFIGI_SEARCH_URL,
+            {
+                "query": normalized,
+                "exchCode": "US",
+                "marketSecDes": "Equity",
+            },
+        )
+        if not isinstance(payload, dict) or payload.get("error"):
+            raise SecuritySearchError("OpenFIGI returned an invalid search response")
+        return self._normalize_results(payload.get("data", []), normalized)
+
+    def _normalize_results(self, rows: list, normalized: str) -> list[SecuritySearchResult]:
+        if not isinstance(rows, list):
+            raise SecuritySearchError("OpenFIGI returned invalid security rows")
         watched = {item.ticker: item for item in self.watchlist.items()}
         watched_figis = {item.figi for item in self.watchlist.items()}
         results: list[SecuritySearchResult] = []
         seen: set[str] = set()
-        for raw in payload.get("data", []):
+        for raw in rows:
             if not isinstance(raw, dict):
                 continue
             ticker = _canonical_ticker(str(raw.get("ticker") or ""))
@@ -873,137 +894,190 @@ class SecuritySearchService:
         )
         return results
 
-    def _typo_corrected_results(
-        self,
-        normalized: str,
-        limit: int,
-    ) -> tuple[str, list[SecuritySearchResult]] | None:
-        """Find a close company-name match and re-query with the corrected name."""
-        entries = self._load_equity_index()
-        if not entries:
-            return None
-        query = normalized.casefold()
-        if len(query) < 3:
-            return None
-        # Full legal names dilute the similarity score, so also index the first
-        # word (the brand name). A typo like "plantir" then matches "palantir"
-        # instead of losing to the "technologies inc" suffix.
-        keys: list[tuple[str, str]] = []
-        seen_keys: set[str] = set()
-        for name, _ in entries:
-            for key in {name, name.split()[0] if name.split() else name}:
-                if key in seen_keys:
+    def _quote_search(self, query: str) -> list[dict]:
+        import yfinance as yf
+
+        try:
+            return yf.Search(
+                query,
+                max_results=8,
+                news_count=0,
+                lists_count=0,
+                include_cb=False,
+                recommended=0,
+                enable_fuzzy_query=False,
+                timeout=min(self.timeout, 5),
+            ).quotes
+        except Exception:
+            # This is an optional alias source, not an identity authority.
+            return []
+
+    def _verify_candidates(
+        self, candidates: list[SearchCandidate]
+    ) -> list[tuple[float, SecuritySearchResult]]:
+        tickers = list(dict.fromkeys(item.ticker for item in candidates if item.ticker))
+        with self._lock:
+            cached = {
+                ticker: self._identity_cache[ticker][1]
+                for ticker in tickers
+                if ticker in self._identity_cache
+                and time.monotonic() - self._identity_cache[ticker][0] < self.cache_ttl
+            }
+        missing = [ticker for ticker in tickers if ticker not in cached]
+        failures: list[SecuritySearchError] = []
+        if missing:
+            try:
+                payload = self._openfigi_post(
+                    OPENFIGI_MAPPING_URL,
+                    [
+                        {
+                            "idType": "TICKER",
+                            "idValue": ticker,
+                            "exchCode": "US",
+                            "marketSecDes": "Equity",
+                        }
+                        for ticker in missing
+                    ],
+                )
+                if not isinstance(payload, list) or len(payload) != len(missing):
+                    raise SecuritySearchError("OpenFIGI returned an invalid mapping response")
+                for ticker, result in zip(missing, payload, strict=True):
+                    if not isinstance(result, dict) or result.get("error"):
+                        failures.append(
+                            SecuritySearchError("OpenFIGI could not verify a candidate")
+                        )
+                        continue
+                    cached[ticker] = self._normalize_results(result.get("data", []), ticker)
+                    with self._lock:
+                        self._identity_cache[ticker] = (time.monotonic(), cached[ticker])
+            except SecuritySearchError as exc:
+                failures.append(exc)
+
+        ranked: list[tuple[float, SecuritySearchResult]] = []
+        for candidate in candidates:
+            if candidate.ticker:
+                results = cached.get(candidate.ticker, [])
+            else:
+                try:
+                    results = self._openfigi_results(candidate.query, 3)
+                except SecuritySearchError as exc:
+                    failures.append(exc)
                     continue
-                seen_keys.add(key)
-                keys.append((key, name))
-        key_names = [key for key, _ in keys]
-        matches = difflib.get_close_matches(query, key_names, n=3, cutoff=0.72)
-        if not matches:
-            return None
-        key_to_name = dict(keys)
-        corrected_key = matches[0]
-        corrected = key_to_name[corrected_key]
-        if corrected == query:
-            return None
-        results = self._openfigi_results(corrected, limit)
-        if not results:
-            return None
-        return corrected, results
+            ranked.extend(
+                (candidate.score, item)
+                for item in results
+                if (not candidate.ticker or item.ticker == candidate.ticker)
+                and company_key(item.name) == company_key(candidate.name)
+            )
+        if failures and not ranked:
+            # Rate limits/outages are retryable errors, not an empty match.
+            raise failures[0]
+        return ranked
+
+    def _fuzzy_results(self, query: str) -> list[tuple[float, SecuritySearchResult]]:
+        # Alias discovery and the local spelling index are independent. A weak
+        # spelling match must never prevent looking up a former company name.
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            quotes = pool.submit(self._quote_search, query)
+            index = pool.submit(self._load_equity_index)
+            suggestions = quote_candidates(query, quotes.result())
+            entries = index.result()
+        candidates = index_candidates(query, entries)
+        for suggestion in suggestions:
+            # Resolve a provider's current name to its US listings. This also
+            # preserves separate share classes, such as GOOG and GOOGL.
+            peers = [
+                SearchCandidate(ticker, name, suggestion.score, ticker)
+                for name, ticker in entries
+                if company_key(name) == company_key(suggestion.name)
+                and query.casefold() != suggestion.ticker.casefold()
+            ]
+            candidates.extend(peers)
+            if suggestion.ticker or not peers:
+                candidates.append(suggestion)
+        return self._verify_candidates(merge_candidates(candidates))
+
+    def _present(
+        self, response: SecuritySearchResponse, query: str, limit: int
+    ) -> SecuritySearchResponse:
+        watched = self.watchlist.items()
+        tickers = {item.ticker for item in watched}
+        figis = {item.figi for item in watched if item.figi}
+        return response.model_copy(
+            update={
+                "query": query,
+                "results": [
+                    item.model_copy(
+                        update={"already_watched": item.ticker in tickers or item.figi in figis}
+                    )
+                    for item in response.results[:limit]
+                ],
+            }
+        )
 
     def search(self, query: str, limit: int = 8) -> SecuritySearchResponse:
         normalized = " ".join(query.strip().split())
         if len(normalized) < 2:
-            return SecuritySearchResponse(
-                query=normalized,
-                source="watchlist",
-                results=[],
-            )
+            return SecuritySearchResponse(query=normalized, source="watchlist", results=[])
         cache_key = normalized.casefold()
         with self._lock:
             cached = self._cache.get(cache_key)
-            if cached and time.monotonic() - cached[0] < self.cache_ttl:
-                return cached[1]
+        if cached and time.monotonic() - cached[0] < self.cache_ttl:
+            return self._present(cached[1], normalized, limit)
 
         local = [
             self._existing_result(item)
             for item in self.watchlist.items()
-            if cache_key in item.ticker.casefold()
-            or cache_key in item.name.casefold()
+            if match_score(normalized, item.name, item.ticker) > 0
             or cache_key in item.bloomberg_ticker.casefold()
-            or cache_key in item.figi.casefold()
+            or cache_key == item.figi.casefold()
         ]
         exact_local = [item for item in local if item.ticker.casefold() == cache_key]
         if exact_local:
-            response = SecuritySearchResponse(
-                query=normalized,
-                source="watchlist",
-                results=exact_local[:limit],
+            return SecuritySearchResponse(
+                query=normalized, source="watchlist", results=exact_local[:limit]
             )
-            with self._lock:
-                self._cache[cache_key] = (time.monotonic(), response)
-            return response
 
+        ranked = [(match_score(normalized, item.name, item.ticker), item) for item in local]
         try:
-            results = self._openfigi_results(normalized, limit)
-        except SecuritySearchError as exc:
-            if local:
-                return SecuritySearchResponse(
-                    query=normalized,
-                    source="watchlist",
-                    results=local[:limit],
+            ranked.extend(self._fuzzy_results(normalized))
+            if not ranked:
+                # OpenFIGI name search is a fallback; its public rate limit is
+                # much lower than batching verified ticker mapping jobs.
+                ranked.extend(
+                    (score, item)
+                    for item in self._openfigi_results(normalized, limit)
+                    if (score := match_score(normalized, item.name, item.ticker)) > 0
                 )
-            raise exc
+        except SecuritySearchError:
+            if not ranked:
+                raise
 
-        combined: list[SecuritySearchResult] = []
-        combined_seen: set[str] = set()
-        for item in [*local, *results]:
-            if item.figi in combined_seen:
-                continue
-            combined_seen.add(item.figi)
-            combined.append(item)
-        if not combined:
-            corrected = self._typo_corrected_results(normalized, limit)
-            if corrected is not None:
-                corrected_query, corrected_results = corrected
-                result = SecuritySearchResponse(
-                    query=normalized,
-                    source="openfigi",
-                    corrected_query=corrected_query,
-                    results=corrected_results[:limit],
-                )
-                with self._lock:
-                    self._cache[cache_key] = (time.monotonic(), result)
-                return result
-            if self.entity_resolver is not None:
-                resolution = self.entity_resolver(normalized)
-                if resolution is not None:
-                    resolved_results: list[SecuritySearchResult] = []
-                    resolved_figis: set[str] = set()
-                    for resolved_query in resolution.search_queries:
-                        try:
-                            candidates = self._openfigi_results(resolved_query, limit)
-                        except SecuritySearchError:
-                            continue
-                        for candidate in candidates:
-                            if candidate.figi in resolved_figis:
-                                continue
-                            resolved_figis.add(candidate.figi)
-                            resolved_results.append(candidate)
-                    if resolved_results:
-                        result = SecuritySearchResponse(
-                            query=normalized,
-                            source="openfigi",
-                            corrected_query=resolution.company_name,
-                            results=resolved_results[:limit],
-                        )
-                        with self._lock:
-                            self._cache[cache_key] = (time.monotonic(), result)
-                        return result
-        result = SecuritySearchResponse(
+        corrected_query = None
+        if not ranked and self.entity_resolver is not None:
+            resolution = self.entity_resolver(normalized)
+            if resolution is not None:
+                candidates = [
+                    SearchCandidate(ticker, resolution.company_name, 0.95, ticker)
+                    for resolved_query in resolution.search_queries[:3]
+                    if TICKER_PATTERN.fullmatch(ticker := _canonical_ticker(resolved_query))
+                ]
+                ranked.extend(self._verify_candidates(candidates))
+                if ranked:
+                    corrected_query = resolution.company_name
+
+        # Deduplicate listings, not issuers: GOOG and GOOGL remain two choices.
+        combined: dict[str, SecuritySearchResult] = {}
+        for _, item in sorted(ranked, key=lambda row: (-row[0], row[1].ticker)):
+            combined.setdefault(item.ticker, item)
+        response = SecuritySearchResponse(
             query=normalized,
             source="openfigi",
-            results=combined[:limit],
+            corrected_query=corrected_query,
+            results=list(combined.values()),
         )
         with self._lock:
-            self._cache[cache_key] = (time.monotonic(), result)
-        return result
+            # Store the candidate pool; a request for one row must not poison
+            # the subsequent three-candidate response, or vice versa.
+            self._cache[cache_key] = (time.monotonic(), response)
+        return self._present(response, normalized, limit)

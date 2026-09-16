@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-16
+
+### Fixed
+
+- Match company names, tickers, and spelling variants against verified security
+  identities. Rank exact and relevant matches ahead of unrelated fuzzy results,
+  and show up to three meaningful candidates in the add-security dialog.
+- Keep an existing company-name index usable during provider outages, refresh
+  it using the correct clock, and bound identity lookups and cache lifetimes.
+- Keep displayed search results aligned with the current submitted input;
+  cancel obsolete requests and allow an explicit retry of the same search.
+
 ## [1.3.0] - 2026-09-16
 
 ### Added

@@ -859,13 +859,16 @@ function SecurityFinder({
   const t = useCopy();
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
+  const currentText = (text || initial).trim();
+  const showingCurrentSearch = search === currentText;
   const query = useQuery({
-    queryKey: ["workspace-security-search", search],
+    queryKey: ["workspace-security-search", opened ? search : "", 3],
     enabled: opened && search.length >= 2,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<SecuritySearchResponse>(
-        "/securities/search?q=" + encodeURIComponent(search),
+        "/securities/search?q=" + encodeURIComponent(search), { signal },
       ),
+    staleTime: 60_000,
     retry: 0,
   });
   const add = useMutation({
@@ -875,7 +878,9 @@ function SecurityFinder({
   });
   function submit(event: React.FormEvent) {
     event.preventDefault();
-    setSearch((text || initial).trim());
+    if (currentText.length < 2) return;
+    if (showingCurrentSearch) void query.refetch();
+    else setSearch(currentText);
   }
   return (
     <Modal
@@ -894,20 +899,21 @@ function SecurityFinder({
               initial || t("证券代码或公司名", "Ticker or company name")
             }
             value={text}
+            maxLength={100}
             onChange={(e) => setText(e.currentTarget.value)}
             leftSection={<MagnifyingGlass size={18} />}
           />
           <Button
             type="submit"
-            disabled={(text || initial).trim().length < 2}
-            loading={query.isFetching}
+            disabled={currentText.length < 2}
+            loading={query.isFetching && showingCurrentSearch}
           >
             {t("搜索", "Search")}
           </Button>
         </Group>
       </form>
       {add.isError && <Notice tone="bad">{add.error.message}</Notice>}
-      {query.isError ? (
+      {!showingCurrentSearch ? null : query.isError ? (
         <Notice tone="bad">
           {t(
             "搜索暂时不可用，请稍后重试。",
@@ -919,7 +925,7 @@ function SecurityFinder({
       ) : query.data ? (
         query.data.results.length ? (
           <div style={{ marginTop: 20 }}>
-            {query.data.results.map((r, i) => (
+            {query.data.results.slice(0, 3).map((r, i) => (
               <div className="mx-row-link" key={r.figi || r.ticker + i}>
                 <Instrument ticker={r.ticker} name={r.name} small />
                 <span className="mx-form-help">{r.exchange}</span>
