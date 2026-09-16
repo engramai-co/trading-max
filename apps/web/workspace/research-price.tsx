@@ -28,12 +28,18 @@ import {
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
+import {
+  incompletePriceRange,
+  priceIntervals,
+  priceRanges,
+  resolvePriceInterval,
+  supportsPriceRange,
+} from "./research-price-settings";
 
-const intervals = ["15m", "60m", "1d", "1wk"];
+const intervals = priceIntervals;
 export function PriceHistory({
   ticker,
   runId,
-  technical = false,
   context,
 }: {
   ticker: string;
@@ -43,31 +49,29 @@ export function PriceHistory({
 }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
-  const ranges = ["1D", "5D", "1M", "3M", "6M", "YTD", "1Y", "2Y", "ALL"];
+  const ranges = priceRanges;
+  const full = params.get("chart") === "full";
   const range = ranges.includes(params.get("priceRange") ?? "")
     ? params.get("priceRange")!
     : "3M";
   const requested = params.get("interval");
-  const interval =
-    requested && intervals.includes(requested)
-      ? requested
-      : range === "1D" || range === "5D"
-        ? "15m"
-        : range === "1M" || range === "3M"
-          ? "60m"
-          : "1d";
-  const style = params.get("priceStyle") ?? "line",
-    scale = params.get("priceScale") ?? "linear";
-  const averages =
-    params.get("ma") === "off" ? false : params.get("ma") === "on" || technical;
-  const selectedMa = params.get("highlightMa"),
-    rsi = params.get("rsi") === "on",
-    macd = params.get("macd") === "on";
-  const comparison = params.get("benchmark") ?? "none";
-  const [full, setFull] = useState(false),
-    [events, setEvents] = useState(false);
+  const interval = resolvePriceInterval(range, requested, full);
+  const style = params.get("priceStyle") === "candles" ? "candles" : "line";
+  const scale = full ? (params.get("priceScale") ?? "linear") : "linear";
+  const averages = params.get("ma") === "on";
+  const selectedMa = params.get("highlightMa");
+  const averagePeriods = full
+    ? (params.get("maPeriods") ?? "20,50")
+        .split(",")
+        .filter((v) => ["20", "50", "200"].includes(v))
+    : [...new Set(["20", "50", ...(selectedMa === "sma200" ? ["200"] : [])])];
+  const rsi = full && params.get("rsi") === "on";
+  const macd = full && params.get("macd") === "on";
+  const comparison = full ? (params.get("benchmark") ?? "none") : "none";
+  const [events, setEvents] = useState(false);
   const chart = useRef<ECharts | null>(null);
-  const [zoom, setZoom] = useState({ start: 0, end: 100 });
+  const inlineChart = useRef<HTMLDivElement | null>(null);
+  const [inlineHeight, setInlineHeight] = useState(550);
   const zoomKey = `tm-research-zoom:${ticker}:${range}:${interval}`;
   const savedZoom = () => {
     try {
@@ -84,7 +88,7 @@ export function PriceHistory({
     } catch {
       /* Storage can be disabled; chart interaction still works. */
     }
-    return zoom;
+    return { start: 0, end: 100 };
   };
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
   const benchmark = useQuery({
@@ -102,17 +106,17 @@ export function PriceHistory({
             .includes(p.date.slice(0, 10)),
         )
       : inRange(all, range as Range);
-  const isIntraday = query.data?.actualInterval.endsWith("m"),
+  const actualInterval = query.data?.actualInterval ?? interval;
+  const isIntraday = actualInterval.endsWith("m"),
     dates = points.map((p) => p.date);
+  const intradayDateFormatter = new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+    timeZone: query.data?.timezone ?? "UTC",
+  });
   const formatDate = (date: string) =>
     isIntraday
-      ? new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: query.data?.timezone ?? "UTC",
-        }).format(new Date(date))
+      ? intradayDateFormatter.format(new Date(date))
       : date.slice(0, 10);
   const benchmarkPoints = new Map(
     benchmark.data?.points.map((p) => [p.date, p]) ?? [],
@@ -147,18 +151,34 @@ export function PriceHistory({
     } catch {
       /* Optional view preference. */
     }
-    setZoom({ start: 0, end: 100 });
     chart.current?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
   };
   const toggleFull = (next: boolean) => {
+    if (next && inlineChart.current)
+      setInlineHeight(inlineChart.current.offsetHeight);
     const current = (
       chart.current?.getOption().dataZoom as
         | { start?: number; end?: number }[]
         | undefined
     )?.[0];
-    if (current?.start != null && current.end != null)
-      setZoom({ start: current.start, end: current.end });
-    setFull(next);
+    if (current?.start != null && current.end != null) {
+      try {
+        sessionStorage.setItem(zoomKey, JSON.stringify(current));
+      } catch {
+        /* Optional view state. */
+      }
+    }
+    update({
+      chart: next ? "full" : null,
+      ...(next
+        ? {
+            interval:
+              requested && supportsPriceRange(requested, range)
+                ? requested
+                : interval,
+          }
+        : {}),
+    });
   };
   const content = (
     <>
@@ -167,33 +187,50 @@ export function PriceHistory({
           label={t("价格区间", "Price range")}
           value={range}
           onChange={(v) => {
-            update({ priceRange: v, interval: null });
+            update({
+              priceRange: v,
+              interval:
+                full && supportsPriceRange(interval, v) ? interval : null,
+            });
             reset();
           }}
-          options={ranges.map((v) => ({
-            value: v,
-            label: v === "ALL" ? t("全部记录", "Available") : v,
-          }))}
+          options={ranges
+            .filter(
+              (v) =>
+                full ||
+                ["1D", "5D", "1M", "3M", "1Y", "ALL", range].includes(v),
+            )
+            .map((v) => ({
+              value: v,
+              label: v === "ALL" ? t("全部记录", "Available") : v,
+            }))}
         />
         <Group gap="xs">
-          <Select
-            w={104}
-            aria-label={t("行情粒度", "Bar interval")}
-            value={interval}
-            onChange={(v) => {
-              update({ interval: v });
-              reset();
-            }}
-            data={intervals.map((v, i) => ({
-              value: v,
-              label: [
-                t("15 分钟", "15 min"),
-                t("1 小时", "1 hour"),
-                t("日线", "Daily"),
-                t("周线", "Weekly"),
-              ][i],
-            }))}
-          />
+          {full && (
+            <Select
+              w={145}
+              aria-label={t("行情粒度", "Bar interval")}
+              value={interval}
+              onChange={(v) => {
+                update({ interval: v });
+                reset();
+              }}
+              data={intervals.map((v, i) => ({
+                value: v,
+                label:
+                  [
+                    t("15 分钟", "15 min"),
+                    t("1 小时", "1 hour"),
+                    t("日线", "Daily"),
+                    t("周线", "Weekly"),
+                  ][i] +
+                  (!supportsPriceRange(v, range)
+                    ? t(" · 范围不支持", " · unavailable for range")
+                    : ""),
+                disabled: !supportsPriceRange(v, range),
+              }))}
+            />
+          )}
           <Segments
             label={t("价格样式", "Price style")}
             value={style}
@@ -203,20 +240,36 @@ export function PriceHistory({
               { value: "candles", label: t("K 线", "Candles") },
             ]}
           />
-          <Select
-            w={110}
-            aria-label={t("纵轴", "Price axis")}
-            value={scale}
-            onChange={(v) => update({ priceScale: v })}
-            data={[
-              { value: "linear", label: t("线性", "Linear") },
-              { value: "log", label: t("对数", "Log") },
-              { value: "percent", label: t("涨跌幅", "Return %") },
-            ]}
-          />
-          <Button variant="default" size="compact-sm" onClick={reset}>
-            {t("恢复范围", "Reset zoom")}
-          </Button>
+          {full && (
+            <Select
+              w={110}
+              aria-label={t("纵轴", "Price axis")}
+              value={scale}
+              onChange={(v) => update({ priceScale: v })}
+              data={[
+                { value: "linear", label: t("线性", "Linear") },
+                { value: "log", label: t("对数", "Log") },
+                { value: "percent", label: t("涨跌幅", "Return %") },
+              ]}
+            />
+          )}
+          {full && (
+            <Button variant="default" size="compact-sm" onClick={reset}>
+              {t("恢复范围", "Reset zoom")}
+            </Button>
+          )}
+          {full && (
+            <Button
+              component="a"
+              href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
+              target="_blank"
+              rel="noreferrer"
+              variant="subtle"
+              size="compact-sm"
+            >
+              TradingView ↗
+            </Button>
+          )}
           <Button
             variant="default"
             size="compact-sm"
@@ -232,7 +285,11 @@ export function PriceHistory({
         <Group gap="lg">
           <Checkbox
             size="xs"
-            label={t("均线", "Averages")}
+            label={
+              full
+                ? t("均线", "Averages")
+                : `SMA ${averagePeriods.join(" / ")} · ${actualInterval === "1d" ? t("日线", "daily") : actualInterval}`
+            }
             checked={averages}
             onChange={(e) =>
               update({
@@ -241,42 +298,78 @@ export function PriceHistory({
               })
             }
           />
-          <Checkbox
-            size="xs"
-            label="RSI 14"
-            checked={rsi}
-            onChange={(e) =>
-              update({ rsi: e.currentTarget.checked ? "on" : null })
-            }
-          />
-          <Checkbox
-            size="xs"
-            label="MACD 12/26/9"
-            checked={macd}
-            onChange={(e) =>
-              update({ macd: e.currentTarget.checked ? "on" : null })
-            }
-          />
+          {full && averages && (
+            <Checkbox.Group
+              aria-label={t("均线周期", "Average periods")}
+              value={averagePeriods}
+              onChange={(v) =>
+                update({
+                  maPeriods: v.join(","),
+                  highlightMa: null,
+                  ma: v.length ? "on" : "off",
+                })
+              }
+            >
+              <Group gap="sm">
+                {["20", "50", "200"].map((v) => (
+                  <Checkbox
+                    key={v}
+                    size="xs"
+                    value={v}
+                    label={
+                      v +
+                      (actualInterval === "1d"
+                        ? t(" 日", " days")
+                        : t(" 根", " bars"))
+                    }
+                  />
+                ))}
+              </Group>
+            </Checkbox.Group>
+          )}
+          {full && (
+            <Checkbox
+              size="xs"
+              label="RSI 14"
+              checked={rsi}
+              onChange={(e) =>
+                update({ rsi: e.currentTarget.checked ? "on" : null })
+              }
+            />
+          )}
+          {full && (
+            <Checkbox
+              size="xs"
+              label="MACD 12/26/9"
+              checked={macd}
+              onChange={(e) =>
+                update({ macd: e.currentTarget.checked ? "on" : null })
+              }
+            />
+          )}
           <Button
             variant="subtle"
             size="compact-xs"
             onClick={() => setEvents(true)}
           >
-            {t("事件记录", "Events")} ({markers.length + corporate.length + earnings.length})
+            {t("事件记录", "Events")} (
+            {markers.length + corporate.length + earnings.length})
           </Button>
         </Group>
-        <Select
-          w={165}
-          aria-label={t("基准对比", "Benchmark comparison")}
-          value={comparison}
-          onChange={(v) => update({ benchmark: v === "none" ? null : v })}
-          data={[
-            { value: "none", label: t("加入对比", "Compare with") },
-            { value: "SPY", label: "SPY · S&P 500 ETF" },
-            { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
-            { value: "VT", label: "VT · Global stocks" },
-          ]}
-        />
+        {full && (
+          <Select
+            w={165}
+            aria-label={t("基准对比", "Benchmark comparison")}
+            value={comparison}
+            onChange={(v) => update({ benchmark: v === "none" ? null : v })}
+            data={[
+              { value: "none", label: t("加入对比", "Compare with") },
+              { value: "SPY", label: "SPY · S&P 500 ETF" },
+              { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
+              { value: "VT", label: "VT · Global stocks" },
+            ]}
+          />
+        )}
       </div>
       {query.isPending ? (
         <Pending />
@@ -288,6 +381,31 @@ export function PriceHistory({
         />
       ) : (
         <>
+          {full && requested && requested !== interval && (
+            <p role="status">
+              {t(
+                "所选范围不支持该粒度，已改用",
+                "The selected range requires ",
+              )}
+              {
+                {
+                  "15m": t("15 分钟线", "15-minute bars"),
+                  "60m": t("小时线", "hourly bars"),
+                  "1d": t("日线", "daily bars"),
+                  "1wk": t("周线", "weekly bars"),
+                }[interval]
+              }
+            </p>
+          )}
+          {incompletePriceRange(dates, range) && (
+            <p role="status">
+              {t(
+                "该证券的记录未覆盖整个所选范围",
+                "History does not cover the full selected range",
+              )}{" "}
+              · {formatDate(points[0].date)} → {formatDate(points.at(-1)!.date)}
+            </p>
+          )}
           {query.data.coverageReason && (
             <p role="status">
               {t(
@@ -403,20 +521,26 @@ export function PriceHistory({
                   lineStyle: { color: c.secondary, width: 1.6 },
                 });
               if (averages)
-                (["sma20", "sma50", "sma200"] as const).forEach((key, i) =>
-                  series.push({
-                    type: "line",
-                    name: key.toUpperCase(),
-                    showSymbol: false,
-                    connectNulls: false,
-                    data: points.map((p) => value(p[key])),
-                    lineStyle: {
-                      color: [c.accent, c.secondary, c.axis][i],
-                      width: selectedMa === key ? 2.5 : 1.2,
-                      opacity: selectedMa && selectedMa !== key ? 0.3 : 1,
-                    },
-                  }),
-                );
+                (["sma20", "sma50", "sma200"] as const)
+                  .filter((key) => averagePeriods.includes(key.slice(3)))
+                  .forEach((key, i) =>
+                    series.push({
+                      type: "line",
+                      name:
+                        key.toUpperCase() +
+                        (actualInterval === "1d"
+                          ? t(" · 日线", " · daily")
+                          : t(" · ", " · ") + actualInterval),
+                      showSymbol: false,
+                      connectNulls: false,
+                      data: points.map((p) => value(p[key])),
+                      lineStyle: {
+                        color: [c.accent, c.secondary, c.axis][i],
+                        width: selectedMa === key ? 2.5 : 1.2,
+                        opacity: selectedMa && selectedMa !== key ? 0.3 : 1,
+                      },
+                    }),
+                  );
               series.push({
                 type: "bar",
                 name: t("成交量", "Volume"),
@@ -530,7 +654,17 @@ export function PriceHistory({
                                 `O ${number(p.open, 2)}   H ${number(p.high, 2)}   L ${number(p.low, 2)}`,
                               ]
                             : []),
-                          `${t("成交量", "Volume")}  ${number(p.volume, 0)}`,
+                          `${t("成交量", "Volume")}  ${compact(p.volume)}`,
+                          ...(averages
+                            ? (["sma20", "sma50", "sma200"] as const)
+                                .filter((k) =>
+                                  averagePeriods.includes(k.slice(3)),
+                                )
+                                .map(
+                                  (k) =>
+                                    `${k.toUpperCase()} · ${query.data.actualInterval}  ${number(p[k], 2)}`,
+                                )
+                            : []),
                           ...(rsi ? [`RSI 14  ${number(p.rsi14, 2)}`] : []),
                           ...(macd
                             ? [
@@ -550,6 +684,7 @@ export function PriceHistory({
                   axisLabel: {
                     show: i === panes.length - 1,
                     hideOverlap: true,
+                    padding: [0, 8],
                     color: c.axis,
                     formatter: (d: string) =>
                       isIntraday ? formatDate(d) : d.slice(5),
@@ -582,24 +717,26 @@ export function PriceHistory({
                     lineStyle: { color: c.grid, type: "dashed" },
                   },
                 })),
-                dataZoom: [
-                  {
-                    type: "inside",
-                    xAxisIndex: panes.map((_, i) => i),
-                    ...savedZoom(),
-                    zoomOnMouseWheel: "ctrl",
-                    moveOnMouseWheel: false,
-                  },
-                  {
-                    type: "slider",
-                    xAxisIndex: panes.map((_, i) => i),
-                    bottom: 0,
-                    height: 18,
-                    showDetail: false,
-                    borderColor: c.grid,
-                    ...savedZoom(),
-                  },
-                ],
+                dataZoom: full
+                  ? [
+                      {
+                        type: "inside",
+                        xAxisIndex: panes.map((_, i) => i),
+                        ...savedZoom(),
+                        zoomOnMouseWheel: "ctrl",
+                        moveOnMouseWheel: false,
+                      },
+                      {
+                        type: "slider",
+                        xAxisIndex: panes.map((_, i) => i),
+                        bottom: 0,
+                        height: 18,
+                        showDetail: false,
+                        borderColor: c.grid,
+                        ...savedZoom(),
+                      },
+                    ]
+                  : [],
                 series,
               };
             }}
@@ -617,11 +754,11 @@ export function PriceHistory({
               {formatDate(points[0].date)} → {formatDate(points.at(-1)!.date)}
             </span>
             <span>
-              {query.data.currency} · {query.data.actualInterval} ·{" "}
-              {query.data.timezone ?? ""}
+              {query.data.currency} · {query.data.actualInterval}
+              {query.data.timezone ? ` · ${query.data.timezone}` : ""}
             </span>
           </div>
-          {markers.length + corporate.length + earnings.length > 0 && (
+          {full && markers.length + corporate.length + earnings.length > 0 && (
             <div
               className="mx-event-track"
               aria-label={t("事件时间轴", "Event timeline")}
@@ -714,13 +851,18 @@ export function PriceHistory({
   return (
     <>
       <Panel
-        title={t("价格与技术", "Price & technicals")}
+        title={t("价格走势", "Price chart")}
         help={t(
           "行情为拆股及分红调整后价格。均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。比较按同币种和共同起点归一化。",
           "Prices are split and dividend adjusted. Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. Comparisons share currency and starting time.",
         )}
       >
-        {!full && content}
+        <div
+          ref={inlineChart}
+          style={full ? { height: inlineHeight } : undefined}
+        >
+          {!full && content}
+        </div>
       </Panel>
       <Modal
         fullScreen
@@ -777,7 +919,27 @@ export function PriceHistory({
                   </p>
                 </article>
               ))}
-              {earnings.map((e, i) => <article key={"earnings" + i}><h3>{String(e.date)} · {t("财报", "Earnings")}</h3><Button variant="subtle" onClick={() => { setEvents(false); update({view:"analyst", analystView:"events", eventId: String(e.id), eventDate: String(e.date)}); }}>{t("查看实际与预期", "Reported results & estimates")}</Button></article>)}
+              {earnings.map((e, i) => (
+                <article key={"earnings" + i}>
+                  <h3>
+                    {String(e.date)} · {t("财报", "Earnings")}
+                  </h3>
+                  <Button
+                    variant="subtle"
+                    onClick={() => {
+                      setEvents(false);
+                      update({
+                        view: "analyst",
+                        analystView: "events",
+                        eventId: String(e.id),
+                        eventDate: String(e.date),
+                      });
+                    }}
+                  >
+                    {t("查看实际与预期", "Reported results & estimates")}
+                  </Button>
+                </article>
+              ))}
             </>
           )}
         </div>

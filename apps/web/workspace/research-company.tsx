@@ -116,6 +116,9 @@ export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
                           className="mx-text-link"
                           onClick={() => {
                             update({
+                              technicalView: null,
+                              priceRange: "1Y",
+                              chart: null,
                               highlightMa: ["sma20", "sma50", "sma200"][index],
                               ma: "on",
                               interval: "1d",

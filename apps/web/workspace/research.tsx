@@ -8,6 +8,7 @@ import type {
 } from "@/lib/types";
 import {
   ActionIcon,
+  Avatar,
   Button,
   Checkbox,
   Drawer,
@@ -138,16 +139,13 @@ export function ResearchWorkspace() {
   const lensName = tab === "financials" ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
   const detail = tab === "overview" ? "summary"
+    : tab === "technical" ? (params.get("technicalView") === "seasonality" ? "seasonality" : "summary")
     : tab === "ledger" ? (["filings", "news"].includes(params.get("notebook") ?? "notes") ? "documents" : "summary")
     : ["fundamentals", "financials"].includes(tab) && params.get("financialMode") !== "full" ? "summary"
     : "full";
   const lens = useQuery({
     ...researchLensQuery(ticker, lensName, revision, detail),
     enabled: Boolean(selected),
-  });
-  const context = useQuery({
-    ...researchLensQuery(ticker, "fundamentals", revision),
-    enabled: Boolean(selected) && (tab === "overview" || tab === "technical"),
   });
   const quote =
     lens.data ??
@@ -161,6 +159,10 @@ export function ResearchWorkspace() {
   const isFund = ["ETF", "MUTUALFUND"].includes(
     quote?.context?.assetType ?? "",
   );
+  const context = useQuery({
+    ...researchLensQuery(ticker, "fundamentals", revision),
+    enabled: Boolean(selected) && isFund && tab === "overview",
+  });
   useEffect(() => {
     if (isFund && (tab === "valuation" || tab === "analyst"))
       update({ view: "overview" });
@@ -215,10 +217,27 @@ export function ResearchWorkspace() {
     update({ ticker: value });
     setUniverseOpen(false);
   }
-  const universe = (
-    <>
-      <div className="mx-universe-heading">
-        <h2>{t("研究清单", "Research universe")}</h2>
+  const universeHeading = (
+    <span className="mx-universe-heading">
+      <span>{t("研究清单", "Research list")}</span>
+      <Group component="span" gap={4}>
+        {wide && (
+          <ActionIcon
+            aria-label={
+              pinned
+                ? t("取消固定研究清单", "Unpin research list")
+                : t("固定研究清单", "Pin research list")
+            }
+            aria-pressed={pinned}
+            variant={pinned ? "light" : "subtle"}
+            onClick={() => {
+              setPinned(!pinned);
+              setUniverseOpen(pinned);
+            }}
+          >
+            <PushPin size={17} weight={pinned ? "fill" : "regular"} />
+          </ActionIcon>
+        )}
         <ActionIcon
           aria-label={t("添加证券", "Add security")}
           size={30}
@@ -226,7 +245,11 @@ export function ResearchWorkspace() {
         >
           <Plus size={16} />
         </ActionIcon>
-      </div>
+      </Group>
+    </span>
+  );
+  const universe = (
+    <>
       <TextInput
         size="xs"
         aria-label={t("筛选研究清单", "Filter research list")}
@@ -316,7 +339,16 @@ export function ResearchWorkspace() {
             className="mx-universe-toggle"
             variant="default"
             leftSection={<List size={17} />}
-            onClick={() => (wide ? setPinned(!pinned) : setUniverseOpen(true))}
+            aria-expanded={universeOpen || (wide && pinned)}
+            onClick={() => {
+              if (wide && pinned)
+                document
+                  .querySelector<HTMLInputElement>(
+                    ".mx-research-universe input",
+                  )
+                  ?.focus();
+              else setUniverseOpen(true);
+            }}
           >
             {t("研究清单", "Research list")}
           </Button>
@@ -343,6 +375,7 @@ export function ResearchWorkspace() {
               className="mx-research-universe"
               aria-label={t("研究清单", "Research list")}
             >
+              <h2>{universeHeading}</h2>
               {universe}
             </aside>
           )}
@@ -421,6 +454,17 @@ export function ResearchWorkspace() {
                 <Panel className="mx-security-panel">
                   <div className="mx-security-header">
                     <div className="mx-security-name">
+                      <Avatar
+                        key={ticker}
+                        src={`/api/company-logo/${encodeURIComponent(ticker)}`}
+                        alt=""
+                        aria-hidden="true"
+                        size={48}
+                        radius="md"
+                        className="mx-company-logo"
+                      >
+                        {ticker.slice(0, 2)}
+                      </Avatar>
                       <div>
                         <h2>{selected.name || ticker}</h2>
                         <div className="mx-security-meta">
@@ -540,15 +584,6 @@ export function ResearchWorkspace() {
                       >
                         <CaretRight size={18} />
                       </ActionIcon>
-                      {wide && (
-                        <ActionIcon
-                          aria-label={t("固定研究清单", "Pin research list")}
-                          aria-pressed={pinned}
-                          onClick={() => setPinned(!pinned)}
-                        >
-                          <PushPin size={17} />
-                        </ActionIcon>
-                      )}
                       <Button
                         aria-label={t("更新研究", "Update research")}
                         variant="default"
@@ -644,14 +679,53 @@ export function ResearchWorkspace() {
                     {operation.error.message}
                   </Notice>
                 )}
-                {fetching && !lens.data ? (
+                {tab === "overview" && (
+                  <PricePreview ticker={ticker} runId={revision ?? ""} />
+                )}
+                {tab === "technical" && <>
+                          <Tabs
+                            label={t(
+                              "价格与技术内容",
+                              "Price & technical sections",
+                            )}
+                            value={
+                              ["price", "data", "seasonality"].includes(
+                                params.get("technicalView") ?? "",
+                              )
+                                ? params.get("technicalView")!
+                                : "price"
+                            }
+                            onChange={(v) =>
+                              update({
+                                technicalView: v === "price" ? null : v,
+                              })
+                            }
+                            options={[
+                              { value: "price", label: t("走势", "Chart") },
+                              {
+                                value: "data",
+                                label: t("技术数据", "Technical data"),
+                              },
+                              {
+                                value: "seasonality",
+                                label: t("季节性", "Seasonality"),
+                              },
+                            ]}
+                          />
+                          {!["data", "seasonality"].includes(
+                            params.get("technicalView") ?? "",
+                          ) && (
+                            <PriceHistory
+                              key={ticker}
+                              ticker={ticker}
+                              runId={revision ?? ""}
+                              technical
+                              context={lens.data}
+                            />
+                          )}
+                </>}
+                {tab === "technical" && !["data", "seasonality"].includes(params.get("technicalView") ?? "") ? null : fetching && !lens.data ? (
                   <Panel>
-                    <Notice>
-                      {t(
-                        "正在为这个标的收集研究数据。你可以继续查看其他标的。",
-                        "Research data is being collected. You can keep exploring other securities.",
-                      )}
-                    </Notice>
                     <Pending />
                   </Panel>
                 ) : selected.status === "failed" && !lens.data ? (
@@ -685,10 +759,6 @@ export function ResearchWorkspace() {
                     <>
                       {tab === "overview" && (
                         <>
-                          <PricePreview
-                            ticker={ticker}
-                            runId={selected.lastRunId ?? lens.data.runId}
-                          />
                           {isFund ? (
                             <FundWorkbench
                               overview
@@ -703,18 +773,8 @@ export function ResearchWorkspace() {
                           )}
                         </>
                       )}
-                      {tab === "technical" && (
-                        <>
-                          <PriceHistory
-                            ticker={ticker}
-                            runId={selected.lastRunId ?? lens.data.runId}
-                            technical
-                            context={context.data}
-                          />
-                          <TechnicalView data={lens.data} />
-                          {context.data && <Seasonality data={context.data} revision={revision} />}
-                        </>
-                      )}
+                      {tab === "technical" && params.get("technicalView") === "data" && <TechnicalView data={lens.data} />}
+                      {tab === "technical" && params.get("technicalView") === "seasonality" && <Seasonality data={lens.data} revision={revision} />}
                       {tab === "valuation" && (
                         <ValuationWorkbench data={lens.data} revision={revision} />
                       )}
@@ -755,7 +815,8 @@ export function ResearchWorkspace() {
       <Drawer
         opened={universeOpen}
         onClose={() => setUniverseOpen(false)}
-        title={t("选择研究标的", "Choose a security")}
+        title={universeHeading}
+        styles={{ title: { flex: 1 }, header: { gap: 8 } }}
         size={360}
       >
         {universe}

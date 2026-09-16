@@ -24,9 +24,7 @@ export function PricePreview({
   const t = useCopy();
   const query = useQuery(researchPriceQuery(ticker, runId, "1d", "3M"));
   const points = inRange(query.data?.points ?? [], "3M");
-  const hasCandles =
-    points.length > 0 &&
-    points.every((p) => p.open != null && p.high != null && p.low != null);
+  const hasPrices = points.some((p) => Number.isFinite(p.close));
   return (
     <Panel
       title={`${t("价格走势", "Price history")} · 3M`}
@@ -42,19 +40,19 @@ export function PricePreview({
         <Pending />
       ) : query.isError ? (
         <QueryError retry={query.refetch} />
-      ) : !hasCandles ? (
-        <Empty title={t("暂无日线 K 线数据", "Daily candles unavailable")} />
+      ) : !hasPrices ? (
+        <Empty title={t("暂无价格数据", "Price history unavailable")} />
       ) : (
         <Plot
           research
           height={300}
-          label={`${ticker} · ${t("近三个月日线 K 线", "Three months of daily candles")} · ${query.data.currency}`}
+          label={`${ticker} · ${t("近三个月价格走势", "Three months of closing prices")} · ${query.data.currency}`}
           option={(c) => ({
             grid: { top: 18, right: 52, bottom: 28, left: 4 },
             xAxis: {
               type: "category",
               data: points.map((p) => p.date),
-              boundaryGap: true,
+              boundaryGap: false,
               axisLine: { show: false },
               axisTick: { show: false },
               axisLabel: {
@@ -81,23 +79,21 @@ export function PricePreview({
                 if (!p) return "";
                 return [
                   p.date.slice(0, 10) + " · " + query.data.currency,
-                  `${t("开盘", "Open")}  ${number(p.open, 2)}    ${t("最高", "High")}  ${number(p.high, 2)}`,
-                  `${t("收盘", "Close")}  ${number(p.close, 2)}    ${t("最低", "Low")}  ${number(p.low, 2)}`,
+                  `${t("收盘", "Close")}  ${number(p.close, 2)}`,
                 ].join("\n");
               },
             },
             series: [
               {
-                type: "candlestick",
+                type: "line",
                 name: ticker,
-                data: points.map((p) => [p.open!, p.close, p.low!, p.high!]),
-                itemStyle: {
-                  color: c.positive,
-                  color0: c.negative,
-                  borderColor: c.positive,
-                  borderColor0: c.negative,
-                },
-                barMaxWidth: 12,
+                data: points.map((p) => p.close),
+                showSymbol: false,
+                connectNulls: false,
+                smooth: false,
+                lineStyle: { color: c.brand, width: 2 },
+                itemStyle: { color: c.brand },
+                areaStyle: { color: c.brand, opacity: 0.06 },
               },
             ],
           })}
