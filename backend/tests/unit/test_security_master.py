@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -271,6 +272,38 @@ def test_yahoo_profile_provider_resolves_global_listing_without_suffix_seed(
     assert profile is not None
     assert profile.symbol == expected_symbol
     assert profile.industry == expected_industry
+
+
+def test_yahoo_profile_fetches_country_when_search_only_has_industry(monkeypatch):
+    class Search:
+        def __init__(self, *_args, **_kwargs):
+            self.quotes = [
+                {
+                    "symbol": "AAA",
+                    "longname": "Synthetic Alpha",
+                    "quoteType": "EQUITY",
+                    "sector": "Technology",
+                    "industry": "Software",
+                }
+            ]
+
+    class Security:
+        def get_info(self):
+            return {
+                "symbol": "AAA",
+                "longName": "Synthetic Alpha",
+                "quoteType": "EQUITY",
+                "country": "United States",
+                "sector": "Technology",
+                "industry": "Software",
+            }
+
+    monkeypatch.setattr("trading_max.reference.enrichment.yf.Search", Search)
+    monkeypatch.setattr("trading_max.reference.enrichment.yf.Ticker", lambda _symbol: Security())
+    profile = YahooFinanceSecurityProfileProvider().resolve(
+        SecurityDescriptor(ticker="AAA", name="Synthetic Alpha")
+    )
+    assert profile.country == "United States"
 
 
 def test_yahoo_profile_provider_rejects_ambiguous_unrelated_issuers(
@@ -1055,8 +1088,13 @@ def test_enrichment_report_separates_unmapped_unresolved_and_deferred(
     }
 
 
-def test_dynamic_refresh_never_downgrades_official_gics_assignment(
+@pytest.mark.parametrize("method", ["official", "manual"])
+@pytest.mark.parametrize(("age_days", "expected_attempts"), [(0, 0), (365, 1)])
+def test_dynamic_refresh_never_downgrades_authoritative_gics_assignment(
     tmp_path: Path,
+    method: str,
+    age_days: int,
+    expected_attempts: int,
 ) -> None:
     path = tmp_path / "reference" / "security-master.json"
     path.parent.mkdir(parents=True)
@@ -1085,11 +1123,11 @@ def test_dynamic_refresh_never_downgrades_official_gics_assignment(
                             "subIndustryName": "Systems Software",
                             "source": "licensed-provider",
                             "version": "2025",
-                            "method": "official",
+                            "method": method,
                             "confidence": 1,
                         },
                         "source": "licensed-provider",
-                        "asOf": "2026-08-13",
+                        "asOf": (datetime.now(UTC).date() - timedelta(days=age_days)).isoformat(),
                     }
                 ],
             }
@@ -1116,10 +1154,14 @@ def test_dynamic_refresh_never_downgrades_official_gics_assignment(
     resolved = CatalogSecurityMaster.from_state_root(tmp_path).resolve(
         SecurityDescriptor(isin="US5949181045")
     )
-    assert report.attempted == 0
+    assert report.attempted == expected_attempts
     assert resolved.gics is not None
-    assert resolved.gics.method == "official"
+    assert resolved.gics.method == method
     assert resolved.gics.source == "licensed-provider"
+    assert resolved.gics.version == "2025"
+    assert resolved.gics.sub_industry_code == "45103020"
+    if expected_attempts:
+        assert resolved.country_of_risk == "United States"
 
 
 class _ShareClassProvider:

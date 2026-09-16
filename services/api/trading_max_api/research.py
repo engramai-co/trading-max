@@ -147,7 +147,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
         return [
             {
                 "ticker": str(row.get("ticker") or ""),
-                "currency": str(row.get("currency") or "USD"),
+                "currency": str(row.get("currency") or ""),
                 "spot": row.get("price"),
                 "held": False,
                 "asOf": row.get("as_of") or raw.get("as_of"),
@@ -158,7 +158,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
     return [
         {
             "ticker": str(row.get("t")),
-            "currency": str(row.get("ccy") or "USD"),
+            "currency": str(row.get("ccy") or ""),
             "spot": row.get("spot"),
             "enterpriseValue": row.get("ev"),
             "forwardPe": row.get("fpe"),
@@ -195,7 +195,29 @@ def _canonical_ticker(value: str) -> str:
     return ticker[:-2] if ticker.endswith(".L") else ticker
 
 
+def _account_exposure(
+    broker: JsonObject, lookthrough: JsonObject
+) -> tuple[set[str], dict[str, float]]:
+    direct: dict[str, float] = {}
+    for account in broker.get("accounts", {}).values():
+        for position in account.get("positions", []):
+            key = _canonical_ticker(str(position.get("ticker") or ""))
+            direct[key] = direct.get(key, 0.0) + float(position.get("current_value_gbp") or 0.0)
+    exposure = dict(direct)
+    # Fund units are replaced by constituents in look-through rows, so their
+    # direct broker values must remain available in the research directory.
+    for position in lookthrough.get("positions", []):
+        key = _canonical_ticker(str(position.get("ticker") or ""))
+        exposure[key] = float(position.get("valueGbp") or direct.get(key, 0.0))
+    return set(direct), exposure
+
+
 def _find(rows: list[JsonObject], ticker: str) -> JsonObject | None:
+    exact = next(
+        (row for row in rows if str(row.get("ticker", "")).upper() == ticker.upper()), None
+    )
+    if exact is not None:
+        return exact
     return next(
         (
             row
@@ -368,12 +390,58 @@ class ResearchLedger:
     def _market_rows(self, manifest: SnapshotManifest) -> list[JsonObject]:
         """Read the typed market snapshot, retaining legacy-only compatibility."""
 
-        return self._cached_rows(
+        rows = self._cached_rows(
             manifest,
             CURRENT_MARKET_KEY,
             _market_rows,
             fallback_key=LEGACY_MARKET_KEY,
         )
+        # Compact quote metadata lives in fundamentals. Older technical batches
+        # defaulted to USD; the provider's explicit quote currency takes precedence.
+        # Do not load financial statements, options or the full research bundle.
+        fundamentals = self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
+        enriched = []
+        for row in rows:
+            fundamental = _find(fundamentals, str(row.get("ticker", ""))) or {}
+            metrics = fundamental.get("metrics") or fundamental.get("info") or {}
+            quote_currency = str(fundamental.get("currency") or metrics.get("currency") or "")
+            in_pence = quote_currency in {"GBp", "GBX"}
+            if in_pence:
+                quote_currency = "GBP"
+            enriched.append(
+                {
+                    **row,
+                    "currency": quote_currency or row.get("currency") or "",
+                    **{
+                        target: (
+                            metrics[source] / 100
+                            if in_pence and target == "analystMedian"
+                            else metrics[source]
+                        )
+                        for target, source in (
+                            ("enterpriseValue", "enterpriseValue"),
+                            ("forwardPe", "forwardPE"),
+                            ("analystMedian", "targetMedianPrice"),
+                            ("quoteType", "quoteType"),
+                        )
+                        if metrics.get(source) is not None
+                    },
+                }
+            )
+        return enriched
+
+    def _route_ticker(self, ticker: str) -> str:
+        """Keep exchange-qualified watchlist identities in links and responses."""
+        ticker = ticker.strip().upper()
+        items = self.watchlist.items()
+        if any(item.ticker == ticker for item in items):
+            return ticker
+        matches = [
+            item.ticker
+            for item in items
+            if _canonical_ticker(item.ticker) == _canonical_ticker(ticker)
+        ]
+        return matches[0] if len(matches) == 1 else ticker
 
     def status(
         self,
@@ -445,18 +513,7 @@ class ResearchLedger:
         broker = self._read_optional(manifest, "account/broker_snapshot_metrics.json")
         lookthrough = self._read_optional(manifest, "account/lookthrough_metrics.json")
 
-        held = {
-            _canonical_ticker(str(position.get("ticker", "")))
-            for account in broker.get("accounts", {}).values()
-            for position in account.get("positions", [])
-        }
-        exposure = {
-            _canonical_ticker(str(position.get("ticker", ""))): float(
-                position.get("valueGbp") or 0.0
-            )
-            for position in lookthrough.get("positions", [])
-            if position.get("ticker")
-        }
+        held, exposure = _account_exposure(broker, lookthrough)
         market_tickers = {_canonical_ticker(str(row["ticker"])) for row in market}
         technical_tickers = {_canonical_ticker(str(row["ticker"])) for row in technical}
         valuation_tickers = {_canonical_ticker(str(row["ticker"])) for row in valuations}
@@ -476,7 +533,10 @@ class ResearchLedger:
                 name=item.name,
                 exchange=item.exchange,
                 website=str(
-                    (fundamental_by_ticker.get(item.ticker, {}).get("metrics") or {}).get("website")
+                    (
+                        fundamental_by_ticker.get(_canonical_ticker(item.ticker), {}).get("metrics")
+                        or {}
+                    ).get("website")
                     or ""
                 ),
                 bloomberg_ticker=item.bloomberg_ticker,
@@ -494,9 +554,10 @@ class ResearchLedger:
                     item.status
                     if item.status in {"running", "failed"}
                     else "ready"
-                    if item.ticker in market_tickers and item.ticker in technical_tickers
+                    if _canonical_ticker(item.ticker) in market_tickers
+                    and _canonical_ticker(item.ticker) in technical_tickers
                     else "partial"
-                    if item.ticker
+                    if _canonical_ticker(item.ticker)
                     in (
                         market_tickers
                         | technical_tickers
@@ -508,14 +569,14 @@ class ResearchLedger:
                 ),
                 last_run_id=item.last_run_id,
                 last_error=item.last_error,
-                has_market=item.ticker in market_tickers,
-                has_technical=item.ticker in technical_tickers,
-                has_options=item.ticker in option_tickers,
-                has_valuation=item.ticker in valuation_tickers,
-                has_earnings=item.ticker in earnings_tickers,
-                has_fundamentals=item.ticker in fundamentals_tickers,
-                held=item.ticker in held,
-                exposure_gbp=exposure.get(item.ticker, 0.0),
+                has_market=_canonical_ticker(item.ticker) in market_tickers,
+                has_technical=_canonical_ticker(item.ticker) in technical_tickers,
+                has_options=_canonical_ticker(item.ticker) in option_tickers,
+                has_valuation=_canonical_ticker(item.ticker) in valuation_tickers,
+                has_earnings=_canonical_ticker(item.ticker) in earnings_tickers,
+                has_fundamentals=_canonical_ticker(item.ticker) in fundamentals_tickers,
+                held=_canonical_ticker(item.ticker) in held,
+                exposure_gbp=exposure.get(_canonical_ticker(item.ticker), 0.0),
             )
             for item in self.watchlist.items()
         ]
@@ -634,7 +695,7 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
-        ticker = _canonical_ticker(ticker)
+        ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         technical = _find(
             self._cached_rows(manifest, "research/technical.json", _technical_rows),
@@ -683,7 +744,11 @@ class ResearchLedger:
             run_id=manifest.run_id,
             generated_at=manifest.created_at,
             market=market,
-            technical=technical,
+            technical=(
+                {**technical, "currency": market.get("currency") or ""}
+                if technical and market
+                else technical
+            ),
             valuation=valuation,
             options=options,
             fundamentals=fundamentals,
@@ -717,18 +782,7 @@ class ResearchLedger:
 
         broker = self._read_optional(manifest, "account/broker_snapshot_metrics.json")
         lookthrough = self._read_optional(manifest, "account/lookthrough_metrics.json")
-        held = {
-            _canonical_ticker(str(position.get("ticker", "")))
-            for account in broker.get("accounts", {}).values()
-            for position in account.get("positions", [])
-        }
-        exposure = {
-            _canonical_ticker(str(position.get("ticker", ""))): float(
-                position.get("valueGbp") or 0.0
-            )
-            for position in lookthrough.get("positions", [])
-            if position.get("ticker")
-        }
+        held, exposure = _account_exposure(broker, lookthrough)
         return [
             ResearchDirectoryInstrument(
                 ticker=item.ticker,
@@ -748,8 +802,8 @@ class ResearchLedger:
                 status=item.status,
                 last_run_id=item.last_run_id,
                 last_error=item.last_error,
-                held=item.ticker in held,
-                exposure_gbp=exposure.get(item.ticker, 0.0),
+                held=_canonical_ticker(item.ticker) in held,
+                exposure_gbp=exposure.get(_canonical_ticker(item.ticker), 0.0),
             )
             for item in self.watchlist.items()
         ]
@@ -770,7 +824,7 @@ class ResearchLedger:
         portfolio data.
         """
 
-        ticker = _canonical_ticker(ticker)
+        ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
@@ -855,6 +909,8 @@ class ResearchLedger:
         # readable. Re-validate once before returning so nested dictionaries
         # become their declared Pydantic models and response serialization can
         # never silently drift from the OpenAPI contract.
+        if payload.technical and market:
+            payload.technical = {**payload.technical, "currency": market.get("currency") or ""}
         return ResearchLensSnapshot.model_validate(payload.__dict__)
 
     def timeline(
@@ -1271,11 +1327,14 @@ class ResearchLedger:
         *,
         limit: int = 504,
     ) -> ResearchPriceSeries:
-        ticker = _canonical_ticker(ticker)
+        ticker = self._route_ticker(ticker)
         artifact = _artifact(manifest, "research/technical.json")
+        metadata_artifact = _artifact(manifest, "research/fundamentals.json")
         marker_artifact = _artifact(manifest, "account/trade_markers.json")
         cache_key = (
-            artifact.sha256 if artifact is not None else manifest.run_id,
+            (artifact.sha256 + ":" + metadata_artifact.sha256)
+            if artifact is not None and metadata_artifact is not None
+            else manifest.run_id,
             marker_artifact.sha256 if marker_artifact is not None else "",
             ticker,
         )
@@ -1295,15 +1354,7 @@ class ResearchLedger:
         raw = self._read_optional(manifest, "research/technical.json")
         raw_rows = raw.get("rows")
         rows = raw_rows if isinstance(raw_rows, list) else []
-        source = next(
-            (
-                row
-                for row in rows
-                if isinstance(row, dict)
-                and _canonical_ticker(str(row.get("ticker") or "")) == ticker
-            ),
-            None,
-        )
+        source = _find([row for row in rows if isinstance(row, dict)], ticker)
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         raw_points = source.get("price_series")
@@ -1313,7 +1364,8 @@ class ResearchLedger:
             if isinstance(point, dict)
         ]
         as_of = str(source.get("as_of") or raw.get("as_of") or "")
-        currency = str(source.get("currency") or "USD")
+        market = _find(self._market_rows(manifest), ticker) or {}
+        currency = str(market.get("currency") or source.get("currency") or "")
         raw_markers = (
             self._read_optional(manifest, "account/trade_markers.json")
             if marker_artifact is not None
@@ -1324,7 +1376,7 @@ class ResearchLedger:
             ResearchTradeMarker.model_validate(marker)
             for marker in (marker_rows if isinstance(marker_rows, list) else [])
             if isinstance(marker, dict)
-            and _canonical_ticker(str(marker.get("ticker") or "")) == ticker
+            and _canonical_ticker(str(marker.get("ticker") or "")) == _canonical_ticker(ticker)
         ]
         if len(self._price_series_cache) >= 128:
             self._price_series_cache.clear()

@@ -222,7 +222,11 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
                     frame.loc[frame.index[-1], column] = float(price)
             if pd.isna(frame.loc[frame.index[-1], "Volume"]):
                 frame.loc[frame.index[-1], "Volume"] = 0.0
-    scale = PRICE_SCALE.get(ticker, 1.0)
+    metadata = security.get_history_metadata() or {}
+    quote_currency = str(metadata.get("currency") or "")
+    # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
+    scale = 0.01 if quote_currency in {"GBp", "GBX"} else PRICE_SCALE.get(ticker, 1.0)
+    frame.attrs["currency"] = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
     if scale != 1.0:
         frame[["Open", "High", "Low", "Close"]] *= scale
     frame = frame.dropna(subset=["Close"])
@@ -483,7 +487,7 @@ def analyze_ticker(
     frame: pd.DataFrame,
     benchmarks: Mapping[str, pd.Series],
     *,
-    currency: str = "USD",
+    currency: str | None = None,
     requested_period: str = "3y",
     adr: dict[str, Any] | None = None,
 ) -> TechnicalResearchArtifact:
@@ -541,7 +545,7 @@ def analyze_ticker(
     metrics: dict[str, Any] = {
         "ticker": label,
         "yf_ticker": yf_ticker,
-        "currency": currency,
+        "currency": currency or str(frame.attrs.get("currency") or ""),
         "as_of": str(close.index[-1].date()),
         "history_coverage": history_coverage(label, frame, requested_period),
         "adr_research": adr,

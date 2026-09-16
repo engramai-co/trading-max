@@ -100,6 +100,18 @@ def test_out_of_order_anchor_is_rejected() -> None:
         )
 
 
+def test_collector_rejects_non_finite_values_and_misaligned_accounts() -> None:
+    for value in (float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            append_intraday_anchor(
+                None, _accounts("2026-09-04T12:00Z", invest=value), source_artifact_ids=[]
+            )
+    accounts = _accounts("2026-09-04T12:00Z")
+    accounts["B"]["fetched_at"] = "2026-09-04T12:11Z"
+    with pytest.raises(ValueError, match="timestamp skew"):
+        append_intraday_anchor(None, accounts, source_artifact_ids=[])
+
+
 def test_verified_flow_is_removed_and_unknown_flow_is_null() -> None:
     assert verified_period_return(100.0, 120.0, 10.0, "verified") == pytest.approx(0.10)
     assert verified_period_return(100.0, 120.0, None, "unverified") is None

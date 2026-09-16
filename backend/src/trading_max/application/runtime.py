@@ -57,7 +57,7 @@ class TypedWorkerRuntime:
         taxonomy_provider: RawTaxonomyCatalogProvider | None = None,
         valuation_assumptions=None,
         intraday_interval_seconds: int = 600,
-        intraday_retention_days: int = 40,
+        intraday_retention_days: int = 120,
         extra_stages: Iterable[object] = (),
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
@@ -83,6 +83,7 @@ class TypedWorkerRuntime:
                     self.snapshots,
                     interval_seconds=self.intraday_interval_seconds,
                     retention_days=self.intraday_retention_days,
+                    state_root=self.state_root,
                 ),
                 SecurityMasterEnrichmentStage(self.state_root, self.artifacts),
                 PortfolioLookthroughStage(

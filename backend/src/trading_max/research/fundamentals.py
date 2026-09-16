@@ -262,7 +262,8 @@ class YFinanceResearchService:
                     {
                         "ticker": ticker,
                         "name": str(info.get("longName") or info.get("shortName") or ticker),
-                        "currency": str(info.get("currency") or "USD"),
+                        "currency": str(info.get("currency") or ""),
+                        "country": str(info.get("country") or ""),
                         "sector": str(info.get("sector") or ""),
                         "industry": str(info.get("industry") or ""),
                         "metrics": {key: _json_safe(info.get(key)) for key in FUNDAMENTAL_KEYS},

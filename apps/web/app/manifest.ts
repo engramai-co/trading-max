@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Trading Max",
     short_name: "Trading Max",
-    description: "Local-first portfolio intelligence and investment research.",
+    description: "Portfolio analytics and security research.",
     start_url: "/",
     display: "standalone",
     background_color: brandColours[0],

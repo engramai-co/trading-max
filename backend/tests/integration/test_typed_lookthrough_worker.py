@@ -124,7 +124,7 @@ def test_durable_worker_executes_lookthrough_after_account_snapshot(
         stages=[
             ("accounts.snapshot", "accounts-v1"),
             ("reference.security_master", "security-master-v3"),
-            ("portfolio.lookthrough", "lookthrough-v8"),
+            ("portfolio.lookthrough", lookthrough.version),
         ],
         job_id="lookthrough-worker",
     )

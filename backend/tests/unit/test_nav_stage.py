@@ -284,7 +284,7 @@ def test_three_intraday_publications_keep_history_and_previous_artifacts(
     assert latest is not None
     assert any(ref.key == "research/technical.json" for ref in latest.manifest.artifacts)
     anchor_ref = next(
-        ref for ref in latest.manifest.artifacts if ref.key == "account/nav/intraday_anchors.json"
+        ref for ref in latest.manifest.artifacts if ref.key == "account/nav/valuation_history.json"
     )
     anchor = artifacts.get_json(anchor_ref.artifact_id).payload
     assert len(anchor["points"]) == 3

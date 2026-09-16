@@ -4,7 +4,7 @@ import "@mantine/notifications/styles.css";
 import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata, Viewport } from "next";
 
-import { AppShell } from "@/components/app-shell";
+import { WorkspaceShell } from "@/workspace/shell";
 import { LocaleProvider } from "@/components/locale-provider";
 import { TradingMaxProvider } from "@/ui/provider";
 import { brandColours, darkCanvas } from "@/ui/theme";
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     default: "Trading Max Portfolio",
     template: "%s · Trading Max",
   },
-  description: "Private portfolio intelligence, powered by local research.",
+  description: "Portfolio analytics and security research.",
 };
 
 export const viewport: Viewport = {
@@ -32,14 +32,19 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN" data-locale="zh" {...mantineHtmlProps}>
+    <html
+      lang="zh-CN"
+      data-locale="zh"
+      data-scroll-behavior="smooth"
+      {...mantineHtmlProps}
+    >
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
         <TradingMaxProvider>
           <LocaleProvider>
-            <AppShell>{children}</AppShell>
+            <WorkspaceShell>{children}</WorkspaceShell>
           </LocaleProvider>
         </TradingMaxProvider>
       </body>

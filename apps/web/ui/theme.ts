@@ -12,161 +12,107 @@ export const brandColours = [
   "#1254bc",
   "#113f8f",
 ] as const;
-
 export const darkCanvas = "#0b1220";
-
 export const tradingMaxTheme = createTheme({
+  primaryColor: "brand",
   autoContrast: true,
+  primaryShade: { light: 7, dark: 7 },
+  colors: { brand: [...brandColours] },
   black: "#111827",
-  colors: {
-    brand: [...brandColours],
+  white: "#ffffff",
+  defaultRadius: "md",
+  cursorType: "pointer",
+  respectReducedMotion: true,
+  fontFamily:
+    '"Avenir Next", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif',
+  fontFamilyMonospace: '"SFMono-Regular", Consolas, monospace',
+  fontSizes: {
+    xs: "0.75rem",
+    sm: "0.8125rem",
+    md: "0.9375rem",
+    lg: "1.0625rem",
+    xl: "1.25rem",
+  },
+  headings: {
+    fontFamily: "inherit",
+    fontWeight: "600",
+    sizes: {
+      h1: { fontSize: "2rem", lineHeight: "1.2" },
+      h2: { fontSize: "1.25rem", lineHeight: "1.4" },
+      h3: { fontSize: "1rem", lineHeight: "1.4" },
+    },
+  },
+  radius: { xs: "4px", sm: "7px", md: "10px", lg: "14px", xl: "20px" },
+  spacing: { xs: "6px", sm: "10px", md: "16px", lg: "24px", xl: "32px" },
+  shadows: {
+    xs: "0 1px 2px rgba(17,24,39,.03)",
+    sm: "0 4px 16px rgba(17,24,39,.06)",
+    md: "0 12px 32px rgba(17,24,39,.10)",
+    lg: "0 24px 64px rgba(17,24,39,.14)",
+    xl: "0 32px 80px rgba(17,24,39,.18)",
   },
   components: {
-    ActionIcon: {
-      defaultProps: {
-        radius: "md",
-        size: 44,
-        variant: "subtle",
-      },
+    Button: {
+      defaultProps: { size: "sm", radius: "sm" },
+      styles: { root: { minHeight: 40, fontWeight: 600 } },
     },
-    Accordion: {
-      styles: {
-        control: {
-          minHeight: 48,
-        },
-        item: {
-          overflow: "hidden",
-        },
-      },
+    ActionIcon: { defaultProps: { size: 40, radius: "sm", variant: "subtle" } },
+    TextInput: { defaultProps: { size: "md", radius: "sm" } },
+    PasswordInput: { defaultProps: { size: "md", radius: "sm" } },
+    Select: {
+      defaultProps: { size: "sm", radius: "sm", allowDeselect: false },
+      styles: { input: { minHeight: 40 } },
+    },
+    NumberInput: {
+      defaultProps: { hideControls: true, size: "sm", radius: "sm" },
     },
     Badge: {
-      defaultProps: {
-        radius: "sm",
-        variant: "light",
-      },
+      defaultProps: { variant: "light", radius: "sm", tt: "none", fw: 500 },
     },
-    Button: {
+    Modal: {
       defaultProps: {
-        radius: "md",
-      },
-      styles: {
-        root: {
-          minHeight: 44,
-        },
-      },
-    },
-    Card: {
-      defaultProps: {
-        padding: "lg",
+        closeButtonProps: { "aria-label": "Close dialog" },
         radius: "lg",
-        withBorder: true,
+        centered: true,
+        overlayProps: { backgroundOpacity: 0.35, blur: 3 },
+        transitionProps: { duration: 170 },
       },
     },
     Drawer: {
       defaultProps: {
+        closeButtonProps: { "aria-label": "Close panel" },
+        position: "right",
+        size: 500,
+        padding: "lg",
+        overlayProps: { backgroundOpacity: 0.3, blur: 2 },
         transitionProps: {
-          duration: 240,
-          exitDuration: 180,
-          timingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+          duration: 220,
+          timingFunction: "cubic-bezier(.22,1,.36,1)",
         },
       },
     },
-    Input: {
+    Tooltip: {
       defaultProps: {
-        radius: "md",
-        size: "md",
+        withArrow: true,
+        openDelay: 350,
+        multiline: true,
+        maw: 280,
       },
     },
-    Modal: {
+    Table: {
       defaultProps: {
-        centered: true,
-        radius: "lg",
+        verticalSpacing: "md",
+        horizontalSpacing: "md",
+        highlightOnHover: true,
       },
     },
-    NavLink: {
-      defaultProps: {
-        color: "brand",
-      },
-      styles: {
-        label: {
-          fontWeight: 600,
-        },
-        root: {
-          borderRadius: "var(--mantine-radius-md)",
-          minHeight: 44,
-          transition:
-            "background-color 160ms cubic-bezier(0.23, 1, 0.32, 1), color 160ms cubic-bezier(0.23, 1, 0.32, 1)",
-        },
-      },
-    },
-    Paper: {
-      defaultProps: {
-        radius: "lg",
-      },
-    },
-    Tabs: {
-      defaultProps: {
-        keepMounted: false,
-        variant: "default",
-      },
-    },
-    TextInput: {
-      defaultProps: {
-        radius: "md",
-        size: "md",
-      },
-    },
+    Paper: { defaultProps: { radius: "lg", withBorder: true } },
   },
-  cursorType: "pointer",
-  defaultGradient: {
-    deg: 135,
-    from: "brand.7",
-    to: "cyan.5",
-  },
-  defaultRadius: "md",
-  fontFamily:
-    'Inter, "SF Pro Text", "PingFang SC", "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-  fontFamilyMonospace:
-    '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-  headings: {
-    fontFamily:
-      'Inter, "SF Pro Display", "PingFang SC", "Noto Sans CJK SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    fontWeight: "700",
-    sizes: {
-      h1: { fontSize: "clamp(2rem, 4vw, 3.25rem)", lineHeight: "1.08" },
-      h2: { fontSize: "clamp(1.35rem, 2.4vw, 2rem)", lineHeight: "1.2" },
-      h3: { fontSize: "1.125rem", lineHeight: "1.3" },
-    },
-  },
-  luminanceThreshold: 0.34,
-  primaryColor: "brand",
-  primaryShade: {
-    dark: 5,
-    light: 7,
-  },
-  respectReducedMotion: true,
-  shadows: {
-    lg: "0 18px 48px rgba(17, 24, 39, 0.10)",
-    md: "0 10px 28px rgba(17, 24, 39, 0.07)",
-    sm: "0 4px 14px rgba(17, 24, 39, 0.05)",
-    xl: "0 28px 64px rgba(17, 24, 39, 0.14)",
-    xs: "0 1px 4px rgba(17, 24, 39, 0.04)",
-  },
-  spacing: {
-    lg: "1.25rem",
-    md: "0.875rem",
-    sm: "0.625rem",
-    xl: "1.75rem",
-    xs: "0.375rem",
-    xxl: "2.5rem",
-  },
-  white: "#ffffff",
 });
-
 export const chartColours = {
   accent: "#d97706",
-  axis: "#6b7280",
-  border: "#dbe1e8",
+  axis: "#536176",
+  border: "#dbe4ef",
   brand: "#1768e5",
   brandDark: "#113f8f",
   canvas: "#ffffff",
@@ -179,6 +125,10 @@ export const chartColours = {
   positive: "#2f7a49",
   secondary: "#347985",
   text: "#17191c",
-  tooltip: "#111827",
-  warning: "#96630e",
+  tooltip: "#ffffff",
+  tooltipBorder: "#d8dadd",
+  tooltipMuted: "#61656c",
+  tooltipShadow: "rgba(17,24,39,.12)",
+  tooltipText: "#17191c",
+  warning: "#80530c",
 } as const;

@@ -761,7 +761,14 @@ def _active_position_counts(transactions: pd.DataFrame | None) -> list[int]:
     ordered = transactions.sort_values("Time") if "Time" in transactions else transactions
     for _, row in ordered.iterrows():
         action = str(row.get("Action") or "").strip().lower()
-        ticker = str(row.get("ISIN") or row.get("Ticker") or "").strip().upper()
+        ticker = next(
+            (
+                str(value).strip().upper()
+                for key in ("ISIN", "Ticker")
+                if pd.notna(value := row.get(key)) and str(value).strip()
+            ),
+            "",
+        )
         shares = _finite(row.get("Shares")) or 0.0
         if not ticker:
             continue

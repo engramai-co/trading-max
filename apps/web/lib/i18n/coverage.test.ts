@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 
 const WEB_ROOT = path.resolve(__dirname, "..", "..");
 const HANZI = /[\u4e00-\u9fff]/;
@@ -163,7 +164,34 @@ function stripMixedArrays(source: string): string {
 
 /** Strip the constructs that are allowed to carry Chinese. */
 function stripAllowed(source: string): string {
+  const parsed = ts.createSourceFile(
+    "copy.tsx",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const spans: Array<[number, number]> = [];
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(parsed) === "t" &&
+      node.arguments.length === 2 &&
+      node.arguments.every(ts.isStringLiteral)
+    ) {
+      const [zh, en] = node.arguments as unknown as [
+        ts.StringLiteral,
+        ts.StringLiteral,
+      ];
+      if (zh.text.trim() && en.text.trim() && !HANZI.test(en.text))
+        spans.push([node.getStart(parsed), node.end]);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
   let s = source;
+  for (const [start, end] of spans.sort((a, b) => b[0] - a[0]))
+    s = s.slice(0, start) + KEEP_NEWLINES(s.slice(start, end)) + s.slice(end);
   // Comments are never UI copy; keep line structure for clear reports.
   s = s.replace(/\/\*[\s\S]*?\*\//g, KEEP_NEWLINES);
   s = s.replace(/(^|\n)\s*\/\/[^\n]*/g, "$1");
@@ -206,10 +234,17 @@ function stripAllowed(source: string): string {
 describe("bilingual coverage", () => {
   const files = walk(path.join(WEB_ROOT, "components")).concat(
     walk(path.join(WEB_ROOT, "app")),
+    walk(path.join(WEB_ROOT, "workspace")),
     walk(path.join(WEB_ROOT, "lib")).filter(
       (file) => !file.includes(path.join("lib", "i18n")),
     ),
   );
+
+  it("accepts formatted bilingual calls while rejecting missing translations", () => {
+    expect(HANZI.test(stripAllowed('t(\n"中文",\n"English",\n)'))).toBe(false);
+    expect(HANZI.test(stripAllowed('t("中文", "还是中文")'))).toBe(true);
+    expect(HANZI.test(stripAllowed('t("中文")'))).toBe(true);
+  });
 
   it("scans the whole frontend", () => {
     expect(files.length).toBeGreaterThan(10);
@@ -218,13 +253,6 @@ describe("bilingual coverage", () => {
   it("keeps Chinese copy inside the localisation constructs", () => {
     const offenders: string[] = [];
     for (const file of files) {
-      if (
-        // Country/industry display-name tables are structured translation
-        // data: canonical English keys map to Chinese display names.
-        file.endsWith(path.join("components", "lookthrough-panel.tsx"))
-      ) {
-        continue;
-      }
       const stripped = stripAllowed(readFileSync(file, "utf8"));
       for (const [index, line] of stripped.split("\n").entries()) {
         if (HANZI.test(line)) {
@@ -234,7 +262,9 @@ describe("bilingual coverage", () => {
         }
       }
     }
-    expect(offenders, `untranslatable Chinese copy:\n${offenders.join("\n")}`)
-      .toEqual([]);
+    expect(
+      offenders,
+      `untranslatable Chinese copy:\n${offenders.join("\n")}`,
+    ).toEqual([]);
   });
 });

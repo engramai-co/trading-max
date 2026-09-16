@@ -74,7 +74,7 @@ class Settings:
     intraday_window_start: str = "00:00"
     intraday_window_end: str = "00:00"
     intraday_weekdays: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
-    intraday_retention_days: int = 40
+    intraday_retention_days: int = 120
     performance_enabled: bool | None = None
     performance_interval_seconds: int = 1800
     research_enabled: bool | None = None
@@ -137,7 +137,7 @@ class Settings:
                 if value.strip()
             ),
             intraday_retention_days=int(
-                os.environ.get("TRADING_MAX_INTRADAY_RETENTION_DAYS", "40")
+                os.environ.get("TRADING_MAX_INTRADAY_RETENTION_DAYS", "120")
             ),
             performance_enabled=_bool_from_env(
                 "TRADING_MAX_PERFORMANCE_ENABLED",

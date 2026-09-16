@@ -3,10 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
+import pytest
 from trading_max.analytics.lookthrough import FundHolding, FundSnapshot
 from trading_max.infrastructure.fund_holdings import (
+    FundSpec,
     OfficialFundHoldingsProvider,
     _iso_date,
+    fetch_vanguard,
 )
 
 
@@ -118,3 +122,68 @@ def test_provider_does_not_hide_first_fetch_failure(tmp_path: Path) -> None:
         assert str(exc) == "issuer timeout"
     else:
         raise AssertionError("missing-cache issuer failure must be raised")
+
+
+def test_provider_resolves_london_suffix_without_guessing_another_fund(tmp_path: Path):
+    calls = []
+
+    def fetcher(ticker):
+        calls.append(ticker)
+        return _snapshot(fetched_at=datetime.now(UTC).isoformat())
+
+    provider = OfficialFundHoldingsProvider(tmp_path, fetcher=fetcher)
+    assert provider.fetch("XUSE.L").ticker == "XUSE.L"
+    assert provider.fetch("UNKNOWN.L") is None
+    assert calls == ["XUSE"]
+
+
+@pytest.mark.parametrize("incomplete", [False, True])
+def test_vanguard_paginates_and_preserves_non_equity_weights(incomplete):
+    import json
+
+    pages = []
+
+    def handler(request):
+        assert request.headers["x-consumer-id"] == "uk2"
+        cursor = json.loads(request.content)["variables"]["lastItemKey"]
+        pages.append(cursor)
+        second = cursor is not None
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "borHoldings": [
+                        {
+                            "holdings": {
+                                "items": [
+                                    {
+                                        "ticker": "USD" if second else "TEST",
+                                        "issuerName": "Fixture",
+                                        "securityType": "CRNY" if second else "EQ.STOCK",
+                                        "marketValuePercentage": 2 if second else 98,
+                                        "effectiveDate": "2026-08-31",
+                                        "bloombergIsoCountry": "US",
+                                        "gicsSectorDescription": None if second else "Industrials",
+                                    }
+                                ],
+                                "totalHoldings": 3 if incomplete else 2,
+                                "lastItemKey": None if second else "page-two",
+                            }
+                        }
+                    ]
+                }
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        spec = FundSpec("TEST", "", "Fixture fund", "Vanguard", "https://issuer.example", "1")
+        if incomplete:
+            with pytest.raises(ValueError, match="incomplete"):
+                fetch_vanguard(client, spec)
+        else:
+            result = fetch_vanguard(client, spec)
+            assert len(result.holdings) == 2
+            assert result.weight_total_pct() == 100
+            assert result.country_weights == {"United States": 98, "Cash & derivatives": 2}
+            assert not result.holdings[1].is_security
+        assert pages == [None, "page-two"]

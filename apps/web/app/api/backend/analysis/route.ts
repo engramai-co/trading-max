@@ -12,6 +12,8 @@ export async function GET(request: Request) {
   }
   query.set("lens", lens);
   if (ticker) query.set("ticker", ticker);
+  const snapshot = incoming.searchParams.get("snapshot_run_id");
+  if (snapshot) query.set("snapshot_run_id", snapshot);
   return proxyToBackend(`/v1/analysis/latest?${query}`);
 }
 

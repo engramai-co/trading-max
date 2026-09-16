@@ -656,6 +656,14 @@ class Holding(ApiModel):
 class NavPoint(ApiModel):
     date: str
     intraday: bool = False
+    valuation_source: Literal["broker", "reconstructed"] | None = None
+    cadence_seconds: int | None = None
+    price_cadence_seconds: int | None = None
+    includes_extended_hours: bool | None = None
+    model_at: str | None = None
+    model_price_cadence_seconds: int | None = None
+    invest_model_value_gbp: float | None = None
+    isa_model_value_gbp: float | None = None
     flow_status: Literal["daily_official", "verified", "unverified"]
     invest: float | None
     isa: float | None

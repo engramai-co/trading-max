@@ -55,6 +55,29 @@ def test_history_coverage_marks_short_requested_period_without_backfill() -> Non
     assert "genuine trading sessions" in coverage["warning"]
 
 
+def test_history_carries_provider_currency_and_normalizes_pence(monkeypatch):
+    from trading_max.research.technical import history
+
+    original = synthetic_bars(80)
+
+    class Security:
+        def history(self, **_kwargs):
+            return original.copy()
+
+        def get_history_metadata(self):
+            return {"currency": "GBp"}
+
+    monkeypatch.setattr("trading_max.research.technical.yf.Ticker", lambda _ticker: Security())
+    bars = history("SYNTHETIC.L")
+    assert bars.attrs["currency"] == "GBP"
+    assert bars["Close"].iloc[-1] == original["Close"].iloc[-1] / 100
+    assert bars["Volume"].equals(original["Volume"])
+    benchmarks = dict.fromkeys(("SPY", "QQQ", "SOXX"), bars["Close"])
+    assert analyze_ticker("SYNTHETIC.L", "SYNTHETIC.L", bars, benchmarks).currency == "GBP"
+    bars.attrs.clear()
+    assert analyze_ticker("UNKNOWN", "UNKNOWN", bars, benchmarks).currency == ""
+
+
 def test_options_gex_proxy_is_signed_by_contract_side() -> None:
     options = pd.DataFrame(
         {

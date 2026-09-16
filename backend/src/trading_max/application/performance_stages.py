@@ -54,6 +54,21 @@ def _previous_json_artifact(
         return None
 
 
+def _upstream_json_artifact(
+    artifacts: ContentAddressedArtifactStore,
+    context: StageContext,
+    key: str,
+):
+    for artifact_id in reversed(context.upstream_artifact_ids):
+        try:
+            ref = artifacts.get_ref(artifact_id)
+        except FileNotFoundError:
+            continue
+        if ref.key == key:
+            return artifacts.get_json(artifact_id)
+    return None
+
+
 def _upstream_byte_artifact(
     artifacts: ContentAddressedArtifactStore,
     context: StageContext,
@@ -203,7 +218,7 @@ class AccountPerformanceStage:
     """Calculate TWR/risk metrics from immutable, cash-flow-aware NAV CSVs."""
 
     name = "accounts.performance"
-    version = "performance-v2"
+    version = "performance-v3"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.nav",)
 
@@ -219,7 +234,11 @@ class AccountPerformanceStage:
         refs = []
         metrics_by_account: dict[str, dict[str, Any]] = {}
         warnings: list[str] = []
-        technical = _previous_json_artifact(
+        technical = _upstream_json_artifact(
+            self.artifacts,
+            context,
+            "research/technical.json",
+        ) or _previous_json_artifact(
             self.artifacts,
             self.snapshots,
             "research/technical.json",

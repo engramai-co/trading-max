@@ -218,9 +218,8 @@ def stage_plan(
                 ("accounts.policy", "Analyze account policy"),
                 ("accounts.capital_recovery", "Audit capital recovery"),
                 ("accounts.nav", "Update account NAV"),
+                ("accounts.intraday_nav", "Reconstruct intraday valuation history"),
                 ("accounts.cfd", "Build imported CFD ledger and analysis"),
-                ("accounts.performance", "Calculate account performance"),
-                ("accounts.review", "Build deterministic account reviews"),
             ]
         )
     if scope == "research" and trigger == "research":
@@ -249,6 +248,13 @@ def stage_plan(
                 ("research.analyst", "Update analyst consensus research"),
                 ("research.valuation", "Update valuation research"),
                 ("research.earnings", "Update earnings research"),
+            ]
+        )
+    if scope in {"all", "accounts"}:
+        stages.extend(
+            [
+                ("accounts.performance", "Calculate account performance"),
+                ("accounts.review", "Build deterministic account reviews"),
             ]
         )
     stages.append(("snapshot.publish", "Publish immutable snapshot"))
@@ -308,7 +314,7 @@ class TypedJobManager:
         watchlist: WatchlistStore,
         *,
         intraday_interval_seconds: int = 600,
-        intraday_retention_days: int = 40,
+        intraday_retention_days: int = 120,
         on_snapshot_published: Callable[[StoredSnapshot, str], None] | None = None,
         analysis_stage: Any | None = None,
         embedded_worker: bool = False,

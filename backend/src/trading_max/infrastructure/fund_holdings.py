@@ -26,6 +26,7 @@ ISHARES_API = (
     "product-data/api/v2/get-product-data"
 )
 INVESCO_API = "https://dng-api.invesco.com/cache/v1/accounts/en_GB/shareclasses"
+VANGUARD_API = "https://www.vanguard.co.uk/gpx/graphql"
 HSBC_PRODUCT_URL = (
     "https://www.assetmanagement.hsbc.co.uk/en/individual-investor/funds/ie000kcs7j59"
 )
@@ -86,6 +87,42 @@ ISIN_PREFIX_COUNTRIES = {
     "SG": "Singapore",
     "TW": "Taiwan",
     "US": "United States",
+    "AT": "Austria",
+    "BE": "Belgium",
+    "CL": "Chile",
+    "CO": "Colombia",
+    "CZ": "Czech Republic",
+    "DK": "Denmark",
+    "ES": "Spain",
+    "FI": "Finland",
+    "GR": "Greece",
+    "HU": "Hungary",
+    "ID": "Indonesia",
+    "IE": "Ireland",
+    "IL": "Israel",
+    "IT": "Italy",
+    "KW": "Kuwait",
+    "LU": "Luxembourg",
+    "MX": "Mexico",
+    "MY": "Malaysia",
+    "NO": "Norway",
+    "NZ": "New Zealand",
+    "PE": "Peru",
+    "PH": "Philippines",
+    "PL": "Poland",
+    "PT": "Portugal",
+    "QA": "Qatar",
+    "SA": "Saudi Arabia",
+    "SE": "Sweden",
+    "TH": "Thailand",
+    "TR": "Turkey",
+    "AE": "United Arab Emirates",
+    "ZA": "South Africa",
+    "EG": "Egypt",
+    "IS": "Iceland",
+    "PK": "Pakistan",
+    "RO": "Romania",
+    "RU": "Russia",
 }
 
 
@@ -104,6 +141,38 @@ class FundSpec:
 # security universe and are never used to decide whether an instrument is a
 # fund. Security type is resolved dynamically by the reference-data service.
 BUILTIN_FUND_ADAPTERS: dict[str, FundSpec] = {
+    "VUAG": FundSpec(
+        ticker="VUAG",
+        isin="IE00BFMXXD54",
+        name="Vanguard S&P 500 UCITS ETF",
+        issuer="Vanguard",
+        product_id="9694",
+        source_url="https://www.vanguard.co.uk/uk-fund-directory/product/etf/equity/9694/sp-500-ucits-etf-usd-accumulating",
+    ),
+    "VWRP": FundSpec(
+        ticker="VWRP",
+        isin="IE00BK5BQT80",
+        name="Vanguard FTSE All-World UCITS ETF",
+        issuer="Vanguard",
+        product_id="9679",
+        source_url="https://www.vanguard.co.uk/uk-fund-directory/product/etf/equity/9679/ftse-all-world-ucits-etf-usd-accumulating",
+    ),
+    "EIMI": FundSpec(
+        ticker="EIMI",
+        isin="IE00BKM4GZ66",
+        name="iShares Core MSCI EM IMI UCITS ETF",
+        issuer="iShares",
+        product_id="264659",
+        source_url="https://www.ishares.com/uk/individual/en/products/264659",
+    ),
+    "IGLT": FundSpec(
+        ticker="IGLT",
+        isin="IE00B1FZSB30",
+        name="iShares Core UK Gilts UCITS ETF",
+        issuer="iShares",
+        product_id="251806",
+        source_url="https://www.ishares.com/uk/individual/en/products/251806",
+    ),
     "XUSE": FundSpec(
         ticker="XUSE",
         isin="IE000R4ZNTN3",
@@ -286,9 +355,11 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     country_weights: defaultdict[str, float] = defaultdict(float)
     industry_weights: defaultdict[str, float] = defaultdict(float)
     for holding in holdings:
-        country = holding.country or "Other markets" if holding.is_equity else "Cash & derivatives"
+        country = (
+            holding.country or "Other markets" if holding.is_security else "Cash & derivatives"
+        )
         industry = (
-            holding.industry or "Other industries" if holding.is_equity else "Cash & derivatives"
+            holding.industry or "Other industries" if holding.is_security else "Cash & derivatives"
         )
         country_weights[country] += holding.weight_pct
         industry_weights[industry] += holding.weight_pct
@@ -453,6 +524,103 @@ def fetch_hsbc(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     )
 
 
+def fetch_vanguard(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
+    """Read every page from the same holdings API as Vanguard's fund directory."""
+    query = """query FundsHoldingsQuery($portIds: [String!], $lastItemKey: String) {
+      borHoldings(portIds: $portIds) {
+        holdings(limit: 1500, lastItemKey: $lastItemKey) {
+          items { issuerName securityLongDescription gicsSectorDescription
+                  marketValuePercentage ticker securityType effectiveDate bloombergIsoCountry }
+          totalHoldings lastItemKey
+        }
+      }
+    }"""
+    holdings: list[FundHolding] = []
+    dates: set[str] = set()
+    seen: set[str] = set()
+    cursor = None
+    expected = None
+    for _ in range(100):
+        response = client.post(
+            VANGUARD_API,
+            headers={"x-consumer-id": "uk2"},
+            json={
+                "operationName": "FundsHoldingsQuery",
+                "query": query,
+                "variables": {"portIds": [spec.product_id], "lastItemKey": cursor},
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("errors"):
+            raise ValueError(f"{spec.ticker}: Vanguard holdings request failed")
+        page = payload["data"]["borHoldings"][0]["holdings"]
+        count = int(page["totalHoldings"])
+        if expected is not None and count != expected:
+            raise ValueError(f"{spec.ticker}: holdings changed during pagination")
+        expected = count
+        for row in page["items"]:
+            dates.add(_iso_date(row["effectiveDate"]))
+            code = str(row.get("bloombergIsoCountry") or "")
+            asset = str(row.get("securityType") or "")
+            if asset.startswith("EQ."):
+                asset_class = "Equity"
+            elif asset.startswith("FI."):
+                asset_class = "Fixed Income"
+            elif asset.startswith("MM."):
+                asset_class = "Money Market"
+            elif asset == "CRNY":
+                asset_class = "Cash"
+            elif asset.startswith(("CT.", "DE.")):
+                asset_class = "Derivative"
+            else:
+                asset_class = asset
+            holdings.append(
+                FundHolding(
+                    ticker=str(row.get("ticker") or ""),
+                    name=str(row.get("securityLongDescription") or row.get("issuerName") or ""),
+                    weight_pct=float(row["marketValuePercentage"]),
+                    country=ISIN_PREFIX_COUNTRIES.get(code, code or None),
+                    industry=row.get("gicsSectorDescription") or None,
+                    asset_class=asset_class,
+                )
+            )
+        cursor = page.get("lastItemKey")
+        if not cursor:
+            break
+        if cursor in seen:
+            raise ValueError(f"{spec.ticker}: repeated holdings page")
+        seen.add(cursor)
+    else:
+        raise ValueError(f"{spec.ticker}: holdings pagination did not finish")
+    if not holdings or len(holdings) != expected or len(dates) != 1 or not next(iter(dates)):
+        raise ValueError(f"{spec.ticker}: incomplete or inconsistent holdings snapshot")
+    _check_total(spec.ticker, holdings)
+    countries: defaultdict[str, float] = defaultdict(float)
+    industries: defaultdict[str, float] = defaultdict(float)
+    for holding in holdings:
+        countries[
+            (holding.country or "Other markets") if holding.is_security else "Cash & derivatives"
+        ] += holding.weight_pct
+        industries[
+            (holding.industry or "Other industries")
+            if holding.is_security
+            else "Cash & derivatives"
+        ] += holding.weight_pct
+    return FundSnapshot(
+        ticker=spec.ticker,
+        as_of=next(iter(dates)),
+        industry_as_of=next(iter(dates)),
+        fetched_at=datetime.now(UTC).isoformat(),
+        cache_schema_version=2,
+        holdings=holdings,
+        country_weights=dict(countries),
+        industry_weights=dict(industries),
+        source_url=spec.source_url,
+        issuer=spec.issuer,
+    )
+
+
 def fetch_official_snapshot(
     ticker: str,
     *,
@@ -474,6 +642,8 @@ def fetch_official_snapshot(
             return fetch_invesco(active_client, spec)
         if spec.issuer == "HSBC Asset Management":
             return fetch_hsbc(active_client, spec)
+        if spec.issuer == "Vanguard":
+            return fetch_vanguard(active_client, spec)
         raise ValueError(f"unsupported issuer: {spec.issuer}")
     finally:
         if owns_client:
@@ -537,13 +707,14 @@ class OfficialFundHoldingsProvider:
         cached = self._read(normalized)
         if cached is not None and self._is_fresh(cached):
             return cached
-        if normalized not in BUILTIN_FUND_ADAPTERS:
+        adapter_ticker = normalized.removesuffix(".L")
+        if adapter_ticker not in BUILTIN_FUND_ADAPTERS:
             # Operator- or adapter-managed snapshots are valid for any fund.
             # The built-in issuer adapters only define how to refresh the
             # products they support; they are not an ETF universe whitelist.
             return cached
         try:
-            snapshot = self.fetcher(normalized)
+            snapshot = self.fetcher(adapter_ticker).model_copy(update={"ticker": normalized})
         except Exception:
             if cached is not None:
                 return cached
@@ -563,4 +734,5 @@ __all__ = [
     "fetch_invesco",
     "fetch_ishares",
     "fetch_official_snapshot",
+    "fetch_vanguard",
 ]
