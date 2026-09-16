@@ -88,16 +88,18 @@ def refresh_state(request: Request) -> RefreshState:
     jobs = app_service(request, "jobs")
     latest_full, latest_intraday = jobs.latest_refreshes()
     recent = jobs.list(limit=1)
+    live_schedule = app_service(request, "intraday_scheduler").status()
+    research_schedule = app_service(request, "scheduler").status()
     return RefreshState(
         active_job_id=jobs.active_job_id,
         latest_job=recent[0] if recent else None,
         latest_full_job=latest_full,
         latest_intraday_job=latest_intraday,
-        nightly=app_service(request, "scheduler").status(),
-        intraday=app_service(request, "intraday_scheduler").status(),
-        live=app_service(request, "intraday_scheduler").status(),
+        nightly=research_schedule,
+        intraday=live_schedule,
+        live=live_schedule,
         performance=app_service(request, "performance_scheduler").status(),
-        research=app_service(request, "scheduler").status(),
+        research=research_schedule,
         alerts=AlertMonitorState.model_validate(
             app_service(request, "alert_monitor").status(),
         ),

@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-16
+
+### Fixed
+
+- Keep scheduled live account collection when a half-hour performance task
+  reaches the queue first; retry a busy current slot without replaying old slots.
+- Read only active jobs and the relevant schedule records for admission and
+  status, avoiding repeated loading of thousands of completed jobs.
+- Reuse schedule reads for legacy and current refresh-state fields and keep the
+  reported next attempt aligned with deferred collection.
+
 ## [1.4.1] - 2026-09-16
 
 ### Changed

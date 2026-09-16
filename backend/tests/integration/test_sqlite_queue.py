@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from shutil import copy2
 from threading import Thread
@@ -13,6 +14,40 @@ MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
 def make_queue(tmp_path: Path) -> SqliteJobQueue:
     return SqliteJobQueue(SqliteDatabase(tmp_path / "trading_max.db", migrations_dir=MIGRATIONS))
+
+
+def test_scheduler_queries_find_old_active_and_scheduled_jobs_beyond_history_limit(
+    tmp_path: Path,
+) -> None:
+    queue = make_queue(tmp_path)
+    slot = datetime(2026, 9, 16, 18, 30, tzinfo=UTC)
+    old = (slot - timedelta(days=1)).isoformat(timespec="microseconds")
+    with queue.database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO jobs(job_id, scope, trigger, status, created_at, scheduled_for) "
+            "VALUES ('old-active', 'all', 'nightly', 'queued', ?, ?)",
+            (old, slot.isoformat(timespec="microseconds")),
+        )
+        connection.executemany(
+            "INSERT INTO jobs(job_id, scope, trigger, status, created_at) "
+            "VALUES (?, 'live', 'live', 'succeeded', ?)",
+            [(f"finished-{index}", slot.isoformat()) for index in range(5_010)],
+        )
+    try:
+        assert [job.job_id for job in queue.active_records()] == ["old-active"]
+        latest = queue.latest_for_triggers(("nightly", "research", "reconciliation"))
+        assert latest is not None and latest.job_id == "old-active"
+        attempt = queue.scheduled_attempt(("nightly",), slot)
+        assert attempt is not None and attempt.job_id == "old-active"
+        assert queue.scheduled_attempt(("nightly",), slot + timedelta(minutes=1)) is None
+        assert queue.scheduled_attempt(("research",), slot) is None
+
+        with queue.database.transaction() as connection:
+            connection.execute("UPDATE jobs SET scheduled_for = NULL WHERE job_id = 'old-active'")
+        legacy = queue.scheduled_attempt(("nightly",), datetime.fromisoformat(old))
+        assert legacy is not None and legacy.job_id == "old-active"
+    finally:
+        queue.database.close()
 
 
 class _Stage:
