@@ -22,6 +22,12 @@ deploy/macos/deploy.sh <40-character-main-commit-sha>
 ```
 
 The target must already be reachable from the freshly fetched `origin/main`.
+Builds require Node.js 22. Set `TRADING_MAX_NODE_BINARY` to an existing Node 22
+executable when the host default differs. The deployer retains that executable
+inside the candidate release and uses it for both the build and web service;
+it does not replace the host's global Node installation. Rollback restores the
+previous release's runtime choice along with its service definitions.
+
 Branch names, pull-request refs, and unrelated commits fail before the running
 release is changed. Override `TRADING_MAX_SERVICE_ROOT`,
 `TRADING_MAX_APP_ROOT`, or `TRADING_MAX_STATE_ROOT` only when the host was
@@ -57,10 +63,9 @@ state live below the configured state root; logs live in
 `~/Library/Logs/Trading Max`.
 
 `configure-host.py` creates this file with a stable internal API token and the
-production paths. Every deployment also runs it after the build gate, so a
-legacy bootstrap env is normalized and any broker/LLM secrets still present in
-that file are moved into the login Keychain without logging secret values. It
-can merge Invest/ISA credential JSON from standard input as well.
+production paths. Deployment uses `--preserve-credentials`: it normalizes
+bootstrap paths without opening the Keychain or migrating credentials. Credential
+migration remains an explicit operator action from an unlocked login session.
 
 LLM analysis initially runs with `TRADING_MAX_LLM_PROVIDER=fake`, so the complete
 nightly/on-demand pipeline can be smoke-tested before any external credential
@@ -96,13 +101,46 @@ printf '%s\n' "$OPENCODE_API_KEY" |
     --opencode-api-key-stdin
 ```
 
-Automated deployment passes a headless-safe defer flag. If macOS returns
-`errSecInteractionNotAllowed`, it keeps the existing credentials in the
-mode-`0600` env file and logs a warning instead of dropping them or taking the
-site down. Run the configurator again from an unlocked login session to finish
-the Keychain migration.
 
 Historical CFD records are imported once into the external state root by the
 approved migration procedure. They remain a clearly labelled realized-cash
 proxy for household net-worth history and never enter Invest/ISA portfolio or
 strategy risk metrics.
+
+## Isolated upgrades and recovery
+
+The deploy script validates an exact protected-main commit, then builds Python
+and the web app in a new `releases/<sha>-<unique-id>` directory. The active
+`app` directory is untouched during dependency installation and compilation.
+A host lock rejects concurrent deployments. After a successful build:
+
+1. Capture the existing service definitions and bootstrap env in a private
+   directory under `state/secrets/deployment-backups`.
+2. Stop the existing services, including scheduled backup, and wait for their
+   processes to exit. Create and verify a consistent state backup.
+3. Retain the complete previous release and atomically point `app` at the new
+   directory. The first upgrade converts the original directory to this layout.
+4. Normalize bootstrap configuration, apply additive migrations, start the
+   existing services, and check readiness, worker and dynamic web routes.
+
+A failure after cutover starts restores the retained application, its installed
+Python dependencies, web build, env and service definitions. Rollback never
+requires a package download or rebuild. It does not restore the database:
+legitimate writes and compatible migrations must remain intact. Release
+acceptance must verify backward compatibility before upgrading. General state
+restore is a separate operation; see [backup/restore](../../docs/installation/local-installation.md#backup-and-recovery).
+
+Deployment records are mode `0600` in `service-root/deployments`. After an
+uncatchable interruption, recover with the retained controller and the exact
+record path (stop other deployment attempts first):
+
+```bash
+releases/<candidate>/.venv/bin/python releases/<candidate>/deploy/macos/release-manager.py \
+  --recover deployments/<transaction>.json
+```
+
+Use the configured `TRADING_MAX_SERVICE_ROOT` and `TRADING_MAX_STATE_ROOT` when
+the host uses non-default locations. Recovery restores existing services;
+it never configures network exposure. Keep retained runtimes and private
+configuration backups until acceptance and the rollback retention period end.
+No automatic release-directory deletion runs during deployment.

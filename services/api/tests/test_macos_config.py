@@ -150,3 +150,29 @@ def test_host_config_defers_without_erasing_plaintext_when_keychain_is_locked(
     assert "T212_INVEST_API_SECRET=secret" in content
     assert "DEEPSEEK_API_KEY=deepseek-secret" in content
     assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
+
+
+def test_upgrade_normalizes_paths_without_opening_credential_store(tmp_path: Path, monkeypatch):
+    module = _load_module()
+    env_path = tmp_path / "secrets/trading_max.env"
+    env_path.parent.mkdir()
+    env_path.write_text(
+        "T212_INVEST_API_KEY=synthetic-key\nTRADING_MAX_API_TOKEN=synthetic-token\n"
+        "TRADING_MAX_FULL_REFRESH_TIMES=08:00,20:00\nTRADING_MAX_ALERT_MONITOR_ENABLED=false\n"
+    )
+    monkeypatch.setattr(module, "STATE_ROOT", tmp_path)
+    monkeypatch.setattr(module, "ENV_PATH", env_path)
+
+    def forbidden():
+        raise AssertionError("code deployment must not open the credential store")
+
+    monkeypatch.setattr(module, "credential_store", forbidden)
+    monkeypatch.setattr(sys, "argv", ["configure-host.py", "--preserve-credentials"])
+    assert module.main() == 0
+    values = module.read_existing()
+    assert values["T212_INVEST_API_KEY"] == "synthetic-key"
+    assert values["TRADING_MAX_API_TOKEN"] == "synthetic-token"
+    assert values["PORTFOLIO_BACKEND_TOKEN"] == "synthetic-token"
+    assert values["TRADING_MAX_API_HOST"] == "127.0.0.1"
+    assert values["TRADING_MAX_FULL_REFRESH_TIMES"] == "08:00,20:00"
+    assert values["TRADING_MAX_ALERT_MONITOR_ENABLED"] == "false"

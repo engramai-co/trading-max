@@ -71,8 +71,8 @@ jobs:
 
       - name: Backend lint
         run: |
-          uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
-          uv run ruff format --check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+          uv run ruff check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
+          uv run ruff format --check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
 
       - name: Documentation links
         run: uv run python tools/check_documentation.py
@@ -211,3 +211,4 @@ jobs:
           backend/tests/integration/test_backup_archive.py
           backend/tests/integration/test_restore_backup.py
           services/api/tests/test_macos_deploy_contract.py
+          services/api/tests/test_macos_release_manager.py

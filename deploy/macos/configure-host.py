@@ -201,11 +201,17 @@ def main() -> int:
         action="store_true",
         help="keep existing 0600 env credentials when a headless Keychain is unavailable",
     )
+    parser.add_argument(
+        "--preserve-credentials",
+        action="store_true",
+        help="normalize an upgrade without touching the credential store",
+    )
     args = parser.parse_args()
 
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     values = read_existing()
+    previous_values = dict(values)
     stdin_credentials = credentials_from_stdin() if args.credentials_stdin else None
     deepseek_api_key: str | None = None
     opencode_api_key: str | None = None
@@ -225,22 +231,27 @@ def main() -> int:
         else:
             opencode_api_key = api_key
 
-    try:
-        migrated_profiles = migrate_credentials(
-            values,
-            stdin_credentials=stdin_credentials,
-            deepseek_api_key=deepseek_api_key,
-            opencode_api_key=opencode_api_key,
-        )
-    except Exception as exc:
-        if not args.defer_credential_migration:
-            raise
-        print(
-            "warning: Keychain migration deferred; existing 0600 env credentials "
-            f"remain in place ({type(exc).__name__})",
-            file=sys.stderr,
-        )
+    if args.preserve_credentials:
+        if stdin_credentials or deepseek_api_key or opencode_api_key:
+            parser.error("credential input conflicts with --preserve-credentials")
         migrated_profiles = set()
+    else:
+        try:
+            migrated_profiles = migrate_credentials(
+                values,
+                stdin_credentials=stdin_credentials,
+                deepseek_api_key=deepseek_api_key,
+                opencode_api_key=opencode_api_key,
+            )
+        except Exception as exc:
+            if not args.defer_credential_migration:
+                raise
+            print(
+                "warning: Keychain migration deferred; existing 0600 env credentials "
+                f"remain in place ({type(exc).__name__})",
+                file=sys.stderr,
+            )
+            migrated_profiles = set()
 
     token = values.get("TRADING_MAX_API_TOKEN") or secrets.token_urlsafe(48)
     llm_provider = args.llm_provider or values.get(
@@ -308,6 +319,24 @@ def main() -> int:
             "NEXT_TELEMETRY_DISABLED": "1",
         }
     )
+
+    if args.preserve_credentials:
+        # Upgrades preserve host preferences while correcting only the
+        # loopback/authentication and external-state aliases used by services.
+        normalized = {
+            "TRADING_MAX_DATA_ROOT",
+            "TRADING_MAX_API_TOKEN",
+            "TRADING_MAX_API_HOST",
+            "TRADING_MAX_API_PORT",
+            "PORTFOLIO_BACKEND_URL",
+            "PORTFOLIO_BACKEND_TOKEN",
+            "T212_DATA_DIR",
+            "TRADING_MAX_NIGHTLY_HOUR",
+            "TRADING_MAX_NIGHTLY_MINUTE",
+        }
+        values.update(
+            {key: value for key, value in previous_values.items() if key not in normalized}
+        )
 
     preferred_order = (
         "TRADING_MAX_ENV",
