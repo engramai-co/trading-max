@@ -9868,6 +9868,64 @@
         "title": "ResearchModelRun",
         "type": "object"
       },
+      "ResearchModelSaveRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dataVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataversion"
+          },
+          "horizon": {
+            "default": 5,
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionReference"
+            },
+            "maxItems": 3,
+            "title": "References",
+            "type": "array"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioInputs"
+            },
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Scenarios",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scenarios"
+        ],
+        "title": "ResearchModelSaveRequest",
+        "type": "object"
+      },
       "ResearchNote": {
         "additionalProperties": false,
         "properties": {
@@ -12253,6 +12311,11 @@
           "preview": {
             "$ref": "#/components/schemas/ValuationPreview"
           },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
           "savedAt": {
             "format": "date-time",
             "title": "Savedat",
@@ -12720,9 +12783,31 @@
               }
             ]
           },
+          "adx": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adx"
+          },
           "asOf": {
             "title": "Asof",
             "type": "string"
+          },
+          "atr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atr"
           },
           "atrPct": {
             "anyOf": [
@@ -12734,6 +12819,61 @@
               }
             ],
             "title": "Atrpct"
+          },
+          "averageVolume20d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagevolume20D"
+          },
+          "bollingerLower": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollingerlower"
+          },
+          "bollingerPosition": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollingerposition"
+          },
+          "bollingerUpper": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollingerupper"
+          },
+          "bollingerWidth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollingerwidth"
           },
           "currency": {
             "title": "Currency",
@@ -12750,8 +12890,30 @@
             ],
             "title": "Drawdown52W"
           },
+          "high52w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High52W"
+          },
           "historyCoverage": {
             "$ref": "#/components/schemas/HistoryCoverage"
+          },
+          "low52w": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low52W"
           },
           "macd": {
             "anyOf": [
@@ -12786,6 +12948,28 @@
             ],
             "title": "Macdsignal"
           },
+          "minusDi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minusdi"
+          },
+          "plusDi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plusdi"
+          },
           "price": {
             "title": "Price",
             "type": "number"
@@ -12794,6 +12978,17 @@
             "additionalProperties": true,
             "title": "Relativestrength",
             "type": "object"
+          },
+          "relativeVolume20d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relativevolume20D"
           },
           "resistance20": {
             "anyOf": [
@@ -12908,6 +13103,28 @@
             "title": "State",
             "type": "string"
           },
+          "stochasticD": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stochasticd"
+          },
+          "stochasticK": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stochastick"
+          },
           "support20": {
             "anyOf": [
               {
@@ -12927,6 +13144,17 @@
             "additionalProperties": true,
             "title": "Trendstrength",
             "type": "object"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume"
           },
           "yearPaths": {
             "additionalProperties": {
@@ -13441,6 +13669,23 @@
         "properties": {
           "basis": {
             "$ref": "#/components/schemas/FrozenValuationBasis"
+          },
+          "defaultSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "saved-model",
+                  "configured-scenarios",
+                  "sector-template",
+                  "user-input"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultsource"
           },
           "formulaVersion": {
             "default": "equity-proxy-projection-v1",
@@ -14449,7 +14694,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.3.9"
+    "version": "1.4.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16157,7 +16402,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ValuationPreviewRequest"
+                "$ref": "#/components/schemas/ResearchModelSaveRequest"
               }
             }
           },

@@ -98,6 +98,9 @@ class ValuationPreview(DomainModel):
     implied_growth_bound: Literal["below", "above"] | None = None
     implied_growth_reason: str | None = None
     references: list[AssumptionReference] = Field(default_factory=list)
+    default_source: (
+        Literal["saved-model", "configured-scenarios", "sector-template", "user-input"] | None
+    ) = None
 
 
 def project(

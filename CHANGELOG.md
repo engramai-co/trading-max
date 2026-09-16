@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-16
+
+### Added
+
+- Extend technical readings with trend, volatility, volume and price-position measures, and add comparable basic/diluted weighted share counts.
+- Save model rationale with assumptions and show the source of default scenarios while preserving older model versions.
+- Link broker cash-flow evidence to intraday NAV and unify portfolio value, net flows and profit/loss across time ranges.
+- Provide closed broker-trade fixtures for preview attribution without mocking market, FX or research data.
+
+### Fixed
+
+- Keep missing cash-flow evidence distinct from zero and align portfolio headlines with the calculations shown in charts and records.
+
 ## [1.3.9] - 2026-09-16
 
 ### Fixed

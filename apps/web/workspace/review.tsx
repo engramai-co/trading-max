@@ -608,21 +608,21 @@ function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
             ? [
                 {
                   label: t("盈利合计", "Winning results"),
-                  value: (r: Json) => currency(r.grossWinsGbp, "GBP", 2),
+                  value: (r: Json) => currency(r.grossWinsGbp ?? 0, "GBP", 2),
                   numeric: true,
                 },
                 {
                   label: t("亏损合计", "Losing results"),
-                  value: (r: Json) => currency(r.grossLossesGbp, "GBP", 2),
+                  value: (r: Json) => currency(r.grossLossesGbp ?? 0, "GBP", 2),
                   numeric: true,
                 },
                 {
                   label: t("费用", "Fees"),
-                  value: (r: Json) => currency(r.feesGbp, "GBP", 2),
+                  value: (r: Json) => currency(r.feesGbp ?? 0, "GBP", 2),
                   numeric: true,
                 },
                 {
-                  label: t("绝对贡献占比", "Absolute-result share"),
+                  label: t("盈亏贡献占比", "Signed contribution share"),
                   value: (r: Json) => percent(r.shareOfAbsoluteResult),
                   numeric: true,
                 },

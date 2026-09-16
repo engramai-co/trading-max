@@ -824,6 +824,21 @@ class TechnicalRow(ApiModel):
     return20d: float | None
     return63d: float | None
     atr_pct: float | None
+    atr: float | None = None
+    adx: float | None = None
+    plus_di: float | None = None
+    minus_di: float | None = None
+    stochastic_k: float | None = None
+    stochastic_d: float | None = None
+    high52w: float | None = None
+    low52w: float | None = None
+    bollinger_upper: float | None = None
+    bollinger_lower: float | None = None
+    bollinger_position: float | None = None
+    bollinger_width: float | None = None
+    volume: float | None = None
+    average_volume20d: float | None = None
+    relative_volume20d: float | None = None
     signals: list[str]
     seasonality: list[dict[str, Any]] = Field(default_factory=list)
     seasonality_coverage: dict[str, Any] = Field(default_factory=dict)

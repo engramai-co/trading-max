@@ -83,6 +83,7 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
     with TestClient(app) as client:
         default = client.get("/v1/research/TEST/valuation-preview")
         assert default.status_code == 200, default.text
+        assert default.json()["defaultSource"] == "sector-template"
         refs = default.json()["references"]
         assert len(refs) == 3
         assert refs[1]["source"] == "historical-revenue-cagr"
@@ -103,14 +104,17 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
         assert client.post("/v1/research/TEST/models", json=body).status_code == 401
         saved = client.post(
             "/v1/research/TEST/models",
-            json=body,
+            json={**body, "reason": "Growth converges to the historical range"},
             headers={"Authorization": "Bearer synthetic-test-token"},
         )
         assert saved.status_code == 200, saved.text
         assert len(saved.json()["models"]) == 1
+        assert saved.json()["models"][0]["reason"] == "Growth converges to the historical range"
+        assert saved.json()["models"][0]["preview"]["scenarios"] == result.json()["scenarios"]
         reopened = client.get("/v1/research/TEST/valuation-preview")
         assert reopened.status_code == 200
         assert reopened.json()["horizon"] == 10
+        assert reopened.json()["defaultSource"] == "saved-model"
         assert reopened.json()["scenarios"]["base"]["inputs"]["revenueCagr"] == 0.1
         assert app.state.valuation_assumptions.load() == original_assumptions
         assert reopened.json()["references"] == []

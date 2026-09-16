@@ -4,6 +4,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Checkbox, Group, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import {
+  compact,
   currency,
   number,
   numeric,
@@ -18,15 +19,7 @@ import {
   statementValue,
   trailingStatement,
 } from "./financial-values";
-import {
-  Empty,
-  Facts,
-  Metric,
-  Notice,
-  Panel,
-  Segments,
-  useCopy,
-} from "./foundation";
+import { Empty, Facts, Notice, Panel, Segments, useCopy } from "./foundation";
 import {
   orderedStatement,
   relativeToPrice,
@@ -37,32 +30,57 @@ import { useRouteState } from "./route-state";
 export { AnalystView } from "./research-analyst";
 export { CompanyOverview } from "./research-overview";
 export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
-  const { update } = useRouteState("push");
+  const { params, update } = useRouteState("push");
   const t = useCopy(),
     tech = data.technical;
+  const benchmark = ["spy", "qqq", "soxx"].includes(
+    params.get("technicalBenchmark") ?? "",
+  )
+    ? params.get("technicalBenchmark")!
+    : "spy";
   if (!tech)
     return (
       <Panel>
-        <Empty
-          title={t("技术观测还未就绪", "Technical observations are not ready")}
-          description={t(
-            "更新证券研究后，均线、动量和支撑阻力会显示在这里。",
-            "Update research to load trend, momentum and price-level observations.",
-          )}
-        />
+        <Empty title={t("技术数据尚未就绪", "Technical data is not ready")} />
       </Panel>
     );
-  const ma = [tech.sma20, tech.sma50, tech.sma200];
+  const relative =
+    tech.currency === "USD"
+      ? object(tech.relativeStrength?.[benchmark + "_63d"])
+      : {};
+  const more = (title: string, rows: Array<[string, string]>) => (
+    <details className="mx-technical-more">
+      <summary>{title}</summary>
+      <Facts rows={rows} />
+    </details>
+  );
+  const showAverage = (key: string) =>
+    update({
+      technicalView: null,
+      priceRange: "1Y",
+      interval: "1d",
+      chart: null,
+      ma: "on",
+      highlightMa: key,
+      priceScale: null,
+      benchmark: null,
+    });
   return (
-    <>
-      <div className="mx-grid">
-        <Panel
-          title={t("价格与波动", "Price & volatility")}
-          help={t(
-            "收益为拆股及分红调整后的收盘价变化。ATR 取真实波动范围，不代表未来波动预测。",
-            "Returns use split and dividend adjusted closes. ATR measures observed true range, not a forecast of volatility.",
-          )}
-        >
+    <Panel
+      title={t("技术数据", "Technical data")}
+      action={
+        <span className="mx-unit">
+          {tech.asOf} · {t("日线", "Daily")} · {tech.currency}
+        </span>
+      }
+      help={t(
+        "所有读数按此处日期的调整后日线计算，与页首最近报价可能有时间差。均线为交易日收盘均值；此前 20 日高低点不含当前日。技术读数用于描述价格，不生成买卖建议。",
+        "Readings use adjusted daily bars as of this date, which may differ from the latest header quote. Averages use session closes; prior 20-session highs and lows exclude the current bar. Indicators describe prices, not trade recommendations.",
+      )}
+    >
+      <div className="mx-technical-grid">
+        <section>
+          <h3>{t("表现与位置", "Performance & levels")}</h3>
           <Facts
             rows={[
               [
@@ -74,133 +92,191 @@ export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
                 percent(tech.return63d, true),
               ],
               [
+                t("52 周区间", "52-week range"),
+                `${number(tech.low52w, 2)} – ${number(tech.high52w, 2)}`,
+              ],
+              [
                 t("距 52 周高点", "From 52-week high"),
                 percent(tech.drawdown52w),
               ],
-              [t("ATR / 价格", "ATR / price"), percent(tech.atrPct)],
             ]}
           />
-        </Panel>
-        <Panel
-          title={t("均线与价格位置", "Moving averages & price levels")}
-          help={t(
-            "偏离 = 现价 ÷ 均线 − 1。高低点取此前 20 个交易日窗口极值，不包含当前交易日。",
-            "Distance is spot ÷ moving average − 1. Highs and lows are extrema of the preceding 20 sessions, excluding the current session.",
-          )}
-        >
-          <div
-            className="mx-table-wrap"
-            role="region"
-            tabIndex={0}
-            aria-label={t("均线读数", "Moving average readings")}
-          >
-            <table className="mx-table">
-              <thead>
-                <tr>
-                  <th scope="col">{t("均线", "Average")}</th>
-                  <th scope="col" className="mx-align-right">
-                    {tech.currency}
+          <table className="mx-technical-ma">
+            <thead>
+              <tr>
+                <th>{t("日均线", "Daily SMA")}</th>
+                <th>{tech.currency}</th>
+                <th>{t("价格偏离", "Distance")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(["sma20", "sma50", "sma200"] as const).map((key) => (
+                <tr key={key}>
+                  <th>
+                    <button
+                      className="mx-text-link"
+                      onClick={() => showAverage(key)}
+                    >
+                      {key.toUpperCase()}
+                    </button>
                   </th>
-                  <th scope="col" className="mx-align-right">
-                    {t("价格偏离", "Price distance")}
-                  </th>
+                  <td>{number(tech[key], 2)}</td>
+                  <td>
+                    {percent(relativeToPrice(tech.price, tech[key]), true, 2)}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {ma.map((value, index) => {
-                  const distance = relativeToPrice(tech.price, value);
-                  return (
-                    <tr key={index}>
-                      <th scope="row">
-                        <button
-                          className="mx-text-link"
-                          onClick={() => {
-                            update({
-                              technicalView: null,
-                              priceRange: "1Y",
-                              chart: null,
-                              highlightMa: ["sma20", "sma50", "sma200"][index],
-                              ma: "on",
-                              interval: "1d",
-                            });
-                            document
-                              .querySelector(".mx-price-tools")
-                              ?.scrollIntoView({
-                                block: "start",
-                                behavior: "instant",
-                              });
-                          }}
-                        >
-                          {["SMA 20", "SMA 50", "SMA 200"][index]}
-                        </button>
-                      </th>
-                      <td className="mx-align-right">{number(value, 2)}</td>
-                      <td className="mx-align-right">
-                        {percent(distance, true, 2)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="mx-price-levels">
-            <div>
-              <span>{t("此前 20 日低点", "Prior 20-session low")}</span>
-              <strong>{currency(tech.support20, tech.currency, 2)}</strong>
-            </div>
-            <div>
-              <span>{t("此前 20 日高点", "Prior 20-session high")}</span>
-              <strong>{currency(tech.resistance20, tech.currency, 2)}</strong>
-            </div>
-          </div>
-        </Panel>
+              ))}
+            </tbody>
+          </table>
+          {more(t("更多价格位置", "More price levels"), [
+            [t("日线收盘", "Daily close"), number(tech.price, 2)],
+            [
+              t("此前 20 日低点", "Prior 20-session low"),
+              number(tech.support20, 2),
+            ],
+            [
+              t("此前 20 日高点", "Prior 20-session high"),
+              number(tech.resistance20, 2),
+            ],
+          ])}
+        </section>
+        <section>
+          <h3>{t("动量与趋势", "Momentum & trend")}</h3>
+          <Facts
+            rows={[
+              ["RSI · 14", number(tech.rsi, 1)],
+              [
+                t("MACD 与信号线", "MACD vs signal"),
+                tech.macdHistogram == null
+                  ? "—"
+                  : tech.macdHistogram > 0
+                    ? t("高于信号线", "Above signal")
+                    : tech.macdHistogram < 0
+                      ? t("低于信号线", "Below signal")
+                      : t("重合", "Equal"),
+              ],
+              ["ADX · 14", number(tech.adx, 1)],
+            ]}
+          />
+          {more(t("详细动量读数", "Detailed momentum readings"), [
+            ["MACD · 12/26", number(tech.macd, 3)],
+            [t("信号线 · 9", "Signal · 9"), number(tech.macdSignal, 3)],
+            [t("MACD 差值", "MACD difference"), number(tech.macdHistogram, 3)],
+            [
+              "+DI / −DI · 14",
+              `${number(tech.plusDi, 1)} / ${number(tech.minusDi, 1)}`,
+            ],
+            [
+              t("随机指标 %K · 14", "Stochastic %K · 14"),
+              number(tech.stochasticK, 1),
+            ],
+            [
+              t("随机指标 %D · 3", "Stochastic %D · 3"),
+              number(tech.stochasticD, 1),
+            ],
+          ])}
+        </section>
+        <section>
+          <h3>{t("波动", "Volatility")}</h3>
+          <Facts
+            rows={[
+              ["ATR · 14", number(tech.atr, 2)],
+              [t("ATR / 价格", "ATR / price"), percent(tech.atrPct)],
+              [
+                t("布林带位置 %B", "Bollinger %B"),
+                percent(tech.bollingerPosition),
+              ],
+              [
+                t("布林带宽度", "Bollinger bandwidth"),
+                percent(tech.bollingerWidth),
+              ],
+            ]}
+          />
+          {more(
+            t("布林带读数 · 20 日 / 2σ", "Bollinger levels · 20 days / 2σ"),
+            [
+              [t("上轨", "Upper band"), number(tech.bollingerUpper, 2)],
+              [t("中轨", "Middle band"), number(tech.sma20, 2)],
+              [t("下轨", "Lower band"), number(tech.bollingerLower, 2)],
+            ],
+          )}
+        </section>
+        <section>
+          <h3>{t("量能与相对表现", "Volume & relative performance")}</h3>
+          <Facts
+            rows={[
+              [t("日成交量", "Session volume"), compact(tech.volume)],
+              [
+                t("20 日均量", "20-session average volume"),
+                compact(tech.averageVolume20d),
+              ],
+              [
+                t("成交量 / 20 日均量", "Volume / 20-session average"),
+                tech.relativeVolume20d == null
+                  ? "—"
+                  : number(tech.relativeVolume20d, 2) + "×",
+              ],
+            ]}
+          />
+          <Select
+            size="xs"
+            aria-label={t("相对表现基准", "Relative performance benchmark")}
+            value={benchmark}
+            data={[
+              { value: "spy", label: "SPY · S&P 500" },
+              { value: "qqq", label: "QQQ · Nasdaq 100" },
+              { value: "soxx", label: "SOXX · Semiconductors" },
+            ]}
+            onChange={(v) => update({ technicalBenchmark: v })}
+          />
+          <Facts
+            rows={[
+              [
+                t("63 日收益差", "63-session return difference"),
+                numeric(relative.excess_return) == null
+                  ? "—"
+                  : number(Number(relative.excess_return) * 100, 2) + " pp",
+              ],
+            ]}
+          />
+          {more(t("基准比较明细", "Benchmark comparison details"), [
+            [
+              t("证券 · 共同区间收益", "Security · common-window return"),
+              percent(relative.asset_return, true),
+            ],
+            [
+              t("基准 · 共同区间收益", "Benchmark · common-window return"),
+              percent(relative.benchmark_return, true),
+            ],
+            ["Beta · 63", number(relative.beta, 2)],
+            [
+              t("相关性 · 63", "Correlation · 63"),
+              number(relative.correlation, 2),
+            ],
+          ])}
+          {tech.currency !== "USD" && (
+            <small>
+              {t(
+                "缺少同币种基准记录",
+                "Matching-currency benchmark records unavailable",
+              )}
+            </small>
+          )}
+        </section>
       </div>
-      <Panel title={t("动量指标", "Momentum indicators")}>
-        <div className="mx-metric-grid">
-          <Metric
-            label="RSI · 14"
-            value={number(tech.rsi, 1)}
-            note={
-              tech.rsi == null
-                ? undefined
-                : tech.rsi >= 70
-                  ? t("超买区间", "Overbought range")
-                  : tech.rsi <= 30
-                    ? t("超卖区间", "Oversold range")
-                    : t("中性区间", "Neutral range")
-            }
-            help={t(
-              "RSI 范围为 0–100，30 以下与 70 以上常用作超卖/超买参考，不是反转保证。",
-              "RSI ranges from 0–100. Below 30 and above 70 are common oversold/overbought references, not guaranteed reversals.",
-            )}
-          />
-          <Metric label="MACD" value={number(tech.macd, 3)} />
-          <Metric
-            label={t("MACD 信号线", "MACD signal")}
-            value={number(tech.macdSignal, 3)}
-          />
-          <Metric
-            label={t("MACD 差值", "MACD histogram")}
-            value={number(tech.macdHistogram, 3)}
-            help={t(
-              "MACD 与信号线之差。正负表示两者的位置关系。",
-              "The difference between MACD and its signal line. The sign describes their relative position.",
-            )}
-          />
-        </div>
-      </Panel>
       {!tech.historyCoverage.complete && (
         <Notice tone="warn">
-          {tech.historyCoverage.warning ||
-            t(
-              "价格历史覆盖不完整，长周期指标可能无法计算。",
-              "Price history is incomplete; long-period indicators may be unavailable.",
-            )}
+          {t(
+            "日线覆盖不足，长周期读数可能缺失。",
+            "Limited daily history; some long-period readings may be unavailable.",
+          )}
         </Notice>
       )}
       {tech.adrResearch && (
-        <Panel title={t("存托凭证数据口径", "Depositary receipt context")}>
+        <details className="mx-chart-data">
+          <summary>
+            {t("存托凭证数据口径", "Depositary receipt context")}
+          </summary>
           <Facts
             rows={[
               [
@@ -219,12 +295,11 @@ export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
                 t("相对平价溢价", "Premium to parity"),
                 percent(tech.adrResearch.premiumToParity),
               ],
-              [t("存托机构", "Depositary"), tech.adrResearch.depositary ?? "—"],
             ]}
           />
-        </Panel>
+        </details>
       )}
-    </>
+    </Panel>
   );
 }
 function metricSource(data: ResearchLensSnapshot): Json {

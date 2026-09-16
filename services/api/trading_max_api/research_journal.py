@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import AnyHttpUrl, Field, field_validator
 from trading_max.domain import DomainModel
 from trading_max.research.facts import fingerprint
-from trading_max.research.valuation_preview import ValuationPreview
+from trading_max.research.valuation_preview import ValuationPreview, ValuationPreviewRequest
 
 from .valuation_assumptions import _atomic_write
 
@@ -49,6 +49,11 @@ class SavedResearchModel(DomainModel):
     id: str
     saved_at: datetime
     preview: ValuationPreview
+    reason: str = ""
+
+
+class ResearchModelSaveRequest(ValuationPreviewRequest):
+    reason: str = Field(default="", max_length=4000)
 
 
 class ResearchJournal(DomainModel):
@@ -98,12 +103,17 @@ class ResearchJournalStore:
             self._save(state)
             return state
 
-    def save_model(self, model: ValuationPreview) -> ResearchJournal:
+    def save_model(self, model: ValuationPreview, reason: str = "") -> ResearchJournal:
         with self.lock:
             state = self.load(model.basis.ticker)
-            if not any(m.id == model.id for m in state.models):
+            reason = reason.strip()
+            model_id = fingerprint([model.id, reason]) if reason else model.id
+            if not any(m.id == model_id for m in state.models):
                 state.models.insert(
-                    0, SavedResearchModel(id=model.id, saved_at=datetime.now(UTC), preview=model)
+                    0,
+                    SavedResearchModel(
+                        id=model_id, saved_at=datetime.now(UTC), preview=model, reason=reason
+                    ),
                 )
                 self._save(state)
             return state

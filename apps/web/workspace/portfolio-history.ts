@@ -65,10 +65,18 @@ export function selectPortfolioHistory({
   const sorted = (rows: NavPoint[]) => [...rows].filter(validDate)
     .sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   const dailyRows = sorted(daily.filter((p) => !p.intraday));
-  const cfdValue = dailyRows.findLast((p) => navNumber(p, "cfd") != null)?.cfd ?? null;
+  const cfdAnchor = dailyRows.findLast((p) => navNumber(p, "cfd") != null);
+  const cfdValue = cfdAnchor?.cfd ?? null;
+  const householdFlows = navNumber(cfdAnchor, "household", "NetContributionsGbp");
+  const investmentFlows = navNumber(cfdAnchor, "total", "NetContributionsGbp");
+  const cfdFlowOffset = householdFlows != null && investmentFlows != null ? householdFlows - investmentFlows : null;
   // Household intraday from the API is A+B only. Add the explicit, historical CFD proxy.
   const projected = scope === "household" && cfdValue != null
-    ? intraday.map((p) => ({ ...p, household: p.total == null ? null : p.total + cfdValue }))
+    ? intraday.map((p) => {
+      const value = p.total == null ? null : p.total + cfdValue;
+      const flows = p.totalNetContributionsGbp != null && cfdFlowOffset != null ? p.totalNetContributionsGbp + cfdFlowOffset : null;
+      return { ...p, household: value, householdNetContributionsGbp: flows, householdNetPnlGbp: value != null && flows != null ? value - flows : null };
+    })
     : intraday;
   const intradayRows = scope === "cfd" || (scope === "household" && cfdValue == null)
     ? [] : sorted(projected.filter((p) => p.intraday));

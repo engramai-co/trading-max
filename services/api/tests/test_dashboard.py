@@ -572,3 +572,30 @@ def test_typed_research_adapters_preserve_options_and_valuation_fields() -> None
     assert valuations[0]["spot"] == 25.0
     assert valuations[0]["forwardPe"] == 18.5
     assert valuations[0]["priceToBook"] == 2.2
+
+
+def test_technical_readings_expose_real_observations_and_preserve_missing():
+    source = {
+        "rows": [
+            {
+                "ticker": "TEST",
+                "momentum": {"stochastic_k14": 42},
+                "trend_strength": {"atr14": 1.5, "adx14": 20, "plus_di14": 0},
+                "volume": {"volume": 0, "average_volume_20d": 1000, "volume_vs_20d": 0},
+                "structure": {"high52": 123, "bollinger": {"pct_b": 0.8, "bandwidth": 0.2}},
+            }
+        ]
+    }
+    row = _technical_rows(source)[0]
+    assert row["atr"] == 1.5
+    assert row["adx"] == 20
+    assert row["plusDi"] == 0
+    assert row["minusDi"] is None
+    assert row["stochasticK"] == 42
+    assert row["stochasticD"] is None
+    assert row["volume"] == 0
+    assert row["relativeVolume20d"] == 0
+    assert row["averageVolume20d"] == 1000
+    assert row["bollingerPosition"] == 0.8
+    assert row["bollingerWidth"] == 0.2
+    assert row["low52w"] is None

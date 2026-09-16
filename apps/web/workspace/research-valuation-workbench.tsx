@@ -4,8 +4,10 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   Button,
   Group,
+  Modal,
   NumberInput,
   Select,
+  Textarea,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import {
@@ -128,8 +130,10 @@ function ModelEditor({
   const [selected, setSelected] = useState<string>("base");
   const [activeField, setActiveField] =
     useState<keyof ScenarioInput>("revenueCagr");
+  const [saveOpen, setSaveOpen] = useState(false);
   const [draftValue, setDraftValue] = useState<number | string | null>(null);
   const [invalidInput, setInvalidInput] = useState(false);
+  const [reason, setReason] = useState("");
   const [worksheet, setWorksheet] = useState<string>("base");
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
@@ -201,7 +205,7 @@ function ModelEditor({
   const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const saved = savedFingerprint === liveFingerprint;
   const save = useMutation({
-    mutationFn: (payload: typeof liveRequest) =>
+    mutationFn: (payload: typeof liveRequest & { reason: string }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
         jsonRequest("POST", payload),
@@ -215,6 +219,7 @@ function ModelEditor({
           references: payload.references,
         }),
       );
+      setSaveOpen(false);
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
       });
@@ -279,7 +284,14 @@ function ModelEditor({
   ];
   const base = result.scenarios.base;
   const current = result.scenarios[selected] ?? base;
-  const sourceLabel = t("模型初始假设", "Initial assumptions");
+  const sourceLabel =
+    initial.defaultSource === "saved-model"
+      ? t("上次保存的模型", "Last saved model")
+      : initial.defaultSource === "sector-template"
+        ? t("行业情景模板", "Sector scenario template")
+        : initial.defaultSource === "configured-scenarios"
+          ? t("已配置的假设", "Configured assumptions")
+          : t("模型初始假设", "Initial assumptions");
   const referencePeriod = data.financialFacts?.periods.find(
     (p) => p.id === data.financialFacts?.latestTtm,
   );
@@ -687,7 +699,7 @@ function ModelEditor({
           </Button>
           <Button
             fullWidth
-            onClick={() => save.mutate(liveRequest)}
+            onClick={() => setSaveOpen(true)}
             loading={save.isPending}
             disabled={busy || query.isError || saved}
           >
@@ -908,6 +920,49 @@ function ModelEditor({
           </details>
         </Panel>
       </details>
+      <Modal
+        opened={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        title={t("保存模型版本", "Save model version")}
+      >
+        <Facts
+          rows={[
+            [t("模型周期", "Horizon"), `${horizon}Y`],
+            [
+              scenarioNames[selected],
+              currency(current.value, result.basis.currency, 2),
+            ],
+          ]}
+        />
+        <Textarea
+          label={t("记录这次判断的理由", "Reason for this view")}
+          placeholder={t(
+            "例如：增长回归历史均值，现金流率保持稳定。",
+            "For example: growth returns to its historical average while the cash-flow margin holds.",
+          )}
+          value={reason}
+          onChange={(e) => setReason(e.currentTarget.value)}
+          minRows={3}
+          maxLength={4000}
+        />
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => setSaveOpen(false)}>
+            {t("取消", "Cancel")}
+          </Button>
+          <Button
+            onClick={() => save.mutate({ ...liveRequest, reason })}
+            loading={save.isPending}
+            disabled={busy || query.isError}
+          >
+            {t("保存版本", "Save version")}
+          </Button>
+        </Group>
+        {save.isError && (
+          <p role="alert">
+            {t("保存失败，请重试。", "Could not save. Try again.")}
+          </p>
+        )}
+      </Modal>
     </>
   );
 }

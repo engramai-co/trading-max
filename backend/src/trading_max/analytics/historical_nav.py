@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from trading_max.analytics.cash_flow_history import AccountCashFlow, AccountCashFlowHistory
 from trading_max.analytics.ledger import load_transactions
 from trading_max.reference.historical_listings import historical_listing_symbols
 
@@ -86,6 +87,7 @@ class ReconstructionResult:
     terminal_cash_gap_gbp: float
     broker_anchor_cash_adjustment_gbp: float
     performance_eligible: bool
+    cash_flows: AccountCashFlowHistory
 
 
 @dataclass(frozen=True)
@@ -654,6 +656,8 @@ def reconstruct_historical_nav(
     )
 
     events = ledger_events(transactions, supplemental_events)
+    if any(event.timestamp > fetched_at for event in events):
+        raise HistoricalNavError("broker ledger includes events after the account observation")
     quantity_delta = pd.DataFrame(0.0, index=days, columns=identities)
     for event in events:
         if event.identity and event.quantity:
@@ -756,6 +760,7 @@ def reconstruct_historical_nav(
     cash_delta = pd.DataFrame(0.0, index=days, columns=sorted(wallet_currencies))
     external_flow = pd.Series(0.0, index=days)
     weighted_flow = pd.Series(0.0, index=days)
+    flow_events: list[AccountCashFlow] = []
     for event in events:
         business_day = _business_date(event.timestamp)
         if business_day not in cash_delta.index:
@@ -763,6 +768,13 @@ def reconstruct_historical_nav(
         cash_delta.loc[business_day, event.currency] += event.cash
         if event.external:
             amount_gbp = event.cash / float(cash_fx.loc[business_day, event.currency])
+            flow_events.append(
+                AccountCashFlow(
+                    occurred_at=event.timestamp.to_pydatetime(),
+                    accounting_date=business_day.date(),
+                    amount_gbp=amount_gbp,
+                )
+            )
             external_flow.loc[business_day] += amount_gbp
             weighted_flow.loc[business_day] += amount_gbp * _event_weight(
                 event.timestamp,
@@ -845,6 +857,12 @@ def reconstruct_historical_nav(
         terminal_cash_gap_gbp=cash_gap,
         broker_anchor_cash_adjustment_gbp=cash_gap,
         performance_eligible=performance_eligible,
+        cash_flows=AccountCashFlowHistory(
+            covered_from=events[0].timestamp.to_pydatetime(),
+            covered_until=pd.Timestamp(account["fetched_at"]).to_pydatetime(),
+            verified=performance_eligible,
+            events=flow_events,
+        ),
     )
 
 

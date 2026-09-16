@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import io
+from contextlib import suppress
 from datetime import UTC, datetime
 from math import isfinite
 from typing import Any
 
 from .artifacts import ArtifactStore
 from .models import SnapshotManifest
+from .portfolio_cashflows import CashFlowTimeline
 
 JsonObject = dict[str, Any]
 
@@ -244,11 +246,17 @@ def _nav_series(
     return result
 
 
-def _intraday_nav_points(payload: JsonObject | None) -> list[JsonObject]:
+def _intraday_nav_points(
+    payload: JsonObject | None,
+    cash_flows: dict[str, JsonObject] | None = None,
+) -> list[JsonObject]:
     """Project unified valuations, retaining provenance and native precision."""
 
     if not isinstance(payload, dict):
         return []
+    flows = {
+        profile: CashFlowTimeline((cash_flows or {}).get(profile)) for profile in ("invest", "isa")
+    }
     points: list[JsonObject] = []
     for raw in payload.get("points", []):
         if not isinstance(raw, dict):
@@ -261,6 +269,11 @@ def _intraday_nav_points(payload: JsonObject | None) -> list[JsonObject]:
         total = _nullable(raw.get("total_value_gbp"))
         if invest is None or isa is None or total is None:
             continue
+        invest_flow = flows["invest"].at(raw.get("invest_observed_at") or observed)
+        isa_flow = flows["isa"].at(raw.get("isa_observed_at") or observed)
+        total_flow = (
+            invest_flow + isa_flow if invest_flow is not None and isa_flow is not None else None
+        )
         points.append(
             {
                 "date": str(observed),
@@ -273,7 +286,15 @@ def _intraday_nav_points(payload: JsonObject | None) -> list[JsonObject]:
                 "modelPriceCadenceSeconds": raw.get("model_price_cadence_seconds"),
                 "investModelValueGbp": _nullable(raw.get("invest_model_value_gbp")),
                 "isaModelValueGbp": _nullable(raw.get("isa_model_value_gbp")),
-                "flowStatus": str(raw.get("flow_status") or "unverified"),
+                "flowStatus": "verified"
+                if total_flow is not None
+                else str(raw.get("flow_status") or "unverified"),
+                "investNetContributionsGbp": invest_flow,
+                "isaNetContributionsGbp": isa_flow,
+                "totalNetContributionsGbp": total_flow,
+                "investNetPnlGbp": invest - invest_flow if invest_flow is not None else None,
+                "isaNetPnlGbp": isa - isa_flow if isa_flow is not None else None,
+                "totalNetPnlGbp": total - total_flow if total_flow is not None else None,
                 "invest": invest,
                 "isa": isa,
                 "cfd": None,
@@ -390,6 +411,21 @@ def _technical_rows(raw: JsonObject) -> list[JsonObject]:
                 "return20d": _nullable(returns.get("r_20d")),
                 "return63d": _nullable(returns.get("r_63d")),
                 "atrPct": _nullable(strength.get("atr14_pct")),
+                "atr": _nullable(strength.get("atr14")),
+                "adx": _nullable(strength.get("adx14")),
+                "plusDi": _nullable(strength.get("plus_di14")),
+                "minusDi": _nullable(strength.get("minus_di14")),
+                "stochasticK": _nullable(momentum.get("stochastic_k14")),
+                "stochasticD": _nullable(momentum.get("stochastic_d3")),
+                "high52w": _nullable(structure.get("high52")),
+                "low52w": _nullable(structure.get("low52")),
+                "bollingerUpper": _nullable((structure.get("bollinger") or {}).get("upper")),
+                "bollingerLower": _nullable((structure.get("bollinger") or {}).get("lower")),
+                "bollingerPosition": _nullable((structure.get("bollinger") or {}).get("pct_b")),
+                "bollingerWidth": _nullable((structure.get("bollinger") or {}).get("bandwidth")),
+                "volume": _nullable((row.get("volume") or {}).get("volume")),
+                "averageVolume20d": _nullable((row.get("volume") or {}).get("average_volume_20d")),
+                "relativeVolume20d": _nullable((row.get("volume") or {}).get("volume_vs_20d")),
                 "seasonality": [
                     dict(item) for item in row.get("seasonality", []) if isinstance(item, dict)
                 ],
@@ -806,6 +842,10 @@ def build_dashboard_data(
             intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
         except (FileNotFoundError, TypeError, ValueError):
             intraday_nav = None
+    cash_flows: dict[str, JsonObject] = {}
+    for profile, code in (("invest", "a"), ("isa", "b")):
+        with suppress(FileNotFoundError, TypeError, ValueError):
+            cash_flows[profile] = store.read_json(run_id, f"account/nav/cash_flows_{code}.json")
     try:
         account_analysis_raw = store.read_json(run_id, "account/analysis_metrics.json")
     except FileNotFoundError:
@@ -1091,7 +1131,7 @@ def build_dashboard_data(
         # reconstructed and observed valuations, with explicit provenance.
         # Neither source certifies cash-flow-adjusted returns.
         "nav": _nav_series(nav_a, nav_b, nav_c),
-        "intradayNav": _intraday_nav_points(intraday_nav),
+        "intradayNav": _intraday_nav_points(intraday_nav, cash_flows),
         "risk": {
             "A": _risk_metrics(synthetic["A"]),
             "B": _risk_metrics(synthetic["B"]),

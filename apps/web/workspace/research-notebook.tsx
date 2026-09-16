@@ -582,6 +582,12 @@ function ModelVersions({ journal }: { journal: Journal }) {
               {detail.savedAt.slice(0, 16).replace("T", " ")} UTC ·{" "}
               {detail.preview.horizon}Y · {detail.preview.basis.currency}
             </p>
+            {detail.reason && (
+              <div className="mx-saved-reason">
+                <h3>{t("判断理由", "Rationale")}</h3>
+                <p>{detail.reason}</p>
+              </div>
+            )}
             <Segments
               label={t("底稿情景", "Worksheet scenario")}
               value={scenario}

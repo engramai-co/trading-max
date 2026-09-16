@@ -83,6 +83,92 @@ def _account(*, quantity: float = 10.0) -> dict:
     }
 
 
+def test_cash_flow_timeline_preserves_timing_and_reconciles_daily_amounts(tmp_path):
+    path = _export(tmp_path / "ledger.csv")
+    rows = pd.read_csv(path).fillna("").to_dict("records")
+    for stamp, amount in [("2026-01-06T12:00:00Z", -10), ("2026-01-06T15:00:00Z", 20)]:
+        rows.append(
+            {
+                **rows[0],
+                "ID": stamp,
+                "Action": "Deposit" if amount > 0 else "Withdrawal",
+                "Time (UTC)": stamp,
+                "Total": amount,
+            }
+        )
+    pd.DataFrame(rows).to_csv(path, index=False)
+    account = {**_account(), "cash_gbp": 60, "total_value_gbp": 120}
+    result = reconstruct_historical_nav(export_path=path, account=account, history_loader=_history)
+    assert result.cash_flows.verified
+    assert [event.occurred_at.hour for event in result.cash_flows.events] == [8, 12, 15]
+    assert [event.amount_gbp for event in result.cash_flows.events] == [100, -10, 20]
+    daily = list(csv.DictReader(io.StringIO(result.content.decode())))
+    assert sum(float(row["ExternalFlowGBP"]) for row in daily) == sum(
+        event.amount_gbp for event in result.cash_flows.events
+    )
+
+
+def test_nav_refresh_reuses_reconciled_cash_flows_but_rechecks_changed_cash(tmp_path, monkeypatch):
+    from trading_max.application.nav_stages import AccountNavStage
+    from trading_max.application.stages import StageContext
+    from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+
+    export = _export(tmp_path / "ledger.csv")
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    snapshots = SnapshotStore(tmp_path)
+    calls = []
+
+    def prices(symbol, start, end):
+        calls.append(symbol)
+        return _history(symbol, start, end)
+
+    stage = AccountNavStage(artifacts, snapshots, history_loader=prices)
+    monkeypatch.setattr(stage, "_historical_export", lambda _profile: export)
+
+    def refresh(account):
+        inputs = [
+            artifacts.put_json(
+                key=f"account/{profile}.json",
+                payload=account,
+                kind="account",
+                producer_version="fixture",
+            ).ref
+            for profile in ("invest", "isa")
+        ]
+        result = stage.run(
+            StageContext(
+                job_id="refresh",
+                scope="accounts",
+                upstream_artifact_ids=tuple(ref.artifact_id for ref in inputs),
+            )
+        )
+        snapshots.publish(scope="accounts", source="fixture", artifacts=list(result.artifacts))
+        return [
+            artifacts.get_json(ref.artifact_id).payload
+            for ref in result.artifacts
+            if ref.kind == "account_cash_flows"
+        ]
+
+    initial = refresh(_account())
+    assert calls and all(flow["verified"] for flow in initial)
+    calls.clear()
+    marked = {
+        **_account(),
+        "fetched_at": "2026-01-07T20:00:00Z",
+        "total_value_gbp": 120,
+        "investments_value_gbp": 70,
+    }
+    advanced = refresh(marked)
+    assert not calls  # Changing prices alone must not reload all historical prices.
+    assert all(flow["covered_until"] == marked["fetched_at"] for flow in advanced)
+    assert [flow["events"] for flow in advanced] == [flow["events"] for flow in initial]
+
+    # A changed cash balance at the same timestamp is not a mark-only refresh.
+    checked = refresh({**marked, "cash_gbp": 75, "total_value_gbp": 145})
+    assert calls
+    assert all(not flow["verified"] for flow in checked)
+
+
 def test_usd_quote_currency_still_discovers_london_listing() -> None:
     assert _candidate_symbols("GOO3", "USD") == ("GOO3", "GOO3.L")
 

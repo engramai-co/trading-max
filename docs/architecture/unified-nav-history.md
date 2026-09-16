@@ -46,6 +46,29 @@ their cadence. Source changes retain both adjacent readings as display anchors,
 but do not break the line: only absent observations make a gap. Keep authoritative
 broker values and paired model values unchanged; do not smooth away their residual.
 
+## Money and cash-flow basis
+
+All ranges use the same four headline measures: ending account value, period net
+contributions, period net P&L and maximum period P&L drawdown. Period net P&L is
+ending value minus opening value minus net contributions during the interval.
+Drawdown is measured from the running peak of that period P&L, using every stored
+valuation before chart sampling. Percentage mode divides those changes by the
+positive opening account value; it is not a time-weighted investment return.
+
+The daily reconstruction publishes typed, immutable cash-flow evidence with each
+event's broker timestamp and the exact GBP amount used by the daily NAV ledger.
+The API projects cumulative contributions at each account's observation time;
+only reconciled events within the evidence's covered interval qualify. Missing
+evidence leaves P&L unavailable instead of treating contributions as zero. Daily
+and intraday calculations share these amounts; intraday TWR remains unavailable.
+
+An unchanged ledger and unchanged account cash and quantities allow a mark-only
+refresh to extend existing cash-flow coverage without refetching market history.
+Changed ledger sources or account balances require reconciliation again. The
+source digest and account-state digest travel with each immutable evidence
+artifact. Legacy value-only histories remain readable, without fabricated cash
+flows or certification.
+
 The default chart shows valuations and financial measures. Normal coverage does
 not need a status badge or track. Show coverage only when data is incomplete,
 including a single missing slot or stale tail. Individual sources, valuation cadence,
