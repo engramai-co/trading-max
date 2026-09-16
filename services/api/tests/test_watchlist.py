@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+import pytest
 from trading_max.domain import InstrumentId
 from trading_max.research import (
     TaxonomyCatalog,
@@ -17,10 +21,21 @@ from services.api.trading_max_api.classification import (
 from services.api.trading_max_api.models import SecuritySearchResult, SnapshotManifest
 from services.api.trading_max_api.security_entity_resolution import WebEntityResolution
 from services.api.trading_max_api.watchlist import (
+    SecuritySearchError,
     SecuritySearchService,
     WatchlistStore,
     magnificent_seven_securities,
 )
+
+
+@pytest.fixture(autouse=True)
+def offline_optional_search_sources(monkeypatch):
+    monkeypatch.setattr(SecuritySearchService, "_quote_search", lambda self, query: [])
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("Synthetic test: SEC unavailable")
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.get", unavailable)
 
 
 class _OpenFigiResponse:
@@ -51,15 +66,23 @@ class _EmptyOpenFigiResponse(_OpenFigiResponse):
 class _ScriptedOpenFigiResponse:
     """Returns an empty OpenFIGI payload unless the corrected name is queried."""
 
-    def __init__(self, corrected: str, payload: dict) -> None:
+    def __init__(self, corrected: str, payload: dict | list) -> None:
         self._corrected = corrected
         self._payload = payload
 
     def raise_for_status(self) -> None:
         return None
 
-    def json(self) -> dict:
+    def json(self) -> dict | list:
         return self._payload
+
+
+def _provider_response(body, rows_for_query):
+    if isinstance(body, list):
+        payload = [{"data": rows_for_query(job["idValue"])} for job in body]
+    else:
+        payload = {"data": rows_for_query(body["query"])}
+    return _ScriptedOpenFigiResponse("", payload)
 
 
 def test_new_install_starts_with_empty_dynamic_watchlist(tmp_path: Path) -> None:
@@ -270,25 +293,11 @@ def test_security_search_uses_web_entity_resolution_only_after_empty_provider_se
     requested: list[str] = []
 
     def openfigi(*args, **kwargs):
-        query = kwargs["json"]["query"]
-        requested.append(query)
-        if query != "GOOGL":
-            return _EmptyOpenFigiResponse()
-        response = _OpenFigiResponse()
-        response.json = lambda: {
-            "data": [
-                {
-                    "figi": "BBG009S39JX6",
-                    "compositeFIGI": "BBG009S39JX6",
-                    "name": "ALPHABET INC-CL A",
-                    "ticker": "GOOGL",
-                    "exchCode": "US",
-                    "marketSector": "Equity",
-                    "securityType2": "Common Stock",
-                }
-            ]
-        }
-        return response
+        def rows(query):
+            requested.append(query)
+            return [_candidate_row("GOOGL", "ALPHABET INC-CL A")] if query == "GOOGL" else []
+
+        return _provider_response(kwargs["json"], rows)
 
     monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", openfigi)
     search = SecuritySearchService(
@@ -377,7 +386,7 @@ def test_security_search_resolves_alphabet_share_classes_to_one_entity(
     assert all(item.gics.sector_code == "50" for item in result.results if item.gics)
 
 
-def test_security_search_typo_correction_requeries_with_corrected_name(
+def test_security_search_typo_proposes_a_verified_candidate_without_rewriting_query(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -395,24 +404,19 @@ def test_security_search_typo_correction_requeries_with_corrected_name(
     search = SecuritySearchService(watchlist, index_path=index)
 
     def scripted_post(url, **kwargs):
-        query = kwargs["json"]["query"]
-        if query.casefold() == "plantir":
-            return _EmptyOpenFigiResponse()
-        return _ScriptedOpenFigiResponse(
-            corrected=query,
-            payload={
-                "data": [
+        return _provider_response(
+            kwargs["json"],
+            lambda query: (
+                [
                     {
+                        **_candidate_row("PLTR", "PALANTIR TECHNOLOGIES INC-A"),
                         "figi": "BBG000N7QR55",
                         "compositeFIGI": "BBG000N7QR55",
-                        "name": "PALANTIR TECHNOLOGIES INC-A",
-                        "ticker": "PLTR",
-                        "exchCode": "US",
-                        "marketSector": "Equity",
-                        "securityType2": "Common Stock",
                     }
                 ]
-            },
+                if query == "PLTR"
+                else []
+            ),
         )
 
     monkeypatch.setattr(
@@ -423,7 +427,8 @@ def test_security_search_typo_correction_requeries_with_corrected_name(
     result = search.search("plantir")
 
     assert result.source == "openfigi"
-    assert result.corrected_query == "palantir technologies inc-a"
+    assert result.query == "plantir"
+    assert result.corrected_query is None
     assert result.results[0].ticker == "PLTR"
     assert result.results[0].figi == "BBG000N7QR55"
 
@@ -555,3 +560,219 @@ def test_reconcile_accepts_typed_market_snapshot(tmp_path: Path) -> None:
     watchlist.reconcile(manifest, TypedStore(), ["BE"])
 
     assert next(item for item in watchlist.items() if item.ticker == "BE").status == "ready"
+
+
+def _candidate_row(ticker: str, name: str) -> dict:
+    return {
+        "ticker": ticker,
+        "name": name,
+        "figi": f"BBGTEST{ticker}",
+        "compositeFIGI": f"BBGTEST{ticker}",
+        "exchCode": "US",
+        "marketSector": "Equity",
+        "securityType2": "Common Stock",
+    }
+
+
+def test_former_company_name_does_not_get_replaced_by_similar_unrelated_company(
+    tmp_path, monkeypatch
+):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    search._index = (time.monotonic(), [("robostrategy, inc.", "BOT"), ("strategy inc", "MSTR")])
+    monkeypatch.setattr(
+        search,
+        "_quote_search",
+        lambda _: [
+            {
+                "symbol": "MIGA.SG",
+                "longname": "MicroStrategy Inc",
+                "shortname": "Strategy Inc.",
+                "quoteType": "EQUITY",
+                "exchange": "STU",
+            },
+            {
+                "symbol": "MIGA.MU",
+                "longname": "MicroStrategy Inc",
+                "shortname": "Strategy Inc.                 R",
+                "quoteType": "EQUITY",
+                "exchange": "MUN",
+            },
+        ],
+    )
+    requested = []
+
+    def provider(*args, **kwargs):
+        def rows(query):
+            requested.append(query)
+            return [
+                _candidate_row("BOT", "ROBOSTRATEGY INC"),
+                _candidate_row("MSTR", "STRATEGY INC"),
+            ]
+
+        return _provider_response(kwargs["json"], rows)
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", provider)
+    result = search.search("microstrategy", limit=3)
+
+    assert result.query == "microstrategy"
+    assert result.corrected_query is None
+    assert [item.ticker for item in result.results] == ["MSTR"]
+    assert requested == ["MSTR"]
+
+
+def test_multiple_fuzzy_candidates_are_independently_verified(tmp_path, monkeypatch):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    entries = [("Northstar Inc", "NSTR"), ("Northstart Corp", "NSTT"), ("Northstars Ltd", "NSTS")]
+    search._index = (time.monotonic(), entries)
+    rows = [_candidate_row(ticker, name) for name, ticker in entries]
+
+    calls = []
+
+    def provider(url, **kwargs):
+        calls.append((url, kwargs["json"]))
+        return _provider_response(
+            kwargs["json"], lambda query: [*rows, _candidate_row("NSTRX", "Northstar Inc")]
+        )
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", provider)
+    result = search.search("northstr", limit=3)
+    assert len(result.results) == 3
+    assert result.results[0].ticker == "NSTR"
+    assert {item.ticker for item in result.results} == {"NSTR", "NSTT", "NSTS"}
+    assert result.corrected_query is None
+    assert len(calls) == 1
+    assert calls[0][0].endswith("/v3/mapping")
+    assert len(calls[0][1]) == 3
+
+
+def test_unverified_alias_is_not_presented_as_a_match(tmp_path, monkeypatch):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    search._index = (time.monotonic(), [])
+    monkeypatch.setattr(
+        search,
+        "_quote_search",
+        lambda _: [
+            {"symbol": "NEW", "longname": "Newbrand Inc", "quoteType": "EQUITY", "exchange": "NMS"},
+        ],
+    )
+
+    def provider(*args, **kwargs):
+        return _provider_response(
+            kwargs["json"],
+            lambda query: (
+                []
+                if query == "oldbrand"
+                else [
+                    _candidate_row("NEW", "Different Company Inc"),
+                    _candidate_row("NEWX", "Newbrand Inc"),
+                ]
+            ),
+        )
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", provider)
+    assert search.search("oldbrand").results == []
+
+
+def test_search_cache_respects_limit_query_text_and_current_watchlist(tmp_path, monkeypatch):
+    store = WatchlistStore(tmp_path)
+    search = SecuritySearchService(store)
+    rows = [
+        _candidate_row(ticker, name)
+        for name, ticker in [
+            ("Northstar Inc", "NSTR"),
+            ("Northstart Corp", "NSTT"),
+            ("Northstars Ltd", "NSTS"),
+        ]
+    ]
+    calls = []
+
+    def provider(*args, **kwargs):
+        calls.append(kwargs["json"]["query"])
+        return _ScriptedOpenFigiResponse("north", {"data": rows})
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", provider)
+    first = search.search("north", limit=1)
+    assert len(first.results) == 1
+    store.add(first.results[0])
+    second = search.search("NORTH", limit=3)
+    assert second.query == "NORTH"
+    assert len(second.results) == 3
+    assert second.results[0].already_watched
+    assert not second.results[1].already_watched
+    store.remove(first.results[0].ticker)
+    assert not search.search("north", limit=1).results[0].already_watched
+    assert calls == ["north"]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_stale_equity_index_refresh_uses_wall_clock_and_keeps_offline_fallback(
+    tmp_path, monkeypatch, available
+):
+    search = SecuritySearchService(WatchlistStore(tmp_path), index_ttl=3600)
+    search.index_path.write_text(json.dumps([{"name": "Oldbrand Inc", "ticker": "NEW"}]))
+    stale_time = time.time() - 7200
+    os.utime(search.index_path, (stale_time, stale_time))
+    calls = []
+
+    def provider(*args, **kwargs):
+        calls.append(args[0])
+        if not available:
+            raise RuntimeError("Synthetic unavailable provider")
+        return _ScriptedOpenFigiResponse("", {"0": {"title": "Newbrand Inc", "ticker": "NEW"}})
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.get", provider)
+    entries = search._load_equity_index()
+    assert entries == [("newbrand inc" if available else "oldbrand inc", "NEW")]
+    assert len(calls) == 1
+    assert search._load_equity_index() == entries
+    assert len(calls) == 1
+
+
+def test_mapping_rate_limit_is_retryable_and_not_cached_as_no_match(tmp_path, monkeypatch):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    search._index = (time.monotonic(), [("Northstar Inc", "NSTR")])
+
+    def limited(*args, **kwargs):
+        request = httpx.Request("POST", args[0])
+        return httpx.Response(429, request=request)
+
+    monkeypatch.setattr("services.api.trading_max_api.watchlist.httpx.post", limited)
+    with pytest.raises(SecuritySearchError):
+        search.search("northstr")
+    assert "northstr" not in search._cache
+    monkeypatch.setattr(
+        "services.api.trading_max_api.watchlist.httpx.post",
+        lambda *args, **kwargs: _provider_response(
+            kwargs["json"], lambda query: [_candidate_row("NSTR", "Northstar Inc")]
+        ),
+    )
+    assert search.search("northstr").results[0].ticker == "NSTR"
+
+
+def test_provider_brand_name_preserves_separate_share_classes(tmp_path, monkeypatch):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    search._index = (time.monotonic(), [("Newbrand Inc", "NEWA"), ("Newbrand Inc", "NEWB")])
+    monkeypatch.setattr(
+        search,
+        "_quote_search",
+        lambda _: [
+            {
+                "symbol": "NEWA",
+                "longname": "Newbrand Inc",
+                "quoteType": "EQUITY",
+                "exchange": "NMS",
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        "services.api.trading_max_api.watchlist.httpx.post",
+        lambda *args, **kwargs: _provider_response(
+            kwargs["json"],
+            lambda query: [
+                _candidate_row(
+                    query, "Newbrand Inc-CL A" if query == "NEWA" else "Newbrand Inc-CL B"
+                )
+            ],
+        ),
+    )
+    assert {item.ticker for item in search.search("oldbrand").results} == {"NEWA", "NEWB"}

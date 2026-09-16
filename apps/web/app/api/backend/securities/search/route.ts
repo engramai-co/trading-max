@@ -7,6 +7,6 @@ export async function GET(request: Request) {
   if (query.length < 2) {
     return Response.json({ query, source: "watchlist", results: [] });
   }
-  const params = new URLSearchParams({ q: query, limit: "8" });
-  return proxyToBackend(`/v1/securities/search?${params.toString()}`);
+  const params = new URLSearchParams({ q: query, limit: "3" });
+  return proxyToBackend(`/v1/securities/search?${params.toString()}`, { signal: request.signal }, request.headers.get("accept-encoding"));
 }
