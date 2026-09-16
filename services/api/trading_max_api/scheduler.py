@@ -88,9 +88,15 @@ class NightlyScheduler:
         ]
 
     def _latest_nightly_job(self) -> JobRecord | None:
+        latest = getattr(self.jobs, "latest_for_triggers", None)
+        if callable(latest):
+            return latest(("nightly", "research", "reconciliation"))
         return next(iter(self._nightly_jobs()), None)
 
     def _attempt_for(self, slot: datetime) -> JobRecord | None:
+        attempt = getattr(self.jobs, "scheduled_attempt", None)
+        if callable(attempt):
+            return attempt(("nightly", "research", "reconciliation"), slot)
         slot_utc = slot.astimezone(UTC)
         for record in self._nightly_jobs():
             scheduled_for = record.scheduled_for or record.created_at

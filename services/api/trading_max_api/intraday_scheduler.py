@@ -91,6 +91,7 @@ class IntradayScheduler:
         self._consecutive_failures = 0
         self._submitted_count = 0
         self._skipped_busy_count = 0
+        self._retry_at: datetime | None = None
 
     @property
     def window_label(self) -> tuple[str, str]:
@@ -127,23 +128,6 @@ class IntradayScheduler:
 
     def _intraday_jobs(self) -> list[JobRecord]:
         return [record for record in self.jobs.list(limit=5_000) if record.trigger in self.triggers]
-
-    def _active_full_job(self) -> JobRecord | None:
-        latest_refreshes = getattr(self.jobs, "latest_refreshes", None)
-        if callable(latest_refreshes):
-            latest, _intraday = latest_refreshes()
-            if latest is not None and latest.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
-                return latest
-            return None
-        return next(
-            (
-                record
-                for record in self.jobs.list(limit=5_000)
-                if record.status in {JobStatus.QUEUED, JobStatus.RUNNING}
-                and record.trigger not in {"intraday", "live"}
-            ),
-            None,
-        )
 
     def _intraday_summary(self) -> tuple[JobRecord | None, dict[str, int]]:
         summary = getattr(self.jobs, "trigger_summary", None)
@@ -248,8 +232,10 @@ class IntradayScheduler:
             slot = self._floor_slot(now)
             next_run = (
                 self._next_boundary(now)
-                if self._attempt_for(slot) is not None or self._active_full_job() is not None
-                else slot
+                if self._attempt_for(slot) is not None
+                else max(now, self._retry_at)
+                if self._retry_at is not None
+                else now
             )
         model = PerformanceSchedule if self.performance else IntradaySchedule
         return model(
@@ -284,6 +270,7 @@ class IntradayScheduler:
             return max(1.0, min((next_run - now).total_seconds(), 3600.0))
 
         slot = self._floor_slot(now)
+        self._retry_at = None
         if self._attempt_for(slot) is None:
             if self.should_submit is not None and not self.should_submit():
                 self._material_change_triggered = False
@@ -292,32 +279,31 @@ class IntradayScheduler:
                     min((self._next_boundary(now) - now).total_seconds(), 3600.0),
                 )
             self._material_change_triggered = False
-            if self._active_full_job() is not None:
+            try:
+                # Admission owns priority. In particular, a scheduled performance
+                # job must not suppress the live observation for the same slot.
+                self.jobs.submit(
+                    self.scope,
+                    skip_sync=self.scope == "performance",
+                    trigger=self.trigger,
+                    scheduled_for=slot.astimezone(UTC),
+                )
+            except JobConflict:
                 self._skipped_busy_count += 1
+                delay = max(1.0, min(30.0, (self._next_boundary(now) - now).total_seconds()))
+                self._retry_at = now + timedelta(seconds=delay)
                 LOGGER.info(
-                    "intraday slot skipped because a full refresh has priority",
+                    "intraday slot deferred while another job has priority",
                     extra={"slot": slot.astimezone(UTC)},
                 )
+                # Retry the current slot, never a backlog of older observations.
+                return delay
             else:
-                try:
-                    self.jobs.submit(
-                        self.scope,
-                        skip_sync=self.scope == "performance",
-                        trigger=self.trigger,
-                        scheduled_for=slot.astimezone(UTC),
-                    )
-                except JobConflict:
-                    self._skipped_busy_count += 1
-                    LOGGER.info(
-                        "intraday slot skipped because another job is active",
-                        extra={"slot": slot.astimezone(UTC)},
-                    )
-                else:
-                    self._submitted_count += 1
-                    LOGGER.info(
-                        "intraday slot submitted",
-                        extra={"slot": slot.astimezone(UTC)},
-                    )
+                self._submitted_count += 1
+                LOGGER.info(
+                    "intraday slot submitted",
+                    extra={"slot": slot.astimezone(UTC)},
+                )
         next_boundary = self._next_boundary(now)
         return max(1.0, min((next_boundary - now).total_seconds(), 3600.0))
 

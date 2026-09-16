@@ -99,7 +99,7 @@ def _run_typed_worker(settings: Settings) -> None:
                 and record.trigger == "performance"
                 and not record.skip_sync
                 and record.status in {JobStatus.QUEUED, JobStatus.RUNNING}
-                for record in queue.list(limit=5_000)
+                for record in queue.active_records()
             )
             if already_pending:
                 LOGGER.info("structural account follow-up already pending")

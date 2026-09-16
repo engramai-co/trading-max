@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.scheduler import NightlyScheduler
 from services.api.trading_max_api.typed_jobs import TypedJobManager
@@ -88,6 +90,38 @@ def test_research_scheduler_coalesces_last_slot_into_daily_reconciliation(
         assert scheduled[0].scope == "all"
         assert scheduled[0].trigger == "reconciliation"
         assert scheduled[0].skip_sync is False
+    finally:
+        scheduler.close()
+        jobs.close()
+
+
+def test_status_and_submission_do_not_materialize_completed_job_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    jobs = TypedJobManager(store, WatchlistStore(tmp_path / "runtime"))
+    now = datetime(2026, 9, 16, 19, 0, tzinfo=UTC)
+    scheduler = NightlyScheduler(
+        jobs,
+        enabled=True,
+        timezone="UTC",
+        local_times=("18:30",),
+        now=lambda: now,
+    )
+
+    def reject_history(*args: object, **kwargs: object) -> None:
+        pytest.fail("scheduler queried the unfiltered job history")
+
+    monkeypatch.setattr(jobs.queue, "list", reject_history)
+    try:
+        assert scheduler.status().next_run_at == now
+        scheduler._tick()
+        job = scheduler.status().last_job
+        assert job is not None
+        assert job.scheduled_for == datetime(2026, 9, 16, 18, 30, tzinfo=UTC)
+        assert scheduler.status().next_run_at == datetime(2026, 9, 17, 18, 30, tzinfo=UTC)
+        scheduler._tick()
+        assert jobs.queue.trigger_summary("nightly")[1] == {"queued": 1}
     finally:
         scheduler.close()
         jobs.close()

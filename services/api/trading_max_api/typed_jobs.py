@@ -408,7 +408,7 @@ class TypedJobManager:
                     and record.trigger == "performance"
                     and not record.skip_sync
                     and record.status in {DomainJobStatus.QUEUED, DomainJobStatus.RUNNING}
-                    for record in self.queue.list(limit=5_000)
+                    for record in self.queue.active_records()
                 )
                 if not already_pending:
                     job_id = secrets.token_hex(16)
@@ -599,11 +599,7 @@ class TypedJobManager:
     ) -> JobRecord:
         if scope == "performance":
             skip_sync = True
-        active_records = [
-            record
-            for record in self.queue.list(limit=5_000)
-            if record.status in {DomainJobStatus.QUEUED, DomainJobStatus.RUNNING}
-        ]
+        active_records = self.queue.active_records()
         active_full = next(
             (
                 record
@@ -682,6 +678,16 @@ class TypedJobManager:
             _api_record(full) if full is not None else None,
             _api_record(intraday) if intraday is not None else None,
         )
+
+    def latest_for_triggers(self, triggers: tuple[str, ...]) -> JobRecord | None:
+        record = self.queue.latest_for_triggers(triggers)
+        return _api_record(record) if record is not None else None
+
+    def scheduled_attempt(
+        self, triggers: tuple[str, ...], scheduled_for: datetime
+    ) -> JobRecord | None:
+        record = self.queue.scheduled_attempt(triggers, scheduled_for)
+        return _api_record(record) if record is not None else None
 
     def trigger_summary(self, trigger: str) -> tuple[JobRecord | None, dict[str, int]]:
         if trigger not in {

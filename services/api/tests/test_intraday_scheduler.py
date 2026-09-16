@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from services.api.trading_max_api.artifacts import ArtifactStore
@@ -140,6 +140,79 @@ def test_live_job_is_admitted_and_claimed_ahead_of_scheduled_performance(
         manager.queue.unregister_worker(worker_id)
         manager.cancel(performance.job_id)
     finally:
+        manager.close()
+
+
+def test_live_scheduler_keeps_the_slot_when_performance_was_submitted_first(
+    tmp_path: Path,
+) -> None:
+    manager = _manager(tmp_path)
+    now = datetime(2026, 9, 16, 19, 30, tzinfo=UTC)
+    scheduler = IntradayScheduler(
+        manager,
+        enabled=True,
+        timezone="Europe/London",
+        interval_seconds=600,
+        window_start="00:00",
+        window_end="00:00",
+        weekdays=(1, 2, 3, 4, 5, 6, 7),
+        scope="live",
+        trigger="live",
+        now=lambda: now,
+    )
+    try:
+        manager.submit("performance", skip_sync=True, trigger="performance", scheduled_for=now)
+        scheduler._tick()
+        scheduler._tick()
+        live = [job for job in manager.list(100) if job.trigger == "live"]
+        assert len(live) == 1
+        assert live[0].scheduled_for == now
+        assert live[0].skip_sync is False
+        assert scheduler.status().next_run_at == now + timedelta(minutes=10)
+    finally:
+        scheduler.close()
+        manager.close()
+
+
+def test_busy_scheduler_retries_current_slot_without_replaying_old_slots(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    now = datetime(2026, 9, 16, 19, 30, tzinfo=UTC)
+    scheduler = IntradayScheduler(
+        manager,
+        enabled=True,
+        timezone="Europe/London",
+        interval_seconds=600,
+        window_start="00:00",
+        window_end="00:00",
+        weekdays=(1, 2, 3, 4, 5, 6, 7),
+        scope="live",
+        trigger="live",
+        now=lambda: now,
+    )
+    try:
+        full = manager.submit("accounts", skip_sync=True)
+        assert scheduler._tick() == 30
+        assert scheduler.status().next_run_at == now + timedelta(seconds=30)
+        manager.cancel(full.job_id)
+        now += timedelta(seconds=30)
+        scheduler._tick()
+        first = next(job for job in manager.list(100) if job.trigger == "live")
+        assert first.scheduled_for == datetime(2026, 9, 16, 19, 30, tzinfo=UTC)
+        manager.cancel(first.job_id)
+
+        full = manager.submit("accounts", skip_sync=True)
+        now = datetime(2026, 9, 16, 19, 40, tzinfo=UTC)
+        assert scheduler._tick() == 30
+        manager.cancel(full.job_id)
+        now = datetime(2026, 9, 16, 19, 51, tzinfo=UTC)
+        scheduler._tick()
+        slots = {job.scheduled_for for job in manager.list(100) if job.trigger == "live"}
+        assert slots == {
+            datetime(2026, 9, 16, 19, 30, tzinfo=UTC),
+            datetime(2026, 9, 16, 19, 50, tzinfo=UTC),
+        }
+    finally:
+        scheduler.close()
         manager.close()
 
 

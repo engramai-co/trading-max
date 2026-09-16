@@ -163,6 +163,44 @@ class SqliteJobQueue:
                 self._record(intraday_row, connection) if intraday_row is not None else None,
             )
 
+    def active_records(self) -> list[JobRecord]:
+        """Read admission candidates without loading completed job history."""
+
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT * FROM jobs WHERE status IN ('queued', 'running') ORDER BY created_at DESC"
+            ).fetchall()
+            return [self._record(row, connection) for row in rows]
+
+    def latest_for_triggers(self, triggers: Sequence[str]) -> JobRecord | None:
+        if not triggers:
+            return None
+        placeholders = ",".join("?" for _ in triggers)
+        with self.database.read() as connection:
+            row = connection.execute(
+                f"SELECT * FROM jobs WHERE trigger IN ({placeholders}) "  # noqa: S608 -- placeholders only; values are bound
+                "ORDER BY created_at DESC LIMIT 1",
+                tuple(triggers),
+            ).fetchone()
+            return self._record(row, connection) if row is not None else None
+
+    def scheduled_attempt(
+        self, triggers: Sequence[str], scheduled_for: datetime
+    ) -> JobRecord | None:
+        """Find a slot directly, including legacy jobs without scheduled_for."""
+
+        if not triggers:
+            return None
+        placeholders = ",".join("?" for _ in triggers)
+        with self.database.read() as connection:
+            row = connection.execute(
+                f"SELECT * FROM jobs WHERE trigger IN ({placeholders}) "  # noqa: S608 -- placeholders only; values are bound
+                "AND COALESCE(scheduled_for, created_at) = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (*triggers, _iso(scheduled_for)),
+            ).fetchone()
+            return self._record(row, connection) if row is not None else None
+
     def trigger_summary(
         self,
         trigger: str,
