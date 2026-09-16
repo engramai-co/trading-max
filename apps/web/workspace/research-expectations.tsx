@@ -1,11 +1,11 @@
 "use client";
+import { researchPriceQuery } from "./research-queries";
 
-import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
+import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { ratingSummary, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
 import {
-  api,
   currency,
   inRange,
   number,
@@ -69,7 +69,7 @@ function ConsensusGauge({
   );
 }
 
-export function AnalystExpectations({ data }: { data: ResearchLensSnapshot }) {
+export function AnalystExpectations({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy();
   const analyst = object(data.analyst),
     market = object(data.market);
@@ -110,15 +110,7 @@ export function AnalystExpectations({ data }: { data: ResearchLensSnapshot }) {
   const historicalPeriod = /^-\d+m$/.test(summary.period)
     ? Math.abs(parseInt(summary.period))
     : null;
-  const prices = useQuery({
-    queryKey: ["workspace-prices", data.runId, data.ticker],
-    queryFn: () =>
-      api<ResearchPriceSeries>(
-        "/research/" + encodeURIComponent(data.ticker) + "/prices?limit=2000",
-      ),
-    staleTime: 300_000,
-    retry: 1,
-  });
+  const prices = useQuery(researchPriceQuery(data.ticker, revision ?? data.runId));
   const currencyMatches = prices.data?.currency === code;
   const points = currencyMatches
     ? inRange(prices.data?.points ?? [], "1Y")

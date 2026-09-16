@@ -1,18 +1,18 @@
 "use client";
-import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { Button, Modal, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import { Plot } from "./charts";
-import { api, number, numeric, object, percent } from "./data";
+import { number, numeric, object, percent } from "./data";
 import { Empty, Panel, Pending, Segments, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
+import { researchLensQuery, researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 export function ResearchComparison({
   ticker,
   instruments,
 }: {
   ticker: string;
-  instruments: { ticker: string; name: string }[];
+  instruments: { ticker: string; name: string; lastRunId?: string | null }[];
 }) {
   const t = useCopy(),
     { params, update } = useRouteState("push");
@@ -26,24 +26,16 @@ export function ResearchComparison({
     .filter((s) => instruments.some((i) => i.ticker === s))
     .slice(0, 4);
   const requests = useQueries({
-    queries: tickers.map((symbol) => ({
-      queryKey: ["research-peer", symbol],
-      queryFn: () =>
-        api<ResearchLensSnapshot>(
-          `/research/${encodeURIComponent(symbol)}/lens/fundamentals`,
-        ),
+    queries: (opened ? tickers : []).map((symbol) => ({
+      ...researchLensQuery(symbol, "fundamentals", instruments.find((i) => i.ticker === symbol)?.lastRunId, "summary"),
       enabled: opened,
       staleTime: 300000,
       retry: false,
     })),
   });
   const prices = useQueries({
-    queries: tickers.map((symbol) => ({
-      queryKey: ["research-peer-prices", symbol],
-      queryFn: () =>
-        api<ResearchPriceSeries>(
-          `/research/${encodeURIComponent(symbol)}/prices?interval=1d&limit=2000`,
-        ),
+    queries: (opened ? tickers : []).map((symbol) => ({
+      ...researchPriceQuery(symbol, instruments.find((i) => i.ticker === symbol)?.lastRunId),
       enabled: opened,
       staleTime: 300000,
       retry: false,
@@ -355,6 +347,7 @@ export function ResearchComparison({
                     type: "value",
                     axisLabel: { formatter: (v: number) => percent(v) },
                   },
+                  tooltip: { valueFormatter: (value) => percent(value, true, 2) },
                   series: tickers.map((symbol, i) => ({
                     name: symbol,
                     type: "line",

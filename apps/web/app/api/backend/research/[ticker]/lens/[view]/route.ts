@@ -29,9 +29,12 @@ export async function GET(
       { status: 400 },
     );
   }
+  const detail = new URL(request.url).searchParams.get("detail") ?? "full";
+  if (!["full", "summary", "seasonality", "documents"].includes(detail))
+    return NextResponse.json({ detail: "Unsupported detail" }, { status: 400 });
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/lens/${view}?limit=${requested}`,
-    undefined,
+    `/v1/research/${encodeURIComponent(ticker)}/lens/${view}?limit=${requested}&detail=${detail}`,
+    { signal: request.signal },
     request.headers.get("accept-encoding"),
   );
 }

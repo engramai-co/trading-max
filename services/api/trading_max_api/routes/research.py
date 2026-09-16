@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.valuation_preview import (
     AssumptionReference,
@@ -440,8 +441,11 @@ def research_prices(
     request: Request,
     limit: Annotated[int, Query(ge=2, le=2_000)] = 504,
     interval: Literal["15m", "60m", "1d", "1wk"] = "1d",
+    window: Literal["3M"] | None = None,
 ) -> ResearchPriceSeries:
     import re
+
+    from ..research_prices import price_window
 
     if not re.fullmatch(r"[A-Za-z0-9^=._-]{1,32}", ticker):
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
@@ -450,6 +454,8 @@ def research_prices(
         try:
             result = app_service(request, "security_prices").get(ticker, interval)
             result.points = result.points[-limit:]
+            result.coverage_start = result.points[0].date if result.points else None
+            result.coverage_end = result.points[-1].date if result.points else None
             try:
                 daily = app_service(request, "research").price_series(
                     ticker, latest_or_503(request), limit=2_000
@@ -460,7 +466,7 @@ def research_prices(
                 ]
             except FileNotFoundError:
                 pass
-            return result
+            return price_window(result, window)
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
@@ -469,14 +475,22 @@ def research_prices(
         )
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
-        return result
+        result.coverage_start = result.points[0].date if result.points else None
+        result.coverage_end = result.points[-1].date if result.points else None
+        return price_window(result, window)
     except FileNotFoundError as exc:
         try:
-            result = app_service(request, "security_prices").get(ticker, "1d")
+            result = (
+                app_service(request, "security_prices").get(ticker, "1d", preview=True)
+                if window == "3M"
+                else app_service(request, "security_prices").get(ticker, "1d")
+            )
             result.requested_interval = interval
             result.coverage_reason = fallback_reason
             result.points = result.points[-limit:]
-            return result
+            result.coverage_start = result.points[0].date if result.points else None
+            result.coverage_end = result.points[-1].date if result.points else None
+            return price_window(result, window)
         except Exception:
             raise HTTPException(
                 status_code=404, detail="security-price-history-unavailable"
@@ -539,14 +553,24 @@ def research_lens(
     ticker: str,
     view: ResearchLensName,
     request: Request,
+    response: Response,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    detail: Literal["full", "summary", "seasonality", "documents"] = "full",
 ) -> ResearchLensSnapshot:
-    return request.app.state.cached_research_lens(
+    started = perf_counter()
+    diagnostics: dict[str, str] = {}
+    payload = request.app.state.cached_research_lens(
         latest_or_503(request),
         ticker=ticker,
         view=view,
         limit=limit,
+        detail=detail,
+        diagnostics=diagnostics,
     )
+    response.headers["Server-Timing"] = (
+        f'research_lens;dur={(perf_counter() - started) * 1000:.1f}, research_cache;desc="{diagnostics.get("cache", "unknown")}"'
+    )
+    return payload
 
 
 @router.get(

@@ -24,9 +24,12 @@ export async function GET(
       { detail: "Unsupported interval" },
       { status: 400 },
     );
+  const window = new URL(request.url).searchParams.get("window");
+  if (window && window !== "3M")
+    return NextResponse.json({ detail: "Unsupported window" }, { status: 400 });
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/prices?limit=${requested}&interval=${interval}`,
-    undefined,
+    `/v1/research/${encodeURIComponent(ticker)}/prices?limit=${requested}&interval=${interval}${window ? `&window=${window}` : ""}`,
+    { signal: request.signal },
     request.headers.get("accept-encoding"),
   );
 }

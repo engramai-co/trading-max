@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-09-16
+
+### Fixed
+
+- Reuse research and price requests across views, cancel obsolete navigation requests, and retain only matching security data during refresh.
+- Cache immutable research evidence by revision and serve compact overview and document responses without unrelated calculations.
+- Limit overview prices to their visible three-month window and expose actual history coverage and server timing.
+
 ## [1.3.3] - 2026-09-16
 
 ### Fixed

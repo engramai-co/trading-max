@@ -39,12 +39,13 @@ import {
   FilingMultiples,
   ModelAlternatives,
 } from "./research-valuation-context";
+import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
 
-export function ValuationWorkbench({ data }: { data: ResearchLensSnapshot }) {
+export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy();
   const financial =
     data.context?.capabilities.some(
@@ -57,9 +58,10 @@ export function ValuationWorkbench({ data }: { data: ResearchLensSnapshot }) {
       data.context?.quote.id,
       data.financialFacts?.version,
     ],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<Preview>(
         `/research/${encodeURIComponent(data.ticker)}/valuation-preview`,
+        { signal },
       ),
     retry: false,
     enabled: !financial,
@@ -90,7 +92,7 @@ export function ValuationWorkbench({ data }: { data: ResearchLensSnapshot }) {
     );
   return (
     <>
-      <ModelEditor key={query.data.id} initial={query.data} data={data} />
+      <ModelEditor key={query.data.id} initial={query.data} data={data} revision={revision} />
       <FilingMultiples data={data} />
     </>
   );
@@ -99,9 +101,11 @@ export function ValuationWorkbench({ data }: { data: ResearchLensSnapshot }) {
 function ModelEditor({
   initial,
   data,
+  revision,
 }: {
   initial: Preview;
   data: ResearchLensSnapshot;
+  revision?: string | null;
 }) {
   const t = useCopy();
   const client = useQueryClient();
@@ -119,14 +123,7 @@ function ModelEditor({
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
   >(initial.references ?? []);
-  const reference = useQuery({
-    queryKey: ["model-estimate-reference", initial.basis.ticker],
-    queryFn: () =>
-      api<ResearchLensSnapshot>(
-        `/research/${encodeURIComponent(initial.basis.ticker)}/lens/analyst`,
-      ),
-    staleTime: 300_000,
-  });
+  const reference = useQuery(researchLensQuery(initial.basis.ticker, "analyst", revision ?? data.runId));
   const analyst = object(reference.data?.analyst);
   const estimate = objects(analyst.revenueEstimate).find(
     (r) => str(r.period ?? r.index) === params.get("estimateRef"),
@@ -144,10 +141,10 @@ function ModelEditor({
   const request = JSON.stringify(debounced);
   const query = useQuery({
     queryKey: ["valuation-preview", initial.id, request],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       api<Preview>(
         `/research/${encodeURIComponent(initial.basis.ticker)}/valuation-preview`,
-        jsonRequest("POST", debounced),
+        { ...jsonRequest("POST", debounced), signal },
       ),
     placeholderData: keepPreviousData,
     staleTime: Infinity,

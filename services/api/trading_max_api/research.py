@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
+from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import (
     DatasetClock,
     ResearchCapability,
@@ -316,8 +317,9 @@ class ResearchLedger:
         # rows can be memoized by sha256. The timeline and model history walk
         # the same handful of artifacts across many snapshots; without this the
         # research overview re-parses every research JSON per snapshot.
-        self._facts_cache: dict[tuple, Any] = {}
-        self._row_cache: dict[tuple[str, str], list[JsonObject]] = {}
+        self._facts_cache: SingleFlightCache[tuple, Any] = SingleFlightCache(128)
+        self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
+        self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
         self._price_series_cache: dict[
             tuple[str, str, str],
             tuple[str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
@@ -388,14 +390,14 @@ class ResearchLedger:
                 continue
             artifact = _artifact(manifest, candidate)
             cache_key = (artifact.sha256, candidate) if artifact is not None else None
-            if cache_key is not None and cache_key in self._row_cache:
-                cached = self._row_cache[cache_key]
-            else:
-                cached = parser(self._read_optional(manifest, candidate))
-                if cache_key is not None:
-                    if len(self._row_cache) >= 256:
-                        self._row_cache.clear()
-                    self._row_cache[cache_key] = cached
+            cached = (
+                self._row_cache.get_or_compute(
+                    cache_key,
+                    lambda candidate=candidate: parser(self._read_optional(manifest, candidate)),
+                )
+                if cache_key is not None
+                else parser(self._read_optional(manifest, candidate))
+            )
             if cached:
                 return cached
         return []
@@ -830,6 +832,44 @@ class ResearchLedger:
             for item in self.watchlist.items()
         ]
 
+    def lens_revision(self, manifest: SnapshotManifest, view: str, detail: str) -> str:
+        """Account-only snapshots must not invalidate immutable company research."""
+        common = {
+            CURRENT_MARKET_KEY,
+            LEGACY_MARKET_KEY,
+            "research/fundamentals.json",
+            "research/coverage.json",
+        }
+        keys = common | {
+            "overview": {
+                "research/financials.json",
+                "research/earnings.json",
+                "research/valuation.json",
+                "research/technical.json",
+            },
+            "technical": {"research/technical.json", "research/earnings.json"},
+            "valuation": {"research/financials.json", "research/valuation.json"},
+            "fundamentals": {
+                "research/financials.json",
+                "research/earnings.json",
+                "research/technical.json",
+                "research/analyst.json",
+            },
+            "analyst": {"research/financials.json", "research/analyst.json"},
+            "options": {"research/options.json", "research/technical.json"},
+        }.get(view, set())
+        # Exposure and historical records depend on the complete snapshot.
+        refs = [
+            (a.key, a.sha256)
+            for a in manifest.artifacts
+            if view in {"overview", "ledger"} or a.key in keys
+        ]
+        return (
+            fingerprint([sorted(refs), detail, datetime.now(UTC).date().isoformat()])
+            if refs
+            else manifest.run_id
+        )
+
     def lens_snapshot(
         self,
         ticker: str,
@@ -837,6 +877,7 @@ class ResearchLedger:
         manifest: SnapshotManifest,
         *,
         limit: int = 30,
+        detail: str = "full",
     ) -> ResearchLensSnapshot:
         """Build one independently loadable research lens.
 
@@ -969,7 +1010,9 @@ class ResearchLedger:
             capabilities=capabilities,
             datasets=datasets,
         )
-        if view in {"overview", "valuation", "fundamentals", "analyst", "ledger"}:
+        if view in {"overview", "valuation", "fundamentals", "analyst", "ledger"} and not (
+            view == "ledger" and detail in {"summary", "documents"}
+        ):
             financial_row = (
                 _find(
                     self._cached_rows(manifest, "research/financials.json", _financials_rows),
@@ -978,21 +1021,22 @@ class ResearchLedger:
                 or {}
             )
             raw = financial_row.get("financials") or {}
-            ref = _artifact(manifest, "research/financials.json")
-            facts_key = (ticker, ref.sha256 if ref else fingerprint(raw), fingerprint(metrics))
-            if facts_key not in self._facts_cache:
-                if len(self._facts_cache) > 128:
-                    self._facts_cache.clear()
-                self._facts_cache[facts_key] = build_financial_facts(
+            # A different company joining the same artifact must not invalidate this
+            # issuer's model inputs. Dataset clocks retain the container's SHA.
+            row_version = fingerprint(raw)
+            facts_key = (ticker, row_version, fingerprint(metrics))
+            payload.financial_facts = self._facts_cache.get_or_compute(
+                facts_key,
+                lambda: build_financial_facts(
                     raw,
                     metrics,
-                    source_version=ref.sha256 if ref else None,
+                    source_version=row_version,
                     period_evidence=raw.get("periodEvidence"),
-                )
-            payload.financial_facts = self._facts_cache[facts_key]
+                ),
+            )
             payload.research_evidence = raw.get("evidence") or {}
 
-        if view in {"overview", "technical"}:
+        if view == "technical" or (view == "overview" and detail != "summary"):
             payload.technical = _find(
                 self._cached_rows(
                     manifest,
@@ -1001,7 +1045,7 @@ class ResearchLedger:
                 ),
                 ticker,
             )
-        if view in {"overview", "valuation"}:
+        if view == "valuation" or (view == "overview" and detail != "summary"):
             payload.valuation = _find(
                 self._cached_rows(
                     manifest,
@@ -1021,24 +1065,48 @@ class ResearchLedger:
                 ticker,
             )
             if payload.options:
+                payload.options = dict(payload.options)
                 payload.options["availability"] = chain_availability(
                     payload.options["capturedAt"], payload.options["expiries"]
                 )
         if view == "fundamentals":
-            payload.fundamentals = _find(
-                _enrich_fundamentals(
-                    _fundamentals_rows(
-                        self._read_optional(
-                            manifest,
-                            "research/fundamentals.json",
-                        )
-                    ),
-                    self._read_optional(manifest, "research/earnings.json"),
-                    self._read_optional(manifest, "research/technical.json"),
-                    self._read_optional(manifest, "research/analyst.json"),
-                ),
-                ticker,
+            # Reuse parsed immutable rows; enriching one ticker must not parse
+            # every statement and every technical history again.
+            payload.fundamentals = dict(fundamental)
+            calendar = _normalized_earnings_calendar(
+                _find(
+                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
+                    ticker,
+                )
             )
+            if calendar is not None:
+                payload.fundamentals["earningsCalendar"] = calendar
+            technical = (
+                _find(
+                    self._cached_rows(manifest, "research/technical.json", _technical_rows), ticker
+                )
+                or {}
+            )
+            for key in ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths"):
+                if key in technical:
+                    payload.fundamentals[key] = technical[key]
+            analyst = (
+                _find(self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker)
+                or {}
+            )
+            history = (analyst.get("analyst") or {}).get("earningsHistory") or []
+            payload.fundamentals["earningsHistory"] = [
+                {
+                    "date": str(h.get("quarter") or "")[:10],
+                    "epsEstimate": h.get("epsEstimate"),
+                    "epsReported": h.get("epsActual"),
+                    "surprisePct": float(h["surprisePercent"]) * 100
+                    if isinstance(h.get("surprisePercent"), int | float)
+                    else None,
+                }
+                for h in history
+                if isinstance(h, dict)
+            ]
             financials_row = _find(
                 self._cached_rows(
                     manifest,
@@ -1048,7 +1116,9 @@ class ResearchLedger:
                 ticker,
             )
             payload.financials = financials_row.get("financials") if financials_row else None
-        if view in {"analyst", "fundamentals", "ledger"}:
+        if view in {"analyst", "fundamentals", "ledger"} and not (
+            view == "ledger" and detail in {"summary", "documents"}
+        ):
             analyst_row = _find(
                 self._cached_rows(
                     manifest,
@@ -1065,11 +1135,13 @@ class ResearchLedger:
                     "providerRecommendationMean": metrics.get("recommendationMean"),
                     "providerRecommendationCount": metrics.get("numberOfAnalystOpinions"),
                 }
-        if view in {"overview", "ledger"}:
+        if view in {"overview", "ledger"} and not (
+            view == "ledger" and detail in {"summary", "documents"}
+        ):
             events = self.events(ticker, manifest)
             payload.latest_event = events[0] if events else None
             payload.portfolio_impact = self.portfolio_impact(ticker, manifest)
-        if view == "ledger":
+        if view == "ledger" and detail == "full":
             payload.timeline = self.timeline(ticker, limit=limit)
             payload.events = events
             payload.models = self.models(ticker, limit=limit)
@@ -1093,6 +1165,91 @@ class ResearchLedger:
                     capability.state = "available" if getattr(payload, field, None) else "missing"
         if payload.technical and market:
             payload.technical = {**payload.technical, "currency": market.get("currency") or ""}
+        if view == "ledger" and detail == "documents":
+            financial_row = (
+                _find(
+                    self._cached_rows(manifest, "research/financials.json", _financials_rows),
+                    ticker,
+                )
+                or {}
+            )
+            evidence = (financial_row.get("financials") or {}).get("evidence") or {}
+            payload.research_evidence = {
+                key: evidence.get(key)
+                for key in ("filings", "news", "status", "asOf")
+                if key in evidence
+            }
+        if view == "fundamentals" and detail == "summary":
+            payload.financials = None
+            payload.analyst = None
+            for key in (
+                "seasonality",
+                "seasonalityCoverage",
+                "seasonalityMatrix",
+                "yearPaths",
+                "earningsHistory",
+            ):
+                payload.fundamentals.pop(key, None)
+        if view == "overview" and detail == "summary":
+            payload.technical = None
+            payload.valuation = None
+            payload.fundamentals = dict(fundamental)
+            payload.fundamentals["earningsCalendar"] = _normalized_earnings_calendar(
+                _find(
+                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
+                    ticker,
+                )
+            )
+            payload.research_evidence = {
+                "filings": list(payload.research_evidence.get("filings") or [])[:3]
+            }
+            facts = payload.financial_facts
+            if facts:
+                period = next((p for p in facts.periods if p.id == facts.latest_ttm), None)
+                if period is None:
+                    annual = sorted(
+                        (p for p in facts.periods if p.kind == "annual"),
+                        key=lambda p: p.provider_end,
+                    )
+                    period = annual[-1] if annual else None
+                payload.financial_facts = facts.model_copy(
+                    update={
+                        "periods": [period] if period else [],
+                        "observations": [
+                            o
+                            for o in facts.observations
+                            if period
+                            and o.period_id == period.id
+                            and o.metric
+                            in {"revenue", "operatingMargin", "netIncome", "freeCashflow"}
+                        ],
+                    }
+                )
+        if view == "technical" and detail != "full":
+            if payload.technical:
+                technical = dict(payload.technical)
+                if detail == "seasonality":
+                    payload.fundamentals = {
+                        key: technical.get(key)
+                        for key in (
+                            "seasonality",
+                            "seasonalityCoverage",
+                            "seasonalityMatrix",
+                            "yearPaths",
+                        )
+                    }
+                for key in ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths"):
+                    technical.pop(key, None)
+                payload.technical = technical
+            payload.fundamentals = {
+                **(payload.fundamentals or {}),
+                "earningsCalendar": _normalized_earnings_calendar(
+                    _find(
+                        self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
+                        ticker,
+                    )
+                ),
+            }
         return ResearchLensSnapshot.model_validate(payload.__dict__)
 
     def timeline(
@@ -1539,7 +1696,10 @@ class ResearchLedger:
                     if value
                 ],
             )
-        raw = self._read_optional(manifest, "research/technical.json")
+        raw = self._raw_price_cache.get_or_compute(
+            artifact.sha256 if artifact else manifest.run_id,
+            lambda: self._read_optional(manifest, "research/technical.json"),
+        )
         raw_rows = raw.get("rows")
         rows = raw_rows if isinstance(raw_rows, list) else []
         source = _find([row for row in rows if isinstance(row, dict)], ticker)

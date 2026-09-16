@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 from trading_max import __version__ as trading_max_version
+from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportStore
 from trading_max.reference import CatalogSecurityMaster
 
@@ -99,11 +100,8 @@ def create_app(
         tuple[str, str | None, int, str],
         ResearchOverview,
     ] = {}
-    research_shell_cache: dict[tuple[str, str], ResearchShell] = {}
-    research_lens_cache: dict[
-        tuple[str, str, ResearchLensName, int, str],
-        ResearchLensSnapshot,
-    ] = {}
+    research_shell_cache: SingleFlightCache[tuple, ResearchShell] = SingleFlightCache(32)
+    research_lens_cache: SingleFlightCache[tuple, ResearchLensSnapshot] = SingleFlightCache(256)
 
     def cached_dashboard(manifest: SnapshotManifest) -> DashboardResponse:
         nonlocal dashboard_cache
@@ -145,16 +143,7 @@ def create_app(
     def cached_research_shell(manifest: SnapshotManifest) -> ResearchShell:
         watchlist_revision = watchlist.revision()
         key = (manifest.run_id, watchlist_revision)
-        with research_cache_lock:
-            cached = research_shell_cache.get(key)
-        if cached is not None:
-            return cached
-        payload = research.shell(manifest)
-        with research_cache_lock:
-            if len(research_shell_cache) >= 32:
-                research_shell_cache.clear()
-            research_shell_cache[key] = payload
-        return payload
+        return research_shell_cache.get_or_compute(key, lambda: research.shell(manifest))
 
     def cached_research_lens(
         manifest: SnapshotManifest,
@@ -162,19 +151,24 @@ def create_app(
         ticker: str,
         view: ResearchLensName,
         limit: int,
+        detail: str = "full",
+        diagnostics: dict | None = None,
     ) -> ResearchLensSnapshot:
         live_revision = live_alerts.revision() if view == "ledger" else ""
-        key = (manifest.run_id, ticker.upper(), view, limit, live_revision)
-        with research_cache_lock:
-            cached = research_lens_cache.get(key)
-        if cached is not None:
-            return cached
-        payload = research.lens_snapshot(ticker, view, manifest, limit=limit)
-        with research_cache_lock:
-            if len(research_lens_cache) >= 256:
-                research_lens_cache.clear()
-            research_lens_cache[key] = payload
-        return payload
+        revision = research.lens_revision(manifest, view, detail)
+        key = (revision, ticker.upper(), view, limit, live_revision, detail)
+        lookup = research_lens_cache.resolve(
+            key, lambda: research.lens_snapshot(ticker, view, manifest, limit=limit, detail=detail)
+        )
+        if diagnostics is not None:
+            diagnostics["cache"] = lookup.status
+        return lookup.value.model_copy(
+            update={
+                "run_id": manifest.run_id,
+                "generated_at": manifest.created_at.isoformat(),
+                "data_revision": revision,
+            }
+        )
 
     def prewarm_research() -> None:
         """Populate the current user-facing projections outside request latency."""
@@ -184,28 +178,20 @@ def create_app(
             return
         research.prewarm_history()
         shell = cached_research_shell(manifest)
-        lens_names: tuple[ResearchLensName, ...] = (
-            "overview",
-            "technical",
-            "valuation",
-            "fundamentals",
-            "analyst",
-            "options",
-            "ledger",
+        instruments = sorted(
+            shell.instruments,
+            key=lambda i: (i.last_run_id == manifest.run_id, i.held),
+            reverse=True,
         )
-        for instrument in shell.instruments:
-            if not instrument.held:
-                continue
+        for instrument in instruments:
             with suppress(FileNotFoundError):
-                research.price_series(instrument.ticker, manifest)
-            for lens_name in lens_names:
-                with suppress(FileNotFoundError):
-                    cached_research_lens(
-                        manifest,
-                        ticker=instrument.ticker,
-                        view=lens_name,
-                        limit=30,
-                    )
+                cached_research_lens(
+                    manifest,
+                    ticker=instrument.ticker,
+                    view="overview",
+                    limit=30,
+                    detail="summary",
+                )
 
     analysis = TypedAnalysisManager(
         store,

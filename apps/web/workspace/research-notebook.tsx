@@ -58,8 +58,10 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
   const [history, setHistory] = useState<Note | null>(null);
   const query = useQuery({
     queryKey: ["research-journal", data.ticker],
-    queryFn: () =>
-      api<Journal>(`/research/${encodeURIComponent(data.ticker)}/journal`),
+    queryFn: ({ signal }) =>
+      api<Journal>(`/research/${encodeURIComponent(data.ticker)}/journal`, { signal }),
+    enabled: section === "notes" || section === "models",
+    staleTime: 60_000,
   });
   const save = useMutation({
     mutationFn: ({ content, id }: { content: NoteInput; id?: string }) =>

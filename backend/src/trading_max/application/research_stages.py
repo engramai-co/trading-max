@@ -39,7 +39,7 @@ def _upstream_json(
     for artifact_id in context.upstream_artifact_ids:
         try:
             ref = artifacts.get_ref(artifact_id)
-            if ref.media_type != "application/json":
+            if ref.key != key or ref.media_type != "application/json":
                 continue
             stored = artifacts.get_json(artifact_id)
         except FileNotFoundError:

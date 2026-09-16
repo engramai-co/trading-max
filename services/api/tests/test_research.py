@@ -17,6 +17,73 @@ from services.api.trading_max_api.research import (
 from services.api.trading_max_api.watchlist import WatchlistStore
 
 
+def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
+    research_root, tmp_path, typed_fixture, seed_watchlist
+):
+    store = ArtifactStore(tmp_path / "runtime")
+    manifest = typed_fixture(research_root, store)
+    watchlist = WatchlistStore(tmp_path / "runtime")
+    seed_watchlist(watchlist, "BE")
+    ledger = ResearchLedger(store, watchlist)
+    full = ledger.lens_snapshot("BE", "overview", manifest)
+    summary = ledger.lens_snapshot("BE", "overview", manifest, detail="summary")
+    assert summary.market == full.market
+    assert summary.context == full.context
+    assert summary.technical is None and summary.valuation is None
+    assert summary.portfolio_impact == full.portfolio_impact
+    assert (
+        summary.research_evidence.get("filings")
+        == (full.research_evidence.get("filings") or [])[:3]
+    )
+    if full.financial_facts:
+        assert all(
+            o in full.financial_facts.observations for o in summary.financial_facts.observations
+        )
+    technical = ledger.lens_snapshot("BE", "technical", manifest)
+    compact = ledger.lens_snapshot("BE", "technical", manifest, detail="summary")
+    assert compact.technical.price == technical.technical.price
+    assert compact.technical.rsi == technical.technical.rsi
+    financials = ledger.lens_snapshot("BE", "fundamentals", manifest)
+    display = ledger.lens_snapshot("BE", "fundamentals", manifest, detail="summary")
+    assert display.financial_facts == financials.financial_facts
+    assert display.research_evidence == financials.research_evidence
+    assert display.financials is None
+    documents = ledger.lens_snapshot("BE", "ledger", manifest, detail="documents")
+    assert not documents.timeline and not documents.financial_facts
+    assert documents.research_evidence.get("filings") == financials.research_evidence.get("filings")
+    notebook = ledger.lens_snapshot("BE", "ledger", manifest, detail="summary")
+    assert not notebook.timeline and not notebook.financial_facts
+
+
+def test_another_issuer_does_not_change_financial_input_version(
+    research_root, tmp_path, typed_fixture, seed_watchlist
+):
+    store = ArtifactStore(tmp_path / "runtime")
+    manifest = typed_fixture(research_root, store)
+    watchlist = WatchlistStore(tmp_path / "runtime")
+    seed_watchlist(watchlist, "BE")
+    ledger = ResearchLedger(store, watchlist)
+    before = ledger.lens_snapshot("BE", "fundamentals", manifest).financial_facts
+    payload = ledger._read_optional(manifest, "research/financials.json")
+    added = store.immutable_artifacts.put_json(
+        key="research/financials.json",
+        payload={
+            **payload,
+            "rows": [*(payload.get("rows") or []), {"ticker": "OTHER", "financials": {}}],
+        },
+    )
+    previous = store.immutable_snapshots.latest()
+    store.immutable_snapshots.publish(
+        scope="research",
+        source="synthetic-other-issuer",
+        artifacts=[ref for ref in previous.manifest.artifacts if ref.key != added.ref.key]
+        + [added.ref],
+    )
+    after = ledger.lens_snapshot("BE", "fundamentals", store.latest_manifest()).financial_facts
+    assert after.version == before.version
+    assert after.observations == before.observations
+
+
 @pytest.mark.parametrize("quote_currency", ["GBP", "USD", "", "GBp"])
 def test_research_quote_metadata_and_listing_identity_are_consistent(tmp_path, quote_currency):
     from services.api.trading_max_api.models import SecuritySearchResult
