@@ -7,7 +7,7 @@ export async function GET(
   const { ticker } = await context.params;
   return proxyToBackend(
     `/v1/research/${encodeURIComponent(ticker)}/journal`,
-    undefined,
+    { signal: request.signal },
     request.headers.get("accept-encoding"),
   );
 }

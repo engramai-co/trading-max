@@ -24,8 +24,9 @@ import { Empty, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
 import { useRouteState } from "./route-state";
+import { chartName, chartNumber } from "./research-chart-format";
 
-export function AnalystView({ data }: { data: ResearchLensSnapshot }) {
+export function AnalystView({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const section = params.get("analystView") ?? "forecast";
@@ -49,7 +50,7 @@ export function AnalystView({ data }: { data: ResearchLensSnapshot }) {
         </Panel>
       ) : section === "ratings" ? (
         <>
-          <AnalystExpectations data={data} />
+          <AnalystExpectations data={data} revision={revision} />
           <RatingsAndActions data={data} />
         </>
       ) : (
@@ -144,7 +145,18 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
               itemStyle: { color: c.accent },
             },
           ],
-          tooltip: { valueFormatter: (v) => number(v, 2) + " " + code },
+          tooltip: {
+            formatter: (input) => {
+              const entries = Array.isArray(input) ? input : [input];
+              return [
+                String(entries[0]?.name ?? "") + " · " + code,
+                ...entries.map(
+                  (e) =>
+                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value)}`,
+                ),
+              ].join("\n");
+            },
+          },
         })}
       />
       <details className="mx-chart-data">
@@ -283,7 +295,18 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
               lineStyle: { color: c.brand, width: 2 },
             },
           ],
-          tooltip: { valueFormatter: (v) => number(v, 2) + " " + code },
+          tooltip: {
+            formatter: (input) => {
+              const entries = Array.isArray(input) ? input : [input];
+              return [
+                String(entries[0]?.name ?? "") + " · " + code,
+                ...entries.map(
+                  (e) =>
+                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value)}`,
+                ),
+              ].join("\n");
+            },
+          },
         })}
       />
       <EvidenceTable
@@ -569,6 +592,8 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
                   onClick={() =>
                     update({
                       view: "technical",
+                      technicalView: null,
+                      chart: null,
                       priceRange: "1Y",
                       interval: "1d",
                       eventId: str(r.id),

@@ -61,6 +61,7 @@ import { PriceHistory } from "./research-price";
 import { PricePreview } from "./research-price-preview";
 import { Seasonality } from "./research-seasonality";
 import { ValuationWorkbench } from "./research-valuation-workbench";
+import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
 export type ResearchTab =
@@ -102,7 +103,7 @@ export function ResearchWorkspace() {
   const client = useQueryClient();
   const shell = useQuery({
     queryKey: ["workspace-research-shell"],
-    queryFn: () => api<ResearchShell>("/research/shell"),
+    queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
     refetchInterval: (q) =>
       q.state.data?.instruments.some(
         (i) => i.status === "pending" || i.status === "running",
@@ -135,52 +136,24 @@ export function ResearchWorkspace() {
   const fetching =
     selected?.status === "pending" || selected?.status === "running";
   const lensName = tab === "financials" ? "fundamentals" : tab;
+  const revision = selected?.lastRunId ?? shell.data?.status.runId;
+  const detail = tab === "overview" ? "summary"
+    : tab === "ledger" ? (["filings", "news"].includes(params.get("notebook") ?? "notes") ? "documents" : "summary")
+    : ["fundamentals", "financials"].includes(tab) && params.get("financialMode") !== "full" ? "summary"
+    : "full";
   const lens = useQuery({
-    queryKey: [
-      "workspace-research",
-      shell.data?.status.runId,
-      selected?.lastRunId,
-      ticker,
-      lensName,
-    ],
+    ...researchLensQuery(ticker, lensName, revision, detail),
     enabled: Boolean(selected),
-    queryFn: () =>
-      api<ResearchLensSnapshot>(
-        "/research/" +
-          encodeURIComponent(ticker) +
-          "/lens/" +
-          lensName +
-          "?limit=30",
-      ),
-    staleTime: 60_000,
   });
   const context = useQuery({
-    queryKey: [
-      "workspace-research",
-      shell.data?.status.runId,
-      selected?.lastRunId,
-      ticker,
-      "fundamentals",
-    ],
+    ...researchLensQuery(ticker, "fundamentals", revision),
     enabled: Boolean(selected) && (tab === "overview" || tab === "technical"),
-    queryFn: () =>
-      api<ResearchLensSnapshot>(
-        "/research/" +
-          encodeURIComponent(ticker) +
-          "/lens/fundamentals?limit=30",
-      ),
-    staleTime: 60_000,
   });
   const quote =
     lens.data ??
     client
       .getQueriesData<ResearchLensSnapshot>({
-        queryKey: [
-          "workspace-research",
-          shell.data?.status.runId,
-          selected?.lastRunId,
-          ticker,
-        ],
+        queryKey: ["workspace-research", ticker],
       })
       .map(([, data]) => data)
       .find((data) => data?.ticker === ticker);
@@ -233,7 +206,9 @@ export function ResearchWorkspace() {
       await client.invalidateQueries({
         queryKey: ["workspace-research-shell"],
       });
-      await client.invalidateQueries({ queryKey: ["workspace-research"] });
+      await client.invalidateQueries({ queryKey: ["workspace-research", ticker] });
+      if (variables.action === "refresh")
+        await client.invalidateQueries({ queryKey: ["workspace-prices", ticker] });
     },
   });
   function selectTicker(value: string) {
@@ -703,7 +678,7 @@ export function ResearchWorkspace() {
                   </Panel>
                 ) : lens.isPending ? (
                   <Pending />
-                ) : lens.isError ? (
+                ) : lens.isError && !lens.data ? (
                   <QueryError retry={lens.refetch} />
                 ) : (
                   lens.data && (
@@ -737,11 +712,11 @@ export function ResearchWorkspace() {
                             context={context.data}
                           />
                           <TechnicalView data={lens.data} />
-                          {context.data && <Seasonality data={context.data} />}
+                          {context.data && <Seasonality data={context.data} revision={revision} />}
                         </>
                       )}
                       {tab === "valuation" && (
-                        <ValuationWorkbench data={lens.data} />
+                        <ValuationWorkbench data={lens.data} revision={revision} />
                       )}
                       {tab === "fundamentals" &&
                         (isFund ? (
@@ -764,7 +739,7 @@ export function ResearchWorkspace() {
                             initialMode="income"
                           />
                         ))}
-                      {tab === "analyst" && <AnalystView data={lens.data} />}
+                      {tab === "analyst" && <AnalystView data={lens.data} revision={revision} />}
                       {tab === "options" && <OptionsView data={lens.data} />}
                       {tab === "ledger" && (
                         <ResearchNotebook key={ticker} data={lens.data} />

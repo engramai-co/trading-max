@@ -1,12 +1,11 @@
 "use client";
 
-import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
+import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Plot } from "./charts";
 import {
-  api,
   number,
   numeric,
   object,
@@ -16,29 +15,27 @@ import {
   tone,
 } from "./data";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
+import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
-export function Seasonality({ data }: { data: ResearchLensSnapshot }) {
+export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
   const [measure, setMeasure] = useState("meanReturn"),
     [month, setMonth] = useState(1);
+  const [recordsOpen, setRecordsOpen] = useState(false);
   const [chosen, setChosen] = useState<string[] | null>(null);
   const benchmarkSymbol = params.get("seasonBenchmark") ?? "none";
   const benchmark = useQuery({
-    queryKey: ["seasonality-benchmark", benchmarkSymbol],
-    queryFn: () =>
-      api<ResearchPriceSeries>(
-        `/research/${encodeURIComponent(benchmarkSymbol)}/prices?limit=2000&interval=1d`,
-      ),
+    ...researchPriceQuery(benchmarkSymbol, revision ?? data.runId),
     enabled: benchmarkSymbol !== "none",
-    staleTime: 300_000,
     retry: false,
   });
   const source = object(data.fundamentals ?? data.technical),
     coverage = object(source.seasonalityCoverage);
-  const matrix = objects(source.seasonalityMatrix),
-    yearPaths = object(source.yearPaths);
+  const matrix = objects(source.seasonalityMatrix);
+  const cellIndex = new Map(matrix.map((r) => [`${r.year}-${r.month}`, r]));
+  const yearPaths = object(source.yearPaths);
   const years = [...new Set(matrix.map((r) => Number(r.year)))].sort(
     (a, b) => b - a,
   );
@@ -266,7 +263,7 @@ export function Seasonality({ data }: { data: ResearchLensSnapshot }) {
                     <th>{year}</th>
                     {months.map((_, i) => {
                       const value = numeric(
-                        matrix.find((r) => r.year === year && r.month === i + 1)
+                        cellIndex.get(`${year}-${i + 1}`)
                           ?.return,
                       );
                       return (
@@ -412,7 +409,7 @@ export function Seasonality({ data }: { data: ResearchLensSnapshot }) {
               })),
             })}
           />
-          <details className="mx-chart-data">
+          <details className="mx-chart-data" onToggle={(event) => setRecordsOpen(event.currentTarget.open)}>
             <summary>{t("所选年份价格记录", "Selected year records")}</summary>
             <div className="mx-table-scroll">
               <table className="mx-financial-table">
@@ -423,7 +420,7 @@ export function Seasonality({ data }: { data: ResearchLensSnapshot }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(chartPaths).flatMap(([year, values]) =>
+                  {recordsOpen && Object.entries(chartPaths).flatMap(([year, values]) =>
                     values.map((p) => (
                       <tr key={year + str(p.date)}>
                         <th>

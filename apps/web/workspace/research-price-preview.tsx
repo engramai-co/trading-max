@@ -1,9 +1,9 @@
 "use client";
+import { researchPriceQuery } from "./research-queries";
 
-import type { ResearchPriceSeries } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { Plot } from "./charts";
-import { api, inRange, number } from "./data";
+import { inRange, number } from "./data";
 import {
   Empty,
   Panel,
@@ -22,15 +22,7 @@ export function PricePreview({
   runId: string;
 }) {
   const t = useCopy();
-  const query = useQuery({
-    queryKey: ["workspace-prices", runId, ticker, "1d"],
-    queryFn: () =>
-      api<ResearchPriceSeries>(
-        `/research/${encodeURIComponent(ticker)}/prices?limit=2000&interval=1d`,
-      ),
-    staleTime: 300_000,
-    retry: 1,
-  });
+  const query = useQuery(researchPriceQuery(ticker, runId, "1d", "3M"));
   const points = inRange(query.data?.points ?? [], "3M");
   const hasCandles =
     points.length > 0 &&

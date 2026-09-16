@@ -9624,6 +9624,17 @@
               }
             ]
           },
+          "dataRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datarevision"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/ResearchEvent"
@@ -10064,6 +10075,17 @@
             "title": "Benchmarkseries",
             "type": "object"
           },
+          "coverageEnd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverageend"
+          },
           "coverageReason": {
             "anyOf": [
               {
@@ -10074,6 +10096,17 @@
               }
             ],
             "title": "Coveragereason"
+          },
+          "coverageStart": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coveragestart"
           },
           "currency": {
             "title": "Currency",
@@ -14416,7 +14449,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.3.3"
+    "version": "1.3.4"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15988,6 +16021,22 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "default": "full",
+              "enum": [
+                "full",
+                "summary",
+                "seasonality",
+                "documents"
+              ],
+              "title": "Detail",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -16223,6 +16272,23 @@
               ],
               "title": "Interval",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "3M",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window"
             }
           }
         ],

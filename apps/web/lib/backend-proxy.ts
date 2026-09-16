@@ -40,9 +40,10 @@ function privateHeaders(contentType: string, compressed: boolean) {
   return headers;
 }
 
-function withServerTiming(headers: Headers, durationMs?: number) {
+function withServerTiming(headers: Headers, durationMs?: number, upstream?: string | null) {
+  if (upstream) headers.set("Server-Timing", upstream);
   if (durationMs !== undefined) {
-    headers.set("Server-Timing", `backend_roundtrip;dur=${durationMs.toFixed(1)}`);
+    headers.append("Server-Timing", `backend_roundtrip;dur=${durationMs.toFixed(1)}`);
   }
   return headers;
 }
@@ -66,6 +67,7 @@ export function proxyBackendResponse(
     headers: withServerTiming(
       privateHeaders(contentType, compressed !== null),
       durationMs,
+      response.headers.get("server-timing"),
     ),
   });
 }

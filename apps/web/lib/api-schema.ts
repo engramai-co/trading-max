@@ -4240,6 +4240,8 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             context?: components["schemas"]["ResearchContext"] | null;
+            /** Datarevision */
+            dataRevision?: string | null;
             /** Events */
             events?: components["schemas"]["ResearchEvent"][];
             financialFacts?: components["schemas"]["FinancialFacts"] | null;
@@ -4386,8 +4388,12 @@ export interface components {
             benchmarkSeries?: {
                 [key: string]: components["schemas"]["BenchmarkPricePoint"][];
             };
+            /** Coverageend */
+            coverageEnd?: string | null;
             /** Coveragereason */
             coverageReason?: string | null;
+            /** Coveragestart */
+            coverageStart?: string | null;
             /** Currency */
             currency: string;
             /** Events */
@@ -6905,6 +6911,7 @@ export interface operations {
         parameters: {
             query?: {
                 limit?: number;
+                detail?: "full" | "summary" | "seasonality" | "documents";
             };
             header?: never;
             path: {
@@ -7041,6 +7048,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 interval?: "15m" | "60m" | "1d" | "1wk";
+                window?: "3M" | null;
             };
             header?: never;
             path: {

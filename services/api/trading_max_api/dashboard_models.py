@@ -798,6 +798,8 @@ class ResearchPriceSeries(ApiModel):
     available_sessions: int
     points: list[PriceSeriesPoint]
     trade_markers: list[ResearchTradeMarker] = Field(default_factory=list)
+    coverage_start: str | None = None
+    coverage_end: str | None = None
 
 
 class TechnicalRow(ApiModel):
@@ -1024,6 +1026,7 @@ class ResearchLensSnapshot(ApiModel):
     view: ResearchLensName
     run_id: str
     generated_at: str
+    data_revision: str | None = None
     context: ResearchContext | None = None
     financial_facts: FinancialFacts | None = None
     research_evidence: dict[str, Any] = Field(default_factory=dict)

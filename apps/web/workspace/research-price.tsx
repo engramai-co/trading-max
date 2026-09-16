@@ -1,13 +1,13 @@
 "use client";
+import { researchPriceQuery } from "./research-queries";
 
-import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
+import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Checkbox, Drawer, Group, Modal, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
 import { Legend, Plot } from "./charts";
 import {
-  api,
   compact,
   inRange,
   number,
@@ -86,23 +86,10 @@ export function PriceHistory({
     }
     return zoom;
   };
-  const query = useQuery({
-    queryKey: ["workspace-prices", runId, ticker, interval],
-    queryFn: () =>
-      api<ResearchPriceSeries>(
-        `/research/${encodeURIComponent(ticker)}/prices?limit=2000&interval=${interval}`,
-      ),
-    staleTime: 300_000,
-    retry: 1,
-  });
+  const query = useQuery(researchPriceQuery(ticker, runId, interval));
   const benchmark = useQuery({
-    queryKey: ["workspace-prices-benchmark", comparison, interval],
-    queryFn: () =>
-      api<ResearchPriceSeries>(
-        `/research/${encodeURIComponent(comparison)}/prices?limit=2000&interval=${interval}`,
-      ),
+    ...researchPriceQuery(comparison, runId, interval),
     enabled: comparison !== "none",
-    staleTime: 300_000,
     retry: false,
   });
   const all = query.data?.points ?? [],
