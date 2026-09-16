@@ -56,7 +56,7 @@ class ArtifactStore:
     def __init__(self, data_root: Path) -> None:
         self.data_root = data_root.expanduser().resolve()
         self.immutable_artifacts = ContentAddressedArtifactStore(self.data_root / "artifacts")
-        self.immutable_snapshots = SnapshotStore(self.data_root)
+        self.immutable_snapshots = SnapshotStore(self.data_root, artifacts=self.immutable_artifacts)
         self.jobs_root = self.data_root / "jobs"
         self.logs_root = self.data_root / "logs"
         self._manifest_lock = threading.RLock()
