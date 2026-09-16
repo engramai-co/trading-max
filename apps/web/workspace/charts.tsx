@@ -120,7 +120,7 @@ export function Plot({
           : {}),
       },
 
-      animation: !reduced,
+      animation: !reduced && custom.animation !== false,
       animationDuration: 350,
       animationDurationUpdate: 180,
     };
