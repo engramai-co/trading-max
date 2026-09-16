@@ -307,6 +307,7 @@ export function FundWorkbench({
                           inverse: true,
                           data: buckets.slice(0, 12).map(([name]) => name),
                         },
+                        tooltip: { valueFormatter: (value) => number(value, 2) + "%" },
                         series: [
                           {
                             type: "bar",

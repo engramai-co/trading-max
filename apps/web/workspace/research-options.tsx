@@ -677,6 +677,15 @@ function Volatility({
             name: "IV",
             axisLabel: { formatter: (v: number) => percent(v) },
           },
+          tooltip: {
+            formatter: (input) => {
+              const entries = Array.isArray(input) ? input : [input];
+              return entries.map((entry) => {
+                const [moneyness, iv] = entry.value as number[];
+                return `${entry.seriesName} · ${t("行权价 / 现价", "Strike / spot")} ${percent(moneyness)}\nIV ${percent(iv, false, 2)}`;
+              }).join("\n");
+            },
+          },
           series: ["call", "put"].map((side) => ({
             name: side === "call" ? "Calls" : "Puts",
             type: "line",
@@ -707,6 +716,7 @@ function Volatility({
               name: "IV",
               axisLabel: { formatter: (v: number) => percent(v) },
             },
+            tooltip: { valueFormatter: (value) => percent(value, false, 2) },
             series: ["call", "put"].map((side) => ({
               name: side === "call" ? "Calls" : "Puts",
               type: "line",

@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-09-16
+
+### Fixed
+
+- Format chart percentages and large amounts consistently, including accessible chart readings.
+- Show annual dividends as a line and distinguish incomplete years from full-year totals.
+- Improve business-segment comparisons and financial-history scales without hiding missing observations.
+
 ## [1.3.4] - 2026-09-16
 
 ### Fixed

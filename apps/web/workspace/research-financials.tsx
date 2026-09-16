@@ -20,6 +20,7 @@ import {
   type Observation,
 } from "./research-facts";
 import { useRouteState } from "./route-state";
+import { chartName, chartNumber } from "./research-chart-format";
 
 export function FinancialWorkbench({
   data,
@@ -208,6 +209,14 @@ export function FinancialWorkbench({
             <>
               <Panel
                 title={t("经营历史", "Operating history")}
+                help={
+                  chart === "shares"
+                    ? t(
+                        "期末股数是时点余额，平均股数是期间加权值，两者的差额不代表稀释。EPS 股数视图对照同期间基本与摊薄平均股数；TTM 使用四个季度平均值。",
+                        "Period-end shares are a balance; weighted-average shares cover a period. Their difference is not dilution. TTM uses four-quarter means.",
+                      )
+                    : undefined
+                }
                 action={
                   <Select
                     aria-label={t("历史指标", "Historical metrics")}
@@ -233,7 +242,7 @@ export function FinancialWorkbench({
                       },
                       {
                         value: "shares",
-                        label: t("股数与稀释", "Share count"),
+                        label: t("股数变化", "Share-count changes"),
                       },
                       {
                         value: "allocation",
@@ -249,7 +258,7 @@ export function FinancialWorkbench({
                   option={(c) => ({
                     grid: {
                       left: 70,
-                      right: ratio ? 78 : 20,
+                      right: ratio ? 78 : chart === "shares" ? 68 : 20,
                       top: 25,
                       bottom: 45,
                     },
@@ -262,6 +271,7 @@ export function FinancialWorkbench({
                     },
                     yAxis: {
                       type: "value",
+                      scale: chart === "shares" || ratio,
                       axisLabel: {
                         color: c.axis,
                         formatter: (n: number) =>
@@ -272,13 +282,22 @@ export function FinancialWorkbench({
                       },
                     },
                     tooltip: {
-                      valueFormatter: (v) =>
-                        ratio
-                          ? percent(v, false, 2)
-                          : number(v, chart === "shares" ? 0 : 2) +
-                            (chart === "shares"
-                              ? ""
-                              : " " + (facts.currency ?? "")),
+                      formatter: (input) => {
+                        const entries = Array.isArray(input) ? input : [input];
+                        return [
+                          String(entries[0]?.name ?? "") +
+                            " · " +
+                            (ratio
+                              ? "%"
+                              : chart === "shares"
+                                ? t("股", "shares")
+                                : (facts.currency ?? "")),
+                          ...entries.map(
+                            (e) =>
+                              `${chartName(String(e.seriesName))}   ${ratio ? percent(e.value, false, 2) : chartNumber(e.value)}`,
+                          ),
+                        ].join("\n");
+                      },
                     },
                     series: chartMetrics.map((key, i) => ({
                       type: ratio || chart === "shares" ? "line" : "bar",
@@ -289,15 +308,19 @@ export function FinancialWorkbench({
                       symbolSize: 6,
                       barMaxWidth: 34,
                       itemStyle: { color: [c.brand, c.secondary, c.accent][i] },
-                      endLabel: ratio
-                        ? {
-                            show: true,
-                            formatter: () => label(key),
-                            color: c.text,
-                            fontSize: 11,
-                          }
-                        : undefined,
-                      labelLayout: { hideOverlap: true },
+                      endLabel:
+                        ratio || chart === "shares"
+                          ? {
+                              show: true,
+                              formatter: (p) =>
+                                chart === "shares"
+                                  ? compact(p.value)
+                                  : label(key),
+                              color: c.text,
+                              fontSize: 11,
+                            }
+                          : undefined,
+                      labelLayout: { moveOverlap: "shiftY" },
                     })),
                   })}
                 />
@@ -396,7 +419,7 @@ export function FinancialWorkbench({
                             Array.isArray(params) ? params : [params]
                           )[0];
                           const item = bridge[p.dataIndex];
-                          return `${label(item.metric)}\n${number(item.to - item.from, 0)} ${facts.currency ?? ""}`;
+                          return `${label(item.metric)} · ${facts.currency ?? ""}\n${chartNumber(item.to - item.from)}`;
                         },
                       },
                       series: [
@@ -530,7 +553,13 @@ export function FinancialWorkbench({
         {activeDetail && (
           <div className="mx-stack">
             <div className="mx-detail-value">
-              {format(activeDetail)} <small>{activeDetail.currency}</small>
+              {activeDetail.unit === "ratio"
+                ? percent(activeDetail.value, false, 2)
+                : number(
+                    activeDetail.value,
+                    activeDetail.unit === "shares" ? 0 : 4,
+                  )}{" "}
+              <small>{activeDetail.unit === "ratio" ? "" : activeDetail.currency}</small>
             </div>
             <p>
               {
@@ -562,6 +591,9 @@ export function FinancialWorkbench({
                     formatter: (n: number) =>
                       activeDetail.unit === "ratio" ? percent(n) : compact(n),
                   },
+                },
+                tooltip: {
+                  valueFormatter: (value) => activeDetail.unit === "ratio" ? percent(value, false, 2) : chartNumber(value),
                 },
                 series: [
                   {

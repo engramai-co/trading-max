@@ -1,7 +1,7 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Group, Select, TextInput } from "@mantine/core";
+import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
 import {
@@ -14,13 +14,19 @@ import {
   safeUrl,
   str,
 } from "./data";
-import { Empty, Facts, Panel, Segments, useCopy } from "./foundation";
+import { Empty, Facts, Metric, Panel, Segments, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
+import { chartName, chartNumber } from "./research-chart-format";
+import { dividendSummary } from "./research-dividends";
+import { EvidenceTable } from "./evidence-table";
+import { categoricalChartColours } from "@/ui/charts/palette";
 
 export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
-  const [shares, setShares] = useState(false);
+  const trend = params.get("segmentView") === "trend";
+  const shares = params.get("segmentScale") === "share";
+  const indexed = trend && params.get("segmentScale") === "indexed";
   const source = objects(object(data.researchEvidence).segments);
   const frequency = ["quarterly", "semiannual", "irregular"].includes(
     params.get("frequency") ?? "",
@@ -46,10 +52,15 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
           p === requestedPeriod.actualEnd || p === requestedPeriod.providerEnd,
       )
     : periods.at(-1);
-  const members = [...new Set(rows.map((s) => str(s.member)))];
-  const selectedMember = members.includes(params.get("segmentMember") ?? "")
-    ? params.get("segmentMember")
-    : null;
+  const members = [...new Set(rows.map((s) => str(s.member)))].sort();
+  const selectedMembers = (
+    params.get("segmentMembers") ??
+    params.get("segmentMember") ??
+    ""
+  )
+    .split("|")
+    .filter((member) => members.includes(member));
+  const visibleMembers = selectedMembers.length ? selectedMembers : members;
   const label = (member: string) =>
     str(rows.find((s) => s.member === member)?.name) || member;
   const values = (period: string, member: string) =>
@@ -72,6 +83,13 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
         total * 0.001
     );
   };
+  const anchorPeriod = periods.find(
+    (period) =>
+      periodReconciles(period) &&
+      visibleMembers.every(
+        (member) => (numeric(values(period, member)?.value) ?? 0) > 0,
+      ),
+  );
   const selected = rows.filter((s) => s.periodEnd === end);
   const reconciled = end != null && periodReconciles(end);
   const prior = rows.filter(
@@ -114,33 +132,80 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
         <Select
           aria-label={t("分部维度", "Segment dimension")}
           value={axis}
-          onChange={(v) => update({ segmentAxis: v, segmentMember: null })}
+          onChange={(v) =>
+            update({
+              segmentAxis: v,
+              segmentMember: null,
+              segmentMembers: null,
+            })
+          }
           data={axes.map((a) => ({ value: a, label: groupLabel(a) }))}
         />
       }
     >
       <div className="mx-toolbar">
+        <Segments
+          label={t("分部图表", "Segment chart")}
+          value={trend ? "trend" : "composition"}
+          onChange={(v) =>
+            update({
+              segmentView: v === "trend" ? v : null,
+              segmentMember: null,
+              segmentMembers: null,
+              segmentScale:
+                v !== "trend" && indexed ? null : params.get("segmentScale"),
+            })
+          }
+          options={[
+            { value: "composition", label: t("规模与构成", "Size & mix") },
+            { value: "trend", label: t("分部趋势", "Segment trends") },
+          ]}
+        />
         <span>
           {end} · {str(selected[0]?.currency)}
         </span>
         <Segments
           label={t("分部显示方式", "Segment display")}
-          value={shares ? "share" : "amount"}
-          onChange={(v) => setShares(v === "share")}
+          value={indexed ? "indexed" : shares ? "share" : "amount"}
+          onChange={(v) => update({ segmentScale: v === "amount" ? null : v })}
           options={[
             { value: "amount", label: t("金额", "Amount") },
             { value: "share", label: t("占比", "Share") },
+            ...(trend
+              ? [{ value: "indexed", label: t("期初 = 100", "Start = 100") }]
+              : []),
           ]}
         />
       </div>
-      {selectedMember && (
-        <Button
-          variant="subtle"
-          size="compact-xs"
-          onClick={() => update({ segmentMember: null })}
-        >
-          {t("显示全部分部", "Show all segments")}
-        </Button>
+      {trend && (
+        <MultiSelect
+          aria-label={t("选择分部", "Select segments")}
+          placeholder={
+            selectedMembers.length ? undefined : t("全部分部", "All segments")
+          }
+          value={selectedMembers}
+          onChange={(v) =>
+            update({
+              segmentMembers: v.length ? v.join("|") : null,
+              segmentMember: null,
+            })
+          }
+          data={members.map((member) => ({
+            value: member,
+            label: label(member),
+          }))}
+          clearable
+          searchable
+          mb="md"
+        />
+      )}
+      {indexed && !anchorPeriod && (
+        <p role="status">
+          {t(
+            "所选分部没有可比较的共同起点",
+            "The selected segments have no comparable common start",
+          )}
+        </p>
       )}
       {reconciled && (
         <Plot
@@ -159,29 +224,63 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               max: shares ? 1 : undefined,
               axisLabel: {
                 color: c.axis,
-                formatter: (n: number) => (shares ? percent(n) : compact(n)),
+                formatter: (n: number) =>
+                  indexed ? number(n, 0) : shares ? percent(n) : compact(n),
               },
               splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
             tooltip: {
-              valueFormatter: (v) =>
-                shares
-                  ? percent(v, false, 2)
-                  : number(v, 0) + " " + str(selected[0]?.currency),
+              formatter: (input) => {
+                const entries = Array.isArray(input) ? input : [input];
+                return [
+                  String(entries[0]?.name ?? "") +
+                    " · " +
+                    (indexed
+                      ? t("期初 = 100", "Start = 100")
+                      : shares
+                        ? "%"
+                        : str(selected[0]?.currency)),
+                  ...entries.map(
+                    (e) =>
+                      `${chartName(String(e.seriesName))}   ${shares ? percent(e.value, false, 2) : chartNumber(e.value)}`,
+                  ),
+                ].join("\n");
+              },
             },
-            series: members
-              .filter((member) => !selectedMember || selectedMember === member)
-              .map((member) => ({
-                type: selectedMember ? "line" : "bar",
-                stack: selectedMember ? undefined : "revenue",
-                name: label(member),
-                barMaxWidth: 85,
-                data: periods.map((p) =>
-                  periodReconciles(p)
-                    ? numeric(values(p, member)?.[shares ? "share" : "value"])
-                    : null,
-                ),
-              })),
+            series: visibleMembers.map((member) => ({
+              type: trend ? "line" : "bar",
+              stack: trend ? undefined : "revenue",
+              name: label(member),
+              connectNulls: false,
+              smooth: false,
+              showSymbol: periods.length < 10,
+              itemStyle: {
+                color: [
+                  c.brand,
+                  c.accent,
+                  c.secondary,
+                  c.negative,
+                  c.positive,
+                  categoricalChartColours[3],
+                  c.axis,
+                  c.warning,
+                ][members.indexOf(member) % 8],
+              },
+              barMaxWidth: 85,
+              data: periods.map((p) =>
+                periodReconciles(p)
+                  ? indexed
+                    ? anchorPeriod &&
+                      p >= anchorPeriod &&
+                      numeric(values(p, member)?.value) != null
+                      ? (Number(values(p, member)?.value) /
+                          Number(values(anchorPeriod, member)?.value)) *
+                        100
+                      : null
+                    : numeric(values(p, member)?.[shares ? "share" : "value"])
+                  : null,
+              ),
+            })),
           })}
         />
       )}
@@ -220,18 +319,27 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
                   <th>
                     <button
                       className="mx-inline-control"
-                      aria-pressed={selectedMember === s.member}
+                      aria-pressed={selectedMembers.includes(str(s.member))}
                       onClick={() =>
                         update({
-                          segmentMember:
-                            selectedMember === s.member ? null : str(s.member),
+                          segmentView: "trend",
+                          segmentMember: null,
+                          segmentMembers:
+                            selectedMembers.length === 1 &&
+                            selectedMembers[0] === s.member
+                              ? null
+                              : str(s.member),
                         })
                       }
                     >
                       {str(s.name)}
                     </button>
                   </th>
-                  <td>{compact(current)}</td>
+                  <td>
+                    <span title={number(current, 0) + " " + str(s.currency)}>
+                      {compact(current)}
+                    </span>
+                  </td>
                   <td>{reconciled ? percent(s.share) : "—"}</td>
                   <td>
                     {current != null && previous != null && previous > 0
@@ -255,6 +363,39 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
           </tbody>
         </table>
       </div>
+      <details className="mx-detail-records">
+        <summary>{t("分部历史明细", "Segment history details")}</summary>
+        <EvidenceTable
+          rows={rows}
+          label={t("分部历史明细", "Segment history details")}
+          columns={[
+            { label: t("期间", "Period"), value: (r) => str(r.periodEnd) },
+            { label: t("分部", "Segment"), value: (r) => str(r.name) },
+            {
+              label: t("收入", "Revenue"),
+              value: (r) => number(r.value, 0),
+              numeric: true,
+            },
+            { label: t("货币", "Currency"), value: (r) => str(r.currency) },
+            { label: t("披露日期", "Filed"), value: (r) => str(r.publishedAt) },
+            {
+              label: t("来源", "Source"),
+              value: (r) =>
+                safeUrl(str(r.url)) ? (
+                  <a
+                    href={safeUrl(str(r.url))}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("原始披露", "Original filing")} ↗
+                  </a>
+                ) : (
+                  "—"
+                ),
+            },
+          ]}
+        />
+      </details>
       {Boolean(safeUrl(str(selected[0]?.url))) && (
         <a
           className="mx-source-link"
@@ -334,47 +475,98 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
     str(b.date).localeCompare(str(a.date)),
   );
   const [all, setAll] = useState(false);
+  const [mode, setMode] = useState("annual");
   if (!rows.length) return null;
   const code = str(rows[0]?.currency) || data.context?.quote.currency || "";
-  const currentYear = str(object(data.researchEvidence).asOf).slice(0, 4);
-  const years = [...new Set(rows.map((r) => str(r.date).slice(0, 4)))]
-    .sort()
-    .slice(-10);
+  const evidence = object(data.researchEvidence);
+  const coverage = object(evidence.dividendCoverage);
+  const summary = dividendSummary(
+    rows.filter((r) => !r.currency || r.currency === code),
+    str(evidence.asOf),
+    typeof coverage.hasEarlierRecords === "boolean"
+      ? coverage.hasEarlierRecords
+      : undefined,
+  );
+  if (!summary) return null;
+  const series = mode === "ttm" ? summary.trailing : summary.annual;
   return (
     <Panel
       title={t("每股分红", "Dividends per share")}
-      action={<span className="mx-unit">{code}</span>}
+      action={
+        <span className="mx-unit">
+          {code} · {summary.asOf}
+        </span>
+      }
+      help={t(
+        "按除息日汇总行情源提供的每股分红，不重复应用拆股因子。年度趋势只比较完整年度；今年累计单独与去年同日比较。TTM 为向前十二个月。历史起点不明时，不把首个部分年度当成完整年度。",
+        "Sums provider-adjusted dividends by ex-date, without applying split factors twice. Annual trends contain complete years; YTD compares the same dates. TTM covers the preceding twelve months. A truncated first year is excluded.",
+      )}
     >
-      <Plot
-        label={t("历年每股分红", "Annual dividends per share")}
-        height={220}
-        option={(c) => ({
-          xAxis: {
-            type: "category",
-            data: years.map(
-              (year) => year + (year === currentYear ? " YTD" : ""),
-            ),
-            axisLabel: { color: c.axis },
-          },
-          yAxis: {
-            type: "value",
-            axisLabel: { color: c.axis },
-            splitLine: { lineStyle: { color: c.grid } },
-          },
-          series: [
-            {
-              type: "bar",
-              barMaxWidth: 36,
-              data: years.map((year) =>
-                rows
-                  .filter((r) => str(r.date).startsWith(year))
-                  .reduce((sum, r) => sum + (numeric(r.amount) ?? 0), 0),
-              ),
-              itemStyle: { color: c.brand },
-            },
-          ],
-        })}
+      <div className="mx-dividend-summary mx-metric-grid">
+        <Metric label={`${summary.year} YTD`} value={number(summary.ytd, 2)} />
+        <Metric
+          label={t("去年同期", "Prior-year YTD")}
+          value={number(summary.priorYtd, 2)}
+        />
+        <Metric
+          label={t("同期变化", "YTD change")}
+          value={percent(summary.ytdChange, true)}
+        />
+        <Metric label="TTM" value={number(summary.ttm, 2)} />
+      </div>
+      <Segments
+        label={t("分红期间", "Dividend periods")}
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "annual", label: t("完整年度", "Complete years") },
+          { value: "ttm", label: t("滚动十二个月", "Trailing 12 months") },
+        ]}
       />
+      {series.length ? (
+        <Plot
+          label={
+            mode === "ttm"
+              ? t("滚动十二个月分红", "Trailing twelve-month dividends")
+              : t("完整年度每股分红", "Complete-year dividends per share")
+          }
+          height={245}
+          option={(c) => ({
+            xAxis: {
+              type: "category",
+              data: series.map((r) => r.date),
+              boundaryGap: false,
+              axisLabel: {
+                color: c.axis,
+                formatter: (date: string) =>
+                  mode === "ttm" ? date.slice(0, 7) : date,
+              },
+            },
+            yAxis: {
+              type: "value",
+              min: 0,
+              axisLabel: { color: c.axis },
+              splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
+            },
+            tooltip: { valueFormatter: (v) => number(v, 2) },
+            series: [
+              {
+                type: "line",
+                name: code,
+                data: series.map((r) => r.value),
+                smooth: false,
+                connectNulls: false,
+                showSymbol: mode === "annual" || series.length === 1,
+                symbolSize: 7,
+                lineStyle: { color: c.brand, width: 2 },
+                itemStyle: { color: c.brand },
+              },
+            ],
+          })}
+        />
+      ) : (
+        <Empty title={t("尚无完整年度记录", "No complete-year records yet")} />
+      )}
       <details className="mx-chart-data">
         <summary onClick={() => setAll(true)}>
           {t("除息记录", "Ex-dividend records")}
@@ -579,6 +771,8 @@ export function ResearchDocuments({
                   onClick={() =>
                     update({
                       view: "technical",
+                      technicalView: null,
+                      chart: "full",
                       eventDate: str(row.publishedAt ?? row.date).slice(0, 10),
                       priceRange: "ALL",
                       interval: "1d",
