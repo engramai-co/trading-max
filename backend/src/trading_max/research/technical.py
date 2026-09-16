@@ -18,7 +18,7 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
-from trading_max.research.calendar import completed_months
+from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
 
 
@@ -222,6 +222,7 @@ def price_series(
         - close_history.ewm(span=26, adjust=False, min_periods=26).mean()
     )
     signal = macd.ewm(span=9, adjust=False, min_periods=9).mean()
+    histogram = macd - signal
     sma20 = sma.get("sma20")
     sma50 = sma.get("sma50")
     sma200 = sma.get("sma200")
@@ -238,7 +239,7 @@ def price_series(
                 "rsi14": _finite(rsi.get(timestamp)),
                 "macd": _finite(macd.get(timestamp)),
                 "macdSignal": _finite(signal.get(timestamp)),
-                "macdHistogram": _finite((macd - signal).get(timestamp)),
+                "macdHistogram": _finite(histogram.get(timestamp)),
                 "open": _finite(row.get("Open")),
                 "high": _finite(row.get("High")),
                 "low": _finite(row.get("Low")),
@@ -265,16 +266,8 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     missing = [column for column in required if column not in frame]
     if missing:
         raise MarketDataError(f"{ticker}: OHLCV response missing {missing}")
-    frame = frame[required].copy()
+    frame = frame[required + [c for c in ("Dividends", "Stock Splits") if c in frame]].copy()
     frame = frame[~frame.index.duplicated(keep="last")]
-    if frame["Close"].isna().iloc[-1]:
-        price = security.fast_info.get("lastPrice")
-        if price:
-            for column in ("Open", "High", "Low", "Close"):
-                if pd.isna(frame.loc[frame.index[-1], column]):
-                    frame.loc[frame.index[-1], column] = float(price)
-            if pd.isna(frame.loc[frame.index[-1], "Volume"]):
-                frame.loc[frame.index[-1], "Volume"] = 0.0
     metadata = security.get_history_metadata() or {}
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
@@ -284,7 +277,9 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     frame.attrs["currency"] = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
     if scale != 1.0:
         frame[["Open", "High", "Low", "Close"]] *= scale
-    frame = frame.dropna(subset=["Close"])
+        if "Dividends" in frame:
+            frame["Dividends"] *= scale
+    frame = frame.dropna(subset=["Open", "High", "Low", "Close"])
     if len(frame) < minimum_rows:
         raise MarketDataError(
             f"insufficient history for {ticker}: {len(frame)} rows (need >={minimum_rows})"
@@ -547,6 +542,9 @@ def analyze_ticker(
 ) -> TechnicalResearchArtifact:
     """Calculate all deterministic technical indicators for one security."""
 
+    frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"))
+    if frame.empty:
+        raise MarketDataError(f"no completed daily bars for {label}")
     close = frame["Close"].astype(float)
     high = frame["High"].astype(float)
     low = frame["Low"].astype(float)

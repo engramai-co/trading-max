@@ -1,6 +1,56 @@
 from trading_max.research.disclosures import link_filing_periods, match_periods, parse_filing
 
 
+def test_parsed_filing_is_reused_across_provider_instances(tmp_path, monkeypatch):
+    from trading_max.research.disclosures import ResearchEvidenceProvider
+
+    record = {
+        "type": "10-K",
+        "date": "2025-10-31",
+        "exhibits": {"10-K": "https://www.sec.gov/test"},
+    }
+    provider = ResearchEvidenceProvider(tmp_path)
+    monkeypatch.setattr(provider, "_document", lambda url: filing())
+    expected = provider._filing(record)
+    fresh = ResearchEvidenceProvider(tmp_path)
+
+    def unexpected(url):
+        raise AssertionError("immutable parsed filing should be reused")
+
+    monkeypatch.setattr(fresh, "_document", unexpected)
+    assert fresh._filing(record) == expected
+    assert expected["segments"][0]["value"] == 600_000_000
+
+
+def test_filing_concurrency_is_bounded_ordered_and_keeps_failures(tmp_path, monkeypatch):
+    from threading import Barrier, Lock
+
+    from trading_max.research.disclosures import ResearchEvidenceProvider
+
+    provider = ResearchEvidenceProvider(tmp_path)
+    barrier, lock = Barrier(3), Lock()
+    active = 0
+    peak = 0
+
+    def read(record):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(active, peak)
+        barrier.wait(timeout=5)
+        with lock:
+            active -= 1
+        if record["id"] == 2:
+            raise ValueError("synthetic unavailable filing")
+        return record
+
+    monkeypatch.setattr(provider, "_filing", read)
+    result = provider._filings([{"id": i} for i in range(6)])
+    assert peak == 3
+    assert isinstance(result[2], ValueError)
+    assert [item["id"] for item in result if isinstance(item, dict)] == [0, 1, 3, 4, 5]
+
+
 def filing():
     return """<html><xbrli:context id="all"><xbrli:period><xbrli:startDate>2024-09-29</xbrli:startDate><xbrli:endDate>2025-09-27</xbrli:endDate></xbrli:period></xbrli:context>
     <xbrli:context id="software"><xbrli:entity><xbrli:segment><xbrldi:explicitMember dimension="us-gaap:ProductOrServiceAxis">test:SoftwareMember</xbrldi:explicitMember></xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2024-09-29</xbrli:startDate><xbrli:endDate>2025-09-27</xbrli:endDate></xbrli:period></xbrli:context>

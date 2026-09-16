@@ -37,6 +37,23 @@ def market_calendar(name: str, first_year: int, last_year: int):
     return xcals.get_calendar(name, start=f"{first_year - 1}-01-01", end=f"{last_year + 1}-12-31")
 
 
+def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFrame:
+    """Keep daily indicators off a still-forming bar, including early-close sessions."""
+    if frame.empty:
+        return frame
+    now = now.tz_localize("UTC") if now.tzinfo is None else now.tz_convert("UTC")
+    local = now.tz_convert(frame.index.tz) if frame.index.tz else now
+    today = pd.Timestamp(local.date())
+    days = frame.index.tz_localize(None).normalize()
+    complete = days < today
+    name = calendar_name(frame.attrs.get("exchange"))
+    if name:
+        cal = market_calendar(name, today.year, today.year)
+        if cal.is_session(today) and cal.session_close(today) <= now:
+            complete |= days == today
+    return frame.loc[complete].copy()
+
+
 def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestamp) -> pd.Series:
     """A completed return requires both true month-end closes, never just a resample label."""
     close = close.dropna()

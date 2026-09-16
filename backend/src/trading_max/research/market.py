@@ -9,6 +9,7 @@ calculation boundary without network access.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
@@ -132,10 +133,16 @@ class MarketResearchService:
         if not universe:
             raise MarketDataError("technical research requires at least one ticker")
 
-        benchmark_frames = {
-            benchmark: self.history_loader(benchmark, history_period)
-            for benchmark in ("SPY", "QQQ", "SOXX")
-        }
+        # Independent real histories can overlap; retain the same calculations
+        # and error semantics once all required benchmarks have arrived.
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-benchmark") as pool:
+            histories = {
+                symbol: pool.submit(self.history_loader, symbol, history_period)
+                for symbol in ("SPY", "QQQ", "SOXX", "GBPUSD=X", "VOO", "VT")
+            }
+            benchmark_frames = {
+                symbol: histories[symbol].result() for symbol in ("SPY", "QQQ", "SOXX")
+            }
         benchmark_closes = {
             benchmark: frame["Close"] for benchmark, frame in benchmark_frames.items()
         }
@@ -145,7 +152,7 @@ class MarketResearchService:
         option_warnings: list[str] = []
         benchmark_series: dict[str, list[dict[str, Any]]] = {}
         try:
-            gbp_usd_frame = self.history_loader("GBPUSD=X", history_period)
+            gbp_usd_frame = histories["GBPUSD=X"].result()
         except Exception as exc:
             gbp_usd_frame = pd.DataFrame()
             warnings.append(
@@ -155,7 +162,7 @@ class MarketResearchService:
             try:
                 frame = benchmark_frames.get(benchmark)
                 if frame is None:
-                    frame = self.history_loader(benchmark, history_period)
+                    frame = histories[benchmark].result()
                 benchmark_series[benchmark] = _gbp_benchmark_series(
                     frame,
                     gbp_usd_frame,
@@ -179,7 +186,8 @@ class MarketResearchService:
                         adr=adr,
                     )
                 )
-                spot = technical_rows[-1].price
+                # Option quotes use the latest genuine price, independent of completed-day studies.
+                spot = float(frame["Close"].iloc[-1])
                 if include_options and spot is not None:
                     try:
                         option_rows.append(self.options_loader(ticker, ticker, spot))
