@@ -31,7 +31,7 @@ export function CompanyOverview({
       ?.filter((p) => p.kind === "annual")
       .sort((a, b) => a.providerEnd.localeCompare(b.providerEnd))
       .at(-1);
-  const info = object(object(context?.fundamentals).metrics),
+  const info = object(object(context?.fundamentals ?? data.fundamentals).metrics),
     impact = data.portfolioImpact;
   const get = facts ? factIndex(facts) : () => undefined;
   const keys = ["revenue", "operatingMargin", "netIncome", "freeCashflow"];
@@ -39,7 +39,7 @@ export function CompanyOverview({
     filings = objects(evidence.filings)
       .filter((f) => safeUrl(str(f.url)))
       .slice(0, 3);
-  const calendar = object(object(context?.fundamentals).earningsCalendar),
+  const calendar = object(object(context?.fundamentals ?? data.fundamentals).earningsCalendar),
     date = str((calendar.earningsDates as unknown[] | undefined)?.[0]).slice(
       0,
       10,
@@ -113,8 +113,8 @@ export function CompanyOverview({
         >
           <p className="mx-company-sector">
             {[
-              object(context?.fundamentals).sector,
-              object(context?.fundamentals).industry,
+              object(context?.fundamentals ?? data.fundamentals).sector,
+              object(context?.fundamentals ?? data.fundamentals).industry,
             ]
               .filter(Boolean)
               .map(str)

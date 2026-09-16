@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-09-16
+
+### Fixed
+
+- Keep overview focused on a three-month price line, with company logos and research-list pinning in context.
+- Separate price charts, technical readings and seasonality into navigable sections.
+- Keep advanced chart controls in the full chart and enforce valid interval/range combinations.
+
 ## [1.3.5] - 2026-09-16
 
 ### Fixed
