@@ -19,6 +19,7 @@ import { Empty, useCopy } from "./foundation";
 import { historySeries } from "./history-series";
 import { historyDay, type CalendarTimeline } from "./portfolio-history";
 import { timelineAxis } from "./timeline-axis";
+import { chartNumber } from "./research-chart-format";
 
 function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
   axes: T | T[] | undefined,
@@ -109,6 +110,7 @@ export function Plot({
         shadowOffsetY: 4,
         padding: 12,
         confine: true,
+        valueFormatter: (value) => chartNumber(value),
         axisPointer: {
           type: "line",
           lineStyle: { color: colours.axis, type: "dashed" },
@@ -249,6 +251,26 @@ function chartReading(
       : v == null
         ? missing
         : String(v);
+  const coordinate = (
+    value: unknown,
+    axis: XAXisComponentOption | YAXisComponentOption | undefined,
+    fallback: (value: unknown) => string,
+  ): string => {
+    if (typeof value !== "number") return fallback(value);
+    if (axis?.type === "category") {
+      const entry = axis.data?.[value];
+      return format(entry && typeof entry === "object" ? entry.value : entry);
+    }
+    if (axis?.type === "time") return new Date(value).toLocaleString(locale);
+    if (axis?.type === "value" || axis?.type === "log") {
+      const formatter = axis.axisLabel?.formatter;
+      if (typeof formatter === "function")
+        return String(formatter(value, index, undefined));
+      if (typeof formatter === "string")
+        return formatter.replace("{value}", format(value));
+    }
+    return fallback(value);
+  };
   return series
     .flatMap((s) => {
       if (!s || s.silent || !("data" in s) || !Array.isArray(s.data)) return [];
@@ -304,6 +326,8 @@ function chartReading(
         typeof value[0] === "number"
       )
         return `${new Date(value[0]).toLocaleString(locale)} · ${s.name ?? ""}: ${value.slice(1).map(formatReading).join(", ")}`;
+      if (Array.isArray(value) && value.length === 2)
+        return `${heading}: ${coordinate(value[0], axis, format)}, ${coordinate(value[1], valueAxis, formatReading)}`;
       return `${heading}: ${Array.isArray(value) ? value.map((v, i) => (i === value.length - 1 ? formatReading(v) : format(v))).join(", ") : formatReading(value)}`;
     })
     .join("; ");
@@ -435,8 +459,7 @@ export function HistoryChart({
                 locale,
                 intraday
                   ? {
-                      year: "numeric",
-                      month: "short",
+                                month: "short",
                       day: "numeric",
                       hour: "2-digit",
                       minute: "2-digit",
@@ -444,8 +467,7 @@ export function HistoryChart({
                       timeZoneName: "short",
                     }
                   : {
-                      year: "numeric",
-                      month: "short",
+                                month: "short",
                       day: "numeric",
                       timeZone: "UTC",
                     },
@@ -454,7 +476,7 @@ export function HistoryChart({
                 date,
                 ...rows.map((entry) => {
                   const amount = (entry.value as [number, number])[1];
-                  return `${entry.seriesName}: ${percentage ? percent(amount, true, 2) : number(amount, 2)}`;
+                  return `${entry.seriesName}: ${percentage ? percent(amount, true, 2) : chartNumber(amount)}`;
                 }),
               ].join("\n");
             },
@@ -571,6 +593,9 @@ export function Bars({
       height={height ?? Math.max(190, labels.length * 38 + 36)}
       option={(c) => ({
         grid: { top: 10, bottom: 20, left: 112, right: 70 },
+        tooltip: {
+          valueFormatter: (value) => percentage ? percent(value, true, 2) : chartNumber(value),
+        },
         xAxis: {
           type: "value",
           splitNumber: 3,
