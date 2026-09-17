@@ -13,6 +13,7 @@ export type CalendarTimeline = {
   rowIndexes: Array<number | null>;
   anchors?: boolean[];
   displayIntervalMinutes?: number;
+  maxConnectedGapMinutes?: number;
 };
 const displayIntervals = { "1D": 10, "1W": 30, "1M": 60, "3M": 120 } as const;
 const DAY = 86_400_000;
@@ -81,6 +82,16 @@ export function selectPortfolioHistory({
   const intradayRows = scope === "cfd" || (scope === "household" && cfdValue == null)
     ? [] : sorted(projected.filter((p) => p.intraday));
   const usable = (rows: NavPoint[]) => rows.filter((p) => navNumber(p, scope) != null);
+  const availableIntraday = usable(intradayRows);
+  // A reconstruction can use different marks from the broker (particularly
+  // overnight). Inserting those estimates into missed collection slots creates
+  // fictitious returns and drawdowns. Keep one source once collection starts;
+  // the immutable input and paired model values remain available as evidence.
+  // Determine this boundary before applying the requested date window.
+  const firstObserved = availableIntraday.find((p) => p.valuationSource !== "reconstructed");
+  const observedFrom = firstObserved ? Date.parse(firstObserved.date) : Infinity;
+  const primaryIntraday = availableIntraday.filter((p) =>
+    p.valuationSource !== "reconstructed" || Date.parse(p.date) < observedFrom);
   const references = [...usable(dailyRows), ...usable(intradayRows)].map((p) => p.date);
   if (asOf && Number.isFinite(Date.parse(asOf))) references.push(asOf);
   const latestDay = references.map(historyDay).sort().at(-1);
@@ -90,7 +101,7 @@ export function selectPortfolioHistory({
     return (!window.startDay || day >= window.startDay) && (!window.endDay || day <= window.endDay);
   });
   const dailyPoints = within(dailyRows);
-  const observations = within(intradayRows);
+  const observations = within(primaryIntraday);
   const short = ["1D", "1W", "1M", "3M"].includes(range);
   const fallback = short && (scope === "cfd" || (scope === "household" && cfdValue == null));
   const source = short && !fallback ? "intraday" as const : "daily" as const;
@@ -107,6 +118,7 @@ export function selectPortfolioHistory({
       calendarDays, false, true, CALENDAR_ZONE, end,
     ));
     timeline.displayIntervalMinutes = displayIntervals[range as keyof typeof displayIntervals];
+    timeline.maxConnectedGapMinutes = 30;
   } else if (source === "daily" && points.length) {
     const rowByDay = new Map(points.map((p, index) => [historyDay(p.date), index]));
     const start = window.startDay ?? historyDay(points[0].date);

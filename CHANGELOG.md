@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-09-17
+
+### Fixed
+
+- Stop inserting reconstructed valuations into missed broker collection slots
+  after live history begins, preventing artificial spikes in account value,
+  period profit/loss and drawdown. Retain earlier reconstructed history and all
+  original broker and model evidence without adjusting their values.
+- Connect real observations across collection gaps of at most 30 minutes without
+  inventing intermediate samples. Preserve longer outages, unknown cash-flow
+  values and accurate coverage records in both overview and performance charts.
+
 ## [1.4.2] - 2026-09-16
 
 ### Fixed
