@@ -51,6 +51,7 @@ export function HistoryHelp() {
         "账户估值包含现金与持仓，部分历史由持仓和行情重建。价值变化含出入金；投资收益请看“收益对比”。",
         "Account valuations include cash and holdings; some history is reconstructed from positions and market prices. Value changes include deposits and withdrawals. See Return comparison for investment returns.",
       )}</p>
+      <p>{t("曲线的虚线段连接缺失区间两端的记录，不代表区间内有实测数据。", "Dashed spans connect records on either side of a gap; they are not observations within it.")}</p>
       <p>{t(
         "5D 为最近 5 个工作日；月度区间按自然月，图中省略周末。完整记录及来源可在图下展开查看。",
         "5D covers five weekdays. Monthly ranges use calendar months with weekends omitted from the chart. Expand the records below for individual observations and sources.",

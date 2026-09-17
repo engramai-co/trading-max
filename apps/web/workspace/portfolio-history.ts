@@ -13,7 +13,6 @@ export type CalendarTimeline = {
   rowIndexes: Array<number | null>;
   anchors?: boolean[];
   displayIntervalMinutes?: number;
-  maxConnectedGapMinutes?: number;
 };
 const displayIntervals = { "1D": 10, "1W": 30, "1M": 60, "3M": 120 } as const;
 const DAY = 86_400_000;
@@ -54,13 +53,14 @@ export function historyWindow(range: Range, lastDay: string) {
 
 /** Source choice is automatic. Sampling changes display density, never source calculations. */
 export function selectPortfolioHistory({
-  daily = [], intraday = [], range, scope, asOf,
+  daily = [], intraday = [], range, scope, asOf, requireCashFlows = false,
 }: {
   daily?: NavPoint[];
   intraday?: NavPoint[];
   range: Range;
   scope: Scope;
   asOf?: string | null;
+  requireCashFlows?: boolean;
 }) {
   const validDate = (p: NavPoint) => Number.isFinite(Date.parse(p.date));
   const sorted = (rows: NavPoint[]) => [...rows].filter(validDate)
@@ -105,20 +105,30 @@ export function selectPortfolioHistory({
   const short = ["1D", "1W", "1M", "3M"].includes(range);
   const fallback = short && (scope === "cfd" || (scope === "household" && cfdValue == null));
   const source = short && !fallback ? "intraday" as const : "daily" as const;
-  const points = source === "intraday" ? observations : dailyPoints;
+  let points = source === "intraday" ? observations : dailyPoints;
+  const latestObservationAt = points.at(-1)?.date ?? null;
+  let pendingCashFlows = false;
+  // Do not put a newer value beside older P&L. During a real ledger change,
+  // keep the last common accounting cutoff until reconciliation catches up.
+  if (requireCashFlows && source === "intraday" && navNumber(points.at(-1), scope, "NetContributionsGbp") == null) {
+    const covered = points.findLastIndex((p) => navNumber(p, scope, "NetContributionsGbp") != null);
+    if (covered >= 1) {
+      points = points.slice(0, covered + 1);
+      pendingCashFlows = true;
+    }
+  }
   let timeline: CalendarTimeline = { categories: [], rowIndexes: [] };
   if (source === "intraday" && points.length && window.startDay && window.endDay) {
-    const calendarDays = Math.round((Date.parse(window.endDay) - Date.parse(window.startDay)) / DAY) + 1;
     const lastReference = references.filter((date) => historyDay(date) === window.endDay)
       .sort((a, b) => Date.parse(a) - Date.parse(b)).at(-1);
-    const end = lastReference && lastReference.includes("T") ? lastReference
+    const end = pendingCashFlows ? points.at(-1)!.date : lastReference && lastReference.includes("T") ? lastReference
       : new Date(Date.parse(naturalDayBounds(window.endDay + "T12:00:00Z")!.end) - 1).toISOString();
+    const calendarDays = Math.round((Date.parse(historyDay(end)) - Date.parse(window.startDay)) / DAY) + 1;
     timeline = omitPortfolioWeekendDisplayWindow(naturalCalendarTimeline(
       points, 10,
       calendarDays, false, true, CALENDAR_ZONE, end,
     ));
     timeline.displayIntervalMinutes = displayIntervals[range as keyof typeof displayIntervals];
-    timeline.maxConnectedGapMinutes = 30;
   } else if (source === "daily" && points.length) {
     const rowByDay = new Map(points.map((p, index) => [historyDay(p.date), index]));
     const start = window.startDay ?? historyDay(points[0].date);
@@ -138,13 +148,16 @@ export function selectPortfolioHistory({
   timeline.anchors = timeline.rowIndexes.map(() => false);
   timeline.rowIndexes.forEach((row, index) => {
     const previousRow = timeline.rowIndexes[index - 1];
-    if (row != null && previousRow != null && points[row].valuationSource !== points[previousRow].valuationSource) {
+    if (row != null && previousRow != null && (
+      points[row].valuationSource !== points[previousRow].valuationSource
+      || navNumber(points[row], scope, "NetContributionsGbp") !== navNumber(points[previousRow], scope, "NetContributionsGbp")
+    )) {
       timeline.anchors![index - 1] = true;
       timeline.anchors![index] = true;
     }
   });
   return {
-    points, source, fallback, timeline, coverage, ...window,
+    points, source, fallback, timeline, coverage, pendingCashFlows, latestObservationAt, ...window,
     carriedCfdValue: source === "intraday" && scope === "household" ? cfdValue : null,
   };
 }

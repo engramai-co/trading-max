@@ -16,7 +16,7 @@ import { useId, useMemo, useRef, useState, type RefObject } from "react";
 import { compact, number, numeric, percent } from "./data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
-import { historySeries } from "./history-series";
+import { historyGapSeries, historySeries } from "./history-series";
 import { historyDay, type CalendarTimeline } from "./portfolio-history";
 import { timelineAxis } from "./timeline-axis";
 import { chartNumber } from "./research-chart-format";
@@ -344,6 +344,7 @@ export type ChartLine = {
   dashed?: boolean;
   area?: boolean;
   type?: "line" | "bar";
+  step?: "end";
 };
 export function HistoryChart({
   dates,
@@ -448,7 +449,7 @@ export function HistoryChart({
               const entries = Array.isArray(input) ? input : [input];
               const rows = entries.filter(
                 (entry) =>
-                  Array.isArray(entry.value) && entry.value.at(-1) != null,
+                  !String(entry.seriesId ?? "").startsWith("history-gap:") && Array.isArray(entry.value) && entry.value.at(-1) != null,
               );
               if (!rows.length) return "";
               const value = rows[0].value as [number, number];
@@ -498,18 +499,22 @@ export function HistoryChart({
                     });
             },
           },
-          series: lines.map((line, i) => {
+          series: lines.flatMap((line, i) => {
             const colour =
               c[
                 line.colour ??
                   (i === 0 ? "brand" : i === 1 ? "accent" : "secondary")
               ];
-            return {
+            const data = historySeries(dates, line.values, intraday, timeline);
+            const gaps = line.type === "bar" ? [] : historyGapSeries(data);
+            const single = line.values.filter((value) => value != null).length === 1;
+            const primary = {
               type: line.type ?? "line",
               name: line.name,
-              data: historySeries(dates, line.values, intraday, timeline),
-              showSymbol: true,
-              symbolSize: 7,
+              data,
+              symbol: single ? "circle" : "none",
+              showSymbol: single,
+              symbolSize: 4,
               connectNulls: false,
               smooth: false,
               lineStyle: {
@@ -524,6 +529,13 @@ export function HistoryChart({
               emphasis: { focus: "series" },
               barMaxWidth: 24,
             } satisfies SeriesOption;
+            return [primary, ...(gaps.length ? [{
+              id: `history-gap:${i}`, type: "line" as const, data: gaps,
+              silent: true, tooltip: { show: false }, symbol: "none", showSymbol: false,
+              connectNulls: false,
+              lineStyle: { color: colour, width: 1.5, type: "dashed" as const, opacity: 0.65 },
+              emphasis: { disabled: true },
+            } satisfies SeriesOption] : [])];
           }),
         })}
       />

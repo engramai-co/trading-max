@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
 import { selectPortfolioHistory } from "./portfolio-history";
-import { historySeries } from "./history-series";
+import { historyGapSeries, historySeries } from "./history-series";
 import { portfolioMoney } from "./portfolio-money";
 
 function point(date: string, intraday = false, value: number | null = 100): NavPoint {
@@ -155,10 +155,10 @@ describe("visible observation gaps", () => {
       [Date.parse(dates[2]) - 1, null], [Date.parse(dates[2]), 120],
     ]);
   });
-  it("keeps isolated points visible even when the series has more than eight observations", () => {
+  it("connects isolated observations with dashes without oversized point markers", () => {
     const dates = Array.from({ length: 12 }, (_, i) => `2026-09-${String(i + 1).padStart(2, "0")}T12:00:00Z`);
     expect(historySeries(dates, dates.map(() => 100), true)
-      .filter((p) => p.value[1] != null).every((p) => p.symbolSize > 0)).toBe(true);
+      .filter((p) => p.value[1] != null).every((p) => p.symbolSize === 0)).toBe(true);
   });
   it("retains explicit missing values and does not break a normal daily weekend", () => {
     const dates = ["2026-09-04", "2026-09-07", "2026-09-08"];
@@ -166,16 +166,17 @@ describe("visible observation gaps", () => {
     expect(series).toHaveLength(3);
     expect(series[1].value[1]).toBeNull();
   });
-  it("connects adjacent real observations across at most thirty minutes without inserting samples", () => {
+  it("shows every missing sample as a dashed connection without inserting values", () => {
     const dates = Array.from({ length: 8 }, (_, i) => new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString());
-    const timeline = { categories: dates, rowIndexes: [0, 1, null, 3, null, null, 6, 7], maxConnectedGapMinutes: 30 };
+    const timeline = { categories: dates, rowIndexes: [0, 1, null, 3, null, null, 6, 7] };
     const series = historySeries(dates, [100, 101, null, 103, null, null, 106, 107], true, timeline);
-    expect(series.map((p) => p.value)).toEqual([[0, 100], [1, 101], [3, 103], [6, 106], [7, 107]]);
+    expect(series.map((p) => p.value)).toEqual([[0, 100], [1, 101], [2, null], [3, 103], [4, null], [5, null], [6, 106], [7, 107]]);
+    expect(historyGapSeries(series)).toEqual([[1, 101], [3, 103], [3, null], [3, 103], [6, 106], [6, null]]);
     expect(timeline.rowIndexes[2]).toBeNull();
   });
-  it("does not bridge unknown financial values or a long collection outage", () => {
+  it("keeps unknown financial values and long outages out of the solid observed line", () => {
     const dates = Array.from({ length: 8 }, (_, i) => new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString());
-    const timeline = { categories: dates, rowIndexes: dates.map((_, i) => i), maxConnectedGapMinutes: 30 };
+    const timeline = { categories: dates, rowIndexes: dates.map((_, i) => i) };
     expect(historySeries(dates, [100, 101, null, 103, 104, 105, 106, 107], true, timeline)[2].value).toEqual([2, null]);
     const outage = { ...timeline, rowIndexes: [0, 1, null, null, null, null, 6, 7] };
     expect(historySeries(dates, [100, 101, null, null, null, null, 106, 107], true, outage).map((p) => p.value))
@@ -183,7 +184,7 @@ describe("visible observation gaps", () => {
   });
   it("uses elapsed time when weekends are folded and preserves leading and trailing gaps", () => {
     const dates = ["2026-09-04T22:40Z", "2026-09-04T22:50Z", "2026-09-06T23:00Z", "2026-09-06T23:10Z", "2026-09-06T23:20Z"];
-    const timeline = { categories: dates, rowIndexes: [null, 1, null, 3, null], maxConnectedGapMinutes: 30 };
+    const timeline = { categories: dates, rowIndexes: [null, 1, null, 3, null] };
     expect(historySeries(dates, [null, 100, null, 101, null], true, timeline).map((p) => p.value))
       .toEqual([[0, null], [1, 100], [2, null], [3, 101], [4, null]]);
   });

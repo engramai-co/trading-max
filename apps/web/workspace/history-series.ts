@@ -1,10 +1,11 @@
 import type { CalendarTimeline } from "./portfolio-history";
 
-/** Plot real endpoints across short collection gaps; never synthesize observations. */
+/** Keep missing observations explicit; a separate dashed series connects their endpoints. */
 export function historySeries(
   dates: string[], values: Array<number | null>, intraday: boolean,
   timeline?: CalendarTimeline,
 ) {
+  const single = values.filter((value) => value != null).length === 1;
   if (timeline) {
     const rows = timeline.rowIndexes;
     const selected = new Set<number>();
@@ -18,14 +19,6 @@ export function historySeries(
       if (valueAt(start) == null) {
         const gapStart = start;
         while (start < rows.length && valueAt(start) == null) start++;
-        // Only an absent sample may be bridged, not an observed point whose
-        // financial value is unknown. Retain calendar gaps for coverage and
-        // hover; the line simply connects the two real endpoints.
-        const bridge = valueAt(gapStart - 1) != null && valueAt(start) != null
-          && rows.slice(gapStart, start).every((row) => row == null)
-          && Date.parse(timeline.categories[start]) - Date.parse(timeline.categories[gapStart - 1])
-            <= (timeline.maxConnectedGapMinutes ?? 0) * 60_000;
-        if (bridge) continue;
         selected.add(gapStart);
         // Keep both ends of an unobserved span. Numeric-axis hover must find a
         // null boundary in the gap instead of snapping to a distant valid value.
@@ -44,19 +37,32 @@ export function historySeries(
       const row = rows[index];
       return {
         value: [index, row == null ? null : values[row]],
-        symbolSize: row != null && (rows.length < 8 || (valueAt(index - 1) == null && valueAt(index + 1) == null)) ? 6 : 0,
+        symbolSize: row != null && single ? 4 : 0,
       };
     });
   }
   const limit = intraday ? 30 * 60_000 : 4 * 86_400_000;
   const times = dates.map((date) => Date.parse(date));
   return times.flatMap((time, index) => {
-    const before = index > 0 && time - times[index - 1] <= limit && values[index - 1] != null;
-    const after = index + 1 < times.length && times[index + 1] - time <= limit && values[index + 1] != null;
     return [
       ...(index > 0 && time - times[index - 1] > limit
         ? [{ value: [time - 1, null], symbolSize: 0 }] : []),
-      { value: [time, values[index]], symbolSize: dates.length < 8 || (!before && !after) ? 6 : 0 },
+      { value: [time, values[index]], symbolSize: single ? 4 : 0 },
     ];
   });
+}
+
+/** Visual connectors contain endpoints only, never estimated readings or filled areas. */
+export function historyGapSeries(series: ReturnType<typeof historySeries>) {
+  const gaps: Array<[number, number | null]> = [];
+  let previous: [number, number] | null = null;
+  let missing = false;
+  for (const point of series) {
+    const [position, value] = point.value;
+    if (value == null) { missing = true; continue; }
+    if (previous && missing) gaps.push(previous, [position!, value], [position!, null]);
+    previous = [position!, value];
+    missing = false;
+  }
+  return gaps;
 }

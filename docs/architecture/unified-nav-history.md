@@ -53,12 +53,13 @@ Do not select extra local extrema or change the interval to meet a point budget.
 Coverage and all calculations, including drawdown extrema, use the full selected
 history before display sampling. Display density never changes the stored
 observations or their cadence. The transition from early reconstructed history
-to broker collection retains both adjacent readings as display anchors. Connect
-real endpoints separated by at most 30 minutes without inserting a value at any
-missing timestamp; coverage and exact records continue to show the missing slots.
-Longer outages, leading/trailing gaps and unavailable financial values remain
-gaps. Measure elapsed time before weekend folding. Keep authoritative broker
-values and paired model values unchanged; do not smooth away their residual.
+to broker collection and changes in contributions retain adjacent readings as
+display anchors. Every bounded gap is connected by a separate dashed line using
+only its two real endpoints. The connector has no area fill, symbols, tooltip
+readings or contribution to financial calculations. The observed solid line keeps
+its nulls; leading and trailing gaps are not extrapolated. Only a history with
+one observation needs a visible point marker. Keep authoritative broker values
+and paired model values unchanged; do not smooth away their residual.
 
 ## Money and cash-flow basis
 
@@ -78,10 +79,21 @@ and intraday calculations share these amounts; intraday TWR remains unavailable.
 
 An unchanged ledger and unchanged account cash and quantities allow a mark-only
 refresh to extend existing cash-flow coverage without refetching market history.
+This check runs on each live collection, using reconciled position detail and
+each account's own observation time. Publish the extended evidence with the live
+snapshot so the value curve, contribution line and P&L advance together.
 Changed ledger sources or account balances require reconciliation again. The
 source digest and account-state digest travel with each immutable evidence
 artifact. Legacy value-only histories remain readable, without fabricated cash
 flows or certification.
+
+While new cash-flow evidence is genuinely pending, the money view retains its
+original opening point but ends all three charts and all four headline metrics
+at the last common verified observation. A compact timestamp identifies this
+temporary cutoff. The overview still exposes the latest broker value. Never
+carry unknown cash flows forward as zero or silently put different end times
+beside one another. Orange cumulative-contribution steps use the same amounts
+and semantics at every range; missing spans are separate from observed steps.
 
 The default chart shows valuations and financial measures. Normal coverage does
 not need a status badge or track. Show coverage only when data is incomplete,

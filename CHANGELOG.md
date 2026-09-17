@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-09-17
+
+### Fixed
+
+- Draw missing portfolio observations as dashed endpoint connections without
+  estimated values, filled areas or disconnected point markers. Keep hover
+  readings tied to recorded observations in overview and performance charts.
+- Advance reconciled cash-flow evidence with each live price update when ledger,
+  cash and verified position quantities are unchanged. Preserve the last verified
+  accounting cutoff when an actual account change needs reconciliation.
+- Align value, contributions, profit/loss, drawdown and headline metrics to one
+  cutoff; retain orange contribution steps and cash-flow changes at every range.
+
 ## [1.4.3] - 2026-09-17
 
 ### Fixed
