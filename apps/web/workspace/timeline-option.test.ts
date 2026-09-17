@@ -42,7 +42,7 @@ describe("shared performance timeline", () => {
       ),
     ).toBe(true);
     expect(option.axisPointer).toEqual({ link: [{ xAxisIndex: "all" }] });
-    const series = option.series as Array<{
+    const series = (option.series as Array<{ silent?: boolean }>).filter((s) => !s.silent) as Array<{
       xAxisIndex: number;
       yAxisIndex: number;
       data: unknown[];
@@ -52,12 +52,12 @@ describe("shared performance timeline", () => {
       [1, 1],
       [2, 2],
     ]);
-    expect(series[1].data[1]).toEqual([Date.parse(dates[1]), null]);
+    expect(series[1].data[1]).toMatchObject({ value: [Date.parse(dates[1]), null] });
     expect(
       series.every(
         (line) =>
-          JSON.stringify(line.data[2]) ===
-          JSON.stringify([Date.parse(dates[2]) - 1, null]),
+          (line.data[2] as { value: unknown }).value != null
+          && JSON.stringify((line.data[2] as { value: unknown }).value) === JSON.stringify([Date.parse(dates[2]) - 1, null]),
       ),
     ).toBe(true);
   });

@@ -2,7 +2,7 @@ import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
 import { numeric, percent } from "./data";
-import { historySeries } from "./history-series";
+import { historyGapSeries, historySeries } from "./history-series";
 import type { CalendarTimeline } from "./portfolio-history";
 import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
 import { timelineAxis } from "./timeline-axis";
@@ -83,6 +83,7 @@ export function timelineOption(
         type: "value",
         gridIndex: index,
         scale: true,
+        boundaryGap: index === 0 ? ["8%", "8%"] : [0, 0],
         splitNumber: index === 0 ? 4 : 2,
         ...(layer.drawdown
           ? {
@@ -129,7 +130,7 @@ export function timelineOption(
       formatter: (input) => {
         // Only actual plotted values can anchor the card, never a missing slot.
         const entries = Array.isArray(input) ? input : [input];
-        const point = entries.find((entry) => Array.isArray(entry.value) && numeric(entry.value[1]) != null);
+        const point = entries.find((entry) => !String(entry.seriesId ?? "").startsWith("history-gap:") && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
         const time = numeric(
           Array.isArray(point?.value) ? point.value[0] : null,
         );
@@ -145,26 +146,27 @@ export function timelineOption(
       },
     },
     series: layers.flatMap((layer, axis) =>
-      layer.lines.map((line, index) => {
+      layer.lines.flatMap((line, index) => {
         const colour =
           colours[
             line.colour ??
               (index === 0 ? "brand" : index === 1 ? "accent" : "secondary")
           ];
-        return {
+        const data = historySeries(dates, line.values, false, calendar);
+        const gaps = historyGapSeries(data);
+        const single = line.values.filter((value) => value != null).length === 1;
+        const primary = {
           type: "line",
           name: `${layer.label} · ${line.name}`,
           xAxisIndex: axis,
           yAxisIndex: axis,
-          data: calendar ? historySeries(dates, line.values, true, calendar) : times.flatMap((time, index) => [
-            ...(index > 0 && time - times[index - 1] > 4 * 86400000
-              ? [[time - 1, null]]
-              : []),
-            [time, line.values[index] ?? null],
-          ]),
+          data,
           connectNulls: false,
-          showSymbol: line.dashed ? false : calendar ? true : times.length < 8,
-          symbolSize: 6,
+          symbol: single ? "circle" : "none",
+          showSymbol: single,
+          symbolSize: 4,
+          emphasis: { scale: false },
+          step: line.step,
           lineStyle: {
             color: colour,
             width: line.dashed ? 1.5 : 2.5,
@@ -173,6 +175,21 @@ export function timelineOption(
           itemStyle: { color: colour },
           areaStyle: line.area ? { color: colour, opacity: 0.08 } : undefined,
         } satisfies SeriesOption;
+        return [primary, ...(gaps.length ? [{
+          id: `history-gap:${axis}:${index}`,
+          type: "line" as const,
+          xAxisIndex: axis,
+          yAxisIndex: axis,
+          data: gaps,
+          silent: true,
+          tooltip: { show: false },
+          symbol: "none",
+          showSymbol: false,
+          connectNulls: false,
+          step: line.step,
+          lineStyle: { color: colour, width: 1.5, type: "dashed" as const, opacity: 0.65 },
+          emphasis: { disabled: true },
+        } satisfies SeriesOption] : [])];
       }),
     ),
   };

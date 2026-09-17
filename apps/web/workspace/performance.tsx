@@ -89,7 +89,8 @@ export function PerformanceContent({
   const history = useMemo(() => selectPortfolioHistory({
     daily, intraday: data.intradayNav, range: actualRange, scope,
     asOf: data.brokerAsOf,
-  }), [daily, data.intradayNav, actualRange, scope, data.brokerAsOf]);
+    requireCashFlows: view === "money",
+  }), [daily, data.intradayNav, actualRange, scope, data.brokerAsOf, view]);
   const isIntraday = view === "money" && history.source === "intraday";
   const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) => navNumber(p, scope) != null);
   const allScope = [
@@ -219,6 +220,7 @@ export function PerformanceContent({
                 ? money.periodFlows[i]! / money.opening : null),
             colour: "accent",
             dashed: true,
+            step: "end",
           },
         ];
   const timelineLayers: TimelineLayer[] = [
@@ -332,8 +334,8 @@ export function PerformanceContent({
             }
             help={(
               <p>{view === "money" ? t(
-                "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。出入金记录覆盖不足时，盈亏留空。“相对期初 %”以期初账户价值为分母，不等于投资收益率。",
-                "Every range uses ending value minus opening value minus net contributions. Drawdown is measured from the period P&L high. P&L is unavailable where cash-flow coverage is incomplete. From opening % uses opening account value as the base, not an investment return.",
+                "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。橙色虚线为累计净入金；蓝、红曲线的虚线段表示缺少记录，仅连接前后实测值。最新现金流待核对时，三图与指标统一截至最后可核对时刻。“相对期初 %”不等于投资收益率。",
+                "Every range uses ending value minus opening value minus net contributions. Orange dashes show cumulative contributions; blue/red dashed spans connect observations across missing records. While new cash flows await reconciliation, all three charts and metrics share the last verified cutoff. From opening % is not an investment return.",
               ) : t(
                 "TWR 剔除出入金影响，与基准从共同起点比较。回撤从所选区间内的收益高点计算。",
                 "TWR removes cash-flow effects and shares a starting date with benchmarks. Drawdown is measured from the return high within the selected period.",
@@ -354,6 +356,9 @@ export function PerformanceContent({
               />
             }
           >
+            {view === "money" && history.pendingCashFlows && (
+              <Freshness date={last?.date} label={t("现金流待核对 · 统计截至", "Cash flows pending · Calculated through")} />
+            )}
             <div className="mx-metric-grid" style={{ marginBottom: 27 }}>
               <Metric
                 label={t("期末价值", "Ending value")}

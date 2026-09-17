@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import io
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from trading_max.analytics.cash_flow_history import AccountCashFlowHistory
+from trading_max.analytics.cash_flow_history import AccountCashFlowHistory, account_state_digest
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
     HistoryLoader,
@@ -38,6 +36,7 @@ from trading_max.ingestion.brokers.trading212 import (
 )
 
 from .errors import StageExecutionError
+from .live_cash_flows import ledger_digest, live_cash_flow_refs
 from .stages import StageContext, StageResult
 
 
@@ -205,23 +204,8 @@ class AccountNavStage:
             previous_flows = _previous_json(self.artifacts, self.snapshots, flow_key)
             ledger_source = self._historical_export(profile)
             cash_source = self._cash_transactions(profile)
-            digest = hashlib.sha256()
-            for source in (ledger_source, cash_source):
-                digest.update(source.read_bytes() if source is not None else b"absent")
-                digest.update(b"\0")
-            source_digest = digest.hexdigest()
-            account_state_digest = hashlib.sha256(
-                json.dumps(
-                    {
-                        "cash": account.payload.get("cash_gbp"),
-                        "positions": sorted(
-                            (str(p.get("isin") or p.get("ticker")), p.get("quantity"))
-                            for p in account.payload.get("positions", [])
-                        ),
-                    },
-                    sort_keys=True,
-                ).encode()
-            ).hexdigest()
+            source_digest = ledger_digest((ledger_source, cash_source))
+            state_digest = account_state_digest(account.payload)
             prior_flows = (
                 AccountCashFlowHistory.model_validate(previous_flows.payload)
                 if previous_flows is not None
@@ -235,7 +219,7 @@ class AccountNavStage:
                 and prior_flows.verified
                 and prior_flows.source_digest == source_digest
                 and current_time >= prior_flows.covered_until
-                and prior_flows.account_state_digest == account_state_digest
+                and prior_flows.account_state_digest == state_digest
             )
             # A legacy value-only ledger is not evidence that its dated cash
             # history can be replayed. Preserve that established append path;
@@ -353,7 +337,7 @@ class AccountNavStage:
                     payload=flow_history.model_copy(
                         update={
                             "source_digest": source_digest,
-                            "account_state_digest": account_state_digest,
+                            "account_state_digest": state_digest,
                             "covered_until": fetched_at,
                         }
                     ).model_dump(mode="json", by_alias=False),
@@ -377,7 +361,7 @@ class AccountIntradayNavStage:
     """Publish one valuation history for both broker collection and backfilling."""
 
     name = "accounts.intraday_nav"
-    version = "valuation-history-v3"
+    version = "valuation-history-v4"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -517,8 +501,22 @@ class AccountIntradayNavStage:
                 warnings=warnings,
             ),
         )
+        # Full refreshes publish newly reconciled flows in AccountNavStage.
+        # Only live collection may reuse the previous snapshot's evidence.
+        flow_refs = (
+            live_cash_flow_refs(
+                self.artifacts,
+                self.snapshots,
+                self.state_root,
+                accounts,
+                dependencies[:2],
+                self.version,
+            )
+            if context.scope == "intraday"
+            else []
+        )
         return StageResult(
-            artifacts=(stored.ref,),
+            artifacts=(stored.ref, *flow_refs),
             warnings=tuple(warnings),
             metadata={
                 "anchor_count": len(series.points),
