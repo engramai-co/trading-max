@@ -13,6 +13,16 @@ collection bucket; the modeled comparison value is retained for reconciliation.
 Neither a missing quote nor a broker/model difference is classified as a return.
 The existing daily CSV contract remains available to performance consumers.
 
+The main valuation and cash-flow-adjusted P&L projection uses reconstructed
+history only before the first usable broker observation. Once broker collection
+starts, it uses broker observations exclusively, even when a collection slot is
+missing. Determine that boundary over the full retained history before applying
+the selected date range. This prevents differences between the provider's marks
+and the broker's overnight marks from appearing as alternating profits and
+drawdowns. All input observations and paired model comparisons remain unchanged
+in the immutable artifact; this is source selection, not an outlier filter or a
+price correction. A real spike in broker observations remains a real spike.
+
 ## Reconstruction
 
 Replay official timestamped fills, split entries and native-currency cash events.
@@ -40,11 +50,15 @@ Display one observation per fixed time bucket: 10 minutes for 1D, 30 minutes for
 5D, one hour for 1M and two hours for 3M. Select the final real observation in
 each bucket, retaining segment endpoints, collection gaps and source transitions.
 Do not select extra local extrema or change the interval to meet a point budget.
-Coverage and all calculations, including drawdown extrema, use the complete
-ten-minute history. Display density never changes the stored observations or
-their cadence. Source changes retain both adjacent readings as display anchors,
-but do not break the line: only absent observations make a gap. Keep authoritative
-broker values and paired model values unchanged; do not smooth away their residual.
+Coverage and all calculations, including drawdown extrema, use the full selected
+history before display sampling. Display density never changes the stored
+observations or their cadence. The transition from early reconstructed history
+to broker collection retains both adjacent readings as display anchors. Connect
+real endpoints separated by at most 30 minutes without inserting a value at any
+missing timestamp; coverage and exact records continue to show the missing slots.
+Longer outages, leading/trailing gaps and unavailable financial values remain
+gaps. Measure elapsed time before weekend folding. Keep authoritative broker
+values and paired model values unchanged; do not smooth away their residual.
 
 ## Money and cash-flow basis
 

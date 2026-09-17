@@ -1,6 +1,6 @@
 import type { CalendarTimeline } from "./portfolio-history";
 
-/** Preserve collection gaps and make isolated observations visible at any density. */
+/** Plot real endpoints across short collection gaps; never synthesize observations. */
 export function historySeries(
   dates: string[], values: Array<number | null>, intraday: boolean,
   timeline?: CalendarTimeline,
@@ -16,8 +16,17 @@ export function historySeries(
     // endpoints and source anchors without treating source changes as gaps.
     for (let start = 0; start < rows.length;) {
       if (valueAt(start) == null) {
-        selected.add(start++);
+        const gapStart = start;
         while (start < rows.length && valueAt(start) == null) start++;
+        // Only an absent sample may be bridged, not an observed point whose
+        // financial value is unknown. Retain calendar gaps for coverage and
+        // hover; the line simply connects the two real endpoints.
+        const bridge = valueAt(gapStart - 1) != null && valueAt(start) != null
+          && rows.slice(gapStart, start).every((row) => row == null)
+          && Date.parse(timeline.categories[start]) - Date.parse(timeline.categories[gapStart - 1])
+            <= (timeline.maxConnectedGapMinutes ?? 0) * 60_000;
+        if (bridge) continue;
+        selected.add(gapStart);
         // Keep both ends of an unobserved span. Numeric-axis hover must find a
         // null boundary in the gap instead of snapping to a distant valid value.
         selected.add(start - 1);

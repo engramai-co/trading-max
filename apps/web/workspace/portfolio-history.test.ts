@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
 import { selectPortfolioHistory } from "./portfolio-history";
 import { historySeries } from "./history-series";
+import { portfolioMoney } from "./portfolio-money";
 
 function point(date: string, intraday = false, value: number | null = 100): NavPoint {
   return {
@@ -51,21 +52,49 @@ describe("unified portfolio history", () => {
     expect(result.points).toHaveLength(1);
     expect(result.points[0].total).toBe(0);
   });
-  it.each(["1D", "1W", "1M", "3M"] as const)("keeps mixed-source values continuous and retains their anchors in %s", (range) => {
+  it.each(["1D", "1W", "1M", "3M"] as const)("uses reconstruction only before broker collection begins in %s", (range) => {
     const records = Array.from({ length: 144 }, (_, index) => ({
       ...point(new Date(Date.parse("2026-09-03T23:00Z") + index * 600_000).toISOString(), true, 100 + index),
       valuationSource: index === 91 || index >= 94 ? "broker" as const : "reconstructed" as const,
     }));
     const result = selectPortfolioHistory({ ...input, range, intraday: records, asOf: records.at(-1)!.date });
-    const series = historySeries(records.map((p) => p.date), records.map((p) => p.total), true, result.timeline);
-    expect(result.points).toEqual(records);
-    const firstSlot = result.timeline.rowIndexes.indexOf(0);
-    // Longer windows may have genuine leading gaps, but none within this day.
-    expect(series.filter((p) => Number(p.value[0]) >= firstSlot).every((p) => p.value[1] != null)).toBe(true);
-    for (const index of [90, 91, 92, 93, 94]) {
-      expect(series.some((p) => result.timeline.rowIndexes[Number(p.value[0])] === index && p.value[1] === records[index].total)).toBe(true);
-    }
-    if (range === "1D") expect(result.coverage.status).toBe("complete");
+    expect(result.points).toEqual(records.filter((_, i) => i !== 92 && i !== 93));
+    expect(result.points[90].valuationSource).toBe("reconstructed");
+    expect(result.points.slice(91).every((p) => p.valuationSource === "broker")).toBe(true);
+    const series = historySeries(result.points.map((p) => p.date), result.points.map((p) => p.total), true, result.timeline);
+    expect(series.some((p) => p.value[1] === records[90].total)).toBe(true);
+    expect(series.some((p) => p.value[1] === records[91].total)).toBe(true);
+    expect(series.some((p) => p.value[1] === records[92].total || p.value[1] === records[93].total)).toBe(false);
+    expect(result.coverage.status).toBe("partial");
+  });
+  it("does not turn intermittent model residuals into profit or drawdown", () => {
+    const records = [100, 100, 130, 101, 131, 99, 102].map((value, i) => ({
+      ...point(new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString(), true, value),
+      valuationSource: i === 2 || i === 4 ? "reconstructed" as const : "broker" as const,
+      totalNetContributionsGbp: 100,
+    }));
+    const untouched = structuredClone(records);
+    const result = selectPortfolioHistory({ ...input, range: "1D", intraday: records, asOf: records.at(-1)!.date });
+    expect(result.points.map((p) => p.total)).toEqual([100, 100, 101, 99, 102]);
+    expect(portfolioMoney(result.points, "total")).toMatchObject({ opening: 100, ending: 102, pnl: 2, maxDrawdown: -2 });
+    expect(records).toEqual(untouched);
+  });
+  it("preserves real broker spikes, paired model evidence and cumulative cash flows across a missed sample", () => {
+    const records = [100, 130, 150, 112].map((value, i) => ({
+      ...point(new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString(), true, value),
+      valuationSource: i === 1 ? "reconstructed" as const : "broker" as const,
+      totalNetContributionsGbp: i < 1 ? 100 : 110,
+      investModelValueGbp: i === 2 ? 105 : undefined,
+    }));
+    const result = selectPortfolioHistory({ ...input, range: "1D", intraday: records, asOf: records.at(-1)!.date });
+    expect(result.points).toEqual([records[0], records[2], records[3]]);
+    expect(portfolioMoney(result.points, "total")).toMatchObject({ contributions: 10, pnl: 2, maxDrawdown: -38 });
+  });
+  it("keeps all-model history when collection has not started, but never resumes it after collection", () => {
+    const records = intraday.map((p) => ({ ...p, valuationSource: "reconstructed" as const }));
+    expect(selectPortfolioHistory({ ...input, range: "1D", intraday: records }).points).toEqual(records);
+    const broker = { ...point("2026-09-01T12:00Z", true), valuationSource: "broker" as const };
+    expect(selectPortfolioHistory({ ...input, range: "1D", intraday: [broker, ...records] }).points).toEqual([]);
   });
   it("reports a missing ten-minute slot and stale trailing coverage", () => {
     const records = Array.from({ length: 144 }, (_, index) => point(new Date(Date.parse("2026-09-03T23:00Z") + index * 600_000).toISOString(), true));
@@ -136,5 +165,26 @@ describe("visible observation gaps", () => {
     const series = historySeries(dates, [100, null, 110], false);
     expect(series).toHaveLength(3);
     expect(series[1].value[1]).toBeNull();
+  });
+  it("connects adjacent real observations across at most thirty minutes without inserting samples", () => {
+    const dates = Array.from({ length: 8 }, (_, i) => new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString());
+    const timeline = { categories: dates, rowIndexes: [0, 1, null, 3, null, null, 6, 7], maxConnectedGapMinutes: 30 };
+    const series = historySeries(dates, [100, 101, null, 103, null, null, 106, 107], true, timeline);
+    expect(series.map((p) => p.value)).toEqual([[0, 100], [1, 101], [3, 103], [6, 106], [7, 107]]);
+    expect(timeline.rowIndexes[2]).toBeNull();
+  });
+  it("does not bridge unknown financial values or a long collection outage", () => {
+    const dates = Array.from({ length: 8 }, (_, i) => new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString());
+    const timeline = { categories: dates, rowIndexes: dates.map((_, i) => i), maxConnectedGapMinutes: 30 };
+    expect(historySeries(dates, [100, 101, null, 103, 104, 105, 106, 107], true, timeline)[2].value).toEqual([2, null]);
+    const outage = { ...timeline, rowIndexes: [0, 1, null, null, null, null, 6, 7] };
+    expect(historySeries(dates, [100, 101, null, null, null, null, 106, 107], true, outage).map((p) => p.value))
+      .toEqual([[0, 100], [1, 101], [2, null], [5, null], [6, 106], [7, 107]]);
+  });
+  it("uses elapsed time when weekends are folded and preserves leading and trailing gaps", () => {
+    const dates = ["2026-09-04T22:40Z", "2026-09-04T22:50Z", "2026-09-06T23:00Z", "2026-09-06T23:10Z", "2026-09-06T23:20Z"];
+    const timeline = { categories: dates, rowIndexes: [null, 1, null, 3, null], maxConnectedGapMinutes: 30 };
+    expect(historySeries(dates, [null, 100, null, 101, null], true, timeline).map((p) => p.value))
+      .toEqual([[0, null], [1, 100], [2, null], [3, 101], [4, null]]);
   });
 });
