@@ -7,16 +7,16 @@ import {
   ChartLine,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding } from "@/lib/types";
-import { HistoryChart, Legend } from "./charts";
+import { Legend } from "./charts";
+import { TimelineChart } from "./timeline-chart";
 import {
   currency,
   navNumber,
   percent,
   tone,
-  type Range,
   type Scope,
 } from "./data";
 import {
@@ -38,7 +38,8 @@ import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp } from "./history-coverage";
-import { selectPortfolioHistory, valuationNote } from "./portfolio-history";
+import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
+import { portfolioValueLines } from "./portfolio-value-lines";
 
 export function OverviewWorkspace() {
   const t = useCopy();
@@ -289,13 +290,16 @@ function OverviewContent({ data }: { data: DashboardLens }) {
 function OverviewHistory({ scope }: { scope: Scope }) {
   const t = useCopy();
   const query = useDashboardLens("analytics");
-  const [range, setRange] = useState<Range>("3M");
+  const { params, update } = useRouteState();
+  const range = portfolioRange(params.get("range"));
   const history = useMemo(() => selectPortfolioHistory({
     daily: query.data?.nav, intraday: query.data?.intradayNav,
     range, scope, asOf: query.data?.brokerAsOf,
+    requireCashFlows: true,
   }), [query.data?.nav, query.data?.intradayNav, query.data?.brokerAsOf, range, scope]);
   const { points } = history;
   const isIntraday = history.source === "intraday";
+  const lines = portfolioValueLines(points, scope, t);
   return (
     <Panel
       className="mx-overview-history"
@@ -305,10 +309,10 @@ function OverviewHistory({ scope }: { scope: Scope }) {
         <Segments
           label={t("图表区间", "Chart range")}
           value={range}
-          onChange={setRange}
-          options={["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"].map(
+          onChange={(value) => update({ range: value })}
+          options={PORTFOLIO_RANGES.map(
             (v) => ({
-              value: v as Range,
+              value: v,
               label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
             }),
           )}
@@ -322,54 +326,22 @@ function OverviewHistory({ scope }: { scope: Scope }) {
       ) : (
         <>
           <HistoryCoverage history={history} />
-          <HistoryChart
+          <TimelineChart
             dates={points.map((p) => p.date)}
-            lines={[
-              {
-                name: isIntraday ? t("账户估值", "Account valuation") : t("账户价值", "Account value"),
-                values: points.map((p) => navNumber(p, scope)),
-                area: true,
-              },
-              ...(isIntraday
-                ? []
-                : [
-                    {
-                      name: t("净入金", "Net contributions"),
-                      values: points.map((p) =>
-                        navNumber(p, scope, "NetContributionsGbp"),
-                      ),
-                      dashed: true,
-                      colour: "accent" as const,
-                    },
-                  ]),
-            ]}
-            label={isIntraday
-              ? t("日内账户估值", "Intraday account valuations")
-              : t("资产价值与净入金曲线", "Portfolio value and net contributions over time")}
+            layers={[{ label: t("价值与入金", "Value & contributions"), lines }]}
+            label={t("资产价值与净入金曲线", "Portfolio value and net contributions over time")}
             intraday={isIntraday}
             timeline={history.timeline}
-            notes={isIntraday ? points.map((point) => valuationNote(point, t)) : undefined}
-            emptyDescription={isIntraday ? t(
-              "当前区间暂无日内估值，请更新账户或选择其他区间。",
-              "No intraday valuations in this period. Update the account or choose another range.",
-            ) : undefined}
-            height={280}
+            observations={isIntraday ? points : undefined}
           />
-          <Legend
-            items={[
-              { label: isIntraday ? t("账户估值", "Account valuation") : t("账户价值", "Account value") },
-              ...(isIntraday
-                ? []
-                : [{ label: t("净入金", "Net contributions") }]),
-            ]}
-          />
+          <Legend items={lines.map((line) => ({ label: line.name }))} />
           <div className="mx-chart-footer">
             <span>
               {t("区间价值变化", "Value change")}{" "}
               <strong>{currency(points.length > 1 && navNumber(points[0], scope) != null && navNumber(points.at(-1), scope) != null
                 ? navNumber(points.at(-1), scope)! - navNumber(points[0], scope)! : null, "GBP", 2)}</strong>
             </span>
-            <TextLink href="/analytics">
+            <TextLink href={portfolioPerformanceHref(scope, range)}>
               <ChartLine size={14} />
               {t("收益分析", "View performance")}
             </TextLink>
