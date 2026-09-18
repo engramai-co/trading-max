@@ -46,6 +46,17 @@ and two hours (3M). Calculations use all stored observations before display
 sampling. Longer ranges use daily values. Full overnight market coverage is
 not guaranteed by the availability of pre/post-market bars.
 
+Reconstruction selects the newest completed price across the available minute
+and hourly feeds before checking its age. Active-session validity starts at the
+actual open, including supported pre/post-market sessions. With hourly coverage,
+the fallback allowance is two hours; minute-only coverage retains its two-bar
+limit. A finer quote used under the hourly allowance is reported at the coarser
+resolution. Weekend/holiday carry requires a quote near the latest session's
+close and ends when the next covered trading session opens. A complete replay
+removes estimates that no longer pass these checks, preserving broker records.
+These rules do not supply overnight prices absent from the market-data provider,
+and bar resolution must not be interpreted as the age of the latest price.
+
 Missing cash-flow evidence makes affected P&L unavailable. Unknown is not zero.
 See [NAV history](../architecture/unified-nav-history.md) and
 [performance calculations](../architecture/performance-metrics.md).

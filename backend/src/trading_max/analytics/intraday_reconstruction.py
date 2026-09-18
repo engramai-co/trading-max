@@ -53,8 +53,9 @@ def completed_prices(
 ) -> IntradayPrices:
     """Move bar-start labels to their end; undo split adjustment exactly once."""
     seconds = 3600 if interval == "1h" else 300
+    active_sessions = tuple(sorted(set(sessions) | set(bar_sessions)))
     if frame.empty:
-        return IntradayPrices(pd.Series(dtype=float), currency, seconds, sessions)
+        return IntradayPrices(pd.Series(dtype=float), currency, seconds, active_sessions)
     frame = frame.copy()
     frame.index = pd.to_datetime(frame.index, utc=True)
     frame = frame[~frame.index.duplicated(keep="last")].sort_index()
@@ -75,7 +76,7 @@ def completed_prices(
     close.index = ends
     close = close[~close.index.duplicated(keep="last")].dropna().sort_index()
     close = close[np.isfinite(close) & (close > 0)]
-    return IntradayPrices(close, currency, seconds, sessions)
+    return IntradayPrices(close, currency, seconds, active_sessions)
 
 
 class CachedIntradayPriceLoader:
@@ -222,14 +223,62 @@ def _marks(prices: IntradayPrices, timeline: pd.DatetimeIndex) -> pd.Series:
     if prices.sessions:
         in_session = pd.Series(False, index=timeline)
         for start, end in prices.sessions:
-            in_session |= (timeline >= start + pd.Timedelta(seconds=prices.cadence_seconds)) & (
-                timeline <= end
-            )
+            # A market opens at its actual start, not when its first complete
+            # hourly bar arrives. Otherwise Friday's close can pass as fresh
+            # for the first hour of Monday's trading.
+            in_session |= (timeline >= start) & (timeline <= end)
         first = min(a for a, _ in prices.sessions).normalize()
         last = max(b for _, b in prices.sessions).normalize() + pd.Timedelta(days=1)
         covered = (timeline >= first) & (timeline <= last)
-        valid |= ~in_session & covered & (age <= 4 * 86400)
+        ends = pd.to_datetime(sorted({end for _, end in prices.sessions}), utc=True)
+        last_close = pd.Series(ends, index=ends).reindex(timeline, method="ffill")
+        close_is_covered = stamps >= last_close - pd.Timedelta(seconds=prices.cadence_seconds * 2)
+        # Weekend/holiday carry requires a quote near the latest session's
+        # close. A missing trading day must not become a valid overnight mark.
+        valid |= ~in_session & covered & close_is_covered & (age <= 4 * 86400)
     return values.where(valid)
+
+
+def _combined_marks(
+    hourly: IntradayPrices, fine: IntradayPrices, timeline: pd.DatetimeIndex
+) -> tuple[pd.Series, str, pd.Series]:
+    """Select the newest completed observation before applying one freshness gate."""
+    currencies = {p.currency for p in (hourly, fine) if p.currency}
+    currencies = {"GBP" if c == "GBX" else c for c in currencies}
+    if len(currencies) > 1:
+        raise HistoricalNavError("hourly and minute quote currencies disagree")
+    currency = next(iter(currencies), "")
+    available = [p for p in (hourly, fine) if not p.close.empty]
+    if not available:
+        return pd.Series(np.nan, index=timeline), currency, pd.Series(3600, index=timeline)
+    observations = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "close": p.close / (100 if p.currency == "GBX" else 1),
+                    "cadence": p.cadence_seconds,
+                }
+            )
+            for p in available
+        ]
+    )
+    # Fine bars win ties; an older hourly mark can never replace a newer fine
+    # mark just because it has a more permissive freshness allowance.
+    observations = observations[~observations.index.duplicated(keep="last")].sort_index()
+    combined = IntradayPrices(
+        observations["close"],
+        currency,
+        max(p.cadence_seconds for p in available),
+        tuple(sorted({session for p in available for session in p.sessions})),
+    )
+    values = _marks(combined, timeline)
+    precision = observations["cadence"].reindex(timeline, method="ffill").fillna(3600).astype(int)
+    # When hourly history is available, its existing two-bar allowance remains
+    # the fallback budget, but it uses the newest known price. Report that
+    # coarser budget for fine observations older than two fine bars.
+    age = (pd.Series(timeline, index=timeline) - _mark_times(combined, timeline)).dt.total_seconds()
+    precision = precision.where(age <= precision * 2, combined.cadence_seconds)
+    return values, currency, precision
 
 
 def _mark_times(prices: IntradayPrices, timeline: pd.DatetimeIndex) -> pd.Series:
@@ -296,33 +345,13 @@ def reconstruct_intraday_account(
             hourly_prices = history_loader(symbol, start - pd.Timedelta(days=4), end, "1h")
         except Exception:
             hourly_prices = IntradayPrices(pd.Series(dtype=float), "", 3600)
-        values = _marks(hourly_prices, timeline)
-        currency = hourly_prices.currency
-        precision = pd.Series(3600, index=timeline)
+        minute_prices = IntradayPrices(pd.Series(dtype=float), hourly_prices.currency, 300)
         if recent <= end:
             try:
                 minute_prices = history_loader(symbol, recent, end, "5m")
             except Exception:
-                minute_prices = IntradayPrices(pd.Series(dtype=float), currency, 300)
-            fine_values = _marks(minute_prices, timeline)
-            if currency == "GBX":
-                values, currency = values / 100, "GBP"
-            fine_currency = minute_prices.currency
-            if fine_currency == "GBX":
-                fine_values, fine_currency = fine_values / 100, "GBP"
-            if currency and fine_currency and currency != fine_currency:
-                raise HistoricalNavError(f"{symbol}: hourly and minute quote currencies disagree")
-            # Valuation cadence is independent of quote resolution. Use the
-            # freshest completed mark. An old five-minute quote carried through
-            # a quiet extended session must not override a newer hourly quote.
-            use_fine = fine_values.notna() & (
-                values.isna()
-                | (_mark_times(minute_prices, timeline) >= _mark_times(hourly_prices, timeline))
-            )
-            precision.loc[use_fine] = 300
-            values = values.where(~use_fine, fine_values)
-            currency = fine_currency or currency
-        return values, currency, precision
+                minute_prices = IntradayPrices(pd.Series(dtype=float), hourly_prices.currency, 300)
+        return _combined_marks(hourly_prices, minute_prices, timeline)
 
     fx: dict[str, pd.Series] = {"GBP": pd.Series(1.0, index=timeline)}
     fx_precision: dict[str, pd.Series] = {

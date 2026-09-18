@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-09-18
+
+### Fixed
+
+- Apply quote freshness from the actual market open, including pre/post-market
+  sessions, without giving hourly prices an extra opening-hour grace period.
+- Choose the newest completed observation across minute and hourly feeds before
+  checking freshness. Keep the existing hourly fallback budget without reverting
+  to an older price, and normalize pence consistently for hourly-only history.
+- Carry closed-market prices only when the latest completed trading session has
+  adequate quote coverage. Replace obsolete model results on a complete replay
+  while retaining original broker observations and immutable source artifacts.
+
 ## [1.4.4] - 2026-09-17
 
 ### Fixed

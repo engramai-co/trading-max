@@ -174,14 +174,30 @@ def merge_valuation_history(
     generated_at: datetime,
     interval_seconds: int = 600,
     retention_days: int = 120,
+    replace_reconstructed: bool = False,
 ) -> IntradayAnchorSeries:
     """Merge either producer idempotently, preserving broker evidence and precision.
 
     Modeled values never replace a broker observation. If both cover the same
     bucket, keep the model alongside the observation for explicit reconciliation.
     Quote resolution remains distinct from the ten-minute valuation cadence.
+    A complete replay replaces earlier model results, including buckets now
+    rejected by freshness checks. Live collection leaves those results intact.
     """
     by_bucket = {point.bucket_at: point for point in previous.points} if previous else {}
+    if replace_reconstructed:
+        by_bucket = {
+            bucket: point.model_copy(
+                update={
+                    "model_at": None,
+                    "model_price_cadence_seconds": None,
+                    "invest_model_value_gbp": None,
+                    "isa_model_value_gbp": None,
+                }
+            )
+            for bucket, point in by_bucket.items()
+            if point.source == "broker"
+        }
     for point in incoming:
         old = by_bucket.get(point.bucket_at)
         if old is None:

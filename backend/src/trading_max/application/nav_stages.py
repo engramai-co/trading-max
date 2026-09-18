@@ -361,7 +361,7 @@ class AccountIntradayNavStage:
     """Publish one valuation history for both broker collection and backfilling."""
 
     name = "accounts.intraday_nav"
-    version = "valuation-history-v4"
+    version = "valuation-history-v5"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -483,6 +483,7 @@ class AccountIntradayNavStage:
                     generated_at=series.generated_at,
                     interval_seconds=self.interval_seconds,
                     retention_days=self.retention_days,
+                    replace_reconstructed=True,
                 )
                 if not points:
                     warnings.append(
