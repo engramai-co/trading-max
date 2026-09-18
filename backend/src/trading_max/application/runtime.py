@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
+from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from trading_max.analytics.lookthrough import LookthroughService
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -58,7 +59,7 @@ class TypedWorkerRuntime:
         taxonomy_provider: RawTaxonomyCatalogProvider | None = None,
         valuation_assumptions=None,
         intraday_interval_seconds: int = 600,
-        intraday_retention_days: int = 120,
+        intraday_retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
         extra_stages: Iterable[object] = (),
         intraday_history_loader_factory=None,
     ) -> None:

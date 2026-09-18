@@ -269,7 +269,9 @@ function chartReading(
     if (axis?.type === "value" || axis?.type === "log") {
       const formatter = axis.axisLabel?.formatter;
       if (typeof formatter === "function")
-        return String(formatter(value, index, undefined));
+        return String(formatter(value, index, undefined))
+          .replace(/\{[^{}|]+\|([^{}]*)\}/g, "$1")
+          .replace(/\s+/g, " ");
       if (typeof formatter === "string")
         return formatter.replace("{value}", format(value));
     }

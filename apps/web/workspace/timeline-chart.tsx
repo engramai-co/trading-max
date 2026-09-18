@@ -32,6 +32,7 @@ export function TimelineChart({
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
   if (
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
@@ -49,7 +50,7 @@ export function TimelineChart({
     <>
       <Plot
         label={label}
-        height={layers.length === 1 ? 282 : layers.length === 3 ? 586 : 434}
+        height={layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510}
         option={(colours) =>
           timelineOption(dates, layers, colours, (time) => {
             const zone = intraday ? timeZone : "UTC";
@@ -59,7 +60,7 @@ export function TimelineChart({
             return formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone })
               + "\n" + formatDate(time, locale, { year: "numeric", timeZone: zone });
           },
-            timeline, details, (time) => formatDate(time, locale, intraday
+            timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
               ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
               : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
             tooltip,
@@ -67,7 +68,7 @@ export function TimelineChart({
         }
       />
       <details className="mx-chart-data">
-        <summary>{intraday ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
+        <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable
           label={label}
           rows={dates.map((date, index) => ({ date, index }))}

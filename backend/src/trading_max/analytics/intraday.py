@@ -12,6 +12,8 @@ from pydantic import Field
 from trading_max.domain import DomainModel
 
 FlowStatus = Literal["verified", "unverified"]
+# Six calendar months plus a buffer for reconciliation and quote lookback.
+DEFAULT_INTRADAY_RETENTION_DAYS = 210
 
 
 class IntradayAnchor(DomainModel):
@@ -93,7 +95,7 @@ def append_intraday_anchor(
     *,
     source_artifact_ids: Sequence[str],
     interval_seconds: int = 600,
-    retention_days: int = 120,
+    retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
     generated_at: datetime | None = None,
 ) -> IntradayAnchorSeries:
     """Insert or replace one bucket and retain a bounded rolling series.
@@ -173,7 +175,7 @@ def merge_valuation_history(
     *,
     generated_at: datetime,
     interval_seconds: int = 600,
-    retention_days: int = 120,
+    retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
     replace_reconstructed: bool = False,
 ) -> IntradayAnchorSeries:
     """Merge either producer idempotently, preserving broker evidence and precision.

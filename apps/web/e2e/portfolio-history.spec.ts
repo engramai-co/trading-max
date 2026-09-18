@@ -20,9 +20,9 @@ const fixture = {
   accounts: ["A", "B"].map((code) => ({ code, isInvestable: true, totalValueGbp: 500 })),
 };
 
-async function values(table: Locator, columns: number) {
-  return table.locator("tbody tr").evaluateAll((rows, count) => rows.map((row) =>
-    Array.from(row.children).slice(0, count).map((cell) => cell.textContent)), columns);
+async function values(table: Locator, columns: number[]) {
+  return table.locator("tbody tr").evaluateAll((rows, indexes) => rows.map((row) =>
+    indexes.map((index) => row.children[index].textContent)), columns);
 }
 
 test.describe("overview to performance", () => {
@@ -38,21 +38,21 @@ test.describe("overview to performance", () => {
   });
 
   for (const range of ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"]) {
-    test(`${range} preserves account, range, values, contributions and cutoff`, async ({ page }) => {
+    test(`${range} shows cash-flow-adjusted P&L and preserves account, range and cutoff`, async ({ page }) => {
       const short = ["1D", "1W", "1M", "3M"].includes(range);
       const rangeLabel = range === "1W" ? "5D" : range === "ALL" ? "All" : range;
       await page.goto(`/?scope=isa&range=${range}`);
       const overview = page.locator(".mx-overview-history");
       await expect(overview.locator("[data-tm-chart-ready=true]")).toBeVisible();
       await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(overview.locator(".mx-chart-legend")).toContainText("Cumulative net contributions");
-      if (short) {
-        await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
-        await expect(overview.locator(".mx-chart-footer")).toContainText("£90.00");
-        await expect(overview.locator(".mx-history-coverage-details")).not.toHaveAttribute("open");
-      }
+      await expect(overview.getByRole("heading", { name: "Period P&L", exact: true })).toBeVisible();
+      await expect(overview).not.toContainText("Cumulative net contributions");
+      await expect(overview).not.toContainText("Some periods have no observations");
+      await expect(overview.locator(".mx-chart-footer")).toContainText("£10.00");
+      await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
       await overview.locator(".mx-chart-data summary").click();
-      const original = await values(overview.locator("table"), short ? 4 : 3);
+      const original = await values(overview.locator("table"), [0, 1, 2]);
+      if (short) expect(original.map((row) => row.at(-1))).toEqual(["£0.00", "£0.00", "£10.00"]);
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
       await overview.getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
@@ -60,8 +60,9 @@ test.describe("overview to performance", () => {
       await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
       await page.locator(".mx-chart-data summary").first().click();
-      expect(await values(page.locator(".mx-chart-data table").first(), short ? 4 : 3)).toEqual(original);
+      expect(await values(page.locator(".mx-chart-data table").first(), [0, 1, 4])).toEqual(original);
       expect(await page.locator(".mx-history-coverage").allTextContents()).toEqual(coverage);
+      await expect(page.getByText("Some periods have no observations", { exact: true })).toHaveCount(0);
       if (short) await expect(page.locator(".mx-metric-grid").first()).toContainText("£10.00");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.goBack();

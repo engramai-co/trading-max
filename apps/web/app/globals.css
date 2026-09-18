@@ -161,9 +161,6 @@ h1, h2, h3, p { margin: 0; }
 .mx-overview-accounts .mx-account-title, .mx-overview-accounts .mx-account-title > div { min-width: 0; }
 .mx-overview-accounts .mx-account-title strong { overflow-wrap: anywhere; }
 .mx-history-coverage { margin-bottom: 18px; min-width: 0; }
-.mx-history-coverage-details { color: var(--mx-muted); font-size: 12px; line-height: 1.7; }
-.mx-history-coverage-details summary { cursor: pointer; width: fit-content; padding-block: 7px; }
-.mx-history-coverage-detail { margin-top: 5px; }
 .mx-freshness { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 10px; color: var(--mx-muted); line-height: 1.7; }
 .mx-status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .mx-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 4px; background: var(--mx-soft); color: var(--mx-muted); font-size: 10px; line-height: 1.4; font-weight: 500; white-space: nowrap; }
@@ -914,3 +911,41 @@ button.mx-text-link { padding: 8px 0; min-height: 40px; border: 0; background: t
   .mx-model-change { flex-wrap: wrap; }
   .mx-model-detail > .mx-panel { padding: 16px 12px; }
 }
+
+/* Selectable allocation chart: persistent details and large targets for thin slices. */
+.mx-allocation-ranking { list-style: none; margin: 24px 0 32px; padding: 0; }
+.mx-allocation-ranking li { display: grid; grid-template-columns: minmax(180px, 32%) minmax(0, 1fr) 110px; gap: 20px; align-items: center; min-height: 60px; padding: 12px 0; }
+.mx-allocation-ranking__name { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.mx-allocation-ranking__track { display: block; height: 10px; border-radius: 3px; background: var(--mx-soft); }
+.mx-allocation-ranking__track > span { display: block; height: 100%; border-radius: inherit; background: var(--mx-brand); }
+.mx-allocation-ranking__value { display: grid; gap: 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.mx-allocation-ranking__value strong { font-size: 13px; font-weight: 600; }
+.mx-allocation-ranking__value small { font-size: 11px; color: var(--mx-muted); }
+@media (max-width: 700px) { .mx-allocation-ranking li { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; padding: 16px 0; } .mx-allocation-ranking__track { grid-column: 1 / -1; grid-row: 2; } .mx-allocation-ranking__value { align-self: start; padding-top: 3px; } }
+.mx-allocation-composition { display: grid; grid-template-columns: minmax(260px, .9fr) minmax(280px, 1.1fr); gap: 32px; align-items: start; margin: 24px 0 32px; }
+.mx-allocation-visual { position: relative; min-width: 0; }
+.mx-allocation-canvas { height: 320px; width: 100%; }
+.mx-allocation-center { position: absolute; top: 160px; left: 50%; transform: translate(-50%, -50%); width: 145px; display: grid; gap: 6px; text-align: center; pointer-events: none; }
+.mx-allocation-center span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.mx-allocation-center strong { font-size: 30px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.mx-allocation-center small { color: var(--mx-muted); }
+.mx-allocation-visual > p { text-align: center; line-height: 1.7; margin: 0 12px; }
+.mx-allocation-details { min-width: 0; padding-top: 16px; }
+.mx-allocation-details h3 { margin: 6px 0 20px; overflow-wrap: anywhere; font-size: 20px; }
+.mx-allocation-details p { margin: 0; }
+.mx-allocation-facts { display: flex; flex-wrap: wrap; gap: 18px 36px; margin: 0 0 24px; }
+.mx-allocation-facts dt { font-size: 12px; color: var(--mx-muted); margin-bottom: 8px; }
+.mx-allocation-facts dd { font-size: 24px; line-height: 1.3; font-weight: 600; font-variant-numeric: tabular-nums; margin: 0; }
+.mx-allocation-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.mx-allocation-choices button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 10px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--mx-ink); text-align: left; cursor: pointer; }
+.mx-allocation-choices button:hover { background: var(--mx-soft); }
+.mx-allocation-choices button[aria-pressed="true"] { background: var(--mx-brand-soft); border-color: var(--mx-brand); }
+.mx-allocation-choices i { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.mx-allocation-choices span { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.mx-allocation-choices strong { margin-left: auto; white-space: nowrap; font-size: 12px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.mx-allocation-other { list-style: none; padding: 0; max-height: 180px; overflow: auto; margin: 12px 0 20px; }
+.mx-allocation-other li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 12px; border-bottom: 1px solid var(--mx-border); }
+.mx-allocation-other li span:first-child { overflow-wrap: anywhere; }
+.mx-allocation-other li span:last-child { flex-shrink: 0; }
+@media (max-width: 1050px) { .mx-allocation-composition { grid-template-columns: minmax(0, 1fr); gap: 16px; } .mx-allocation-details { padding-top: 0; } }
+@media (max-width: 420px) { .mx-allocation-choices { grid-template-columns: minmax(0, 1fr); } .mx-allocation-other li { flex-wrap: wrap; gap: 4px; } }

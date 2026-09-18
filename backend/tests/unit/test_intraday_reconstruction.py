@@ -416,16 +416,19 @@ def test_full_replay_replaces_old_finer_model_with_new_valid_estimate():
     )
 
 
-def test_three_month_retention_and_future_observations():
+def test_six_month_retention_preserves_observations_and_rejects_future_values():
     now = datetime(2026, 9, 4, 15, tzinfo=UTC)
     points = [
+        anchor("broker", 99, "2026-03-04T15:00:00+00:00"),
+        anchor("broker", 98, "2026-01-01T15:00:00+00:00"),
         anchor("broker", 100, "2026-06-04T15:00:00+00:00"),
         anchor("reconstructed", 102),
         anchor("reconstructed", 103, "2026-09-05T15:00:00+00:00"),
     ]
     result = merge_valuation_history(None, points, generated_at=now)
-    assert len(result.points) == 2
-    assert result.retention_days == 120
+    assert len(result.points) == 3
+    assert result.retention_days == 210
+    assert result.points[0].observed_at.month == 3
     assert all(point.observed_at <= now for point in result.points)
 
 

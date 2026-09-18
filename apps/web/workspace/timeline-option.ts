@@ -12,6 +12,7 @@ export type TimelineLayer = {
   lines: ChartLine[];
   percentage?: boolean;
   drawdown?: boolean;
+  zeroBaseline?: boolean;
 };
 
 export function timelineOption(
@@ -25,7 +26,8 @@ export function timelineOption(
   tooltip?: TimelineTooltip,
 ): EChartsOption {
   const times = dates.map(Date.parse);
-  const horizontalAxis = calendar ? timelineAxis(calendar, formatDay) : {
+  const calendarAxis = calendar ? timelineAxis(calendar, formatDay, 8) : undefined;
+  const horizontalAxis = calendarAxis ?? {
     type: "time" as const,
     minInterval: 86400000,
     boundaryGap: [0, 0] as [number, number],
@@ -33,15 +35,32 @@ export function timelineOption(
     max: times.at(-1),
     axisLabel: { formatter: (value: string | number) => formatDay(typeof value === "string" ? Date.parse(value) : value) },
   };
-  const top = (index: number) => (index === 0 ? 32 : 292 + (index - 1) * 152);
+  const top = (index: number) => (index === 0 ? 32 : 292 + (index - 1) * 196);
+  const axisDensity = (count: number) => {
+    const ticks = calendarAxis?.axisLabel.customValues;
+    return {
+      xAxis: layers.map(() => ({
+        splitNumber: count - 1,
+        ...(ticks ? { axisLabel: { customValues: ticks.length <= count ? ticks
+          : Array.from({ length: count }, (_, index) => ticks[Math.round(index * (ticks.length - 1) / (count - 1))]) } } : {}),
+      })),
+    };
+  };
   return {
     useUTC: true,
+    // ECharts evaluates these against the chart container and re-applies them
+    // on resize. The default restores all eight dates when the panel widens.
+    media: [
+      { query: { maxWidth: 820 }, option: axisDensity(5) },
+      { query: { maxWidth: 540 }, option: axisDensity(4) },
+      { option: axisDensity(8) },
+    ],
     grid: layers.map((_, index) => ({
       outerBoundsMode: "none",
       left: 64,
       right: 12,
       top: top(index),
-      height: index === 0 ? 210 : 106,
+      height: index === 0 ? 210 : 150,
     })),
     graphic: layers.map((layer, index) => ({
       type: "text",
@@ -70,8 +89,17 @@ export function timelineOption(
         alignMaxLabel: "right",
         hideOverlap: true,
         color: colours.axis,
+        margin: 16,
+        formatter: (value: number) => {
+          const [date, year] = horizontalAxis.axisLabel.formatter(value).split("\n");
+          return year ? `{date|${date}}\n{year|${year}}` : `{date|${date}}`;
+        },
+        rich: {
+          date: { color: colours.axis, fontSize: 12, lineHeight: 22 },
+          year: { color: colours.axis, fontSize: 10, lineHeight: 18 },
+        },
       },
-      splitNumber: 4,
+      splitNumber: 7,
     })),
     yAxis: layers.map((layer, index) => {
       const observed = layer.lines
@@ -130,7 +158,7 @@ export function timelineOption(
       formatter: (input) => {
         // Only actual plotted values can anchor the card, never a missing slot.
         const entries = Array.isArray(input) ? input : [input];
-        const point = entries.find((entry) => !String(entry.seriesId ?? "").startsWith("history-gap:") && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
+        const point = entries.find((entry) => !/^history-(gap|area):/.test(String(entry.seriesId ?? "")) && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
         const time = numeric(
           Array.isArray(point?.value) ? point.value[0] : null,
         );
@@ -161,6 +189,7 @@ export function timelineOption(
           xAxisIndex: axis,
           yAxisIndex: axis,
           data,
+          z: 3,
           connectNulls: false,
           symbol: single ? "circle" : "none",
           showSymbol: single,
@@ -173,21 +202,47 @@ export function timelineOption(
             type: line.dashed ? "dashed" : "solid",
           },
           itemStyle: { color: colour },
-          areaStyle: line.area ? { color: colour, opacity: 0.08 } : undefined,
+          markLine: layer.zeroBaseline && index === 0 ? {
+            silent: true,
+            symbol: "none",
+            label: { show: false },
+            lineStyle: { color: colours.axis, width: 1, type: "solid", opacity: 0.45 },
+            data: [{ yAxis: 0 }],
+          } : undefined,
         } satisfies SeriesOption;
-        return [primary, ...(gaps.length ? [{
+        // Fill is a quiet visual silhouette. The solid/dashed strokes retain
+        // observation boundaries; the fill never supplies hover values or rows.
+        const area = line.area ? [{
+          id: `history-area:${axis}:${index}`,
+          type: "line" as const,
+          xAxisIndex: axis,
+          yAxisIndex: axis,
+          data,
+          z: 1,
+          silent: true,
+          tooltip: { show: false },
+          symbol: "none",
+          showSymbol: false,
+          connectNulls: true,
+          step: line.step,
+          lineStyle: { width: 0, opacity: 0 },
+          areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
+          emphasis: { disabled: true },
+        } satisfies SeriesOption] : [];
+        return [primary, ...area, ...(gaps.length ? [{
           id: `history-gap:${axis}:${index}`,
           type: "line" as const,
           xAxisIndex: axis,
           yAxisIndex: axis,
           data: gaps,
+          z: 3,
           silent: true,
           tooltip: { show: false },
           symbol: "none",
           showSymbol: false,
           connectNulls: false,
           step: line.step,
-          lineStyle: { color: colour, width: 1.5, type: "dashed" as const, opacity: 0.65 },
+          lineStyle: { color: colour, width: 2, type: "dashed" as const, opacity: 0.75 },
           emphasis: { disabled: true },
         } satisfies SeriesOption] : [])];
       }),

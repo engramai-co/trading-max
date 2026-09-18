@@ -1,6 +1,6 @@
 import type { CalendarTimeline } from "./portfolio-history";
 
-/** Keep missing observations explicit; a separate dashed series connects their endpoints. */
+/** Only empty display buckets become gaps; all readings remain original observations. */
 export function historySeries(
   dates: string[], values: Array<number | null>, intraday: boolean,
   timeline?: CalendarTimeline,
@@ -10,28 +10,50 @@ export function historySeries(
     const rows = timeline.rowIndexes;
     const selected = new Set<number>();
     const interval = Math.max(1, timeline.displayIntervalMinutes ?? 10) * 60_000;
-    const origin = Date.parse(timeline.categories[0]);
-    const bucketAt = (index: number) => Math.floor((Date.parse(timeline.categories[index]) - origin) / interval);
+    // Stable UTC bucket boundaries keep overlapping ranges aligned, including
+    // a six-month window that crosses a daylight-saving transition.
+    const bucketAt = (index: number) => Math.floor(Date.parse(timeline.categories[index]) / interval);
     const valueAt = (index: number) => rows[index] == null ? null : values[rows[index]!];
-    // Select the last real observation in each fixed time bucket. Keep segment
-    // endpoints and source anchors without treating source changes as gaps.
+    const buckets: Array<{ start: number; end: number; first: number; last: number }> = [];
+    // First reduce to the display cadence. A missed ten-minute observation
+    // cannot break an otherwise populated hourly or four-hour display bucket.
     for (let start = 0; start < rows.length;) {
-      if (valueAt(start) == null) {
-        const gapStart = start;
-        while (start < rows.length && valueAt(start) == null) start++;
-        selected.add(gapStart);
+      let end = start + 1;
+      while (end < rows.length && bucketAt(end) === bucketAt(start)) end++;
+      let first = -1, last = -1;
+      for (let index = start; index < end; index++) {
+        if (valueAt(index) == null) continue;
+        if (first < 0) first = index;
+        last = index;
+        if (timeline.anchors?.[index]) selected.add(index);
+      }
+      buckets.push({ start, end, first, last });
+      start = end;
+    }
+    for (let index = 0; index < buckets.length;) {
+      const bucket = buckets[index];
+      if (bucket.first < 0) {
+        const gapStart = index;
+        while (index < buckets.length && buckets[index].first < 0) index++;
+        const before = buckets[gapStart - 1]?.last;
+        const after = buckets[index]?.first;
+        // Adjacent daily fallback observations are genuinely daily, not 143
+        // missing ten-minute samples. Folded weekends still occupy one step.
+        if (before != null && after != null
+          && timeline.categories[before].includes("T")
+          && !dates[rows[before]!].includes("T") && !dates[rows[after]!].includes("T")
+          && after - before <= 144) continue;
+        selected.add(buckets[gapStart].start);
         // Keep both ends of an unobserved span. Numeric-axis hover must find a
         // null boundary in the gap instead of snapping to a distant valid value.
-        selected.add(start - 1);
+        selected.add(buckets[index - 1].end - 1);
         continue;
       }
-      let end = start + 1;
-      while (end < rows.length && valueAt(end) != null) end++;
-      selected.add(start);
-      for (let index = start; index < end; index++) {
-        if (timeline.anchors?.[index] || index === end - 1 || bucketAt(index) !== bucketAt(index + 1)) selected.add(index);
-      }
-      start = end;
+      // Preserve the first reading after a genuine display gap, then the last
+      // reading in every populated bucket. Never average or interpolate values.
+      if (index === 0 || buckets[index - 1].first < 0) selected.add(bucket.first);
+      selected.add(bucket.last);
+      index++;
     }
     return [...selected].sort((a, b) => a - b).map((index) => {
       const row = rows[index];

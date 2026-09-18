@@ -25,6 +25,7 @@ from .historical_nav import (
     _trade_columns,
     ledger_events,
 )
+from .intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from .ledger import load_transactions
 
 LOGGER = logging.getLogger(__name__)
@@ -305,7 +306,7 @@ def reconstruct_intraday_account(
     account: dict,
     history_loader: IntradayPriceLoader,
     cash_transactions_path: Path | None = None,
-    retention_days: int = 120,
+    retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
     fine_history_start: pd.Timestamp | None = None,
 ) -> pd.DataFrame:
     """Replay the full ledger and value every ten-minute bucket.

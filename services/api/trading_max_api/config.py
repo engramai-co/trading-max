@@ -8,6 +8,8 @@ from ipaddress import ip_address
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
+
 APP_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_ALLOWED_ORIGINS = (
     "http://127.0.0.1:3412",
@@ -74,7 +76,7 @@ class Settings:
     intraday_window_start: str = "00:00"
     intraday_window_end: str = "00:00"
     intraday_weekdays: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
-    intraday_retention_days: int = 120
+    intraday_retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS
     performance_enabled: bool | None = None
     performance_interval_seconds: int = 1800
     research_enabled: bool | None = None
@@ -137,7 +139,9 @@ class Settings:
                 if value.strip()
             ),
             intraday_retention_days=int(
-                os.environ.get("TRADING_MAX_INTRADAY_RETENTION_DAYS", "120")
+                os.environ.get(
+                    "TRADING_MAX_INTRADAY_RETENTION_DAYS", str(DEFAULT_INTRADAY_RETENTION_DAYS)
+                )
             ),
             performance_enabled=_bool_from_env(
                 "TRADING_MAX_PERFORMANCE_ENABLED",

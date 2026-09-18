@@ -10,11 +10,9 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding } from "@/lib/types";
-import { Legend } from "./charts";
 import { TimelineChart } from "./timeline-chart";
 import {
   currency,
-  navNumber,
   percent,
   tone,
   type Scope,
@@ -39,7 +37,7 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
-import { portfolioValueLines } from "./portfolio-value-lines";
+import { portfolioMoney } from "./portfolio-money";
 
 export function OverviewWorkspace() {
   const t = useCopy();
@@ -299,11 +297,12 @@ function OverviewHistory({ scope }: { scope: Scope }) {
   }), [query.data?.nav, query.data?.intradayNav, query.data?.brokerAsOf, range, scope]);
   const { points } = history;
   const isIntraday = history.source === "intraday";
-  const lines = portfolioValueLines(points, scope, t);
+  const money = portfolioMoney(points, scope);
+  const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
   return (
     <Panel
       className="mx-overview-history"
-      title={t("资产变化", "Portfolio value history")}
+      title={t("区间净盈亏", "Period P&L")}
       help={<HistoryHelp />}
       action={
         <Segments
@@ -328,18 +327,22 @@ function OverviewHistory({ scope }: { scope: Scope }) {
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}
-            layers={[{ label: t("价值与入金", "Value & contributions"), lines }]}
-            label={t("资产价值与净入金曲线", "Portfolio value and net contributions over time")}
+            layers={[{ label: t("净盈亏", "Net P&L"), lines, zeroBaseline: true }]}
+            label={t("区间净盈亏曲线", "Period net profit and loss over time")}
             intraday={isIntraday}
             timeline={history.timeline}
-            observations={isIntraday ? points : undefined}
+            observations={points}
+            tooltip={{
+              range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
+              unit: "GBP",
+              primary: [{ label: t("区间净盈亏", "Period P&L"), values: money.pnls, signed: true }],
+              secondary: [],
+            }}
           />
-          <Legend items={lines.map((line) => ({ label: line.name }))} />
           <div className="mx-chart-footer">
             <span>
-              {t("区间价值变化", "Value change")}{" "}
-              <strong>{currency(points.length > 1 && navNumber(points[0], scope) != null && navNumber(points.at(-1), scope) != null
-                ? navNumber(points.at(-1), scope)! - navNumber(points[0], scope)! : null, "GBP", 2)}</strong>
+              {t("区间净盈亏", "Period P&L")}{" "}
+              <strong>{currency(money.pnl, "GBP", 2)}</strong>
             </span>
             <TextLink href={portfolioPerformanceHref(scope, range)}>
               <ChartLine size={14} />
