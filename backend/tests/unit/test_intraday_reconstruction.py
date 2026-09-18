@@ -5,6 +5,8 @@ import pytest
 from trading_max.analytics.intraday import IntradayAnchor, merge_valuation_history
 from trading_max.analytics.intraday_reconstruction import (
     IntradayPrices,
+    _combined_marks,
+    _marks,
     completed_prices,
     reconstruct_intraday_account,
 )
@@ -37,7 +39,7 @@ def ledger(tmp_path, events):
 
 def prices(symbol, start, end, interval):
     index = pd.date_range("2026-09-04T08:00Z", "2026-09-04T17:00Z", freq="5min")
-    return IntradayPrices(pd.Series(10.0, index=index), "GBP", 300)
+    return IntradayPrices(pd.Series(10.0, index=index), "GBP", 3600 if interval == "1h" else 300)
 
 
 def reconstruct(tmp_path, events, quantity, loader=prices, **kwargs):
@@ -380,6 +382,40 @@ def test_either_producer_order_keeps_broker_value_and_model_comparison():
         assert repeated == result
 
 
+def test_full_replay_removes_rejected_models_without_erasing_broker_records():
+    broker = anchor("broker", 102)
+    previous = merge_valuation_history(
+        None,
+        [
+            anchor("reconstructed", 101, "2026-09-04T14:50:00+00:00"),
+            broker,
+            anchor("reconstructed", 110),
+        ],
+        generated_at=broker.observed_at,
+    )
+    result = merge_valuation_history(
+        previous, [], generated_at=broker.observed_at, replace_reconstructed=True
+    )
+    assert result.points == [broker]
+    assert previous.points[-1].invest_model_value_gbp == 110
+    assert previous.points[0].source == "reconstructed"
+
+
+def test_full_replay_replaces_old_finer_model_with_new_valid_estimate():
+    stamp = datetime(2026, 9, 4, 15, tzinfo=UTC)
+    old = anchor("reconstructed", 110).model_copy(update={"price_cadence_seconds": 300})
+    previous = merge_valuation_history(None, [old], generated_at=stamp)
+    new = anchor("reconstructed", 101)
+    result = merge_valuation_history(
+        previous, [new], generated_at=stamp, replace_reconstructed=True
+    )
+    assert result.points == [new]
+    assert (
+        merge_valuation_history(result, [new], generated_at=stamp, replace_reconstructed=True)
+        == result
+    )
+
+
 def test_three_month_retention_and_future_observations():
     now = datetime(2026, 9, 4, 15, tzinfo=UTC)
     points = [
@@ -413,7 +449,7 @@ def test_extended_bars_complete_at_each_session_boundary():
         stamp("20:00"),
         stamp("00:00") + pd.Timedelta(days=1),
     ]
-    assert result.sessions == regular
+    assert result.sessions == boundaries
     assert result.close.loc[: stamp("13:20")].empty
 
 
@@ -442,6 +478,108 @@ def test_fresh_hourly_trade_beats_stale_fine_trade_outside_regular_session(tmp_p
     assert rows.loc["2026-09-04T14:00Z", "value"] == 110
     assert rows.loc["2026-09-04T14:40Z", "value"] == 110
     assert rows.loc["2026-09-04T14:40Z", "price_cadence"] == 3600
+
+
+def test_session_opens_before_first_hourly_bar_completes():
+    sessions = (
+        (pd.Timestamp("2026-09-04T08:00Z"), pd.Timestamp("2026-09-04T16:00Z")),
+        (pd.Timestamp("2026-09-07T08:00Z"), pd.Timestamp("2026-09-07T16:00Z")),
+    )
+    prices = IntradayPrices(
+        pd.Series([100.0], index=pd.to_datetime(["2026-09-04T16:00Z"])),
+        "GBP",
+        3600,
+        sessions,
+    )
+    times = pd.to_datetime(["2026-09-06T12:00Z", "2026-09-07T07:50Z", "2026-09-07T08:00Z"])
+    values = _marks(prices, times)
+    assert values.iloc[:2].tolist() == [100, 100]
+    assert pd.isna(values.iloc[2])
+
+
+def test_fresher_fine_quote_is_used_within_existing_hourly_fallback_budget():
+    sessions = (
+        (pd.Timestamp("2026-09-04T08:00Z"), pd.Timestamp("2026-09-04T16:00Z")),
+        (pd.Timestamp("2026-09-07T08:00Z"), pd.Timestamp("2026-09-07T16:00Z")),
+    )
+    hourly = IntradayPrices(
+        pd.Series([100.0], index=pd.to_datetime(["2026-09-04T16:00Z"])), "GBP", 3600, sessions
+    )
+    fine = IntradayPrices(
+        pd.Series([90.0], index=pd.to_datetime(["2026-09-07T08:15Z"])), "GBP", 300, sessions
+    )
+    times = pd.to_datetime(["2026-09-07T08:40Z", "2026-09-07T10:20Z"])
+    values, currency, precision = _combined_marks(hourly, fine, times)
+    assert values.iloc[0] == 90
+    assert currency == "GBP"
+    assert precision.iloc[0] == 3600
+    assert pd.isna(values.iloc[1])
+
+
+def test_minute_only_data_does_not_acquire_an_hourly_freshness_allowance():
+    fine = IntradayPrices(
+        pd.Series([90.0], index=pd.to_datetime(["2026-09-07T08:15Z"])), "GBP", 300
+    )
+    empty = IntradayPrices(pd.Series(dtype=float), "GBP", 3600)
+    values, _, _ = _combined_marks(empty, fine, pd.to_datetime(["2026-09-07T08:40Z"]))
+    assert values.isna().all()
+
+
+def test_missing_full_session_cannot_be_carried_into_the_next_night():
+    sessions = (
+        (pd.Timestamp("2026-09-03T08:00Z"), pd.Timestamp("2026-09-03T16:00Z")),
+        (pd.Timestamp("2026-09-04T08:00Z"), pd.Timestamp("2026-09-04T16:00Z")),
+    )
+    prices = IntradayPrices(
+        pd.Series([100.0], index=pd.to_datetime(["2026-09-03T16:00Z"])), "GBP", 3600, sessions
+    )
+    values = _marks(prices, pd.to_datetime(["2026-09-04T17:00Z"]))
+    assert values.isna().all()
+
+
+def test_extended_sessions_apply_the_same_freshness_gate():
+    regular = ((pd.Timestamp("2026-09-07T13:30Z"), pd.Timestamp("2026-09-07T20:00Z")),)
+    extended = (
+        (pd.Timestamp("2026-09-07T08:00Z"), pd.Timestamp("2026-09-07T13:30Z")),
+        *regular,
+        (pd.Timestamp("2026-09-07T20:00Z"), pd.Timestamp("2026-09-08T00:00Z")),
+    )
+    frame = pd.DataFrame(
+        {"Close": [100.0], "Stock Splits": [0]},
+        index=pd.to_datetime(["2026-09-04T23:55Z"]),
+    )
+    quotes = completed_prices(frame, "USD", "5m", regular, bar_sessions=extended)
+    assert _marks(quotes, pd.to_datetime(["2026-09-07T08:10Z"])).isna().all()
+
+
+def test_combining_quotes_normalizes_pence_and_never_uses_a_future_mark():
+    hourly = IntradayPrices(
+        pd.Series([1000.0], index=pd.to_datetime(["2026-09-07T08:00Z"])), "GBX", 3600
+    )
+    fine = IntradayPrices(
+        pd.Series([11.0, 99.0], index=pd.to_datetime(["2026-09-07T08:05Z", "2026-09-07T08:15Z"])),
+        "GBP",
+        300,
+    )
+    values, currency, precision = _combined_marks(
+        hourly, fine, pd.to_datetime(["2026-09-07T08:00Z", "2026-09-07T08:10Z"])
+    )
+    assert values.tolist() == [10, 11]
+    assert currency == "GBP"
+    assert precision.tolist() == [3600, 300]
+
+
+def test_session_freshness_accepts_calendar_offsets_across_dst():
+    sessions = (
+        (pd.Timestamp("2026-10-30T09:30-04:00"), pd.Timestamp("2026-10-30T16:00-04:00")),
+        (pd.Timestamp("2026-11-02T09:30-05:00"), pd.Timestamp("2026-11-02T16:00-05:00")),
+    )
+    prices = IntradayPrices(
+        pd.Series([100.0], index=pd.to_datetime(["2026-10-30T20:00Z"])), "USD", 3600, sessions
+    )
+    values = _marks(prices, pd.to_datetime(["2026-11-01T12:00Z", "2026-11-02T14:40Z"]))
+    assert values.iloc[0] == 100
+    assert pd.isna(values.iloc[1])
 
 
 def test_extended_cache_refetches_regular_only_history_and_keeps_short_pre_bar(
