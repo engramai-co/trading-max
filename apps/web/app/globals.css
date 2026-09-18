@@ -161,10 +161,9 @@ h1, h2, h3, p { margin: 0; }
 .mx-overview-accounts .mx-account-title, .mx-overview-accounts .mx-account-title > div { min-width: 0; }
 .mx-overview-accounts .mx-account-title strong { overflow-wrap: anywhere; }
 .mx-history-coverage { margin-bottom: 18px; min-width: 0; }
-.mx-history-coverage-detail { color: var(--mx-ink); font-size: 12px; line-height: 1.7; }
-.mx-history-coverage-track { position: relative; height: 5px; margin: 9px 12px 0 64px; border-radius: 3px; overflow: hidden; background: repeating-linear-gradient(135deg, var(--mx-soft) 0 4px, var(--mx-border) 4px 8px); }
-.mx-overview-history .mx-history-coverage-track { margin-inline: 58px 18px; }
-.mx-history-coverage-track > span { position: absolute; height: 100%; min-width: 2px; background: var(--mx-brand); border-radius: 3px; }
+.mx-history-coverage-details { color: var(--mx-muted); font-size: 12px; line-height: 1.7; }
+.mx-history-coverage-details summary { cursor: pointer; width: fit-content; padding-block: 7px; }
+.mx-history-coverage-detail { margin-top: 5px; }
 .mx-freshness { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 10px; color: var(--mx-muted); line-height: 1.7; }
 .mx-status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .mx-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 4px; background: var(--mx-soft); color: var(--mx-muted); font-size: 10px; line-height: 1.4; font-weight: 500; white-space: nowrap; }

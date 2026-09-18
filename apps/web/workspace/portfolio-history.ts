@@ -18,6 +18,16 @@ const displayIntervals = { "1D": 10, "1W": 30, "1M": 60, "3M": 120 } as const;
 const DAY = 86_400_000;
 const CALENDAR_ZONE = "Europe/London";
 
+export const PORTFOLIO_RANGES = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"] as const;
+export function portfolioRange(value: string | null): Range {
+  return PORTFOLIO_RANGES.find((range) => range === value) ?? "3M";
+}
+export function portfolioPerformanceHref(scope: Scope, range: Range) {
+  const params = new URLSearchParams({ view: "money", range });
+  if (scope !== "total") params.set("scope", scope);
+  return `/analytics?${params}`;
+}
+
 export function historyDay(date: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : portfolioCalendarDateKey(date)!;
 }

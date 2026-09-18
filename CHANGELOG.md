@@ -4,6 +4,20 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.7] - 2026-09-18
+
+### Fixed
+
+- Make the overview value chart a compact version of the performance value
+  layer, using the same verified accounting cutoff, sampled observations,
+  contribution steps, gap connections, tooltips, and exact-record display.
+- Preserve account and period when opening performance from the overview;
+  keep range choices in the URL across reloads and browser navigation.
+- Keep value change distinct from cash-flow-adjusted profit/loss. Show the
+  cumulative-contribution baseline at short and long ranges alike.
+- Replace the dense coverage strip with a shared, expandable missing-record
+  explanation while keeping pending cash-flow cutoffs visible.
+
 ## [1.4.6] - 2026-09-18
 
 ### Fixed

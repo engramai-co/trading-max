@@ -49,7 +49,7 @@ export function TimelineChart({
     <>
       <Plot
         label={label}
-        height={layers.length === 3 ? 586 : 434}
+        height={layers.length === 1 ? 282 : layers.length === 3 ? 586 : 434}
         option={(colours) =>
           timelineOption(dates, layers, colours, (time) =>
             formatDate(time, locale, {

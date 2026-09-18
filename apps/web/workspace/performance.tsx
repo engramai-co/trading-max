@@ -42,8 +42,9 @@ import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { HistoryCoverage } from "./history-coverage";
-import { selectPortfolioHistory } from "./portfolio-history";
+import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
 import { portfolioMoney } from "./portfolio-money";
+import { portfolioValueLines } from "./portfolio-value-lines";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
@@ -81,7 +82,7 @@ export function PerformanceContent({
     (["invest", "isa", "household", "cfd"].includes(params.get("scope") ?? "")
       ? (params.get("scope") as Scope)
       : "total");
-  const [range, setRange] = useState<Range>("3M");
+  const range = portfolioRange(params.get("range"));
   const [benchmark, setBenchmark] = useState("ALL");
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const daily = useMemo(() => (data.nav ?? []).filter((p) => !p.intraday), [data.nav]);
@@ -199,30 +200,7 @@ export function PerformanceContent({
   const principalLines: ChartLine[] =
     view === "returns"
       ? returnLines
-      : [
-          {
-            name: moneyUnit === "percent" ? t("价值变化", "Value change") : t("账户价值", "Account value"),
-            values: points.map((p) =>
-              moneyUnit === "gbp"
-                ? navNumber(p, scope)
-                : (navNumber(first, scope) ?? 0) > 0 &&
-                    navNumber(p, scope) != null
-                  ? navNumber(p, scope)! / navNumber(first, scope)! - 1
-                  : null,
-            ),
-            area: true,
-          },
-          {
-            name: moneyUnit === "percent" ? t("净入金变化", "Contribution change") : t("累计净入金", "Cumulative net contributions"),
-            values: points.map((p, i) => moneyUnit === "gbp"
-              ? navNumber(p, scope, "NetContributionsGbp")
-              : money.opening != null && money.opening > 0 && money.periodFlows[i] != null
-                ? money.periodFlows[i]! / money.opening : null),
-            colour: "accent",
-            dashed: true,
-            step: "end",
-          },
-        ];
+      : portfolioValueLines(points, scope, t, moneyUnit === "percent");
   const timelineLayers: TimelineLayer[] = [
     {
       label:
@@ -344,21 +322,15 @@ export function PerformanceContent({
             action={
               <Segments
                 value={actualRange}
-              onChange={setRange}
+                onChange={(value) => update({ range: value })}
                 label={t("绩效区间", "Performance range")}
-                options={(view === "money"
-                  ? ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"]
-                  : ["1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"]
-                ).map((v) => ({
+                options={PORTFOLIO_RANGES.filter((v) => view === "money" || v !== "1D").map((v) => ({
                   value: v as Range,
                   label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
                 }))}
               />
             }
           >
-            {view === "money" && history.pendingCashFlows && (
-              <Freshness date={last?.date} label={t("现金流待核对 · 统计截至", "Cash flows pending · Calculated through")} />
-            )}
             <div className="mx-metric-grid" style={{ marginBottom: 27 }}>
               <Metric
                 label={t("期末价值", "Ending value")}
