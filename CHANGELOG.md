@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.8] - 2026-09-18
+
+### Fixed
+
+- Keep date and year on separate lines in portfolio history axes so labels fit
+  narrow overview cards and mobile screens. Preserve intraday clock labels,
+  full timestamps in tooltips, and the shared overview/performance timeline.
+
 ## [1.4.7] - 2026-09-18
 
 ### Fixed

@@ -51,13 +51,14 @@ export function TimelineChart({
         label={label}
         height={layers.length === 1 ? 282 : layers.length === 3 ? 586 : 434}
         option={(colours) =>
-          timelineOption(dates, layers, colours, (time) =>
-            formatDate(time, locale, {
-              ...(intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)
-                ? { hour: "2-digit", minute: "2-digit" }
-                : { year: "numeric", day: "numeric", month: "short" }),
-              timeZone: intraday ? timeZone : "UTC",
-            }),
+          timelineOption(dates, layers, colours, (time) => {
+            const zone = intraday ? timeZone : "UTC";
+            if (intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)) {
+              return formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
+            }
+            return formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone })
+              + "\n" + formatDate(time, locale, { year: "numeric", timeZone: zone });
+          },
             timeline, details, (time) => formatDate(time, locale, intraday
               ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
               : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
