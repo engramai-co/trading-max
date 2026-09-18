@@ -1,7 +1,7 @@
 "use client";
 
 import { useComputedColorScheme } from "@mantine/core";
-import type { ECharts, EChartsOption } from "echarts";
+import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 
 type EChartsRuntime = typeof import("@/ui/charts/echarts-runtime");
@@ -33,11 +33,14 @@ export function useECharts(
   profile: EChartsRuntimeProfile = "core",
   controller?: RefObject<ECharts | null>,
   onZoom?: (chart: ECharts) => void,
+  onClick?: (event: ECElementEvent) => void,
 ) {
   const zoomCallback = useRef(onZoom);
+  const clickCallback = useRef(onClick);
   useEffect(() => {
     zoomCallback.current = onZoom;
-  }, [onZoom]);
+    clickCallback.current = onClick;
+  }, [onZoom, onClick]);
   const colourScheme = useComputedColorScheme("light");
   const themedOption = useMemo(
     () => (option ? { ...option, darkMode: colourScheme === "dark" } : null),
@@ -81,6 +84,7 @@ export function useECharts(
         const chart = init(canvas, undefined, { renderer: "canvas" });
         chartRef.current = chart;
         chart.on("datazoom", () => zoomCallback.current?.(chart));
+        chart.on("click", (event: ECElementEvent) => clickCallback.current?.(event));
         if (controller) controller.current = chart;
         if (latestOptionRef.current) {
           chart.setOption(latestOptionRef.current, {

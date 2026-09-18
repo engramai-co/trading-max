@@ -215,6 +215,7 @@ export function PerformanceContent({
           {
             label: t("区间净盈亏", "Period P&L"),
             percentage: moneyUnit === "percent",
+            zeroBaseline: true,
             lines: [
               {
                 name: t("净盈亏", "Net P&L"),
@@ -401,7 +402,7 @@ export function PerformanceContent({
                 layers={timelineLayers}
                 intraday={isIntraday}
                 timeline={view === "money" ? history.timeline : undefined}
-                observations={isIntraday ? points : undefined}
+                observations={view === "money" ? points : undefined}
                 tooltip={timelineTooltip}
                 details={isIntraday ? [
                   { label: t("区间价值变化", "Value change"), values: valueChanges },

@@ -21,6 +21,7 @@ from trading_max.analytics import (
     latest_snapshot_path,
     metrics_from_snapshot_file,
 )
+from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from trading_max.analytics.lookthrough import LookthroughService
 from trading_max.application.stages import StageRegistry
 from trading_max.application.taxonomy_stages import RawTaxonomyCatalogProvider
@@ -314,7 +315,7 @@ class TypedJobManager:
         watchlist: WatchlistStore,
         *,
         intraday_interval_seconds: int = 600,
-        intraday_retention_days: int = 120,
+        intraday_retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
         on_snapshot_published: Callable[[StoredSnapshot, str], None] | None = None,
         analysis_stage: Any | None = None,
         embedded_worker: bool = False,

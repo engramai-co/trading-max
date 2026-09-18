@@ -14,6 +14,7 @@ from trading_max.analytics.historical_nav import (
     reconstruct_historical_nav,
 )
 from trading_max.analytics.intraday import (
+    DEFAULT_INTRADAY_RETENTION_DAYS,
     IntradayAnchor,
     append_intraday_anchor,
     floor_bucket,
@@ -361,7 +362,7 @@ class AccountIntradayNavStage:
     """Publish one valuation history for both broker collection and backfilling."""
 
     name = "accounts.intraday_nav"
-    version = "valuation-history-v6"
+    version = "valuation-history-v7"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -371,7 +372,7 @@ class AccountIntradayNavStage:
         snapshots: SnapshotStore,
         *,
         interval_seconds: int = 600,
-        retention_days: int = 120,
+        retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
         state_root: Path | None = None,
         history_loader: IntradayPriceLoader | None = None,
         history_loader_factory=None,

@@ -22,7 +22,8 @@ import type {
 } from "@/lib/types";
 import { compareHoldings, holdingSortDirection } from "./holdings-data";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
-import { Bars, Plot } from "./charts";
+import { AllocationComposition } from "./allocation-composition";
+import { AllocationRanking } from "./allocation-ranking";
 import {
   currency,
   number,
@@ -44,6 +45,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  Segments,
   Tabs,
   Tag,
   useCopy,
@@ -1034,63 +1036,36 @@ function Exposure({
             <div style={{ marginTop: 18 }}>
               <Group justify="space-between" mb="md">
                 <span className="mx-form-help">
-                  {t(
-                    "前 12 项",
-                    "Top 12",
-                  )}
+                  {chart === "pie" && allocations.length > 12
+                    ? t("前 12 项与其余分类", "Top 12 and other categories")
+                    : t("前 12 项", "Top 12")}
                 </span>
-                <Select
-                  aria-label={t("配置图形", "Allocation chart")}
+                <Segments
+                  label={t("配置图形", "Allocation chart")}
                   value={chart}
-                  onChange={(v) => setChart(v ?? "rank")}
-                  data={[
+                  onChange={setChart}
+                  options={[
                     { value: "rank", label: t("排名", "Rank") },
                     { value: "pie", label: t("组成", "Composition") },
                   ]}
                 />
               </Group>
               {chart === "rank" ? (
-                <Bars
-                  labels={allocations.slice(0, 12).map(allocationLabel)}
-                  values={allocations
-                    .slice(0, 12)
-                    .map((r) => numeric(r.allocationPct))}
-                  percentage
-                  label={t("底层配置", "Underlying allocation")}
+                <AllocationRanking
+                  rows={allocations.slice(0, 12).map((row) => ({
+                    name: allocationLabel(row),
+                    value: numeric(row.valueGbp),
+                    weight: numeric(row.allocationPct),
+                  }))}
                 />
               ) : (
-                <Plot
-                  label={t("配置组成", "Allocation composition")}
-                  height={300}
-                  option={() => ({
-                    series: [
-                      {
-                        type: "pie",
-                        radius: ["45%", "70%"],
-                        label: { show: false },
-                        data: [
-                          ...allocations.slice(0, 12).map((r) => ({
-                            name: allocationLabel(r),
-                            value: numeric(r.allocationPct) ?? 0,
-                          })),
-                          ...(allocations.length > 12
-                            ? [
-                                {
-                                  name: t("其余分类", "Other categories"),
-                                  value: allocations
-                                    .slice(12)
-                                    .reduce(
-                                      (sum, r) =>
-                                        sum + (numeric(r.allocationPct) ?? 0),
-                                      0,
-                                    ),
-                                },
-                              ]
-                            : []),
-                        ],
-                      },
-                    ],
-                  })}
+                <AllocationComposition
+                  key={`${view}-${snapshot}`}
+                  rows={allocations.map((row) => ({
+                    name: allocationLabel(row),
+                    value: numeric(row.valueGbp),
+                    weight: numeric(row.allocationPct),
+                  }))}
                 />
               )}
               <EvidenceTable

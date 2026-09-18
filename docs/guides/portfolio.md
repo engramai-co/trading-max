@@ -23,6 +23,13 @@ allocations inside supported funds alongside direct holdings. This can reveal
 that several apparently different funds hold the same companies. An unresolved
 portion remains unresolved; a missing fund dataset is not a zero exposure.
 
+In country, industry and GICS rankings, names wrap in full. Each bar's full
+background represents 100% of the allocation; the blue fill and percentage
+use the same scale. Switch to **Composition** and select a ring slice or a
+category name to keep its GBP value and weight visible. Small slices also have
+large list targets; **Other categories** expands the remaining breakdown.
+Arrow keys, Home and End select categories when the ring has focus.
+
 ## Read money and P&L
 
 In **Performance & risk → Money & P&L**, select an account and time range. The
@@ -45,10 +52,26 @@ When cash-flow evidence is incomplete, the app can still show value history
 but cannot certify the missing P&L. Open the title's help or exact records when
 you need the basis behind a point.
 
-Short ranges use ten-minute valuation history with less dense display buckets.
-Long ranges use daily history. 5D means five London weekdays; 1M and 3M retain
-calendar-month boundaries. Weekends are folded in the short-range display.
-Provider outages, missing observations, or incomplete history may leave gaps.
+The overview shows period net P&L from zero, using the same accounting cutoff
+as this detailed performance view. The detailed page also shows account value,
+cumulative net contributions, and P&L drawdown.
+
+| Range | Display interval |
+|---|---|
+| 1D | 10 minutes |
+| 5D | 30 minutes |
+| 1M | 1 hour |
+| 3M | 2 hours |
+| 6M | 4 hours |
+| YTD | Follows elapsed span, becoming daily beyond six months |
+| 1Y / All | Daily |
+
+5D means five London weekdays; monthly ranges retain calendar-month boundaries.
+Weekends are folded in the display. Display sampling does not reduce the
+precision of P&L and drawdown calculations. Earlier daily-only data stays daily.
+A dashed connector spans a display interval without any usable observations;
+it does not invent intermediate values. Exact records retain their source and
+original gaps.
 
 ## Compare return and risk
 

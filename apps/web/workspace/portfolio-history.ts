@@ -14,7 +14,7 @@ export type CalendarTimeline = {
   anchors?: boolean[];
   displayIntervalMinutes?: number;
 };
-const displayIntervals = { "1D": 10, "1W": 30, "1M": 60, "3M": 120 } as const;
+const displayIntervals = { "1D": 10, "1W": 30, "1M": 60, "3M": 120, "6M": 240 } as const;
 const DAY = 86_400_000;
 const CALENDAR_ZONE = "Europe/London";
 
@@ -59,6 +59,20 @@ export function historyWindow(range: Range, lastDay: string) {
     startDay = monthsBefore(endDay, months[range]);
   }
   return { startDay: range === "ALL" ? undefined : startDay, endDay };
+}
+
+/** YTD follows its elapsed span, not a permanently daily source. */
+export function historyDisplayInterval(range: Range, endDay?: string) {
+  if (range !== "YTD") return displayIntervals[range as keyof typeof displayIntervals] ?? 1440;
+  if (!endDay) return 1440;
+  const start = endDay.slice(0, 4) + "-01-01";
+  const days = (Date.parse(endDay) - Date.parse(start)) / DAY + 1;
+  if (days <= 1) return 10;
+  if (days <= 7) return 30;
+  if (start >= monthsBefore(endDay, 1)) return 60;
+  if (start >= monthsBefore(endDay, 3)) return 120;
+  if (start >= monthsBefore(endDay, 6)) return 240;
+  return 1440;
 }
 
 /** Source choice is automatic. Sampling changes display density, never source calculations. */
@@ -110,19 +124,26 @@ export function selectPortfolioHistory({
     const day = historyDay(p.date);
     return (!window.startDay || day >= window.startDay) && (!window.endDay || day <= window.endDay);
   });
-  const dailyPoints = within(dailyRows);
-  const observations = within(primaryIntraday);
-  const short = ["1D", "1W", "1M", "3M"].includes(range);
-  const fallback = short && (scope === "cfd" || (scope === "household" && cfdValue == null));
-  const source = short && !fallback ? "intraday" as const : "daily" as const;
-  let points = source === "intraday" ? observations : dailyPoints;
+  const interval = historyDisplayInterval(range, window.endDay);
+  const intradayRange = interval < 1440;
+  const allowDailyPrefix = !intradayRange || range === "6M" || range === "YTD";
+  const fallback = intradayRange && (scope === "cfd" || (scope === "household" && cfdValue == null));
+  const source = intradayRange && !fallback && !(allowDailyPrefix && !primaryIntraday.length)
+    ? "intraday" as const : "daily" as const;
+  // Use the same eligible history at every range. Older daily records remain
+  // daily; they must not fill missed broker slots or become synthetic intraday.
+  const firstIntradayDay = primaryIntraday[0] ? historyDay(primaryIntraday[0].date) : null;
+  const dailyPrefix = dailyRows.filter((p) => !firstIntradayDay || historyDay(p.date) < firstIntradayDay);
+  let points = within(fallback ? dailyRows : sorted([
+    ...(allowDailyPrefix ? dailyPrefix : []), ...primaryIntraday,
+  ]));
   const latestObservationAt = points.at(-1)?.date ?? null;
   let pendingCashFlows = false;
   // Do not put a newer value beside older P&L. During a real ledger change,
   // keep the last common accounting cutoff until reconciliation catches up.
-  if (requireCashFlows && source === "intraday" && navNumber(points.at(-1), scope, "NetContributionsGbp") == null) {
+  if (requireCashFlows && navNumber(points.at(-1), scope, "NetContributionsGbp") == null) {
     const covered = points.findLastIndex((p) => navNumber(p, scope, "NetContributionsGbp") != null);
-    if (covered >= 1) {
+    if (covered >= 0) {
       points = points.slice(0, covered + 1);
       pendingCashFlows = true;
     }
@@ -134,13 +155,18 @@ export function selectPortfolioHistory({
     const end = pendingCashFlows ? points.at(-1)!.date : lastReference && lastReference.includes("T") ? lastReference
       : new Date(Date.parse(naturalDayBounds(window.endDay + "T12:00:00Z")!.end) - 1).toISOString();
     const calendarDays = Math.round((Date.parse(historyDay(end)) - Date.parse(window.startDay)) / DAY) + 1;
+    const chartDates = points.map((point) => ({ date: point.intraday ? point.date
+      : new Date(Date.parse(naturalDayBounds(point.date + "T12:00:00Z", CALENDAR_ZONE)!.end) - 600_000).toISOString() }));
     timeline = omitPortfolioWeekendDisplayWindow(naturalCalendarTimeline(
-      points, 10,
+      chartDates, 10,
       calendarDays, false, true, CALENDAR_ZONE, end,
     ));
-    timeline.displayIntervalMinutes = displayIntervals[range as keyof typeof displayIntervals];
+    timeline.displayIntervalMinutes = interval;
   } else if (source === "daily" && points.length) {
+    // Reduce drawing only. Financial calculations retain all eligible records,
+    // including intraday extrema and the common latest cash-flow cutoff.
     const rowByDay = new Map(points.map((p, index) => [historyDay(p.date), index]));
+    timeline.displayIntervalMinutes = 1440;
     const start = window.startDay ?? historyDay(points[0].date);
     for (let day = start; day <= window.endDay!; day = shiftedDay(day, 1)) {
       if (!weekday(day)) continue;

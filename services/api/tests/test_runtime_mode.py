@@ -18,7 +18,7 @@ def test_default_schedules_are_four_full_refreshes_and_24_7_intraday(tmp_path) -
     assert settings.intraday_window_start == "00:00"
     assert settings.intraday_window_end == "00:00"
     assert settings.intraday_weekdays == (1, 2, 3, 4, 5, 6, 7)
-    assert settings.intraday_retention_days == 120
+    assert settings.intraday_retention_days == 210
 
 
 def test_legacy_single_nightly_time_remains_a_supported_environment_fallback(

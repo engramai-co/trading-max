@@ -4,6 +4,37 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-18
+
+### Added
+
+- Select allocation-ring slices or category names to keep category, GBP value
+  and percentage visible. Inspect grouped categories and use keyboard or touch
+  selection across country, industry and GICS views.
+- Extend the default intraday retention to 210 days for six-month history;
+  reconstruct from available historical market bars while preserving original
+  broker observations and genuine daily-only history.
+
+### Changed
+
+- Show cash-flow-adjusted period net P&L on the overview, sharing the detailed
+  performance view's accounting basis and verified cutoff.
+- Use fixed display intervals of 10 minutes, 30 minutes, one hour, two hours
+  and four hours for 1D, 5D, 1M, 3M and 6M. YTD follows its elapsed span; 1Y
+  and All display daily observations without reducing calculation precision.
+- Give P&L and drawdown charts more height and eight date ticks on wide panels,
+  with adaptive spacing on smaller screens.
+- Show complete, wrapping allocation names alongside values; all allocation
+  bar backgrounds represent 100%, including the largest category.
+
+### Fixed
+
+- Draw dashed connectors only across empty display buckets instead of every
+  missed collection slot. Keep original gaps, source metadata and financial
+  calculations intact without inventing observations.
+- Keep chart fills visually continuous across gaps while suppressing readings
+  on connector and fill layers; preserve exact records below the chart.
+
 ## [1.4.8] - 2026-09-18
 
 ### Fixed
