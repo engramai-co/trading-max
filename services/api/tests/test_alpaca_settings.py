@@ -89,3 +89,36 @@ def test_rejected_keys_and_validation_never_echo_secrets(tmp_path, monkeypatch):
         )
         assert result.status_code == 422 and "synthetic-secret" not in result.text
         assert app.state.settings_repository.get_integration("alpaca") is None
+
+
+def test_upgrade_preserves_existing_provider_metadata(tmp_path):
+    from pathlib import Path
+
+    from trading_max.infrastructure import SqliteDatabase
+
+    migrations = Path(__file__).resolve().parents[3] / "backend" / "migrations"
+    previous = tmp_path / "previous-migrations"
+    previous.mkdir()
+    for source in migrations.glob("*.sql"):
+        if source.name < "0018_alpaca_market_data.sql":
+            (previous / source.name).write_text(source.read_text())
+    database_path = tmp_path / "trading_max.db"
+    database = SqliteDatabase(database_path, migrations_dir=previous)
+    with database.transaction(immediate=True) as connection:
+        connection.execute("""INSERT INTO integration_settings
+            (integration_id, provider, profile, enabled, credential_ref,
+             credential_fingerprint, last_test_status, revision, updated_at)
+            VALUES ('trading212:isa', 'trading212', 'isa', 1, 'trading212:isa',
+                    'synthetic-fingerprint', 'succeeded', 4, '2026-01-01T00:00:00Z')""")
+        before = dict(connection.execute("SELECT * FROM integration_settings").fetchone())
+    database.close()
+    database = SqliteDatabase(database_path, migrations_dir=migrations)
+    with database.read() as connection:
+        assert dict(connection.execute("SELECT * FROM integration_settings").fetchone()) == before
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM integration_settings WHERE provider = 'alpaca'"
+            ).fetchone()[0]
+            == 0
+        )
+    database.close()
