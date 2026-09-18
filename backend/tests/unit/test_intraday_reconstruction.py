@@ -327,7 +327,7 @@ def test_full_refresh_reconstruction_and_live_collector_publish_the_same_history
             ).ref
         )
     result = stages.AccountIntradayNavStage(
-        artifacts, snapshots, state_root=tmp_path, history_loader=prices
+        artifacts, snapshots, state_root=tmp_path, history_loader_factory=lambda: prices
     ).run(
         StageContext(
             job_id="full",

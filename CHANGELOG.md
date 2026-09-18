@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.4.6] - 2026-09-18
+
+### Fixed
+
+- Offer optional Alpaca historical SIP and BOATS prices to reduce stale US
+  overnight marks during account reconstruction. Yahoo remains the default
+  and fallback, including foreign securities and currency conversion.
+- Add test-before-save Alpaca settings, reversible enhancement controls, and
+  operating-system credential storage without returning keys to the browser.
+- Respect delayed-data access, pagination, nominal prices, completed bars,
+  exchange holidays and daylight saving. Bound overnight quote carry to ten
+  minutes, retain real gaps, and preserve original broker observations.
+- Record reconstruction feed coverage and fallback reasons in immutable
+  provenance artifacts; reuse incremental caches outside the checkout.
+
 ## [1.4.5] - 2026-09-18
 
 ### Fixed

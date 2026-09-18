@@ -38,6 +38,8 @@ class IntradayPrices:
     currency: str
     cadence_seconds: int
     sessions: tuple[tuple[pd.Timestamp, pd.Timestamp], ...] = ()
+    quote_cadence_seconds: pd.Series | None = None
+    freshness_windows: tuple[tuple[pd.Timestamp, pd.Timestamp, int], ...] = ()
 
 
 IntradayPriceLoader = Callable[[str, pd.Timestamp, pd.Timestamp, str], IntradayPrices]
@@ -236,6 +238,9 @@ def _marks(prices: IntradayPrices, timeline: pd.DatetimeIndex) -> pd.Series:
         # Weekend/holiday carry requires a quote near the latest session's
         # close. A missing trading day must not become a valid overnight mark.
         valid |= ~in_session & covered & close_is_covered & (age <= 4 * 86400)
+    for start, end, maximum_age in prices.freshness_windows:
+        inside = (timeline >= start) & (timeline <= end)
+        valid &= ~inside | (age <= maximum_age)
     return values.where(valid)
 
 
@@ -256,7 +261,9 @@ def _combined_marks(
             pd.DataFrame(
                 {
                     "close": p.close / (100 if p.currency == "GBX" else 1),
-                    "cadence": p.cadence_seconds,
+                    "cadence": p.quote_cadence_seconds
+                    if p.quote_cadence_seconds is not None
+                    else p.cadence_seconds,
                 }
             )
             for p in available
@@ -270,6 +277,9 @@ def _combined_marks(
         currency,
         max(p.cadence_seconds for p in available),
         tuple(sorted({session for p in available for session in p.sessions})),
+        freshness_windows=tuple(
+            sorted({window for p in available for window in p.freshness_windows})
+        ),
     )
     values = _marks(combined, timeline)
     precision = observations["cadence"].reindex(timeline, method="ffill").fillna(3600).astype(int)

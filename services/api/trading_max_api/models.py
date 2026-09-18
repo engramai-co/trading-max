@@ -581,7 +581,7 @@ class CfdAccountPreferenceUpdate(ApiModel):
 
 class IntegrationSummary(ApiModel):
     integration_id: str
-    provider: Literal["trading212", "deepseek", "openai", "opencode"]
+    provider: Literal["trading212", "deepseek", "openai", "opencode", "alpaca"]
     profile: str | None = None
     enabled: bool = False
     configured: bool = False
@@ -651,6 +651,20 @@ class Trading212IntegrationCandidate(ApiModel):
 class Trading212IntegrationRequest(Trading212IntegrationCandidate):
     validation_token: str = Field(min_length=1, max_length=2_000)
     enabled: bool = True
+
+
+class AlpacaIntegrationCandidate(ApiModel):
+    api_key_id: str = Field(min_length=1, max_length=200)
+    secret_key: str = Field(min_length=1, max_length=500)
+
+
+class AlpacaIntegrationRequest(AlpacaIntegrationCandidate):
+    validation_token: str = Field(min_length=1, max_length=2_000)
+    enabled: bool = False
+
+
+class AlpacaEnhancementUpdate(ApiModel):
+    enabled: bool
 
 
 class DeepSeekIntegrationCandidate(ApiModel):

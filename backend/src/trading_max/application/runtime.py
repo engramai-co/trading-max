@@ -60,6 +60,7 @@ class TypedWorkerRuntime:
         intraday_interval_seconds: int = 600,
         intraday_retention_days: int = 120,
         extra_stages: Iterable[object] = (),
+        intraday_history_loader_factory=None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.on_snapshot_published = on_snapshot_published
@@ -74,6 +75,7 @@ class TypedWorkerRuntime:
         self.valuation_assumptions = valuation_assumptions
         self.intraday_interval_seconds = intraday_interval_seconds
         self.intraday_retention_days = intraday_retention_days
+        self.intraday_history_loader_factory = intraday_history_loader_factory
         self.extra_stages = tuple(extra_stages)
         self.artifacts = ContentAddressedArtifactStore(self.state_root / "artifacts")
         self.snapshots = SnapshotStore(self.state_root)
@@ -89,6 +91,7 @@ class TypedWorkerRuntime:
                     interval_seconds=self.intraday_interval_seconds,
                     retention_days=self.intraday_retention_days,
                     state_root=self.state_root,
+                    history_loader_factory=self.intraday_history_loader_factory,
                 ),
                 SecurityMasterEnrichmentStage(self.state_root, self.artifacts),
                 PortfolioLookthroughStage(

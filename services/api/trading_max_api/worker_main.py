@@ -16,6 +16,7 @@ from trading_max.worker import DurableWorker
 from .artifacts import ArtifactStore
 from .config import Settings
 from .credentials import default_credential_store
+from .market_data_runtime import reconstruction_loader_factory
 from .provider_runtime import make_provider_factory
 from .settings import SettingsRepository
 from .typed_analysis import TypedAnalysisManager
@@ -78,6 +79,9 @@ def _run_typed_worker(settings: Settings) -> None:
         on_snapshot_published=on_snapshot_published,
         extra_stages=(analysis.stage(),),
         valuation_assumptions=valuation_assumptions,
+        intraday_history_loader_factory=reconstruction_loader_factory(
+            settings.data_root, preferences, credentials
+        ),
     )
     registry = runtime.registry()
 

@@ -44,6 +44,8 @@ import {
   PersonalPreferences,
 } from "./settings-preferences";
 
+import { ReconstructionMarketData } from "./settings-market-data";
+
 const settingsKey = ["workspace-settings"];
 type Connection =
   | {
@@ -185,6 +187,7 @@ export function SettingsWorkspace() {
                   </Button>
                 </div>
               </Panel>
+              <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} onSaved={() => { void client.invalidateQueries({ queryKey: settingsKey }); }} />
               <CfdImports />
             </>
           )}

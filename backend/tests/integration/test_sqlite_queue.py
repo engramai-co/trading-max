@@ -390,6 +390,7 @@ def test_concurrent_database_startup_applies_migrations_once(tmp_path: Path) -> 
         "0015_cfd_job_scope.sql",
         "0016_three_scope_automation.sql",
         "0017_three_scope_jobs.sql",
+        "0018_alpaca_market_data.sql",
     ]
     profile = database.connection.execute(
         "SELECT account_labels_json FROM user_profile WHERE profile_id = 'local'"

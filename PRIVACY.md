@@ -26,6 +26,9 @@ also uses built-in public providers when the user requests or refreshes data:
 - Trading 212 receives its API credential and account-data requests;
 - Yahoo-compatible market and instrument-identity providers receive ticker,
   search, identifier, or issuer queries;
+- optionally enabled Alpaca receives its API credentials, US ticker symbols
+  and requested historical time windows; no account quantities or balances
+  are included in its market-data requests;
 - public filing and issuer endpoints receive document requests, including
   SEC EDGAR and supported issuer or filing mirrors;
 - server-proxied company-logo services receive a ticker or domain request;

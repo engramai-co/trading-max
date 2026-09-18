@@ -484,6 +484,32 @@ class SettingsRepository:
             raise RuntimeError("integration metadata was not persisted")
         return result
 
+    def set_integration_enabled(self, provider: str, enabled: bool) -> IntegrationSummary:
+        integration_id = _integration_id(provider)
+        with self.database.transaction(immediate=True) as connection:
+            connection.execute(
+                "UPDATE integration_settings SET enabled = ?, revision = revision + 1, updated_at = ? WHERE integration_id = ?",
+                (int(enabled), _iso(), integration_id),
+            )
+            row = connection.execute(
+                "SELECT revision FROM integration_settings WHERE integration_id = ?",
+                (integration_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("integration is not configured")
+            self._audit(
+                connection,
+                actor="local",
+                action="integration.enabled",
+                integration_id=integration_id,
+                revision=row["revision"],
+                metadata={"provider": provider, "enabled": enabled},
+            )
+        result = self.get_integration(provider)
+        if result is None:  # pragma: no cover - transaction invariant
+            raise RuntimeError("integration metadata was not persisted")
+        return result
+
     def remove_integration(
         self,
         *,

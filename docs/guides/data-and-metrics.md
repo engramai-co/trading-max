@@ -17,6 +17,38 @@ and separate from the running product.
 See [provider notices](../../THIRD_PARTY_NOTICES.md) and
 [privacy](../../PRIVACY.md) for requests and storage.
 
+## Optional Alpaca reconstruction enhancement
+
+Yahoo Finance remains the default. In **Settings → Accounts & data →
+Reconstruction market data**, connect a free Alpaca Paper account using its
+API Key ID and Secret. Test both historical feeds, then choose **Save and
+Enable**. The next account refresh replays reconstruction; live broker
+collection is unchanged. Turn the enhancement off to return to the YF-only
+path, or remove the saved keys. Changes apply without a service restart.
+
+The enabled path supplements US stock history with SIP five-minute bars and
+BOATS one-minute overnight bars. Basic access is delayed by at least fifteen
+minutes; the adapter requests data at least sixteen minutes old to allow for
+clock drift. This is historical reconstruction, not a real-time quote service.
+Only GET requests to the fixed Alpaca market-data host are used. No order or
+account-trading endpoints are called.
+
+UK instruments, FX and research continue using the existing providers. Valid
+YF prices remain available when Alpaca fails. During the overnight session,
+prices older than ten minutes are rejected even when YF has an older hourly
+bar: a failed feed or a quiet security must not become a fabricated valuation.
+Broker observations are retained exactly, including when reconstruction is
+missing. Full replays publish per-symbol/feed coverage and failures under
+`account/nav/market_data.json`; source bars live in a separate external cache.
+
+Keys are stored on the server's OS credential manager and excluded from
+backups. A restored server needs credentials re-entered. Other connection
+metadata survives migration unchanged. When reverting to a version before
+1.4.6, remove the Alpaca connection using the new Settings page first, or
+restore the verified pre-upgrade backup; older versions cannot read the new
+provider metadata. Data is subject to the user's Alpaca
+permissions and [historical overnight access rules](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api).
+
 ## Units and periods
 
 - Currency labels identify the displayed currency. A GBP portfolio value and
