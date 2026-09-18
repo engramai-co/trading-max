@@ -325,6 +325,7 @@ class TypedJobManager:
         lookthrough_service: LookthroughService | None = None,
         taxonomy_provider: RawTaxonomyCatalogProvider | None = None,
         valuation_assumptions=None,
+        intraday_history_loader_factory=None,
     ) -> None:
         from trading_max.application import TypedWorkerRuntime
 
@@ -345,6 +346,7 @@ class TypedJobManager:
             lookthrough_service=lookthrough_service,
             taxonomy_provider=taxonomy_provider,
             valuation_assumptions=valuation_assumptions,
+            intraday_history_loader_factory=intraday_history_loader_factory,
             on_snapshot_published=on_snapshot_published,
             extra_stages=extras,
         )

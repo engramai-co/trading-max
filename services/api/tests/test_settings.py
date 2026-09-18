@@ -39,6 +39,7 @@ def test_profile_and_integration_overview_are_non_secret(
             "trading212:isa",
             "opencode:default",
             "deepseek:default",
+            "alpaca:default",
         }
         assert {item["provider"] for item in payload["llmProviders"]} == {
             "opencode",

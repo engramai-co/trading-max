@@ -12,6 +12,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
@@ -36,6 +38,7 @@ from .dashboard_models import (
 )
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
+from .market_data_runtime import reconstruction_loader_factory
 from .models import ResearchOverview, SnapshotManifest
 from .provider_runtime import ProviderRuntimeError, make_provider_factory
 from .research import ResearchLedger
@@ -236,6 +239,9 @@ def create_app(
         worker_poll_seconds=settings.worker_poll_seconds,
         analysis_stage=analysis.stage(),
         valuation_assumptions=valuation_assumptions,
+        intraday_history_loader_factory=reconstruction_loader_factory(
+            settings.data_root, preferences, credentials
+        ),
     )
     scheduler = NightlyScheduler(
         jobs,
@@ -338,6 +344,25 @@ def create_app(
         version=trading_max_version,
         lifespan=lifespan,
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def private_validation_error(request: Request, exc: RequestValidationError):
+        if request.url.path.startswith("/v1/settings/integrations/"):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": [
+                        {
+                            "loc": item["loc"],
+                            "type": item["type"],
+                            "msg": "Invalid integration field",
+                        }
+                        for item in exc.errors()
+                    ]
+                },
+            )
+        return await request_validation_exception_handler(request, exc)
+
     app.state.settings = settings
     app.state.store = store
     app.state.settings_repository = preferences

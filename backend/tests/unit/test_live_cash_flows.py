@@ -148,6 +148,8 @@ def test_intraday_publication_advances_each_account_independently_without_market
     assert artifacts.get_json(a.ref.artifact_id).payload == a.payload
     # A full refresh has its own freshly reconciled flow artifacts. The
     # intraday stage must not replace those with evidence from an older snapshot.
-    assert len(collect(25, scope="accounts")) == 1
+    refreshed = collect(25, scope="accounts")
+    assert set(refreshed) == {"account/nav/valuation_history.json", "account/nav/market_data.json"}
+    assert refreshed["account/nav/market_data.json"].payload["baseline"] == "yahoo"
     ledger.write_text("changed synthetic ledger")
     assert len(collect(30)) == 1

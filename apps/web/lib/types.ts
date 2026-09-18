@@ -542,7 +542,7 @@ export type UserProfile = {
 
 export type IntegrationSummary = {
   integrationId: string;
-  provider: "trading212" | "deepseek" | "openai" | "opencode";
+  provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca";
   profile: string | null;
   enabled: boolean;
   configured: boolean;

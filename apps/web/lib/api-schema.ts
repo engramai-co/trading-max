@@ -708,6 +708,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/integrations/alpaca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Alpaca */
+        put: operations["save_alpaca_v1_settings_integrations_alpaca_put"];
+        post?: never;
+        /** Delete Alpaca */
+        delete: operations["delete_alpaca_v1_settings_integrations_alpaca_delete"];
+        options?: never;
+        head?: never;
+        /** Toggle Alpaca */
+        patch: operations["toggle_alpaca_v1_settings_integrations_alpaca_patch"];
+        trace?: never;
+    };
+    "/v1/settings/integrations/alpaca/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Alpaca */
+        post: operations["test_alpaca_v1_settings_integrations_alpaca_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/integrations/deepseek": {
         parameters: {
             query?: never;
@@ -1312,6 +1348,32 @@ export interface components {
             watchlistIntervalSeconds: number;
             /** Watchlistupdatedat */
             watchlistUpdatedAt?: string | null;
+        };
+        /** AlpacaEnhancementUpdate */
+        AlpacaEnhancementUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** AlpacaIntegrationCandidate */
+        AlpacaIntegrationCandidate: {
+            /** Apikeyid */
+            apiKeyId: string;
+            /** Secretkey */
+            secretKey: string;
+        };
+        /** AlpacaIntegrationRequest */
+        AlpacaIntegrationRequest: {
+            /** Apikeyid */
+            apiKeyId: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Secretkey */
+            secretKey: string;
+            /** Validationtoken */
+            validationToken: string;
         };
         /** AnalysisArtifact */
         AnalysisArtifact: {
@@ -2862,7 +2924,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "trading212" | "deepseek" | "openai" | "opencode";
+            provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca";
             /**
              * Revision
              * @default 1
@@ -7374,6 +7436,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationOverview"];
+                };
+            };
+        };
+    };
+    save_alpaca_v1_settings_integrations_alpaca_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlpacaIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_alpaca_v1_settings_integrations_alpaca_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_alpaca_v1_settings_integrations_alpaca_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlpacaEnhancementUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_alpaca_v1_settings_integrations_alpaca_test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlpacaIntegrationCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

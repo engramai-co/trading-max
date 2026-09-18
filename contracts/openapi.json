@@ -943,6 +943,75 @@
         "title": "AlertMonitorState",
         "type": "object"
       },
+      "AlpacaEnhancementUpdate": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AlpacaEnhancementUpdate",
+        "type": "object"
+      },
+      "AlpacaIntegrationCandidate": {
+        "properties": {
+          "apiKeyId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Apikeyid",
+            "type": "string"
+          },
+          "secretKey": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Secretkey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiKeyId",
+          "secretKey"
+        ],
+        "title": "AlpacaIntegrationCandidate",
+        "type": "object"
+      },
+      "AlpacaIntegrationRequest": {
+        "properties": {
+          "apiKeyId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Apikeyid",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "secretKey": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Secretkey",
+            "type": "string"
+          },
+          "validationToken": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Validationtoken",
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiKeyId",
+          "secretKey",
+          "validationToken"
+        ],
+        "title": "AlpacaIntegrationRequest",
+        "type": "object"
+      },
       "AnalysisArtifact": {
         "properties": {
           "adapter": {
@@ -5546,7 +5615,8 @@
               "trading212",
               "deepseek",
               "openai",
-              "opencode"
+              "opencode",
+              "alpaca"
             ],
             "title": "Provider",
             "type": "string"
@@ -14694,7 +14764,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.4.5"
+    "version": "1.4.6"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16924,6 +16994,221 @@
           }
         },
         "summary": "Get Integrations",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/integrations/alpaca": {
+      "delete": {
+        "operationId": "delete_alpaca_v1_settings_integrations_alpaca_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Alpaca",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "toggle_alpaca_v1_settings_integrations_alpaca_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlpacaEnhancementUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Toggle Alpaca",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "save_alpaca_v1_settings_integrations_alpaca_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlpacaIntegrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Alpaca",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/integrations/alpaca/test": {
+      "post": {
+        "operationId": "test_alpaca_v1_settings_integrations_alpaca_test_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlpacaIntegrationCandidate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Alpaca",
         "tags": [
           "settings"
         ]

@@ -361,7 +361,7 @@ class AccountIntradayNavStage:
     """Publish one valuation history for both broker collection and backfilling."""
 
     name = "accounts.intraday_nav"
-    version = "valuation-history-v5"
+    version = "valuation-history-v6"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -374,6 +374,7 @@ class AccountIntradayNavStage:
         retention_days: int = 120,
         state_root: Path | None = None,
         history_loader: IntradayPriceLoader | None = None,
+        history_loader_factory=None,
     ) -> None:
         self.artifacts = artifacts
         self.snapshots = snapshots
@@ -381,6 +382,7 @@ class AccountIntradayNavStage:
         self.retention_days = retention_days
         self.state_root = state_root
         self.history_loader = history_loader
+        self.history_loader_factory = history_loader_factory
 
     def run(self, context: StageContext) -> StageResult:
         accounts: dict[str, dict] = {}
@@ -434,9 +436,12 @@ class AccountIntradayNavStage:
             "intraday value changes must not be labelled TWR"
         )
         warnings = [warning]
+        market_data = {}
         if context.scope != "intraday" and self.state_root is not None:
-            loader = self.history_loader or CachedIntradayPriceLoader(
-                self.state_root / "cache" / "nav-prices"
+            loader = self.history_loader or (
+                self.history_loader_factory()
+                if self.history_loader_factory
+                else CachedIntradayPriceLoader(self.state_root / "cache" / "nav-prices")
             )
             modeled = {}
             for code, profile in (("A", "invest"), ("B", "isa")):
@@ -456,6 +461,12 @@ class AccountIntradayNavStage:
                     )
                 except Exception as exc:
                     warnings.append(f"{profile} intraday reconstruction unavailable: {exc}")
+            market_data = getattr(loader, "diagnostics", {})
+            fallbacks = [
+                key for key, value in market_data.items() if value.get("status") == "fallback"
+            ]
+            if fallbacks:
+                warnings.append("Alpaca fallback: " + ", ".join(sorted(fallbacks)))
             if "A" in modeled and "B" in modeled:
                 a, b = modeled["A"], modeled["B"]
                 points = []
@@ -502,6 +513,22 @@ class AccountIntradayNavStage:
                 warnings=warnings,
             ),
         )
+        market_refs = []
+        if context.scope != "intraday":
+            market_refs.append(
+                self.artifacts.put_json(
+                    key="account/nav/market_data.json",
+                    kind="market_data_provenance",
+                    producer_version=self.version,
+                    payload={
+                        "generated_at": series.generated_at.isoformat(),
+                        "baseline": "yahoo",
+                        "enhancement": "alpaca" if market_data else None,
+                        "feeds": market_data,
+                    },
+                    dependency_artifact_ids=dependencies,
+                ).ref
+            )
         # Full refreshes publish newly reconciled flows in AccountNavStage.
         # Only live collection may reuse the previous snapshot's evidence.
         flow_refs = (
@@ -517,9 +544,10 @@ class AccountIntradayNavStage:
             else []
         )
         return StageResult(
-            artifacts=(stored.ref, *flow_refs),
+            artifacts=(stored.ref, *market_refs, *flow_refs),
             warnings=tuple(warnings),
             metadata={
+                "market_data": market_data,
                 "anchor_count": len(series.points),
                 "flow_unverified_count": sum(
                     point.flow_status != "verified" for point in series.points

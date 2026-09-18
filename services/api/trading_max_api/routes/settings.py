@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from trading_max.analytics.alpaca_prices import AlpacaDataError, AlpacaHistoricalClient
 from trading_max.ingestion.brokers.trading212 import (
     Trading212Client,
     Trading212Credentials,
@@ -28,6 +29,9 @@ from ..llm_routing import (
     provider_spec,
 )
 from ..models import (
+    AlpacaEnhancementUpdate,
+    AlpacaIntegrationCandidate,
+    AlpacaIntegrationRequest,
     ApiModel,
     AutomationSettings,
     AutomationSettingsUpdate,
@@ -168,6 +172,7 @@ def _integration_overview(request: Request) -> IntegrationOverview:
     settings = app_service(request, "settings")
     profile = preferences.get_profile()
     expected = (
+        ("alpaca", None),
         ("trading212", "invest"),
         ("trading212", "isa"),
         ("opencode", None),
@@ -226,6 +231,12 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
         )
     if isinstance(exc, (ProviderRuntimeError, ProviderError)):
         code = exc.code
+    elif isinstance(exc, AlpacaDataError):
+        code = (
+            "provider_auth_failed"
+            if "HTTP 401" in str(exc) or "HTTP 403" in str(exc)
+            else "provider_unavailable"
+        )
     elif isinstance(exc, httpx.TimeoutException):
         code = "provider_unavailable"
     elif isinstance(exc, httpx.HTTPStatusError):
@@ -847,3 +858,94 @@ def delete_llm_provider(provider: str, request: Request) -> None:
     except CredentialStoreError as exc:
         raise _safe_integration_error(exc) from exc
     preferences.remove_integration(provider=spec.provider, profile=None)
+
+
+@router.post(
+    "/v1/settings/integrations/alpaca/test",
+    response_model=IntegrationTestResult,
+    dependencies=[Depends(require_write_auth)],
+)
+def test_alpaca(body: AlpacaIntegrationCandidate, request: Request) -> IntegrationTestResult:
+    try:
+        AlpacaHistoricalClient(body.api_key_id, body.secret_key).test()
+    except Exception as exc:
+        raise _safe_integration_error(exc) from exc
+    return IntegrationTestResult(
+        integration_id="alpaca:default",
+        status="succeeded",
+        tested_at=datetime.now(UTC),
+        message="Historical SIP and BOATS market-data access verified",
+        validation_token=_validation_token(
+            request, integration_id="alpaca:default", digest=_candidate_digest(body)
+        ),
+    )
+
+
+@router.put(
+    "/v1/settings/integrations/alpaca",
+    response_model=IntegrationSummary,
+    dependencies=[Depends(require_write_auth)],
+)
+def save_alpaca(body: AlpacaIntegrationRequest, request: Request) -> IntegrationSummary:
+    candidate = AlpacaIntegrationCandidate(api_key_id=body.api_key_id, secret_key=body.secret_key)
+    _require_validation_token(
+        request,
+        integration_id="alpaca:default",
+        digest=_candidate_digest(candidate),
+        token=body.validation_token,
+    )
+    preferences = app_service(request, "settings_repository")
+    secret = json.dumps(
+        {"api_key": body.api_key_id, "api_secret": body.secret_key}, separators=(",", ":")
+    )
+    try:
+        app_service(request, "credential_store").put(
+            preferences.credential_reference("alpaca"), secret
+        )
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
+    return preferences.save_integration(
+        provider="alpaca",
+        profile=None,
+        enabled=body.enabled,
+        model=None,
+        base_url=None,
+        credential_fingerprint=secret_fingerprint(secret),
+        test_status="succeeded",
+    )
+
+
+@router.patch(
+    "/v1/settings/integrations/alpaca",
+    response_model=IntegrationSummary,
+    dependencies=[Depends(require_write_auth)],
+)
+def toggle_alpaca(body: AlpacaEnhancementUpdate, request: Request) -> IntegrationSummary:
+    preferences = app_service(request, "settings_repository")
+    existing = preferences.get_integration("alpaca")
+    if existing is None or not existing.configured:
+        raise HTTPException(status_code=409, detail="configure and test Alpaca first")
+    if body.enabled:
+        try:
+            raw = app_service(request, "credential_store").get(
+                preferences.credential_reference("alpaca")
+            )
+            pair = json.loads(raw or "{}")
+            AlpacaHistoricalClient(pair["api_key"], pair["api_secret"]).test()
+        except Exception as exc:
+            raise _safe_integration_error(exc) from exc
+    return preferences.set_integration_enabled("alpaca", body.enabled)
+
+
+@router.delete(
+    "/v1/settings/integrations/alpaca",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_write_auth)],
+)
+def delete_alpaca(request: Request) -> None:
+    preferences = app_service(request, "settings_repository")
+    try:
+        app_service(request, "credential_store").delete(preferences.credential_reference("alpaca"))
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
+    preferences.remove_integration(provider="alpaca", profile=None)
