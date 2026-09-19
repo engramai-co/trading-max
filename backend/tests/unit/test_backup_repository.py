@@ -4,6 +4,7 @@ import gzip
 import json
 import sqlite3
 import tarfile
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -63,6 +64,24 @@ def test_corruption_never_publishes_or_overwrites_state(tmp_path: Path):
     assert not target.exists()
     with pytest.raises(FileExistsError):
         repo.restore(good["id"], state)
+
+
+def test_wal_database_validation_does_not_add_files_to_restored_state(tmp_path: Path):
+    state = state_at(tmp_path / "state")
+    with closing(sqlite3.connect(state / "trading_max.db")) as database:
+        assert database.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+    repository = BackupRepository(tmp_path / "backups")
+    backup = repository.create(state)
+    manifest = json.loads(Path(backup["manifest"]).read_text())
+    restored = tmp_path / "recovered"
+    repository.restore(backup["id"], restored)
+    assert {
+        path.relative_to(restored).as_posix() for path in restored.rglob("*") if path.is_file()
+    } == set(manifest["files"])
+    expected = gzip.decompress(
+        repository.blob_path(manifest["files"]["trading_max.db"]["sha256"]).read_bytes()
+    )
+    assert (restored / "trading_max.db").read_bytes() == expected
 
 
 def test_missing_snapshot_reference_fails_closed(tmp_path: Path):

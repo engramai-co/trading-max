@@ -16,7 +16,7 @@ import sqlite3
 import tarfile
 import tempfile
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -397,7 +397,12 @@ class BackupRepository:
                     raise ValueError("backup history references a missing chunk")
                 referenced_chunks[name] = references
             database = restore_to / DATABASE_NAME if restore_to else db
-            with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            # This is a verified, self-contained backup image. Immutable mode
+            # prevents SQLite from adding WAL/SHM files to the recovery tree;
+            # a connection context alone also does not close its file handles.
+            with closing(
+                sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True)
+            ) as connection:
                 if connection.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                     raise ValueError("backup database integrity check failed")
             for name, snapshot in indexes.items():
