@@ -6,20 +6,23 @@ Existing tar backups remain supported by trading_max.backup.
 
 from __future__ import annotations
 
+import base64
 import gzip
 import hashlib
 import json
 import os
 import re
 import sqlite3
+import tarfile
 import tempfile
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from .backup import DATABASE_NAME, EXCLUDED_COMPONENTS, EXCLUDED_SUFFIXES, _included_files
 from .infrastructure import SnapshotStore
+from .infrastructure.history_chunks import HistoryChunks
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BACKUP_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
@@ -112,14 +115,11 @@ class BackupRepository:
             raise ValueError("backup manifests must not be symlinks")
         return path
 
-    def _store(self, source: Path, scratch: Path) -> dict:
-        if source.is_symlink():
-            raise ValueError("backup source must not be a symlink")
+    def _store_stream(self, stream, scratch: Path, *, mode: int = 0o600) -> dict:
         digest = hashlib.sha256()
         temporary = scratch / (uuid.uuid4().hex + ".gz")
         size = 0
-        with source.open("rb") as stream, temporary.open("wb") as compressed:
-            before = os.fstat(stream.fileno())
+        with temporary.open("wb") as compressed:
             with gzip.GzipFile(
                 filename="", mode="wb", compresslevel=3, fileobj=compressed, mtime=0
             ) as output:
@@ -127,15 +127,8 @@ class BackupRepository:
                     digest.update(block)
                     output.write(block)
                     size += len(block)
-            after = os.fstat(stream.fileno())
             compressed.flush()
             os.fsync(compressed.fileno())
-        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
-            after.st_size,
-            after.st_mtime_ns,
-            after.st_ctime_ns,
-        ):
-            raise RuntimeError("source changed during backup; retry without pruning")
         sha = digest.hexdigest()
         final = self.blob_path(sha)
         final.parent.mkdir(exist_ok=True, mode=0o700)
@@ -144,7 +137,114 @@ class BackupRepository:
         else:
             temporary.chmod(0o600)
             temporary.replace(final)
-        return {"sha256": sha, "size": size, "mode": before.st_mode & 0o700}
+        return {"sha256": sha, "size": size, "mode": mode & 0o700}
+
+    def _store(self, source: Path, scratch: Path) -> dict:
+        if source.is_symlink():
+            raise ValueError("backup source must not be a symlink")
+        with source.open("rb") as stream:
+            before = os.fstat(stream.fileno())
+            result = self._store_stream(stream, scratch, mode=before.st_mode)
+            after = os.fstat(stream.fileno())
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise RuntimeError("source changed during backup; retry without pruning")
+        return result
+
+    def import_archive(self, archive: Path, *, max_bytes: int = 64 * 1024**3) -> dict:
+        """Retain a legacy recovery date and exact file bytes; never delete its source."""
+        if archive.is_symlink():
+            raise ValueError("archive must not be a symlink")
+        archive = archive.expanduser().resolve(strict=True)
+        match = re.fullmatch(r"trading_max-(\d{8}T\d{6}Z)\.tar\.gz", archive.name)
+        if not match or max_bytes <= 0:
+            raise ValueError("import requires a dated Trading Max archive and positive byte budget")
+        recovered_at = datetime.strptime(match[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        before = _stamp(archive)
+        with archive.open("rb") as stream:
+            archive_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        backup_id = recovered_at.strftime("%Y%m%dT%H%M%SZ") + "-" + archive_digest[:12]
+        with (
+            exclusive_lock(self.lock),
+            tempfile.TemporaryDirectory(prefix=".import-", dir=self.root) as temporary,
+        ):
+            existing = self.manifest_path(backup_id)
+            if existing.exists():
+                manifest = json.loads(existing.read_text())
+                if manifest.get("sourceArchive", {}).get("sha256") != archive_digest:
+                    raise ValueError("import backup identity conflict")
+                verified = self._verify(manifest)
+                return {"id": backup_id, "manifest": str(existing), "reused": True, **verified}
+            files = {}
+            root_metadata = None
+            seen = set()
+            total = 0
+            with tarfile.open(archive, mode="r|gz") as handle:
+                for member in handle:
+                    if member.name in seen:
+                        raise ValueError("archive contains duplicate paths")
+                    seen.add(member.name)
+                    if member.name == "._state":
+                        # BSD tar records the root directory's extended attributes
+                        # outside state. Preserve this bounded AppleDouble sidecar
+                        # in the private manifest, never as an executable/state path.
+                        if not member.isfile() or not 0 <= member.size <= _BLOCK:
+                            raise ValueError("invalid archive root metadata")
+                        with handle.extractfile(member) as source:
+                            raw_metadata = source.read(_BLOCK + 1)
+                        if len(raw_metadata) != member.size:
+                            raise ValueError("archive root metadata size mismatch")
+                        root_metadata = {
+                            "name": member.name,
+                            "sha256": hashlib.sha256(raw_metadata).hexdigest(),
+                            "base64": base64.b64encode(raw_metadata).decode("ascii"),
+                        }
+                        continue
+                    if member.name == "state" and member.isdir():
+                        continue
+                    if not member.name.startswith("state/"):
+                        raise ValueError("archive contains a path outside state")
+                    relative = member.name.removeprefix("state/")
+                    _safe_relative(relative)
+                    if member.isdir():
+                        continue
+                    if not member.isfile():
+                        raise ValueError("archive contains a link or unsupported file type")
+                    total += member.size
+                    if member.size < 0 or total > max_bytes:
+                        raise ValueError("archive exceeds import byte budget")
+                    source = handle.extractfile(member)
+                    if source is None:
+                        raise ValueError("archive file cannot be read")
+                    with source:
+                        entry = self._store_stream(source, Path(temporary), mode=member.mode)
+                    if entry["size"] != member.size:
+                        raise ValueError("archive member size mismatch")
+                    files[relative] = entry
+            if _stamp(archive) != before:
+                raise RuntimeError("archive changed during import")
+            manifest = {
+                "schemaVersion": 1,
+                "id": backup_id,
+                "createdAt": recovered_at.isoformat(),
+                "importedAt": datetime.now(UTC).isoformat(),
+                "label": "legacy-archive-import",
+                "sourceState": None,
+                "sourceArchive": {
+                    "name": archive.name,
+                    "sha256": archive_digest,
+                    "bytes": before[2],
+                    "rootMetadata": root_metadata,
+                },
+                "files": files,
+            }
+            verified = self._verify(manifest)
+            manifest["verification"] = verified
+            atomic_json(existing, manifest)
+            return {"id": backup_id, "manifest": str(existing), "reused": False, **verified}
 
     def create(self, state: Path, *, label: str = "manual", now: datetime | None = None) -> dict:
         state = state.expanduser().resolve()
@@ -182,8 +282,12 @@ class BackupRepository:
                 stamp = _stamp(source)
                 cache_key = str(source)
                 cached = catalog.get(cache_key)
-                immutable = relative.startswith("artifacts/sha256/") and bool(
-                    re.fullmatch(r"[0-9a-f]{64}(\.meta\.json)?", source.name)
+                immutable = (
+                    relative.startswith("artifacts/sha256/")
+                    and bool(re.fullmatch(r"[0-9a-f]{64}(\.meta\.json)?", source.name))
+                ) or (
+                    relative.startswith("artifacts/history-chunks/")
+                    and bool(re.fullmatch(r"[0-9a-f]{64}\.gz", source.name))
                 )
                 if (
                     immutable
@@ -222,12 +326,22 @@ class BackupRepository:
     def _verify(self, manifest: dict, restore_to: Path | None = None) -> dict:
         if manifest.get("schemaVersion") != 1 or not isinstance(manifest.get("files"), dict):
             raise ValueError("unsupported backup manifest")
+        root_metadata = manifest.get("sourceArchive", {}).get("rootMetadata")
+        if root_metadata:
+            raw_metadata = base64.b64decode(root_metadata["base64"], validate=True)
+            if (
+                root_metadata["name"] != "._state"
+                or len(raw_metadata) > _BLOCK
+                or hashlib.sha256(raw_metadata).hexdigest() != root_metadata["sha256"]
+            ):
+                raise ValueError("archive root metadata checksum mismatch")
         files = manifest["files"]
         if DATABASE_NAME not in files:
             raise ValueError("backup database is missing")
         with tempfile.TemporaryDirectory(prefix=".verify-", dir=self.root) as temporary:
             db = Path(temporary) / DATABASE_NAME
             indexes: dict[str, dict] = {}
+            physical: dict[str, dict] = {}
             total = 0
             for name, entry in files.items():
                 relative = _safe_relative(name)
@@ -239,6 +353,7 @@ class BackupRepository:
                     name.startswith("snapshots/") and name.endswith("/manifest.json")
                 )
                 metadata = bytearray()
+                history_descriptor = False
                 output = (
                     restore_to / relative if restore_to else db if name == DATABASE_NAME else None
                 )
@@ -248,13 +363,15 @@ class BackupRepository:
                     handle = output.open("wb") if output else None
                     try:
                         while block := source.read(_BLOCK):
+                            if size == 0 and name.startswith("artifacts/sha256/"):
+                                history_descriptor = block.startswith(b'{"$format":')
                             size += len(block)
                             if size > entry["size"]:
                                 raise ValueError("backup blob exceeds declared size")
                             digest.update(block)
                             if handle:
                                 handle.write(block)
-                            if index:
+                            if index or history_descriptor:
                                 if size > 16 * _BLOCK:
                                     raise ValueError("backup snapshot index exceeds limit")
                                 metadata.extend(block)
@@ -267,8 +384,25 @@ class BackupRepository:
                 total += size
                 if index:
                     indexes[name] = json.loads(metadata)
+                elif history_descriptor:
+                    physical[name] = json.loads(metadata)
+            format_root = Path(temporary) / "format"
+            history = HistoryChunks(format_root / "artifacts")
+            referenced_chunks = {}
+            for name, descriptor in physical.items():
+                references = [
+                    p.relative_to(format_root).as_posix() for p in history.paths(descriptor)
+                ]
+                if any(reference not in files for reference in references):
+                    raise ValueError("backup history references a missing chunk")
+                referenced_chunks[name] = references
             database = restore_to / DATABASE_NAME if restore_to else db
-            with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+            # This is a verified, self-contained backup image. Immutable mode
+            # prevents SQLite from adding WAL/SHM files to the recovery tree;
+            # a connection context alone also does not close its file handles.
+            with closing(
+                sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True)
+            ) as connection:
                 if connection.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
                     raise ValueError("backup database integrity check failed")
             for name, snapshot in indexes.items():
@@ -303,6 +437,7 @@ class BackupRepository:
                     for ref in latest["artifacts"]:
                         name = "artifacts/sha256/" + ref["artifact_id"]
                         required.add(name)
+                        required.update(referenced_chunks.get(name, []))
                         if name + ".meta.json" in files:
                             required.add(name + ".meta.json")
                     for name in required:

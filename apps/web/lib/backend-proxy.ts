@@ -1,5 +1,8 @@
 import "server-only";
 
+import { Readable, pipeline } from "node:stream";
+import { constants, createBrotliCompress } from "node:zlib";
+
 import { backendFetch, backendUrl } from "@/lib/backend";
 
 export const PRIVATE_JSON_HEADERS = {
@@ -9,12 +12,21 @@ export const PRIVATE_JSON_HEADERS = {
 
 const COMPRESSION_MINIMUM_BYTES = 1_024;
 
-function acceptsGzip(value?: string | null) {
-  return value?.split(",").some((item) => {
-    const [coding, ...parameters] = item.trim().split(";").map((part) => part.trim());
-    const quality = parameters.find((parameter) => parameter.toLowerCase().startsWith("q="));
-    return coding.toLowerCase() === "gzip" && Number(quality?.slice(2) ?? 1) > 0;
-  }) ?? false;
+type ContentCoding = "br" | "gzip";
+
+function preferredCoding(value?: string | null): ContentCoding | null {
+  if (!value) return null;
+  const weights = new Map<string, number>();
+  for (const item of value.split(",")) {
+    const [coding, ...parameters] = item.trim().toLowerCase().split(";").map((part) => part.trim());
+    const q = parameters.find((part) => part.startsWith("q="));
+    const weight = q ? Number(q.slice(2)) : 1;
+    weights.set(coding, Number.isFinite(weight) && weight >= 0 && weight <= 1 ? weight : 0);
+  }
+  const quality = (coding: ContentCoding) => weights.get(coding) ?? weights.get("*") ?? 0;
+  const br = quality("br"), gzip = quality("gzip");
+  if (br > 0 && br >= gzip) return "br";
+  return gzip > 0 ? "gzip" : null;
 }
 
 function compressedBody(
@@ -23,20 +35,29 @@ function compressedBody(
   contentLength?: number,
 ) {
   const largeEnough = contentLength == null || contentLength >= COMPRESSION_MINIMUM_BYTES;
-  return body && acceptsGzip(acceptEncoding) && largeEnough
-    ? (body as ReadableStream<BufferSource>).pipeThrough(new CompressionStream("gzip"))
-    : null;
+  const coding = preferredCoding(acceptEncoding);
+  if (!body || !largeEnough || !coding) return null;
+  if (coding === "gzip") {
+    return { coding, body: (body as ReadableStream<BufferSource>).pipeThrough(new CompressionStream("gzip")) };
+  }
+  const source = Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]);
+  const compressor = createBrotliCompress({ params: {
+    [constants.BROTLI_PARAM_QUALITY]: 4,
+    [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
+  } });
+  const compressed = Readable.toWeb(compressor) as ReadableStream<Uint8Array>;
+  // Pipeline propagates client cancellation and upstream failures to both streams.
+  pipeline(source, compressor, () => undefined);
+  return { coding, body: compressed };
 }
 
-function privateHeaders(contentType: string, compressed: boolean) {
+function privateHeaders(contentType: string, coding?: ContentCoding) {
   const headers = new Headers({
     "Cache-Control": "private, no-store",
     "Content-Type": contentType,
+    "Vary": "Accept-Encoding",
   });
-  if (compressed) {
-    headers.set("Content-Encoding", "gzip");
-    headers.set("Vary", "Accept-Encoding");
-  }
+  if (coding) headers.set("Content-Encoding", coding);
   return headers;
 }
 
@@ -62,10 +83,10 @@ export function proxyBackendResponse(
   const rawLength = lengthHeader == null ? Number.NaN : Number(lengthHeader);
   const contentLength = Number.isFinite(rawLength) ? rawLength : undefined;
   const compressed = compressedBody(response.body, acceptEncoding, contentLength);
-  return new Response(compressed ?? response.body, {
+  return new Response(compressed?.body ?? response.body, {
     status: response.status,
     headers: withServerTiming(
-      privateHeaders(contentType, compressed !== null),
+      privateHeaders(contentType, compressed?.coding),
       durationMs,
       response.headers.get("server-timing"),
     ),
@@ -84,9 +105,9 @@ export function privateJsonResponse(
     request.headers.get("accept-encoding"),
     bytes.byteLength,
   );
-  return new Response(compressed ?? body, {
+  return new Response(compressed?.body ?? body, {
     ...init,
-    headers: privateHeaders("application/json", compressed !== null),
+    headers: privateHeaders("application/json", compressed?.coding),
   });
 }
 
