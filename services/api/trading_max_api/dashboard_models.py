@@ -450,7 +450,7 @@ class ReviewAttributionBucket(ApiModel):
     net_result_gbp: float = 0.0
     gross_wins_gbp: float = 0.0
     gross_losses_gbp: float = 0.0
-    fees_gbp: float = 0.0
+    fees_gbp: float | None = 0.0
     share_of_absolute_result: float | None = None
     share_of_net_result: float | None = None
 
@@ -487,10 +487,12 @@ class ReviewTrade(ApiModel):
     direction: str
     buy_orders: int = 0
     sell_orders: int = 0
-    buy_notional_gbp: float = 0.0
-    sell_notional_gbp: float = 0.0
-    gross_result_gbp: float = 0.0
-    fees_gbp: float = 0.0
+    buy_notional_gbp: float | None = 0.0
+    sell_notional_gbp: float | None = 0.0
+    gross_result_gbp: float | None = 0.0
+    fees_gbp: float | None = 0.0
+    fee_status: ReviewAvailability = "available"
+    fee_unavailable_reason: str | None = None
     net_result_gbp: float = 0.0
 
 

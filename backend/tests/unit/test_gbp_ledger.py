@@ -3,6 +3,7 @@ from decimal import Decimal
 import pandas as pd
 import pytest
 from trading_max.analytics.account_review import build_account_review
+from trading_max.analytics.diluted_cost import calculate_diluted_cost
 from trading_max.analytics.fx import FxQuote
 from trading_max.analytics.ledger import (
     capital_recovery_rows,
@@ -78,9 +79,9 @@ def test_each_cash_leg_and_mixed_currency_fee_is_converted_before_recovery(tmp_p
     position = {"ticker": "AAA", "quantity": 1, "current_value_gbp": 48}
     diluted = diluted_cost_rows("A", converted, [position])[0]
     recovery, checks = capital_recovery_rows("A", converted, [position])
-    assert diluted["diluted_cost_gbp"] == 30
-    assert diluted["recovered_cash_gbp"] == 51
-    assert recovery[0]["EconomicPnLGBP"] == 18
+    assert diluted["diluted_cost_gbp"] == 28
+    assert diluted["recovered_cash_gbp"] == 52
+    assert recovery[0]["EconomicPnLGBP"] == 20
     assert recovery[0]["status"] == "available"
     assert all(row["status"] == "OK" for row in checks)
     fees = [row for row in converted.attrs["fx_evidence"] if row["field"] == "FeeN"]
@@ -101,15 +102,15 @@ def test_closed_campaign_includes_fx_change_between_buy_and_sell(tmp_path):
     converted = normalize_transactions_gbp(native, fx_resolver=fixture_fx)
     closed, opened = reconstruct_campaigns(converted)
     assert not opened
-    assert closed[0]["GrossResult"] == 10  # GBP90 sales minus GBP80 acquisition.
+    assert closed[0]["GrossResult"] == 12  # GBP10 net cash outcome plus GBP2 disclosed fees.
     assert closed[0]["Fees"] == 2
-    assert closed[0]["NetResult"] == 8
+    assert closed[0]["NetResult"] == 10  # GBP90 net sales minus GBP80 fee-inclusive acquisition.
     assert sum(converted["ResultGBP"]) == pytest.approx(
         15
     )  # Broker native P&L is different evidence.
     policy = policy_metrics({"A": converted, "B": converted})
-    assert policy["a_campaign"]["expectancy"] == 8
-    assert policy["b_policy"][0]["realized_net"] == 8
+    assert policy["a_campaign"]["expectancy"] == 10
+    assert policy["b_policy"][0]["realized_net"] == 10
     review = build_account_review(
         account_code="A",
         account_kind="invest",
@@ -117,8 +118,8 @@ def test_closed_campaign_includes_fx_change_between_buy_and_sell(tmp_path):
         nav_money_series=None,
         ending_holdings=[],
     )
-    assert review["realised_trade_quality"]["expectancy_gbp"] == 8
-    assert review["attribution"]["realised_net_result_gbp"] == 8
+    assert review["realised_trade_quality"]["expectancy_gbp"] == 10
+    assert review["attribution"]["realised_net_result_gbp"] == 10
     assert review["structural_diagnostics"]["gross_traded_notional_gbp"] == 170
 
 
@@ -268,8 +269,8 @@ def test_malformed_fee_is_unknown_but_blank_optional_fee_means_no_fee(tmp_path):
     assert "FeeGBP: invalid native amount" in converted.iloc[0]["GbpIssues"]
 
 
-@pytest.mark.parametrize("fee_currency,expected", [("GBp", 1), ("JPY", None)])
-def test_dividend_conversion_fee_affects_recovery_and_missing_fx(tmp_path, fee_currency, expected):
+@pytest.mark.parametrize("fee_currency", ["GBp", "JPY"])
+def test_dividend_total_is_net_and_does_not_require_fee_conversion(tmp_path, fee_currency):
     native = export(
         tmp_path,
         [
@@ -288,6 +289,133 @@ def test_dividend_conversion_fee_affects_recovery_and_missing_fx(tmp_path, fee_c
     converted = normalize_transactions_gbp(native)
     position = {"ticker": "AAA", "quantity": 2, "current_value_gbp": 100}
     recovery = capital_recovery_rows("A", converted, [position])[0][0]
-    assert recovery["RecoveredCashGBP"] == expected
-    assert recovery["EconomicPnLGBP"] == expected
-    assert recovery["status"] == ("available" if expected is not None else "unavailable")
+    assert recovery["RecoveredCashGBP"] == 2
+    assert recovery["EconomicPnLGBP"] == 2
+    assert recovery["status"] == "available"
+
+
+@pytest.mark.parametrize(
+    "currency,buy_total,sell_total", [("GBP", 101, 109), ("USD", 126.25, 130.8)]
+)
+def test_fee_inclusive_totals_determine_closed_net_once(tmp_path, currency, buy_total, sell_total):
+    transactions = normalize_transactions_gbp(
+        export(
+            tmp_path,
+            [
+                ledger_row(total=buy_total, currency=currency, fee=100, fee_currency="GBp"),
+                ledger_row(
+                    "Market sell",
+                    day=6,
+                    shares=2,
+                    total=sell_total,
+                    currency=currency,
+                    fee=1.2,
+                    fee_currency="EUR",
+                ),
+            ],
+        ),
+        fx_resolver=fixture_fx,
+    )
+    closed, opened = reconstruct_campaigns(transactions)
+    assert not opened
+    assert closed[0]["BuyNotional"] == 100
+    assert closed[0]["SellNotional"] == 110
+    assert closed[0]["GrossResult"] == 10
+    assert closed[0]["Fees"] == 2
+    assert closed[0]["NetResult"] == 8
+    assert closed[0]["GrossResult"] - closed[0]["Fees"] == closed[0]["NetResult"]
+    assert policy_metrics({"B": transactions})["b_policy"][0]["realized_net"] == 8
+    review = build_account_review(
+        account_code="A",
+        account_kind="invest",
+        transactions=transactions,
+        nav_money_series=None,
+        ending_holdings=[],
+    )
+    assert review["realised_trade_quality"]["expectancy_gbp"] == 8
+    assert review["attribution"]["components"]["conservation_difference_gbp"] == 0
+
+
+@pytest.mark.parametrize("fee_currency", ["GBP", "JPY"])
+def test_open_partial_recovery_uses_fee_inclusive_cash_even_without_fee_fx(tmp_path, fee_currency):
+    transactions = normalize_transactions_gbp(
+        export(
+            tmp_path,
+            [
+                ledger_row(total=101, currency="GBP", fee=1, fee_currency=fee_currency),
+                ledger_row(
+                    "Market sell",
+                    day=6,
+                    shares=1,
+                    total=59,
+                    currency="GBP",
+                    fee=1,
+                    fee_currency=fee_currency,
+                ),
+            ],
+        )
+    )
+    position = {"ticker": "AAA", "quantity": 1, "current_value_gbp": 60}
+    diluted = diluted_cost_rows("A", transactions, [position])[0]
+    recovery = capital_recovery_rows("A", transactions, [position])[0][0]
+    assert diluted["status"] == "available"
+    assert diluted["net_buy_cash_out_gbp"] == 101
+    assert diluted["recovered_cash_gbp"] == 59
+    assert diluted["diluted_cost_gbp"] == 42
+    assert recovery["NetSellCashInGBP"] == 59
+    assert recovery["EconomicPnLGBP"] == 18
+    _, opened = reconstruct_campaigns(transactions)
+    typed = calculate_diluted_cost(opened["AAA"][0], 1)
+    assert typed.net_buy_cash_out_gbp == Decimal(101)
+    assert typed.recovered_cash_gbp == Decimal(59)
+    assert typed.diluted_cost_gbp == Decimal(42)
+
+
+def test_missing_fee_fx_only_hides_breakdown_not_closed_net_or_attribution(tmp_path):
+    transactions = normalize_transactions_gbp(
+        export(
+            tmp_path,
+            [
+                ledger_row(total=101, currency="GBP", fee=1, fee_currency="JPY"),
+                ledger_row(
+                    "Market sell",
+                    day=6,
+                    shares=2,
+                    total=109,
+                    currency="GBP",
+                    fee=1,
+                    fee_currency="JPY",
+                ),
+            ],
+        )
+    )
+    closed, _ = reconstruct_campaigns(transactions)
+    assert closed[0]["status"] == "available"
+    assert closed[0]["NetResult"] == 8
+    assert closed[0]["GrossResult"] is None
+    assert closed[0]["Fees"] is None
+    assert closed[0]["fee_unavailable_reason"] == "fee_breakdown_unavailable"
+    summary = policy_metrics({"A": transactions})["a_campaign"]
+    assert summary["status"] == "available"
+    assert summary["expectancy"] == 8
+    assert summary["fee_status"] == "unavailable"
+    review = build_account_review(
+        account_code="A",
+        account_kind="invest",
+        transactions=transactions,
+        nav_money_series=None,
+        ending_holdings=[],
+    )
+    quality = review["realised_trade_quality"]
+    assert quality["status"] == "available"
+    assert quality["expectancy_gbp"] == 8
+    for key in ("buy_notional_gbp", "sell_notional_gbp", "gross_result_gbp", "fees_gbp"):
+        assert quality["best_trade"][key] is None
+    attribution = review["attribution"]
+    assert attribution["status"] == "available"
+    assert attribution["realised_net_result_gbp"] == 8
+    assert attribution["by_instrument"]["buckets"][0]["fees_gbp"] is None
+    assert attribution["components"]["status"] == "unavailable"
+    assert attribution["components"]["unavailable_reason"] == "fee_breakdown_unavailable"
+    assert attribution["components"]["buckets"][-1]["contribution_gbp"] == 8
+    assert attribution["components"]["conservation_difference_gbp"] is None

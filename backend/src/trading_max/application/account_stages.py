@@ -153,7 +153,7 @@ class AccountPolicyStage:
     """Calculate realized campaign policy metrics from verified exports."""
 
     name = "accounts.policy"
-    version = "policy-v2"
+    version = "policy-v3"
     required_for = frozenset({"all", "accounts"})
     dependencies: tuple[str, ...] = ()
 
@@ -203,6 +203,11 @@ class AccountPolicyStage:
             for code, summary in payload["accounts"].items()
             if summary["status"] != "available"
         ]
+        warnings.extend(
+            f"{code}: fee_breakdown_unavailable"
+            for code, summary in payload["accounts"].items()
+            if summary.get("fee_status") == "unavailable"
+        )
         artifact = self.artifacts.put_json(
             key="account/policy_metrics.json",
             payload=payload,
@@ -294,7 +299,7 @@ class AccountDilutedCostStage(_AccountLedgerStage):
     """Publish negative-capable diluted-cost metrics from the open campaigns."""
 
     name = "accounts.diluted_cost"
-    version = "diluted-cost-v3"
+    version = "diluted-cost-v4"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -355,7 +360,7 @@ class AccountCapitalRecoveryStage(_AccountLedgerStage):
     """Publish strict campaign recovery metrics and reconciliation checks."""
 
     name = "accounts.capital_recovery"
-    version = "capital-recovery-v3"
+    version = "capital-recovery-v4"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 

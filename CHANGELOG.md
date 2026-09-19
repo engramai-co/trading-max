@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-09-19
+
+### Fixed
+
+- Treat Trading 212 transaction totals as fee-inclusive settlement cash in
+  campaigns, diluted cost and capital recovery. Keep fees as a separate
+  breakdown without deducting them again from net cash or closed-campaign P&L.
+- Preserve independently known net amounts when fee-conversion evidence is
+  missing, and invalidate the affected derived account artifacts.
+
 ## [1.5.2] - 2026-09-19
 
 ### Fixed
