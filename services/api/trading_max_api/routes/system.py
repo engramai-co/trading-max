@@ -7,7 +7,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ..dashboard_models import (
     AccountCode,
@@ -294,13 +294,21 @@ def snapshot(run_id: str, request: Request) -> SnapshotManifest:
 
 
 @router.get("/v1/artifacts/{artifact_key:path}")
-def latest_artifact(artifact_key: str, request: Request) -> FileResponse:
+def latest_artifact(artifact_key: str, request: Request) -> Response:
     try:
         path, artifact = app_service(request, "store").latest_artifact_path(
             artifact_key,
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    store = app_service(request, "store").immutable_artifacts
+    if artifact.media_type == "application/json" and store.descriptor(path.name) is not None:
+        store.get_ref(path.name)
+        return Response(
+            content=store.content_bytes(path.name),
+            media_type=artifact.media_type,
+            headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+        )
     return FileResponse(
         path,
         media_type=artifact.media_type,
@@ -313,7 +321,7 @@ def snapshot_artifact(
     run_id: str,
     artifact_key: str,
     request: Request,
-) -> FileResponse:
+) -> Response:
     try:
         path, artifact = app_service(request, "store").artifact_path(
             run_id,
@@ -321,6 +329,14 @@ def snapshot_artifact(
         )
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    store = app_service(request, "store").immutable_artifacts
+    if artifact.media_type == "application/json" and store.descriptor(path.name) is not None:
+        store.get_ref(path.name)
+        return Response(
+            content=store.content_bytes(path.name),
+            media_type=artifact.media_type,
+            headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+        )
     return FileResponse(
         path,
         media_type=artifact.media_type,

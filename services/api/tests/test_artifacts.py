@@ -116,3 +116,31 @@ def test_latest_manifest_cache_tracks_cross_process_publication(tmp_path: Path) 
         second.run_id,
         first.run_id,
     ]
+
+
+def test_history_download_returns_original_envelope_not_storage_descriptor(tmp_path: Path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+
+    from services.api.trading_max_api.routes.system import router
+
+    store = ArtifactStore(tmp_path / "state")
+    writer = ContentAddressedArtifactStore(store.data_root / "artifacts", history_mode="chunked")
+    key = "account/nav/valuation_history.json"
+    payload = {"points": [{"bucket_at": "2026-01-01T12:00:00Z", "value": 123.45}]}
+    item = writer.put_json(key=key, payload=payload)
+    manifest = store.publish_typed(scope="accounts", source="fixture", artifacts=[item])
+    original = writer.content_bytes(item.ref.artifact_id)
+    assert manifest.artifacts[0].size_bytes == len(original)
+    assert store.read_json(manifest.run_id, key) == payload
+    app = FastAPI()
+    app.state.store = store
+    app.include_router(router)
+    with TestClient(app) as client:
+        for url in (f"/v1/artifacts/{key}", f"/v1/snapshots/{manifest.run_id}/artifacts/{key}"):
+            response = client.get(url)
+            assert response.status_code == 200
+            assert response.content == original
+            assert response.json()["payload"] == payload
+            assert "$format" not in response.json()

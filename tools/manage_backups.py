@@ -18,6 +18,9 @@ def main() -> int:
     create.add_argument("--state-root", type=Path, required=True)
     create.add_argument("--label", default="manual")
     create.add_argument("--retain-for-service", type=Path)
+    archive_import = sub.add_parser("import-archive")
+    archive_import.add_argument("archive", type=Path)
+    archive_import.add_argument("--max-bytes", type=int, default=64 * 1024**3)
     verify = sub.add_parser("verify")
     verify.add_argument("backup_id")
     restore = sub.add_parser("restore")
@@ -32,6 +35,8 @@ def main() -> int:
         result = repository.create(args.state_root, label=args.label)
         if maintenance:
             result["retention"] = maintenance.maintain_repository(result["id"])
+    elif args.command == "import-archive":
+        result = repository.import_archive(args.archive, max_bytes=args.max_bytes)
     elif args.command == "verify":
         result = repository.verify(args.backup_id)
     else:
