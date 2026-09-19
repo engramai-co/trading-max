@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-19
+
+### Fixed
+
+- Distribute compact portfolio-chart date labels evenly across the full timeline
+  instead of sampling the already-reduced desktop labels a second time. Preserve
+  the first and last date, year labels and aligned ticks across linked panels.
+
 ## [1.5.0] - 2026-09-18
 
 ### Added

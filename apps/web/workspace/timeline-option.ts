@@ -26,8 +26,18 @@ export function timelineOption(
   tooltip?: TimelineTooltip,
 ): EChartsOption {
   const times = dates.map(Date.parse);
-  const calendarAxis = calendar ? timelineAxis(calendar, formatDay, 8) : undefined;
-  const horizontalAxis = calendarAxis ?? {
+  // Keep every date candidate: resampling an eight-label subset to five
+  // produces uneven 2/2/1/2 strides at the compact breakpoint.
+  const calendarAxis = calendar ? timelineAxis(calendar, formatDay, Infinity) : undefined;
+  const ticksForWidth = (count: number) => {
+    const ticks = calendarAxis?.axisLabel.customValues;
+    return ticks && (ticks.length <= count ? ticks
+      : Array.from({ length: count }, (_, index) => ticks[Math.round(index * (ticks.length - 1) / (count - 1))]));
+  };
+  const horizontalAxis = calendarAxis ? {
+    ...calendarAxis,
+    axisLabel: { ...calendarAxis.axisLabel, customValues: ticksForWidth(8) },
+  } : {
     type: "time" as const,
     minInterval: 86400000,
     boundaryGap: [0, 0] as [number, number],
@@ -37,12 +47,11 @@ export function timelineOption(
   };
   const top = (index: number) => (index === 0 ? 32 : 292 + (index - 1) * 196);
   const axisDensity = (count: number) => {
-    const ticks = calendarAxis?.axisLabel.customValues;
+    const ticks = ticksForWidth(count);
     return {
       xAxis: layers.map(() => ({
         splitNumber: count - 1,
-        ...(ticks ? { axisLabel: { customValues: ticks.length <= count ? ticks
-          : Array.from({ length: count }, (_, index) => ticks[Math.round(index * (ticks.length - 1) / (count - 1))]) } } : {}),
+        ...(ticks ? { axisLabel: { customValues: ticks } } : {}),
       })),
     };
   };
