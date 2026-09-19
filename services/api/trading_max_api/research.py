@@ -881,10 +881,10 @@ class ResearchLedger:
     ) -> ResearchLensSnapshot:
         """Build one independently loadable research lens.
 
-        The legacy ticker snapshot remains available for API compatibility, but
-        the web workbench uses this scoped response so opening valuation never
-        parses financial statements, options, timeline history, or unrelated
-        portfolio data.
+        The legacy ticker snapshot remains available for API compatibility.
+        The web workbench requests each lens independently; valuation includes
+        its financial statement inputs without loading options or timeline
+        history into the response.
         """
 
         ticker = self._route_ticker(ticker)
@@ -1496,7 +1496,7 @@ class ResearchLedger:
                             as_of=str(snapshot.valuation.get("asOf") or ""),
                         )
                     )
-                if isinstance(bull, (int, float)) and spot > bull:
+                if isinstance(bull, (int, float)) and 0 < bull < spot:
                     alerts.append(
                         ResearchAlert(
                             alert_id=f"{ticker}:valuation:above-bull",
@@ -1631,7 +1631,7 @@ class ResearchLedger:
             self._read_optional(manifest, "research/technical.json"),
             self._read_optional(manifest, "research/analyst.json"),
         )
-        requested_ticker = _canonical_ticker(ticker) if ticker else None
+        requested_ticker = self._route_ticker(ticker) if ticker else None
         selected_ticker = (
             requested_ticker
             if requested_ticker and any(item.ticker == requested_ticker for item in instruments)

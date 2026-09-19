@@ -126,7 +126,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v7"
+    version = "market-snapshot-v8"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -185,7 +185,7 @@ class TechnicalResearchStage:
     """Publish technical and options batches from one typed provider call."""
 
     name = "research.technical"
-    version = "technical-v3"
+    version = "technical-v4"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -232,7 +232,7 @@ class TechnicalResearchStage:
             payload=options.model_dump(mode="json", by_alias=False),
             kind="options",
             as_of=options.as_of,
-            producer_version="options-v1",
+            producer_version="options-v2",
             dependency_artifact_ids=[technical_artifact.ref.artifact_id],
             quality=ArtifactQuality(
                 status="warning" if options.warnings else "verified",
@@ -251,7 +251,7 @@ class TechnicalArtifactStage:
     """Project technical rows from the immutable market input."""
 
     name = "research.technical"
-    version = "technical-v7"
+    version = "technical-v8"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -300,7 +300,7 @@ class OptionsArtifactStage:
     """Project options positioning from the same market input as technical."""
 
     name = "research.options"
-    version = "options-v4"
+    version = "options-v5"
     required_for = frozenset({"all", "research"})
     dependencies = ("research.technical",)
 
@@ -399,7 +399,7 @@ class FundamentalsArtifactStage:
     """Fetch and normalize fundamentals for the current watchlist."""
 
     name = "research.fundamentals"
-    version = "fundamentals-v6"
+    version = "fundamentals-v7"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -454,7 +454,7 @@ class FinancialsArtifactStage:
     """Fetch annual and quarterly financial statements."""
 
     name = "research.financials"
-    version = "financials-v3"
+    version = "financials-v4"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -559,7 +559,7 @@ class ValuationArtifactStage:
     """
 
     name = "research.valuation"
-    version = "valuation-v5"
+    version = "valuation-v6"
     required_for = frozenset({"all", "research"})
     dependencies = ("research.technical", "research.fundamentals", "research.financials")
 
@@ -726,7 +726,7 @@ class TypedPublishSnapshotStage:
     """Publish the exact artifact IDs produced by preceding typed stages."""
 
     name = "snapshot.publish"
-    version = "snapshot-v1"
+    version = "snapshot-v2"
     required_for = frozenset({"all", "accounts", "research", "intraday", "cfd"})
     dependencies: tuple[str, ...] = ()
 
@@ -794,6 +794,7 @@ class TypedPublishSnapshotStage:
                     kind=ref.kind,
                     as_of=ref.as_of,
                     producer_version=ref.producer_version,
+                    dependency_artifact_ids=[previous_ref.artifact_id, ref.artifact_id],
                     quality=ref.quality,
                 ).ref
             )

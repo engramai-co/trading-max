@@ -84,9 +84,18 @@ def _upstream_byte_artifact(
     return None
 
 
+def _performance_suppressed(rows: list[dict[str, str]]) -> bool:
+    return any(row.get("PerformanceStatus", "") not in {"", "eligible"} for row in rows)
+
+
 def _series(text: str) -> tuple[list[PerformancePoint], float]:
     rows = list(csv.DictReader(io.StringIO(text)))
     net_external_flows = sum(float(row.get("ExternalFlowGBP") or 0.0) for row in rows)
+    if _performance_suppressed(rows):
+        # Keep the latest value and contributions available, but do not revive
+        # a return chain explicitly rejected by its cash-flow-aware producer.
+        rows = rows[-1:]
+        rows = [{**row, "TWRWealth": ""} for row in rows]
     wealth_rows = [(index, row) for index, row in enumerate(rows) if row.get("TWRWealth")]
     if wealth_rows:
         first_index = wealth_rows[0][0]
@@ -218,7 +227,7 @@ class AccountPerformanceStage:
     """Calculate TWR/risk metrics from immutable, cash-flow-aware NAV CSVs."""
 
     name = "accounts.performance"
-    version = "performance-v3"
+    version = "performance-v4"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.nav",)
 
@@ -257,7 +266,9 @@ class AccountPerformanceStage:
                     "account.nav_missing",
                     f"trusted NAV history is missing for account {account_code}",
                 )
-            points, net_external_flows = _series(history.path.read_text(encoding="utf-8"))
+            nav_text = history.path.read_text(encoding="utf-8")
+            suppressed = _performance_suppressed(list(csv.DictReader(io.StringIO(nav_text))))
+            points, net_external_flows = _series(nav_text)
             if not points:
                 raise StageExecutionError(
                     "account.nav_insufficient",
@@ -265,7 +276,10 @@ class AccountPerformanceStage:
                 )
             has_return_interval = len(points) >= 2
             warning = (
-                f"account {account_code} has only an initial NAV baseline; "
+                f"account {account_code} NAV has unverified cash-flow timing; "
+                "return and risk metrics are unavailable"
+                if suppressed
+                else f"account {account_code} has only an initial NAV baseline; "
                 "risk-adjusted performance requires a later valuation date"
             )
             if not has_return_interval:

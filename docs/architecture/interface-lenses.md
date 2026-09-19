@@ -8,7 +8,7 @@ data is available, then request only the payload needed by the active view.
 
 | Interface | API lens | Payload boundary |
 | --- | --- | --- |
-| Overview | `overview` | Totals, investable accounts, direct holdings, held-security signals, latest NAV point |
+| Overview | `overview` | Totals, investable accounts, direct holdings, held-security signals, daily and intraday history for period P&L |
 | Holdings · positions | `holdings-positions` | Direct positions and portfolio totals |
 | Holdings · look-through | `holdings-lookthrough` | ETF/entity-resolved look-through only; fetched after the view is selected |
 | Performance | `analytics` | Account summaries, NAV history, intraday anchors, risk and policy metrics |

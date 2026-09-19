@@ -199,12 +199,12 @@ class SettingsRepository:
             else current.research_enabled
         )
         with self.database.transaction(immediate=True) as connection:
-            connection.execute(
+            updated = connection.execute(
                 """UPDATE automation_preferences
                    SET nightly_enabled = ?, intraday_enabled = ?,
                        live_enabled = ?, performance_enabled = ?, research_enabled = ?,
                        revision = ?, updated_at = ?
-                   WHERE preference_id = 'local'""",
+                   WHERE preference_id = 'local' AND revision = ?""",
                 (
                     int(research_enabled),
                     int(live_enabled),
@@ -213,8 +213,13 @@ class SettingsRepository:
                     int(research_enabled),
                     revision,
                     updated_at,
+                    current.revision,
                 ),
             )
+            if updated.rowcount != 1:
+                raise ValueError(
+                    "automation settings revision conflict; reload the current settings"
+                )
             self._audit(
                 connection,
                 actor=actor,
@@ -380,17 +385,20 @@ class SettingsRepository:
         revision = current.revision + 1
         now = _iso()
         with self.database.transaction(immediate=True) as connection:
-            connection.execute(
+            updated = connection.execute(
                 """UPDATE llm_route_policy
                    SET default_route = ?, overrides_json = ?, revision = ?, updated_at = ?
-                   WHERE policy_id = 'active'""",
+                   WHERE policy_id = 'active' AND revision = ?""",
                 (
                     default_route,
                     json.dumps(overrides, ensure_ascii=False, sort_keys=True),
                     revision,
                     now,
+                    current.revision,
                 ),
             )
+            if updated.rowcount != 1:
+                raise ValueError("LLM route policy revision conflict; reload the current policy")
             self._audit(
                 connection,
                 actor=actor,

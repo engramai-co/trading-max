@@ -281,8 +281,12 @@ class Deployment:
                 try:
                     with urlopen(url, timeout=5) as response:  # noqa: S310 - fixed loopback URLs
                         if response.status == 200:
-                            break
-                except (OSError, URLError):
+                            if not url.endswith("/ready"):
+                                break
+                            payload = json.load(response)
+                            if isinstance(payload, dict) and payload.get("status") == "ready":
+                                break
+                except (OSError, URLError, ValueError):
                     pass
                 time.sleep(2)
             else:

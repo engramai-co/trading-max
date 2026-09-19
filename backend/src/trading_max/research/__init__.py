@@ -43,7 +43,7 @@ __all__ = [
 ]
 from .market import MarketResearchService, OptionsResearchBatch, TechnicalResearchBatch
 
-__all__ = [
+__all__ += [
     "MarketResearchService",
     "OptionsResearchBatch",
     "TechnicalResearchBatch",

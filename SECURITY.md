@@ -16,7 +16,7 @@ asked to upgrade before a report is investigated.
   the API remains loopback-only and is called by the server-side proxy.
 
 Do not bind the API or web process to `0.0.0.0`, expose the internal API token
-to browser code, or put Trading 212/LLM keys in Git, `.env.example`, logs,
+to browser code, or put Trading 212, Alpaca or model-provider keys in Git, `.env.example`, logs,
 URLs, browser storage, or screenshots.
 
 ## Reporting

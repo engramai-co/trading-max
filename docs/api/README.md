@@ -14,7 +14,7 @@ schema. CI rejects drift on either side.
 
 | Group | Prefix | Purpose |
 |---|---|---|
-| Health | `/health`, `/ready` | Liveness and full runtime readiness |
+| Health | `/health`, `/ready` | JSON health and runtime readiness; HTTP 200 alone is not readiness |
 | Dashboard | `/v1/dashboard/lens/` | Small overview, holdings, analytics, and account projections |
 | Research | `/v1/research/` | Directory, ticker shell, lenses, prices, history, events, models, impact, and alerts |
 | Watchlist | `/v1/watchlist` | Local ticker collection and per-ticker refresh |
@@ -29,9 +29,17 @@ The legacy aggregate `/v1/dashboard` remains a typed compatibility surface.
 Interactive pages use interface-lens endpoints so unrelated price histories and
 research payloads are not transferred on every navigation.
 
+Both health routes can return HTTP 200 with `degraded` / `not_ready`. Check the
+JSON `status`: readiness requires a published snapshot, no bootstrap error and
+a healthy worker. Neither endpoint proves broker totals have been reconciled
+by the user. `doctor` separately checks source/bootstrap/schema without calling
+these endpoints or testing provider access.
+
 ## Write authorization
 
-All mutating routes require the server-side write token. The browser sends
+Normal installations protect mutating routes with the server-side write token
+generated during setup; production mode requires it. A direct local development
+API can explicitly run without one. The browser sends
 writes through the Next.js backend proxy; the token is never exposed to client
 JavaScript. Production mode also enforces loopback binding, allowed origins,
 Fetch Metadata, request-size limits, and rate limits.

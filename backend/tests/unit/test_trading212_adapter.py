@@ -1,5 +1,6 @@
 import base64
 import json
+import subprocess
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -566,6 +567,79 @@ def test_keychain_credentials_are_loaded(monkeypatch: pytest.MonkeyPatch) -> Non
         credentials = Trading212Credentials.from_sources("invest")
     assert credentials.api_key == "keychain-key"
     assert credentials.api_secret == "keychain-secret"
+
+
+def test_keyring_failure_reaches_scoped_macos_read_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = "com.engram.trading-max.credentials.synthetic-install"
+    monkeypatch.setenv("TRADING_MAX_CREDENTIAL_SERVICE", service)
+    with (
+        patch("keyring.get_password", side_effect=RuntimeError("store unavailable")),
+        patch(
+            "trading_max.ingestion.brokers.trading212.subprocess.run",
+            return_value=subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=json.dumps({"api_key": "synthetic-key", "api_secret": "synthetic-secret"}),
+            ),
+        ) as read,
+    ):
+        credentials = Trading212Credentials.from_sources("invest")
+    assert credentials.api_key == "synthetic-key"
+    assert credentials.api_secret == "synthetic-secret"
+    read.assert_called_once_with(
+        [
+            "/usr/bin/security",
+            "find-generic-password",
+            "-a",
+            "trading212:invest",
+            "-s",
+            service,
+            "-w",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize("missing", ["totalValue", "cash", "investments", "positions"])
+def test_snapshot_rejects_missing_broker_observations(missing: str) -> None:
+    payload = _snapshot_payload()
+    if missing == "positions":
+        del payload[missing]
+    else:
+        del payload["account_summary"][missing]
+    with pytest.raises(Trading212Error):
+        snapshot_from_payload("invest", "live", payload, require_positions_match=False)
+
+
+@pytest.mark.parametrize("value", [None, "", " "])
+def test_snapshot_rejects_null_or_blank_numeric_observations(value: object) -> None:
+    payload = _snapshot_payload()
+    payload["account_summary"]["investments"]["realizedProfitLoss"] = value
+    with pytest.raises(Trading212Error, match="realizedProfitLoss"):
+        snapshot_from_payload("invest", "live", payload)
+
+
+def test_explicit_zero_broker_account_remains_valid() -> None:
+    payload = _snapshot_payload()
+    summary = payload["account_summary"]
+    summary["totalValue"] = 0
+    summary["cash"]["availableToTrade"] = 0
+    summary["investments"] = dict.fromkeys(summary["investments"], 0)
+    payload["positions"] = []
+    snapshot = snapshot_from_payload("invest", "live", payload)
+    assert snapshot.account.total_value == 0
+    assert snapshot.positions == []
+
+
+def test_typed_snapshot_cannot_relabel_foreign_account_amounts_as_gbp() -> None:
+    snapshot = snapshot_from_payload("invest", "live", _snapshot_payload())
+    snapshot.account.currency = "USD"
+    with pytest.raises(Trading212Error, match="expected GBP"):
+        account_snapshot_metrics("invest", snapshot)
 
 
 def test_isolated_installation_never_falls_back_to_global_keychain(

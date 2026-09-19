@@ -416,3 +416,43 @@ def test_empty_provider_data_fails_loudly() -> None:
 
     with pytest.raises(ResearchDataError):
         service.fundamentals([])
+
+
+def test_valuation_preserves_reported_period_evidence_before_building_ttm() -> None:
+    ends = ["2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"]
+    statements = {
+        "incomeStatement": [{"index": "Total Revenue", "2024-12-31": 300, "2025-12-31": 400}],
+        "quarterlyIncomeStatement": [{"index": "Total Revenue", **dict.fromkeys(ends, 100)}],
+        "quarterlyCashflow": [
+            {"index": "Operating Cash Flow", **dict.fromkeys(ends, 20)},
+            {"index": "Capital Expenditure", **dict.fromkeys(ends, -5)},
+        ],
+        "periodEvidence": [
+            {
+                "providerEnd": "2026-03-31",
+                "providerKind": "quarterly",
+                "kind": "semiannual",
+                "actualStart": "2025-10-01",
+                "actualEnd": "2026-03-31",
+                "fiscalYear": 2026,
+                "fiscalQuarter": 2,
+            }
+        ],
+    }
+    result = build_valuation(
+        {"tickers": ["TEST"], "rows": [{"ticker": "TEST", "price": 10}]},
+        {
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "currency": "USD",
+                    "metrics": {"financialCurrency": "USD", "sharesOutstanding": 100},
+                }
+            ]
+        },
+        financials={"rows": [{"ticker": "TEST", "financials": statements}]},
+    )
+    row = result.rows[0]
+    assert row["assumptions"]["startingRevenue"] is None
+    assert row["model_status"] == "unavailable"
+    assert row["ev5"] is None

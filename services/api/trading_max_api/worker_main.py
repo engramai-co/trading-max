@@ -1,4 +1,4 @@
-"""Dedicated macOS worker entry point for Trading Max refresh jobs."""
+"""Dedicated worker entry point for Trading Max refresh jobs."""
 
 from __future__ import annotations
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from trading_max.analytics.cash_flow_history import AccountCashFlowHistory, account_state_digest
@@ -76,11 +76,24 @@ def _previous_json(
         return None
 
 
+def _missing_business_dates(previous: bytes, current: date) -> bool:
+    rows = list(csv.DictReader(io.StringIO(previous.decode("utf-8-sig"))))
+    if not rows:
+        return False
+    last = max(date.fromisoformat(row["Date"]) for row in rows)
+    day = last + timedelta(days=1)
+    while day < current:
+        if day.weekday() < 5:
+            return True
+        day += timedelta(days=1)
+    return False
+
+
 class AccountNavStage:
     """Backfill or append trusted, cash-flow-aware account NAV histories."""
 
     name = "accounts.nav"
-    version = "nav-v5"
+    version = "nav-v6"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -143,7 +156,8 @@ class AccountNavStage:
             return False
         if any(
             str(row.get("ValuationSource") or "") == "synthetic_reconstruction"
-            and str(row.get("PerformanceStatus") or "") == "missing_dated_cash_events"
+            and str(row.get("PerformanceStatus") or "")
+            in {"missing_dated_cash_events", "unverified_broker_observation_time"}
             for row in rows
         ):
             # Retry reconstructions produced by an older adapter.  This is
@@ -236,7 +250,16 @@ class AccountNavStage:
                 ).astimezone(UTC)
                 export_path = (
                     ledger_source
-                    if is_initial_baseline or (can_extend_flows and not flow_coverage_current)
+                    if is_initial_baseline
+                    or (
+                        can_extend_flows
+                        and (
+                            not flow_coverage_current
+                            or _missing_business_dates(
+                                previous.path.read_bytes(), fetched_at.date()
+                            )
+                        )
+                    )
                     else None
                 )
                 if export_path is not None:
@@ -245,6 +268,7 @@ class AccountNavStage:
                         export_path=export_path,
                         account=account.payload,
                         cash_transactions_path=self._cash_transactions(profile),
+                        previous_nav=previous.path.read_bytes() if previous is not None else None,
                         **kwargs,
                     )
                     content = reconstruction.content
@@ -255,6 +279,7 @@ class AccountNavStage:
                         value=float(account.payload["total_value_gbp"]),
                         cash=float(account.payload.get("cash_gbp") or 0.0),
                         invested=float(account.payload.get("investments_value_gbp") or 0.0),
+                        observed_at=fetched_at.isoformat(),
                     )
             except HistoricalNavError as exc:
                 raise StageExecutionError(
@@ -278,7 +303,10 @@ class AccountNavStage:
                 "Yahoo-compatible closes; the latest point is broker-native"
             )
             cash_anchor_warning = (
-                f"account {code} reconstructed cash differs from the broker by GBP "
+                f"account {code} retains broker valuations without observation timestamps; "
+                "same-date cash-flow ordering is unknown, so performance ratios are suppressed"
+                if reconstruction is not None and not reconstruction.valuation_timing_verified
+                else f"account {code} reconstructed cash differs from the broker by GBP "
                 f"{abs(reconstruction.broker_anchor_cash_adjustment_gbp):.2f}; "
                 "the broker-native terminal value is retained, but performance ratios "
                 "are suppressed rather than inferred"
@@ -318,7 +346,7 @@ class AccountNavStage:
                         + (
                             "cash-flow-complete performance series"
                             if reconstruction.performance_eligible
-                            else "performance unavailable because dated cash history is incomplete"
+                            else "performance unavailable because cash-flow timing is unverified"
                         )
                         if reconstruction is not None
                         else "initial broker valuation baseline; no return interval yet"

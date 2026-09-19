@@ -5,12 +5,14 @@ const root = new URL("../", import.meta.url).pathname;
 const allowedCss = new Set(["app/globals.css"]);
 const rawColourAllowlist = new Set(["ui/theme.ts", "ui/charts/palette.ts"]);
 const serverMantineAllowlist = new Set(["app/layout.tsx", "ui/theme.ts"]);
+// Playwright traces contain captured CSS/JS, not authored application code.
+const generatedDirectories = new Set(["node_modules", ".next", ".run", "test-results", "playwright-report"]);
 const violations = [];
 
 async function filesUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(entries
-    .filter((entry) => entry.name !== "node_modules" && entry.name !== ".next")
+    .filter((entry) => !generatedDirectories.has(entry.name))
     .map(async (entry) => {
       const path = join(directory, entry.name);
       return entry.isDirectory() ? filesUnder(path) : [path];

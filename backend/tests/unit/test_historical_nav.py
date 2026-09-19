@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
     _candidate_symbols,
@@ -173,6 +174,83 @@ def test_usd_quote_currency_still_discovers_london_listing() -> None:
     assert _candidate_symbols("GOO3", "USD") == ("GOO3", "GOO3.L")
 
 
+@pytest.mark.parametrize(
+    "ticker,currency", [("EIMI.L", "USD"), ("IGLT.L", "GBX"), ("AAA.DE", "EUR")]
+)
+def test_explicit_provider_venue_does_not_receive_another_suffix(
+    ticker: str, currency: str
+) -> None:
+    assert _candidate_symbols(ticker, currency) == (ticker,)
+
+
+def test_refresh_after_offline_gap_backfills_prices_and_preserves_broker_marks(
+    tmp_path, monkeypatch
+):
+    from trading_max.application.nav_stages import AccountNavStage
+    from trading_max.application.stages import StageContext
+    from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+
+    export = _export(tmp_path / "ledger.csv")
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    snapshots = SnapshotStore(tmp_path)
+    calls = []
+
+    def prices(symbol, start, end):
+        calls.append(symbol)
+        frame = _history(symbol, start, end)
+        if symbol in {"AAA", "GBPUSD=X"}:
+            later = pd.DataFrame(
+                {"Close": [14, 16, 18] if symbol == "AAA" else [2, 2, 2], "Stock Splits": 0.0},
+                index=pd.to_datetime(["2026-01-07", "2026-01-08", "2026-01-09"]),
+            )
+            frame = pd.concat([frame, later])
+            return frame.loc[: end.isoformat()]
+        return frame
+
+    stage = AccountNavStage(artifacts, snapshots, history_loader=prices)
+    monkeypatch.setattr(stage, "_historical_export", lambda _profile: export)
+
+    def refresh(account):
+        inputs = [
+            artifacts.put_json(key=f"account/{profile}.json", payload=account)
+            for profile in ("invest", "isa")
+        ]
+        result = stage.run(
+            StageContext(
+                job_id="refresh",
+                scope="accounts",
+                upstream_artifact_ids=tuple(item.ref.artifact_id for item in inputs),
+            )
+        )
+        snapshots.publish(scope="accounts", source="fixture", artifacts=result.artifacts)
+        ref = next(ref for ref in result.artifacts if ref.key == "account/nav/daily_nav_a.csv")
+        return list(
+            csv.DictReader(io.StringIO(artifacts.get_bytes(ref.artifact_id).path.read_text()))
+        )
+
+    first = refresh({**_account(), "total_value_gbp": 111, "investments_value_gbp": 61})
+    assert first[-1]["ValuationSource"] == "broker_native"
+    calls.clear()
+    rows = refresh(
+        {
+            **_account(),
+            "fetched_at": "2026-01-09T20:00:00Z",
+            "total_value_gbp": 145,
+            "investments_value_gbp": 95,
+        }
+    )
+    by_date = {row["Date"]: row for row in rows}
+    assert calls
+    assert float(by_date["2026-01-07"]["SyntheticNAVGBP"]) == 120
+    assert float(by_date["2026-01-08"]["SyntheticNAVGBP"]) == 130
+    assert by_date["2026-01-07"]["ValuationSource"] == "synthetic_reconstruction"
+    assert float(by_date["2026-01-06"]["SyntheticNAVGBP"]) == 111
+    assert by_date["2026-01-06"]["ValuationSource"] == "broker_native"
+    assert float(by_date["2026-01-09"]["SyntheticNAVGBP"]) == 145
+    assert by_date["2026-01-09"]["ValuationSource"] == "broker_native"
+    assert float(by_date["2026-01-09"]["TWRWealth"]) == pytest.approx(1.45)
+
+
 def test_eur_quote_currency_discovers_provider_venue_candidates() -> None:
     assert _candidate_symbols("HY9H", "EUR") == (
         "HY9H",
@@ -183,6 +261,154 @@ def test_eur_quote_currency_discovers_provider_venue_candidates() -> None:
         "HY9H.MI",
         "HY9H.L",
     )
+
+
+def test_reconstruction_preserves_weekend_broker_dates(tmp_path: Path) -> None:
+    from trading_max.analytics.nav import append_valuation
+
+    export = _export(tmp_path / "ledger.csv")
+    first = reconstruct_historical_nav(
+        export_path=export, account=_account(), history_loader=_history
+    )
+    weekend = append_valuation(
+        first.content.decode(), date="2026-01-10", value=113, cash=50, invested=63
+    )
+    result = reconstruct_historical_nav(
+        export_path=export,
+        account={
+            **_account(),
+            "fetched_at": "2026-01-11T12:00:00Z",
+            "total_value_gbp": 114,
+            "investments_value_gbp": 64,
+        },
+        history_loader=_history,
+        previous_nav=weekend,
+    )
+    rows = {row["Date"]: row for row in csv.DictReader(io.StringIO(result.content.decode()))}
+    assert rows["2026-01-10"]["ValuationSource"] == "broker_native"
+    assert float(rows["2026-01-10"]["SyntheticNAVGBP"]) == 113
+    assert rows["2026-01-11"]["ValuationSource"] == "broker_native"
+    assert float(rows["2026-01-11"]["SyntheticNAVGBP"]) == 114
+    assert rows["2026-01-09"]["ValuationSource"] == "synthetic_reconstruction"
+
+
+@pytest.mark.parametrize("event_time", ["2026-01-10T12:00:00Z", "2026-01-09T22:00:00Z"])
+@pytest.mark.parametrize("amount", [100.0, -40.0])
+def test_later_cash_flow_belongs_after_retained_broker_observation(
+    tmp_path: Path, event_time: str, amount: float
+) -> None:
+    export = _export(tmp_path / "ledger.csv")
+
+    def prices(symbol, _start, end):
+        if symbol not in {"GBPUSD=X", "AAA"}:
+            return pd.DataFrame()
+        return pd.DataFrame(
+            {"Close": 2.0 if symbol == "GBPUSD=X" else 10.0, "Stock Splits": 0.0},
+            index=pd.bdate_range("2026-01-02", end),
+        )
+
+    account = {
+        **_account(),
+        "fetched_at": "2026-01-09T20:00:00Z",
+        "investments_value_gbp": 50.0,
+        "total_value_gbp": 100.0,
+    }
+    prior = reconstruct_historical_nav(export_path=export, account=account, history_loader=prices)
+    ledger = pd.read_csv(export).fillna("").to_dict("records")
+    ledger.append(
+        {
+            **ledger[0],
+            "ID": "later-flow",
+            "Action": "Deposit" if amount > 0 else "Withdrawal",
+            "Time (UTC)": event_time,
+            "Total": amount,
+        }
+    )
+    pd.DataFrame(ledger).to_csv(export, index=False)
+    current = {
+        **account,
+        "fetched_at": "2026-01-12T20:00:00Z",
+        "cash_gbp": 50.0 + amount,
+        "total_value_gbp": 100.0 + amount,
+    }
+    result = reconstruct_historical_nav(
+        export_path=export, account=current, history_loader=prices, previous_nav=prior.content
+    )
+    rows = {row["Date"]: row for row in csv.DictReader(io.StringIO(result.content.decode()))}
+    assert result.performance_eligible
+    assert result.valuation_timing_verified
+    assert float(rows["2026-01-09"]["SyntheticNAVGBP"]) == 100.0
+    assert rows["2026-01-09"]["ObservedAt"] == "2026-01-09T20:00:00+00:00"
+    assert float(rows["2026-01-09"]["ExternalFlowGBP"]) == 0.0
+    assert float(rows["2026-01-12"]["ExternalFlowGBP"]) == amount
+    expected_weight = (
+        pd.Timestamp(current["fetched_at"]) - pd.Timestamp(event_time)
+    ).total_seconds() / (
+        pd.Timestamp(current["fetched_at"]) - pd.Timestamp(account["fetched_at"])
+    ).total_seconds()
+    assert float(rows["2026-01-12"]["WeightedExternalFlowGBP"]) == pytest.approx(
+        amount * expected_weight
+    )
+    assert result.cash_flows.events[-1].accounting_date.isoformat() == "2026-01-12"
+    for row in rows.values():
+        if row["TWRWealth"]:
+            assert float(row["TWRWealth"]) == pytest.approx(1.0)
+        assert float(row["Drawdown"]) == pytest.approx(0.0)
+
+    # An older CSV has no intraday timestamp. Weekend ordering is still known,
+    # but a Friday flow cannot be placed around Friday's retained native mark.
+    legacy_rows = list(csv.DictReader(io.StringIO(prior.content.decode())))
+    legacy_output = io.StringIO()
+    writer = csv.DictWriter(legacy_output, fieldnames=list(legacy_rows[0]))
+    writer.writeheader()
+    writer.writerows({**row, "ObservedAt": ""} for row in legacy_rows)
+    legacy_result = reconstruct_historical_nav(
+        export_path=export,
+        account=current,
+        history_loader=prices,
+        previous_nav=legacy_output.getvalue().encode(),
+    )
+    legacy = list(csv.DictReader(io.StringIO(legacy_result.content.decode())))
+    if event_time.startswith("2026-01-09"):
+        assert not legacy_result.performance_eligible
+        assert not legacy_result.valuation_timing_verified
+        assert all(
+            row["PerformanceStatus"] == "unverified_broker_observation_time" for row in legacy
+        )
+        assert all(
+            row["DailyReturn"] == row["TWRWealth"] == row["Drawdown"] == "" for row in legacy
+        )
+        retained = next(row for row in legacy if row["Date"] == "2026-01-09")
+        assert retained["ValuationSource"] == "broker_native"
+        assert float(retained["SyntheticNAVGBP"]) == 100.0
+        assert retained["ObservedAt"] == ""
+    else:
+        assert legacy_result.performance_eligible
+        assert float(legacy[-1]["TWRWealth"]) == pytest.approx(1.0)
+
+
+def test_cash_flow_at_midnight_observation_has_no_at_risk_time(tmp_path: Path) -> None:
+    export = _export(tmp_path / "ledger.csv")
+    ledger = pd.read_csv(export).fillna("").to_dict("records")
+    ledger.append({**ledger[0], "ID": "midnight-flow", "Time (UTC)": "2026-01-06T00:00:00Z"})
+    pd.DataFrame(ledger).to_csv(export, index=False)
+    result = reconstruct_historical_nav(
+        export_path=export,
+        account={
+            **_account(),
+            "fetched_at": "2026-01-06T00:00:00Z",
+            "cash_gbp": 150.0,
+            "investments_value_gbp": 50.0,
+            "total_value_gbp": 200.0,
+        },
+        history_loader=_history,
+    )
+    row = list(csv.DictReader(io.StringIO(result.content.decode())))[-1]
+    assert result.performance_eligible
+    assert float(row["ExternalFlowGBP"]) == 100.0
+    assert float(row["WeightedExternalFlowGBP"]) == 0.0
+    assert float(row["DailyReturn"]) == 0.0
+    assert float(row["TWRWealth"]) == 1.0
 
 
 def test_exact_isin_cross_listings_precede_guessed_provider_symbols() -> None:

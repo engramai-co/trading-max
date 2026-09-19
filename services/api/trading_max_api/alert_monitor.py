@@ -46,18 +46,15 @@ class YFinanceQuoteProvider:
         prices: dict[str, float] = {}
         if frame.empty:
             return prices
-        if len(symbols) == 1:
-            series = frame.get("Close")
-            if series is not None:
-                value = series.dropna().iloc[-1] if not series.dropna().empty else None
-                if isinstance(value, (int, float)) and math.isfinite(float(value)):
-                    prices[symbols[0]] = float(value)
-            return prices
         for ticker in symbols:
             try:
                 series = frame[ticker]["Close"].dropna()
             except (KeyError, TypeError):
-                continue
+                # Current downloads retain ticker-level columns even for one
+                # symbol. Older providers can still return a flat single frame.
+                if len(symbols) != 1 or "Close" not in frame:
+                    continue
+                series = frame["Close"].dropna()
             if not series.empty and math.isfinite(float(series.iloc[-1])):
                 prices[ticker] = float(series.iloc[-1])
         return prices

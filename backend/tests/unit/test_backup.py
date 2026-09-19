@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
+import stat
 import tarfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import trading_max.backup as backup
 from trading_max.backup import create_backup
 
 
@@ -40,6 +42,7 @@ def test_backup_is_consistent_and_excludes_credentials(tmp_path: Path) -> None:
         handle.extract("state/trading_max.db", tmp_path, filter="data")
     assert "state/watchlist.json" in names
     assert not any("secrets" in name or name.endswith(".log") for name in names)
+    assert stat.S_IMODE(archive.stat().st_mode) == 0o600
     with sqlite3.connect(tmp_path / "state" / "trading_max.db") as database:
         assert database.execute("SELECT value FROM sample").fetchone() == ("fixture",)
 
@@ -69,4 +72,36 @@ def test_backup_requires_an_initialized_database(tmp_path: Path) -> None:
     state.mkdir()
 
     with pytest.raises(FileNotFoundError, match="database"):
+        create_backup(state, tmp_path / "backups")
+
+
+def test_backup_excludes_environment_file_variants(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    _state(state)
+    filenames = [".env", ".env.local", ".env.production", "trading_max.env.bak"]
+    for filename in filenames:
+        (state / filename).write_text("SECRET=synthetic", encoding="utf-8")
+
+    archive = create_backup(state, tmp_path / "backups")
+
+    with tarfile.open(archive, mode="r:gz") as handle:
+        names = handle.getnames()
+    assert not any(f"state/{filename}" in names for filename in filenames)
+
+
+def test_backup_rejects_a_database_symlink_before_opening_its_target(
+    tmp_path: Path, monkeypatch
+) -> None:
+    state = tmp_path / "state"
+    _state(state)
+    database = state / "trading_max.db"
+    outside = tmp_path / "outside.db"
+    database.rename(outside)
+    database.symlink_to(outside)
+
+    def must_not_open(*_args, **_kwargs):
+        pytest.fail("backup opened a database outside its state root")
+
+    monkeypatch.setattr(backup.sqlite3, "connect", must_not_open)
+    with pytest.raises(ValueError, match="symlink"):
         create_backup(state, tmp_path / "backups")

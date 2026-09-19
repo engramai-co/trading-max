@@ -96,3 +96,30 @@ def test_alert_monitor_uses_separate_held_and_watchlist_intervals(
     monitor.run_once()
 
     assert quotes.requests == [["BE"]]
+
+
+def test_yahoo_quote_provider_reads_single_ticker_multi_index(monkeypatch):
+    import pandas as pd
+
+    from services.api.trading_max_api.alert_monitor import YFinanceQuoteProvider
+
+    frame = pd.DataFrame(
+        [[12.0], [13.0]],
+        columns=pd.MultiIndex.from_tuples([("SYNTH", "Close")]),
+    )
+    monkeypatch.setattr(
+        "services.api.trading_max_api.alert_monitor.yf.download", lambda **kwargs: frame
+    )
+    assert YFinanceQuoteProvider().fetch(["SYNTH"]) == {"SYNTH": 13.0}
+
+
+def test_yahoo_quote_provider_keeps_flat_single_ticker_compatibility(monkeypatch):
+    import pandas as pd
+
+    from services.api.trading_max_api.alert_monitor import YFinanceQuoteProvider
+
+    frame = pd.DataFrame({"Close": [12.0, 13.0]})
+    monkeypatch.setattr(
+        "services.api.trading_max_api.alert_monitor.yf.download", lambda **kwargs: frame
+    )
+    assert YFinanceQuoteProvider().fetch(["SYNTH"]) == {"SYNTH": 13.0}

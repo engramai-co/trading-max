@@ -1,12 +1,15 @@
-from datetime import UTC, date
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 from trading_max.research.technical import (
     _clean_contracts,
     _contract_rows,
     _expiry_summary,
     _option_gex,
+    analyze_options,
     analyze_ticker,
     history_coverage,
 )
@@ -149,3 +152,58 @@ def test_option_contract_rows_preserve_observed_chain_fields() -> None:
             "gex_1pct": None,
         }
     ]
+
+
+def test_up_down_volume_ratio_uses_the_same_last_twenty_sessions() -> None:
+    frame = synthetic_bars(80)
+    frame["Close"] = 200 + np.cumsum([-1] * 60 + [1] * 15 + [-1] * 5)
+    frame["High"] = frame["Close"] + 1
+    frame["Low"] = frame["Close"] - 1
+    frame["Volume"] = [10_000] * 60 + [100] * 20
+    benchmarks = dict.fromkeys(("SPY", "QQQ", "SOXX"), frame["Close"])
+
+    result = analyze_ticker("TEST", "TEST", frame, benchmarks)
+
+    assert result.volume["up_down_volume_ratio_20d"] == 3
+    assert "上涨日量能占优" in result.signals
+
+
+@pytest.mark.parametrize("open_interest", [[None, 10], [0, 0]])
+def test_max_pain_requires_complete_positive_open_interest(open_interest) -> None:
+    options = pd.DataFrame(
+        {
+            "strike": [100, 110],
+            "side": ["call", "put"],
+            "open_interest": open_interest,
+            "volume": [0, 0],
+            "iv": [0.3, 0.3],
+        }
+    )
+    assert _expiry_summary(options, "2099-01-01", 100)["max_pain_proxy"] is None
+
+
+def test_unavailable_option_gex_does_not_become_positive_gamma(monkeypatch) -> None:
+    expiry = (datetime.now(UTC).date() + timedelta(days=7)).isoformat()
+    raw = pd.DataFrame(
+        {
+            "contractSymbol": ["UNSUPPORTED"],
+            "strike": [100],
+            "openInterest": [10],
+            "volume": [1],
+            "impliedVolatility": [0.3],
+        }
+    )
+    security = SimpleNamespace(
+        info={"quoteType": "EQUITY", "exchange": "NMS", "currency": "USD"},
+        options=[expiry],
+        option_chain=lambda _expiry: SimpleNamespace(calls=raw, puts=pd.DataFrame()),
+    )
+    monkeypatch.setattr("trading_max.research.technical.yf.Ticker", lambda _symbol: security)
+    monkeypatch.setattr(
+        "trading_max.research.technical.treasury_rate", lambda _day: {"value": None}
+    )
+
+    result = analyze_options("TEST", "TEST", 100)
+
+    assert result.aggregate["net_gex_1pct_proxy"] is None
+    assert result.gamma_proxy["gamma_regime"] is None

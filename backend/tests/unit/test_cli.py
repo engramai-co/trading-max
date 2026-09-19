@@ -4,6 +4,7 @@ import sqlite3
 import stat
 from pathlib import Path
 
+import pytest
 import trading_max.cli as cli
 from trading_max.cli import main
 from trading_max.credentials import DEFAULT_CREDENTIAL_SERVICE
@@ -78,6 +79,7 @@ def test_doctor_update_check_reports_stale_canonical_main(
 
 def test_setup_is_idempotent_and_preserves_existing_configuration(
     tmp_path: Path,
+    capsys,
 ) -> None:
     state_root = tmp_path / "Trading Max"
     assert main(["setup", "--state-root", str(state_root)]) == 0
@@ -91,11 +93,291 @@ def test_setup_is_idempotent_and_preserves_existing_configuration(
         "TRADING_MAX_LLM_PROVIDER=deepseek",
     )
     env_path.write_text(customized, encoding="utf-8")
+    capsys.readouterr()
 
     assert main(["setup", "--state-root", str(state_root)]) == 0
 
     assert env_path.read_text(encoding="utf-8") == customized
     assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
+    output = capsys.readouterr().out
+    assert "bootstrap analysis provider: deepseek" in output
+    assert "provider: fake" not in output
+
+
+@pytest.mark.parametrize(
+    ("api_token", "proxy_token", "message"),
+    [
+        (None, "synthetic-token", "internal API token is missing"),
+        ("", "synthetic-token", "internal API token is missing"),
+        ("   ", "synthetic-token", "internal API token is missing"),
+        ("synthetic-token", None, "web proxy token is missing"),
+        ("synthetic-token", "", "web proxy token is missing"),
+        ("synthetic-token", "   ", "web proxy token is missing"),
+        ("synthetic-api-token", "synthetic-proxy-token", "tokens do not match"),
+    ],
+)
+def test_doctor_rejects_broken_internal_auth_without_printing_or_changing_tokens(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    api_token: str | None,
+    proxy_token: str | None,
+    message: str,
+) -> None:
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    state_root = tmp_path / "state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    path = state_root / "secrets" / "trading_max.env"
+    values = cli._read_env(path)
+    for key, value in {
+        "TRADING_MAX_API_TOKEN": api_token,
+        "PORTFOLIO_BACKEND_TOKEN": proxy_token,
+    }.items():
+        if value is None:
+            values.pop(key)
+        else:
+            values[key] = value
+    cli._write_env(path, values)
+    before = path.read_bytes()
+    capsys.readouterr()
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 1
+
+    output = capsys.readouterr().out
+    assert message in output
+    assert "synthetic-" not in output
+    assert path.read_bytes() == before
+
+
+def test_doctor_flags_shared_namespace_for_custom_state_without_migrating_it(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    monkeypatch.setattr(cli, "default_state_root", lambda: tmp_path / "default-state")
+    state_root = tmp_path / "custom-state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    path = state_root / "secrets" / "trading_max.env"
+    values = cli._read_env(path)
+    values["TRADING_MAX_CREDENTIAL_SERVICE"] = DEFAULT_CREDENTIAL_SERVICE
+    cli._write_env(path, values)
+    before = path.read_bytes()
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 1
+
+    assert (
+        "custom state root uses the shared default credential namespace" in capsys.readouterr().out
+    )
+    assert path.read_bytes() == before
+
+
+def test_doctor_distinguishes_configuration_checks_from_runtime_and_provider_health(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    state_root = tmp_path / "state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    before = {
+        path.relative_to(state_root): path.read_bytes()
+        for path in state_root.rglob("*")
+        if path.is_file()
+    }
+    capsys.readouterr()
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 0
+
+    output = capsys.readouterr().out
+    assert "doctor: configuration checks passed" in output
+    assert "runtime readiness: not checked" in output
+    assert "provider access: not checked" in output
+    assert "credential store availability: not checked" in output
+    after = {
+        path.relative_to(state_root): path.read_bytes()
+        for path in state_root.rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+
+
+def test_doctor_allows_the_historical_namespace_at_the_default_state_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    state_root = tmp_path / "default-state"
+    monkeypatch.setattr(cli, "default_state_root", lambda: state_root)
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    assert main(["doctor", "--state-root", str(state_root)]) == 0
+
+
+def test_doctor_reads_uncheckpointed_schema_changes_without_changing_live_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    state_root = tmp_path / "state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    writer = sqlite3.connect(state_root / "trading_max.db")
+    try:
+        latest = writer.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+        writer.execute("DELETE FROM schema_migrations WHERE version = ?", (latest,))
+        writer.commit()
+        assert (state_root / "trading_max.db-wal").stat().st_size > 0
+        before = {
+            path.relative_to(state_root): path.read_bytes()
+            for path in state_root.rglob("*")
+            if path.is_file()
+        }
+
+        assert main(["doctor", "--state-root", str(state_root)]) == 1
+
+        after = {
+            path.relative_to(state_root): path.read_bytes()
+            for path in state_root.rglob("*")
+            if path.is_file()
+        }
+        assert after == before
+    finally:
+        writer.close()
+
+
+def test_doctor_reports_database_changes_during_diagnostic_copy(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    state_root = tmp_path / "state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    copy_diagnostic_file = cli._copy_diagnostic_file
+    writer = sqlite3.connect(state_root / "trading_max.db")
+    writer.execute("CREATE TABLE diagnostic_fixture (value INTEGER)")
+    writer.commit()
+
+    def copy_then_change(source: Path, destination: Path, size: int) -> None:
+        copy_diagnostic_file(source, destination, size)
+        writer.execute(
+            "DELETE FROM schema_migrations WHERE version = (SELECT MAX(version) FROM schema_migrations)"
+        )
+        writer.commit()
+
+    monkeypatch.setattr(cli, "_copy_diagnostic_file", copy_then_change)
+    try:
+        assert main(["doctor", "--state-root", str(state_root)]) == 1
+        assert "state database changed during inspection" in capsys.readouterr().out
+    finally:
+        writer.close()
+
+
+def test_doctor_avoids_copying_a_checkpointed_database(tmp_path: Path, monkeypatch) -> None:
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+
+    def copying_is_unnecessary(*_args, **_kwargs) -> None:
+        pytest.fail("a checkpointed database must not be copied")
+
+    monkeypatch.setattr(cli, "_copy_diagnostic_file", copying_is_unnecessary)
+    assert main(["doctor", "--state-root", str(state_root)]) == 0
+
+
+def test_doctor_reports_unverified_schema_when_wal_copy_would_exceed_its_limit(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    writer = sqlite3.connect(state_root / "trading_max.db")
+    try:
+        writer.execute("CREATE TABLE diagnostic_fixture (value INTEGER)")
+        writer.commit()
+        before = {
+            path.relative_to(state_root): path.read_bytes()
+            for path in state_root.rglob("*")
+            if path.is_file()
+        }
+        monkeypatch.setattr(cli, "MAX_DIAGNOSTIC_COPY_BYTES", 1)
+        capsys.readouterr()
+
+        assert main(["doctor", "--state-root", str(state_root)]) == 1
+
+        output = capsys.readouterr().out
+        assert "configuration check incomplete" in output
+        assert "schema is not verified" in output
+        assert "doctor found problems" not in output
+        after = {
+            path.relative_to(state_root): path.read_bytes()
+            for path in state_root.rglob("*")
+            if path.is_file()
+        }
+        assert after == before
+    finally:
+        writer.close()
+
+
+def test_doctor_does_not_claim_an_unverified_remote_is_canonical(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    def unverified_source(app_root: Path) -> SourceCheckout:
+        return SourceCheckout(app_root, "a" * 40, "main", False, None)
+
+    monkeypatch.setattr(cli, "inspect_source_checkout", unverified_source)
+    state_root = tmp_path / "state"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    capsys.readouterr()
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 1
+
+    output = capsys.readouterr().out
+    assert "engramai-co/trading-max@" not in output
+    assert "canonical source: not verified" in output
+
+
+@pytest.mark.parametrize("configured_root", [None, "", "relative-state"])
+def test_doctor_rejects_missing_or_relative_bootstrap_data_roots(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    configured_root: str | None,
+) -> None:
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    path = state_root / "secrets" / "trading_max.env"
+    values = cli._read_env(path)
+    if configured_root is None:
+        values.pop("TRADING_MAX_DATA_ROOT")
+    else:
+        values["TRADING_MAX_DATA_ROOT"] = configured_root
+    cli._write_env(path, values)
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 1
+    assert "bootstrap data root" in capsys.readouterr().out
+
+
+def test_doctor_reports_invalid_bootstrap_encoding_without_dumping_content(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    state_root = tmp_path / "state"
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    path = state_root / "secrets" / "trading_max.env"
+    path.write_bytes(b"SECRET=synthetic-sensitive-value\xff")
+    capsys.readouterr()
+
+    assert main(["doctor", "--state-root", str(state_root)]) == 1
+    output = capsys.readouterr().out
+    assert "not valid UTF-8" in output
+    assert "synthetic-sensitive-value" not in output
 
 
 def test_custom_state_roots_receive_distinct_credential_namespaces(tmp_path: Path) -> None:

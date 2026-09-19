@@ -73,10 +73,13 @@ inputs can be hourly and may carry forward the latest completed bar. This does
 not recreate missing ten-minute trades. Observed broker values take precedence
 and are not smoothed to fit the model.
 
-Short-range display buckets are 10 minutes (1D), 30 minutes (5D), one hour (1M),
-and two hours (3M). Calculations use all stored observations before display
-sampling. Longer ranges use daily values. Full overnight market coverage is
-not guaranteed by the availability of pre/post-market bars.
+Display buckets are 10 minutes (1D), 30 minutes (5D), one hour (1M), two hours
+(3M), and four hours (6M). YTD follows its elapsed span and becomes daily beyond
+six months; 1Y and All use daily values. Calculations use all stored observations
+before display sampling. Earlier daily-only history stays daily. A dashed
+connector indicates a display bucket with no usable observation, not invented
+intermediate records. See the [range table](portfolio.md#read-money-and-pl).
+Full overnight coverage is not guaranteed by pre/post-market bars.
 
 Reconstruction selects the newest completed price across the available minute
 and hourly feeds before checking its age. Active-session validity starts at the
@@ -93,10 +96,57 @@ Missing cash-flow evidence makes affected P&L unavailable. Unknown is not zero.
 See [NAV history](../architecture/unified-nav-history.md) and
 [performance calculations](../architecture/performance-metrics.md).
 
+## Ledger settlement currency
+
+Campaign policy, diluted cost, capital recovery, and trade attribution convert
+each cash amount in its recorded settlement currency. A security's quote
+currency and the account's headline currency do not determine that currency.
+Totals, fees and broker results retain their original values; GBP analytics
+carry separate conversion evidence. Pence convert at 100 GBX per GBP.
+
+Where a broker record proves a GBP conversion, that rate takes precedence.
+Otherwise the conversion uses the most recent completed daily FX close
+available before the event, no more than seven days old. These historical
+marks are estimates, not the broker's execution rate. Rates are cached outside
+the checkout and record their source and availability time. Missing currency
+or reliable FX makes only dependent monetary metrics unavailable; current
+broker valuations, quantities and independently valid account metrics remain
+visible. Unknown amounts are never replaced with zero.
+
+Imported CFD cash flows, realised results and the cash-equity proxy follow the
+same GBP conversion rule. A missing conversion cannot silently remove CFD
+from the household total or reuse an older known amount. Raw imports remain
+unchanged. If an import omits the net result and the fees needed to derive it,
+dependent amounts also remain unavailable (`monetary_data_unavailable`);
+a gross result alone cannot establish the net result.
+
+CFD financing and dividend events count once. Direct trade links take priority;
+position-level costs with matching holding periods are allocated by closed
+quantity. This is Trading Max's attribution method, not a broker-reported
+per-close allocation. Costs without a supported trade association stay in an
+explicit unallocated bucket, so every attribution dimension reconciles to total
+realised P&L. Conflicting embedded and standalone cost evidence makes affected
+results unavailable pending reconciliation. Remaining open quantity requires
+executed-order evidence; a cost row's quantity alone does not establish it.
+Foreign CFD conversions use a GBP precision of 0.00000001 with half-even
+rounding. Allocation puts any rounding remainder into the final share, keeping
+each converted event total unchanged.
+
+## Cash-flow verification diagnostics
+
+Data status counts retained valuation points in the current immutable snapshot
+that lack verified cash-flow coverage at each account's observation time.
+The count is unrelated to the number of successful refresh jobs or chart gaps.
+Both schedules report the same snapshot coverage. An unavailable count means
+there is no readable snapshot or valuation history. `no_snapshot` identifies
+an installation without a published snapshot; zero with no retained points
+means a successfully read, empty history.
+Cash-flow coverage alone does not certify intraday time-weighted returns.
+
 ## Interpret missing, historical, and modeled values
 
 A missing reading may mean the provider does not cover it, the history is too
-short, or the method is not applicable. Open help, source records, or Health for
+short, or the method is not applicable. Open help, source records, or Data status for
 the relevant reason. A current quote does not update an immutable saved model.
 
 Valuation ranges, seasonality, and option-derived estimates depend on their

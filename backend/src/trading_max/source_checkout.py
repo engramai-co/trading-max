@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -32,11 +33,14 @@ def _repository_slug(remote_url: str) -> str | None:
     if value.startswith("git@github.com:"):
         path = value.removeprefix("git@github.com:")
     else:
-        parsed = urlsplit(value)
-        if parsed.hostname != "github.com":
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            return None
+        if parsed.scheme not in {"https", "http", "ssh", "git"} or parsed.hostname != "github.com":
             return None
         path = parsed.path.lstrip("/")
-    return path.removesuffix(".git").rstrip("/") or None
+    return path.rstrip("/").removesuffix(".git") or None
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -45,13 +49,14 @@ def _git(root: Path, *arguments: str) -> str:
         raise SourceCheckoutError("git is required to inspect source provenance")
     try:
         result = subprocess.run(  # noqa: S603 - resolved executable and bounded argv
-            [executable, *arguments],
+            [executable, "--no-optional-locks", *arguments],
             cwd=root,
             check=True,
             capture_output=True,
             text=True,
+            timeout=30,
         )
-    except (OSError, subprocess.CalledProcessError) as exc:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise SourceCheckoutError("could not inspect the Git checkout") from exc
     return result.stdout.strip()
 
@@ -62,15 +67,18 @@ def inspect_source_checkout(app_root: Path) -> SourceCheckout:
     root = app_root.expanduser().resolve()
     if not (root / ".git").exists():
         raise SourceCheckoutError(f"not a Git checkout: {root}")
-    remotes = _git(root, "remote").splitlines()
+    remotes = set(_git(root, "remote").splitlines())
     canonical_remote: str | None = None
-    for remote in remotes:
+    for remote in ("origin", "upstream"):
+        if remote not in remotes:
+            continue
         try:
             slug = _repository_slug(_git(root, "remote", "get-url", remote))
         except SourceCheckoutError:
             continue
-        if slug == CANONICAL_REPOSITORY and canonical_remote is None:
+        if slug == CANONICAL_REPOSITORY:
             canonical_remote = remote
+            break
     return SourceCheckout(
         root=root,
         commit=_git(root, "rev-parse", "HEAD"),
@@ -95,7 +103,7 @@ def canonical_main_sha(checkout: SourceCheckout) -> str:
         "refs/heads/main",
     )
     sha, _separator, reference = output.partition("\t")
-    if len(sha) != 40 or reference != "refs/heads/main":
+    if re.fullmatch(r"[0-9a-fA-F]{40}", sha) is None or reference != "refs/heads/main":
         raise SourceCheckoutError("canonical main returned an unexpected Git reference")
     return sha
 

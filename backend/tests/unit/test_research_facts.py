@@ -128,6 +128,31 @@ def test_semiannual_disclosure_is_not_counted_as_a_quarter():
     assert facts.latest_ttm is None
 
 
+def test_semiannual_growth_compares_the_same_fiscal_half():
+    ends = ["2025-06-30", "2025-12-31", "2026-06-30", "2026-12-31"]
+    facts = build_financial_facts(
+        {
+            "quarterlyIncomeStatement": [
+                {"index": "Total Revenue", **dict(zip(ends, [100, 300, 120, 330], strict=True))}
+            ]
+        },
+        {"financialCurrency": "USD"},
+        period_evidence=[
+            {
+                "providerEnd": end,
+                "providerKind": "quarterly",
+                "kind": "semiannual",
+                "actualEnd": end,
+                "fiscalYear": int(end[:4]),
+                "fiscalQuarter": 2 if end[5:7] == "06" else 4,
+            }
+            for end in ends
+        ],
+    )
+    assert observation(facts, "revenueGrowth", "semiannual:2026-06-30").value == pytest.approx(0.2)
+    assert observation(facts, "revenueGrowth", "semiannual:2026-12-31").value == pytest.approx(0.1)
+
+
 def test_seasonality_drops_partial_month_and_does_not_bridge_missing_months():
     series = pd.Series(
         [100, 110, 120, 90, 999],

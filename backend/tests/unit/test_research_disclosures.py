@@ -1,3 +1,4 @@
+import pytest
 from trading_max.research.disclosures import link_filing_periods, match_periods, parse_filing
 
 
@@ -116,6 +117,20 @@ def test_missing_currency_is_not_assumed_usd():
         text, url="https://example.test/report.htm", filed_at="2025-10-31", form="10-K"
     )
     assert result["segments"][0]["currency"] is None
+
+
+@pytest.mark.parametrize("nil_value", ["true", "1"])
+def test_nil_filing_fact_is_unavailable_instead_of_a_reported_zero(nil_value):
+    text = filing().replace(
+        'contextRef="all" unitRef="usd" scale="6">1,000',
+        f'contextRef="all" unitRef="usd" scale="6" xsi:nil="{nil_value}">—',
+    )
+    result = parse_filing(
+        text, url="https://example.test/report.htm", filed_at="2025-10-31", form="10-K"
+    )
+    assert result["observations"] == []
+    assert result["segments"][0]["reportedTotal"] is None
+    assert result["segments"][0]["share"] is None
 
 
 def test_amendment_links_require_a_verified_matching_report_period():

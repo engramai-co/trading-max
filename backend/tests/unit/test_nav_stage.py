@@ -31,6 +31,7 @@ def test_ineligible_old_reconstruction_is_retried_after_adapter_upgrade() -> Non
     assert not AccountNavStage._needs_reconstruction(eligible)
     assert AccountNavStage._needs_reconstruction(eligible, producer_version="nav-v3")
     assert AccountNavStage._needs_reconstruction(eligible, producer_version="nav-v4")
+    assert AccountNavStage._needs_reconstruction(eligible, producer_version="nav-v5")
     assert not AccountNavStage._needs_reconstruction(
         eligible, producer_version=AccountNavStage.version
     )

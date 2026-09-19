@@ -21,7 +21,9 @@ from trading_max.analytics.ledger import (
 def _write_export(path: Path, rows: list[str]) -> None:
     path.write_text(
         "ID,Action,Time (UTC),Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result\n" + "\n".join(rows) + "\n",
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        + "\n",
         encoding="utf-8",
     )
 
@@ -29,7 +31,9 @@ def _write_export(path: Path, rows: list[str]) -> None:
 def _write_export_with_isin(path: Path, rows: list[str]) -> None:
     path.write_text(
         "ID,Action,Time (UTC),ISIN,Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result\n" + "\n".join(rows) + "\n",
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        + "\n",
         encoding="utf-8",
     )
 
@@ -70,6 +74,17 @@ def test_load_transactions_rejects_conflicting_duplicate_id(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="conflicting rows"):
         load_transactions([first, second])
+
+
+def test_load_transactions_accepts_missing_optional_fee_and_result_columns(tmp_path: Path) -> None:
+    export = tmp_path / "ledger.csv"
+    export.write_text(
+        "Action,Time (UTC),Ticker,No. of shares,Total\nDeposit,2026-08-01T10:00:00Z,,,100\n"
+    )
+    transactions = load_transactions([export])
+    assert transactions["TotalN"].tolist() == [100]
+    assert transactions["FeeN"].tolist() == [0]
+    assert transactions["ResultN"].tolist() == [0]
 
 
 def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(

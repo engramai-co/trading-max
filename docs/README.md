@@ -38,7 +38,9 @@ contracts.
 ## Operate and recover
 
 - [Deployment profiles](../deploy/README.md)
-- [Agent-owned local installation](operations/agent-local-deployment-runbook.md)
+- [Agent-owned local installation and diagnosis](operations/agent-local-deployment-runbook.md)
+  — the [onboarding skill](../.agents/skills/trading-max-onboard/SKILL.md),
+  existing-state triage, JSON readiness, optional providers and first refresh.
 - [Advanced macOS upgrades and rollback](../deploy/macos/README.md)
 - [Durable jobs and worker recovery](architecture/durable-job-runtime.md)
 - [Broker-only development preview](operations/broker-mock-preview.md)

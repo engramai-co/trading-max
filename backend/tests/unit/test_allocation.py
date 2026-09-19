@@ -51,6 +51,18 @@ def test_risk_contributions_sum_to_one() -> None:
     assert sum(item.risk_contribution for item in result) == pytest.approx(1.0)
 
 
+def test_single_asset_portfolio_has_all_risk_contribution() -> None:
+    result = risk_contributions({"A": [0.1, -0.1, 0.2]}, {"A": 1})
+    assert len(result) == 1
+    assert result[0].risk_contribution == pytest.approx(1.0)
+
+
+def test_portfolio_series_rejects_absent_non_cash_returns() -> None:
+    with pytest.raises(ValueError, match="missing assets: B"):
+        portfolio_return_series([{"A": 0.1}], {"A": 1, "B": 1})
+    assert portfolio_return_series([{"A": 0.1}], {"A": 1, "CASH": 1}) == [0.05]
+
+
 def test_portfolio_series_supports_periodic_and_buy_and_hold() -> None:
     observations = [{"A": 0.1, "B": 0.0}, {"A": 0.0, "B": 0.1}]
     periodic = portfolio_return_series(observations, {"A": 1, "B": 1})

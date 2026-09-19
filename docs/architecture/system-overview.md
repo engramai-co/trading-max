@@ -43,24 +43,31 @@ being replaced with zero-value estimates.
 
 ## Refresh paths
 
-Trading Max has three independent refresh paths:
+Settings exposes three independent scheduled workloads:
 
-1. **Full refresh** — synchronizes broker data, recomputes account/performance,
-   look-through, reference, and research stages, then publishes atomically.
-2. **Intraday NAV anchor** — reads current broker values and appends a bounded
-   anchor without rerunning research or LLM analysis.
-3. **Alert monitor** — updates held positions more frequently than the wider
-   watchlist, then recomputes lightweight price, technical, concentration,
-   valuation, freshness, and options alerts.
+| Workload | Scope | Work performed |
+|---|---|---|
+| Account state & intraday history | `live` (`intraday` remains a compatibility alias) | Read current broker values, normalize accounts, append observed NAV, publish |
+| Performance calculations | `performance` | Reuse current broker inputs, replay account NAV and calculate returns/risk, publish |
+| Research & daily reconciliation | `research`, plus scheduled `accounts` reconciliation | Refresh research and position-dependent look-through, then reconcile official account history at the configured daily time |
 
-The queue prioritizes full refreshes. The latest missed scheduled full run may be submitted
-once after process recovery; missed intraday slots are never replayed.
+A manual **full refresh** (`all`) runs the combined broker, account, reference,
+look-through, research and performance pipeline. The alert monitor is separate:
+it updates held positions more frequently than the wider watchlist and
+recomputes lightweight alerts. These are not three copies of one full job.
+
+The durable queue arbitrates priority and coalesces conflicting work. A busy
+live slot may retry while still current; expired live slots are never replayed
+as broker observations. See [worker and scheduler behavior](durable-job-runtime.md).
+Fresh local setup starts scheduled collection disabled; operator-managed hosts
+may have different retained preferences. Settings shows the effective schedule.
 
 ## Performance semantics
 
 All money/P&L ranges share ending value, net contributions, period net P&L,
-and maximum P&L drawdown. Short ranges use the unified intraday valuation
-history; longer ranges use daily values. Reconciled timestamped cash-flow
+and maximum P&L drawdown. Ranges through 6M use the unified intraday
+valuation history; YTD follows its elapsed span, while 1Y and All use daily
+values. Older daily-only coverage stays daily. Reconciled timestamped cash-flow
 evidence qualifies the P&L calculation. Missing evidence leaves P&L unavailable.
 The independent daily performance path remains authoritative for TWR; a
 percentage of opening account value is not TWR. See

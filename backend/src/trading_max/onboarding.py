@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import getpass
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,7 @@ from .source_checkout import (
 
 API_URL = "http://127.0.0.1:8421"
 WEB_URL = "http://127.0.0.1:3413"
-SUPPORTED_NODE_MAJOR = 20
+SUPPORTED_NODE_VERSION = (20, 19, 0)
 
 
 class OnboardingError(RuntimeError):
@@ -78,7 +79,10 @@ def _tool_version(command: str, *arguments: str) -> str:
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise OnboardingError(f"could not run {command}") from exc
-    return (result.stdout or result.stderr).strip().splitlines()[0]
+    output = (result.stdout or result.stderr).strip().splitlines()
+    if not output:
+        raise OnboardingError(f"{command} returned no version information")
+    return output[0]
 
 
 def preflight(app_root: Path) -> None:
@@ -92,10 +96,12 @@ def preflight(app_root: Path) -> None:
         "npm": _tool_version("npm", "--version"),
     }
     try:
-        node_major = int(versions["Node"].lstrip("v").split(".", maxsplit=1)[0])
+        node_version = tuple(int(part) for part in versions["Node"].removeprefix("v").split("."))
+        if len(node_version) != 3:
+            raise ValueError("expected major.minor.patch")
     except ValueError as exc:
         raise OnboardingError(f"could not parse Node version: {versions['Node']}") from exc
-    if node_major < SUPPORTED_NODE_MAJOR:
+    if node_version < SUPPORTED_NODE_VERSION:
         raise OnboardingError("Node.js 20.19 or newer is required; Node 22 LTS is recommended")
     for label, value in versions.items():
         print(f"  ✓ {label}: {value}")
@@ -125,7 +131,12 @@ def build_web(app_root: Path) -> None:
 def _load_bootstrap(path: Path) -> dict[str, str]:
     from .cli import _read_env
 
-    return _read_env(path)
+    try:
+        return _read_env(path)
+    except (OSError, ValueError) as exc:
+        raise OnboardingError(
+            "bootstrap file could not be read; inspect the state with doctor"
+        ) from exc
 
 
 def _api_headers(token: str) -> dict[str, str]:
@@ -156,17 +167,23 @@ def _request(
     token: str,
     payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    response = client.request(
-        method,
-        path,
-        headers=_api_headers(token),
-        json=payload,
-    )
+    try:
+        response = client.request(
+            method,
+            path,
+            headers=_api_headers(token),
+            json=payload,
+        )
+    except httpx.HTTPError as exc:
+        raise OnboardingError("could not reach the local API") from exc
     if response.is_error:
         raise OnboardingError(_error_message(response))
     if response.status_code == 204:
         return {}
-    result = response.json()
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise OnboardingError("local API returned an unexpected response") from exc
     if not isinstance(result, dict):
         raise OnboardingError("local API returned an unexpected response")
     return result
@@ -321,10 +338,10 @@ def _configure_llm(
 ) -> bool:
     selection = _choose(
         "\nChoose an analysis provider:",
-        ["Keep deterministic fake provider", "OpenCode Go", "DeepSeek"],
+        ["Keep current analysis configuration", "OpenCode Go", "DeepSeek"],
     )
     if selection == 0:
-        print("  ✓ fake provider kept; no portfolio data will leave this computer")
+        print("  ✓ current analysis configuration kept")
         return False
     provider = "opencode" if selection == 1 else "deepseek"
     providers = _request(
@@ -348,7 +365,11 @@ def _configure_llm(
         raise OnboardingError(f"provider is unavailable: {provider}")
     models = descriptor.get("models")
     default_model = descriptor.get("defaultModel")
-    if not isinstance(models, list) or not all(isinstance(item, str) for item in models):
+    if (
+        not isinstance(models, list)
+        or not models
+        or not all(isinstance(item, str) for item in models)
+    ):
         raise OnboardingError(f"provider model registry is invalid: {provider}")
     default_index = models.index(default_model) if default_model in models else 0
     model = models[_choose("Choose a model:", models, default=default_index)]
@@ -470,16 +491,20 @@ def onboard(options: OnboardingOptions, *, initialize: Callable[[Path], int]) ->
     print("\n[2/6] Initializing external state")
     if initialize(state_root) != 0:
         raise OnboardingError("state initialization failed")
+    bootstrap = _load_bootstrap(state_root / "secrets" / "trading_max.env")
+    token = bootstrap.get("TRADING_MAX_API_TOKEN")
+    if not token or not token.strip():
+        raise OnboardingError("bootstrap is missing the internal API token")
+    if bootstrap.get("PORTFOLIO_BACKEND_TOKEN") != token:
+        raise OnboardingError(
+            "bootstrap API/proxy tokens are missing or do not match; inspect the state with doctor"
+        )
     if options.build_web:
         build_web(app_root)
     else:
         print("\n[3/6] Web build skipped by request")
         if not (app_root / "apps" / "web" / ".next" / "BUILD_ID").is_file():
             raise OnboardingError("web build is missing; rerun without --skip-build")
-    bootstrap = _load_bootstrap(state_root / "secrets" / "trading_max.env")
-    token = bootstrap.get("TRADING_MAX_API_TOKEN")
-    if not token:
-        raise OnboardingError("bootstrap is missing the internal API token")
     with temporary_api(
         app_root=app_root,
         state_root=state_root,
@@ -510,10 +535,15 @@ def onboard(options: OnboardingOptions, *, initialize: Callable[[Path], int]) ->
             webbrowser.open(WEB_URL)
     else:
         print("  ✓ configuration verified")
-        print("  → start Trading Max with: deploy/local/start.sh")
+        print(
+            "  → start Trading Max with: "
+            f"TRADING_MAX_STATE_ROOT={shlex.quote(str(state_root))} deploy/local/start.sh"
+        )
         print(f"  → then open: {WEB_URL}")
         print(f"  → configure your own API credentials at: {WEB_URL}/settings")
-    print("\nOnboarding complete. Secrets were not written to the checkout or bootstrap file.")
+    print(
+        "\nOnboarding complete. Provider secrets were not written to the checkout or bootstrap file."
+    )
     return 0
 
 

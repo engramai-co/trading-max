@@ -26,12 +26,19 @@ jobs:
     steps:
       - name: Resolve release tag
         id: tag
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            release_tag="$REQUESTED_TAG"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            release_tag="$GITHUB_REF_NAME"
           fi
+          if [[ ! "$release_tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release tag must use vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          echo "value=$release_tag" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -48,6 +55,11 @@ jobs:
 
       - name: Sync dependencies
         run: uv sync --all-packages --group dev --frozen
+
+      - name: Install deployment test shell
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zsh
 
       - name: Validate version and repository hygiene
         env:
@@ -79,8 +91,8 @@ jobs:
           git fetch origin main --no-tags
           release_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
           git merge-base --is-ancestor "$release_commit" origin/main
-          uv run ruff check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
-          uv run ruff format --check backend services/api tools deploy/macos/configure-host.py deploy/local/install-macos-service.py
+          uv run ruff check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
+          uv run ruff format --check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
           uv run pytest services/api/tests backend/tests
           uv run python -m compileall -q backend/src services/api tools
 

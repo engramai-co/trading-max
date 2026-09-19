@@ -15,9 +15,9 @@ def _export(path: Path) -> None:
     path.parent.mkdir(parents=True)
     path.write_text(
         "ID,Action,Time (UTC),Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result\n"
-        "1,Market buy,2026-08-01T10:00:00Z,BE,Bloom,1,10,10,0,\n"
-        "2,Market sell,2026-08-02T10:00:00Z,BE,Bloom,1,12,12,0,2\n",
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+        "1,Market buy,2026-08-01T10:00:00Z,BE,Bloom,1,10,10,0,,GBP,GBP,GBP\n"
+        "2,Market sell,2026-08-02T10:00:00Z,BE,Bloom,1,12,12,0,2,GBP,GBP,GBP\n",
         encoding="utf-8",
     )
 
@@ -85,8 +85,8 @@ def test_account_ledger_stages_publish_cost_and_recovery(
         export.parent.mkdir(parents=True)
         export.write_text(
             "ID,Action,Time (UTC),Ticker,Name,No. of shares,Price / share,Total,"
-            "Currency conversion fee,Result\n"
-            "1,Market buy,2026-08-01T10:00:00Z,BE,Bloom,1,10,10,0,\n",
+            "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+            "1,Market buy,2026-08-01T10:00:00Z,BE,Bloom,1,10,10,0,,GBP,GBP,GBP\n",
             encoding="utf-8",
         )
     for profile in ("invest", "isa"):
@@ -118,3 +118,45 @@ def test_account_ledger_stages_publish_cost_and_recovery(
     assert len(diluted_payload["holdings"]) == 2
     assert recovery_payload["checks_all_ok"] is True
     assert len(recovery_payload["holdings"]) == 2
+
+
+def test_missing_fx_is_local_to_account_metrics_and_does_not_fail_refresh(tmp_path: Path) -> None:
+    import pandas as pd
+
+    for profile, currency in (("invest", "USD"), ("isa", "GBP")):
+        _export(tmp_path / "trading212" / profile / "exports" / "latest.csv")
+        export = tmp_path / "trading212" / profile / "exports" / "latest.csv"
+        frame = pd.read_csv(export)
+        frame["Currency (Total)"] = currency
+        frame.loc[0, "No. of shares"] = 2
+        frame.loc[0, "Total"] = 20
+        frame.to_csv(export, index=False)
+        (tmp_path / "trading212" / profile / "latest_export.json").write_text(
+            '{"profile":"' + profile + '","csv":{"path":"' + profile + '/exports/latest.csv"}}'
+        )
+    store = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    context = StageContext(
+        job_id="partial-fx",
+        scope="accounts",
+        upstream_artifact_ids=_account_artifacts(tmp_path, store),
+    )
+
+    def missing(*_args):
+        return None
+
+    policy = AccountPolicyStage(tmp_path, store, fx_resolver=missing).run(context)
+    diluted = AccountDilutedCostStage(tmp_path, store, fx_resolver=missing).run(context)
+    recovery = AccountCapitalRecoveryStage(tmp_path, store, fx_resolver=missing).run(context)
+    for result in (policy, diluted, recovery):
+        assert result.warnings
+        assert result.artifacts[0].quality.status == "warning"
+        payload = store.get_json(result.artifacts[0].artifact_id).payload
+        assert payload["accounts"]["A"]["status"] == "unavailable"
+        assert payload["accounts"]["B"]["status"] == "available"
+    costs = store.get_json(diluted.artifacts[0].artifact_id).payload["holdings"]
+    assert costs[0]["diluted_cost_gbp"] is None
+    assert costs[1]["diluted_cost_gbp"] == 8
+    recovery_payload = store.get_json(recovery.artifacts[0].artifact_id).payload
+    assert recovery_payload["checks_all_ok"]
+    assert recovery_payload["holdings"][0]["MarketValueGBP"] == 30
+    assert recovery_payload["holdings"][0]["EconomicPnLGBP"] is None

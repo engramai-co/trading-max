@@ -24,8 +24,10 @@ def _included_files(state_root: Path) -> Iterator[Path]:
         relative = path.relative_to(state_root)
         if any(component in EXCLUDED_COMPONENTS for component in relative.parts):
             continue
-        if path.name == DATABASE_NAME or any(
-            path.name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES
+        if (
+            path.name == DATABASE_NAME
+            or any(path.name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES)
+            or ".env." in path.name
         ):
             continue
         yield path
@@ -49,6 +51,8 @@ def create_backup(
     if destination == state_root or destination.is_relative_to(state_root):
         raise ValueError("backup destination must be outside the state root")
     database_path = state_root / DATABASE_NAME
+    if database_path.is_symlink():
+        raise ValueError(f"state root contains unsupported symlink: {database_path}")
     if not database_path.is_file():
         raise FileNotFoundError(f"database does not exist: {database_path}")
     destination.mkdir(parents=True, exist_ok=True)
@@ -86,6 +90,7 @@ def create_backup(
             names = handle.getnames()
         if "state" not in names or f"state/{DATABASE_NAME}" not in names:
             raise RuntimeError("backup verification failed: database is missing")
+        temporary_archive.chmod(0o600)
         temporary_archive.replace(archive)
 
     archives = sorted(

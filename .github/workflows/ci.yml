@@ -38,6 +38,11 @@ jobs:
               - "backend/src/trading_max/infrastructure/**"
               - "backend/tests/integration/test_backup_archive.py"
               - "backend/tests/integration/test_restore_backup.py"
+              - "backend/tests/unit/test_local_service_installer.py"
+              - "services/api/tests/test_local_start.py"
+              - "services/api/tests/test_macos_*.py"
+              - "tools/restore_backup.py"
+              - "tools/verify_backup_archive.py"
               - "deploy/**"
               - "pyproject.toml"
               - "uv.lock"
@@ -158,10 +163,10 @@ jobs:
           sudo apt-get install --yes --no-install-recommends zsh
 
       - name: Validate macOS shell scripts
-        run: zsh -n deploy/macos/*.sh
+        run: for script in deploy/macos/*.sh; do zsh -n "$script"; done
 
       - name: Validate local workstation shell script
-        run: bash -n deploy/local/*.sh
+        run: for script in deploy/local/*.sh; do bash -n "$script"; done
 
       - name: Validate generic macOS service installer
         run: uv run ruff check deploy/local/install-macos-service.py

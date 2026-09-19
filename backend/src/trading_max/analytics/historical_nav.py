@@ -13,6 +13,7 @@ import csv
 import io
 import json
 import math
+from bisect import bisect_left
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -87,6 +88,7 @@ class ReconstructionResult:
     terminal_cash_gap_gbp: float
     broker_anchor_cash_adjustment_gbp: float
     performance_eligible: bool
+    valuation_timing_verified: bool
     cash_flows: AccountCashFlowHistory
 
 
@@ -179,7 +181,7 @@ def _default_history(symbol: str, start: date, end: date) -> pd.DataFrame:
 
 
 def _business_date(value: pd.Timestamp) -> pd.Timestamp:
-    day = value.tz_localize(None).normalize()
+    day = value.tz_convert("UTC").tz_localize(None).normalize()
     return pd.offsets.BDay().rollback(day)
 
 
@@ -393,6 +395,13 @@ def _candidate_symbols(
     alias = YAHOO_SYMBOL_ALIASES.get(ticker)
     if alias:
         candidates.append(alias)
+    venue_suffixes = {
+        ".L",
+        *(suffix for suffixes in YAHOO_VENUE_SUFFIXES_BY_CURRENCY.values() for suffix in suffixes),
+    }
+    if any(ticker.endswith(suffix) for suffix in venue_suffixes):
+        candidates.append(ticker)
+        return tuple(dict.fromkeys(item for item in candidates if item))
     if currency in {"GBP", "GBX"}:
         candidates.extend([f"{ticker}.L", ticker])
     else:
@@ -499,10 +508,13 @@ def _cash_fx_series(
     return result
 
 
-def _event_weight(timestamp: pd.Timestamp, business_day: pd.Timestamp) -> float:
-    event_day = timestamp.tz_localize(None).normalize()
-    hour = timestamp.hour + timestamp.minute / 60 + timestamp.second / 3600
-    return 1.0 if event_day != business_day else max(0.0, min(1.0, (24 - hour) / 24))
+def _event_weight(
+    timestamp: pd.Timestamp, interval_start: pd.Timestamp, interval_end: pd.Timestamp
+) -> float:
+    duration = (interval_end - interval_start).total_seconds()
+    if duration <= 0:
+        return 0.0
+    return max(0.0, min(1.0, (interval_end - timestamp).total_seconds() / duration))
 
 
 def _resolve_price_series(
@@ -600,6 +612,7 @@ def reconstruct_historical_nav(
     account: Mapping[str, Any],
     history_loader: HistoryLoader = _default_history,
     cash_transactions_path: Path | None = None,
+    previous_nav: bytes | None = None,
 ) -> ReconstructionResult:
     """Replay one verified account ledger into a broker-anchored daily NAV.
 
@@ -624,10 +637,61 @@ def reconstruct_historical_nav(
         + [_business_date(event.timestamp) for event in supplemental_events]
     )
     fetched_at = pd.Timestamp(str(account["fetched_at"]).replace("Z", "+00:00"))
-    end_day = _business_date(fetched_at)
-    days = pd.bdate_range(start_day, end_day)
+    if fetched_at.tzinfo is None:
+        raise HistoricalNavError("broker observation time must include its time zone")
+    fetched_at = fetched_at.tz_convert("UTC")
+    end_day = fetched_at.tz_localize(None).normalize()
+    prior_native_rows = (
+        [
+            row
+            for row in csv.DictReader(io.StringIO(previous_nav.decode("utf-8-sig")))
+            if row.get("ValuationSource") == "broker_native"
+        ]
+        if previous_nav is not None
+        else []
+    )
+    observed_days = [end_day] + [
+        pd.Timestamp(row["Date"])
+        for row in prior_native_rows
+        if start_day <= pd.Timestamp(row["Date"]) <= end_day
+    ]
+    # Market reconstruction uses business dates. Broker observations can also
+    # arrive on weekends and retain their real dates and values in this grid.
+    days = (
+        pd.bdate_range(start_day, end_day)
+        .union(pd.DatetimeIndex(observed_days).unique())
+        .sort_values()
+    )
     if len(days) < 2:
         raise HistoricalNavError("broker ledger does not span two valuation dates")
+
+    # Reconstructed daily rows include that UTC date's ledger events. Native
+    # marks instead end at their actual observation time, which may precede a
+    # later deposit, withdrawal, or trade on the same date.
+    valuation_times = [
+        day.tz_localize("UTC") + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1) for day in days
+    ]
+    native_observation_times = {end_day: fetched_at}
+    unknown_native_days: set[pd.Timestamp] = set()
+    for row in prior_native_rows:
+        day = pd.Timestamp(row["Date"])
+        if day not in days or day >= end_day:
+            continue
+        if not row.get("ObservedAt"):
+            unknown_native_days.add(day)
+            continue
+        try:
+            observed = pd.Timestamp(row["ObservedAt"])
+            if observed.tzinfo is None:
+                raise ValueError("observation time must include its time zone")
+            observed = observed.tz_convert("UTC")
+            if observed.tz_localize(None).normalize() != day:
+                raise ValueError("observation time must match its valuation date")
+        except ValueError as exc:
+            raise HistoricalNavError("previous broker observation time is invalid") from exc
+        native_observation_times[day] = observed
+    for day, observed in native_observation_times.items():
+        valuation_times[days.get_loc(day)] = observed
 
     fx_frame = history_loader(
         "GBPUSD=X",
@@ -658,10 +722,20 @@ def reconstruct_historical_nav(
     events = ledger_events(transactions, supplemental_events)
     if any(event.timestamp > fetched_at for event in events):
         raise HistoricalNavError("broker ledger includes events after the account observation")
+    event_indices = [bisect_left(valuation_times, event.timestamp) for event in events]
+    if any(index == len(days) for index in event_indices):
+        raise HistoricalNavError("ledger event falls outside the reconstructed observations")
+    # Legacy native rows have only a date. Same-date external flows cannot be
+    # placed before or after such a mark without inventing an observation time.
+    valuation_timing_verified = not any(
+        event.external
+        and event.timestamp.tz_convert("UTC").tz_localize(None).normalize() in unknown_native_days
+        for event in events
+    )
     quantity_delta = pd.DataFrame(0.0, index=days, columns=identities)
-    for event in events:
+    for event, index in zip(events, event_indices, strict=True):
         if event.identity and event.quantity:
-            quantity_delta.loc[_business_date(event.timestamp), event.identity] += event.quantity
+            quantity_delta.loc[days[index], event.identity] += event.quantity
     quantities = quantity_delta.cumsum().mask(lambda frame: frame.abs() < 1e-7, 0.0)
 
     for identity, position in current_positions.items():
@@ -761,24 +835,32 @@ def reconstruct_historical_nav(
     external_flow = pd.Series(0.0, index=days)
     weighted_flow = pd.Series(0.0, index=days)
     flow_events: list[AccountCashFlow] = []
-    for event in events:
-        business_day = _business_date(event.timestamp)
-        if business_day not in cash_delta.index:
-            raise HistoricalNavError("wallet cash event falls outside the reconstructed ledger")
-        cash_delta.loc[business_day, event.currency] += event.cash
+    for event, index in zip(events, event_indices, strict=True):
+        valuation_day = days[index]
+        cash_delta.loc[valuation_day, event.currency] += event.cash
         if event.external:
-            amount_gbp = event.cash / float(cash_fx.loc[business_day, event.currency])
+            # The flow's conversion rate belongs to the event date, even when
+            # the next available valuation is several calendar days later.
+            fx_day = days[
+                days.searchsorted(
+                    event.timestamp.tz_convert("UTC").tz_localize(None).normalize(), side="right"
+                )
+                - 1
+            ]
+            amount_gbp = event.cash / float(cash_fx.loc[fx_day, event.currency])
             flow_events.append(
                 AccountCashFlow(
                     occurred_at=event.timestamp.to_pydatetime(),
-                    accounting_date=business_day.date(),
+                    accounting_date=valuation_day.date(),
                     amount_gbp=amount_gbp,
                 )
             )
-            external_flow.loc[business_day] += amount_gbp
-            weighted_flow.loc[business_day] += amount_gbp * _event_weight(
+            interval_start = valuation_times[index - 1] if index else days[0].tz_localize("UTC")
+            external_flow.loc[valuation_day] += amount_gbp
+            weighted_flow.loc[valuation_day] += amount_gbp * _event_weight(
                 event.timestamp,
-                business_day,
+                interval_start,
+                valuation_times[index],
             )
     native_cash = cash_delta.cumsum()
     cash = (native_cash / cash_fx).sum(axis=1)
@@ -798,9 +880,31 @@ def reconstruct_historical_nav(
         CASH_RECONCILIATION_TOLERANCE_GBP,
         broker_total * CASH_RECONCILIATION_RELATIVE_TOLERANCE,
     )
-    performance_eligible = abs(cash_gap) <= cash_tolerance + 1e-9
+    cash_verified = abs(cash_gap) <= cash_tolerance + 1e-9
+    performance_eligible = cash_verified and valuation_timing_verified
     cash.iloc[-1] = broker_cash
     market_value.iloc[-1] = broker_invested
+    native_days = {days[-1]}
+    if prior_native_rows:
+        # Replay missing market dates without rewriting actual broker marks.
+        # Cash flows still come from the current reconciled ledger, and the
+        # derived return chain below is recomputed around these observations.
+        for row in prior_native_rows:
+            day = pd.Timestamp(row["Date"])
+            if day not in days or day >= days[-1]:
+                continue
+            observed_cash = float(row["CashGBP"])
+            observed_invested = float(row["MarketValueGBP"])
+            observed_total = float(row["SyntheticNAVGBP"])
+            if not all(
+                math.isfinite(value) for value in (observed_cash, observed_invested, observed_total)
+            ):
+                raise HistoricalNavError("previous broker valuation is not finite")
+            if not math.isclose(observed_cash + observed_invested, observed_total, abs_tol=0.02):
+                raise HistoricalNavError("previous broker valuation does not reconcile")
+            cash.loc[day] = observed_cash
+            market_value.loc[day] = observed_invested
+            native_days.add(day)
     nav = cash + market_value
 
     returns = pd.Series(np.nan, index=days, dtype=float)
@@ -822,7 +926,7 @@ def reconstruct_historical_nav(
 
     rows: list[dict[str, str]] = []
     for index, day in enumerate(days):
-        source = "broker_native" if index == len(days) - 1 else "synthetic_reconstruction"
+        source = "broker_native" if day in native_days else "synthetic_reconstruction"
         rows.append(
             {
                 "Date": day.date().isoformat(),
@@ -837,8 +941,17 @@ def reconstruct_historical_nav(
                 "TWRWealth": (f"{wealth.iloc[index]:.12f}" if pd.notna(wealth.iloc[index]) else ""),
                 "Drawdown": (f"{drawdown.iloc[index]:.12f}" if performance_eligible else ""),
                 "ValuationSource": source,
+                "ObservedAt": (
+                    native_observation_times[day].isoformat()
+                    if day in native_observation_times
+                    else ""
+                ),
                 "PerformanceStatus": (
-                    "eligible" if performance_eligible else "missing_dated_cash_events"
+                    "missing_dated_cash_events"
+                    if not cash_verified
+                    else "unverified_broker_observation_time"
+                    if not valuation_timing_verified
+                    else "eligible"
                 ),
             }
         )
@@ -857,6 +970,7 @@ def reconstruct_historical_nav(
         terminal_cash_gap_gbp=cash_gap,
         broker_anchor_cash_adjustment_gbp=cash_gap,
         performance_eligible=performance_eligible,
+        valuation_timing_verified=valuation_timing_verified,
         cash_flows=AccountCashFlowHistory(
             covered_from=events[0].timestamp.to_pydatetime(),
             covered_until=pd.Timestamp(account["fetched_at"]).to_pydatetime(),

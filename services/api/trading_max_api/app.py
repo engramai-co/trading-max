@@ -10,6 +10,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -36,6 +37,7 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchShell,
 )
+from .flow_diagnostics import SnapshotFlowDiagnostics
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
 from .market_data_runtime import reconstruction_loader_factory
@@ -100,7 +102,7 @@ def create_app(
     research_cache_lock = threading.Lock()
     research_cache_run_id: str | None = None
     research_cache: dict[
-        tuple[str, str | None, int, str],
+        tuple[str, str | None, int, str, str, str],
         ResearchOverview,
     ] = {}
     research_shell_cache: SingleFlightCache[tuple, ResearchShell] = SingleFlightCache(32)
@@ -125,7 +127,14 @@ def create_app(
     ) -> ResearchOverview:
         nonlocal research_cache_run_id
         watchlist_revision = watchlist.revision()
-        key = (manifest.run_id, ticker, limit, watchlist_revision)
+        key = (
+            manifest.run_id,
+            ticker,
+            limit,
+            watchlist_revision,
+            live_alerts.revision(),
+            datetime.now(UTC).date().isoformat(),
+        )
         with research_cache_lock:
             if research_cache_run_id != manifest.run_id:
                 research_cache.clear()
@@ -145,7 +154,7 @@ def create_app(
 
     def cached_research_shell(manifest: SnapshotManifest) -> ResearchShell:
         watchlist_revision = watchlist.revision()
-        key = (manifest.run_id, watchlist_revision)
+        key = (manifest.run_id, watchlist_revision, datetime.now(UTC).date().isoformat())
         return research_shell_cache.get_or_compute(key, lambda: research.shell(manifest))
 
     def cached_research_lens(
@@ -250,6 +259,7 @@ def create_app(
         local_times=settings.full_refresh_times,
         reconciliation_local_time=settings.daily_reconciliation_time,
     )
+    flow_diagnostics = SnapshotFlowDiagnostics(store)
     intraday_scheduler = IntradayScheduler(
         jobs,
         enabled=automation_preferences.live_enabled,
@@ -261,6 +271,7 @@ def create_app(
         scope="live",
         trigger="live",
         legacy_triggers=("intraday",),
+        flow_diagnostics=flow_diagnostics.status,
     )
     performance_scheduler = IntradayScheduler(
         jobs,
@@ -273,6 +284,7 @@ def create_app(
         scope="performance",
         trigger="performance",
         performance=True,
+        flow_diagnostics=flow_diagnostics.status,
     )
     alert_monitor = AlertMonitor(
         store,
@@ -303,10 +315,6 @@ def create_app(
                         "initial analysis deferred until a provider is configured",
                         extra={"provider_error_code": exc.code},
                     )
-            scheduler.start()
-            intraday_scheduler.start()
-            performance_scheduler.start()
-            alert_monitor.start()
             threading.Thread(
                 target=prewarm_research,
                 name="trading-max-research-prewarm",
@@ -329,6 +337,13 @@ def create_app(
                 "bootstrap failed",
                 extra={"error": bootstrap_error},
             )
+        # Fresh installations can start before the worker publishes a snapshot.
+        # Keep the scheduling services alive so Settings can enable them later
+        # without requiring an API restart. Disabled schedules do no work.
+        scheduler.start()
+        intraday_scheduler.start()
+        performance_scheduler.start()
+        alert_monitor.start()
         yield
         logger.info("service stopping")
         scheduler.close()
@@ -347,7 +362,9 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def private_validation_error(request: Request, exc: RequestValidationError):
-        if request.url.path.startswith("/v1/settings/integrations/"):
+        if request.url.path.startswith(
+            ("/v1/settings/integrations/", "/v1/settings/llm/providers/")
+        ):
             return JSONResponse(
                 status_code=422,
                 content={
@@ -429,8 +446,9 @@ def _install_request_guards(
         )
         if environment != "production":
             return None
-        host = request.headers.get("host", "").split(":", 1)[0].strip("[]").lower()
+        host = ""
         try:
+            host = (request.url.hostname or "").lower()
             host_is_loopback = ipaddress.ip_address(host).is_loopback
         except ValueError:
             host_is_loopback = host == "localhost"
@@ -490,6 +508,7 @@ def _install_request_guards(
         if (
             request.url.path == "/v1/profile"
             or request.url.path.startswith("/v1/settings/integrations")
+            or request.url.path.startswith("/v1/settings/llm/providers/")
             or request.url.path == cfd_import_path
         ):
             client_host = request.client.host if request.client else "unknown"

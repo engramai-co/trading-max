@@ -4,6 +4,68 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-19
+
+### Fixed
+
+- Normalize foreign-settled transaction and CFD amounts into GBP with dated FX
+  evidence. Preserve unavailable values through API, review and household
+  projections when a reliable conversion is missing.
+- Allocate CFD financing and dividend events once across partial closes, retain
+  unassigned costs explicitly, and reconcile attribution to realised totals.
+  Keep missing net amounts unavailable when the source omits the fee evidence
+  needed to derive them.
+- Count cash-flow verification from retained current-snapshot observations,
+  independently of historical refresh-job counts.
+- Backfill missed account-history dates from available market data, preserve
+  identified broker observations, and retain reconciled cash flows when a
+  same-day valuation is refreshed. Keep weekend observations on their actual
+  dates and assign later cash movements to their actual valuation interval.
+  Suppress returns and P&L across uncertain observation timing instead of
+  recreating them in dashboard or review projections.
+- Measure downside deviation against the return target so repeated equal
+  losses do not incorrectly produce an unavailable Sortino ratio.
+- Recover cancelled jobs after their worker lease expires, and keep scheduling
+  services available when a fresh installation has no published snapshot yet.
+- Diagnose bootstrap token mismatches, state-root isolation, source provenance
+  and supported Node versions without claiming to have tested live providers.
+  Keep schema inspection read-only and report its limits explicitly.
+- Supervise all foreground processes and descendants, support linked Git
+  worktrees in local service installation, and retain the selected Node path
+  for launchd. Deployment readiness now requires a ready JSON result.
+- Handle invalid watchlist/job requests, missing analysis resources and
+  credential-store failures with controlled errors. Preserve exchange-qualified
+  selections and refresh date-sensitive research and alert caches.
+- Validate artifact provenance for binary reads and recover interrupted artifact
+  metadata writes without changing stored content identities.
+- Remove invalidated preview outputs before retries so a failed provider stage
+  cannot republish stale results from an earlier checkpoint.
+- Match semiannual financial comparisons to the same fiscal half, preserve
+  period evidence in valuations, and keep missing filing facts unavailable.
+- Use one common 20-session volume window and avoid options signals without
+  usable open-interest or gamma evidence. Invalidate affected research caches.
+- Validate security identifiers before replacing the durable catalog, reject
+  non-finite CFD inputs and conflicting close adjustments, and normalize strict
+  structured-output request schemas.
+
+### Security
+
+- Preserve credential isolation for custom installations, remove a secret-bearing
+  command-line fallback, and redact validation failures on model-provider routes.
+- Exclude environment-file variants from both backup paths, create private
+  archives, and reject unsafe backup destinations and retention settings.
+
+### Changed
+
+- Remove unreachable legacy frontend modules and migrate relevant regression
+  coverage to the active workspace code.
+- Refresh the onboarding skill, installation and diagnostic runbooks, provider
+  notices and metric documentation against the current application behavior.
+- Update README product screenshots from an isolated simulated broker portfolio
+  using current provider data and the current portfolio P&L presentation.
+- Align the example intraday retention with the 210-day default, and strengthen
+  release gates for deployment checks and validated release tags.
+
 ## [1.5.1] - 2026-09-19
 
 ### Fixed

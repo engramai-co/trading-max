@@ -859,6 +859,36 @@ def test_catalog_leaves_ambiguous_global_ticker_unresolved() -> None:
     )
 
 
+@pytest.mark.parametrize("exchange", ["", "NYQ"])
+def test_unknown_isin_does_not_inherit_a_colliding_ticker_identity(exchange):
+    master = CatalogSecurityMaster(
+        SecurityMasterCatalog(
+            records=[
+                SecurityEntityRecord(
+                    entity_id="issuer:alpha",
+                    canonical_ticker="SAME",
+                    entity_name="Alpha Synthetic Issuer",
+                    isins=["US0000000001"],
+                    listings=[{"ticker": "SAME", "exchange": "NYQ", "source": "synthetic"}],
+                    source="synthetic",
+                )
+            ]
+        )
+    )
+    resolved = master.resolve(
+        SecurityDescriptor(
+            ticker="SAME", exchange=exchange, isin="GB0000000002", name="Beta Synthetic Issuer"
+        )
+    )
+    assert resolved.method == "unresolved"
+    # Name evidence can still identify another share class of the same issuer.
+    same_issuer = master.resolve(
+        SecurityDescriptor(ticker="SAME", isin="US0000000003", name="Alpha Synthetic Issuer")
+    )
+    assert same_issuer.entity_id == "issuer:alpha"
+    assert same_issuer.method == "name"
+
+
 class _ProfileProvider:
     def resolve(self, security: SecurityDescriptor) -> MarketSecurityProfile:
         profiles = {
@@ -1283,4 +1313,55 @@ def test_dynamic_enrichment_keeps_ambiguous_market_tickers_as_distinct_listings(
     assert (
         master.resolve(SecurityDescriptor(ticker="SAN", exchange="PAR")).entity_id
         == sanofi.entity_id
+    )
+
+
+def test_enrichment_rejects_conflicting_identity_before_replacing_durable_catalog(tmp_path):
+    path = tmp_path / "reference" / "security-master.json"
+    path.parent.mkdir(parents=True)
+    original = SecurityMasterCatalog(
+        records=[
+            SecurityEntityRecord(
+                entity_id="issuer:original",
+                canonical_ticker="ORIGINAL",
+                entity_name="Original Synthetic Issuer",
+                source="synthetic",
+            )
+        ]
+    ).model_dump_json()
+    path.write_text(original)
+
+    class IdentityProvider:
+        def resolve_many(self, securities):
+            return {
+                security.isin: SecurityIdentity(
+                    symbol=security.ticker,
+                    name=security.name,
+                    composite_figi="BBGCONFLICT",
+                    provider_security_type="Common Stock",
+                    source="synthetic",
+                    as_of="2026-01-01",
+                )
+                for security in securities
+            }
+
+    candidates = [
+        EnrichmentCandidate(
+            security=SecurityDescriptor(ticker=ticker, name=name, isin=isin), exposure_gbp=100
+        )
+        for ticker, name, isin in (
+            ("ALPHA", "Alpha Synthetic Issuer", "US0000000001"),
+            ("BETA", "Beta Synthetic Issuer", "US0000000002"),
+        )
+    ]
+    with pytest.raises(ValueError, match="security-master conflict for composite-figi"):
+        SecurityMasterEnricher(
+            tmp_path,
+            provider=_NoProfileProvider(),
+            identity_provider=IdentityProvider(),
+        ).enrich(candidates)
+
+    assert path.read_text() == original
+    assert CatalogSecurityMaster.from_state_root(tmp_path).catalog.records[0].entity_id == (
+        "issuer:original"
     )

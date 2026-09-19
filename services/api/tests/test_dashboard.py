@@ -7,13 +7,49 @@ import pytest
 
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.dashboard import (
+    _latest_daily_return,
+    _latest_twr,
     _nav_series,
     _option_rows,
     _technical_rows,
     _valuation_rows,
     build_dashboard_data,
 )
-from services.api.trading_max_api.dashboard_models import ValuationScenario
+from services.api.trading_max_api.dashboard_models import DashboardResponse, ValuationScenario
+
+
+@pytest.mark.parametrize("reason", ["missing_dated_cash_events", "ambiguous_observation_time"])
+def test_explicitly_ineligible_nav_cannot_recreate_returns_or_money_pnl(reason: str) -> None:
+    header = (
+        "Date,SyntheticNAVGBP,ExternalFlowGBP,WeightedExternalFlowGBP,"
+        "DailyReturn,TWRWealth,Drawdown,PerformanceStatus\n"
+    )
+    invest = (
+        header
+        + "2026-01-09,100,100,100,,1,0,eligible\n"
+        + f"2026-01-12,100,100,50,,,,{reason}\n"
+        + "2026-01-13,200,0,0,1,2,0,eligible\n"
+    )
+    isa = (
+        header
+        + "2026-01-09,50,50,50,,1,0,eligible\n"
+        + "2026-01-12,55,0,0,0.1,1.1,0,eligible\n"
+        + "2026-01-13,55,0,0,0,1.1,0,eligible\n"
+    )
+    series = _nav_series(invest, isa)
+    assert series[-1]["total"] == 255
+    assert series[-1]["isaTwr"] == pytest.approx(0.1)
+    assert series[-1]["isaNetPnlGbp"] == 5
+    for point in series[1:]:
+        assert point["flowStatus"] == "unverified"
+        for field in ("investTwr", "investDrawdown", "totalTwr", "totalDrawdown"):
+            assert point[field] is None
+        for scope in ("invest", "total", "household"):
+            for suffix in ("NetContributionsGbp", "NetPnlGbp", "PnlDrawdownGbp"):
+                assert point[f"{scope}{suffix}"] is None
+    assert _latest_daily_return(invest) is None
+    assert _latest_twr(invest) is None
+    assert _latest_twr(isa) == pytest.approx(0.1)
 
 
 def test_analyst_fallback_valuation_scenario_allows_missing_dcf_inputs() -> None:
@@ -33,6 +69,79 @@ def test_analyst_fallback_valuation_scenario_allows_missing_dcf_inputs() -> None
     assert scenario.exit_fcf_multiple is None
     assert scenario.share_cagr is None
     assert scenario.gordon_multiple is None
+
+
+def test_missing_cfd_conversion_does_not_zero_or_carry_forward_money() -> None:
+    invest = "Date,SyntheticNAVGBP,ExternalFlowGBP\n2026-01-02,100,100\n2026-01-05,110,0\n2026-01-06,120,0\n"
+    cfd = (
+        "Date,RealisedCashEquityProxyGBP,CumulativeAccountCashFlowGBP,"
+        "CumulativeHouseholdExternalFlowGBP,CumulativeInternalTransferCounterflowGBP,"
+        "CumulativeRealisedPnLGBP\n"
+        "2026-01-02,20,15,15,0,5\n"
+        "2026-01-05,,,,,\n"
+    )
+    rows = _nav_series(invest, "Date,SyntheticNAVGBP\n", cfd)
+    assert rows[0]["household"] == 120
+    assert rows[0]["householdNetPnlGbp"] == 5
+    for row in rows[1:]:
+        assert row["total"] in (110, 120)
+        assert row["totalNetPnlGbp"] in (10, 20)
+        for key in (
+            "cfd",
+            "cfdNetContributionsGbp",
+            "cfdNetPnlGbp",
+            "household",
+            "householdNetContributionsGbp",
+            "householdNetPnlGbp",
+            "householdPnlDrawdownGbp",
+        ):
+            assert row[key] is None
+
+
+def test_unavailable_converted_money_survives_the_dashboard_contract(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    synthetic_path = report / "yahoo_nav" / "synthetic_nav_metrics.json"
+    synthetic = json.loads(synthetic_path.read_text())
+    synthetic["C"] = {
+        "ending_nav_gbp": None,
+        "net_external_flows_gbp": None,
+        "realized_profit_loss_gbp": None,
+        "period_net_gbp": 999,
+        "reconciliation_gap_gbp": None,
+        "closed_positions": 2,
+        "overnight_charges_gbp": None,
+        "max_drawdown_gbp": None,
+        "reconciliation_status": "fx_unavailable",
+    }
+    synthetic_path.write_text(json.dumps(synthetic))
+    policy_path = report / "policy_metrics.json"
+    policy = json.loads(policy_path.read_text())
+    policy["a_campaign"] = {
+        "status": "unavailable",
+        "win_rate": None,
+        "payoff": None,
+        "profit_factor": None,
+        "expectancy": None,
+    }
+    for row in policy["b_policy"]:
+        row.update(realized_net=None, gross_turnover=None)
+    policy_path.write_text(json.dumps(policy))
+    store = ArtifactStore(tmp_path / "runtime")
+    payload = build_dashboard_data(store, typed_fixture(research_root, store))
+    validated = DashboardResponse.model_validate(payload)
+    assert validated.total_value_gbp == 2000
+    assert validated.household_total_value_gbp is None
+    assert validated.cfd.closed_positions == 2
+    assert validated.cfd.ending_value_gbp is None
+    assert validated.cfd.realized_pnl_gbp is None
+    assert validated.accounts[-1].capital_delta_gbp is None
+    assert validated.policy.win_rate is None
+    assert validated.policy.isa_buckets[0].realized_net is None
+    assert validated.policy.isa_buckets[0].turnover is None
 
 
 def test_dashboard_contract_is_built_from_snapshot(

@@ -498,14 +498,32 @@ class CatalogSecurityMaster:
             if record is not None:
                 return record, method
 
+        def ticker_compatible(record: SecurityEntityRecord) -> bool:
+            observed_isin = _identifier(security.isin)
+            known_isins = {
+                _identifier(value)
+                for value in (*record.isins, *(listing.isin for listing in record.listings))
+                if value.strip()
+            }
+            # A familiar ticker cannot prove that a newly observed ISIN belongs
+            # to this issuer. Exact issuer-name evidence below can still join
+            # another share class; otherwise enrichment must resolve it first.
+            return not observed_isin or not known_isins or observed_isin in known_isins
+
         ticker = _identifier(security.ticker)
         market = _identifier(security.mic or security.exchange)
         if ticker and market:
-            listing_candidates = self._listing_index.get((ticker, market), [])
+            listing_candidates = [
+                record
+                for record in self._listing_index.get((ticker, market), [])
+                if ticker_compatible(record)
+            ]
             if len(listing_candidates) == 1:
                 return listing_candidates[0], "ticker"
 
-        ticker_candidates = self._ticker_index.get(ticker, []) if ticker else []
+        ticker_candidates = [
+            record for record in self._ticker_index.get(ticker, []) if ticker_compatible(record)
+        ]
         if len(ticker_candidates) == 1:
             return ticker_candidates[0], "ticker"
 

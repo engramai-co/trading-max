@@ -535,7 +535,10 @@ def rotate_trading212(
         },
         separators=(",", ":"),
     )
-    app_service(request, "credential_store").put(reference, secret)
+    try:
+        app_service(request, "credential_store").put(reference, secret)
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
     return preferences.save_integration(
         provider="trading212",
         profile=normalized,
@@ -636,10 +639,13 @@ def rotate_deepseek(
     )
     preferences = app_service(request, "settings_repository")
     reference = preferences.credential_reference("deepseek")
-    app_service(request, "credential_store").put(
-        reference,
-        request_body.api_key,
-    )
+    try:
+        app_service(request, "credential_store").put(
+            reference,
+            request_body.api_key,
+        )
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
     return preferences.save_integration(
         provider="deepseek",
         profile=None,

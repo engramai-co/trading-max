@@ -9,6 +9,7 @@ import shlex
 import sqlite3
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 from . import __version__
@@ -22,6 +23,12 @@ from .source_checkout import (
     canonical_main_sha,
     inspect_source_checkout,
 )
+
+MAX_DIAGNOSTIC_COPY_BYTES = 64 * 1024 * 1024
+
+
+class _InspectionLimited(ValueError):
+    """A read-only check could not establish a result within its safe limits."""
 
 
 def default_state_root() -> Path:
@@ -146,13 +153,86 @@ def setup(state_root: Path) -> int:
     print(f"{action} Trading Max {__version__}")
     print(f"state root: {state_root}")
     print(f"bootstrap file: {env_path}")
-    print("provider: fake (configure Trading 212 and an analysis provider from Settings)")
+    print(f"bootstrap analysis provider: {values['TRADING_MAX_LLM_PROVIDER'] or 'not configured'}")
+    print("provider access is not checked; review the active configuration in Settings")
     return 0
 
 
+def _copy_diagnostic_file(source: Path, destination: Path, size: int) -> None:
+    """Copy only the bounded file length observed before the diagnostic read."""
+
+    with source.open("rb") as reader, destination.open("xb") as writer:
+        remaining = size
+        while remaining:
+            data = reader.read(min(1024 * 1024, remaining))
+            if not data:
+                raise _InspectionLimited(
+                    "state database changed during inspection; retry doctor when idle"
+                )
+            writer.write(data)
+            remaining -= len(data)
+
+
 def _migration_versions(database_path: Path) -> list[str]:
+    """Inspect migrations without creating or changing state-root sidecars."""
+
+    def signature(path: Path) -> tuple[int, int, int, int] | None:
+        try:
+            metadata = path.stat()
+        except FileNotFoundError:
+            return None
+        return (
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+
+    # SQLite mode=ro can still create -wal/-shm files in a writable state
+    # directory. immutable=1 avoids that but ignores uncheckpointed WAL data.
+    # A private diagnostic copy lets SQLite read that WAL without modifying
+    # the installation. Fail closed if a writer changes either input while
+    # the copy is being made.
+    wal_path = database_path.with_name(f"{database_path.name}-wal")
+    journal_path = database_path.with_name(f"{database_path.name}-journal")
+    paths = (database_path, wal_path, journal_path)
     try:
-        connection = sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
+        before = {path: signature(path) for path in paths}
+        if before[journal_path] is not None and before[journal_path][1] > 0:
+            raise _InspectionLimited("an active rollback journal prevents a read-only schema check")
+        if before[wal_path] is None or before[wal_path][1] == 0:
+            # No uncheckpointed frames exist. Validate the observation after
+            # querying so a concurrent writer cannot silently invalidate it.
+            versions = _read_migration_versions(database_path, immutable=True)
+            if before != {path: signature(path) for path in paths}:
+                raise _InspectionLimited(
+                    "state database changed during inspection; retry doctor when idle"
+                )
+            return versions
+        copy_size = sum(metadata[1] for metadata in before.values() if metadata is not None)
+        if copy_size > MAX_DIAGNOSTIC_COPY_BYTES:
+            raise _InspectionLimited(
+                "DB/WAL exceed the 64 MiB diagnostic-copy limit; schema is not verified. "
+                "Recheck after a normal application shutdown or maintenance checkpoint"
+            )
+        with tempfile.TemporaryDirectory(prefix="trading-max-doctor-") as temporary:
+            copied_database = Path(temporary) / database_path.name
+            for path, metadata in before.items():
+                if metadata is not None:
+                    _copy_diagnostic_file(path, Path(temporary) / path.name, metadata[1])
+            if before != {path: signature(path) for path in paths}:
+                raise _InspectionLimited(
+                    "state database changed during inspection; retry doctor when idle"
+                )
+            return _read_migration_versions(copied_database)
+    except OSError as exc:
+        raise ValueError("could not open the state database read-only") from exc
+
+
+def _read_migration_versions(database_path: Path, *, immutable: bool = False) -> list[str]:
+    try:
+        options = "mode=ro&immutable=1" if immutable else "mode=ro"
+        connection = sqlite3.connect(f"{database_path.as_uri()}?{options}", uri=True)
     except sqlite3.Error as exc:
         raise ValueError("could not open the state database read-only") from exc
     connection.row_factory = sqlite3.Row
@@ -176,6 +256,12 @@ def _latest_packaged_migration(app_root: Path) -> str:
     return migrations[-1].name
 
 
+def _print_runtime_check_scope() -> None:
+    print("credential store availability: not checked")
+    print("runtime readiness: not checked; verify /ready after starting the application")
+    print("provider access: not checked; test configured providers in Settings")
+
+
 def doctor(
     state_root: Path,
     *,
@@ -190,16 +276,20 @@ def doctor(
     if not database_path.is_file():
         print("not initialized: run `trading-max setup` first")
         return 1
+    versions: list[str] | None = None
+    inspection_limitation: str | None = None
     try:
-        versions = _migration_versions(database_path)
         expected_schema = _latest_packaged_migration(app_root)
+        versions = _migration_versions(database_path)
+    except _InspectionLimited as exc:
+        inspection_limitation = str(exc)
     except ValueError as exc:
         print(f"doctor failed: {exc}")
         return 1
-    if not versions:
+    if versions == []:
         print("database has no migrations")
         return 1
-    if versions[-1] != expected_schema:
+    if versions and versions[-1] != expected_schema:
         failures.append(f"database schema is {versions[-1]}; source expects {expected_schema}")
     if not bootstrap_path.is_file():
         failures.append("bootstrap file is missing")
@@ -208,14 +298,50 @@ def doctor(
             failures.append("bootstrap file permissions must be 0600")
         try:
             bootstrap = _read_env(bootstrap_path)
+        except UnicodeError:
+            failures.append("bootstrap file is not valid UTF-8")
+            bootstrap = {}
+        except OSError:
+            failures.append("bootstrap file could not be read")
+            bootstrap = {}
         except ValueError as exc:
             failures.append(str(exc))
             bootstrap = {}
-        if not bootstrap.get("TRADING_MAX_CREDENTIAL_SERVICE"):
+        api_token = bootstrap.get("TRADING_MAX_API_TOKEN", "")
+        proxy_token = bootstrap.get("PORTFOLIO_BACKEND_TOKEN", "")
+        if not api_token.strip():
+            failures.append("bootstrap internal API token is missing")
+        if not proxy_token.strip():
+            failures.append("bootstrap web proxy token is missing")
+        if (
+            api_token.strip()
+            and proxy_token.strip()
+            and not secrets.compare_digest(api_token.encode("utf-8"), proxy_token.encode("utf-8"))
+        ):
+            failures.append("bootstrap internal API and web proxy tokens do not match")
+        credential_service = bootstrap.get("TRADING_MAX_CREDENTIAL_SERVICE", "").strip()
+        if not credential_service:
             failures.append("bootstrap credential-service namespace is missing")
+        elif (
+            credential_service == DEFAULT_CREDENTIAL_SERVICE
+            and state_root != default_state_root().expanduser().resolve()
+        ):
+            failures.append(
+                "custom state root uses the shared default credential namespace; "
+                "plan an explicit credential migration before isolating this installation"
+            )
         configured_root = bootstrap.get("TRADING_MAX_DATA_ROOT")
-        if configured_root and Path(configured_root).expanduser().resolve() != state_root:
-            failures.append("bootstrap data root does not match the requested state root")
+        if not configured_root or not configured_root.strip():
+            failures.append("bootstrap data root is missing")
+        else:
+            try:
+                data_root = Path(configured_root).expanduser()
+                if not data_root.is_absolute():
+                    failures.append("bootstrap data root must be an absolute path")
+                elif data_root.resolve() != state_root:
+                    failures.append("bootstrap data root does not match the requested state root")
+            except (OSError, ValueError):
+                failures.append("bootstrap data root is invalid")
 
     try:
         source = inspect_source_checkout(app_root)
@@ -243,18 +369,29 @@ def doctor(
 
     print(f"Trading Max {__version__} is initialized")
     print(f"state root: {state_root}")
-    print(f"schema: {versions[-1]} (expected {expected_schema})")
+    print(f"schema: {versions[-1] if versions else 'not verified'} (expected {expected_schema})")
+    if inspection_limitation:
+        print(f"schema inspection limit: {inspection_limitation}")
     if source is not None:
-        print(f"source: {CANONICAL_REPOSITORY}@{source.commit[:12]} ({source.branch})")
+        source_label = (
+            f"{CANONICAL_REPOSITORY}@{source.commit[:12]}"
+            if source.canonical_remote is not None
+            else source.commit[:12]
+        )
+        print(f"source: {source_label} ({source.branch})")
+        print(f"canonical source: {'verified' if source.canonical_remote else 'not verified'}")
         print(f"worktree: {'modified' if source.dirty else 'clean'}")
         if update_current:
             print("updates: canonical main is current")
-    print("credential store: namespaced in the operating system")
+    _print_runtime_check_scope()
     if failures:
         print("doctor found problems:")
         print("\n".join(f"- {failure}" for failure in failures))
         return 1
-    print("doctor: healthy")
+    if inspection_limitation:
+        print("doctor: configuration check incomplete")
+        return 1
+    print("doctor: configuration checks passed")
     return 0
 
 

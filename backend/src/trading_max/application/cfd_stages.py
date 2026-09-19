@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from trading_max.analytics.cfd import CfdAnalysis, CfdEvent, CfdLedger, analyse_cfd_ledger
+from trading_max.analytics.fx import FxResolver, HistoricalFxResolver
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.ingestion.cfd_imports import CfdImportStore
@@ -17,10 +18,12 @@ from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
 
-def _closed_after_fx(event: CfdEvent) -> Decimal:
-    if event.result_after_fx_fee is not None:
-        return event.result_after_fx_fee
-    return (event.gross_result or Decimal(0)) + (event.fx_fee or Decimal(0))
+def _plus(left: Decimal | None, right: Decimal | None) -> Decimal | None:
+    return left + right if left is not None and right is not None else None
+
+
+def _number_text(value: Decimal | None) -> str | None:
+    return str(value) if value is not None else None
 
 
 def _transfer_profile(event: CfdEvent) -> str | None:
@@ -38,16 +41,7 @@ def _daily_proxy_csv(
     account_external_flows: dict[str, dict[str, Decimal]],
 ) -> tuple[str, tuple[str, ...]]:
     events = {event.event_id: event for event in ledger.events}
-    standalone_overnight = {
-        event.position_id
-        for event in ledger.events
-        if event.record_type == "Overnight interest" and event.position_id
-    }
-    standalone_dividend = {
-        event.position_id
-        for event in ledger.events
-        if event.record_type == "Dividend adjustment" and event.position_id
-    }
+    amounts = {item.event_id: item for item in analysis.event_amounts}
     household_external = Decimal(0)
     cumulative_closed_after_fx = Decimal(0)
     cumulative_overnight = Decimal(0)
@@ -58,6 +52,7 @@ def _daily_proxy_csv(
     unverified_transfer_count = 0
     transfer_totals: dict[tuple[str, str], Decimal] = {}
     unknown_transfer_dates: set[str] = set()
+    missing_fx_transfer_keys: set[tuple[str, str]] = set()
     for event in ledger.events:
         if event.record_type != "Transaction" or event.transaction_type != "Transfer":
             continue
@@ -67,14 +62,22 @@ def _daily_proxy_csv(
             unknown_transfer_dates.add(date)
             continue
         identity = (date, profile)
+        if amounts[event.event_id].account_cash_flow_gbp is None:
+            missing_fx_transfer_keys.add(identity)
+            continue
         transfer_totals[identity] = transfer_totals.get(identity, Decimal(0)) + (
-            event.amount or Decimal(0)
+            amounts[event.event_id].account_cash_flow_gbp
         )
     matched_transfers: set[tuple[str, str]] = set()
     warnings: list[str] = []
     for (date, profile), transfer in sorted(transfer_totals.items()):
         counterpart = account_external_flows.get(profile, {}).get(date, Decimal(0))
-        if transfer != 0 and counterpart != 0 and abs(transfer + counterpart) <= Decimal("0.01"):
+        if (
+            (date, profile) not in missing_fx_transfer_keys
+            and transfer != 0
+            and counterpart != 0
+            and abs(transfer + counterpart) <= Decimal("0.01")
+        ):
             matched_transfers.add((date, profile))
         else:
             warnings.append(
@@ -87,72 +90,83 @@ def _daily_proxy_csv(
         "it was not used as a household contribution counterflow"
         for date in sorted(unknown_transfer_dates)
     )
-    rows: dict[str, dict[str, str]] = {}
+    warnings.extend(
+        f"fx_unavailable: CFD transfer on {date} cannot be verified against {profile} in GBP"
+        for date, profile in sorted(missing_fx_transfer_keys)
+    )
+    rows: dict[str, dict[str, str | None]] = {}
     for point in analysis.realised_series:
         event = events[point.event_id]
+        amount = amounts[point.event_id]
         if event.record_type == "Transaction" and event.transaction_type in {
             "Deposit",
             "Withdrawal",
         }:
-            household_external += event.amount or Decimal(0)
+            household_external = _plus(household_external, amount.account_cash_flow_gbp)
         elif event.record_type == "Transaction" and event.transaction_type == "Transfer":
             profile = _transfer_profile(event)
             identity = (point.occurred_at.date().isoformat(), profile or "")
-            amount = event.amount or Decimal(0)
+            transfer_amount = amount.account_cash_flow_gbp
             if profile is not None:
                 # Trading 212 explicitly labels the counter-account in Info.
                 # That broker classification is authoritative for the household
                 # boundary; exact dated account-flow matching only controls the
                 # verification status.
-                cumulative_internal_transfer += amount
+                cumulative_internal_transfer = _plus(cumulative_internal_transfer, transfer_amount)
             if identity in matched_transfers:
                 # The Invest/ISA NAV ledger records the other end as an account
                 # external flow. The CFD-side amount cancels it at the household
                 # boundary.
-                cumulative_matched_internal_transfer += amount
+                cumulative_matched_internal_transfer = _plus(
+                    cumulative_matched_internal_transfer, transfer_amount
+                )
             else:
-                cumulative_unmatched_internal_transfer += amount
+                cumulative_unmatched_internal_transfer = _plus(
+                    cumulative_unmatched_internal_transfer, transfer_amount
+                )
                 unverified_transfer_count += 1
-        elif event.record_type == "Closed position":
-            cumulative_closed_after_fx += _closed_after_fx(event)
-            position_id = event.position_id or ""
-            if position_id not in standalone_overnight:
-                cumulative_overnight += event.embedded_overnight_interest or Decimal(0)
-            if position_id not in standalone_dividend:
-                cumulative_dividend += event.embedded_dividend_adjustment or Decimal(0)
-        elif event.record_type == "Overnight interest":
-            cumulative_overnight += event.amount or Decimal(0)
-        elif event.record_type == "Dividend adjustment":
-            cumulative_dividend += event.dividend_net or Decimal(0)
+        cumulative_closed_after_fx = _plus(cumulative_closed_after_fx, amount.closed_after_fx_gbp)
+        cumulative_overnight = _plus(cumulative_overnight, amount.overnight_interest_gbp)
+        cumulative_dividend = _plus(cumulative_dividend, amount.dividend_adjustment_gbp)
         date = point.occurred_at.date().isoformat()
         rows[date] = {
             "Date": date,
             "NavQuality": "realised_cash_equity_proxy",
             "TrueNavAvailable": "false",
+            "GBPConversionStatus": "unavailable"
+            if point.realised_cash_equity_proxy is None
+            else "available",
             # Compatibility column for older readers. The schema and quality
             # fields explicitly identify this as a realised proxy, not NAV.
-            "SyntheticNAVGBP": str(point.realised_cash_equity_proxy),
-            "RealisedCashEquityProxyGBP": str(point.realised_cash_equity_proxy),
-            "CumulativeAccountCashFlowGBP": str(point.cumulative_account_cash_flow),
-            "CumulativeHouseholdExternalFlowGBP": str(household_external),
-            "CumulativeInternalTransferCounterflowGBP": str(cumulative_internal_transfer),
-            "CumulativeMatchedInternalTransferCounterflowGBP": str(
+            "SyntheticNAVGBP": _number_text(point.realised_cash_equity_proxy),
+            "RealisedCashEquityProxyGBP": _number_text(point.realised_cash_equity_proxy),
+            "CumulativeAccountCashFlowGBP": _number_text(point.cumulative_account_cash_flow),
+            "CumulativeHouseholdExternalFlowGBP": _number_text(household_external),
+            "CumulativeInternalTransferCounterflowGBP": _number_text(cumulative_internal_transfer),
+            "CumulativeMatchedInternalTransferCounterflowGBP": _number_text(
                 cumulative_matched_internal_transfer
             ),
-            "CumulativeUnmatchedInternalTransferGBP": str(cumulative_unmatched_internal_transfer),
-            "HouseholdTransferMatchStatus": (
-                "verified" if unverified_transfer_count == 0 else "partial"
+            "CumulativeUnmatchedInternalTransferGBP": _number_text(
+                cumulative_unmatched_internal_transfer
             ),
-            "CumulativeRealisedPnLGBP": str(point.cumulative_realised_pnl),
-            "RealisedPnLDrawdownGBP": str(point.realised_pnl_drawdown),
-            "CumulativeClosedAfterFXGBP": str(cumulative_closed_after_fx),
-            "CumulativeOvernightInterestGBP": str(cumulative_overnight),
-            "CumulativeDividendAdjustmentGBP": str(cumulative_dividend),
+            "HouseholdTransferMatchStatus": (
+                "unavailable"
+                if cumulative_unmatched_internal_transfer is None
+                else "verified"
+                if unverified_transfer_count == 0
+                else "partial"
+            ),
+            "CumulativeRealisedPnLGBP": _number_text(point.cumulative_realised_pnl),
+            "RealisedPnLDrawdownGBP": _number_text(point.realised_pnl_drawdown),
+            "CumulativeClosedAfterFXGBP": _number_text(cumulative_closed_after_fx),
+            "CumulativeOvernightInterestGBP": _number_text(cumulative_overnight),
+            "CumulativeDividendAdjustmentGBP": _number_text(cumulative_dividend),
         }
     fieldnames = [
         "Date",
         "NavQuality",
         "TrueNavAvailable",
+        "GBPConversionStatus",
         "SyntheticNAVGBP",
         "RealisedCashEquityProxyGBP",
         "CumulativeAccountCashFlowGBP",
@@ -197,30 +211,41 @@ def _metrics_payload(
         "start": ledger.coverage_start.isoformat() if ledger.coverage_start else None,
         "end": ledger.coverage_end.isoformat() if ledger.coverage_end else None,
         "last_event_date": ledger.latest_event_at.isoformat() if ledger.latest_event_at else None,
-        "ending_nav_gbp": str(ending_proxy),
-        "net_external_flows_gbp": str(cash.household_external_flow),
-        "account_cash_flows_gbp": str(cash.account_cash_flow),
-        "realized_profit_loss_gbp": str(pnl.net_realised_pnl),
-        "closed_gross_pnl_gbp": str(pnl.closed_gross_result),
-        "fx_fees_gbp": str(pnl.fx_fees),
-        "closed_after_fx_pnl_gbp": str(pnl.closed_after_fx),
-        "overnight_charges_gbp": str(pnl.overnight_interest),
-        "dividend_adjustments_gbp": str(pnl.dividend_adjustment),
+        "ending_nav_gbp": _number_text(ending_proxy),
+        "net_external_flows_gbp": _number_text(cash.household_external_flow),
+        "account_cash_flows_gbp": _number_text(cash.account_cash_flow),
+        "realized_profit_loss_gbp": _number_text(pnl.net_realised_pnl),
+        "closed_gross_pnl_gbp": _number_text(pnl.closed_gross_result),
+        "fx_fees_gbp": _number_text(pnl.fx_fees),
+        "closed_after_fx_pnl_gbp": _number_text(pnl.closed_after_fx),
+        "overnight_charges_gbp": _number_text(pnl.overnight_interest),
+        "dividend_adjustments_gbp": _number_text(pnl.dividend_adjustment),
         "financing_to_gross_ratio": (
-            str(pnl.financing_drag_to_gross_ratio)
+            _number_text(pnl.financing_drag_to_gross_ratio)
             if pnl.financing_drag_to_gross_ratio is not None
             else None
         ),
         "financing_to_net_ratio": (
-            str(pnl.financing_drag_to_net_ratio)
+            _number_text(pnl.financing_drag_to_net_ratio)
             if pnl.financing_drag_to_net_ratio is not None
             else None
         ),
         "closed_positions": analysis.trade_quality.trade_count,
-        "max_drawdown_gbp": str(pnl.max_realised_pnl_drawdown),
+        "max_drawdown_gbp": _number_text(pnl.max_realised_pnl_drawdown),
         "pnl_sharpe_proxy": None,
-        "reconciliation_gap_gbp": "0",
-        "reconciliation_status": "verified_canonical_ledger",
+        "reconciliation_gap_gbp": "0" if pnl.net_realised_pnl is not None else None,
+        "reconciliation_status": (
+            "cost_allocation_conflict"
+            if analysis.cost_allocation.get("conflicts")
+            else "fx_unavailable"
+            if analysis.fx_conversion.get("missing_event_ids")
+            else "monetary_data_unavailable"
+            if analysis.monetary_data.get("missing_event_ids")
+            else "verified_canonical_ledger"
+        ),
+        "fx_conversion": analysis.fx_conversion,
+        "monetary_data": analysis.monetary_data,
+        "cost_allocation": analysis.to_dict()["cost_allocation"],
         "warning": " ".join(warnings),
         "import_status": import_status,
     }
@@ -230,7 +255,7 @@ class CfdAccountStage:
     """Consume private imports without making CFD mandatory for other users."""
 
     name = "accounts.cfd"
-    version = "cfd-account-v1"
+    version = "cfd-account-v3"
     required_for = frozenset({"all", "accounts", "cfd"})
     # Normal account plans supply current NAV artifacts. The isolated CFD plan
     # deliberately reads the same keys from the latest immutable snapshot.
@@ -240,7 +265,14 @@ class CfdAccountStage:
         self,
         state_root: Path,
         artifacts: ContentAddressedArtifactStore,
+        *,
+        fx_resolver: FxResolver | None = None,
     ) -> None:
+        self.fx_resolver = (
+            fx_resolver
+            if fx_resolver is not None
+            else HistoricalFxResolver(state_root / "raw" / "fx")
+        )
         self.imports = CfdImportStore(state_root)
         self.artifacts = artifacts
         self.snapshots = SnapshotStore(state_root)
@@ -278,12 +310,15 @@ class CfdAccountStage:
                 date = str(row.get("Date") or "").strip()
                 value = str(row.get("ExternalFlowGBP") or "0").strip() or "0"
                 try:
-                    flows[date] = Decimal(value)
+                    amount = Decimal(value)
+                    if not amount.is_finite():
+                        raise ValueError("cash flow must be finite")
                 except (InvalidOperation, ValueError) as exc:
                     raise StageExecutionError(
                         "account.cfd_nav_dependency_invalid",
                         f"{key} contains an invalid ExternalFlowGBP value",
                     ) from exc
+                flows[date] = amount
             result[profile] = flows
         return result
 
@@ -296,7 +331,7 @@ class CfdAccountStage:
         if ledger is None:
             return StageResult(metadata={"cfd_imported": False})
         try:
-            analysis = analyse_cfd_ledger(ledger)
+            analysis = analyse_cfd_ledger(ledger, fx_resolver=self.fx_resolver)
         except Exception as exc:
             raise StageExecutionError("account.cfd_analysis_failed", str(exc)) from exc
         if analysis is None:

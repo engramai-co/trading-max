@@ -1,69 +1,26 @@
-# Agent runbook: deploy Trading Max on a local workstation
+# Agent runbook: local installation and diagnosis
 
-This runbook is written for a coding agent operating a user's computer. It is
-deliberately conservative because Trading Max handles financial data and API
-credentials.
+Use this runbook with the repository's
+[onboarding skill](../../.agents/skills/trading-max-onboard/SKILL.md) when a user
+asks to install or run an already-cloned checkout. A setup request covers the
+safe foreground workflow through verification; do not ask for a second setup
+prompt. Reuse authorization already given in the task.
 
-## Activation
+For an existing local installation, diagnose and resume it before considering
+initialization. For a requested update, use the
+[local update procedure](../installation/local-installation.md#updates).
+A provisioned remote macOS host uses the separate
+[operator deployment procedure](../../deploy/macos/README.md).
 
-Follow this runbook whenever the user opens an already-cloned Trading Max
-checkout and asks an agent to install, onboard, set up, run, or locally deploy
-it. That request includes the full safe foreground installation; load the
-repository instructions and `trading-max-onboard` skill and continue without
-asking for a second setup prompt. On a fresh checkout with no existing state or
-occupied ports, proceed immediately through preflight and installation. Do not
-turn the request into a tutorial or ask the user to execute commands the agent
-can safely execute itself.
+## 1. Inspect the workstation and existing installation
 
-Pause only at the explicit boundaries in this document: existing state with
-unclear ownership, occupied ports, unavailable credential storage, material
-broker reconciliation differences, network exposure, or background-service
-installation.
+Record the platform, current source branch and commit, `VERSION`, intended state
+root, process owner, and whether the user requested foreground or login startup.
+Use Python 3.12, uv and Node 22 LTS. The web package declares a minimum of Node
+20.19, but CI and the advanced macOS deployer use Node 22. Do not replace an
+existing global runtime silently.
 
-## Objective
-
-Install and verify a single-user Trading Max instance with:
-
-- API bound to `127.0.0.1:8421`;
-- web bound to `127.0.0.1:3413`;
-- durable worker running;
-- state outside the Git checkout;
-- secrets stored only by the operating-system credential manager;
-- no public network exposure.
-
-## Non-negotiable rules
-
-1. Never ask the user to paste Trading 212 or LLM secrets into chat, shell
-   history, a committed file, logs, or screenshots.
-2. Never bind the API or web process to `0.0.0.0`.
-3. Never delete, overwrite, migrate, or initialize an existing state root
-   without first identifying it and obtaining explicit user approval.
-4. Prefer `doctor` for an existing installation. Current `setup` is
-   non-destructive and may fill missing defaults, but it is not a repair for
-   provider, queue, or snapshot failures.
-5. Never claim the deployment is healthy based only on process state or a web
-   HTTP 200. `/ready` and the first immutable snapshot are the acceptance gate.
-6. Never configure Tailscale, a reverse proxy, login items, launchd, systemd,
-   or Windows Services unless the user separately authorizes that scope.
-7. Never work around an unavailable OS keyring by writing plaintext secrets.
-
-## Phase 0: establish scope from the workstation
-
-Inspect and infer:
-
-- repository URL or existing checkout;
-- target platform and operating-system version;
-- interactive foreground run or an explicitly authorized long-running service;
-- default or custom external state root;
-- whether this is a fresh install or an upgrade.
-
-Use the platform default and a foreground process unless the user already
-specified otherwise. If a choice would change where existing state is stored
-or how the host starts at login, pause for user confirmation.
-
-## Phase 1: preflight
-
-Run read-only checks:
+On macOS or Linux, inspect:
 
 ```bash
 git --version
@@ -71,82 +28,90 @@ uv --version
 python3 --version
 node --version
 npm --version
+git status --short --branch
+git rev-parse HEAD
+cat VERSION
 lsof -nP -iTCP:3413 -sTCP:LISTEN || true
 lsof -nP -iTCP:8421 -sTCP:LISTEN || true
 ```
 
-If a required tool is missing, prefer the user's existing package manager and
-the vendor's documented package. Explain the installation before changing the
-system. Do not pipe a remote script directly into a shell, and do not silently
-replace an existing Python or Node installation.
+These shell launch recipes support macOS and Linux desktop. Windows remains a
+preview; there is no packaged PowerShell launcher or Windows Service. Use
+platform-appropriate diagnostics rather than presenting Bash commands as a
+verified native Windows installation.
 
-Acceptance:
+Resolve `TRADING_MAX_STATE_ROOT` or an explicitly requested custom root before
+falling back to:
 
-- Python 3.12 is installable through uv;
-- Node is 22 LTS, or at least 20.19;
-- ports are free or belong to an instance the user explicitly wants stopped.
+| Platform | Default external state root |
+|---|---|
+| macOS | `~/Library/Application Support/Trading Max` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/trading-max` |
+| Windows | `%APPDATA%\Trading Max` |
 
-Do not silently kill an existing process.
+Check existence and permissions of `secrets/trading_max.env`, `trading_max.db`
+and `latest.json` without displaying contents. Any existing files, or an
+unexplained non-empty directory, require identifying the installation first.
+Inspect only needed non-secret bootstrap fields; never dump the env file,
+which includes internal authentication tokens.
 
-## Phase 2: inspect before initializing
+- **Fresh:** no existing state or conflicting listener; continue to setup.
+- **Known existing local installation:** run `doctor`, inspect Health and
+  Settings, and reuse it. A stopped app does not need a new state root.
+- **Unclear ownership or occupied ports:** identify the process/state before
+  any replacement. Ask only if ownership or authorization remains unresolved.
+- **Advanced host:** do not run local setup against its state or services.
 
-Determine the platform default:
-
-- macOS: `~/Library/Application Support/Trading Max`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/trading-max`
-- Windows: `%APPDATA%\Trading Max`
-
-Check for these paths without printing file contents:
-
-```text
-<state-root>/secrets/trading_max.env
-<state-root>/trading_max.db
-<state-root>/latest.json
-```
-
-Decision:
-
-- If any exists, classify this as an **existing installation**. Run `doctor`
-  first; setup is unnecessary unless a reviewed bootstrap key is missing.
-- If none exists, classify it as a **fresh installation** and continue.
-
-## Phase 3: acquire and verify source
-
-For a new checkout:
+`doctor` is a read-only configuration/source diagnostic. It does not start
+services, migrate the database, unlock the keyring, test provider credentials,
+or establish runtime readiness. An update-check difference also does not prove
+that a running installation is unhealthy.
 
 ```bash
-git clone https://github.com/engramai-co/trading-max.git
-cd trading-max
-git status --short
+uv run --package trading-max-backend trading-max doctor --check-updates
+```
+
+Use the same explicit `--state-root` or exported state-root variable throughout.
+Check available disk space for dependencies, the growing state and a separate
+backup; there is no fixed 2 GB lifetime storage bound.
+
+## 2. Verify and select source
+
+Verify a remote points to `engramai-co/trading-max` on GitHub. Inspect URLs
+without copying embedded credentials into logs or chat. The canonical remote
+may be `upstream` while `origin` is a fork; never assume its name.
+
+Preserve dirty work or divergent commits before changing branches. For a fresh
+installation the default is clean protected `main`; do not merge main into the
+currently selected feature branch. After verification, use the matching remote:
+
+```bash
+canonical_remote=origin # use upstream instead when that is the verified remote
+git fetch --prune "$canonical_remote" main --tags
+git switch --no-overwrite-ignore main
+git merge --ff-only "$canonical_remote/main"
 git rev-parse HEAD
 ```
 
-For an existing checkout:
+If local `main` does not exist, create it tracking the verified remote's main.
+If it is checked out elsewhere or cannot fast-forward, diagnose rather than
+forcing a reset. Honor an explicitly requested release tag or contributor
+branch and record its full SHA; do not call it current main. Onboarding rejects
+a dirty checkout, so preserve work in an agreed backup/branch or separate clean
+checkout before invoking it.
+
+## 3. Initialize a fresh installation
+
+For a custom state root, export it before onboarding **and** launching:
 
 ```bash
-git status --short
-git remote -v
-git rev-parse HEAD
+export TRADING_MAX_STATE_ROOT="/absolute/path/to/trading-max-state"
 ```
 
-The checkout must have an `origin` or `upstream` remote pointing to
-`engramai-co/trading-max`.
+Omit that export for the platform default. Keep state outside the checkout and
+never copy another installation's bootstrap file or credential namespace.
 
-If the worktree is dirty, do not pull or switch revisions until the user
-confirms how those changes should be handled. For a clean existing checkout,
-refresh the canonical references and require a fast-forward update before
-onboarding:
-
-```bash
-git fetch --prune origin main --tags
-git pull --ff-only origin main
-```
-
-Protected public `main` is the supported onboarding source. For an explicitly
-requested public release tag or contributor branch, record the full commit SHA
-and do not describe it as current `main`.
-
-## Phase 4: run non-interactive onboarding
+From the repository root:
 
 ```bash
 uv run --package trading-max-backend trading-max onboard \
@@ -155,140 +120,107 @@ uv run --package trading-max-backend trading-max onboard \
   --no-browser
 ```
 
-This is the default agent path. For an explicitly authorized macOS login
-service, replace `--skip-service` with `--install-service`. For a custom state
-root:
+This initializes external state and migrations, installs locked dependencies,
+builds the web app, and checks a temporary local API. It accepts no credential
+flags. The temporary API stops when the command ends; “Onboarding complete”
+does not mean the web app and worker are running or that broker data is ready.
 
-```bash
-uv run --package trading-max-backend trading-max onboard \
-  --non-interactive \
-  --skip-service \
-  --no-browser \
-  --state-root "/absolute/path"
-```
+Verify the bootstrap exists with mode `0600` on POSIX, the database exists, and
+`doctor` reports the expected migration. A custom root needs its own credential
+namespace rather than the historic default service. No plaintext fallback is
+allowed if OS credential storage is unavailable.
 
-The command performs locked dependency installation, production build,
-idempotent state initialization, migration, and local API verification. It
-never asks an agent for secrets and has no credential command-line flags.
-
-Verify, without printing the bootstrap or token:
-
-- bootstrap file exists;
-- permissions are `0600` on POSIX;
-- database exists;
-- `doctor` reports the latest migration;
-- state root is outside the checkout.
-
-For a read-only check of an existing installation, run:
-
-```bash
-uv run --package trading-max-backend trading-max doctor --check-updates
-```
-
-or the corresponding explicit `--state-root`.
-
-## Phase 5: start interactively
+## 4. Launch and inspect pre-data status
 
 ```bash
 deploy/local/start.sh
 ```
 
-Keep this process attached to a terminal/session that can be stopped cleanly.
-The script owns API, worker, and web child processes and handles `Ctrl-C`.
+Keep the launcher attached to a terminal. It runs API, worker and web children;
+`Ctrl-C` stops them. Both listeners must stay on `127.0.0.1` at ports `8421`
+and `3413`. Do not configure network exposure or a login service as a side effect
+of foreground setup.
 
-## Phase 6: pre-data smoke
-
-In another terminal:
-
-```bash
-curl -sS -o /tmp/trading-max-health.json \
-  -w 'health_http=%{http_code}\n' \
-  http://127.0.0.1:8421/health
-curl -sS -o /tmp/trading-max-ready.json \
-  -w 'ready_http=%{http_code}\n' \
-  http://127.0.0.1:8421/ready
-curl -sS -o /dev/null -w 'web_http=%{http_code}\n' \
-  http://127.0.0.1:3413/
-```
-
-Expected on a fresh install:
-
-- `web_http=200`;
-- health contains a healthy worker heartbeat;
-- readiness may be non-200 with `no typed snapshot has been published`.
-
-This is a **running but not data-ready** state.
-
-## Phase 7: credential handoff
-
-Tell the user to open:
-
-```text
-http://127.0.0.1:3413/settings
-```
-
-The user enters secrets directly into the local Settings UI. The agent may
-explain fields and observe redacted connection status, but must not read,
-transcribe, echo, screenshot, or store the credentials.
-
-Before credential handoff, confirm that a custom state root's bootstrap file
-contains `TRADING_MAX_CREDENTIAL_SERVICE` and that it is not the bare historic
-`com.engram.trading-max.credentials` service. Never reuse a bootstrap file from
-another installation. This is an identity-isolation gate, not an optional
-configuration preference.
-
-Require connection testing before save. Trading 212 Invest and Stocks ISA may
-use separate keys; each key must be read-only. The existing Yahoo
-Finance-compatible research adapter requires no credential and remains part of
-the private V1 data path.
-
-## Phase 8: first refresh
-
-After the user confirms at least one broker profile is connected:
-
-1. use **Refresh now** in the UI;
-2. open **Health**;
-3. wait for the durable job to reach a terminal state;
-   the first broker sync may take several minutes because Trading 212 limits
-   each history report to one year and Trading Max backfills older annual
-   slices until every current position has a verified opening ledger;
-4. if it fails, report the exact failed stage and preserve the last valid
-   snapshot;
-5. do not repeatedly retry an authentication or reconciliation failure.
-
-If account NAV reconstruction reports missing dated cash events, check whether
-the user has used Trading 212 Card. The public API does not return merchant card
-payments. Explain that the current broker value remains authoritative, but
-historic TWR and risk ratios stay unavailable until the user supplies a manual
-Trading 212 history export containing the `Card debit` rows. Never hide the gap
-with a synthetic opening balance or a terminal cash adjustment.
-
-## Phase 9: acceptance
-
-Run:
+From another terminal:
 
 ```bash
 curl -fsS http://127.0.0.1:8421/health
 curl -fsS http://127.0.0.1:8421/ready
-curl -fsS http://127.0.0.1:8421/v1/snapshots/latest
 curl -fsS http://127.0.0.1:3413/ >/dev/null
 ```
 
-The deployment is accepted only when:
+**Read the JSON status, not just the HTTP status code.** Both health routes can
+return HTTP 200 before the first snapshot. Initially `/health` normally has
+`status: degraded` and `/ready` has `status: not_ready`. The worker should have
+a healthy heartbeat. Settings can be usable while portfolio data is not ready.
+Inspect `bootstrapError` and worker status if startup remains unhealthy.
 
-- `/health` is `ok`;
-- `/ready` is `ready`;
-- worker heartbeat is healthy;
-- queue has no active failed installation job;
-- latest snapshot identifier is non-empty;
-- web root is HTTP 200;
-- no process listens on a non-loopback address;
-- the user confirms native account totals are plausible.
+## 5. Connect accounts and optional providers
 
-## Phase 10: optional macOS service installation
+Open `http://127.0.0.1:3413/settings` in the user's local browser. The user enters,
+tests and saves credentials directly. Observe only redacted connection status;
+never read, transcribe, screenshot, log or store their secrets in chat or files.
 
-Only after interactive acceptance and explicit approval to change login
-startup behaviour:
+- **Accounts & data:** connect read-only Trading 212 Invest and/or Stocks ISA
+  profiles. Keep them distinct and test before saving.
+- **Reconstruction market data:** Yahoo Finance-compatible data is the default.
+  Alpaca is optional, disabled until enabled, and configured through this Settings
+  panel rather than the CLI wizard. It supplements supported US reconstruction
+  history; it does not replace broker observations, UK/FX data or company research.
+  See [data sources and limits](../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
+- **AI analysis:** optional provider/model routes. Keep the deterministic local
+  provider when the user has not requested external model setup.
+
+## 6. Follow the first full refresh
+
+After a broker profile is connected, inspect Data status for a matching active or
+successful initial refresh. Interactive onboarding may already queue one when
+it both connects a broker and installs services. Otherwise choose **Start
+update** once and follow that job to a terminal state.
+
+The first broker sync can take several minutes: annual report slices backfill
+an opening ledger, and research/look-through coverage grows incrementally.
+Do not repeatedly submit refreshes while a job is active. If it fails, report
+the failed stage and preserve the last valid snapshot; do not retry an
+unchanged authentication or reconciliation error in a loop.
+
+Missing Trading 212 Card merchant cash events can prevent complete historical
+returns even when current broker totals are available. Use the
+[ingestion guidance](../architecture/trading212-ingestion.md) and request a
+manual history export when relevant. Do not fabricate a balancing cash flow.
+
+## 7. Accept the installation
+
+Require all of:
+
+- `/health` JSON `status` is `ok`;
+- `/ready` JSON `status` is `ready`, with no bootstrap error and a healthy worker;
+- the initial full-refresh job succeeded and the latest snapshot ID is non-empty;
+- `/v1/snapshots/latest` returns a valid immutable manifest;
+- web routes `/`, `/settings`, `/health`, `/holdings`, `/analytics`, `/research`
+  and `/review` load, with no non-loopback listeners;
+- the user confirms native broker totals are plausible.
+
+Historical failed jobs can remain in the queue's counts. Diagnose the current
+installation job and latest state rather than requiring the lifetime failed
+count to be zero. Broker credentials and snapshot contents are not acceptance
+report attachments.
+
+Run `trading-max doctor --check-updates` again. If only the canonical commit has
+advanced during setup or a requested tag differs from main, report that source
+status separately from readiness.
+
+## 8. Explain collection and optional login startup
+
+In **Settings → Update schedule**, inspect account/intraday, performance, and
+research/reconciliation schedules. Fresh local bootstrap starts scheduled
+collection disabled. A foreground process collects nothing after its terminal
+closes, and missed live observations cannot be recovered as broker records.
+New default intraday retention is 210 days; existing explicit shorter settings
+survive upgrades. Reconstructed history remains subject to source coverage.
+
+For an explicitly authorized macOS login service, stop the foreground launcher
+first and verify its ports are free, then register the existing accepted build:
 
 ```bash
 uv run --package trading-max-backend trading-max onboard \
@@ -298,64 +230,39 @@ uv run --package trading-max-backend trading-max onboard \
   --no-browser
 ```
 
-Verify the API, worker, web, and backup LaunchAgents are loaded. To remove the
-services without deleting state:
+Preserve a custom `TRADING_MAX_STATE_ROOT` here too. This installer verifies the
+Git root, including linked worktrees. Keep the checkout at a stable path and
+verify that launchd uses the selected Node/npm runtime; an interactive
+version-manager shell alone does not prove service startup. Verify all four `com.engram.trading-max.local.*` LaunchAgents and
+repeat readiness checks. The advanced `deploy/macos` profile has different
+service names and deployment ownership; do not mix installers.
+
+To remove local login services while keeping state:
 
 ```bash
 uv run python deploy/local/install-macos-service.py uninstall
 ```
 
-Do not install this macOS service path on Linux or Windows.
+No systemd unit or Windows Service is shipped. Respect existing authorization;
+ask about login startup only if it has not been granted.
 
-## Phase 11: backup verification
+## 9. Backup and handoff
 
-For foreground or non-macOS installations, create one explicit backup:
+Verify an initial credential-free backup outside the state root:
 
 ```bash
 uv run --package trading-max-backend trading-max backup \
-  --state-root "/absolute/state/root" \
-  --destination "/absolute/backup/root" \
+  --destination "/absolute/path/to/backups" \
   --retain 14
 ```
 
-Record the archive path and verification success, never its contents.
+The optional local macOS service schedules backups at 03:15; registration alone
+does not prove the first archive exists. See
+[backup and recovery](../installation/local-installation.md#backup-and-recovery).
+Report the verified archive path, never its contents.
 
-## Phase 12: handoff
-
-Report:
-
-- full source commit SHA or release tag;
-- platform and versions;
-- state-root path, without listing account files;
-- process model (`foreground`, `launchd`, etc.);
-- health/readiness result;
-- latest snapshot ID and data-as-of date;
-- whether LLM is fake or external, without revealing a key;
-- backup status;
-- known limitations and exact stop command.
-
-For the foreground launcher, the stop command is `Ctrl-C` in its terminal.
-
-## Failure boundaries
-
-Stop and ask the user when:
-
-- an existing state root is found but its ownership or intended use is unclear;
-- the checkout contains uncommitted changes;
-- OS credential storage is unavailable;
-- a migration or reconciliation fails;
-- account totals differ materially from the broker;
-- the requested setup requires LAN/public access or multi-user auth;
-- a background service installation would change login/startup behavior.
-
-## Current known limitations
-
-- Generic local installation does not install an automatic updater.
-- The advanced unattended profile under `deploy/macos` is outside this
-  runbook and must not be applied to an unprovisioned workstation.
-- macOS has a per-user service installer; it still requires a terminal-based
-  source install before registration.
-- Linux does not ship a systemd unit and Windows does not ship a Service.
-- Linux systemd and Windows Service definitions are not shipped.
-- A fresh installation is not ready until the first broker-backed immutable
-  snapshot is published.
+Report version, branch/full commit, canonical/update status, state root, runtime
+model, JSON health/readiness, snapshot ID/data-as-of date, redacted connections,
+schedule settings, backup verification and exact stop/restart actions. If the
+user still needs to enter credentials or confirm totals, state that remaining
+step. A web page or a healthy `doctor` result alone is not a completed installation.

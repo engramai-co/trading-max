@@ -17,6 +17,16 @@ const intraday = [point("2026-09-04T13:30:00Z", true), point("2026-09-04T13:40:0
 const input = { daily, intraday, scope: "total" as const, asOf: "2026-09-04T20:00:00Z" };
 
 describe("unified portfolio history", () => {
+  it("does not reuse an old CFD proxy after a newer conversion becomes unavailable", () => {
+    const result = selectPortfolioHistory({
+      ...input, range: "3M", scope: "household",
+      daily: [daily[0], { ...daily[2], cfd: null, household: null }],
+    });
+    expect(result.source).toBe("daily");
+    expect(result.carriedCfdValue).toBeNull();
+    expect(result.points.some((p) => p.intraday)).toBe(false);
+    expect(result.points.some((p) => p.date === daily[2].date)).toBe(false);
+  });
   it.each(["1D", "1W", "1M", "3M"] as const)("uses intraday valuations for %s", (range) => {
     const result = selectPortfolioHistory({ ...input, range });
     expect(result.source).toBe("intraday");

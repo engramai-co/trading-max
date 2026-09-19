@@ -4,9 +4,11 @@ from pathlib import Path
 from shutil import copy2
 from threading import Thread
 
+import pytest
 from trading_max.application import StageRegistry, StageResult
 from trading_max.domain import ArtifactRef, StageStatus
 from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue
+from trading_max.infrastructure.job_queue import QueueConflict
 from trading_max.worker import DurableWorker, StageExecutionError
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
@@ -126,6 +128,43 @@ def test_expired_lease_can_be_reclaimed_by_another_worker(tmp_path: Path) -> Non
     assert reclaimed is not None
     assert reclaimed.worker_id == "worker-b"
     assert reclaimed.record.attempts == 2
+
+
+def test_abandoned_cancelled_job_is_finalized_after_lease_expiry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import trading_max.infrastructure.job_queue as queue_module
+
+    now = datetime(2026, 9, 19, 8, tzinfo=UTC)
+    monkeypatch.setattr(queue_module, "_now", lambda: now)
+    queue = make_queue(tmp_path)
+    queue.enqueue("accounts", stages=[("demo", "1")], job_id="abandoned")
+    assert queue.claim("stopped-worker", lease_seconds=60) is not None
+    queue.set_stage("abandoned", "stopped-worker", "demo", StageStatus.RUNNING)
+    queue.cancel("abandoned", reason="synthetic operator cancellation")
+
+    assert queue.claim("replacement-worker") is None
+    assert queue.get("abandoned").status == "running"
+    assert queue.get("abandoned").cancel_requested
+
+    now += timedelta(seconds=61)
+    assert queue.claim("replacement-worker") is None
+    cancelled = queue.get("abandoned")
+    assert cancelled.status == "interrupted"
+    assert cancelled.error_code == "job.cancelled"
+    assert cancelled.error_message == "synthetic operator cancellation"
+    assert cancelled.finished_at == now
+    assert cancelled.lease_expires_at is None
+    assert not cancelled.cancel_requested
+    assert cancelled.attempts == 1
+    assert cancelled.stages[0].status == StageStatus.INTERRUPTED
+    assert queue.active_records() == []
+    with pytest.raises(QueueConflict):
+        queue.heartbeat("abandoned", "stopped-worker")
+
+    queue.enqueue("accounts", job_id="new-refresh")
+    claimed = queue.claim("replacement-worker")
+    assert claimed is not None and claimed.record.job_id == "new-refresh"
 
 
 def test_workers_can_claim_disjoint_trigger_lanes(tmp_path: Path) -> None:

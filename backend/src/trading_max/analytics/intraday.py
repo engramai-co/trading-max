@@ -282,6 +282,7 @@ def verified_intraday_chain(
     result: list[dict[str, float | str | None]] = []
     wealth = 1.0
     peak = 1.0
+    chain_verified = True
     for index, point in enumerate(points):
         if index:
             previous = points[index - 1]
@@ -292,6 +293,8 @@ def verified_intraday_chain(
                 point.flow_status,
             )
             if period is None:
+                chain_verified = False
+            if not chain_verified:
                 result.append(
                     {
                         "observedAt": point.observed_at.isoformat(),

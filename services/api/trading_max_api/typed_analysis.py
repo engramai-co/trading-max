@@ -277,7 +277,10 @@ class TypedAnalysisManager:
         return TypedSynthesisStage(self)
 
     def get(self, run_id: str) -> AnalysisRunRecord:
-        return self.repository.get(run_id)
+        try:
+            return self.repository.get(run_id)
+        except KeyError as exc:
+            raise FileNotFoundError(str(exc)) from exc
 
     def list(self, limit: int = 20) -> list[AnalysisRunRecord]:
         return self.repository.list(limit)
@@ -487,7 +490,7 @@ class TypedAnalysisManager:
     def get_artifact(self, artifact_id: str) -> AnalysisArtifact:
         try:
             stored = self.artifacts.get_json(artifact_id)
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             raise FileNotFoundError(f"analysis artifact not found: {artifact_id}") from None
         payload = stored.payload
         response = payload["response"]

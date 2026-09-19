@@ -14,13 +14,16 @@ import io
 import statistics
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Literal
 
-PARSER_VERSION = "trading212-cfd-csv-v1"
-CALCULATION_VERSION = "cfd-realised-analysis-v2"
+from .fx import FxQuote, FxResolver, normalized_currency, resolve_fx
+
+PARSER_VERSION = "trading212-cfd-csv-v3"
+CALCULATION_VERSION = "cfd-realised-analysis-v3"
+GBP_QUANTUM = Decimal("0.00000001")
 
 type CfdRecordType = Literal[
     "Transaction",
@@ -225,33 +228,33 @@ class CfdLedger(_Serializable):
 
 @dataclass(frozen=True, slots=True)
 class CfdCashFlowSummary(_Serializable):
-    deposits: Decimal
-    withdrawals: Decimal
-    internal_transfers: Decimal
-    adjustments: Decimal
-    account_cash_flow: Decimal
-    household_external_flow: Decimal
+    deposits: Decimal | None
+    withdrawals: Decimal | None
+    internal_transfers: Decimal | None
+    adjustments: Decimal | None
+    account_cash_flow: Decimal | None
+    household_external_flow: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
 class CfdRealisedPnlSummary(_Serializable):
-    closed_gross_result: Decimal
-    fx_fees: Decimal
-    closed_after_fx: Decimal
-    overnight_interest: Decimal
-    dividend_adjustment: Decimal
-    net_realised_pnl: Decimal
+    closed_gross_result: Decimal | None
+    fx_fees: Decimal | None
+    closed_after_fx: Decimal | None
+    overnight_interest: Decimal | None
+    dividend_adjustment: Decimal | None
+    net_realised_pnl: Decimal | None
     financing_drag_to_gross_ratio: Decimal | None
     financing_drag_to_net_ratio: Decimal | None
-    max_realised_pnl_drawdown: Decimal
+    max_realised_pnl_drawdown: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
 class CfdTradeQuality(_Serializable):
     trade_count: int
-    wins: int
-    losses: int
-    breakeven: int
+    wins: int | None
+    losses: int | None
+    breakeven: int | None
     win_rate: Decimal | None
     average_win: Decimal | None
     average_loss: Decimal | None
@@ -264,11 +267,13 @@ class CfdTradeQuality(_Serializable):
     under_one_hour_count: int
     best_trade: Decimal | None
     worst_trade: Decimal | None
-    longest_win_streak: int
-    longest_loss_streak: int
+    longest_win_streak: int | None
+    longest_loss_streak: int | None
     best_trade_concentration: Decimal | None
     top_three_trade_concentration: Decimal | None
     net_without_best_trade: Decimal | None
+    status: str = "available"
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +290,8 @@ class CfdAttribution(_Serializable):
     by_duration: tuple[CfdAttributionBucket, ...]
     by_date: tuple[CfdAttributionBucket, ...]
     by_weekday: tuple[CfdAttributionBucket, ...]
+    status: str = "available"
+    unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,17 +299,17 @@ class CfdRealisedPoint(_Serializable):
     occurred_at: datetime
     event_id: str
     record_type: str
-    realised_pnl_change: Decimal
-    cumulative_realised_pnl: Decimal
-    account_cash_flow_change: Decimal
-    cumulative_account_cash_flow: Decimal
-    realised_cash_equity_proxy: Decimal
-    realised_pnl_drawdown: Decimal
+    realised_pnl_change: Decimal | None
+    cumulative_realised_pnl: Decimal | None
+    account_cash_flow_change: Decimal | None
+    cumulative_account_cash_flow: Decimal | None
+    realised_cash_equity_proxy: Decimal | None
+    realised_pnl_drawdown: Decimal | None
 
 
 @dataclass(frozen=True, slots=True)
 class CfdNotionalSummary(_Serializable):
-    total_closed_notional: Decimal
+    total_closed_notional: Decimal | None
     average_closed_notional: Decimal | None
     net_realised_to_notional_ratio: Decimal | None
     financing_cost_to_notional_ratio: Decimal | None
@@ -339,17 +346,17 @@ class CfdMoneyOutcome(_Serializable):
     status: Literal["available", "partial", "unavailable"]
     unavailable_reason: str | None
     source: str
-    opening_realised_cash_equity_proxy_gbp: Decimal
-    ending_realised_cash_equity_proxy_gbp: Decimal
-    deposits_gbp: Decimal
-    withdrawals_gbp: Decimal
-    internal_transfers_gbp: Decimal
-    adjustments_gbp: Decimal
-    account_cash_flow_gbp: Decimal
-    household_external_flow_gbp: Decimal
-    net_realised_pnl_gbp: Decimal
-    max_realised_pnl_drawdown_gbp: Decimal
-    current_realised_pnl_drawdown_gbp: Decimal
+    opening_realised_cash_equity_proxy_gbp: Decimal | None
+    ending_realised_cash_equity_proxy_gbp: Decimal | None
+    deposits_gbp: Decimal | None
+    withdrawals_gbp: Decimal | None
+    internal_transfers_gbp: Decimal | None
+    adjustments_gbp: Decimal | None
+    account_cash_flow_gbp: Decimal | None
+    household_external_flow_gbp: Decimal | None
+    net_realised_pnl_gbp: Decimal | None
+    max_realised_pnl_drawdown_gbp: Decimal | None
+    current_realised_pnl_drawdown_gbp: Decimal | None
     true_nav_available: bool = False
 
 
@@ -416,7 +423,7 @@ class CfdStructuralDiagnostics(_Serializable):
     unavailable_reason: str | None
     observable_only: bool
     psychology_inferred: bool
-    total_closed_notional: Decimal
+    total_closed_notional: Decimal | None
     average_closed_notional: Decimal | None
     net_realised_to_notional_ratio: Decimal | None
     financing_cost_to_notional_ratio: Decimal | None
@@ -457,6 +464,10 @@ class CfdAnalysis(_Serializable):
     unmatched_executed_orders: tuple[CfdUnmatchedExecutedOrder, ...]
     warnings: tuple[str, ...]
     calculation_version: str = CALCULATION_VERSION
+    fx_conversion: dict[str, Any] = field(default_factory=dict)
+    cost_allocation: dict[str, Any] = field(default_factory=dict)
+    event_amounts: tuple[CfdEventAmounts, ...] = ()
+    monetary_data: dict[str, Any] = field(default_factory=dict)
 
 
 def _header_lookup(fieldnames: Iterable[str]) -> dict[str, str]:
@@ -504,9 +515,12 @@ def _decimal(value: str, *, field: str, context: str, required: bool = False) ->
     if normalized.startswith("(") and normalized.endswith(")"):
         normalized = f"-{normalized[1:-1]}"
     try:
-        return Decimal(normalized)
+        parsed = Decimal(normalized)
     except InvalidOperation as exc:
         raise CfdSchemaError(f"{context} contains invalid decimal {field!r}: {value!r}") from exc
+    if not parsed.is_finite():
+        raise CfdSchemaError(f"{context} contains invalid decimal {field!r}: {value!r}")
+    return parsed
 
 
 def _timestamp(value: str, *, field: str, context: str, required: bool = False) -> datetime | None:
@@ -539,11 +553,13 @@ def _notional_account_currency(
     if units is None or average_price is None:
         return None
     notional = abs(units * average_price)
-    instrument_code = (instrument_currency or "").upper()
-    account_code = account_currency.upper()
+    instrument_code = normalized_currency(instrument_currency)
+    account_code = normalized_currency(account_currency)
     if instrument_code in {"GBX", "GBPENCE", "GBP PENCE"} and account_code == "GBP":
         return notional / Decimal(100)
-    if not instrument_code or instrument_code == account_code:
+    if not instrument_code:
+        return None
+    if instrument_code == account_code:
         return notional
     if exchange_rate is None or exchange_rate == 0:
         return None
@@ -597,8 +613,8 @@ def _validate_type_headers(
             "units",
             "result",
         ),
-        "Overnight interest": ("position_id", "amount"),
-        "Dividend adjustment": ("position_id",),
+        "Overnight interest": ("amount",),
+        "Dividend adjustment": (),
         "Order": ("order_id", "status", "intent"),
     }[record_type]
     for canonical in required:
@@ -623,7 +639,7 @@ def _parse_event(
     raw_record_type = _require_value(
         _row_value(row, lookup, "record_type"), field="Record Type", context=context
     )
-    record_type = _RECORD_TYPES.get(raw_record_type.casefold())
+    record_type = _RECORD_TYPES.get(raw_record_type.casefold().replace("_", " "))
     if record_type is None:
         raise CfdRecordTypeError(f"{context} has unknown Record Type {raw_record_type!r}")
     _validate_type_headers(record_type, lookup, context=context)
@@ -636,11 +652,13 @@ def _parse_event(
     )
     if occurred_at is None:  # pragma: no cover - guarded by required=True
         raise CfdSchemaError(f"{context} is missing Date (UTC)")
-    account_currency = _require_value(
-        _row_value(row, lookup, "account_currency"),
-        field="Account currency",
-        context=context,
-    ).upper()
+    account_currency = normalized_currency(
+        _require_value(
+            _row_value(row, lookup, "account_currency"),
+            field="Account currency",
+            context=context,
+        )
+    )
     transaction_type = _normalized_optional(_row_value(row, lookup, "transaction_type"))
     if record_type == "Transaction":
         transaction_type = _require_value(
@@ -667,9 +685,7 @@ def _parse_event(
         field="Amount net (account currency)",
         context=context,
     )
-    if record_type == "Dividend adjustment" and dividend_net is None:
-        dividend_net = dividend_gross
-    if record_type == "Dividend adjustment" and dividend_net is None:
+    if record_type == "Dividend adjustment" and dividend_net is None and dividend_gross is None:
         raise CfdSchemaError(f"{context} has no dividend amount")
 
     units = _decimal(
@@ -778,14 +794,20 @@ def _parse_event(
         ),
         "info": _normalized_optional(_row_value(row, lookup, "info")),
     }
-    if record_type == "Closed position" and values["result_after_fx_fee"] is None:
-        values["result_after_fx_fee"] = (values["gross_result"] or Decimal(0)) + (
-            values["fx_fee"] or Decimal(0)
-        )
-
-    if record_type in {"Closed position", "Overnight interest"}:
-        _require_value(values["position_id"] or "", field="Position ID", context=context)
+    # A missing tax value does not prove there was no withholding. The
+    # exported net amount is authoritative; a zero tax also proves net=gross.
+    if (
+        record_type == "Dividend adjustment"
+        and values["dividend_net"] is None
+        and values["withholding_tax"] == 0
+    ):
+        values["dividend_net"] = values["dividend_gross"]
     if record_type == "Closed position":
+        if values["result_after_fx_fee"] is None and values["fx_fee"] is not None:
+            values["result_after_fx_fee"] = values["gross_result"] + values["fx_fee"]
+        elif values["fx_fee"] is None and values["result_after_fx_fee"] is not None:
+            values["fx_fee"] = values["result_after_fx_fee"] - values["gross_result"]
+        _require_value(values["position_id"] or "", field="Position ID", context=context)
         _require_value(values["direction"] or "", field="Direction", context=context)
     if record_type == "Order":
         _require_value(values["order_id"] or "", field="Order ID", context=context)
@@ -796,10 +818,8 @@ def _parse_event(
             values["order_intent"] = values["order_intent"].upper()
 
     warnings: list[str] = []
-    if record_type == "Closed position":
-        expected_after_fx = (values["gross_result"] or Decimal(0)) + (
-            values["fx_fee"] or Decimal(0)
-        )
+    if record_type == "Closed position" and values["result_after_fx_fee"] is not None:
+        expected_after_fx = values["gross_result"] + values["fx_fee"]
         if abs(values["result_after_fx_fee"] - expected_after_fx) > Decimal("0.01"):
             warnings.append(f"{context}: Result after FX fee does not reconcile to Result + FX fee")
     if record_type == "Transaction" and transaction_type == "Transfer" and not values["info"]:
@@ -911,6 +931,8 @@ def _event_economic_identity(event: CfdEvent) -> tuple[Any, ...]:
             event.gross_result,
             event.fx_fee,
             event.result_after_fx_fee,
+            event.embedded_overnight_interest,
+            event.embedded_dividend_adjustment,
         )
     # Unkeyed standalone events use all economic fields in event_id itself.
     return (*common, event.event_id)
@@ -977,38 +999,21 @@ def _zero_if_none(value: Decimal | None) -> Decimal:
     return value if value is not None else Decimal(0)
 
 
-def _closed_after_fx(event: CfdEvent) -> Decimal:
+def _closed_after_fx(event: CfdEvent) -> Decimal | None:
     if event.result_after_fx_fee is not None:
         return event.result_after_fx_fee
-    return _zero_if_none(event.gross_result) + _zero_if_none(event.fx_fee)
+    if event.gross_result is not None and event.fx_fee is not None:
+        return event.gross_result + event.fx_fee
+    return None
 
 
-def _standalone_by_position(
-    events: Iterable[CfdEvent], record_type: CfdRecordType
-) -> dict[str, Decimal]:
-    result: dict[str, Decimal] = defaultdict(Decimal)
-    for event in events:
-        if event.record_type != record_type or not event.position_id:
-            continue
-        amount = event.amount if record_type == "Overnight interest" else event.dividend_net
-        result[event.position_id] += _zero_if_none(amount)
-    return dict(result)
-
-
-def _trade_result(
-    event: CfdEvent,
-    overnight_by_position: Mapping[str, Decimal],
-    dividend_by_position: Mapping[str, Decimal],
-) -> Decimal:
-    result = _closed_after_fx(event)
-    position_id = event.position_id or ""
-    result += overnight_by_position.get(
-        position_id, _zero_if_none(event.embedded_overnight_interest)
+def _trade_result(event: CfdEvent, allocated_costs: Mapping[str, Decimal]) -> Decimal:
+    return (
+        _zero_if_none(_closed_after_fx(event))
+        + _zero_if_none(event.embedded_overnight_interest)
+        + _zero_if_none(event.embedded_dividend_adjustment)
+        + allocated_costs.get(event.event_id, Decimal(0))
     )
-    result += dividend_by_position.get(
-        position_id, _zero_if_none(event.embedded_dividend_adjustment)
-    )
-    return result
 
 
 def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal | None:
@@ -1061,12 +1066,15 @@ def _canonical_direction(direction: str | None) -> str:
 def _attribution_buckets(
     trades: list[tuple[CfdEvent, Decimal]], key_function: Callable[[CfdEvent], str]
 ) -> tuple[CfdAttributionBucket, ...]:
-    values: dict[str, list[Decimal]] = defaultdict(list)
+    values: dict[str, Decimal] = defaultdict(Decimal)
+    counts: dict[str, int] = defaultdict(int)
     for event, result in trades:
-        values[str(key_function(event))].append(result)
+        key = str(key_function(event))
+        values[key] += result
+        counts[key] += int(event.record_type == "Closed position")
     return tuple(
-        CfdAttributionBucket(key=key, trade_count=len(results), net_realised_pnl=sum(results))
-        for key, results in sorted(values.items(), key=lambda item: (-sum(item[1]), item[0]))
+        CfdAttributionBucket(key=key, trade_count=counts[key], net_realised_pnl=value)
+        for key, value in sorted(values.items(), key=lambda item: (-item[1], item[0]))
     )
 
 
@@ -1087,8 +1095,6 @@ def _cash_flows(events: Iterable[CfdEvent]) -> CfdCashFlowSummary:
 
 def _realised_series(
     events: tuple[CfdEvent, ...],
-    overnight_by_position: Mapping[str, Decimal],
-    dividend_by_position: Mapping[str, Decimal],
 ) -> tuple[CfdRealisedPoint, ...]:
     cumulative_pnl = Decimal(0)
     cumulative_cash_flow = Decimal(0)
@@ -1098,12 +1104,9 @@ def _realised_series(
         pnl_change = Decimal(0)
         cash_change = Decimal(0)
         if event.record_type == "Closed position":
-            pnl_change = _closed_after_fx(event)
-            position_id = event.position_id or ""
-            if position_id not in overnight_by_position:
-                pnl_change += _zero_if_none(event.embedded_overnight_interest)
-            if position_id not in dividend_by_position:
-                pnl_change += _zero_if_none(event.embedded_dividend_adjustment)
+            pnl_change = _zero_if_none(_closed_after_fx(event))
+            pnl_change += _zero_if_none(event.embedded_overnight_interest)
+            pnl_change += _zero_if_none(event.embedded_dividend_adjustment)
         elif event.record_type == "Overnight interest":
             pnl_change = _zero_if_none(event.amount)
         elif event.record_type == "Dividend adjustment":
@@ -1422,20 +1425,19 @@ def _cfd_phases(
     )
 
 
-def analyse_cfd_ledger(ledger: CfdLedger) -> CfdAnalysis:
+def _analyse_gbp_ledger(
+    ledger: CfdLedger,
+    allocated_costs: Mapping[str, Decimal],
+    unallocated_costs: list[tuple[CfdEvent, Decimal]],
+) -> CfdAnalysis:
     """Calculate realised-only CFD cash, P&L, trade, and risk diagnostics."""
 
     events = ledger.events
     closed = [event for event in events if event.record_type == "Closed position"]
-    overnight_by_position = _standalone_by_position(events, "Overnight interest")
-    dividend_by_position = _standalone_by_position(events, "Dividend adjustment")
-    trades = [
-        (event, _trade_result(event, overnight_by_position, dividend_by_position))
-        for event in closed
-    ]
+    trades = [(event, _trade_result(event, allocated_costs)) for event in closed]
     closed_gross = sum((_zero_if_none(event.gross_result) for event in closed), Decimal(0))
     fx_fees = sum((_zero_if_none(event.fx_fee) for event in closed), Decimal(0))
-    closed_after_fx = sum((_closed_after_fx(event) for event in closed), Decimal(0))
+    closed_after_fx = sum((_zero_if_none(_closed_after_fx(event)) for event in closed), Decimal(0))
     standalone_overnight = sum(
         (
             _zero_if_none(event.amount)
@@ -1445,11 +1447,7 @@ def analyse_cfd_ledger(ledger: CfdLedger) -> CfdAnalysis:
         Decimal(0),
     )
     embedded_overnight_fallback = sum(
-        (
-            _zero_if_none(event.embedded_overnight_interest)
-            for event in closed
-            if (event.position_id or "") not in overnight_by_position
-        ),
+        (_zero_if_none(event.embedded_overnight_interest) for event in closed),
         Decimal(0),
     )
     standalone_dividends = sum(
@@ -1461,18 +1459,14 @@ def analyse_cfd_ledger(ledger: CfdLedger) -> CfdAnalysis:
         Decimal(0),
     )
     embedded_dividend_fallback = sum(
-        (
-            _zero_if_none(event.embedded_dividend_adjustment)
-            for event in closed
-            if (event.position_id or "") not in dividend_by_position
-        ),
+        (_zero_if_none(event.embedded_dividend_adjustment) for event in closed),
         Decimal(0),
     )
     effective_overnight = standalone_overnight + embedded_overnight_fallback
     effective_dividends = standalone_dividends + embedded_dividend_fallback
     net_realised = closed_after_fx + effective_overnight + effective_dividends
     financing_drag = abs(min(effective_overnight, Decimal(0)))
-    series = _realised_series(events, overnight_by_position, dividend_by_position)
+    series = _realised_series(events)
     max_drawdown = min((point.realised_pnl_drawdown for point in series), default=Decimal(0))
     notionals = [
         event.notional_account_currency
@@ -1491,45 +1485,37 @@ def analyse_cfd_ledger(ledger: CfdLedger) -> CfdAnalysis:
             "CFD exports do not provide daily broker equity or open-position MTM; money and "
             "drawdown fields are realised-only proxies and strategy TWR/risk metrics are unavailable"
         )
-    if len(ledger.account_currencies) > 1:
-        warnings.append(
-            "multiple account currencies are present; aggregate currency analytics are not comparable"
-        )
     if unmatched:
         warnings.append(
             "executed orders without a matching closed-position event may be open or outside coverage; "
             "current MTM is unavailable"
         )
-    if any(
-        event.embedded_overnight_interest and (event.position_id or "") in overnight_by_position
-        for event in closed
-    ):
-        warnings.append(
-            "embedded closed-position overnight totals were not added because standalone overnight "
-            "events are authoritative"
-        )
-    if any(
-        event.embedded_dividend_adjustment and (event.position_id or "") in dividend_by_position
-        for event in closed
-    ):
-        warnings.append(
-            "embedded closed-position dividend totals were not added because standalone dividend "
-            "events are authoritative"
-        )
-
+    attributed = [*trades, *unallocated_costs]
     attribution = CfdAttribution(
         by_direction=_attribution_buckets(
-            trades, lambda event: _canonical_direction(event.direction)
+            attributed,
+            lambda event: (
+                _canonical_direction(event.direction)
+                if event.record_type == "Closed position"
+                else "unallocated_costs"
+            ),
         ),
         by_instrument=_attribution_buckets(
-            trades, lambda event: event.symbol or event.instrument or "unknown"
+            attributed, lambda event: event.symbol or event.instrument or "unallocated_costs"
         ),
-        by_duration=_attribution_buckets(trades, _duration_bucket),
+        by_duration=_attribution_buckets(
+            attributed,
+            lambda event: (
+                _duration_bucket(event)
+                if event.record_type == "Closed position"
+                else "unallocated_costs"
+            ),
+        ),
         by_date=_attribution_buckets(
-            trades, lambda event: (event.closed_at or event.occurred_at).date().isoformat()
+            attributed, lambda event: (event.closed_at or event.occurred_at).date().isoformat()
         ),
         by_weekday=_attribution_buckets(
-            trades, lambda event: (event.closed_at or event.occurred_at).strftime("%A")
+            attributed, lambda event: (event.closed_at or event.occurred_at).strftime("%A")
         ),
     )
     return CfdAnalysis(
@@ -1675,6 +1661,618 @@ def analyse_cfd_ledger(ledger: CfdLedger) -> CfdAnalysis:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class CfdEventAmounts(_Serializable):
+    """Effective GBP event components shared by analytics and the CSV publisher."""
+
+    event_id: str
+    account_cash_flow_gbp: Decimal | None
+    closed_after_fx_gbp: Decimal | None
+    overnight_interest_gbp: Decimal | None
+    dividend_adjustment_gbp: Decimal | None
+
+
+@dataclass(frozen=True, slots=True)
+class _CostShare:
+    event_id: str
+    closed_event_id: str | None
+    amount: Decimal
+    method: str
+
+
+_COST_FIELDS = {
+    "Overnight interest": "embedded_overnight_interest",
+    "Dividend adjustment": "embedded_dividend_adjustment",
+}
+_MONEY_FIELDS = (
+    "amount",
+    "gross_result",
+    "fx_fee",
+    "result_after_fx_fee",
+    "embedded_overnight_interest",
+    "embedded_dividend_adjustment",
+    "broker_total_result",
+    "dividend_gross",
+    "withholding_tax",
+    "dividend_net",
+    "notional_account_currency",
+)
+
+
+def _cost_amount(event: CfdEvent) -> Decimal | None:
+    return event.amount if event.record_type == "Overnight interest" else event.dividend_net
+
+
+def _cost_compatible(cost: CfdEvent, close: CfdEvent) -> bool:
+    return (
+        normalized_currency(cost.account_currency) == normalized_currency(close.account_currency)
+        and not (cost.position_id and close.position_id != cost.position_id)
+        and not (cost.symbol and close.symbol and cost.symbol != close.symbol)
+        and not (
+            cost.direction
+            and close.direction
+            and _canonical_direction(cost.direction) != _canonical_direction(close.direction)
+        )
+    )
+
+
+def _allocate_costs(
+    events: tuple[CfdEvent, ...],
+) -> tuple[list[_CostShare], dict[tuple[str, str], Decimal | None], list[dict[str, str]]]:
+    """Allocate each signed cost once, with no guess from position ID alone.
+
+    A unique close-order link wins. Otherwise the charge must fall in a close's
+    actual holding interval and allocations follow closed quantity. Only executed
+    opening orders can establish a larger held quantity; a financing row's Units
+    does not prove the position size. Unmatched evidenced quantity is retained.
+    Embedded totals are deduplicated only against compatible native allocations;
+    unresolved overlap is unknown, never silently counted twice or discarded.
+    """
+    closed = [event for event in events if event.record_type == "Closed position"]
+    shares: list[_CostShare] = []
+    for cost in events:
+        if cost.record_type not in _COST_FIELDS:
+            continue
+        amount = _zero_if_none(_cost_amount(cost))
+        if cost.order_id:
+            linked = [close for close in closed if close.order_id == cost.order_id]
+            if len(linked) == 1 and _cost_compatible(cost, linked[0]):
+                shares.append(_CostShare(cost.event_id, linked[0].event_id, amount, "order_id"))
+            else:
+                shares.append(_CostShare(cost.event_id, None, amount, "unresolved_order_link"))
+            continue
+        candidates = [
+            close
+            for close in closed
+            if cost.position_id
+            and close.position_id == cost.position_id
+            and _cost_compatible(cost, close)
+            and close.opened_at is not None
+            and close.closed_at is not None
+            and close.opened_at <= cost.occurred_at <= close.closed_at
+            and close.units is not None
+            and abs(close.units) > 0
+        ]
+        if not candidates:
+            shares.append(_CostShare(cost.event_id, None, amount, "no_matching_holding_interval"))
+            continue
+        candidates.sort(key=lambda close: (close.closed_at, close.event_id))
+        closed_units = sum((abs(close.units) for close in candidates), Decimal(0))
+        opened_units = sum(
+            (
+                abs(order.units)
+                for order in events
+                if order.record_type == "Order"
+                and order.order_status == "EXECUTED"
+                and order.order_intent == "OPEN"
+                and order.position_id == cost.position_id
+                and _cost_compatible(cost, order)
+                and order.occurred_at <= cost.occurred_at
+                and order.units is not None
+            ),
+            Decimal(0),
+        )
+        previously_closed_units = sum(
+            (
+                abs(close.units)
+                for close in closed
+                if close.position_id == cost.position_id
+                and _cost_compatible(cost, close)
+                and close.closed_at is not None
+                and close.closed_at < cost.occurred_at
+                and close.units is not None
+            ),
+            Decimal(0),
+        )
+        denominator = max(closed_units, opened_units - previously_closed_units)
+        allocated_total = amount * closed_units / denominator
+        assigned = Decimal(0)
+        for index, close in enumerate(candidates):
+            share = (
+                allocated_total - assigned
+                if index == len(candidates) - 1
+                else amount * abs(close.units) / denominator
+            )
+            shares.append(
+                _CostShare(cost.event_id, close.event_id, share, "holding_interval_units")
+            )
+            assigned += share
+        if assigned != amount:
+            shares.append(_CostShare(cost.event_id, None, amount - assigned, "unclosed_quantity"))
+
+    by_id = {event.event_id: event for event in events}
+    embedded: dict[tuple[str, str], Decimal | None] = {}
+    conflicts: list[dict[str, str]] = []
+    for close in closed:
+        for kind, attribute in _COST_FIELDS.items():
+            value = _zero_if_none(getattr(close, attribute))
+            key = (close.event_id, attribute)
+            embedded[key] = value
+            if value == 0:
+                continue
+            linked = [
+                share
+                for share in shares
+                if share.closed_event_id == close.event_id
+                and by_id[share.event_id].record_type == kind
+                and _cost_amount(by_id[share.event_id]) != 0
+            ]
+            if linked:
+                if any(_cost_amount(by_id[share.event_id]) is None for share in linked):
+                    embedded[key] = None
+                elif sum((share.amount for share in linked), Decimal(0)) == value:
+                    embedded[key] = Decimal(0)
+                else:
+                    embedded[key] = None
+                    conflicts.append(
+                        {
+                            "closed_event_id": close.event_id,
+                            "component": kind,
+                            "reason": "embedded_standalone_amount_conflict",
+                        }
+                    )
+            elif any(
+                share.closed_event_id is None
+                and share.amount != 0
+                and by_id[share.event_id].record_type == kind
+                and close.position_id
+                and by_id[share.event_id].position_id == close.position_id
+                for share in shares
+            ):
+                embedded[key] = None
+                conflicts.append(
+                    {
+                        "closed_event_id": close.event_id,
+                        "component": kind,
+                        "reason": "ambiguous_embedded_overlap",
+                    }
+                )
+    return shares, embedded, conflicts
+
+
+def _event_fx(event: CfdEvent, resolver: FxResolver | None) -> FxQuote | None:
+    # Broker Exchange rate is instrument units per account unit. It proves an
+    # account/GBP rate only if that instrument is denominated in pounds/pence.
+    rate = None
+    if event.exchange_rate is not None and event.exchange_rate > 0:
+        instrument_currency = normalized_currency(event.instrument_currency)
+        if instrument_currency in {"GBP", "GBX"}:
+            rate = Decimal(100 if instrument_currency == "GBX" else 1) / event.exchange_rate
+    return resolve_fx(
+        event.account_currency,
+        event.occurred_at,
+        resolver=resolver,
+        broker_rate_native_per_gbp=rate,
+    )
+
+
+def _gbp(amount: Decimal | None, quote: FxQuote | None) -> Decimal | None:
+    if amount is None or amount == 0:
+        return amount
+    if quote is None:
+        return None
+    converted = quote.to_gbp(amount)
+    if quote.currency in {"GBP", "GBX"}:
+        return converted
+    # A fixed sub-penny precision makes converted money add exactly independent
+    # of bucket order. Raw native amounts and the rate remain in provenance.
+    return _gbp_precision(converted)
+
+
+def _gbp_precision(value: Decimal) -> Decimal:
+    rounded = value.quantize(GBP_QUANTUM, rounding=ROUND_HALF_EVEN)
+    return Decimal(format(rounded, "f").rstrip("0").rstrip(".") or "0")
+
+
+def _sum_known(values: Iterable[Decimal | None]) -> Decimal | None:
+    total = Decimal(0)
+    for value in values:
+        if value is None:
+            return None
+        total += value
+    return total
+
+
+def analyse_cfd_ledger(
+    ledger: CfdLedger,
+    *,
+    fx_resolver: FxResolver | None = None,
+) -> CfdAnalysis:
+    """Convert each dated monetary event to GBP and preserve unavailable results.
+
+    The native ledger remains immutable. No resolver means foreign amounts are
+    unavailable unless a broker GBP cross is present; import preview never needs
+    a provider call. The publishing stage injects the historical FX resolver.
+    """
+    shares, embedded, conflicts = _allocate_costs(ledger.events)
+    quotes: dict[str, FxQuote | None] = {}
+    missing: list[str] = []
+    evidence: list[dict[str, Any]] = []
+    converted: list[CfdEvent] = []
+    components: list[CfdEventAmounts] = []
+    for event in ledger.events:
+        needs_fx = event.record_type != "Order" and any(
+            getattr(event, key) not in (None, Decimal(0)) for key in _MONEY_FIELDS
+        )
+        quote = _event_fx(event, fx_resolver) if needs_fx else None
+        quotes[event.event_id] = quote
+        if quote is not None:
+            evidence.append({"event_id": event.event_id, **quote.as_dict()})
+        elif needs_fx:
+            missing.append(event.event_id)
+        values = {key: _gbp(getattr(event, key), quote) for key in _MONEY_FIELDS}
+        cash = closed = overnight = dividend = Decimal(0)
+        if event.record_type == "Closed position":
+            closed = _gbp(_closed_after_fx(event), quote)
+            overnight = _gbp(embedded[(event.event_id, "embedded_overnight_interest")], quote)
+            dividend = _gbp(embedded[(event.event_id, "embedded_dividend_adjustment")], quote)
+            values["embedded_overnight_interest"] = overnight
+            values["embedded_dividend_adjustment"] = dividend
+        elif event.record_type == "Transaction":
+            cash = _gbp(_zero_if_none(event.amount), quote)
+        elif event.record_type == "Overnight interest":
+            overnight = _gbp(_cost_amount(event), quote)
+        elif event.record_type == "Dividend adjustment":
+            dividend = _gbp(_cost_amount(event), quote)
+        converted.append(replace(event, account_currency="GBP", **values))
+        components.append(CfdEventAmounts(event.event_id, cash, closed, overnight, dividend))
+
+    native_by_id = {event.event_id: event for event in ledger.events}
+    converted_by_id = {event.event_id: event for event in converted}
+    allocations: dict[str, Decimal] = defaultdict(Decimal)
+    unallocated: list[tuple[CfdEvent, Decimal]] = []
+    allocation_rows: list[dict[str, Any]] = []
+    unknown_trades = {
+        item.event_id
+        for item in components
+        if native_by_id[item.event_id].record_type == "Closed position"
+        and None
+        in (item.closed_after_fx_gbp, item.overnight_interest_gbp, item.dividend_adjustment_gbp)
+    }
+    # Convert all slices at the charge's timestamp, retaining any final decimal
+    # residual in the final slice so GBP allocation sums exactly to that event.
+    for event_id in dict.fromkeys(share.event_id for share in shares):
+        event_shares = [share for share in shares if share.event_id == event_id]
+        total_gbp = _gbp(_cost_amount(native_by_id[event_id]), quotes[event_id])
+        assigned_gbp = Decimal(0)
+        for index, share in enumerate(event_shares):
+            value = (
+                None
+                if total_gbp is None
+                else total_gbp - assigned_gbp
+                if index == len(event_shares) - 1
+                else _gbp_precision(_gbp(share.amount, quotes[event_id]))
+            )
+            if value is not None:
+                assigned_gbp += value
+            allocation_rows.append(
+                {
+                    "event_id": event_id,
+                    "closed_event_id": share.closed_event_id,
+                    "native_currency": native_by_id[event_id].account_currency,
+                    "native_amount": share.amount
+                    if _cost_amount(native_by_id[event_id]) is not None
+                    else None,
+                    "amount_gbp": value,
+                    "method": share.method,
+                }
+            )
+            if share.closed_event_id is not None:
+                if value is None:
+                    unknown_trades.add(share.closed_event_id)
+                else:
+                    allocations[share.closed_event_id] += value
+            elif value is not None:
+                unallocated.append((converted_by_id[event_id], value))
+    normalized = replace(
+        ledger,
+        events=tuple(converted),
+        account_currencies=("GBP",) if ledger.events else (),
+    )
+    analysis = _analyse_gbp_ledger(normalized, allocations, unallocated)
+    fx_metadata = {
+        "status": "partial" if missing and evidence else "unavailable" if missing else "available",
+        "currency": "GBP",
+        "native_currencies": list(ledger.account_currencies),
+        "foreign_gbp_rounding_quantum": str(GBP_QUANTUM),
+        "missing_event_ids": missing,
+        "evidence": evidence,
+    }
+    monetary_missing = [
+        event.event_id
+        for event in ledger.events
+        if (event.record_type == "Closed position" and _closed_after_fx(event) is None)
+        or (event.record_type in _COST_FIELDS and _cost_amount(event) is None)
+    ]
+    allocation_metadata = {
+        "status": "unavailable"
+        if conflicts
+        else "partial"
+        if any(
+            row["amount_gbp"] is None
+            or (row["closed_event_id"] is None and row["native_amount"] != 0)
+            for row in allocation_rows
+        )
+        else "available",
+        "method": "order_link_then_holding_interval_quantity",
+        "gbp_allocation_quantum": str(GBP_QUANTUM),
+        "remainder_policy": "final_share_preserves_converted_event_total",
+        "allocations": allocation_rows,
+        "conflicts": conflicts,
+        "deduplicated_embedded": [
+            {
+                "closed_event_id": key[0],
+                "component": key[1],
+                "native_amount": getattr(native_by_id[key[0]], key[1]),
+            }
+            for key, value in embedded.items()
+            if value == 0 and getattr(native_by_id[key[0]], key[1])
+        ],
+        "unallocated_costs_gbp": _sum_known(
+            row["amount_gbp"] for row in allocation_rows if row["closed_event_id"] is None
+        ),
+    }
+    warnings = list(analysis.warnings)
+    if monetary_missing:
+        warnings.append(
+            "monetary_data_unavailable: net monetary fields are missing for "
+            + ", ".join(monetary_missing)
+        )
+    if missing:
+        warnings.append("fx_unavailable: dated GBP conversion is missing for " + ", ".join(missing))
+    if conflicts:
+        warnings.append(
+            "cost_allocation_conflict: embedded and standalone costs cannot be reconciled"
+        )
+    if any(value == 0 and getattr(native_by_id[key[0]], key[1]) for key, value in embedded.items()):
+        warnings.append(
+            "matched embedded totals were not added because standalone overnight/dividend events "
+            "are authoritative and allocated once"
+        )
+    if allocation_metadata["status"] == "partial":
+        warnings.append(
+            "unallocated_costs: costs without sufficient close evidence remain in total P&L"
+        )
+    analysis = replace(
+        analysis,
+        fx_conversion=fx_metadata,
+        cost_allocation=allocation_metadata,
+        event_amounts=tuple(components),
+        warnings=tuple(warnings),
+        monetary_data={
+            "status": "partial" if monetary_missing else "available",
+            "missing_event_ids": monetary_missing,
+        },
+    )
+    return _apply_unavailable_amounts(
+        analysis, normalized, tuple(components), unknown_trades, conflicts
+    )
+
+
+def _apply_unavailable_amounts(
+    analysis: CfdAnalysis,
+    ledger: CfdLedger,
+    components: tuple[CfdEventAmounts, ...],
+    unknown_trades: set[str],
+    conflicts: list[dict[str, str]],
+) -> CfdAnalysis:
+    """Recompute optional aggregates, keeping missing cash separate from missing P&L."""
+    by_id = {event.event_id: event for event in ledger.events}
+    amounts = {item.event_id: item for item in components}
+    flow_types = {
+        "Deposit": "deposits",
+        "Withdrawal": "withdrawals",
+        "Transfer": "internal_transfers",
+        "Adjustment": "adjustments",
+    }
+    cash_fields = {
+        name: _sum_known(
+            item.account_cash_flow_gbp
+            for item in components
+            if by_id[item.event_id].transaction_type == kind
+            and by_id[item.event_id].record_type == "Transaction"
+        )
+        for kind, name in flow_types.items()
+    }
+    cash_fields["account_cash_flow"] = _sum_known(cash_fields.values())
+    cash_fields["household_external_flow"] = _sum_known(
+        (cash_fields["deposits"], cash_fields["withdrawals"])
+    )
+    cash = CfdCashFlowSummary(**cash_fields)
+    closed_events = [event for event in ledger.events if event.record_type == "Closed position"]
+    pnl_fields = {
+        "closed_gross_result": _sum_known(event.gross_result for event in closed_events),
+        "fx_fees": _sum_known(
+            event.fx_fee
+            if event.fx_fee is not None
+            else None
+            if amounts[event.event_id].closed_after_fx_gbp is None
+            else Decimal(0)
+            for event in closed_events
+        ),
+        "closed_after_fx": _sum_known(item.closed_after_fx_gbp for item in components),
+        "overnight_interest": _sum_known(item.overnight_interest_gbp for item in components),
+        "dividend_adjustment": _sum_known(item.dividend_adjustment_gbp for item in components),
+    }
+    net = _sum_known(
+        pnl_fields[key] for key in ("closed_after_fx", "overnight_interest", "dividend_adjustment")
+    )
+    cumulative_pnl = cumulative_cash = peak = Decimal(0)
+    series: list[CfdRealisedPoint] = []
+    for point in analysis.realised_series:
+        item = amounts[point.event_id]
+        change = _sum_known(
+            (item.closed_after_fx_gbp, item.overnight_interest_gbp, item.dividend_adjustment_gbp)
+        )
+        cumulative_pnl = _sum_known((cumulative_pnl, change))
+        cumulative_cash = _sum_known((cumulative_cash, item.account_cash_flow_gbp))
+        peak = max(peak, cumulative_pnl) if cumulative_pnl is not None else None
+        series.append(
+            replace(
+                point,
+                realised_pnl_change=change,
+                cumulative_realised_pnl=cumulative_pnl,
+                account_cash_flow_change=item.account_cash_flow_gbp,
+                cumulative_account_cash_flow=cumulative_cash,
+                realised_cash_equity_proxy=_sum_known((cumulative_cash, cumulative_pnl)),
+                realised_pnl_drawdown=cumulative_pnl - peak if cumulative_pnl is not None else None,
+            )
+        )
+    drawdown = (
+        min((point.realised_pnl_drawdown for point in series), default=Decimal(0))
+        if net is not None
+        else None
+    )
+    financing = (
+        abs(min(pnl_fields["overnight_interest"], Decimal(0)))
+        if pnl_fields["overnight_interest"] is not None
+        else None
+    )
+    pnl = CfdRealisedPnlSummary(
+        **pnl_fields,
+        net_realised_pnl=net,
+        max_realised_pnl_drawdown=drawdown,
+        financing_drag_to_gross_ratio=_ratio(financing, abs(pnl_fields["closed_gross_result"]))
+        if financing is not None and pnl_fields["closed_gross_result"] is not None
+        else None,
+        financing_drag_to_net_ratio=_ratio(financing, abs(net))
+        if financing is not None and net is not None
+        else None,
+    )
+    monetary_missing_ids = set(analysis.monetary_data["missing_event_ids"])
+    reason = (
+        "cost_allocation_conflict"
+        if conflicts
+        else "fx_unavailable"
+        if analysis.fx_conversion["missing_event_ids"]
+        else "monetary_data_unavailable"
+    )
+    unknown_pnl = net is None
+    unknown_cash = cash.account_cash_flow is None
+    money = replace(
+        analysis.money_outcome,
+        **{f"{key}_gbp": value for key, value in cash_fields.items()},
+        net_realised_pnl_gbp=net,
+        max_realised_pnl_drawdown_gbp=drawdown,
+        ending_realised_cash_equity_proxy_gbp=series[-1].realised_cash_equity_proxy
+        if series
+        else Decimal(0),
+        current_realised_pnl_drawdown_gbp=series[-1].realised_pnl_drawdown
+        if series
+        else Decimal(0),
+        unavailable_reason=reason
+        if unknown_pnl or unknown_cash
+        else analysis.money_outcome.unavailable_reason,
+    )
+    quality = analysis.trade_quality
+    if unknown_trades:
+        dependent = (
+            "wins",
+            "losses",
+            "breakeven",
+            "win_rate",
+            "average_win",
+            "average_loss",
+            "payoff_ratio",
+            "profit_factor",
+            "expectancy",
+            "best_trade",
+            "worst_trade",
+            "longest_win_streak",
+            "longest_loss_streak",
+            "best_trade_concentration",
+            "top_three_trade_concentration",
+            "net_without_best_trade",
+        )
+        quality = replace(
+            quality, **dict.fromkeys(dependent), status="unavailable", unavailable_reason=reason
+        )
+    attribution = analysis.attribution
+    if unknown_pnl:
+        attribution = CfdAttribution(
+            (), (), (), (), (), status="unavailable", unavailable_reason=reason
+        )
+    notional = analysis.notional
+    missing_fx_ids = set(analysis.fx_conversion["missing_event_ids"])
+    if notional.missing_notional_trade_count or any(
+        event.event_id in missing_fx_ids for event in closed_events
+    ):
+        notional = replace(notional, total_closed_notional=None, average_closed_notional=None)
+    total_notional = notional.total_closed_notional
+    notional = replace(
+        notional,
+        net_realised_to_notional_ratio=_ratio(net, total_notional)
+        if net is not None and total_notional is not None
+        else None,
+        financing_cost_to_notional_ratio=_ratio(financing, total_notional)
+        if financing is not None and total_notional is not None
+        else None,
+    )
+    structural = replace(
+        analysis.structural_diagnostics,
+        **{
+            key: getattr(notional, key)
+            for key in (
+                "total_closed_notional",
+                "average_closed_notional",
+                "net_realised_to_notional_ratio",
+                "financing_cost_to_notional_ratio",
+                "missing_notional_trade_count",
+            )
+        },
+        **{
+            key: getattr(quality, key)
+            for key in (
+                "best_trade_concentration",
+                "top_three_trade_concentration",
+                "net_without_best_trade",
+            )
+        },
+        by_direction=attribution.by_direction,
+    )
+    if missing_fx_ids or monetary_missing_ids or conflicts:
+        structural = replace(structural, status="partial", unavailable_reason=reason)
+    phases = analysis.phases
+    if unknown_pnl or unknown_cash:
+        phases = replace(phases, status="unavailable", unavailable_reason=reason, items=())
+    coverage = analysis.coverage
+    if missing_fx_ids or monetary_missing_ids or conflicts:
+        coverage = replace(coverage, status="partial", unavailable_reason=reason)
+    return replace(
+        analysis,
+        cash_flows=cash,
+        realised_pnl=pnl,
+        money_outcome=money,
+        realised_series=tuple(series),
+        trade_quality=quality,
+        attribution=attribution,
+        notional=notional,
+        structural_diagnostics=structural,
+        phases=phases,
+        coverage=coverage,
+    )
+
+
 __all__ = [
     "CALCULATION_VERSION",
     "PARSER_VERSION",
@@ -1685,6 +2283,7 @@ __all__ = [
     "CfdCsvError",
     "CfdDuplicateConflictError",
     "CfdEvent",
+    "CfdEventAmounts",
     "CfdEventProvenance",
     "CfdFileSummary",
     "CfdLedger",

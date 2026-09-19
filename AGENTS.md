@@ -19,7 +19,9 @@ background services retain the approval boundaries below.
    platform-default external state root.
 3. Verify that `origin` or `upstream` points to the canonical
    `engramai-co/trading-max` repository; on a clean existing checkout,
-   fast-forward protected `main` before onboarding.
+   fast-forward protected `main` before onboarding. Use the verified remote
+   (`origin` or `upstream`); do not pull main into a feature branch. Preserve
+   explicit release selections and dirty/diverged work.
 4. For a fresh workstation, run the repository's supported non-interactive
    onboarding path. Do not invent another installer or copy application state
    into the checkout.
@@ -32,13 +34,15 @@ background services retain the approval boundaries below.
 7. Preserve the complete V1 provider path. Trading 212 account ingestion and
    the existing Yahoo Finance-compatible research adapter are part of this
    public V1 product path; do not replace them with CSV or disable them during
-   setup.
+   setup. Alpaca is an optional reconstruction enhancement configured through
+   Settings, not a first-run requirement. Apply the same credential boundary.
 8. Do not install login/background services without explicit user approval.
    The safe default is a foreground launch that the user can stop with
    `Ctrl-C`.
 9. After credentials are configured, submit one full refresh, follow it from
-   Health to a terminal state, and accept the deployment only when `/ready`
-   succeeds and the user confirms broker totals are plausible.
+   Health to a terminal state (reuse an initial job already queued), and accept
+   the deployment only when `/ready` JSON says `ready`, the worker is healthy,
+   and the user confirms broker totals are plausible. HTTP 200 alone is not enough.
 10. Run `trading-max doctor --check-updates` and report the source revision,
     canonical-source status, state-root path, process model, health/readiness,
     latest snapshot date, provider status without secrets, and the exact stop
@@ -55,7 +59,13 @@ deploy/local/start.sh
 ```
 
 The first command is idempotent. If an existing state root or occupied port is
-found, stop and diagnose it before running setup or replacing any process.
+found, diagnose its ownership before running setup or replacing any process.
+A known existing installation should be inspected with `doctor` and resumed.
+A custom `TRADING_MAX_STATE_ROOT` must persist through onboarding and launch.
+`doctor` checks configuration/source, not runtime readiness or provider access.
+Review Settings → Update schedule separately from login-service installation;
+fresh local bootstrap disables scheduled collection. Existing task authorization
+carries forward; ask only for unresolved choices or additional scope.
 
 ## Development changes
 

@@ -17,6 +17,7 @@ import {
   deriveHealthTone,
   durationBetween,
   formatAge,
+  flowVerificationText,
   shortRunId,
 } from "@/lib/health";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
@@ -312,8 +313,22 @@ export function HealthWorkspace() {
                         ? t("已启用", "Enabled")
                         : t("未启用", "Disabled"),
                   ],
+                  [
+                    t("现金流水覆盖", "Cash-flow coverage"),
+                    flowVerificationText(data.refresh?.live ?? data.refresh?.intraday, locale),
+                  ],
+                  [
+                    t("覆盖检查快照", "Coverage snapshot"),
+                    shortRunId((data.refresh?.live ?? data.refresh?.intraday)?.flowSnapshotRunId),
+                  ],
                 ]}
               />
+              <p>
+                {t(
+                  "统计当前快照中保留的估值点，不是历史更新任务数；流水覆盖不等于时间加权收益已验证。",
+                  "Counts retained valuations in the current snapshot, not past update jobs. Cash-flow coverage does not certify time-weighted returns.",
+                )}
+              </p>
             </details>
           </Panel>
           <Panel

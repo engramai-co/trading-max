@@ -60,7 +60,13 @@ def _transactions() -> pd.DataFrame:
             "ResultN": -30.0,
         },
     ]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(
+        **{
+            "Currency (Total)": "GBP",
+            "Currency (Currency conversion fee)": "GBP",
+            "Currency (Result)": "GBP",
+        }
+    )
 
 
 def _nav() -> pd.DataFrame:
@@ -115,6 +121,46 @@ def _holdings() -> list[dict[str, object]]:
             "price_currency": "GBP",
         },
     ]
+
+
+@pytest.mark.parametrize(
+    "status", ["missing_dated_cash_events", "unverified_broker_observation_time"]
+)
+def test_account_review_does_not_reconstruct_money_or_phases_from_rejected_nav(status: str) -> None:
+    nav = pd.DataFrame(
+        [
+            {"Date": "2026-01-08", "SyntheticNAVGBP": 100.0, "ExternalFlowGBP": 100.0},
+            {
+                "Date": "2026-01-09",
+                "SyntheticNAVGBP": 100.0,
+                "ExternalFlowGBP": 100.0,
+                "PerformanceStatus": status,
+            },
+            {
+                "Date": "2026-01-12",
+                "SyntheticNAVGBP": 200.0,
+                "ExternalFlowGBP": 0.0,
+                "CashGBP": 150.0,
+                "PerformanceStatus": "eligible",
+            },
+        ]
+    )
+    result = build_account_review(
+        account_code="A",
+        account_kind="invest",
+        transactions=None,
+        campaigns=[],
+        nav_money_series=nav,
+        ending_holdings=[{"ticker": "AAA", "current_value_gbp": 50.0}],
+    )
+    assert result["money_outcome"]["status"] == "unavailable"
+    assert "unverified" in result["money_outcome"]["unavailable_reason"]
+    assert result["phases"]["status"] == "unavailable"
+    assert result["phases"]["items"] == []
+    assert result["coverage"]["inputs"]["nav_money_series"]["status"] == "unavailable"
+    assert result["coverage"]["nav_observation_count"] == 3
+    assert result["ending_risk"]["account_value_gbp"] == 200.0
+    assert result["ending_risk"]["cash_gbp"] == 150.0
 
 
 def _campaign(

@@ -87,6 +87,36 @@ def test_account_performance_stage_fails_without_trusted_nav(tmp_path: Path) -> 
         )
 
 
+@pytest.mark.parametrize(
+    "status", ["missing_dated_cash_events", "unverified_broker_observation_time"]
+)
+@pytest.mark.parametrize("wealth", ["", "2"])
+def test_explicitly_ineligible_nav_cannot_revive_performance(
+    tmp_path: Path, status: str, wealth: str
+) -> None:
+    nav = (
+        "Date,CashGBP,MarketValueGBP,SyntheticNAVGBP,ExternalFlowGBP,"
+        "WeightedExternalFlowGBP,DailyReturn,TWRWealth,Drawdown,PerformanceStatus\n"
+        "2026-08-01,10,90,100,100,0,,,,eligible\n"
+        f"2026-08-02,110,90,200,100,0,,,,{status}\n"
+        f"2026-08-03,110,90,200,0,0,,{wealth},,eligible\n"
+    )
+    artifacts, snapshots = _seed_nav(tmp_path, nav)
+    result = AccountPerformanceStage(artifacts, snapshots).run(
+        StageContext(job_id="job", scope="accounts")
+    )
+    ref = next(ref for ref in result.artifacts if ref.key == "account/performance_a.json")
+    payload = artifacts.get_json(ref.artifact_id).payload
+    assert payload["periods"] == 0
+    assert payload["twr_total_return"] is None
+    assert payload["max_drawdown"] is None
+    assert payload["sharpe_sonia"] is None
+    assert payload["sortino_sonia"] is None
+    assert payload["net_external_flows_gbp"] == 200
+    assert ref.quality.status == "warning"
+    assert "unverified cash-flow timing" in result.warnings[0]
+
+
 def test_account_performance_stage_publishes_initial_baseline_without_ratios(
     tmp_path: Path,
 ) -> None:

@@ -8,7 +8,12 @@ from trading_max.analytics.accounts import (
     intraday_account_value,
     metrics_from_snapshot_file,
 )
-from trading_max.analytics.ledger import load_transactions, policy_metrics
+from trading_max.analytics.fx import FxResolver, HistoricalFxResolver
+from trading_max.analytics.ledger import (
+    load_transactions,
+    normalize_transactions_gbp,
+    policy_metrics,
+)
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import latest_export_path
@@ -148,7 +153,7 @@ class AccountPolicyStage:
     """Calculate realized campaign policy metrics from verified exports."""
 
     name = "accounts.policy"
-    version = "policy-v1"
+    version = "policy-v2"
     required_for = frozenset({"all", "accounts"})
     dependencies: tuple[str, ...] = ()
 
@@ -157,10 +162,13 @@ class AccountPolicyStage:
         state_root: Path,
         artifacts: ContentAddressedArtifactStore,
         profiles: tuple[str, ...] = ("invest", "isa"),
+        *,
+        fx_resolver: FxResolver | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
         self.profiles = profiles
+        self.fx_resolver = fx_resolver or HistoricalFxResolver(self.state_root / "raw" / "fx")
 
     def _transactions(self, profile: str):
         path = latest_export_path(
@@ -173,7 +181,9 @@ class AccountPolicyStage:
                 f"no managed Trading 212 export for {profile}",
             )
         try:
-            return load_transactions([path])
+            return normalize_transactions_gbp(
+                load_transactions([path]), fx_resolver=self.fx_resolver
+            )
         except Exception as exc:
             raise StageExecutionError(
                 "account.ledger_invalid",
@@ -185,6 +195,14 @@ class AccountPolicyStage:
             code: self._transactions(profile) for code, profile in (("A", "invest"), ("B", "isa"))
         }
         payload = policy_metrics(transactions)
+        payload["fx_evidence"] = {
+            code: frame.attrs.get("fx_evidence", []) for code, frame in transactions.items()
+        }
+        warnings = [
+            f"{code}: {summary['unavailable_reason']}"
+            for code, summary in payload["accounts"].items()
+            if summary["status"] != "available"
+        ]
         artifact = self.artifacts.put_json(
             key="account/policy_metrics.json",
             payload=payload,
@@ -192,11 +210,12 @@ class AccountPolicyStage:
             as_of=max(str(frame["Time"].max().date()) for frame in transactions.values()),
             producer_version=self.version,
             quality=ArtifactQuality(
-                status="verified",
+                status="warning" if warnings else "verified",
                 coverage=f"{len(transactions)}/2 accounts",
+                warnings=warnings,
             ),
         )
-        return StageResult(artifacts=(artifact.ref,))
+        return StageResult(artifacts=(artifact.ref,), warnings=tuple(warnings))
 
 
 class _AccountLedgerStage:
@@ -207,10 +226,13 @@ class _AccountLedgerStage:
         state_root: Path,
         artifacts: ContentAddressedArtifactStore,
         profiles: tuple[tuple[str, str], ...] = (("A", "invest"), ("B", "isa")),
+        *,
+        fx_resolver: FxResolver | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
         self.profiles = profiles
+        self.fx_resolver = fx_resolver or HistoricalFxResolver(self.state_root / "raw" / "fx")
 
     def _transactions(self, profile: str):
         path = latest_export_path(
@@ -223,7 +245,9 @@ class _AccountLedgerStage:
                 f"no managed Trading 212 export for {profile}",
             )
         try:
-            return load_transactions([path])
+            return normalize_transactions_gbp(
+                load_transactions([path]), fx_resolver=self.fx_resolver
+            )
         except Exception as exc:
             raise StageExecutionError(
                 "account.ledger_invalid",
@@ -250,11 +274,27 @@ class _AccountLedgerStage:
         return positions
 
 
+def _financial_availability(rows: list[dict]) -> dict:
+    reasons = list(
+        dict.fromkeys(
+            row["unavailable_reason"] for row in rows if row.get("status") == "unavailable"
+        )
+    )
+    return {
+        "status": "partial"
+        if reasons and any(row.get("status") == "available" for row in rows)
+        else "unavailable"
+        if reasons
+        else "available",
+        "unavailable_reason": "; ".join(reasons) or None,
+    }
+
+
 class AccountDilutedCostStage(_AccountLedgerStage):
     """Publish negative-capable diluted-cost metrics from the open campaigns."""
 
     name = "accounts.diluted_cost"
-    version = "diluted-cost-v2"
+    version = "diluted-cost-v3"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -263,15 +303,19 @@ class AccountDilutedCostStage(_AccountLedgerStage):
 
         positions = self._positions(context)
         rows: list[dict] = []
+        accounts: dict[str, dict] = {}
+        fx_evidence: dict[str, list] = {}
         try:
             for code, profile in self.profiles:
-                rows.extend(
-                    diluted_cost_rows(
-                        code,
-                        self._transactions(profile),
-                        positions[profile],
-                    )
+                transactions = self._transactions(profile)
+                account_rows = diluted_cost_rows(
+                    code,
+                    transactions,
+                    positions[profile],
                 )
+                rows.extend(account_rows)
+                accounts[code] = _financial_availability(account_rows)
+                fx_evidence[code] = transactions.attrs.get("fx_evidence", [])
         except StageExecutionError:
             raise
         except Exception as exc:
@@ -279,6 +323,11 @@ class AccountDilutedCostStage(_AccountLedgerStage):
                 "account.diluted_cost_failed",
                 str(exc),
             ) from exc
+        warnings = [
+            f"{code}: {value['unavailable_reason']}"
+            for code, value in accounts.items()
+            if value["status"] != "available"
+        ]
         artifact = self.artifacts.put_json(
             key="account/diluted_cost_metrics.json",
             payload={
@@ -288,22 +337,25 @@ class AccountDilutedCostStage(_AccountLedgerStage):
                     "sales and distributions; divided by remaining shares."
                 ),
                 "holdings": rows,
+                "accounts": accounts,
+                "fx_evidence": fx_evidence,
             },
             kind="diluted_cost",
             producer_version=self.version,
             quality=ArtifactQuality(
-                status="verified",
+                status="warning" if warnings else "verified",
                 coverage=f"{len(rows)} open positions",
+                warnings=warnings,
             ),
         )
-        return StageResult(artifacts=(artifact.ref,))
+        return StageResult(artifacts=(artifact.ref,), warnings=tuple(warnings))
 
 
 class AccountCapitalRecoveryStage(_AccountLedgerStage):
     """Publish strict campaign recovery metrics and reconciliation checks."""
 
     name = "accounts.capital_recovery"
-    version = "capital-recovery-v2"
+    version = "capital-recovery-v3"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -313,15 +365,20 @@ class AccountCapitalRecoveryStage(_AccountLedgerStage):
         positions = self._positions(context)
         holdings: list[dict] = []
         checks: list[dict] = []
+        accounts: dict[str, dict] = {}
+        fx_evidence: dict[str, list] = {}
         try:
             for code, profile in self.profiles:
+                transactions = self._transactions(profile)
                 account_rows, account_checks = capital_recovery_rows(
                     code,
-                    self._transactions(profile),
+                    transactions,
                     positions[profile],
                 )
                 holdings.extend(account_rows)
                 checks.extend(account_checks)
+                accounts[code] = _financial_availability(account_rows)
+                fx_evidence[code] = transactions.attrs.get("fx_evidence", [])
         except StageExecutionError:
             raise
         except Exception as exc:
@@ -335,6 +392,11 @@ class AccountCapitalRecoveryStage(_AccountLedgerStage):
                 "account.reconciliation_mismatch",
                 "ledger and broker holdings do not reconcile",
             )
+        warnings = [
+            f"{code}: {value['unavailable_reason']}"
+            for code, value in accounts.items()
+            if value["status"] != "available"
+        ]
         artifact = self.artifacts.put_json(
             key="account/capital_recovery.json",
             payload={
@@ -347,16 +409,19 @@ class AccountCapitalRecoveryStage(_AccountLedgerStage):
                 "checks": checks,
                 "account_summary": [],
                 "holdings": holdings,
+                "accounts": accounts,
+                "fx_evidence": fx_evidence,
                 "cfd_open_positions": {},
             },
             kind="capital_recovery",
             producer_version=self.version,
             quality=ArtifactQuality(
-                status="verified",
+                status="warning" if warnings else "verified",
                 coverage=f"{len(checks)} reconciliation checks",
+                warnings=warnings,
             ),
         )
-        return StageResult(artifacts=(artifact.ref,))
+        return StageResult(artifacts=(artifact.ref,), warnings=tuple(warnings))
 
 
 __all__ = [

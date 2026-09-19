@@ -8,9 +8,11 @@ Link the issue/RFC and explain alternatives considered.
 
 ## Verification
 
-- [ ] `VERSION` advances by exactly one PATCH, MINOR, or MAJOR increment
+- [ ] Release scope follows `CONTRIBUTING.md`: product changes advance `VERSION`
+      exactly once; ordinary documentation, metadata, CI, and test changes preserve it
 - [ ] Every Python, npm, lockfile, and OpenAPI version surface matches `VERSION`
-- [ ] `CHANGELOG.md` starts with a dated section for the proposed version
+- [ ] Releases have a dated `CHANGELOG.md` section; an approved same-version
+      `hotfix:no-release` change has categorized `Unreleased` notes
 - [ ] Backend tests and Ruff pass where applicable
 - [ ] Frontend lint, types, tests, and build pass where applicable
 - [ ] OpenAPI/generated types are updated

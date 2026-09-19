@@ -506,6 +506,38 @@ class SqliteJobQueue:
             ),
         )
         with self.database.transaction(immediate=True) as connection:
+            # A cancelled job cannot be reclaimed for execution. If its owner
+            # stopped before the next stage boundary, finalize it once the
+            # lease expires so it cannot block admission forever. The same
+            # write transaction protects a still-renewed lease from cleanup.
+            abandoned = connection.execute(
+                "SELECT job_id, error_message FROM jobs WHERE status = 'running' "
+                "AND cancel_requested = 1 AND lease_expires_at < ?",
+                (_iso(now),),
+            ).fetchall()
+            for cancelled in abandoned:
+                reason = cancelled["error_message"] or "job cancelled after worker lease expired"
+                connection.execute(
+                    "UPDATE jobs SET status = 'interrupted', finished_at = ?, "
+                    "lease_expires_at = NULL, worker_id = NULL, cancel_requested = 0, "
+                    "error_code = 'job.cancelled', error_message = ? WHERE job_id = ?",
+                    (_iso(now), reason, cancelled["job_id"]),
+                )
+                connection.execute(
+                    "UPDATE job_stages SET status = 'interrupted', finished_at = ?, "
+                    "error_code = 'job.cancelled', error_message = ? "
+                    "WHERE job_id = ? AND status = 'running'",
+                    (_iso(now), reason, cancelled["job_id"]),
+                )
+                connection.execute(
+                    "INSERT INTO job_events(job_id, created_at, event_type, payload_json) "
+                    "VALUES (?, ?, 'cancelled', ?)",
+                    (
+                        cancelled["job_id"],
+                        _iso(now),
+                        json.dumps({"reason": reason, "lease_expired": True}),
+                    ),
+                )
             row = connection.execute(
                 "SELECT * FROM jobs WHERE (status = 'queued' OR "
                 "(status = 'running' AND lease_expires_at < ?)) "

@@ -640,12 +640,26 @@
             "type": "string"
           },
           "capitalDeltaGbp": {
-            "title": "Capitaldeltagbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capitaldeltagbp"
           },
           "cashGbp": {
-            "title": "Cashgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cashgbp"
           },
           "code": {
             "enum": [
@@ -684,24 +698,45 @@
             "type": "string"
           },
           "netExternalFlowsGbp": {
-            "title": "Netexternalflowsgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netexternalflowsgbp"
           },
           "profile": {
             "title": "Profile",
             "type": "string"
           },
           "realizedPnlGbp": {
-            "title": "Realizedpnlgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnlgbp"
           },
           "totalCostGbp": {
             "title": "Totalcostgbp",
             "type": "number"
           },
           "totalValueGbp": {
-            "title": "Totalvaluegbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalvaluegbp"
           },
           "twr": {
             "anyOf": [
@@ -1993,6 +2028,11 @@
           "cashFlows": {
             "$ref": "#/components/schemas/CfdCashFlows"
           },
+          "costAllocation": {
+            "additionalProperties": true,
+            "title": "Costallocation",
+            "type": "object"
+          },
           "coverage": {
             "$ref": "#/components/schemas/CfdReviewCoverage"
           },
@@ -2036,8 +2076,18 @@
             "title": "Eventcount",
             "type": "integer"
           },
+          "fxConversion": {
+            "additionalProperties": true,
+            "title": "Fxconversion",
+            "type": "object"
+          },
           "importStatus": {
             "$ref": "#/components/schemas/CfdImportStatus"
+          },
+          "monetaryData": {
+            "additionalProperties": true,
+            "title": "Monetarydata",
+            "type": "object"
           },
           "moneyOutcome": {
             "$ref": "#/components/schemas/CfdMoneyOutcome"
@@ -2137,6 +2187,27 @@
             },
             "title": "Byweekday",
             "type": "array"
+          },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unavailableReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailablereason"
           }
         },
         "title": "CfdAttribution",
@@ -2168,28 +2239,70 @@
       "CfdCashFlows": {
         "properties": {
           "accountCashFlow": {
-            "title": "Accountcashflow",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountcashflow"
           },
           "adjustments": {
-            "title": "Adjustments",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustments"
           },
           "deposits": {
-            "title": "Deposits",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deposits"
           },
           "householdExternalFlow": {
-            "title": "Householdexternalflow",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Householdexternalflow"
           },
           "internalTransfers": {
-            "title": "Internaltransfers",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internaltransfers"
           },
           "withdrawals": {
-            "title": "Withdrawals",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawals"
           }
         },
         "required": [
@@ -2462,44 +2575,114 @@
       "CfdMoneyOutcome": {
         "properties": {
           "accountCashFlowGbp": {
-            "title": "Accountcashflowgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountcashflowgbp"
           },
           "adjustmentsGbp": {
-            "title": "Adjustmentsgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustmentsgbp"
           },
           "currentRealisedPnlDrawdownGbp": {
-            "title": "Currentrealisedpnldrawdowngbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentrealisedpnldrawdowngbp"
           },
           "depositsGbp": {
-            "title": "Depositsgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depositsgbp"
           },
           "endingRealisedCashEquityProxyGbp": {
-            "title": "Endingrealisedcashequityproxygbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endingrealisedcashequityproxygbp"
           },
           "householdExternalFlowGbp": {
-            "title": "Householdexternalflowgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Householdexternalflowgbp"
           },
           "internalTransfersGbp": {
-            "title": "Internaltransfersgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internaltransfersgbp"
           },
           "maxRealisedPnlDrawdownGbp": {
-            "title": "Maxrealisedpnldrawdowngbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxrealisedpnldrawdowngbp"
           },
           "netRealisedPnlGbp": {
-            "title": "Netrealisedpnlgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netrealisedpnlgbp"
           },
           "openingRealisedCashEquityProxyGbp": {
-            "title": "Openingrealisedcashequityproxygbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openingrealisedcashequityproxygbp"
           },
           "source": {
             "const": "realised_cash_equity_proxy",
@@ -2531,8 +2714,15 @@
             "title": "Unavailablereason"
           },
           "withdrawalsGbp": {
-            "title": "Withdrawalsgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawalsgbp"
           }
         },
         "required": [
@@ -2594,8 +2784,15 @@
             "title": "Netrealisedtonotionalratio"
           },
           "totalClosedNotional": {
-            "title": "Totalclosednotional",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalclosednotional"
           }
         },
         "required": [
@@ -2788,16 +2985,37 @@
       "CfdRealisedPnl": {
         "properties": {
           "closedAfterFx": {
-            "title": "Closedafterfx",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closedafterfx"
           },
           "closedGrossResult": {
-            "title": "Closedgrossresult",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closedgrossresult"
           },
           "dividendAdjustment": {
-            "title": "Dividendadjustment",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividendadjustment"
           },
           "financingDragToGrossRatio": {
             "anyOf": [
@@ -2822,20 +3040,48 @@
             "title": "Financingdragtonetratio"
           },
           "fxFees": {
-            "title": "Fxfees",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fxfees"
           },
           "maxRealisedPnlDrawdown": {
-            "title": "Maxrealisedpnldrawdown",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxrealisedpnldrawdown"
           },
           "netRealisedPnl": {
-            "title": "Netrealisedpnl",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netrealisedpnl"
           },
           "overnightInterest": {
-            "title": "Overnightinterest",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overnightinterest"
           }
         },
         "required": [
@@ -2853,16 +3099,37 @@
       "CfdRealisedPoint": {
         "properties": {
           "accountCashFlowChange": {
-            "title": "Accountcashflowchange",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountcashflowchange"
           },
           "cumulativeAccountCashFlow": {
-            "title": "Cumulativeaccountcashflow",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulativeaccountcashflow"
           },
           "cumulativeRealisedPnl": {
-            "title": "Cumulativerealisedpnl",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulativerealisedpnl"
           },
           "eventId": {
             "title": "Eventid",
@@ -2873,16 +3140,37 @@
             "type": "string"
           },
           "realisedCashEquityProxy": {
-            "title": "Realisedcashequityproxy",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realisedcashequityproxy"
           },
           "realisedPnlChange": {
-            "title": "Realisedpnlchange",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realisedpnlchange"
           },
           "realisedPnlDrawdown": {
-            "title": "Realisedpnldrawdown",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realisedpnldrawdown"
           },
           "recordType": {
             "title": "Recordtype",
@@ -3199,8 +3487,15 @@
             "title": "Topthreetradeconcentration"
           },
           "totalClosedNotional": {
-            "title": "Totalclosednotional",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalclosednotional"
           },
           "unavailableReason": {
             "anyOf": [
@@ -3304,8 +3599,15 @@
             "title": "Dividendadjustmentsgbp"
           },
           "endingValueGbp": {
-            "title": "Endingvaluegbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endingvaluegbp"
           },
           "financingToGrossRatio": {
             "anyOf": [
@@ -3372,8 +3674,15 @@
             "title": "Latesteventat"
           },
           "maxDrawdownGbp": {
-            "title": "Maxdrawdowngbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxdrawdowngbp"
           },
           "name": {
             "title": "Name",
@@ -3384,8 +3693,15 @@
             "type": "string"
           },
           "netExternalFlowsGbp": {
-            "title": "Netexternalflowsgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Netexternalflowsgbp"
           },
           "netRealisedPnlGbp": {
             "anyOf": [
@@ -3399,8 +3715,15 @@
             "title": "Netrealisedpnlgbp"
           },
           "overnightChargesGbp": {
-            "title": "Overnightchargesgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overnightchargesgbp"
           },
           "pnlSharpeProxy": {
             "anyOf": [
@@ -3418,12 +3741,26 @@
             "type": "string"
           },
           "realizedPnlGbp": {
-            "title": "Realizedpnlgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnlgbp"
           },
           "reconciliationGapGbp": {
-            "title": "Reconciliationgapgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliationgapgbp"
           },
           "reconciliationStatus": {
             "title": "Reconciliationstatus",
@@ -3533,8 +3870,15 @@
             "title": "Besttradeconcentration"
           },
           "breakeven": {
-            "title": "Breakeven",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakeven"
           },
           "expectancy": {
             "anyOf": [
@@ -3548,16 +3892,37 @@
             "title": "Expectancy"
           },
           "longestLossStreak": {
-            "title": "Longestlossstreak",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longestlossstreak"
           },
           "longestWinStreak": {
-            "title": "Longestwinstreak",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longestwinstreak"
           },
           "losses": {
-            "title": "Losses",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Losses"
           },
           "medianDurationHours": {
             "anyOf": [
@@ -3607,6 +3972,16 @@
             "title": "Samedaycount",
             "type": "integer"
           },
+          "status": {
+            "default": "available",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
           "topThreeTradeConcentration": {
             "anyOf": [
               {
@@ -3621,6 +3996,17 @@
           "tradeCount": {
             "title": "Tradecount",
             "type": "integer"
+          },
+          "unavailableReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailablereason"
           },
           "underOneHourCount": {
             "title": "Underonehourcount",
@@ -3638,8 +4024,15 @@
             "title": "Winrate"
           },
           "wins": {
-            "title": "Wins",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wins"
           },
           "worstTrade": {
             "anyOf": [
@@ -4106,8 +4499,15 @@
             "type": "array"
           },
           "householdTotalValueGbp": {
-            "title": "Householdtotalvaluegbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Householdtotalvaluegbp"
           },
           "intradayNav": {
             "items": {
@@ -5711,10 +6111,51 @@
             "title": "Failedcount",
             "type": "integer"
           },
+          "flowAnchorCount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowanchorcount"
+          },
+          "flowSnapshotRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowsnapshotrunid"
+          },
           "flowUnverifiedCount": {
-            "default": 0,
-            "title": "Flowunverifiedcount",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Retained valuation anchors in flowSnapshotRunId without a verified anchor status or verified cash-flow coverage for both accounts at their observation times. Each anchor counts once, regardless of source or refresh jobs. Null means no readable snapshot/valuation history; zero with flowAnchorCount=0 means empty history. This is coverage evidence, not certification of time-weighted returns.",
+            "title": "Flowunverifiedcount"
+          },
+          "flowVerificationStatus": {
+            "default": "unavailable",
+            "enum": [
+              "available",
+              "no_snapshot",
+              "unavailable"
+            ],
+            "title": "Flowverificationstatus",
+            "type": "string"
           },
           "intervalSeconds": {
             "title": "Intervalseconds",
@@ -5809,12 +6250,26 @@
             "type": "number"
           },
           "realizedNet": {
-            "title": "Realizednet",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizednet"
           },
           "turnover": {
-            "title": "Turnover",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnover"
           }
         },
         "required": [
@@ -8183,10 +8638,51 @@
             "title": "Failedcount",
             "type": "integer"
           },
+          "flowAnchorCount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowanchorcount"
+          },
+          "flowSnapshotRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flowsnapshotrunid"
+          },
           "flowUnverifiedCount": {
-            "default": 0,
-            "title": "Flowunverifiedcount",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Retained valuation anchors in flowSnapshotRunId without a verified anchor status or verified cash-flow coverage for both accounts at their observation times. Each anchor counts once, regardless of source or refresh jobs. Null means no readable snapshot/valuation history; zero with flowAnchorCount=0 means empty history. This is coverage evidence, not certification of time-weighted returns.",
+            "title": "Flowunverifiedcount"
+          },
+          "flowVerificationStatus": {
+            "default": "unavailable",
+            "enum": [
+              "available",
+              "no_snapshot",
+              "unavailable"
+            ],
+            "title": "Flowverificationstatus",
+            "type": "string"
           },
           "intervalSeconds": {
             "title": "Intervalseconds",
@@ -8278,8 +8774,15 @@
       "PolicySummary": {
         "properties": {
           "expectancy": {
-            "title": "Expectancy",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectancy"
           },
           "isaBuckets": {
             "items": {
@@ -8289,16 +8792,37 @@
             "type": "array"
           },
           "payoff": {
-            "title": "Payoff",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payoff"
           },
           "profitFactor": {
-            "title": "Profitfactor",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profitfactor"
           },
           "winRate": {
-            "title": "Winrate",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winrate"
           }
         },
         "required": [
@@ -14764,7 +15288,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.5.1"
+    "version": "1.5.2"
   },
   "openapi": "3.1.0",
   "paths": {

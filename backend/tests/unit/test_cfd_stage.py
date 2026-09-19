@@ -4,7 +4,9 @@ import csv
 import io
 from pathlib import Path
 
+import pytest
 from trading_max.application.cfd_stages import CfdAccountStage
+from trading_max.application.errors import StageExecutionError
 from trading_max.application.runtime import TypedWorkerRuntime
 from trading_max.application.stages import StageContext
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
@@ -139,6 +141,24 @@ def test_cfd_stage_skips_safely_when_no_import_exists(tmp_path: Path) -> None:
     assert result.metadata == {"cfd_imported": False}
 
 
+@pytest.mark.parametrize("amount", ["NaN", "Infinity"])
+def test_cfd_stage_rejects_nonfinite_investing_cash_flows(tmp_path: Path, amount: str) -> None:
+    state_root = tmp_path / "state"
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    CfdImportStore(state_root).import_bytes("synthetic.csv", _stage_csv())
+    upstream = _nav_dependencies(artifacts)
+    invalid = artifacts.put_bytes(
+        key="account/nav/daily_nav_a.csv",
+        content=f"Date,ExternalFlowGBP\n2026-01-01,{amount}\n".encode(),
+        kind="nav_series",
+        media_type="text/csv",
+        producer_version="test",
+    )
+
+    with pytest.raises(StageExecutionError, match="invalid ExternalFlowGBP"):
+        CfdAccountStage(state_root, artifacts).run(_context((*upstream, invalid.ref.artifact_id)))
+
+
 def test_cfd_stage_runs_after_snapshot_and_before_performance_and_publish(
     tmp_path: Path,
 ) -> None:
@@ -255,3 +275,128 @@ def test_labelled_internal_transfer_is_included_when_exact_match_is_partial(
 
     metrics = artifacts.get_json(refs["account/cfd_metrics.json"].artifact_id).payload
     assert "included as a labelled household-internal counterflow" in metrics["warning"]
+
+
+def _foreign_stage_csv() -> bytes:
+    rows = list(csv.DictReader(io.StringIO(_stage_csv().decode())))
+    for row in rows:
+        row["Account currency"] = "USD"
+        if row.get("Instrument currency"):
+            row["Instrument currency"] = "USD"
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=HEADERS)
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode()
+
+
+def test_cfd_stage_publishes_gbp_from_dated_fx_and_preserves_native_ledger(tmp_path: Path) -> None:
+    from decimal import Decimal
+
+    from trading_max.analytics.fx import FxQuote
+
+    state_root = tmp_path / "state"
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    CfdImportStore(state_root).import_bytes("foreign.csv", _foreign_stage_csv())
+    result = CfdAccountStage(
+        state_root,
+        artifacts,
+        fx_resolver=lambda currency, at: FxQuote(currency, Decimal(2), at, "synthetic"),
+    ).run(_context(_nav_dependencies(artifacts)))
+    refs = {ref.key: ref for ref in result.artifacts}
+    ledger = artifacts.get_json(refs["account/cfd_ledger.json"].artifact_id).payload
+    analysis = artifacts.get_json(refs["account/cfd_analysis.json"].artifact_id).payload
+    metrics = artifacts.get_json(refs["account/cfd_metrics.json"].artifact_id).payload
+    rows = list(
+        csv.DictReader(
+            io.StringIO(
+                artifacts.get_bytes(
+                    refs["account/nav/daily_nav_c.csv"].artifact_id
+                ).path.read_text()
+            )
+        )
+    )
+    assert ledger["account_currencies"] == ["USD"]
+    assert ledger["events"][0]["account_currency"] == "USD"
+    assert analysis["currency"] == "GBP"
+    assert metrics["account_cash_flows_gbp"] == "75"
+    assert metrics["realized_profit_loss_gbp"] == "3.5"
+    assert metrics["ending_nav_gbp"] == "78.5"
+    assert rows[-1]["CumulativeOvernightInterestGBP"] == "-1"
+    assert rows[-1]["RealisedCashEquityProxyGBP"] == "78.5"
+    assert rows[-1]["CumulativeInternalTransferCounterflowGBP"] == "25"
+    assert all(ref.producer_version == "cfd-account-v3" for ref in refs.values())
+
+
+@pytest.mark.parametrize("resolver_failure", [False, True])
+def test_cfd_stage_missing_or_failed_fx_keeps_refresh_alive_and_nulls_amounts(
+    tmp_path: Path, resolver_failure: bool
+) -> None:
+    def unavailable(currency, at):
+        if resolver_failure:
+            raise RuntimeError("synthetic provider unavailable")
+        return
+
+    state_root = tmp_path / "state"
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    CfdImportStore(state_root).import_bytes("foreign.csv", _foreign_stage_csv())
+    result = CfdAccountStage(state_root, artifacts, fx_resolver=unavailable).run(
+        _context(_nav_dependencies(artifacts))
+    )
+    refs = {ref.key: ref for ref in result.artifacts}
+    analysis = artifacts.get_json(refs["account/cfd_analysis.json"].artifact_id).payload
+    metrics = artifacts.get_json(refs["account/cfd_metrics.json"].artifact_id).payload
+    rows = list(
+        csv.DictReader(
+            io.StringIO(
+                artifacts.get_bytes(
+                    refs["account/nav/daily_nav_c.csv"].artifact_id
+                ).path.read_text()
+            )
+        )
+    )
+    assert analysis["trade_quality"]["trade_count"] == 1
+    assert analysis["trade_quality"]["wins"] is None
+    assert metrics["account_cash_flows_gbp"] is None
+    assert metrics["realized_profit_loss_gbp"] is None
+    assert metrics["ending_nav_gbp"] is None
+    assert metrics["reconciliation_status"] == "fx_unavailable"
+    assert rows[-1]["RealisedCashEquityProxyGBP"] == ""
+    assert rows[-1]["CumulativeAccountCashFlowGBP"] == ""
+    assert rows[-1]["CumulativeOvernightInterestGBP"] == ""
+    assert rows[-1]["GBPConversionStatus"] == "unavailable"
+    assert rows[-1]["HouseholdTransferMatchStatus"] == "unavailable"
+
+
+def test_cfd_stage_cost_conflict_never_relabels_partial_sum_verified(tmp_path: Path) -> None:
+    rows = list(csv.DictReader(io.StringIO(_stage_csv().decode())))
+    close = next(row for row in rows if row["Record Type"] == "Closed position")
+    close["Overnight interest (account currency)"] = "-5"
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=HEADERS)
+    writer.writeheader()
+    writer.writerows(rows)
+    state_root = tmp_path / "state"
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    CfdImportStore(state_root).import_bytes("conflict.csv", buffer.getvalue().encode())
+    result = CfdAccountStage(state_root, artifacts).run(_context(_nav_dependencies(artifacts)))
+    refs = {ref.key: ref for ref in result.artifacts}
+    metrics = artifacts.get_json(refs["account/cfd_metrics.json"].artifact_id).payload
+    rows = list(
+        csv.DictReader(
+            io.StringIO(
+                artifacts.get_bytes(
+                    refs["account/nav/daily_nav_c.csv"].artifact_id
+                ).path.read_text()
+            )
+        )
+    )
+    assert metrics["account_cash_flows_gbp"] == "150"
+    assert metrics["closed_after_fx_pnl_gbp"] == "9"
+    assert metrics["overnight_charges_gbp"] is None
+    assert metrics["realized_profit_loss_gbp"] is None
+    assert metrics["reconciliation_status"] == "cost_allocation_conflict"
+    assert metrics["reconciliation_gap_gbp"] is None
+    assert rows[-1]["CumulativeClosedAfterFXGBP"] == "9"
+    assert rows[-1]["CumulativeOvernightInterestGBP"] == ""
+    assert rows[-1]["RealisedCashEquityProxyGBP"] == ""

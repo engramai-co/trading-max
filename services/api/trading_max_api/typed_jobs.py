@@ -708,7 +708,10 @@ class TypedJobManager:
         return (_api_record(latest) if latest is not None else None, counts)
 
     def log(self, job_id: str, *, max_bytes: int = 200_000) -> str:
-        record = self.queue.get(job_id)
+        try:
+            record = self.queue.get(job_id)
+        except KeyError as exc:
+            raise FileNotFoundError(str(exc)) from exc
         path = (
             Path(record.log_path)
             if record.log_path

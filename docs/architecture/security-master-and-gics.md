@@ -52,8 +52,9 @@ dynamic profile resolution (ISIN/ticker/name)
 The reference stage runs before look-through. It first resolves every broker
 position so that funds are identified from provider metadata, not ticker
 membership. It then expands each fund and enriches the underlying economic
-equities. The look-through stage consumes the resulting durable catalog
-deterministically and performs no network access.
+equities. The look-through stage consumes that immutable identity catalog.
+Its official fund-holdings provider reads the external cache and may refresh
+missing or stale constituent snapshots through the configured issuer adapter.
 
 Identity and fundamentals are separate provider steps. Strong identifiers are
 batch-mapped through OpenFIGI v3 before Yahoo business-profile enrichment:

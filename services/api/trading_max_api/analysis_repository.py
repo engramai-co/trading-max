@@ -115,13 +115,17 @@ class AnalysisRunRepository:
         return [self._from_row(row) for row in rows]
 
     def recover_interrupted(self, *, message: str) -> int:
-        """Mark claimed/running runs interrupted; leave queued work resumable."""
+        """Recover orphaned runs without interrupting another process's worker."""
 
         now = datetime.now(UTC).isoformat()
         changed = 0
         with self.database.transaction(immediate=True) as connection:
             rows = connection.execute(
-                "SELECT run_id, errors_json FROM analysis_runs WHERE status = 'running'"
+                "SELECT run_id, errors_json FROM analysis_runs WHERE status = 'running' "
+                "AND NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.job_id = analysis_runs.run_id "
+                "AND (jobs.status = 'queued' OR "
+                "(jobs.status = 'running' AND julianday(jobs.lease_expires_at) >= julianday(?))))",
+                (now,),
             ).fetchall()
             for row in rows:
                 errors = json.loads(row["errors_json"])

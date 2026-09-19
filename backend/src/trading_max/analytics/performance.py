@@ -118,7 +118,13 @@ def calculate_performance(
     excess = [value - risk_free_per_period for value in returns]
     std = _sample_std(excess)
     downside_values = [min(value, 0.0) for value in excess]
-    downside = _sample_std(downside_values) if len(downside_values) >= 2 else None
+    # Downside deviation is measured from the return target (zero excess),
+    # not from the mean of the downside series. Equal losses still carry risk.
+    downside = (
+        math.sqrt(sum(value * value for value in downside_values) / len(downside_values))
+        if len(downside_values) >= 2
+        else None
+    )
     volatility = std * math.sqrt(periods_per_year) if std is not None else None
     sharpe = (
         sum(excess) / len(excess) / std * math.sqrt(periods_per_year) if std and returns else None

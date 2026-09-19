@@ -301,6 +301,15 @@ def build(state: Path, fixture: dict, *, resume: bool) -> None:
     refs = {
         key: ArtifactRef.model_validate(value) for key, value in checkpoint["artifacts"].items()
     }
+    # Older checkpoints identified outputs only by producer version. Preserve
+    # that migration path, then keep explicit ownership for subsequent retries.
+    outputs = checkpoint.setdefault(
+        "stage_artifacts",
+        {
+            name: [key for key, ref in refs.items() if ref.producer_version == version]
+            for name, version in checkpoint["completed"].items()
+        },
+    )
     runtime = TypedWorkerRuntime(state)
     registry = runtime.registry()
     # The production plan includes ordering requirements beyond stage-local
@@ -323,6 +332,14 @@ def build(state: Path, fixture: dict, *, resume: bool) -> None:
                 or name in checkpoint["failures"]
             ):
                 print(f"Stage: {name}", flush=True)
+                # Invalidation happens even if the replacement fails. A failed
+                # refresh must not publish old outputs or let dependants reuse
+                # results calculated from the now-invalidated inputs.
+                changed_stages.add(name)
+                for key in outputs.pop(name, []):
+                    refs.pop(key, None)
+                    available_keys.discard(key)
+                checkpoint["completed"].pop(name, None)
                 inputs = {key: ref for key, ref in refs.items() if key in available_keys}
                 context = StageContext(
                     job_id="broker-preview",
@@ -333,10 +350,12 @@ def build(state: Path, fixture: dict, *, resume: bool) -> None:
                     upstream_artifact_ids=tuple(ref.artifact_id for ref in inputs.values()),
                 )
                 try:
+                    if failed := dependencies & checkpoint["failures"].keys():
+                        raise RuntimeError(f"dependencies unavailable: {', '.join(sorted(failed))}")
                     result = stage.run(context)
                     refs.update({ref.key: ref for ref in result.artifacts})
+                    outputs[name] = [ref.key for ref in result.artifacts]
                     checkpoint["completed"][name] = stage.version
-                    changed_stages.add(name)
                     checkpoint["failures"].pop(name, None)
                     for warning in result.warnings:
                         print(f"  Coverage: {warning}", flush=True)
@@ -348,10 +367,10 @@ def build(state: Path, fixture: dict, *, resume: bool) -> None:
                     key: ref.model_dump(mode="json", by_alias=False) for key, ref in refs.items()
                 }
                 write_json(checkpoint_path, checkpoint)
-            available_keys.update(
-                key for key, ref in refs.items() if ref.producer_version == stage.version
-            )
+            if checkpoint["completed"].get(name) == stage.version:
+                available_keys.update(key for key in outputs.get(name, []) if key in refs)
             pending.remove(name)
+    refs = {key: ref for key, ref in refs.items() if key in available_keys}
     required = {
         "account/broker_snapshot_metrics.json",
         "research/technical.json",
