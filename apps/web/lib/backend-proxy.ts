@@ -44,6 +44,9 @@ function compressedBody(
   const compressor = createBrotliCompress({ params: {
     [constants.BROTLI_PARAM_QUALITY]: 4,
     [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
+    // Let the streaming encoder plan for the complete response without buffering it.
+    [constants.BROTLI_PARAM_SIZE_HINT]: contentLength !== undefined && Number.isSafeInteger(contentLength)
+      ? Math.min(contentLength, 0xffff_ffff) : 0,
   } });
   const compressed = Readable.toWeb(compressor) as ReadableStream<Uint8Array>;
   // Pipeline propagates client cancellation and upstream failures to both streams.
