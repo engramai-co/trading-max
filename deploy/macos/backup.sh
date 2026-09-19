@@ -23,7 +23,16 @@ fi
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-DESTINATION="${1:-${TRADING_MAX_BACKUP_DIR:-$DEFAULT_DESTINATION}}"
+FORMAT="${TRADING_MAX_BACKUP_FORMAT:-archive}"
+if [[ "$FORMAT" == "repository" ]]; then
+  DEFAULT_DESTINATION="$SERVICE_ROOT/backups/repository"
+  DESTINATION="${1:-${TRADING_MAX_BACKUP_REPOSITORY:-$DEFAULT_DESTINATION}}"
+elif [[ "$FORMAT" == "archive" ]]; then
+  DESTINATION="${1:-${TRADING_MAX_BACKUP_DIR:-$DEFAULT_DESTINATION}}"
+else
+  echo "TRADING_MAX_BACKUP_FORMAT must be archive or repository" >&2
+  exit 64
+fi
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ARCHIVE="$DESTINATION/trading_max-$STAMP.tar.gz"
 BACKUP_PYTHON="$SERVICE_ROOT/app/.venv/bin/python"
@@ -44,6 +53,16 @@ state, destination = (Path(value).resolve() for value in sys.argv[1:])
 if destination == state or state in destination.parents:
     raise SystemExit("backup destination must be outside the state root")
 PY
+
+if [[ "$FORMAT" == "repository" ]]; then
+  if [[ "$DESTINATION" == "$SERVICE_ROOT/backups/repository" ]]; then
+    exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
+      --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly \
+      --retain-for-service "$SERVICE_ROOT"
+  fi
+  exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
+    --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly
+fi
 
 mkdir -p "$DESTINATION"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/trading_max-backup.XXXXXXXX")"

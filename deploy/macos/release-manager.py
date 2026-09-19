@@ -112,6 +112,7 @@ class Deployment:
         self.phase = "preparing"
         self.cutover_started = False
         self.started_services: list[str] = []
+        self.backup_manifest: str | None = None
 
     def run(self, *args: str | Path, cwd: Path | None = None, capture=False, check=True):
         return subprocess.run(  # noqa: S603 - fixed commands, validated revisions, no shell
@@ -140,6 +141,7 @@ class Deployment:
                         "state": str(self.state),
                         "privateBackup": str(self.private),
                         "loadedServices": self.started_services,
+                        "backupManifest": getattr(self, "backup_manifest", None),
                     },
                     indent=2,
                 )
@@ -215,16 +217,22 @@ class Deployment:
                         raise RuntimeError(f"service did not stop: {service}")
 
     def backup(self) -> None:
-        destination = self.service / "backups" / self.transaction
-        self.run(self.candidate / "deploy/macos/backup.sh", destination)
-        archives = list(destination.glob("trading_max-*.tar.gz"))
-        if len(archives) != 1:
-            raise RuntimeError("deployment backup was not created uniquely")
-        self.run(
+        result = self.run(
             self.candidate / ".venv/bin/python",
-            self.candidate / "tools/verify_backup_archive.py",
-            archives[0],
+            self.candidate / "tools/manage_backups.py",
+            "--repository",
+            self.service / "backups/repository",
+            "create",
+            "--state-root",
+            self.state,
+            "--label",
+            self.transaction,
+            capture=True,
         )
+        created = json.loads(result.stdout)
+        if not created.get("snapshotRunId"):
+            raise RuntimeError("deployment backup has no verified published snapshot")
+        self.backup_manifest = created["manifest"]
 
     def activate(self) -> None:
         if not self.app.is_symlink():
@@ -323,12 +331,12 @@ class Deployment:
         try:
             self.save_record("building")
             self.build()
+            self.save_record("preflight-backup")
+            self.backup()
             self.capture_configuration()
             self.cutover_started = True
             self.save_record("stopping")
             self.stop()
-            self.save_record("backing-up")
-            self.backup()
             self.save_record("activating")
             self.activate()
             self.save_record("configuring")
@@ -392,6 +400,10 @@ def main() -> int:
             if record.parent != (service / "deployments").resolve():
                 parser.error("recovery record must belong to this service root")
             data = json.loads(record.read_text())
+            if data.get("retiredRuntimePaths"):
+                parser.error(
+                    "this recovery record was retired by retention; use a retained rollback record"
+                )
             if data["phase"] not in {
                 "stopping",
                 "backing-up",

@@ -287,9 +287,10 @@ function OverviewContent({ data }: { data: DashboardLens }) {
 }
 function OverviewHistory({ scope }: { scope: Scope }) {
   const t = useCopy();
-  const query = useDashboardLens("analytics");
   const { params, update } = useRouteState();
   const range = portfolioRange(params.get("range"));
+  const selection = useMemo(() => ({ range, scope }), [range, scope]);
+  const query = useDashboardLens("analytics", undefined, true, selection);
   const history = useMemo(() => selectPortfolioHistory({
     daily: query.data?.nav, intraday: query.data?.intradayNav,
     range, scope, asOf: query.data?.brokerAsOf,

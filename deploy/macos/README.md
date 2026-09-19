@@ -118,10 +118,11 @@ and the web app in a new `releases/<sha>-<unique-id>` directory. The active
 `app` directory is untouched during dependency installation and compilation.
 A host lock rejects concurrent deployments. After a successful build:
 
-1. Capture the existing service definitions and bootstrap env in a private
-   directory under `state/secrets/deployment-backups`.
+1. Create and verify an independent, deduplicated recovery snapshot while the
+   current application stays available. Capture the existing service definitions
+   and bootstrap env in `state/secrets/deployment-backups`.
 2. Stop the existing services, including scheduled backup, and wait for their
-   processes to exit. Create and verify a consistent state backup.
+   processes to exit. Backup compression no longer extends this downtime.
 3. Retain the complete previous release and atomically point `app` at the new
    directory. The first upgrade converts the original directory to this layout.
 4. Normalize bootstrap configuration, apply additive migrations, start the
@@ -147,4 +148,6 @@ Use the configured `TRADING_MAX_SERVICE_ROOT` and `TRADING_MAX_STATE_ROOT` when
 the host uses non-default locations. Recovery restores existing services;
 it never configures network exposure. Keep retained runtimes and private
 configuration backups until acceptance and the rollback retention period end.
-No automatic release-directory deletion runs during deployment.
+No release-directory deletion runs during deployment. See
+[storage maintenance](../../docs/operations/storage-maintenance.md) for the
+separate, bounded cleanup procedure and recovery-copy retention policy.

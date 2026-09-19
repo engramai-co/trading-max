@@ -17,6 +17,11 @@
     <key>Minute</key>
     <integer>30</integer>
   </dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TRADING_MAX_BACKUP_FORMAT</key>
+    <string>repository</string>
+  </dict>
   <key>RunAtLoad</key>
   <false/>
   <key>LowPriorityIO</key>
