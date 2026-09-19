@@ -27,6 +27,29 @@ const options = () =>
   );
 
 describe("shared performance timeline", () => {
+  it("spaces each responsive date density evenly across the full timeline", () => {
+    const categories = Array.from({ length: 70 * 12 }, (_, i) =>
+      new Date(Date.UTC(2025, 11, 1, i * 2)).toISOString());
+    const option = timelineOption(categories, layers, colours,
+      (time) => new Date(time).toISOString().slice(0, 10),
+      { categories, rowIndexes: categories.map((_, i) => i) });
+    const variants = option.media as Array<{ option: { xAxis: Array<{ axisLabel: { customValues: number[] } }> } }>;
+    for (const [index, count] of [5, 4, 8].entries()) {
+      const axes = variants[index].option.xAxis;
+      const ticks = axes[0].axisLabel.customValues;
+      expect(ticks).toHaveLength(count);
+      expect(ticks[0]).toBe(0);
+      expect(ticks.at(-1)).toBe(69 * 12);
+      const gaps = ticks.slice(1).map((tick, i) => tick - ticks[i]);
+      // Rounding to a date boundary may differ by one day, never by a
+      // whole stride from downsampling the desktop subset a second time.
+      expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(12);
+      expect(axes.every((axis) => JSON.stringify(axis.axisLabel.customValues) === JSON.stringify(ticks))).toBe(true);
+    }
+    expect(option.xAxis).toEqual(expect.arrayContaining([
+      expect.objectContaining({ axisLabel: expect.objectContaining({ customValues: variants[2].option.xAxis[0].axisLabel.customValues }) }),
+    ]));
+  });
   it("keeps each unit on its own axis while aligning every layer to the same dates", () => {
     const option = options();
     const axes = option.xAxis as Array<{
