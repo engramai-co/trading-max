@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.6] - 2026-09-20
+
+### Fixed
+
+- Supply known response lengths to streaming Brotli so large chart histories
+  retain whole-response compression efficiency without buffering their bodies.
+  Preserve unknown-length streams, gzip/identity clients and cancellation.
+
 ## [1.5.5] - 2026-09-20
 
 ### Fixed
