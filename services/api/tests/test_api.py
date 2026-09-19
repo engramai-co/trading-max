@@ -206,6 +206,12 @@ def test_overview_lens_includes_available_intraday_observations(
         overview = client.get("/v1/dashboard/lens/overview")
         analytics = client.get("/v1/dashboard/lens/analytics")
         account_analysis = client.get("/v1/dashboard/lens/account-analysis?account=A")
+        compact_review = client.get("/v1/dashboard/lens/account-analysis?account=A&detail=summary")
+        scoped = client.get("/v1/dashboard/lens/analytics?range=1D&scope=invest")
+        assert client.get("/v1/dashboard/lens/analytics?range=invalid").status_code == 422
+        assert "intradayNav" not in compact_review.json()
+        assert compact_review.json()["nav"] == account_analysis.json()["nav"]
+        assert all("total" not in p and "isa" not in p for p in scoped.json()["intradayNav"])
 
     assert overview.status_code == 200
     observations = overview.json()["intradayNav"]

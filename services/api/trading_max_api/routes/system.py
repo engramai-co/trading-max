@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,6 +18,7 @@ from ..dashboard_models import (
     NavPoint,
     OverviewReviewSummary,
 )
+from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
 from .dependencies import app_service, latest_or_503
 
@@ -139,6 +141,9 @@ def dashboard_lens(
     view: DashboardLensName,
     request: Request,
     account: AccountCode | None = None,
+    range: HistoryRange | None = None,
+    scope: HistoryScope | None = None,
+    detail: Literal["full", "summary"] = "full",
 ) -> DashboardLensSnapshot:
     manifest = latest_or_503(request)
     dashboard_data = request.app.state.cached_dashboard(manifest)
@@ -193,7 +198,20 @@ def dashboard_lens(
             cfd=dashboard_data.cfd,
             review_summaries=review_summaries,
             holdings=dashboard_data.holdings,
-            technical=[item for item in dashboard_data.technical if item.ticker in held],
+            technical=[
+                item.model_copy(
+                    update={
+                        "seasonality": [],
+                        "seasonality_coverage": {},
+                        "seasonality_matrix": [],
+                        "year_paths": {},
+                        "relative_strength": {},
+                        "trend_strength": {},
+                    }
+                )
+                for item in dashboard_data.technical
+                if item.ticker in held
+            ],
             valuations=[item for item in dashboard_data.valuations if item.ticker in held],
             nav=dashboard_data.nav[-31:],
             intraday_nav=_latest_intraday_points(dashboard_data.intraday_nav),
@@ -218,8 +236,14 @@ def dashboard_lens(
             **base,
             accounts=dashboard_data.accounts,
             cfd=dashboard_data.cfd,
-            nav=dashboard_data.nav,
-            intraday_nav=dashboard_data.intraday_nav,
+            nav=scope_points(dashboard_data.nav, scope),
+            intraday_nav=project_intraday(
+                dashboard_data.intraday_nav,
+                dashboard_data.nav,
+                as_of=dashboard_data.broker_as_of,
+                range_name=range,
+                scope=scope,
+            ),
             risk=dashboard_data.risk,
             benchmark_series=_benchmark_series_for_nav(dashboard_data),
             policy=dashboard_data.policy,
@@ -252,7 +276,7 @@ def dashboard_lens(
         selected_risk=(dashboard_data.risk.get(selected) if selected in {"A", "B"} else None),
         holdings=[holding for holding in dashboard_data.holdings if holding.account == selected],
         nav=dashboard_data.nav,
-        intraday_nav=dashboard_data.intraday_nav,
+        intraday_nav=dashboard_data.intraday_nav if detail == "full" else [],
     )
 
 

@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-09-19
+
+### Fixed
+
+- Keep unused seasonality matrices out of the overview and unused intraday
+  histories out of account-review downloads. Scope chart-history requests by
+  account and date range while preserving source transitions, raw extrema,
+  complete daily risk history and cash-flow reconciliation boundaries.
+- Deduplicate macOS recovery copies into independent compressed file blobs,
+  verify database and snapshot integrity before publication, and complete the
+  backup before stopping the current application during deployment.
+- Add separate, bounded retention planning with protected current/rollback
+  runtimes, backup reference checks, stale-plan rejection and deletion journals.
+  Keep legacy archives restorable and live account/artifact state untouched.
+
 ## [1.5.3] - 2026-09-19
 
 ### Fixed

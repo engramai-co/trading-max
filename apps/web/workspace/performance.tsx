@@ -48,7 +48,12 @@ import { portfolioValueLines } from "./portfolio-value-lines";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
-  const query = useDashboardLens("analytics");
+  const { params } = useRouteState();
+  const requested = portfolioRange(params.get("range"));
+  const range = params.get("view") && params.get("view") !== "money" && requested === "1D" ? "3M" : requested;
+  const scope = ["invest", "isa", "household", "cfd"].includes(params.get("scope") ?? "") ? params.get("scope")! : "total";
+  const selection = useMemo(() => ({ range, scope }), [range, scope]);
+  const query = useDashboardLens("analytics", undefined, true, selection);
   return (
     <Page title={t("收益与风险", "Performance & risk")}>
       {query.isPending ? (

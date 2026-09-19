@@ -15344,7 +15344,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.5.3"
+    "version": "1.5.4"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15879,6 +15879,69 @@
                 }
               ],
               "title": "Account"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "1D",
+                    "1W",
+                    "1M",
+                    "3M",
+                    "6M",
+                    "YTD",
+                    "1Y",
+                    "ALL"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "invest",
+                    "isa",
+                    "total",
+                    "household",
+                    "cfd"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "default": "full",
+              "enum": [
+                "full",
+                "summary"
+              ],
+              "title": "Detail",
+              "type": "string"
             }
           }
         ],

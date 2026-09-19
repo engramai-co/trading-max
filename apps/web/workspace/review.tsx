@@ -147,6 +147,8 @@ export function ReviewWorkspace() {
     </Page>
   );
 }
+const ACCOUNT_REVIEW_SELECTION = { detail: "summary" as const };
+
 export function AccountReviewWorkspace() {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
@@ -157,7 +159,7 @@ export function AccountReviewWorkspace() {
       : params.get("account") === "B"
         ? "B"
         : "A";
-  const query = useDashboardLens("account-analysis", code);
+  const query = useDashboardLens("account-analysis", code, true, ACCOUNT_REVIEW_SELECTION);
   return (
     <Page
       title={

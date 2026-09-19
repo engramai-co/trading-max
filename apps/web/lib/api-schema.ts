@@ -6414,6 +6414,9 @@ export interface operations {
         parameters: {
             query?: {
                 account?: ("A" | "B" | "C") | null;
+                range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
+                scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
+                detail?: "full" | "summary";
             };
             header?: never;
             path: {

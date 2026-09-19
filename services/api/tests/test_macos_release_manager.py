@@ -57,7 +57,7 @@ class SimulatedHost(manager.Deployment):
         self.check("stop")
 
     def backup(self) -> None:
-        assert not self.running
+        assert self.running
         self.check("backup")
 
     def activate(self) -> None:
@@ -112,7 +112,7 @@ def test_failed_upgrade_restores_complete_runtime_without_rebuilding(tmp_path: P
     assert host.events.count("build") == 1
     record = json.loads(host.record.read_text())
     assert record["phase"] == (
-        "failed-before-cutover" if failure in {"build", "capture"} else "rolled-back"
+        "failed-before-cutover" if failure in {"build", "capture", "backup"} else "rolled-back"
     )
     if failure in {"migrate", "start", "health", "smoke"}:
         assert "compatible migration" in (host.state / "trading_max.db").read_text()
@@ -125,6 +125,7 @@ def test_success_retains_old_build_and_recovery_uses_it(tmp_path: Path):
     assert host.app.resolve() == host.candidate
     assert (host.previous / "build").read_text() == "old installed runtime"
     assert json.loads(host.record.read_text())["phase"] == "healthy"
+    assert host.events.index("backup") < host.events.index("stop")
     host.rollback()
     assert host.app.resolve() == host.previous
     assert host.events.count("build") == 1

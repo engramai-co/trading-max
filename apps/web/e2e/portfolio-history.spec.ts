@@ -41,7 +41,12 @@ test.describe("overview to performance", () => {
     test(`${range} shows cash-flow-adjusted P&L and preserves account, range and cutoff`, async ({ page }) => {
       const short = ["1D", "1W", "1M", "3M"].includes(range);
       const rangeLabel = range === "1W" ? "5D" : range === "ALL" ? "All" : range;
+      const historyRequest = page.waitForRequest((request) =>
+        new URL(request.url()).pathname.endsWith("/dashboard/lens/analytics"));
       await page.goto(`/?scope=isa&range=${range}`);
+      const requested = new URL((await historyRequest).url());
+      expect(requested.searchParams.get("range")).toBe(range);
+      expect(requested.searchParams.get("scope")).toBe("isa");
       const overview = page.locator(".mx-overview-history");
       await expect(overview.locator("[data-tm-chart-ready=true]")).toBeVisible();
       await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
