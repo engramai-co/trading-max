@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-09-20
+
+### Fixed
+
+- Negotiate streaming Brotli for private dashboard responses while preserving
+  gzip and uncompressed clients, cancellation, error propagation and no-store
+  semantics. Reduce transfer bytes without changing the financial payload.
+- Read lossless, date-chunked history with separately retained provenance;
+  preserve logical artifact IDs, downloads and verified backup restores. Keep
+  legacy writes as the default and provide byte-checked shadow writes before
+  the separately gated production storage transition.
+- Import dated legacy archives into independent deduplicated recovery storage,
+  preserving their original recovery date and exact database/file bytes. Reject
+  unsafe or oversized archives and leave source archives intact.
+
 ## [1.5.4] - 2026-09-19
 
 ### Fixed

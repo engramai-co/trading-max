@@ -91,3 +91,33 @@ Never remove an arbitrary directory based only on its size or age.
 Raw history retention and future immutable-history chunking require separate
 data-migration validation. This maintenance does not shorten market or broker
 history, interpolate missing observations, or alter financial calculations.
+
+## Import an existing recovery date
+
+`import-archive` accepts a dated `trading_max-YYYYMMDDTHHMMSSZ.tar.gz` and leaves
+it intact. It streams files into the same independent blob repository, validates
+paths and byte budgets, and verifies the database and snapshot before publishing.
+Repeated imports of the same archive reuse its manifest. `createdAt` remains the
+original UTC recovery date; `importedAt` records the separate import time.
+
+```bash
+"$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/manage_backups.py" \
+  --repository "$SERVICE_ROOT/backups/repository" import-archive \
+  /private/backups/trading_max-20260102T043000Z.tar.gz --max-bytes 68719476736
+```
+
+Restore the imported ID into a new directory and compare every restored file
+with the archive before retiring that exact source archive. Import does not
+remove it or qualify as a fresh backup of the active application state. Budget
+restored temporary space and process one archive at a time. The archive digest
+and original name remain in the manifest for the deletion journal.
+
+## History representation compatibility
+
+See [immutable history storage](../architecture/history-storage.md). The default
+writer remains legacy. An operator can use `TRADING_MAX_HISTORY_STORAGE=shadow`
+to verify chunked representations while retaining complete original objects.
+Reads and downloads support both forms; backups include physical dependencies.
+Do not opt into `chunked` writes until the active and both protected rollback
+releases have the dual reader and have passed restore validation. This release
+never automatically migrates or deletes existing application objects.

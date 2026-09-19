@@ -19,6 +19,7 @@ from typing import Any
 
 from trading_max.domain import ArtifactQuality, ArtifactRef
 
+from .history_chunks import HISTORY_KEYS, HistoryChunks, canonical, read_descriptor
 from .singleflight import SingleFlightCache
 
 JsonObject = dict[str, Any]
@@ -107,9 +108,14 @@ class StoredBytes:
 class ContentAddressedArtifactStore:
     """Store JSON envelopes under ``sha256/<artifact-id>`` atomically."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, history_mode: str | None = None) -> None:
         self.root = root.expanduser().resolve()
         self.content_root = self.root / "sha256"
+        self.history = HistoryChunks(self.root)
+        self.history_mode = history_mode or os.environ.get("TRADING_MAX_HISTORY_STORAGE", "legacy")
+        if self.history_mode not in {"legacy", "shadow", "chunked"}:
+            raise ValueError("history storage must be legacy, shadow or chunked")
+        self._descriptors: SingleFlightCache[tuple, dict | None] = SingleFlightCache(256)
         self._verified_refs: SingleFlightCache[tuple, ArtifactRef] = SingleFlightCache(256)
 
     def path_for(self, artifact_id: str) -> Path:
@@ -171,6 +177,14 @@ class ContentAddressedArtifactStore:
             # preserve the first immutable envelope instead of rewriting it
             # with a different timestamp on an idempotent publish.
             return self.get_json(digest)
+        if safe_key in HISTORY_KEYS and self.history_mode != "legacy":
+            descriptor = self.history.encode(content)
+            if self.history_mode == "shadow":
+                _atomic_write(
+                    self.root / "history-shadow" / f"{digest}.json", canonical(descriptor)
+                )
+            else:
+                content = canonical(descriptor)
         _atomic_write(path, content)
         self._verified_refs.get_or_compute(self._ref_key(digest), lambda: ref.model_copy(deep=True))
         return StoredArtifact(ref=ref, payload=dict(payload), path=path)
@@ -180,7 +194,7 @@ class ContentAddressedArtifactStore:
         if not path.is_file():
             raise FileNotFoundError(f"artifact not found: {artifact_id}")
         try:
-            envelope = json.loads(path.read_text(encoding="utf-8"))
+            envelope = json.loads(self.content_bytes(artifact_id))
             ref = ArtifactRef.model_validate(envelope["ref"])
             payload = envelope["payload"]
         except (OSError, KeyError, TypeError, ValueError) as exc:
@@ -202,6 +216,30 @@ class ContentAddressedArtifactStore:
         if digest != artifact_id or ref.sha256 != digest:
             raise ArtifactIntegrityError(f"artifact digest mismatch: {artifact_id}")
         return StoredArtifact(ref=ref, payload=payload, path=path)
+
+    def descriptor(self, artifact_id: str) -> dict | None:
+        path = self.path_for(artifact_id)
+        stat = path.stat()
+        key = (artifact_id, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        return self._descriptors.get_or_compute(key, lambda: read_descriptor(path))
+
+    def content_bytes(self, artifact_id: str) -> bytes:
+        """Return the original envelope, never a physical storage descriptor."""
+        try:
+            descriptor = self.descriptor(artifact_id)
+            if descriptor is None:
+                return self.path_for(artifact_id).read_bytes()
+            if descriptor["artifactId"] != artifact_id:
+                raise ValueError("history descriptor identity mismatch")
+            return self.history.decode(descriptor)
+        except (OSError, KeyError, TypeError, ValueError) as exc:
+            raise ArtifactIntegrityError(f"invalid history representation: {artifact_id}") from exc
+
+    def logical_size(self, artifact_id: str) -> int:
+        descriptor = self.descriptor(artifact_id)
+        return (
+            descriptor["envelopeBytes"] if descriptor else self.path_for(artifact_id).stat().st_size
+        )
 
     def put_bytes(
         self,
@@ -310,7 +348,16 @@ class ContentAddressedArtifactStore:
             stat = file.stat()
             return stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
 
-        return (artifact_id, stamp(path), stamp(metadata_path) if metadata_path.is_file() else None)
+        descriptor = self.descriptor(artifact_id) if not metadata_path.is_file() else None
+        chunks = (
+            tuple(stamp(block) for block in self.history.paths(descriptor)) if descriptor else ()
+        )
+        return (
+            artifact_id,
+            stamp(path),
+            stamp(metadata_path) if metadata_path.is_file() else None,
+            chunks,
+        )
 
     def get_ref(self, artifact_id: str) -> ArtifactRef:
         """Validate and return the reference for either artifact media type."""

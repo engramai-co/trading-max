@@ -116,7 +116,9 @@ class ArtifactStore:
                 ArtifactInfo(
                     key=ref.key,
                     source_path=f"artifacts/sha256/{ref.artifact_id}",
-                    size_bytes=path.stat().st_size if path.is_file() else 0,
+                    size_bytes=self.immutable_artifacts.logical_size(ref.artifact_id)
+                    if path.is_file()
+                    else 0,
                     sha256=ref.sha256,
                     media_type=ref.media_type,
                     schema_version=ref.schema_version,

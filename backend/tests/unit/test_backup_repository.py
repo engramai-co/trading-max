@@ -3,6 +3,8 @@ from __future__ import annotations
 import gzip
 import json
 import sqlite3
+import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -116,3 +118,82 @@ def test_restore_rejects_path_traversal_and_blob_links(tmp_path: Path):
     blob.symlink_to(state / "trading_max.db")
     with pytest.raises(ValueError, match="symlinks"):
         repo.verify(good["id"])
+
+
+def test_chunked_history_backup_restores_with_default_dual_reader(tmp_path: Path):
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+
+    state = state_at(tmp_path / "state")
+    writer = ContentAddressedArtifactStore(state / "artifacts", history_mode="chunked")
+    payload = {"points": [{"bucket_at": "2026-01-01T12:00:00Z", "value": 123.45}]}
+    item = writer.put_json(key="account/nav/valuation_history.json", payload=payload)
+    SnapshotStore(state).publish(scope="accounts", source="test", artifacts=[item])
+    original = writer.content_bytes(item.ref.artifact_id)
+    repo = BackupRepository(tmp_path / "repository")
+    backup = repo.create(state)
+    recovered = tmp_path / "recovered"
+    repo.restore(backup["id"], recovered)
+    reader = ContentAddressedArtifactStore(recovered / "artifacts")
+    assert reader.get_json(item.ref.artifact_id).payload == payload
+    assert reader.content_bytes(item.ref.artifact_id) == original
+    assert SnapshotStore(recovered).latest().manifest.run_id == backup["snapshotRunId"]
+    # A missing physical dependency fails even if the logical artifact exists.
+    block = writer.history.paths(writer.descriptor(item.ref.artifact_id))[0]
+    block.unlink()
+    with pytest.raises(ValueError, match="missing chunk"):
+        repo.create(state)
+    assert len(list(repo.snapshots.iterdir())) == 1
+
+
+def test_archive_import_preserves_date_database_bytes_and_deduplicates(tmp_path: Path):
+    state = state_at(tmp_path / "state")
+    archive = tmp_path / "trading_max-20260102T043000Z.tar.gz"
+    import io
+
+    with tarfile.open(archive, "w:gz") as handle:
+        metadata = tarfile.TarInfo("._state")
+        metadata.size = 4
+        handle.addfile(metadata, io.BytesIO(b"meta"))
+        for name in ("trading_max.db", "latest.json", "snapshots", "artifacts"):
+            handle.add(state / name, arcname="state/" + name)
+    original_database = (state / "trading_max.db").read_bytes()
+    repo = BackupRepository(tmp_path / "repository")
+    imported = repo.import_archive(archive)
+    manifest = json.loads(Path(imported["manifest"]).read_text())
+    assert datetime.fromisoformat(manifest["createdAt"]) == datetime(2026, 1, 2, 4, 30, tzinfo=UTC)
+    assert manifest["importedAt"] != manifest["createdAt"]
+    assert manifest["sourceArchive"]["name"] == archive.name
+    assert manifest["sourceArchive"]["rootMetadata"]["name"] == "._state"
+    assert manifest["sourceState"] is None  # Not a substitute for a current live-state backup.
+    assert archive.exists()
+    assert repo.import_archive(archive)["reused"] is True
+    assert len(list(repo.snapshots.iterdir())) == 1
+    recovered = tmp_path / "recovered"
+    repo.restore(imported["id"], recovered)
+    assert (recovered / "trading_max.db").read_bytes() == original_database
+    assert (recovered / "latest.json").read_bytes() == (state / "latest.json").read_bytes()
+
+
+@pytest.mark.parametrize("unsafe", ["link", "duplicate", "outside", "secret", "budget"])
+def test_archive_import_rejects_unsafe_or_unbounded_members(tmp_path: Path, unsafe: str):
+    import io
+
+    archive = tmp_path / "trading_max-20260102T043000Z.tar.gz"
+    with tarfile.open(archive, "w:gz") as handle:
+        member = tarfile.TarInfo("state/entry")
+        member.size = 4
+        if unsafe == "link":
+            member.type = tarfile.SYMTYPE
+            member.linkname = "../../outside"
+        elif unsafe == "outside":
+            member.name = "state/../outside"
+        elif unsafe == "secret":
+            member.name = "state/secrets/key"
+        handle.addfile(member, io.BytesIO(b"test"))
+        if unsafe == "duplicate":
+            handle.addfile(member, io.BytesIO(b"test"))
+    repo = BackupRepository(tmp_path / "repository")
+    with pytest.raises(ValueError):
+        repo.import_archive(archive, max_bytes=1 if unsafe == "budget" else 1024)
+    assert archive.exists()
+    assert list(repo.snapshots.iterdir()) == []
