@@ -37,6 +37,7 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchShell,
 )
+from .flow_diagnostics import SnapshotFlowDiagnostics
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
 from .market_data_runtime import reconstruction_loader_factory
@@ -258,6 +259,7 @@ def create_app(
         local_times=settings.full_refresh_times,
         reconciliation_local_time=settings.daily_reconciliation_time,
     )
+    flow_diagnostics = SnapshotFlowDiagnostics(store)
     intraday_scheduler = IntradayScheduler(
         jobs,
         enabled=automation_preferences.live_enabled,
@@ -269,6 +271,7 @@ def create_app(
         scope="live",
         trigger="live",
         legacy_triggers=("intraday",),
+        flow_diagnostics=flow_diagnostics.status,
     )
     performance_scheduler = IntradayScheduler(
         jobs,
@@ -281,6 +284,7 @@ def create_app(
         scope="performance",
         trigger="performance",
         performance=True,
+        flow_diagnostics=flow_diagnostics.status,
     )
     alert_monitor = AlertMonitor(
         store,

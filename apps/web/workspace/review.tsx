@@ -265,6 +265,7 @@ function AccountJournal({
             )}
           />
         </div>
+        <Availability data={money} />
         <div style={{ marginTop: 22 }}>
           <Freshness
             date={
@@ -592,7 +593,7 @@ function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
         labels={rows.slice(0, 14).map(label)}
         values={rows.slice(0, 14).map(value)}
       />
-      <Availability data={object(raw)} />
+      <Availability data={cfd ? data : object(raw)} />
       <EvidenceTable
         key={dimension}
         rows={rows}
@@ -648,9 +649,10 @@ function TradeQuality({
   cfd: boolean;
 }) {
   const t = useCopy();
+  const fallback = data.status === "unavailable" ? {} : legacy;
   const wins = data.win_count ?? data.wins,
     losses = data.loss_count ?? data.losses;
-  const count = data.trade_count ?? data.tradeCount ?? legacy.trades;
+  const count = data.trade_count ?? data.tradeCount ?? fallback.trades;
   const best = objects(data.best_trades).filter(
       (trade) => (numeric(trade.netResultGbp) ?? 0) > 0,
     ),
@@ -673,18 +675,18 @@ function TradeQuality({
           />
           <Metric
             label={t("胜率", "Win rate")}
-            value={percent(data.win_rate ?? data.winRate ?? legacy.win_rate)}
+            value={percent(data.win_rate ?? data.winRate ?? fallback.win_rate)}
           />
           <Metric
             label={t("盈亏因子", "Profit factor")}
             value={number(
-              data.profit_factor ?? data.profitFactor ?? legacy.profit_factor,
+              data.profit_factor ?? data.profitFactor ?? fallback.profit_factor,
             )}
           />
           <Metric
             label={t("每笔期望盈亏", "Expectancy per trade")}
             value={currency(
-              data.expectancy_gbp ?? data.expectancy ?? legacy.expectancy,
+              data.expectancy_gbp ?? data.expectancy ?? fallback.expectancy,
               "GBP",
               2,
             )}
@@ -707,7 +709,7 @@ function TradeQuality({
               [
                 t("平均盈利", "Average win"),
                 currency(
-                  data.average_win_gbp ?? data.averageWin ?? legacy.avg_win,
+                  data.average_win_gbp ?? data.averageWin ?? fallback.avg_win,
                   "GBP",
                   2,
                 ),
@@ -715,14 +717,14 @@ function TradeQuality({
               [
                 t("平均亏损", "Average loss"),
                 currency(
-                  data.average_loss_gbp ?? data.averageLoss ?? legacy.avg_loss,
+                  data.average_loss_gbp ?? data.averageLoss ?? fallback.avg_loss,
                   "GBP",
                   2,
                 ),
               ],
               [
                 t("盈亏比", "Payoff ratio"),
-                number(data.payoff_ratio ?? data.payoffRatio ?? legacy.payoff),
+                number(data.payoff_ratio ?? data.payoffRatio ?? fallback.payoff),
               ],
             ]}
           />

@@ -46,14 +46,14 @@ class AccountSummary(ApiModel):
     name: str
     profile: str
     as_of: str
-    total_value_gbp: float
-    cash_gbp: float
+    total_value_gbp: float | None
+    cash_gbp: float | None
     invested_gbp: float
     total_cost_gbp: float
-    realized_pnl_gbp: float
+    realized_pnl_gbp: float | None
     unrealized_pnl_gbp: float
-    net_external_flows_gbp: float
-    capital_delta_gbp: float
+    net_external_flows_gbp: float | None
+    capital_delta_gbp: float | None
     twr: float | None
     daily_return: float | None
     account_type: Literal["investable", "cfd-imported"]
@@ -66,13 +66,13 @@ class CfdSummary(ApiModel):
     name: str
     profile: str
     as_of: str
-    ending_value_gbp: float
-    net_external_flows_gbp: float
-    realized_pnl_gbp: float
-    reconciliation_gap_gbp: float
+    ending_value_gbp: float | None
+    net_external_flows_gbp: float | None
+    realized_pnl_gbp: float | None
+    reconciliation_gap_gbp: float | None
     reconciliation_status: str
     closed_positions: int
-    overnight_charges_gbp: float
+    overnight_charges_gbp: float | None
     closed_gross_pnl_gbp: float | None = None
     fx_fees_gbp: float | None = None
     closed_after_fx_pnl_gbp: float | None = None
@@ -81,7 +81,7 @@ class CfdSummary(ApiModel):
     financing_to_gross_ratio: float | None = None
     financing_to_net_ratio: float | None = None
     pnl_sharpe_proxy: float | None
-    max_drawdown_gbp: float
+    max_drawdown_gbp: float | None
     nav_quality: str
     true_nav_available: bool
     source: str
@@ -98,31 +98,33 @@ class CfdSummary(ApiModel):
 
 
 class CfdCashFlows(ApiModel):
-    deposits: float
-    withdrawals: float
-    internal_transfers: float
-    adjustments: float
-    account_cash_flow: float
-    household_external_flow: float
+    deposits: float | None
+    withdrawals: float | None
+    internal_transfers: float | None
+    adjustments: float | None
+    account_cash_flow: float | None
+    household_external_flow: float | None
 
 
 class CfdRealisedPnl(ApiModel):
-    closed_gross_result: float
-    fx_fees: float
-    closed_after_fx: float
-    overnight_interest: float
-    dividend_adjustment: float
-    net_realised_pnl: float
+    closed_gross_result: float | None
+    fx_fees: float | None
+    closed_after_fx: float | None
+    overnight_interest: float | None
+    dividend_adjustment: float | None
+    net_realised_pnl: float | None
     financing_drag_to_gross_ratio: float | None = None
     financing_drag_to_net_ratio: float | None = None
-    max_realised_pnl_drawdown: float
+    max_realised_pnl_drawdown: float | None
 
 
 class CfdTradeQuality(ApiModel):
+    status: Literal["available", "partial", "unavailable"] = "available"
+    unavailable_reason: str | None = None
     trade_count: int
-    wins: int
-    losses: int
-    breakeven: int
+    wins: int | None
+    losses: int | None
+    breakeven: int | None
     win_rate: float | None = None
     average_win: float | None = None
     average_loss: float | None = None
@@ -135,8 +137,8 @@ class CfdTradeQuality(ApiModel):
     under_one_hour_count: int
     best_trade: float | None = None
     worst_trade: float | None = None
-    longest_win_streak: int
-    longest_loss_streak: int
+    longest_win_streak: int | None
+    longest_loss_streak: int | None
     best_trade_concentration: float | None = None
     top_three_trade_concentration: float | None = None
     net_without_best_trade: float | None = None
@@ -149,6 +151,8 @@ class CfdAttributionBucket(ApiModel):
 
 
 class CfdAttribution(ApiModel):
+    status: Literal["available", "partial", "unavailable"] = "available"
+    unavailable_reason: str | None = None
     by_direction: list[CfdAttributionBucket] = Field(default_factory=list)
     by_instrument: list[CfdAttributionBucket] = Field(default_factory=list)
     by_duration: list[CfdAttributionBucket] = Field(default_factory=list)
@@ -160,16 +164,16 @@ class CfdRealisedPoint(ApiModel):
     occurred_at: str
     event_id: str
     record_type: str
-    realised_pnl_change: float
-    cumulative_realised_pnl: float
-    account_cash_flow_change: float
-    cumulative_account_cash_flow: float
-    realised_cash_equity_proxy: float
-    realised_pnl_drawdown: float
+    realised_pnl_change: float | None
+    cumulative_realised_pnl: float | None
+    account_cash_flow_change: float | None
+    cumulative_account_cash_flow: float | None
+    realised_cash_equity_proxy: float | None
+    realised_pnl_drawdown: float | None
 
 
 class CfdNotional(ApiModel):
-    total_closed_notional: float
+    total_closed_notional: float | None
     average_closed_notional: float | None = None
     net_realised_to_notional_ratio: float | None = None
     financing_cost_to_notional_ratio: float | None = None
@@ -203,17 +207,17 @@ class CfdMoneyOutcome(ApiModel):
     status: Literal["available", "partial", "unavailable"]
     unavailable_reason: str | None = None
     source: Literal["realised_cash_equity_proxy"]
-    opening_realised_cash_equity_proxy_gbp: float
-    ending_realised_cash_equity_proxy_gbp: float
-    deposits_gbp: float
-    withdrawals_gbp: float
-    internal_transfers_gbp: float
-    adjustments_gbp: float
-    account_cash_flow_gbp: float
-    household_external_flow_gbp: float
-    net_realised_pnl_gbp: float
-    max_realised_pnl_drawdown_gbp: float
-    current_realised_pnl_drawdown_gbp: float
+    opening_realised_cash_equity_proxy_gbp: float | None
+    ending_realised_cash_equity_proxy_gbp: float | None
+    deposits_gbp: float | None
+    withdrawals_gbp: float | None
+    internal_transfers_gbp: float | None
+    adjustments_gbp: float | None
+    account_cash_flow_gbp: float | None
+    household_external_flow_gbp: float | None
+    net_realised_pnl_gbp: float | None
+    max_realised_pnl_drawdown_gbp: float | None
+    current_realised_pnl_drawdown_gbp: float | None
     true_nav_available: bool
 
 
@@ -274,7 +278,7 @@ class CfdStructuralDiagnostics(ApiModel):
     unavailable_reason: str | None = None
     observable_only: bool
     psychology_inferred: bool
-    total_closed_notional: float
+    total_closed_notional: float | None
     average_closed_notional: float | None = None
     net_realised_to_notional_ratio: float | None = None
     financing_cost_to_notional_ratio: float | None = None
@@ -294,6 +298,9 @@ class CfdEndingRisk(ApiModel):
 
 
 class CfdAccountReview(ApiModel):
+    fx_conversion: dict[str, Any] = Field(default_factory=dict)
+    cost_allocation: dict[str, Any] = Field(default_factory=dict)
+    monetary_data: dict[str, Any] = Field(default_factory=dict)
     currency: str | None = None
     event_count: int
     coverage_start: str | None = None
@@ -1181,16 +1188,16 @@ class LookthroughData(ApiModel):
 
 class IsaBucket(ApiModel):
     bucket: str
-    realized_net: float
-    turnover: float
+    realized_net: float | None
+    turnover: float | None
     compliance: float
 
 
 class PolicySummary(ApiModel):
-    win_rate: float
-    payoff: float
-    profit_factor: float
-    expectancy: float
+    win_rate: float | None
+    payoff: float | None
+    profit_factor: float | None
+    expectancy: float | None
     isa_buckets: list[IsaBucket]
 
 
@@ -1240,7 +1247,7 @@ class DashboardResponse(ApiModel):
     broker_as_of: str
     research_as_of: str
     total_value_gbp: float
-    household_total_value_gbp: float
+    household_total_value_gbp: float | None
     total_cash_gbp: float
     total_invested_gbp: float
     total_unrealized_pnl_gbp: float

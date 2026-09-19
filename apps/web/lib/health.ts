@@ -1,4 +1,4 @@
-import type { HealthDetails, RefreshJob } from "@/lib/types";
+import type { HealthDetails, RefreshJob, RefreshState } from "@/lib/types";
 
 export type HealthTone =
   | "ready"
@@ -8,6 +8,30 @@ export type HealthTone =
   | "unknown";
 
 export type HealthLocale = "zh" | "en";
+
+export function flowVerificationText(
+  schedule: RefreshState["live"] | null,
+  locale: HealthLocale = "en",
+): string {
+  if (schedule?.flowVerificationStatus === "no_snapshot") {
+    return locale === "zh" ? "尚无快照" : "No snapshot yet";
+  }
+  const count = schedule?.flowUnverifiedCount;
+  const total = schedule?.flowAnchorCount;
+  if (
+    schedule?.flowVerificationStatus !== "available" ||
+    count == null || total == null ||
+    !Number.isInteger(count) || !Number.isInteger(total) ||
+    count < 0 || total < count
+  ) {
+    return locale === "zh" ? "验证状态不可用" : "Verification unavailable";
+  }
+  if (total === 0) return locale === "zh" ? "暂无保留估值点" : "No retained valuations";
+  const format = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-GB");
+  return locale === "zh"
+    ? `${format.format(count)} / ${format.format(total)} 个估值点待验证`
+    : `${format.format(count)} of ${format.format(total)} valuations unverified`;
+}
 
 const ZH_SECOND = "\u79d2";
 const ZH_MINUTE = "\u5206\u949f";

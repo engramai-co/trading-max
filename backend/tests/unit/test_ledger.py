@@ -21,7 +21,9 @@ from trading_max.analytics.ledger import (
 def _write_export(path: Path, rows: list[str]) -> None:
     path.write_text(
         "ID,Action,Time (UTC),Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result\n" + "\n".join(rows) + "\n",
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        + "\n",
         encoding="utf-8",
     )
 
@@ -29,7 +31,9 @@ def _write_export(path: Path, rows: list[str]) -> None:
 def _write_export_with_isin(path: Path, rows: list[str]) -> None:
     path.write_text(
         "ID,Action,Time (UTC),ISIN,Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result\n" + "\n".join(rows) + "\n",
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
+        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        + "\n",
         encoding="utf-8",
     )
 

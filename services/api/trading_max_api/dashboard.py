@@ -68,6 +68,7 @@ def _nav_series(
         for account in ("invest", "isa")
     }
     cfd_state: JsonObject = {
+        "started": False,
         "nav": None,
         "drawdown": None,
         "accountContributionsGbp": None,
@@ -122,6 +123,7 @@ def _nav_series(
 
         cfd_row = cfd_rows.get(date)
         if cfd_row is not None:
+            cfd_state["started"] = True
             cfd_state["nav"] = _nullable(
                 cfd_row.get("RealisedCashEquityProxyGBP") or cfd_row.get("SyntheticNAVGBP")
             )
@@ -131,18 +133,19 @@ def _nav_series(
             cfd_state["accountContributionsGbp"] = _nullable(
                 cfd_row.get("CumulativeAccountCashFlowGBP")
             )
-            cfd_state["householdExternalGbp"] = (
-                _nullable(cfd_row.get("CumulativeHouseholdExternalFlowGBP")) or 0.0
+            # An absent legacy column differs from an explicitly unavailable
+            # converted amount. Never turn missing FX into a zero cash flow.
+            cfd_state["householdExternalGbp"] = _nullable(
+                cfd_row.get("CumulativeHouseholdExternalFlowGBP", "0")
             )
-            cfd_state["internalTransferCounterflowGbp"] = (
-                _nullable(
-                    cfd_row.get("CumulativeInternalTransferCounterflowGBP")
-                    or cfd_row.get("CumulativeMatchedInternalTransferCounterflowGBP")
+            cfd_state["internalTransferCounterflowGbp"] = _nullable(
+                cfd_row.get(
+                    "CumulativeInternalTransferCounterflowGBP",
+                    cfd_row.get("CumulativeMatchedInternalTransferCounterflowGBP", "0"),
                 )
-                or 0.0
             )
-            cfd_state["unmatchedInternalTransferGbp"] = (
-                _nullable(cfd_row.get("CumulativeUnmatchedInternalTransferGBP")) or 0.0
+            cfd_state["unmatchedInternalTransferGbp"] = _nullable(
+                cfd_row.get("CumulativeUnmatchedInternalTransferGBP", "0")
             )
             cfd_state["householdTransferMatchStatus"] = (
                 str(cfd_row.get("HouseholdTransferMatchStatus") or "").strip() or None
@@ -186,12 +189,19 @@ def _nav_series(
         invest_state = states["invest"]
         isa_state = states["isa"]
         cfd = cfd_state["nav"]
+        cfd_value_available = not cfd_state["started"] or cfd is not None
+        cfd_flows_available = all(
+            cfd_state[key] is not None
+            for key in ("householdExternalGbp", "internalTransferCounterflowGbp")
+        )
         household = (
-            None if total is None and cfd is None else float(total or 0.0) + float(cfd or 0.0)
+            None
+            if not cfd_value_available or (total is None and cfd is None)
+            else float(total or 0.0) + float(cfd or 0.0)
         )
         household_net_contributions = (
             None
-            if household is None
+            if household is None or not cfd_flows_available
             else (total_net_contributions if total is not None else 0.0)
             + float(cfd_state["householdExternalGbp"] or 0.0)
             + float(cfd_state["internalTransferCounterflowGbp"] or 0.0)
@@ -1031,10 +1041,9 @@ def build_dashboard_data(
     cfd_raw = cfd_metrics_raw or synthetic.get("C")
     cfd_summary: JsonObject | None = None
     if isinstance(cfd_raw, dict):
-        cfd_value = _number(cfd_raw.get("ending_nav_gbp"))
-        cfd_realized = _number(
-            cfd_raw.get("realized_profit_loss_gbp"),
-            _number(cfd_raw.get("period_net_gbp")),
+        cfd_value = _nullable(cfd_raw.get("ending_nav_gbp"))
+        cfd_realized = _nullable(
+            cfd_raw.get("realized_profit_loss_gbp", cfd_raw.get("period_net_gbp")),
         )
         cfd_summary = {
             "code": "C",
@@ -1042,12 +1051,12 @@ def build_dashboard_data(
             "profile": "CFD",
             "asOf": str(cfd_raw.get("last_event_date") or cfd_raw.get("end") or ""),
             "endingValueGbp": cfd_value,
-            "netExternalFlowsGbp": _number(cfd_raw.get("net_external_flows_gbp")),
+            "netExternalFlowsGbp": _nullable(cfd_raw.get("net_external_flows_gbp")),
             "realizedPnlGbp": cfd_realized,
-            "reconciliationGapGbp": _number(cfd_raw.get("reconciliation_gap_gbp")),
+            "reconciliationGapGbp": _nullable(cfd_raw.get("reconciliation_gap_gbp")),
             "reconciliationStatus": str(cfd_raw.get("reconciliation_status") or "unknown"),
             "closedPositions": int(_number(cfd_raw.get("closed_positions"))),
-            "overnightChargesGbp": _number(cfd_raw.get("overnight_charges_gbp")),
+            "overnightChargesGbp": _nullable(cfd_raw.get("overnight_charges_gbp")),
             "closedGrossPnlGbp": _nullable(cfd_raw.get("closed_gross_pnl_gbp")),
             "fxFeesGbp": _nullable(cfd_raw.get("fx_fees_gbp")),
             "closedAfterFxPnlGbp": _nullable(cfd_raw.get("closed_after_fx_pnl_gbp")),
@@ -1056,7 +1065,7 @@ def build_dashboard_data(
             "financingToGrossRatio": _nullable(cfd_raw.get("financing_to_gross_ratio")),
             "financingToNetRatio": _nullable(cfd_raw.get("financing_to_net_ratio")),
             "pnlSharpeProxy": _nullable(cfd_raw.get("pnl_sharpe_proxy")),
-            "maxDrawdownGbp": _number(cfd_raw.get("max_drawdown_gbp")),
+            "maxDrawdownGbp": _nullable(cfd_raw.get("max_drawdown_gbp")),
             "navQuality": str(cfd_raw.get("nav_quality") or "realized_cash_equity_proxy"),
             "trueNavAvailable": bool(cfd_raw.get("true_nav_available", False)),
             "source": str(cfd_raw.get("source") or ""),
@@ -1100,7 +1109,11 @@ def build_dashboard_data(
                 "realizedPnlGbp": cfd_realized,
                 "unrealizedPnlGbp": 0.0,
                 "netExternalFlowsGbp": cfd_summary["netExternalFlowsGbp"],
-                "capitalDeltaGbp": cfd_value - cfd_summary["netExternalFlowsGbp"],
+                "capitalDeltaGbp": (
+                    cfd_value - cfd_summary["netExternalFlowsGbp"]
+                    if cfd_value is not None and cfd_summary["netExternalFlowsGbp"] is not None
+                    else None
+                ),
                 "twr": None,
                 "dailyReturn": None,
                 "accountType": "cfd-imported",
@@ -1110,7 +1123,11 @@ def build_dashboard_data(
         )
 
     latest_model_return = (
-        sum((account["dailyReturn"] or 0.0) * account["totalValueGbp"] for account in accounts)
+        sum(
+            (account["dailyReturn"] or 0.0) * account["totalValueGbp"]
+            for account in accounts
+            if account["isInvestable"]
+        )
         / total_value
         if total_value
         else 0.0
@@ -1136,8 +1153,11 @@ def build_dashboard_data(
         "brokerAsOf": str(broker.get("generated_at_utc") or ""),
         "researchAsOf": research_as_of,
         "totalValueGbp": total_value,
-        "householdTotalValueGbp": total_value
-        + (cfd_summary["endingValueGbp"] if cfd_summary else 0.0),
+        "householdTotalValueGbp": (
+            None
+            if cfd_summary and cfd_summary["endingValueGbp"] is None
+            else total_value + (cfd_summary["endingValueGbp"] if cfd_summary else 0.0)
+        ),
         "totalCashGbp": total_cash,
         "totalInvestedGbp": total_invested,
         "totalUnrealizedPnlGbp": sum(account["unrealizedPnlGbp"] for account in accounts),
@@ -1170,15 +1190,15 @@ def build_dashboard_data(
         "valuations": valuations,
         "lookthrough": lookthrough,
         "policy": {
-            "winRate": _number((policy_raw.get("a_campaign") or {}).get("win_rate")),
-            "payoff": _number((policy_raw.get("a_campaign") or {}).get("payoff")),
-            "profitFactor": _number((policy_raw.get("a_campaign") or {}).get("profit_factor")),
-            "expectancy": _number((policy_raw.get("a_campaign") or {}).get("expectancy")),
+            "winRate": _nullable((policy_raw.get("a_campaign") or {}).get("win_rate")),
+            "payoff": _nullable((policy_raw.get("a_campaign") or {}).get("payoff")),
+            "profitFactor": _nullable((policy_raw.get("a_campaign") or {}).get("profit_factor")),
+            "expectancy": _nullable((policy_raw.get("a_campaign") or {}).get("expectancy")),
             "isaBuckets": [
                 {
                     "bucket": str(row.get("Bucket")),
-                    "realizedNet": _number(row.get("realized_net")),
-                    "turnover": _number(row.get("gross_turnover")),
+                    "realizedNet": _nullable(row.get("realized_net")),
+                    "turnover": _nullable(row.get("gross_turnover")),
                     "compliance": _number(row.get("q90_compliance")),
                 }
                 for row in policy_raw.get("b_policy", [])

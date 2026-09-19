@@ -9,8 +9,10 @@ from typing import Any
 import pandas as pd
 
 from trading_max.analytics.account_review import CALCULATION_VERSION, build_account_review
+from trading_max.analytics.fx import FxResolver, HistoricalFxResolver
 from trading_max.analytics.ledger import (
     load_transactions,
+    normalize_transactions_gbp,
     reconstruct_campaigns,
     transaction_marker_rows,
 )
@@ -26,7 +28,7 @@ class AccountReviewStage:
     """Bind existing authoritative lenses into one review artifact."""
 
     name = "accounts.review"
-    version = "account-review-stage-v4"
+    version = "account-review-stage-v5"
     required_for = frozenset({"all", "accounts"})
     dependencies = (
         "accounts.snapshot",
@@ -39,9 +41,12 @@ class AccountReviewStage:
         self,
         state_root: Path,
         artifacts: ContentAddressedArtifactStore,
+        *,
+        fx_resolver: FxResolver | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
+        self.fx_resolver = fx_resolver or HistoricalFxResolver(self.state_root / "raw" / "fx")
 
     def _json(
         self,
@@ -101,7 +106,9 @@ class AccountReviewStage:
                 f"no managed Trading 212 export for {profile}",
             )
         try:
-            return load_transactions([path])
+            return normalize_transactions_gbp(
+                load_transactions([path]), fx_resolver=self.fx_resolver
+            )
         except Exception as exc:
             raise StageExecutionError(
                 "account.review_ledger_invalid",

@@ -35,6 +35,11 @@ def calculate_diluted_cost(
 ) -> DilutedCostMetrics:
     """Calculate negative-capable diluted cost without float accumulation."""
 
+    if (isinstance(campaign, Mapping) and campaign.get("status") == "unavailable") or not getattr(
+        campaign, "available", True
+    ):
+        raise ValueError("diluted cost requires verified GBP campaign amounts")
+
     buy_cash_out = _campaign_value(campaign, "gross_buy_cash") + _campaign_value(
         campaign, "buy_fees"
     )

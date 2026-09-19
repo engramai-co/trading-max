@@ -8,6 +8,15 @@ All notable public Trading Max releases are recorded here.
 
 ### Fixed
 
+- Normalize foreign-settled transaction and CFD amounts into GBP with dated FX
+  evidence. Preserve unavailable values through API, review and household
+  projections when a reliable conversion is missing.
+- Allocate CFD financing and dividend events once across partial closes, retain
+  unassigned costs explicitly, and reconcile attribution to realised totals.
+  Keep missing net amounts unavailable when the source omits the fee evidence
+  needed to derive them.
+- Count cash-flow verification from retained current-snapshot observations,
+  independently of historical refresh-job counts.
 - Backfill missed account-history dates from available market data, preserve
   identified broker observations, and retain reconciled cash flows when a
   same-day valuation is refreshed. Keep weekend observations on their actual
@@ -48,6 +57,8 @@ All notable public Trading Max releases are recorded here.
 
 ### Changed
 
+- Remove unreachable legacy frontend modules and migrate relevant regression
+  coverage to the active workspace code.
 - Refresh the onboarding skill, installation and diagnostic runbooks, provider
   notices and metric documentation against the current application behavior.
 - Update README product screenshots from an isolated simulated broker portfolio

@@ -230,7 +230,26 @@ class NightlySchedule(ApiModel):
     last_job: JobRecord | None = None
 
 
-class IntradaySchedule(ApiModel):
+class SnapshotFlowVerification(ApiModel):
+    """Cash-flow verification of retained valuation anchors in one current snapshot."""
+
+    flow_verification_status: Literal["available", "no_snapshot", "unavailable"] = "unavailable"
+    flow_snapshot_run_id: str | None = None
+    flow_anchor_count: int | None = Field(default=None, ge=0)
+    flow_unverified_count: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Retained valuation anchors in flowSnapshotRunId without a verified anchor status "
+            "or verified cash-flow coverage for both accounts at their observation times. "
+            "Each anchor counts once, regardless of source or refresh jobs. Null means no "
+            "readable snapshot/valuation history; zero with flowAnchorCount=0 means empty history. "
+            "This is coverage evidence, not certification of time-weighted returns."
+        ),
+    )
+
+
+class IntradaySchedule(SnapshotFlowVerification):
     enabled: bool
     timezone: str
     interval_seconds: int
@@ -243,7 +262,6 @@ class IntradaySchedule(ApiModel):
     submitted_count: int = 0
     succeeded_count: int = 0
     failed_count: int = 0
-    flow_unverified_count: int = 0
     skipped_busy_count: int = 0
     last_error: str | None = None
 

@@ -90,7 +90,9 @@ export function selectPortfolioHistory({
   const sorted = (rows: NavPoint[]) => [...rows].filter(validDate)
     .sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   const dailyRows = sorted(daily.filter((p) => !p.intraday));
-  const cfdAnchor = dailyRows.findLast((p) => navNumber(p, "cfd") != null);
+  // The API carries the latest CFD state into each daily row. A later null
+  // rejects an earlier amount (for example, missing conversion evidence).
+  const cfdAnchor = dailyRows.at(-1);
   const cfdValue = cfdAnchor?.cfd ?? null;
   const householdFlows = navNumber(cfdAnchor, "household", "NetContributionsGbp");
   const investmentFlows = navNumber(cfdAnchor, "total", "NetContributionsGbp");

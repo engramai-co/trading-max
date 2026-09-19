@@ -1238,9 +1238,9 @@ export interface components {
             /** Asof */
             asOf: string;
             /** Capitaldeltagbp */
-            capitalDeltaGbp: number;
+            capitalDeltaGbp: number | null;
             /** Cashgbp */
-            cashGbp: number;
+            cashGbp: number | null;
             /**
              * Code
              * @enum {string}
@@ -1257,15 +1257,15 @@ export interface components {
             /** Navquality */
             navQuality: string;
             /** Netexternalflowsgbp */
-            netExternalFlowsGbp: number;
+            netExternalFlowsGbp: number | null;
             /** Profile */
             profile: string;
             /** Realizedpnlgbp */
-            realizedPnlGbp: number;
+            realizedPnlGbp: number | null;
             /** Totalcostgbp */
             totalCostGbp: number;
             /** Totalvaluegbp */
-            totalValueGbp: number;
+            totalValueGbp: number | null;
             /** Twr */
             twr: number | null;
             /** Unrealizedpnlgbp */
@@ -1733,6 +1733,10 @@ export interface components {
             /** Calculationversion */
             calculationVersion: string;
             cashFlows: components["schemas"]["CfdCashFlows"];
+            /** Costallocation */
+            costAllocation?: {
+                [key: string]: unknown;
+            };
             coverage: components["schemas"]["CfdReviewCoverage"];
             /** Coverageend */
             coverageEnd?: string | null;
@@ -1743,7 +1747,15 @@ export interface components {
             endingRisk: components["schemas"]["CfdEndingRisk"];
             /** Eventcount */
             eventCount: number;
+            /** Fxconversion */
+            fxConversion?: {
+                [key: string]: unknown;
+            };
             importStatus: components["schemas"]["CfdImportStatus"];
+            /** Monetarydata */
+            monetaryData?: {
+                [key: string]: unknown;
+            };
             moneyOutcome: components["schemas"]["CfdMoneyOutcome"];
             notional: components["schemas"]["CfdNotional"];
             phases: components["schemas"]["CfdPhases"];
@@ -1770,6 +1782,14 @@ export interface components {
             byInstrument?: components["schemas"]["CfdAttributionBucket"][];
             /** Byweekday */
             byWeekday?: components["schemas"]["CfdAttributionBucket"][];
+            /**
+             * Status
+             * @default available
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
+            /** Unavailablereason */
+            unavailableReason?: string | null;
         };
         /** CfdAttributionBucket */
         CfdAttributionBucket: {
@@ -1783,17 +1803,17 @@ export interface components {
         /** CfdCashFlows */
         CfdCashFlows: {
             /** Accountcashflow */
-            accountCashFlow: number;
+            accountCashFlow: number | null;
             /** Adjustments */
-            adjustments: number;
+            adjustments: number | null;
             /** Deposits */
-            deposits: number;
+            deposits: number | null;
             /** Householdexternalflow */
-            householdExternalFlow: number;
+            householdExternalFlow: number | null;
             /** Internaltransfers */
-            internalTransfers: number;
+            internalTransfers: number | null;
             /** Withdrawals */
-            withdrawals: number;
+            withdrawals: number | null;
         };
         /** CfdEndingRisk */
         CfdEndingRisk: {
@@ -1911,25 +1931,25 @@ export interface components {
         /** CfdMoneyOutcome */
         CfdMoneyOutcome: {
             /** Accountcashflowgbp */
-            accountCashFlowGbp: number;
+            accountCashFlowGbp: number | null;
             /** Adjustmentsgbp */
-            adjustmentsGbp: number;
+            adjustmentsGbp: number | null;
             /** Currentrealisedpnldrawdowngbp */
-            currentRealisedPnlDrawdownGbp: number;
+            currentRealisedPnlDrawdownGbp: number | null;
             /** Depositsgbp */
-            depositsGbp: number;
+            depositsGbp: number | null;
             /** Endingrealisedcashequityproxygbp */
-            endingRealisedCashEquityProxyGbp: number;
+            endingRealisedCashEquityProxyGbp: number | null;
             /** Householdexternalflowgbp */
-            householdExternalFlowGbp: number;
+            householdExternalFlowGbp: number | null;
             /** Internaltransfersgbp */
-            internalTransfersGbp: number;
+            internalTransfersGbp: number | null;
             /** Maxrealisedpnldrawdowngbp */
-            maxRealisedPnlDrawdownGbp: number;
+            maxRealisedPnlDrawdownGbp: number | null;
             /** Netrealisedpnlgbp */
-            netRealisedPnlGbp: number;
+            netRealisedPnlGbp: number | null;
             /** Openingrealisedcashequityproxygbp */
-            openingRealisedCashEquityProxyGbp: number;
+            openingRealisedCashEquityProxyGbp: number | null;
             /**
              * Source
              * @constant
@@ -1945,7 +1965,7 @@ export interface components {
             /** Unavailablereason */
             unavailableReason?: string | null;
             /** Withdrawalsgbp */
-            withdrawalsGbp: number;
+            withdrawalsGbp: number | null;
         };
         /** CfdNotional */
         CfdNotional: {
@@ -1958,7 +1978,7 @@ export interface components {
             /** Netrealisedtonotionalratio */
             netRealisedToNotionalRatio?: number | null;
             /** Totalclosednotional */
-            totalClosedNotional: number;
+            totalClosedNotional: number | null;
         };
         /** CfdPhase */
         CfdPhase: {
@@ -2030,42 +2050,42 @@ export interface components {
         /** CfdRealisedPnl */
         CfdRealisedPnl: {
             /** Closedafterfx */
-            closedAfterFx: number;
+            closedAfterFx: number | null;
             /** Closedgrossresult */
-            closedGrossResult: number;
+            closedGrossResult: number | null;
             /** Dividendadjustment */
-            dividendAdjustment: number;
+            dividendAdjustment: number | null;
             /** Financingdragtogrossratio */
             financingDragToGrossRatio?: number | null;
             /** Financingdragtonetratio */
             financingDragToNetRatio?: number | null;
             /** Fxfees */
-            fxFees: number;
+            fxFees: number | null;
             /** Maxrealisedpnldrawdown */
-            maxRealisedPnlDrawdown: number;
+            maxRealisedPnlDrawdown: number | null;
             /** Netrealisedpnl */
-            netRealisedPnl: number;
+            netRealisedPnl: number | null;
             /** Overnightinterest */
-            overnightInterest: number;
+            overnightInterest: number | null;
         };
         /** CfdRealisedPoint */
         CfdRealisedPoint: {
             /** Accountcashflowchange */
-            accountCashFlowChange: number;
+            accountCashFlowChange: number | null;
             /** Cumulativeaccountcashflow */
-            cumulativeAccountCashFlow: number;
+            cumulativeAccountCashFlow: number | null;
             /** Cumulativerealisedpnl */
-            cumulativeRealisedPnl: number;
+            cumulativeRealisedPnl: number | null;
             /** Eventid */
             eventId: string;
             /** Occurredat */
             occurredAt: string;
             /** Realisedcashequityproxy */
-            realisedCashEquityProxy: number;
+            realisedCashEquityProxy: number | null;
             /** Realisedpnlchange */
-            realisedPnlChange: number;
+            realisedPnlChange: number | null;
             /** Realisedpnldrawdown */
-            realisedPnlDrawdown: number;
+            realisedPnlDrawdown: number | null;
             /** Recordtype */
             recordType: string;
         };
@@ -2151,7 +2171,7 @@ export interface components {
             /** Topthreetradeconcentration */
             topThreeTradeConcentration?: number | null;
             /** Totalclosednotional */
-            totalClosedNotional: number;
+            totalClosedNotional: number | null;
             /** Unavailablereason */
             unavailableReason?: string | null;
         };
@@ -2183,7 +2203,7 @@ export interface components {
             /** Dividendadjustmentsgbp */
             dividendAdjustmentsGbp?: number | null;
             /** Endingvaluegbp */
-            endingValueGbp: number;
+            endingValueGbp: number | null;
             /** Financingtogrossratio */
             financingToGrossRatio?: number | null;
             /** Financingtonetratio */
@@ -2202,25 +2222,25 @@ export interface components {
             /** Latesteventat */
             latestEventAt?: string | null;
             /** Maxdrawdowngbp */
-            maxDrawdownGbp: number;
+            maxDrawdownGbp: number | null;
             /** Name */
             name: string;
             /** Navquality */
             navQuality: string;
             /** Netexternalflowsgbp */
-            netExternalFlowsGbp: number;
+            netExternalFlowsGbp: number | null;
             /** Netrealisedpnlgbp */
             netRealisedPnlGbp?: number | null;
             /** Overnightchargesgbp */
-            overnightChargesGbp: number;
+            overnightChargesGbp: number | null;
             /** Pnlsharpeproxy */
             pnlSharpeProxy: number | null;
             /** Profile */
             profile: string;
             /** Realizedpnlgbp */
-            realizedPnlGbp: number;
+            realizedPnlGbp: number | null;
             /** Reconciliationgapgbp */
-            reconciliationGapGbp: number;
+            reconciliationGapGbp: number | null;
             /** Reconciliationstatus */
             reconciliationStatus: string;
             /** Source */
@@ -2250,15 +2270,15 @@ export interface components {
             /** Besttradeconcentration */
             bestTradeConcentration?: number | null;
             /** Breakeven */
-            breakeven: number;
+            breakeven: number | null;
             /** Expectancy */
             expectancy?: number | null;
             /** Longestlossstreak */
-            longestLossStreak: number;
+            longestLossStreak: number | null;
             /** Longestwinstreak */
-            longestWinStreak: number;
+            longestWinStreak: number | null;
             /** Losses */
-            losses: number;
+            losses: number | null;
             /** Mediandurationhours */
             medianDurationHours?: number | null;
             /** Netwithoutbesttrade */
@@ -2269,16 +2289,24 @@ export interface components {
             profitFactor?: number | null;
             /** Samedaycount */
             sameDayCount: number;
+            /**
+             * Status
+             * @default available
+             * @enum {string}
+             */
+            status: "available" | "partial" | "unavailable";
             /** Topthreetradeconcentration */
             topThreeTradeConcentration?: number | null;
             /** Tradecount */
             tradeCount: number;
+            /** Unavailablereason */
+            unavailableReason?: string | null;
             /** Underonehourcount */
             underOneHourCount: number;
             /** Winrate */
             winRate?: number | null;
             /** Wins */
-            wins: number;
+            wins: number | null;
             /** Worsttrade */
             worstTrade?: number | null;
         };
@@ -2396,7 +2424,7 @@ export interface components {
             /** Holdings */
             holdings: components["schemas"]["Holding"][];
             /** Householdtotalvaluegbp */
-            householdTotalValueGbp: number;
+            householdTotalValueGbp: number | null;
             /** Intradaynav */
             intradayNav: components["schemas"]["NavPoint"][];
             /** Latestmodeldayreturn */
@@ -2971,11 +2999,21 @@ export interface components {
              * @default 0
              */
             failedCount: number;
+            /** Flowanchorcount */
+            flowAnchorCount?: number | null;
+            /** Flowsnapshotrunid */
+            flowSnapshotRunId?: string | null;
             /**
              * Flowunverifiedcount
-             * @default 0
+             * @description Retained valuation anchors in flowSnapshotRunId without a verified anchor status or verified cash-flow coverage for both accounts at their observation times. Each anchor counts once, regardless of source or refresh jobs. Null means no readable snapshot/valuation history; zero with flowAnchorCount=0 means empty history. This is coverage evidence, not certification of time-weighted returns.
              */
-            flowUnverifiedCount: number;
+            flowUnverifiedCount?: number | null;
+            /**
+             * Flowverificationstatus
+             * @default unavailable
+             * @enum {string}
+             */
+            flowVerificationStatus: "available" | "no_snapshot" | "unavailable";
             /** Intervalseconds */
             intervalSeconds: number;
             /** Lasterror */
@@ -3014,9 +3052,9 @@ export interface components {
             /** Compliance */
             compliance: number;
             /** Realizednet */
-            realizedNet: number;
+            realizedNet: number | null;
             /** Turnover */
-            turnover: number;
+            turnover: number | null;
         };
         /** JobList */
         JobList: {
@@ -3730,11 +3768,21 @@ export interface components {
              * @default 0
              */
             failedCount: number;
+            /** Flowanchorcount */
+            flowAnchorCount?: number | null;
+            /** Flowsnapshotrunid */
+            flowSnapshotRunId?: string | null;
             /**
              * Flowunverifiedcount
-             * @default 0
+             * @description Retained valuation anchors in flowSnapshotRunId without a verified anchor status or verified cash-flow coverage for both accounts at their observation times. Each anchor counts once, regardless of source or refresh jobs. Null means no readable snapshot/valuation history; zero with flowAnchorCount=0 means empty history. This is coverage evidence, not certification of time-weighted returns.
              */
-            flowUnverifiedCount: number;
+            flowUnverifiedCount?: number | null;
+            /**
+             * Flowverificationstatus
+             * @default unavailable
+             * @enum {string}
+             */
+            flowVerificationStatus: "available" | "no_snapshot" | "unavailable";
             /** Intervalseconds */
             intervalSeconds: number;
             /** Lasterror */
@@ -3774,15 +3822,15 @@ export interface components {
         /** PolicySummary */
         PolicySummary: {
             /** Expectancy */
-            expectancy: number;
+            expectancy: number | null;
             /** Isabuckets */
             isaBuckets: components["schemas"]["IsaBucket"][];
             /** Payoff */
-            payoff: number;
+            payoff: number | null;
             /** Profitfactor */
-            profitFactor: number;
+            profitFactor: number | null;
             /** Winrate */
-            winRate: number;
+            winRate: number | null;
         };
         /** PortfolioImpact */
         PortfolioImpact: {

@@ -5,6 +5,7 @@ import {
   durationBetween,
   formatDuration,
   formatInterval,
+  flowVerificationText,
   latestFullAccountJob,
   latestStage,
 } from "@/lib/health";
@@ -94,6 +95,9 @@ function refresh(overrides: Partial<RefreshState> = {}): RefreshState {
       succeededCount: 10,
       failedCount: 0,
       flowUnverifiedCount: 0,
+      flowAnchorCount: 25,
+      flowSnapshotRunId: "run-1",
+      flowVerificationStatus: "available",
       skippedBusyCount: 0,
       lastError: null,
     },
@@ -247,5 +251,28 @@ describe("health formatting and selection", () => {
       ],
     });
     expect(latestStage(failedStageJob)?.status).toBe("failed");
+  });
+});
+
+describe("current snapshot flow coverage", () => {
+  it("shows anchor counts independently of successful refresh jobs", () => {
+    const schedule = { ...refresh().intraday, succeededCount: 1200, flowUnverifiedCount: 2 };
+    expect(flowVerificationText(schedule)).toBe("2 of 25 valuations unverified");
+    expect(flowVerificationText(schedule, "zh")).toBe("2 / 25 个估值点待验证");
+    expect(flowVerificationText({ ...schedule, flowUnverifiedCount: 0 }))
+      .toBe("0 of 25 valuations unverified");
+  });
+
+  it("distinguishes missing snapshots, unreadable coverage and empty history from verified data", () => {
+    const schedule = refresh().intraday;
+    expect(flowVerificationText(undefined)).toBe("Verification unavailable");
+    expect(flowVerificationText({ ...schedule, flowVerificationStatus: "no_snapshot", flowUnverifiedCount: null }))
+      .toBe("No snapshot yet");
+    expect(flowVerificationText({ ...schedule, flowVerificationStatus: "unavailable", flowUnverifiedCount: null }))
+      .toBe("Verification unavailable");
+    expect(flowVerificationText({ ...schedule, flowAnchorCount: 0, flowUnverifiedCount: 0 }))
+      .toBe("No retained valuations");
+    expect(flowVerificationText({ ...schedule, flowUnverifiedCount: 26 }))
+      .toBe("Verification unavailable");
   });
 });

@@ -53,12 +53,19 @@ cash amount in that row's `Currency (Total)`, including conversion fees. NAV
 replay converts supported foreign-wallet amounts using historical FX; it does
 not deduct the separate fee column again.
 
-Campaign policy, diluted-cost and capital-recovery calculations currently
-require GBP-settled ledger totals and fees. A GBP account summary and matching
-share quantities do not establish that condition: an account can contain USD
-or EUR settlement rows. Those campaign-derived amounts, including their review
-attribution, are not reliable for a foreign-settled ledger until that path gains
-per-event FX normalization. This limitation is separate from NAV reconstruction.
+Campaign, diluted-cost and capital-recovery calculations normalize each
+settlement total, fee and result separately into GBP. Raw native columns remain
+available for NAV replay; share quantities and current broker valuations are
+not rewritten. Converted buy/sell cash legs determine GBP campaign P&L,
+including changes in exchange rates, rather than treating a converted broker
+result as the complete GBP outcome.
+
+`analytics/fx.py` accepts a broker rate only when its GBP direction is supported
+by the recorded currencies. Otherwise it uses a cached completed daily close
+available at or before the event, within seven days. It never backfills a
+future rate. Missing conversion evidence is propagated through the affected
+campaign, cost, recovery and review fields as unavailable, without aborting
+unrelated account calculations. See [currency conventions](../guides/data-and-metrics.md#ledger-settlement-currency).
 
 The public API does not expose Trading 212 Card merchant payments. If an
 account used the card and its generated report therefore cannot explain the

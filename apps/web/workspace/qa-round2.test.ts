@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "./data";
 import { statementUnit, statementValue } from "./financial-values";
 import { resolveResearchIdentity } from "./research-identity";
-import { assumptionChange, assumptionErrors } from "./valuation-assumptions";
 
-const zh = (text: string) => text;
-const en = (_zh: string, text: string) => text;
 afterEach(() => vi.unstubAllGlobals());
 
 describe("statement unit regressions", () => {
@@ -46,25 +43,9 @@ describe("research deep links", () => {
   });
 });
 
-describe("assumption history display units", () => {
-  it.each(["bear", "base", "bull"])("formats each %s field in editor units", (scenario) => {
-    const labels = { bear: "保守情景", base: "基准情景", bull: "乐观情景" };
-    for (const [key, label] of [["revenueCagr", "营收增长"], ["targetFcfMargin", "现金流率"], ["discountRate", "折现率"], ["shareCagr", "股数增长"]]) {
-      expect(assumptionChange(`${scenario}.${key}`, null, 0.001, zh)).toBe(`${labels[scenario as keyof typeof labels]} · ${label}：未设置 → 0.1%`);
-      expect(assumptionChange(`${scenario}.${key}`, -0.99, -0.985, zh)).toContain("-99% → -98.5%");
-      expect(assumptionChange(`${scenario}.${key}`, 0, null, zh)).toContain("0% → 未设置");
-    }
-    expect(assumptionChange(`${scenario}.exitFcfMultiple`, null, 0, zh)).toContain("未设置 → 0×");
-    expect(assumptionChange(`${scenario}.exitFcfMultiple`, 15, 20.25, en)).toContain("15× → 20.25×");
-  });
-  it("does not expose unknown storage keys or stringify objects", () => {
-    expect(assumptionChange("future.rawKey", "private", { input: "private" }, zh)).toBe("其他假设已修改");
-  });
-});
-
 async function rejected(status: number, body: unknown, raw = false) {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(raw ? String(body) : JSON.stringify(body), { status })));
-  try { await api("/valuation/assumptions/AAPL"); } catch (error) { return error; }
+  try { await api("/research/AAPL/models"); } catch (error) { return error; }
   throw new Error("Expected rejection");
 }
 
@@ -74,30 +55,28 @@ describe("API validation failures", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(422);
     expect((error as ApiError).issues).toEqual([{ path: ["body", "scenarios", "bear", "discountRate"], type: "greater_than", bounds: { gt: 0 } }]);
-    const formatted = assumptionErrors(error, zh);
-    expect(formatted.fields).toEqual({ "bear.discountRate": "需大于 0%" });
-    expect(formatted.message).toContain("修改标出的项目");
-    expect(JSON.stringify(formatted)).not.toContain("private");
+    expect(JSON.stringify((error as ApiError).issues)).not.toContain("private");
   });
-  it("supports structured errors and converts numeric constraints to field units", async () => {
+  it("preserves structured validation constraints for the current model endpoint", async () => {
     const error = await rejected(422, { detail: { message: "Rejected", errors: [
       { loc: ["scenarios", "base", "revenueCagr"], type: "less_than_equal", ctx: { le: 5 } },
       { loc: ["body", "scenarios", "bull", "exitFcfMultiple"], type: "float_parsing" },
       { loc: ["body", "credentials"], type: "missing" },
     ] } });
-    expect(assumptionErrors(error, en).fields).toEqual({ "base.revenueCagr": "Must be at most 500%", "bull.exitFcfMultiple": "Enter a valid number" });
+    expect((error as ApiError).issues).toEqual([
+      { path: ["scenarios", "base", "revenueCagr"], type: "less_than_equal", bounds: { le: 5 } },
+      { path: ["body", "scenarios", "bull", "exitFcfMultiple"], type: "float_parsing", bounds: {} },
+      { path: ["body", "credentials"], type: "missing", bounds: {} },
+    ]);
   });
-  it("localizes unknown server structures, non-JSON failures and network errors while preserving retry", async () => {
-    for (const body of [{ detail: "private detail" }, { detail: { message: "private detail" } }, { detail: [{ msg: "private detail" }] }, { detail: { unexpected: "private detail" } }]) {
-      const formatted = assumptionErrors(await rejected(422, body), zh);
-      expect(formatted.fields).toEqual({});
-      expect(formatted.message).toContain("重试");
-      expect(formatted.message).not.toMatch(/private|422|Request failed/);
-    }
-    expect(assumptionErrors(await rejected(503, "<html>unavailable</html>", true), zh).message).toContain("暂时无法保存");
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-    let error: unknown;
-    try { await api("/valuation/assumptions/AAPL"); } catch (caught) { error = caught; }
-    expect(assumptionErrors(error, zh).message).toContain("修改仍保留");
+  it("keeps non-JSON failures bounded and propagates network failures for retry", async () => {
+    const error = await rejected(503, "<html>unavailable</html>", true);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(503);
+    expect((error as ApiError).issues).toEqual([]);
+    expect((error as ApiError).message).toBe("Request failed (503)");
+    const networkError = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(networkError));
+    await expect(api("/research/AAPL/models")).rejects.toBe(networkError);
   });
 });

@@ -22,10 +22,15 @@ from typing import Any, Literal
 import pandas as pd
 
 from .allocation import concentration
-from .ledger import reconstruct_campaigns, summarize_campaigns
+from .ledger import (
+    normalize_transactions_gbp,
+    reconstruct_campaigns,
+    summarize_campaigns,
+    transaction_gbp_issues,
+)
 
 AccountKind = Literal["invest", "isa"]
-CALCULATION_VERSION = "account-review-v2"
+CALCULATION_VERSION = "account-review-v3"
 SCHEMA_VERSION = 1
 
 
@@ -340,6 +345,13 @@ def _trade_quality(
     transactions: pd.DataFrame | None,
     top_n: Sequence[int],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    rejected = [
+        str(row.get("unavailable_reason") or "dated GBP conversion unavailable")
+        for row in campaigns
+        if row.get("status") == "unavailable"
+    ]
+    if rejected:
+        return _unavailable("; ".join(dict.fromkeys(rejected)), trade_count=len(campaigns)), []
     trades = [_campaign_detail(row, account_kind) for row in campaigns]
     trades.sort(key=lambda row: (row["end"] or "", row["ticker"]))
     if not trades:
@@ -351,15 +363,10 @@ def _trade_quality(
             [],
         )
 
-    # Reuse the existing ledger summary for its established realised-P&L
-    # semantics.  The additions below extend it with hold-time, streak, tail,
-    # and counterfactual evidence without changing campaign reconstruction.
-    summary_transactions = (
-        transactions
-        if transactions is not None and "TotalN" in transactions
-        else pd.DataFrame({"TotalN": []})
-    )
-    established = summarize_campaigns(list(campaigns), summary_transactions)
+    # These statistics depend only on the completed campaigns above. An open
+    # position with missing FX must not invalidate an independently verified
+    # closed campaign; account-wide turnover has its own availability gate.
+    established = summarize_campaigns(list(campaigns), pd.DataFrame({"TotalN": []}))
     values = [float(trade["net_result_gbp"]) for trade in trades]
     durations = [float(trade["duration_days"]) for trade in trades]
     wins = [trade for trade in trades if float(trade["net_result_gbp"]) > 0]
@@ -844,6 +851,7 @@ def _structural_diagnostics(
         unavailable_reasons.append("closed campaigns are unavailable for trade-behaviour evidence")
 
     counts = _active_position_counts(transactions)
+    fx_issues = transaction_gbp_issues(transactions) if transactions is not None else []
     gross_traded = None
     buy_orders = None
     sell_orders = None
@@ -851,20 +859,26 @@ def _structural_diagnostics(
         transactions is not None
         and not transactions.empty
         and {"Action", "TotalN"}.issubset(transactions.columns)
+        and not fx_issues
     ):
         actions = transactions["Action"].astype(str).str.lower()
         traded = actions.str.contains("buy") | actions.str.contains("sell")
-        gross_traded = float(transactions.loc[traded, "TotalN"].abs().sum())
+        gross_traded = float(transactions.loc[traded, "TotalGBP"].abs().sum())
         buy_orders = int(actions.str.contains("buy").sum())
         sell_orders = int(actions.str.contains("sell").sum())
     else:
-        unavailable_reasons.append("normalized transactions are unavailable for turnover evidence")
+        unavailable_reasons.append(
+            "dated GBP conversion is unavailable for turnover evidence"
+            if fx_issues
+            else "normalized transactions are unavailable for turnover evidence"
+        )
 
     drawdown_buy_notional = None
     if (
         nav_rows
         and transactions is not None
         and not transactions.empty
+        and not fx_issues
         and {
             "Action",
             "Time",
@@ -877,7 +891,7 @@ def _structural_diagnostics(
         }
         buying = transactions[transactions["Action"].astype(str).str.lower().str.contains("buy")]
         drawdown_buy_notional = sum(
-            float(row["TotalN"])
+            float(row["TotalGBP"])
             for _, row in buying.iterrows()
             if pd.Timestamp(row["Time"]).date() in drawdown_days
         )
@@ -1175,6 +1189,9 @@ def build_account_review(
         raise ValueError("currency must be a three-letter code")
 
     warnings: list[str] = []
+    if transactions is not None:
+        transactions = normalize_transactions_gbp(transactions)
+        warnings.extend(transaction_gbp_issues(transactions))
     nav_rows, nav_error = _normalized_nav_rows(nav_money_series)
     money_nav_rows = [] if nav_error else nav_rows
     if nav_error:
@@ -1215,7 +1232,12 @@ def build_account_review(
             nav_rows=nav_rows,
             nav_error=nav_error,
             ending_holdings=ending_holdings,
-            provenance=provenance,
+            provenance={
+                **dict(provenance or {}),
+                "ledger_fx_evidence": transactions.attrs.get("fx_evidence", []),
+            }
+            if transactions is not None
+            else provenance,
             currency=normalized_currency,
             warnings=warnings,
         ),

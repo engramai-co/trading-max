@@ -10,7 +10,13 @@ from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from .job_errors import JobConflict
-from .models import IntradaySchedule, JobRecord, JobStatus, PerformanceSchedule
+from .models import (
+    IntradaySchedule,
+    JobRecord,
+    JobStatus,
+    PerformanceSchedule,
+    SnapshotFlowVerification,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +61,7 @@ class IntradayScheduler:
         legacy_triggers: tuple[str, ...] = (),
         performance: bool = False,
         should_submit: Callable[[], bool] | None = None,
+        flow_diagnostics: Callable[[], SnapshotFlowVerification] | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         if interval_seconds < 60:
@@ -81,6 +88,7 @@ class IntradayScheduler:
         self.triggers = (trigger, *legacy_triggers)
         self.performance = performance
         self.should_submit = should_submit
+        self.flow_diagnostics = flow_diagnostics
         self._material_change_triggered = False
         self._now = now or (lambda: datetime.now(UTC))
         self._stop = threading.Event()
@@ -200,10 +208,9 @@ class IntradayScheduler:
             JobStatus.INTERRUPTED.value,
             0,
         )
-        # The current live snapshot producer deliberately marks every anchor
-        # unverified. Keep this metric explicit so a future transaction-flow
-        # provider can replace it with artifact-level coverage inspection.
-        flow_unverified_count = succeeded_count
+        flow_status = (
+            self.flow_diagnostics() if self.flow_diagnostics else SnapshotFlowVerification()
+        )
         submitted_count = sum(counts.values())
         if not self.enabled:
             model = PerformanceSchedule if self.performance else IntradaySchedule
@@ -219,7 +226,7 @@ class IntradayScheduler:
                 submitted_count=submitted_count,
                 succeeded_count=succeeded_count,
                 failed_count=failed_count,
-                flow_unverified_count=flow_unverified_count,
+                **flow_status.model_dump(),
                 skipped_busy_count=self._skipped_busy_count,
                 last_error=self._last_error,
                 **(
@@ -254,7 +261,7 @@ class IntradayScheduler:
             submitted_count=submitted_count,
             succeeded_count=succeeded_count,
             failed_count=failed_count,
-            flow_unverified_count=flow_unverified_count,
+            **flow_status.model_dump(),
             skipped_busy_count=self._skipped_busy_count,
             last_error=self._last_error,
             **(

@@ -60,7 +60,13 @@ def _transactions() -> pd.DataFrame:
             "ResultN": -30.0,
         },
     ]
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).assign(
+        **{
+            "Currency (Total)": "GBP",
+            "Currency (Currency conversion fee)": "GBP",
+            "Currency (Result)": "GBP",
+        }
+    )
 
 
 def _nav() -> pd.DataFrame:

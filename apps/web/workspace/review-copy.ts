@@ -35,6 +35,7 @@ const labels: Record<string, [string, string]> = {
   gross_trade_result: ["交易毛收益", "Gross trading result"], transaction_fees: ["交易费用", "Transaction fees"],
   net_realised_result: ["净收益", "Net result"], authoritative: ["已核对", "Reconciled"],
   partial: ["部分覆盖", "Partial coverage"], reconstructed: ["历史估算", "Reconstructed"],
+  unallocated_costs: ["待归属费用与调整", "Unallocated costs and adjustments"],
 };
 export function reviewLabel(value: string, t: Copy) {
   const entry = labels[value];
@@ -43,6 +44,9 @@ export function reviewLabel(value: string, t: Copy) {
 
 export function systemReason(raw: string, t: Copy): string {
   const rules: Array<[RegExp, string]> = [
+    [/monetary_data_unavailable/i, t("原始记录缺少计算净额所需的金额或费用，相关结果暂不可用。", "Source records lack amounts or fees needed to calculate the net result.")],
+    [/missing.*fx|fx.*unavailable|settlement.*conversion|exchange.rate.*unavailable/i, t("部分交易缺少可靠的历史汇率，相关英镑金额暂不可用。", "Some transactions lack reliable historical exchange rates; affected GBP amounts are unavailable.")],
+    [/conflict.*cost|cost.*conflict|ambiguous.*cost|overlap.*cost/i, t("费用记录存在重叠或冲突，相关盈亏需核对后才能显示。", "Cost records overlap or conflict; affected P&L requires reconciliation.")],
     [/winning closed/i, t("还没有盈利的已平仓交易。", "No profitable closed trades are available.")],
     [/losing closed|non-zero gross loss/i, t("还没有亏损的已平仓交易，无法计算此指标。", "This metric needs at least one losing closed trade.")],
     [/closed campaigns|closed campaign|campaign columns/i, t("缺少完整的开平仓记录，暂不能分析已实现交易结果。", "Complete opening and closing records are needed to analyze closed trades.")],

@@ -98,20 +98,50 @@ See [NAV history](../architecture/unified-nav-history.md) and
 
 ## Ledger settlement currency
 
-Campaign policy, diluted cost, capital recovery, and their review attribution
-currently require ledger totals and fees settled in GBP. A GBP account can
-still contain USD or EUR settlement rows; matching share quantities alone do
-not validate those cash amounts. Treat these campaign-derived figures as
-unsupported for foreign-settled ledgers. NAV reconstruction has a separate
-historical FX conversion path.
+Campaign policy, diluted cost, capital recovery, and trade attribution convert
+each cash amount in its recorded settlement currency. A security's quote
+currency and the account's headline currency do not determine that currency.
+Totals, fees and broker results retain their original values; GBP analytics
+carry separate conversion evidence. Pence convert at 100 GBX per GBP.
 
-Imported CFD history has two additional limits. Its GBP cash-equity proxy
-requires GBP source amounts; EUR or mixed-currency imports are not converted
-into GBP. With multiple partial closes of one position, standalone financing
-or dividend adjustments can be counted more than once in trade-level
-attribution. The event ledger and total realised outcome count each event
-once, but those trade-level breakdowns should not be used to reconcile that
-total until the allocation is corrected.
+Where a broker record proves a GBP conversion, that rate takes precedence.
+Otherwise the conversion uses the most recent completed daily FX close
+available before the event, no more than seven days old. These historical
+marks are estimates, not the broker's execution rate. Rates are cached outside
+the checkout and record their source and availability time. Missing currency
+or reliable FX makes only dependent monetary metrics unavailable; current
+broker valuations, quantities and independently valid account metrics remain
+visible. Unknown amounts are never replaced with zero.
+
+Imported CFD cash flows, realised results and the cash-equity proxy follow the
+same GBP conversion rule. A missing conversion cannot silently remove CFD
+from the household total or reuse an older known amount. Raw imports remain
+unchanged. If an import omits the net result and the fees needed to derive it,
+dependent amounts also remain unavailable (`monetary_data_unavailable`);
+a gross result alone cannot establish the net result.
+
+CFD financing and dividend events count once. Direct trade links take priority;
+position-level costs with matching holding periods are allocated by closed
+quantity. This is Trading Max's attribution method, not a broker-reported
+per-close allocation. Costs without a supported trade association stay in an
+explicit unallocated bucket, so every attribution dimension reconciles to total
+realised P&L. Conflicting embedded and standalone cost evidence makes affected
+results unavailable pending reconciliation. Remaining open quantity requires
+executed-order evidence; a cost row's quantity alone does not establish it.
+Foreign CFD conversions use a GBP precision of 0.00000001 with half-even
+rounding. Allocation puts any rounding remainder into the final share, keeping
+each converted event total unchanged.
+
+## Cash-flow verification diagnostics
+
+Data status counts retained valuation points in the current immutable snapshot
+that lack verified cash-flow coverage at each account's observation time.
+The count is unrelated to the number of successful refresh jobs or chart gaps.
+Both schedules report the same snapshot coverage. An unavailable count means
+there is no readable snapshot or valuation history. `no_snapshot` identifies
+an installation without a published snapshot; zero with no retained points
+means a successfully read, empty history.
+Cash-flow coverage alone does not certify intraday time-weighted returns.
 
 ## Interpret missing, historical, and modeled values
 
