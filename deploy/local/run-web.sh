@@ -12,4 +12,4 @@ source "$ENV_FILE"
 set +a
 export HOSTNAME=127.0.0.1
 export PORT=3413
-exec npm --prefix apps/web run start
+exec "${TRADING_MAX_NODE_BINARY:-node}" "$APP_ROOT/apps/web/.next/standalone/server.js"

@@ -97,6 +97,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
+        refresh_times = _full_refresh_times_from_env()
         origins = tuple(
             value.strip()
             for value in os.environ.get("TRADING_MAX_ALLOWED_ORIGINS", "").split(",")
@@ -118,7 +119,7 @@ class Settings:
                 "TRADING_MAX_RESEARCH_ENABLED",
                 _bool_from_env("TRADING_MAX_NIGHTLY_ENABLED", False),
             ),
-            full_refresh_times=_full_refresh_times_from_env(),
+            full_refresh_times=refresh_times,
             nightly_timezone=os.environ.get("TRADING_MAX_NIGHTLY_TIMEZONE", "Europe/London"),
             intraday_enabled=_bool_from_env(
                 "TRADING_MAX_LIVE_ENABLED",
@@ -156,7 +157,7 @@ class Settings:
             ),
             daily_reconciliation_time=os.environ.get(
                 "TRADING_MAX_DAILY_RECONCILIATION_TIME",
-                "22:30",
+                refresh_times[-1] if refresh_times else "22:30",
             ),
             alert_monitor_enabled=_bool_from_env(
                 "TRADING_MAX_ALERT_MONITOR_ENABLED",

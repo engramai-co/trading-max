@@ -25,7 +25,7 @@ from .allocation import concentration
 from .ledger import reconstruct_campaigns, summarize_campaigns
 
 AccountKind = Literal["invest", "isa"]
-CALCULATION_VERSION = "account-review-v1"
+CALCULATION_VERSION = "account-review-v2"
 SCHEMA_VERSION = 1
 
 
@@ -97,7 +97,11 @@ def _normalized_nav_rows(
     if not raw_rows:
         return [], "NAV/money history was not supplied"
     rows: list[dict[str, Any]] = []
+    unverified_timing = False
     for index, raw in enumerate(raw_rows):
+        status = raw.get("PerformanceStatus")
+        if status is not None and not pd.isna(status) and status not in {"", "eligible"}:
+            unverified_timing = True
         date_value = _first(raw, "Date", "date", "as_of", "asOf")
         nav_value = _finite(
             _first(
@@ -141,7 +145,7 @@ def _normalized_nav_rows(
     dates = [row["date"] for row in rows]
     if len(set(dates)) != len(dates):
         return [], "NAV/money history contains duplicate dates"
-    return rows, None
+    return rows, "NAV/money cash-flow timing is unverified" if unverified_timing else None
 
 
 def _money_from_nav(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1107,8 +1111,10 @@ def _coverage(
         ),
         "nav_money_series": (
             _available(observations=len(nav_rows))
-            if nav_rows
-            else _unavailable(nav_error or "NAV/money history was not supplied", observations=0)
+            if nav_rows and not nav_error
+            else _unavailable(
+                nav_error or "NAV/money history was not supplied", observations=len(nav_rows)
+            )
         ),
         "ending_holdings": (
             _available(observations=len(ending_holdings))
@@ -1170,6 +1176,7 @@ def build_account_review(
 
     warnings: list[str] = []
     nav_rows, nav_error = _normalized_nav_rows(nav_money_series)
+    money_nav_rows = [] if nav_error else nav_rows
     if nav_error:
         warnings.append(nav_error)
 
@@ -1212,15 +1219,19 @@ def build_account_review(
             currency=normalized_currency,
             warnings=warnings,
         ),
-        "money_outcome": _money_section(nav_rows, money_outcome),
+        "money_outcome": (
+            _unavailable(nav_error)
+            if nav_error and money_outcome is None
+            else _money_section(money_nav_rows, money_outcome)
+        ),
         "strategy_risk": _strategy_section(strategy_risk),
-        "phases": _phases(nav_rows, trades),
+        "phases": _unavailable(nav_error, items=[]) if nav_error else _phases(nav_rows, trades),
         "realised_trade_quality": trade_quality,
         "attribution": _attribution(trades),
         "structural_diagnostics": _structural_diagnostics(
             transactions,
             trades,
-            nav_rows,
+            money_nav_rows,
         ),
         "ending_risk": _ending_risk(ending_holdings, nav_rows, account_kind),
         "warnings": warnings,

@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import os
 import plistlib
+import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -56,12 +58,23 @@ def install(app_root: Path, state_root: Path, backup_root: Path) -> None:
     app_root = app_root.expanduser().resolve()
     state_root = state_root.expanduser().resolve()
     backup_root = backup_root.expanduser().resolve()
-    if not (app_root / ".git").is_dir():
+    checkout = _run("git", "-C", str(app_root), "rev-parse", "--show-toplevel", check=False)
+    if checkout.returncode or Path(checkout.stdout.strip()).resolve() != app_root:
         raise ValueError(f"not a Git checkout: {app_root}")
     if not (state_root / "secrets" / "trading_max.env").is_file():
         raise ValueError("state root is not initialized; run trading-max setup first")
-    if not (app_root / "apps" / "web" / ".next" / "BUILD_ID").is_file():
+    web_build = app_root / "apps" / "web" / ".next"
+    if not (web_build / "BUILD_ID").is_file() or not (web_build / "standalone/server.js").is_file():
         raise ValueError("web build is missing; run npm --prefix apps/web run build")
+    node = Path(
+        os.environ.get("TRADING_MAX_NODE_BINARY") or shutil.which("node") or ""
+    ).expanduser()
+    if not node.is_file() or not os.access(node, os.X_OK):
+        raise ValueError("Node.js 22 is required; set TRADING_MAX_NODE_BINARY")
+    node = node.resolve()
+    version = _run(str(node), "--version").stdout.strip()
+    if not re.fullmatch(r"v22\.\d+\.\d+", version):
+        raise ValueError(f"Node.js 22 is required; found {version}")
 
     agents = Path.home() / "Library" / "LaunchAgents"
     log_root = Path.home() / "Library" / "Logs" / "Trading Max"
@@ -70,6 +83,7 @@ def install(app_root: Path, state_root: Path, backup_root: Path) -> None:
     backup_root.mkdir(parents=True, exist_ok=True)
     environment = {
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+        "TRADING_MAX_NODE_BINARY": str(node),
     }
     definitions = {
         "api": _plist(

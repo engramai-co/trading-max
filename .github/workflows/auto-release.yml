@@ -31,6 +31,7 @@ jobs:
             "Frontend (lint, types, tests, build)"
             "Secret and artifact scan"
             "Dependency audit"
+            "Migration and deployment contracts"
           )
           deadline=$((SECONDS + 900))
           while true; do
@@ -45,6 +46,12 @@ jobs:
               )"
               case "$conclusion" in
                 success) ;;
+                skipped)
+                  if [ "$name" != "Migration and deployment contracts" ]; then
+                    echo "required check was skipped: ${name}"
+                    exit 1
+                  fi
+                  ;;
                 failure|cancelled|timed_out|action_required)
                   echo "required check failed: ${name} (${conclusion})"
                   exit 1

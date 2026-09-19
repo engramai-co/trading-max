@@ -230,7 +230,7 @@ class CfdAccountStage:
     """Consume private imports without making CFD mandatory for other users."""
 
     name = "accounts.cfd"
-    version = "cfd-account-v1"
+    version = "cfd-account-v2"
     required_for = frozenset({"all", "accounts", "cfd"})
     # Normal account plans supply current NAV artifacts. The isolated CFD plan
     # deliberately reads the same keys from the latest immutable snapshot.
@@ -278,12 +278,15 @@ class CfdAccountStage:
                 date = str(row.get("Date") or "").strip()
                 value = str(row.get("ExternalFlowGBP") or "0").strip() or "0"
                 try:
-                    flows[date] = Decimal(value)
+                    amount = Decimal(value)
+                    if not amount.is_finite():
+                        raise ValueError("cash flow must be finite")
                 except (InvalidOperation, ValueError) as exc:
                     raise StageExecutionError(
                         "account.cfd_nav_dependency_invalid",
                         f"{key} contains an invalid ExternalFlowGBP value",
                     ) from exc
+                flows[date] = amount
             result[profile] = flows
         return result
 

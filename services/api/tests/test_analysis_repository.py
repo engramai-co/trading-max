@@ -147,3 +147,35 @@ def test_analysis_repository_serializes_concurrent_upserts(tmp_path: Path) -> No
     assert errors == []
     assert {item.run_id for item in repository.list(10)} >= {"analysis-4", "analysis-5"}
     database.close()
+
+
+def test_analysis_recovery_preserves_other_worker_lease_and_pending_retry(tmp_path):
+    from datetime import timedelta
+
+    from trading_max.infrastructure import SqliteJobQueue
+
+    database = SqliteDatabase(tmp_path / "trading_max.db", migrations_dir=MIGRATIONS)
+    repository = AnalysisRunRepository(database)
+    queue = SqliteJobQueue(database)
+    now = datetime.now(UTC)
+    try:
+        for run_id in ("live-worker", "pending-retry", "expired-worker"):
+            repository.save(
+                _record().model_copy(update={"run_id": run_id, "status": AnalysisStatus.RUNNING})
+            )
+            queue.enqueue("research", skip_sync=True, trigger="system", job_id=run_id, stages=[])
+        with database.transaction(immediate=True) as connection:
+            for run_id, expires in (
+                ("live-worker", now + timedelta(minutes=5)),
+                ("expired-worker", now - timedelta(minutes=5)),
+            ):
+                connection.execute(
+                    "UPDATE jobs SET status='running', worker_id='other-worker', lease_expires_at=? WHERE job_id=?",
+                    (expires.isoformat(), run_id),
+                )
+        assert repository.recover_interrupted(message="startup") == 1
+        assert repository.get("live-worker").status == AnalysisStatus.RUNNING
+        assert repository.get("pending-retry").status == AnalysisStatus.RUNNING
+        assert repository.get("expired-worker").status == AnalysisStatus.INTERRUPTED
+    finally:
+        database.close()

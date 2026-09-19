@@ -39,10 +39,12 @@ actions and selected views; green, red and amber retain their financial and
 status meanings. Dark appearance uses navy surfaces with brighter chart and
 text colors. Tabular numbers and explicit labels preserve the same hierarchy
 in both appearances. Charts use consistent colors, readable axes, actual time
-spacing and visible gaps where observations are missing. Missing amounts remain
+spacing and dashed connectors across empty display intervals. Missing amounts remain
 unavailable; zero is only shown when the source contains a zero.
 
-The overview groups current value and its history in one portfolio surface.
+The overview groups current value and cash-flow-adjusted period net P&L in one
+portfolio surface. Its history uses the detailed performance view's accounting
+cutoff and starts period P&L from zero.
 Holdings allocation is a compact supporting column, with the security count
 kept secondary. Accounts and holdings research follow the same desktop column
 boundary in a shared surface. Narrow layouts give the history chart the full

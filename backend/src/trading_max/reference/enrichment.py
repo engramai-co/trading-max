@@ -1143,6 +1143,9 @@ class SecurityMasterEnricher:
             as_of=as_of,
             records=sorted(records.values(), key=lambda record: record.entity_id),
         )
+        # Validate cross-record identifiers before replacing the last usable catalog.
+        # Atomic file replacement alone cannot protect against conflicting provider facts.
+        CatalogSecurityMaster(catalog)
         _atomic_catalog(self.catalog_path, catalog)
         final_resolver = CatalogSecurityMaster.from_state_root(self.state_root)
         material_threshold = total_exposure * self.material_exposure_pct

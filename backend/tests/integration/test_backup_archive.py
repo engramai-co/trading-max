@@ -64,3 +64,11 @@ def test_backup_archive_rejects_links_and_duplicate_paths(tmp_path: Path) -> Non
 
     with pytest.raises(ValueError, match="duplicate paths"):
         verify_archive(duplicate_archive)
+
+
+@pytest.mark.parametrize("name", [".env.local", ".env.bak", "bootstrap.env.bak"])
+def test_backup_archive_rejects_environment_file_variants(tmp_path: Path, name: str) -> None:
+    archive = tmp_path / "unsafe.tar.gz"
+    _archive(archive, ["state/watchlist.json", f"state/{name}"])
+    with pytest.raises(ValueError, match="excluded runtime file"):
+        verify_archive(archive)

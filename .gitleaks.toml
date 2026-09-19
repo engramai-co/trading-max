@@ -1,7 +1,7 @@
 # Trading Max secret-scanning configuration.
 #
 # Real credentials never live in the repository: Trading 212 and LLM provider
-# keys are stored in the macOS keychain and read at runtime. This file keeps the
+# keys are stored in the native OS credential store and read at runtime. This file keeps the
 # default gitleaks rules and only silences identifiers that merely *name* a
 # keychain service, so the scheduled full-history scan stays actionable.
 

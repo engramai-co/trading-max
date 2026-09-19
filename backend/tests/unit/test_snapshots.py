@@ -125,6 +125,10 @@ def test_partial_research_publish_merges_unrefreshed_rows(
     assert {row["ticker"] for row in payload["rows"]} == {"TSM", "NVDA", "BE"}
     assert next(row for row in payload["rows"] if row["ticker"] == "BE")["score"] == 52
     assert payload["tickers"] == ["TSM", "NVDA", "BE"]
+    assert ref.dependency_artifact_ids == [
+        technical_old.ref.artifact_id,
+        technical_new.ref.artifact_id,
+    ]
 
 
 def test_partial_research_publish_merges_market_snapshot_nested_rows(

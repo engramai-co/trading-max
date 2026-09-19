@@ -129,6 +129,26 @@ def _extract_output_text(payload: JsonObject) -> str:
     raise ValueError("OpenAI response did not contain output_text")
 
 
+def _response_schema() -> JsonObject:
+    """Require every output field without changing persisted model defaults."""
+    schema = SynthesisResponse.model_json_schema(by_alias=True)
+
+    def require_fields(value: object) -> None:
+        if isinstance(value, dict):
+            value.pop("default", None)
+            if value.get("type") == "object":
+                value["required"] = list(value.get("properties", {}))
+                value["additionalProperties"] = False
+            for child in value.values():
+                require_fields(child)
+        elif isinstance(value, list):
+            for child in value:
+                require_fields(child)
+
+    require_fields(schema)
+    return schema
+
+
 class OpenAIResponsesProvider:
     name = "openai"
     fake = False
@@ -166,7 +186,7 @@ class OpenAIResponsesProvider:
                     "type": "json_schema",
                     "name": "trading_max_synthesis",
                     "strict": True,
-                    "schema": SynthesisResponse.model_json_schema(by_alias=True),
+                    "schema": _response_schema(),
                 }
             },
         }

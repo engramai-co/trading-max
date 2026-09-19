@@ -7,12 +7,20 @@ or uptime advice.
 ## Before opening an issue
 
 1. Read the [installation guide](docs/installation/local-installation.md) and
-   run `uv run trading-max doctor`.
-2. Check the Health page and preserve the last valid snapshot.
+   run `uv run --package trading-max-backend trading-max doctor --check-updates`
+   with the installation's state root. This diagnoses configuration/source; it
+   does not verify provider access or running services.
+2. Check the Health page, `/health` and `/ready` JSON status, worker heartbeat
+   and the relevant job's failed stage. HTTP 200 alone is not readiness. Preserve
+   the last valid snapshot; do not reset state or repeatedly submit refreshes.
 3. Search existing issues.
 4. Reproduce on a supported platform and the latest supported release.
 5. Remove credentials, portfolio values, account identifiers, private
    hostnames, and personal paths from logs and screenshots.
+
+Include the product version, source commit, platform, foreground/service mode
+and redacted diagnostic results. A dirty checkout or source-update warning is
+distinct from a runtime/provider failure.
 
 Use the bug issue form for reproducible defects and the feature form for
 proposals. Maintainers triage new issues on a best-effort basis; response and

@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from trading_max.analytics.account_review import build_account_review
+from trading_max.analytics.account_review import CALCULATION_VERSION, build_account_review
 from trading_max.analytics.ledger import (
     load_transactions,
     reconstruct_campaigns,
@@ -26,7 +26,7 @@ class AccountReviewStage:
     """Bind existing authoritative lenses into one review artifact."""
 
     name = "accounts.review"
-    version = "account-review-stage-v3"
+    version = "account-review-stage-v4"
     required_for = frozenset({"all", "accounts"})
     dependencies = (
         "accounts.snapshot",
@@ -287,7 +287,7 @@ class AccountReviewStage:
             key="account/account_reviews.json",
             payload={
                 "schema_version": 1,
-                "calculation_version": "account-review-v1",
+                "calculation_version": CALCULATION_VERSION,
                 "accounts": reviews,
             },
             kind="account_review",

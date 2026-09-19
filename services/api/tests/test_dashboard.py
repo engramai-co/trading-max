@@ -7,6 +7,8 @@ import pytest
 
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.dashboard import (
+    _latest_daily_return,
+    _latest_twr,
     _nav_series,
     _option_rows,
     _technical_rows,
@@ -14,6 +16,40 @@ from services.api.trading_max_api.dashboard import (
     build_dashboard_data,
 )
 from services.api.trading_max_api.dashboard_models import ValuationScenario
+
+
+@pytest.mark.parametrize("reason", ["missing_dated_cash_events", "ambiguous_observation_time"])
+def test_explicitly_ineligible_nav_cannot_recreate_returns_or_money_pnl(reason: str) -> None:
+    header = (
+        "Date,SyntheticNAVGBP,ExternalFlowGBP,WeightedExternalFlowGBP,"
+        "DailyReturn,TWRWealth,Drawdown,PerformanceStatus\n"
+    )
+    invest = (
+        header
+        + "2026-01-09,100,100,100,,1,0,eligible\n"
+        + f"2026-01-12,100,100,50,,,,{reason}\n"
+        + "2026-01-13,200,0,0,1,2,0,eligible\n"
+    )
+    isa = (
+        header
+        + "2026-01-09,50,50,50,,1,0,eligible\n"
+        + "2026-01-12,55,0,0,0.1,1.1,0,eligible\n"
+        + "2026-01-13,55,0,0,0,1.1,0,eligible\n"
+    )
+    series = _nav_series(invest, isa)
+    assert series[-1]["total"] == 255
+    assert series[-1]["isaTwr"] == pytest.approx(0.1)
+    assert series[-1]["isaNetPnlGbp"] == 5
+    for point in series[1:]:
+        assert point["flowStatus"] == "unverified"
+        for field in ("investTwr", "investDrawdown", "totalTwr", "totalDrawdown"):
+            assert point[field] is None
+        for scope in ("invest", "total", "household"):
+            for suffix in ("NetContributionsGbp", "NetPnlGbp", "PnlDrawdownGbp"):
+                assert point[f"{scope}{suffix}"] is None
+    assert _latest_daily_return(invest) is None
+    assert _latest_twr(invest) is None
+    assert _latest_twr(isa) == pytest.approx(0.1)
 
 
 def test_analyst_fallback_valuation_scenario_allows_missing_dcf_inputs() -> None:

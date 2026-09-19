@@ -106,9 +106,12 @@ def load_transactions(paths: Iterable[Path]) -> pd.DataFrame:
     )
     combined["TotalN"] = pd.to_numeric(combined["Total"], errors="coerce").fillna(0.0)
     combined["FeeN"] = pd.to_numeric(
-        combined.get("Currency conversion fee", 0), errors="coerce"
+        combined.get("Currency conversion fee", pd.Series(0.0, index=combined.index)),
+        errors="coerce",
     ).fillna(0.0)
-    combined["ResultN"] = pd.to_numeric(combined.get("Result", 0), errors="coerce").fillna(0.0)
+    combined["ResultN"] = pd.to_numeric(
+        combined.get("Result", pd.Series(0.0, index=combined.index)), errors="coerce"
+    ).fillna(0.0)
     return combined.sort_values("Time").reset_index(drop=True)
 
 

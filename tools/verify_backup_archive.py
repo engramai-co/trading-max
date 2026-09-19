@@ -16,7 +16,7 @@ def _validate_member(name: str) -> None:
         raise ValueError(f"unsafe archive path: {name}")
     if any(component in FORBIDDEN_COMPONENTS for component in path.parts):
         raise ValueError(f"secret-bearing archive path: {name}")
-    if path.name.endswith(FORBIDDEN_SUFFIXES):
+    if path.name.endswith(FORBIDDEN_SUFFIXES) or ".env." in path.name:
         raise ValueError(f"excluded runtime file in archive: {name}")
 
 

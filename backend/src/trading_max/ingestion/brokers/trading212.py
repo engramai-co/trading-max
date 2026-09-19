@@ -126,10 +126,10 @@ def _keychain_credentials(profile: str) -> tuple[str, str] | None:
             api_secret = str(payload.get("api_secret", "")).strip()
             if api_key and api_secret:
                 return api_key, api_secret
-    except Exception:
+    except Exception:  # noqa: S110 -- credential-store exceptions may contain secrets
         # The explicit macOS fallback below keeps existing installs readable;
         # a production host still fails closed when neither store is usable.
-        return None
+        pass
 
     for service, account in keyring_locations:
         try:
@@ -197,7 +197,7 @@ class Trading212Credentials(DomainModel):
 
     @classmethod
     def from_environment(cls, profile: str) -> Self:
-        """Backward-compatible name; Keychain is also checked after env."""
+        """Backward-compatible name; the scoped credential store is checked first."""
 
         return cls.from_sources(profile)
 
@@ -942,6 +942,15 @@ def latest_cash_transactions_path(
     return path if path.is_file() else None
 
 
+def _required_broker_number(payload: object, field: str, *, context: str) -> Decimal:
+    """Do not turn an absent broker observation into a zero-valued balance."""
+
+    value = payload.get(field) if isinstance(payload, Mapping) else None
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise Trading212Error(f"{context}: missing broker numeric field {field!r}")
+    return _decimal(value)
+
+
 def _position_from_payload(payload: Mapping[str, Any]) -> BrokerPosition:
     instrument = payload.get("instrument") or {}
     wallet = payload.get("walletImpact") or {}
@@ -956,12 +965,14 @@ def _position_from_payload(payload: Mapping[str, Any]) -> BrokerPosition:
         broker_ticker=broker_ticker,
         name=str(instrument.get("name") or ""),
         isin=str(instrument.get("isin") or ""),
-        quantity=payload.get("quantity", 0),
-        current_price=payload.get("currentPrice", 0),
+        quantity=_required_broker_number(payload, "quantity", context="position"),
+        current_price=_required_broker_number(payload, "currentPrice", context="position"),
         price_currency=str(instrument.get("currency") or "GBP"),
-        current_value_gbp=wallet.get("currentValue", 0),
-        total_cost_gbp=wallet.get("totalCost", 0),
-        unrealized_profit_loss_gbp=wallet.get("unrealizedProfitLoss", 0),
+        current_value_gbp=_required_broker_number(wallet, "currentValue", context="position"),
+        total_cost_gbp=_required_broker_number(wallet, "totalCost", context="position"),
+        unrealized_profit_loss_gbp=_required_broker_number(
+            wallet, "unrealizedProfitLoss", context="position"
+        ),
         fx_impact_gbp=wallet.get("fxImpact"),
     )
 
@@ -1008,6 +1019,8 @@ def validate_broker_snapshot(
 ) -> BrokerSnapshotReconciliation:
     """Validate the authoritative summary and optionally its position detail."""
 
+    if snapshot.account.currency != "GBP":
+        raise Trading212Error(f"{snapshot.profile}: expected GBP account currency")
     reconciliation = broker_snapshot_reconciliation(snapshot)
     checks = {
         "positions_match_investments": reconciliation.positions_match_investments,
@@ -1041,14 +1054,24 @@ def snapshot_from_payload(
     account = BrokerAccountSummary(
         account_id=(str(summary["id"]) if summary.get("id") is not None else None),
         currency=currency,
-        total_value=summary.get("totalValue", 0),
-        cash_available=(summary.get("cash") or {}).get("availableToTrade", 0),
-        investments_value=(summary.get("investments") or {}).get("currentValue", 0),
-        investments_cost=(summary.get("investments") or {}).get("totalCost", 0),
-        realized_profit_loss=(summary.get("investments") or {}).get("realizedProfitLoss", 0),
-        unrealized_profit_loss=(summary.get("investments") or {}).get("unrealizedProfitLoss", 0),
+        total_value=_required_broker_number(summary, "totalValue", context=profile),
+        cash_available=_required_broker_number(
+            summary.get("cash"), "availableToTrade", context=profile
+        ),
+        investments_value=_required_broker_number(
+            summary.get("investments"), "currentValue", context=profile
+        ),
+        investments_cost=_required_broker_number(
+            summary.get("investments"), "totalCost", context=profile
+        ),
+        realized_profit_loss=_required_broker_number(
+            summary.get("investments"), "realizedProfitLoss", context=profile
+        ),
+        unrealized_profit_loss=_required_broker_number(
+            summary.get("investments"), "unrealizedProfitLoss", context=profile
+        ),
     )
-    raw_positions = payload.get("positions", [])
+    raw_positions = payload.get("positions")
     if not isinstance(raw_positions, list):
         raise Trading212Error(f"{profile}: broker positions payload was not a list")
     positions = [_position_from_payload(item) for item in raw_positions]

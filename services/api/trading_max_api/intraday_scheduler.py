@@ -86,7 +86,7 @@ class IntradayScheduler:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
-        self._last_observed_job_id: str | None = None
+        self._last_observed_job_state: tuple[str, JobStatus] | None = None
         self._last_error: str | None = None
         self._consecutive_failures = 0
         self._submitted_count = 0
@@ -164,9 +164,12 @@ class IntradayScheduler:
     def _observe_latest(self, latest: JobRecord | None = None) -> JobRecord | None:
         if latest is None:
             latest, _counts = self._intraday_summary()
-        if latest is None or latest.job_id == self._last_observed_job_id:
+        if latest is None:
             return latest
-        self._last_observed_job_id = latest.job_id
+        state = (latest.job_id, latest.status)
+        if state == self._last_observed_job_state:
+            return latest
+        self._last_observed_job_state = state
         if latest.status in {JobStatus.FAILED, JobStatus.INTERRUPTED}:
             self._consecutive_failures += 1
             self._last_error = latest.error

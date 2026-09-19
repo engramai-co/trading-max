@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,34 @@ def test_content_addressed_store_supports_immutable_binary_artifacts(
     assert loaded.path.read_bytes().startswith(b"Date,")
     assert loaded.ref.media_type == "text/csv"
     assert store.get_ref(artifact.ref.artifact_id) == artifact.ref
+
+
+def test_byte_artifact_validates_provenance_as_well_as_content(tmp_path: Path) -> None:
+    store = ContentAddressedArtifactStore(tmp_path)
+    artifact = store.put_bytes(key="account/nav.csv", content=b"synthetic NAV")
+    sidecar = artifact.path.with_name(f"{artifact.ref.artifact_id}.meta.json")
+    metadata = json.loads(sidecar.read_text())
+    metadata["ref"]["producer_version"] = "tampered-producer"
+    sidecar.write_text(json.dumps(metadata))
+    with pytest.raises(ArtifactIntegrityError, match="digest mismatch"):
+        store.get_bytes(artifact.ref.artifact_id)
+
+
+def test_byte_artifact_retry_preserves_immutable_ref_and_recovers_missing_sidecar(
+    tmp_path: Path,
+) -> None:
+    store = ContentAddressedArtifactStore(tmp_path)
+    arguments = {"key": "account/nav.csv", "content": b"synthetic NAV"}
+    artifact = store.put_bytes(**arguments)
+    assert store.put_bytes(**arguments).ref == artifact.ref
+
+    sidecar = artifact.path.with_name(f"{artifact.ref.artifact_id}.meta.json")
+    sidecar.unlink()
+    recovered = store.put_bytes(**arguments)
+    assert store.get_bytes(artifact.ref.artifact_id).ref == recovered.ref
+    assert recovered.path.read_bytes() == arguments["content"]
+
+    sidecar.unlink()
+    artifact.path.write_bytes(b"corrupted NAV")
+    with pytest.raises(ArtifactIntegrityError, match="digest mismatch"):
+        store.put_bytes(**arguments)

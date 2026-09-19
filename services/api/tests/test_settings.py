@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from services.api.trading_max_api.app import create_app
@@ -423,3 +424,61 @@ def test_production_write_boundary_rejects_non_loopback_and_cross_site(
             json=payload,
         )
         assert accepted.status_code == 200
+
+
+@pytest.mark.parametrize("kind", ["automation", "route_policy"])
+def test_concurrent_settings_revision_updates_do_not_overwrite_each_other(
+    tmp_path, monkeypatch, kind
+):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from services.api.trading_max_api.models import AutomationSettingsUpdate, LLMRoutePolicyUpdate
+    from services.api.trading_max_api.settings import SettingsRepository
+
+    repository = SettingsRepository(tmp_path)
+    repository.ensure_automation_preferences(nightly_enabled=False, intraday_enabled=False)
+    method = "get_automation_preferences" if kind == "automation" else "get_route_policy"
+    read = getattr(repository, method)
+    original = read()
+    barrier = threading.Barrier(2)
+    local = threading.local()
+
+    def read_same_revision():
+        current = read()
+        if not getattr(local, "read", False):
+            local.read = True
+            barrier.wait(timeout=2)
+        return current
+
+    monkeypatch.setattr(repository, method, read_same_revision)
+
+    def save(value):
+        try:
+            if kind == "automation":
+                repository.update_automation_preferences(
+                    AutomationSettingsUpdate(
+                        live_enabled=value, expected_revision=original.revision
+                    )
+                )
+            else:
+                repository.save_route_policy(
+                    LLMRoutePolicyUpdate(
+                        default_route="deepseek/deepseek-chat"
+                        if value
+                        else "opencode/deepseek-v4-flash",
+                        expected_revision=original.revision,
+                    )
+                )
+            return "saved"
+        except ValueError as exc:
+            assert "revision conflict" in str(exc)
+            return "conflict"
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(save, (True, False)))
+        assert sorted(outcomes) == ["conflict", "saved"]
+        assert read().revision == original.revision + 1
+    finally:
+        repository.close()

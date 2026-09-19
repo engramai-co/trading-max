@@ -113,3 +113,97 @@ def test_live_preview_uses_newest_session_quote(monkeypatch, regular, pre, post,
 
     monkeypatch.setattr(yf, "Ticker", Ticker)
     assert live_quote("TEST")["price"] == expected
+
+
+@pytest.mark.parametrize("failure", [True, False])
+def test_preview_resume_invalidates_old_outputs_and_dependants(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+
+    from trading_max.application import runtime
+    from trading_max.application.stages import StageRegistry, StageResult
+    from trading_max.domain.contracts import ArtifactRef
+
+    from services.api.trading_max_api import typed_jobs
+    from tools.build_broker_preview import build, write_json
+
+    required = [
+        "account/broker_snapshot_metrics.json",
+        "research/technical.json",
+        "research/fundamentals.json",
+        "account/nav/valuation_history.json",
+    ]
+
+    def artifact(key, version):
+        return ArtifactRef(
+            artifact_id=f"{version}:{key}", key=key, sha256="test", producer_version=version
+        )
+
+    stale_keys = [*required, "removed.json"]
+    write_json(
+        tmp_path / "preview-build.json",
+        {
+            "tickers": [],
+            "completed": {"source": "source-v1", "dependent": "dependent-v1"},
+            "failures": {},
+            "artifacts": {
+                key: artifact(key, "source-v1").model_dump(mode="json", by_alias=False)
+                for key in stale_keys
+            }
+            | {
+                "dependent.json": artifact("dependent.json", "dependent-v1").model_dump(
+                    mode="json", by_alias=False
+                )
+            },
+        },
+    )
+    called = []
+
+    class Source:
+        name, version, dependencies = "source", "source-v2", ()
+
+        def run(self, context):
+            called.append(self.name)
+            assert not context.inputs
+            if failure:
+                raise ValueError("provider unavailable")
+            return StageResult(artifacts=tuple(artifact(key, self.version) for key in required))
+
+    class Dependent:
+        name, version, dependencies = "dependent", "dependent-v1", ("source",)
+
+        def run(self, context):
+            called.append(self.name)
+            assert set(context.inputs) == set(required)
+            assert all(ref.producer_version == "source-v2" for ref in context.inputs.values())
+            return StageResult(artifacts=(artifact("dependent.json", self.version),))
+
+    published = []
+
+    def publish(**kwargs):
+        published.extend(kwargs["artifacts"])
+        return SimpleNamespace(manifest=SimpleNamespace(run_id="test-preview"))
+
+    monkeypatch.setattr(
+        runtime,
+        "TypedWorkerRuntime",
+        lambda state: SimpleNamespace(
+            registry=lambda: StageRegistry([Source(), Dependent()]),
+            snapshots=SimpleNamespace(publish=publish),
+        ),
+    )
+    monkeypatch.setattr(
+        typed_jobs, "stage_plan", lambda *args, **kwargs: [("source", ""), ("dependent", "")]
+    )
+    if failure:
+        with pytest.raises(RuntimeError, match="required data unavailable"):
+            build(tmp_path, {}, resume=True)
+        assert called == ["source"]
+        assert not published
+        saved = json.loads((tmp_path / "preview-build.json").read_text())
+        assert not saved["artifacts"]
+        assert set(saved["failures"]) == {"source", "dependent"}
+    else:
+        build(tmp_path, {}, resume=True)
+        assert called == ["source", "dependent"]
+        assert {ref.key for ref in published} == {*required, "dependent.json"}
+        assert all(ref.producer_version != "source-v1" for ref in published)

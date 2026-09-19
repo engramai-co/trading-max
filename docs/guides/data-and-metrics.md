@@ -73,10 +73,13 @@ inputs can be hourly and may carry forward the latest completed bar. This does
 not recreate missing ten-minute trades. Observed broker values take precedence
 and are not smoothed to fit the model.
 
-Short-range display buckets are 10 minutes (1D), 30 minutes (5D), one hour (1M),
-and two hours (3M). Calculations use all stored observations before display
-sampling. Longer ranges use daily values. Full overnight market coverage is
-not guaranteed by the availability of pre/post-market bars.
+Display buckets are 10 minutes (1D), 30 minutes (5D), one hour (1M), two hours
+(3M), and four hours (6M). YTD follows its elapsed span and becomes daily beyond
+six months; 1Y and All use daily values. Calculations use all stored observations
+before display sampling. Earlier daily-only history stays daily. A dashed
+connector indicates a display bucket with no usable observation, not invented
+intermediate records. See the [range table](portfolio.md#read-money-and-pl).
+Full overnight coverage is not guaranteed by pre/post-market bars.
 
 Reconstruction selects the newest completed price across the available minute
 and hourly feeds before checking its age. Active-session validity starts at the
@@ -93,10 +96,27 @@ Missing cash-flow evidence makes affected P&L unavailable. Unknown is not zero.
 See [NAV history](../architecture/unified-nav-history.md) and
 [performance calculations](../architecture/performance-metrics.md).
 
+## Ledger settlement currency
+
+Campaign policy, diluted cost, capital recovery, and their review attribution
+currently require ledger totals and fees settled in GBP. A GBP account can
+still contain USD or EUR settlement rows; matching share quantities alone do
+not validate those cash amounts. Treat these campaign-derived figures as
+unsupported for foreign-settled ledgers. NAV reconstruction has a separate
+historical FX conversion path.
+
+Imported CFD history has two additional limits. Its GBP cash-equity proxy
+requires GBP source amounts; EUR or mixed-currency imports are not converted
+into GBP. With multiple partial closes of one position, standalone financing
+or dividend adjustments can be counted more than once in trade-level
+attribution. The event ledger and total realised outcome count each event
+once, but those trade-level breakdowns should not be used to reconcile that
+total until the allocation is corrected.
+
 ## Interpret missing, historical, and modeled values
 
 A missing reading may mean the provider does not cover it, the history is too
-short, or the method is not applicable. Open help, source records, or Health for
+short, or the method is not applicable. Open help, source records, or Data status for
 the relevant reason. A current quote does not update an immutable saved model.
 
 Valuation ranges, seasonality, and option-derived estimates depend on their

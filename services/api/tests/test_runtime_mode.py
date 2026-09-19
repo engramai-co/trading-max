@@ -83,3 +83,20 @@ def test_typed_app_wires_typed_analysis_and_job_control_planes(tmp_path: Path) -
     assert isinstance(app.state.jobs, TypedJobManager)
     app.state.jobs.close()
     app.state.analysis.close()
+
+
+@pytest.mark.parametrize("times", [None, "09:15,17:00"])
+def test_legacy_or_custom_schedule_uses_its_final_slot_for_reconciliation(
+    monkeypatch, tmp_path, times
+):
+    monkeypatch.setenv("TRADING_MAX_DATA_ROOT", str(tmp_path))
+    monkeypatch.delenv("TRADING_MAX_DAILY_RECONCILIATION_TIME", raising=False)
+    monkeypatch.setenv("TRADING_MAX_NIGHTLY_HOUR", "9")
+    monkeypatch.setenv("TRADING_MAX_NIGHTLY_MINUTE", "15")
+    if times is None:
+        monkeypatch.delenv("TRADING_MAX_FULL_REFRESH_TIMES", raising=False)
+    else:
+        monkeypatch.setenv("TRADING_MAX_FULL_REFRESH_TIMES", times)
+    settings = Settings.from_env()
+    settings.validate()
+    assert settings.daily_reconciliation_time == ("09:15" if times is None else "17:00")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from trading_max.analytics.intraday import (
@@ -139,3 +139,17 @@ def test_verified_flow_is_removed_and_unknown_flow_is_null() -> None:
         ),
     ]
     assert verified_intraday_chain(points)[1]["twr"] is None
+    points.append(
+        points[-1].model_copy(
+            update={
+                "observed_at": points[-1].observed_at + timedelta(minutes=10),
+                "bucket_at": points[-1].bucket_at + timedelta(minutes=10),
+                "total_value_gbp": 220,
+                "flow_status": "verified",
+                "external_flow_gbp": 0,
+            }
+        )
+    )
+    chain = verified_intraday_chain(points)
+    assert chain[-1]["twr"] is None
+    assert chain[-1]["drawdown"] is None

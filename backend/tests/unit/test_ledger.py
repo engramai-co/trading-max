@@ -72,6 +72,17 @@ def test_load_transactions_rejects_conflicting_duplicate_id(tmp_path: Path) -> N
         load_transactions([first, second])
 
 
+def test_load_transactions_accepts_missing_optional_fee_and_result_columns(tmp_path: Path) -> None:
+    export = tmp_path / "ledger.csv"
+    export.write_text(
+        "Action,Time (UTC),Ticker,No. of shares,Total\nDeposit,2026-08-01T10:00:00Z,,,100\n"
+    )
+    transactions = load_transactions([export])
+    assert transactions["TotalN"].tolist() == [100]
+    assert transactions["FeeN"].tolist() == [0]
+    assert transactions["ResultN"].tolist() == [0]
+
+
 def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
     tmp_path: Path,
 ) -> None:

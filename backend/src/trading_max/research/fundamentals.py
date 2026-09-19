@@ -1,8 +1,8 @@
 """Typed fundamentals, valuation, and earnings provider boundaries.
 
-The loaders are injected at the application boundary. The default loader is
-deliberately unavailable in offline mode, so a production stage must opt into
-an explicitly configured market provider instead of silently fabricating data.
+Loaders are injectable at the application boundary. Defaults use the existing
+Yahoo Finance adapter; offline callers inject synthetic providers. Missing
+observations remain unavailable rather than being fabricated.
 """
 
 from __future__ import annotations
@@ -280,9 +280,8 @@ def _default_financials(ticker: str) -> Mapping[str, Any]:
 class YFinanceResearchService:
     """Normalize provider metadata behind deterministic methods.
 
-    The class name preserves the intended production adapter. Until a live
-    provider is explicitly configured, its defaults fail loudly; tests and
-    provider smoke runs inject the real loader at construction time.
+    Default loaders call Yahoo Finance. Tests and offline runs inject loaders
+    at construction time to exercise the same normalization without requests.
     """
 
     def __init__(
@@ -508,7 +507,11 @@ def build_valuation(
         total_revenue = _number(metrics.get("totalRevenue"))
         free_cashflow = _number(metrics.get("freeCashflow"))
         facts = (
-            build_financial_facts(financial_rows.get(ticker, {}), metrics)
+            build_financial_facts(
+                financial_rows.get(ticker, {}),
+                metrics,
+                period_evidence=financial_rows.get(ticker, {}).get("periodEvidence"),
+            )
             if financials is not None
             else None
         )

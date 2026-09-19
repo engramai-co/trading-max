@@ -111,25 +111,9 @@ class KeyringCredentialStore:
     def put(self, reference: str, secret: str) -> None:
         try:
             self._keyring.set_password(self.service, reference, secret)
-            return
         except Exception as exc:
-            try:
-                result = self._security(
-                    "add-generic-password",
-                    "-U",
-                    "-a",
-                    reference,
-                    "-s",
-                    self.service,
-                    "-w",
-                    secret,
-                )
-            except CredentialStoreError:
-                raise CredentialStoreError(
-                    "operating-system credential store is unavailable"
-                ) from exc
-            if result.returncode == 0:
-                return
+            # Never fall back to `security add-generic-password -w <secret>`:
+            # process arguments are visible to other local processes.
             raise CredentialStoreError("operating-system credential store is unavailable") from exc
 
     def delete(self, reference: str) -> None:

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
+import stat
 import subprocess
+import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -103,3 +107,93 @@ def test_production_smoke_checks_dynamic_web_routes() -> None:
     assert 'for route in "/" "/health" "/analytics"' in script
     assert '"/health"' in script
     assert '"/analytics"' in script
+
+
+@pytest.mark.parametrize("retain", ["0", "-1", "invalid"])
+def test_backup_rejects_invalid_retention_before_creating_archive(tmp_path: Path, retain: str):
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("zsh is required to exercise the macOS backup contract")
+    destination = tmp_path / "backups"
+    result = subprocess.run(
+        [zsh, str(ROOT / "deploy/macos/backup.sh"), str(destination)],
+        env={
+            **os.environ,
+            "TRADING_MAX_BACKUP_RETAIN": retain,
+            "TRADING_MAX_STATE_ROOT": str(tmp_path / "state"),
+            "TRADING_MAX_SERVICE_ROOT": str(tmp_path / "service"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 64
+    assert "positive integer" in result.stderr
+    assert not destination.exists()
+
+
+def test_backup_rejects_destination_inside_state_root(tmp_path: Path):
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("zsh is required to exercise the macOS backup contract")
+    service = tmp_path / "service"
+    binary = service / "app/.venv/bin/python"
+    binary.parent.mkdir(parents=True)
+    binary.symlink_to(sys.executable)
+    state = tmp_path / "state"
+    state.mkdir()
+    destination = state / "backups"
+    result = subprocess.run(
+        [zsh, str(ROOT / "deploy/macos/backup.sh"), str(destination)],
+        env={
+            **os.environ,
+            "TRADING_MAX_STATE_ROOT": str(state),
+            "TRADING_MAX_SERVICE_ROOT": str(service),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "outside the state root" in result.stderr
+    assert not destination.exists()
+
+
+def test_macos_backup_excludes_environment_variants_and_is_private(tmp_path: Path):
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        pytest.skip("zsh is required to exercise the macOS backup contract")
+    service = tmp_path / "service"
+    binary = service / "app/.venv/bin/python"
+    binary.parent.mkdir(parents=True)
+    binary.symlink_to(sys.executable)
+    validator = service / "app/tools/verify_backup_archive.py"
+    validator.parent.mkdir()
+    shutil.copy2(ROOT / "tools/verify_backup_archive.py", validator)
+    state = tmp_path / "state"
+    state.mkdir()
+    with sqlite3.connect(state / "trading_max.db") as connection:
+        connection.execute("CREATE TABLE fixture (value TEXT)")
+    (state / "watchlist.json").write_text("{}")
+    for name in (".env.local", ".env.bak", "bootstrap.env.bak"):
+        (state / name).write_text("SYNTHETIC_SECRET=exclude-me")
+    destination = tmp_path / "backups"
+    result = subprocess.run(
+        [zsh, str(ROOT / "deploy/macos/backup.sh"), str(destination)],
+        env={
+            **os.environ,
+            "TRADING_MAX_STATE_ROOT": str(state),
+            "TRADING_MAX_SERVICE_ROOT": str(service),
+            "TRADING_MAX_BACKUP_RETAIN": "14",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    (archive,) = destination.glob("trading_max-*.tar.gz")
+    assert stat.S_IMODE(archive.stat().st_mode) == 0o600
+    with tarfile.open(archive, "r:gz") as handle:
+        names = handle.getnames()
+    assert "state/./watchlist.json" in names or "state/watchlist.json" in names
+    assert not any(".env" in name for name in names)

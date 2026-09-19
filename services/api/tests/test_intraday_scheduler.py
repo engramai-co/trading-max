@@ -252,3 +252,27 @@ def test_full_refresh_blocks_intraday_and_queue_claim_prioritizes_full(
         assert intraday.trigger == "intraday"
     finally:
         manager.close()
+
+
+def test_schedule_status_observes_terminal_transition_of_same_job(tmp_path):
+    manager = _manager(tmp_path)
+    scheduler = IntradayScheduler(
+        manager,
+        enabled=False,
+        timezone="Europe/London",
+        interval_seconds=600,
+        window_start="00:00",
+        window_end="00:00",
+        weekdays=(1, 2, 3, 4, 5, 6, 7),
+    )
+    try:
+        job = manager.submit("intraday", skip_sync=False)
+        assert scheduler.status().consecutive_failures == 0
+        manager.cancel(job.job_id, reason="synthetic interruption")
+        failed = scheduler.status()
+        assert failed.consecutive_failures == 1
+        assert failed.last_error == "synthetic interruption"
+        assert scheduler.status().consecutive_failures == 1
+    finally:
+        scheduler.close()
+        manager.close()

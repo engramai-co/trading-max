@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-PARSER_VERSION = "trading212-cfd-csv-v1"
+PARSER_VERSION = "trading212-cfd-csv-v2"
 CALCULATION_VERSION = "cfd-realised-analysis-v2"
 
 type CfdRecordType = Literal[
@@ -504,9 +504,12 @@ def _decimal(value: str, *, field: str, context: str, required: bool = False) ->
     if normalized.startswith("(") and normalized.endswith(")"):
         normalized = f"-{normalized[1:-1]}"
     try:
-        return Decimal(normalized)
+        parsed = Decimal(normalized)
     except InvalidOperation as exc:
         raise CfdSchemaError(f"{context} contains invalid decimal {field!r}: {value!r}") from exc
+    if not parsed.is_finite():
+        raise CfdSchemaError(f"{context} contains invalid decimal {field!r}: {value!r}")
+    return parsed
 
 
 def _timestamp(value: str, *, field: str, context: str, required: bool = False) -> datetime | None:
@@ -911,6 +914,8 @@ def _event_economic_identity(event: CfdEvent) -> tuple[Any, ...]:
             event.gross_result,
             event.fx_fee,
             event.result_after_fx_fee,
+            event.embedded_overnight_interest,
+            event.embedded_dividend_adjustment,
         )
     # Unkeyed standalone events use all economic fields in event_id itself.
     return (*common, event.event_id)

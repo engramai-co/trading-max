@@ -151,3 +151,14 @@ def test_store_rejects_tampered_manifest_digest_without_path_resolution(
 
     with pytest.raises(RuntimeError, match="invalid file digest"):
         store.build_ledger()
+
+
+@pytest.mark.parametrize("amount", ["NaN", "sNaN", "Infinity", "-Infinity"])
+def test_store_rejects_nonfinite_amounts_before_persistence(tmp_path: Path, amount: str) -> None:
+    store = CfdImportStore(tmp_path / "state")
+    content = _transaction_csv([("transaction-1", "Deposit", amount, "2026-01-01T00:00:00Z")])
+
+    with pytest.raises(CfdImportError, match="invalid decimal"):
+        store.import_bytes("invalid.csv", content)
+
+    assert not store.root.exists()

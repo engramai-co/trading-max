@@ -32,7 +32,8 @@ also uses built-in public providers when the user requests or refreshes data:
 - public filing and issuer endpoints receive document requests, including
   SEC EDGAR and supported issuer or filing mirrors;
 - server-proxied company-logo services receive a ticker or domain request;
-- OpenCode or DeepSeek receives the bounded portfolio or research context
+- The configured AI provider (such as OpenCode, DeepSeek, or OpenAI) receives
+  the bounded portfolio or research context
   needed for an explicitly configured analysis route.
 
 The fake LLM provider sends no data externally. The application does not send

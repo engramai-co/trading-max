@@ -395,6 +395,7 @@ def build_financial_facts(
                 if p.kind == period.kind
                 and p.fiscal_year == (period.fiscal_year or 0) - 1
                 and p.fiscal_quarter == period.fiscal_quarter
+                and p.fiscal_half == period.fiscal_half
             ),
             None,
         )
@@ -452,6 +453,7 @@ def build_financial_facts(
                     if p.kind == period.kind
                     and p.fiscal_year == (period.fiscal_year or 0) - 1
                     and p.fiscal_quarter == period.fiscal_quarter
+                    and p.fiscal_half == period.fiscal_half
                 ),
                 None,
             )

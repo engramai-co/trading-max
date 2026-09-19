@@ -122,3 +122,5 @@ def refresh(request_body: RefreshRequest, request: Request) -> JobRecord:
         )
     except JobConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

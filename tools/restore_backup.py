@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
 
-from tools.verify_backup_archive import verify_archive
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.verify_backup_archive import verify_archive  # noqa: E402 - direct CLI entry point
 
 CONFIRMATION = "RESTORE_TRADING_MAX_STATE"
 

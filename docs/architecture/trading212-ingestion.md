@@ -48,9 +48,17 @@ fails loudly.
 The sync also caches the official cash-transaction feed. Account transfers
 appear in both that feed and generated CSV reports, so historical NAV replay
 reconciles matching business-day amounts before adding a supplemental flow;
-it never counts the same transfer twice. Trading 212 CSV `Total` values are
-already net account-currency cash amounts, including conversion fees, and the
-separate fee column is retained for audit rather than deducted again.
+it never counts the same transfer twice. A Trading 212 CSV `Total` is a net
+cash amount in that row's `Currency (Total)`, including conversion fees. NAV
+replay converts supported foreign-wallet amounts using historical FX; it does
+not deduct the separate fee column again.
+
+Campaign policy, diluted-cost and capital-recovery calculations currently
+require GBP-settled ledger totals and fees. A GBP account summary and matching
+share quantities do not establish that condition: an account can contain USD
+or EUR settlement rows. Those campaign-derived amounts, including their review
+attribution, are not reliable for a foreign-settled ledger until that path gains
+per-event FX normalization. This limitation is separate from NAV reconstruction.
 
 The public API does not expose Trading 212 Card merchant payments. If an
 account used the card and its generated report therefore cannot explain the

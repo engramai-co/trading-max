@@ -68,6 +68,10 @@ def test_openai_responses_provider_uses_strict_schema_and_redacts_nothing_into_e
         body = json.loads(request.content)
         assert body["store"] is False
         assert body["text"]["format"]["strict"] is True
+        schema = body["text"]["format"]["schema"]
+        for object_schema in [schema, *schema["$defs"].values()]:
+            assert set(object_schema["required"]) == set(object_schema["properties"])
+            assert object_schema["additionalProperties"] is False
         return httpx.Response(
             200,
             json={"output_text": json.dumps(response_payload()), "usage": {"total_tokens": 12}},

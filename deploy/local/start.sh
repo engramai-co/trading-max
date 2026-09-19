@@ -24,23 +24,34 @@ if [[ "${TRADING_MAX_DEPLOYMENT_MODE:-local_workstation}" != "local_workstation"
   echo "deploy/local/start.sh only supports local_workstation mode" >&2
   exit 64
 fi
-if [[ ! -f "$APP_ROOT/apps/web/.next/BUILD_ID" ]]; then
+if [[ ! -f "$APP_ROOT/apps/web/.next/BUILD_ID" || ! -f "$APP_ROOT/apps/web/.next/standalone/server.js" ]]; then
   npm --prefix apps/web ci --no-audit --no-fund
   npm --prefix apps/web run build
 fi
 
 mkdir -p "$STATE_ROOT/logs"
+export TRADING_MAX_STATE_ROOT="$STATE_ROOT"
 export HOSTNAME="127.0.0.1"
 export PORT="3413"
+# Separate process groups let shutdown reach component descendants as well as
+# their immediate parents. This works with the Bash 3.2 shipped by macOS.
+set -m
 pids=()
+names=(api worker web)
 cleanup() {
-  trap - TERM INT EXIT
+  trap - EXIT
+  trap '' TERM INT
+  if [[ ${#pids[@]} -eq 0 ]]; then
+    return
+  fi
   for pid in "${pids[@]}"; do
-    kill "$pid" 2>/dev/null || true
+    kill -TERM -- "-$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
 }
-trap cleanup TERM INT EXIT
+trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 uv run python -m services.api.trading_max_api \
   >>"$STATE_ROOT/logs/api.log" 2>&1 &
@@ -48,9 +59,22 @@ pids+=("$!")
 uv run python -m services.api.trading_max_api.worker_main \
   >>"$STATE_ROOT/logs/worker.log" 2>&1 &
 pids+=("$!")
-(cd apps/web && npm run start) >>"$STATE_ROOT/logs/web.log" 2>&1 &
+"$APP_ROOT/deploy/local/run-web.sh" >>"$STATE_ROOT/logs/web.log" 2>&1 &
 pids+=("$!")
 
-echo "Trading Max is running at http://127.0.0.1:3413"
+echo "Trading Max is starting at http://127.0.0.1:3413"
 echo "logs: $STATE_ROOT/logs"
-wait
+while true; do
+  for index in "${!pids[@]}"; do
+    if ! kill -0 "${pids[$index]}" 2>/dev/null; then
+      if wait "${pids[$index]}"; then
+        status=1
+      else
+        status=$?
+      fi
+      echo "Trading Max ${names[$index]} exited; stopping the other processes. See $STATE_ROOT/logs/${names[$index]}.log" >&2
+      exit "$status"
+    fi
+  done
+  sleep 1
+done

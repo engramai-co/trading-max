@@ -37,6 +37,12 @@ def _rows(text: str) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def _performance_eligible(row: dict[str, str]) -> bool:
+    # Legacy CSVs have no status. An explicit rejection must never be revived
+    # by recomputing performance from the same uncertain NAV/flow inputs.
+    return str(row.get("PerformanceStatus") or "").strip() in {"", "eligible"}
+
+
 def _nav_series(
     a_text: str,
     b_text: str,
@@ -74,6 +80,7 @@ def _nav_series(
         "netRealisedPnlGbp": None,
     }
     previous_total_nav: float | None = None
+    performance_valid = dict.fromkeys(states, True)
     total_net_contributions = 0.0
     total_pnl_peak = 0.0
     total_wealth = 1.0
@@ -89,6 +96,7 @@ def _nav_series(
             if row is None:
                 continue
             state = states[account]
+            performance_valid[account] &= _performance_eligible(row)
             state["started"] = True
             state["nav"] = _nullable(row.get("SyntheticNAVGBP"))
             external_flow = _nullable(row.get("ExternalFlowGBP")) or 0.0
@@ -106,6 +114,9 @@ def _nav_series(
             drawdown = _nullable(row.get("Drawdown"))
             if drawdown is not None:
                 state["drawdown"] = drawdown
+            if not performance_valid[account]:
+                state["twr"] = None
+                state["drawdown"] = None
             daily_external_flow += external_flow
             daily_weighted_flow += weighted_flow
 
@@ -160,7 +171,8 @@ def _nav_series(
         # established a return denominator.  Exact Invest↔ISA transfers cancel
         # at the portfolio boundary, including their timing weight.
         combined_return: float | None = None
-        if previous_total_nav is not None and total is not None:
+        total_performance_valid = all(performance_valid.values())
+        if total_performance_valid and previous_total_nav is not None and total is not None:
             if abs(daily_external_flow) <= 1e-9:
                 daily_weighted_flow = 0.0
             denominator = previous_total_nav + daily_weighted_flow
@@ -243,6 +255,16 @@ def _nav_series(
                 "cfdProxyDrawdown": cfd_state["drawdown"],
             }
         )
+        point = result[-1]
+        point["flowStatus"] = "daily_official" if total_performance_valid else "unverified"
+        for account, valid in performance_valid.items():
+            if not valid:
+                for suffix in ("NetContributionsGbp", "NetPnlGbp", "PnlDrawdownGbp"):
+                    point[f"{account}{suffix}"] = None
+        if not total_performance_valid:
+            for scope in ("total", "household"):
+                for suffix in ("NetContributionsGbp", "NetPnlGbp", "PnlDrawdownGbp"):
+                    point[f"{scope}{suffix}"] = None
     return result
 
 
@@ -313,7 +335,10 @@ def _intraday_nav_points(
 
 
 def _latest_daily_return(text: str) -> float | None:
-    for row in reversed(_rows(text)):
+    rows = _rows(text)
+    if any(not _performance_eligible(row) for row in rows):
+        return None
+    for row in reversed(rows):
         value = _nullable(row.get("DailyReturn"))
         if value is not None:
             return value
@@ -322,7 +347,10 @@ def _latest_daily_return(text: str) -> float | None:
 
 def _latest_twr(text: str) -> float | None:
     """Read the canonical cumulative TWR produced by the NAV ledger."""
-    for row in reversed(_rows(text)):
+    rows = _rows(text)
+    if any(not _performance_eligible(row) for row in rows):
+        return None
+    for row in reversed(rows):
         wealth = _nullable(row.get("TWRWealth"))
         if wealth is not None:
             return wealth - 1.0

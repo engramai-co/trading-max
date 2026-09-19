@@ -116,7 +116,7 @@ def stress_test(
     *,
     portfolio_value: float | None = None,
 ) -> list[StressResult]:
-    """Apply additive asset shocks without silently filling missing shocks."""
+    """Apply additive asset shocks; unmentioned assets remain unchanged."""
 
     normalized = normalize_weights(weights)
     value = (
@@ -165,7 +165,7 @@ def risk_contributions(
         ],
         dtype=float,
     )
-    covariance = np.cov(matrix, ddof=1) * annualization
+    covariance = np.atleast_2d(np.cov(matrix, ddof=1)) * annualization
     vector = np.asarray([normalized[asset] for asset in assets], dtype=float)
     portfolio_variance = float(vector @ covariance @ vector)
     if portfolio_variance <= 0 or not math.isfinite(portfolio_variance):
@@ -196,6 +196,9 @@ def portfolio_return_series(
     live = dict(target)
     result: list[float] = []
     for observation in returns:
+        missing = [asset for asset in target if asset != "CASH" and asset not in observation]
+        if missing:
+            raise ValueError(f"returns are missing assets: {', '.join(missing)}")
         if rebalance == "periodic":
             live = dict(target)
         period = 0.0

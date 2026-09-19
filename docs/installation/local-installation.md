@@ -58,7 +58,8 @@ external state.
 - [uv](https://docs.astral.sh/uv/)
 - Node.js **22 LTS** (minimum supported version: 20.19)
 - npm, included with Node.js
-- About 2 GB of free disk space for dependencies, builds, snapshots, and logs
+- Free disk space for dependencies and a production build, plus growing external
+  state and a separate backup; long histories can consume many gigabytes
 
 Check the toolchain:
 
@@ -92,7 +93,11 @@ The guided command:
 - hides every credential entry and tests it before saving;
 - saves secrets only to the operating-system credential manager;
 - optionally installs the per-user macOS services;
-- verifies the local API and opens the product.
+- verifies a temporary local API; if services are installed, opens the product.
+
+Without service installation, onboarding exits after preparation. Start the
+foreground launcher in step 3; the command does not leave a worker or web app
+running, and its completion message does not certify broker-data readiness.
 
 It is safe to rerun. Existing state, bootstrap values, and integrations are
 preserved unless you explicitly replace a tested credential.
@@ -138,8 +143,14 @@ and only adds missing defaults. `doctor` remains the preferred read-only
 diagnostic command.
 
 `doctor` checks the bootstrap boundary, database migration ledger, canonical
-source provenance, current revision, and worktree without reading credentials
-or account data. Add `--check-updates` to compare the local commit with public
+source provenance, current revision, and worktree without querying provider
+credentials or account records. It validates bootstrap authentication consistency and custom-root
+credential isolation without querying the OS keyring. It does not check live
+processes, provider connectivity or snapshot readiness; use Health and Settings
+for those. An active database with a non-empty WAL may require a temporary copy
+for a strictly read-only schema check. This is limited to 64 MiB; a larger or
+changing database reports the schema as unverified, not corrupt. Recheck after
+a normal application shutdown if needed. Add `--check-updates` to compare the local commit with public
 protected `main` using a read-only remote query:
 
 ```bash
@@ -151,17 +162,16 @@ bootstrap file from another installation, and never point two intended users
 at the same state root. Separate custom state roots receive separate Keychain,
 Credential Manager, or Secret Service namespaces automatically.
 
-To use a non-default state directory:
-
-```bash
-uv run --package trading-max-backend trading-max onboard --state-root "/absolute/path/to/trading-max-state"
-```
-
-For subsequent starts with a custom state root, also export:
+To use a non-default state directory, export it before onboarding and keep the
+same value for launches, diagnostics, backups and service registration:
 
 ```bash
 export TRADING_MAX_STATE_ROOT="/absolute/path/to/trading-max-state"
+uv run --package trading-max-backend trading-max onboard
 ```
+
+A one-off `--state-root` flag also works for CLI commands, but does not persist
+into a later `deploy/local/start.sh` invocation.
 
 ## 3. Start Trading Max
 
@@ -195,13 +205,21 @@ Logs are stored below the external state root, not in Git:
 ### Keep it running after login on macOS
 
 The interactive onboarding asks whether to install the per-user service.
-To make the choice explicit:
+After accepting a foreground installation, stop it with `Ctrl-C` before
+registering login services, so both do not compete for the same ports. Keep
+your custom state-root export, if any. To reuse the accepted build:
 
 ```bash
-uv run --package trading-max-backend trading-max onboard --install-service
+uv run --package trading-max-backend trading-max onboard \
+  --non-interactive --skip-build --install-service --no-browser
 ```
 
-This installs four per-user LaunchAgents:
+The installer verifies a Git checkout, including a linked worktree. Keep that
+checkout at a stable path while login services reference it. The installer must
+retain the selected Node/npm runtime for launchd; validate service startup rather
+than relying only on an interactive version-manager shell.
+
+This installs four `com.engram.trading-max.local.*` per-user LaunchAgents:
 
 - API, worker, and web restart after an unexpected exit and start after login;
 - a nightly 03:15 backup uses SQLite's online backup API;
@@ -225,8 +243,10 @@ expected:
 - Settings is usable;
 - portfolio pages do not contain real account data.
 
-This is not a process crash. Readiness becomes green only after credentials are
-configured and the first complete snapshot is published.
+This is not a process crash. Both endpoints can return **HTTP 200** in this
+state; read their JSON `status` fields. Readiness requires a published snapshot,
+no bootstrap error, and a healthy worker. A successful first full refresh and
+broker-total confirmation are additional installation acceptance checks.
 
 Check it without exposing a secret:
 
@@ -239,7 +259,8 @@ curl -fsSI http://127.0.0.1:3413/
 ## 5. Connect read-only data providers
 
 The onboarding wizard can configure providers directly. If you skipped them,
-open **Settings → Accounts & data** in the browser.
+open **Settings → Accounts & data** for broker connections. Optional model
+providers and routes live in **Settings → AI analysis**.
 
 For each connection:
 
@@ -263,14 +284,23 @@ needed by the application. Do not grant trading permission. Invest and Stocks
 ISA use separate connection profiles.
 
 LLM configuration is optional. The deterministic fake provider exercises the
-analysis storage and UI path without sending data to an external model.
+analysis storage path without sending data to an external model.
+
+Yahoo Finance-compatible data remains the default market-data path. Optional
+Alpaca keys are configured in **Accounts & data → Reconstruction market data**,
+not in the CLI wizard. Choose **Test connection**, then **Save and enable** to
+activate it. Use **Turn off enhancement** to disable it later. It improves
+supported US historical reconstruction and retains YF
+fallback; it does not promise complete overnight data or replace broker
+observations. See [coverage and permissions](../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
 
 ## 6. Publish the first snapshot
 
 When onboarding installs the macOS service and configures a Trading 212
 profile, it queues the first refresh automatically. Otherwise, choose
-**Refresh now** after at least one Trading 212 profile has passed its connection
-test.
+**Data status → Start update** after at least one Trading 212 profile has passed its connection
+test. Check Data status first and follow an already queued initial job rather than
+submitting another.
 
 The refresh is asynchronous. Follow it from **Health**. A successful first run
 must end with:
@@ -287,22 +317,58 @@ must end with:
 - Overview showing the same native account totals as Trading 212, subject to
   documented FX/rounding reconciliation tolerances.
 
-Do not treat an HTTP 200 web page alone as a successful installation.
+Do not treat an HTTP 200 web page alone as a successful installation. Historical
+failed-job counts need not be zero: inspect the current job and latest snapshot.
+
+### Collection after setup
+
+Check **Settings → Update schedule** for account/intraday, performance, and
+research/reconciliation schedules. Fresh local bootstrap starts collection
+disabled; starting a process or installing login services does not enable these
+preferences. Collection requires the host and worker to remain running.
+
+New default intraday retention is 210 days. Existing explicit shorter overrides
+remain unchanged during upgrades. Earlier daily-only records stay daily, and
+reconstruction is limited by ledger and provider coverage. See the
+[range and sampling guide](../guides/portfolio.md#read-money-and-pl).
 
 ## Updates
 
-Until a generic desktop updater is shipped, update interactively:
+This procedure is for a foreground local installation. For an advanced managed
+macOS host, use the [verified-SHA deployment procedure](../../deploy/macos/README.md).
+Do not run a foreground launcher alongside installed login services; stop those
+through their owning service manager before rebuilding.
 
-```bash
-uv run --package trading-max-backend trading-max doctor --check-updates
-git pull --ff-only origin main
-uv sync --all-packages --frozen
-npm --prefix apps/web ci --no-audit --no-fund
-npm --prefix apps/web run build
-```
+1. Run `doctor --check-updates`, record the current revision, and preserve local
+   changes. An explicitly pinned release may legitimately differ from main.
+2. Stop the foreground launcher with `Ctrl-C`. Keep the same state-root export.
+3. Create and verify a [backup](#backup-and-recovery) outside the state root.
+4. Verify which remote points to `engramai-co/trading-max` (`origin` or `upstream`).
+   On a clean main-based installation:
 
-Stop the foreground launcher before updating and start it again afterward.
-Never delete or move the external state root as part of an update.
+   ```bash
+   canonical_remote=origin # use upstream if it is the verified canonical remote
+   git fetch --prune "$canonical_remote" main --tags
+   git switch --no-overwrite-ignore main
+   git merge --ff-only "$canonical_remote/main"
+   uv run --package trading-max-backend trading-max onboard \
+     --non-interactive --skip-service --no-browser
+   deploy/local/start.sh
+   ```
+
+   If `main` does not exist locally, create it tracking the verified remote's
+   main. Stop on divergence or an occupied worktree; do not force-reset local
+   work. Do not replace an explicitly selected release without choosing an
+   upgrade target.
+5. Re-run `doctor --check-updates`, check `/health` and `/ready` **JSON**, worker
+   status and application routes, and confirm the previous snapshot is readable.
+
+The supported onboarding command reuses bootstrap values and credentials,
+applies packaged migrations, and rebuilds locked dependencies. Building the
+web app alone is not a complete application update. Never delete the state root
+or rotate credentials to resolve source drift. Local updates do not provide the
+advanced macOS deployer's automatic rollback; retain the source revision and
+verified backup until acceptance.
 
 ## Backup and recovery
 
@@ -317,6 +383,8 @@ uv run --package trading-max-backend trading-max backup \
 The command uses SQLite's online backup API, excludes secrets and logs, verifies
 the archive, and retains the newest requested number. Keep an off-host copy.
 The optional macOS service above schedules this command nightly.
+Archives exclude bootstrap tokens and provider secrets; restoring on another
+installation requires its own bootstrap and re-entered credentials in Settings.
 
 Restore remains deliberately operator-gated. Follow
 [`tools/restore_backup.py`](../../tools/restore_backup.py) only after stopping
@@ -351,7 +419,9 @@ refresh.
 
 ### Port 3413 or 8421 is already in use
 
-Stop the existing Trading Max process before starting another copy:
+Identify whether the listener belongs to the intended installation before
+starting another copy. Reuse it when appropriate; otherwise stop it through its
+owning terminal/service manager with authorization:
 
 ```bash
 lsof -nP -iTCP:3413 -sTCP:LISTEN

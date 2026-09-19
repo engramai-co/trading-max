@@ -94,6 +94,8 @@ class InlineFacts(HTMLParser):
 
 
 def _fact_number(fact: dict[str, Any]) -> float | None:
+    if str(fact.get("xsi:nil", "")).strip().lower() in {"true", "1"}:
+        return None
     text = fact["text"].strip().replace(",", "").replace("$", "").replace("\xa0", "")
     if text in {"—", "–", "-"}:
         text = "0"
@@ -440,7 +442,7 @@ class ResearchEvidenceProvider:
         url = (filing.get("exhibits") or {}).get(form)
         if not url:
             return None
-        key = fingerprint([url, str(filing["date"]), form, "inline-parser-v1"])
+        key = fingerprint([url, str(filing["date"]), form, "inline-parser-v2"])
 
         def load() -> dict[str, Any]:
             path = self.root / (key + ".parsed.json")
@@ -469,7 +471,7 @@ class ResearchEvidenceProvider:
             return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v7"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v8"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(cache.read_text())
         proxy = yf.Ticker(ticker)

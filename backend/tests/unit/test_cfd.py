@@ -311,6 +311,34 @@ def test_combine_rejects_conflicting_broker_identity() -> None:
 
 
 @pytest.mark.parametrize(
+    "field",
+    ["Overnight interest (account currency)", "Dividend adjustment (account currency)"],
+)
+def test_combine_rejects_conflicting_embedded_closed_position_costs(field: str) -> None:
+    row = _closed(
+        "position-1",
+        "close-1",
+        date="2026-01-02T12:00:00Z",
+        opened="2026-01-02T09:00:00Z",
+        direction="Buy",
+        units="1",
+        symbol="AAA",
+        instrument_currency="GBP",
+        average_price="10",
+        exchange_rate="1",
+        result="10",
+        fx_fee="0",
+        after_fx="10",
+    )
+    conflict = {**row, field: "-2", "Total result (account currency)": "8"}
+    first = parse_cfd_csv_text(_csv_text(LEGACY_HEADERS, [row]), "first.csv")
+    conflicting = parse_cfd_csv_text(_csv_text(LEGACY_HEADERS, [conflict]), "conflict.csv")
+
+    with pytest.raises(CfdDuplicateConflictError, match="canonical event ID"):
+        combine_cfd_ledgers([first, conflicting])
+
+
+@pytest.mark.parametrize(
     ("headers", "row", "error", "message"),
     [
         (

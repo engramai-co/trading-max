@@ -4,7 +4,9 @@ import csv
 import io
 from pathlib import Path
 
+import pytest
 from trading_max.application.cfd_stages import CfdAccountStage
+from trading_max.application.errors import StageExecutionError
 from trading_max.application.runtime import TypedWorkerRuntime
 from trading_max.application.stages import StageContext
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
@@ -137,6 +139,24 @@ def test_cfd_stage_skips_safely_when_no_import_exists(tmp_path: Path) -> None:
     assert result.artifacts == ()
     assert result.warnings == ()
     assert result.metadata == {"cfd_imported": False}
+
+
+@pytest.mark.parametrize("amount", ["NaN", "Infinity"])
+def test_cfd_stage_rejects_nonfinite_investing_cash_flows(tmp_path: Path, amount: str) -> None:
+    state_root = tmp_path / "state"
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    CfdImportStore(state_root).import_bytes("synthetic.csv", _stage_csv())
+    upstream = _nav_dependencies(artifacts)
+    invalid = artifacts.put_bytes(
+        key="account/nav/daily_nav_a.csv",
+        content=f"Date,ExternalFlowGBP\n2026-01-01,{amount}\n".encode(),
+        kind="nav_series",
+        media_type="text/csv",
+        producer_version="test",
+    )
+
+    with pytest.raises(StageExecutionError, match="invalid ExternalFlowGBP"):
+        CfdAccountStage(state_root, artifacts).run(_context((*upstream, invalid.ref.artifact_id)))
 
 
 def test_cfd_stage_runs_after_snapshot_and_before_performance_and_publish(

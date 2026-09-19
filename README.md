@@ -19,7 +19,7 @@
   <img alt="Read-only broker access" src="https://img.shields.io/badge/broker%20access-read--only-2F7D4C?style=flat-square">
 </p>
 
-![Trading Max portfolio overview: account value, performance, holdings allocation, and account breakdown](docs/assets/workspace-overview.png)
+![Trading Max portfolio overview: account value, period net P&L, holdings allocation, and account breakdown](docs/assets/workspace-overview.png)
 
 ## See what changed. Understand why.
 
@@ -94,7 +94,9 @@ Set this project up completely for local use.
 
 Codex follows the included installation workflow, starts the app, and verifies
 it. Enter and test your read-only Trading 212 credentials in local Settings.
-Never paste credentials into chat.
+Never paste credentials into chat. The included
+[onboarding skill](.agents/skills/trading-max-onboard/SKILL.md) also distinguishes
+an existing installation from a fresh one.
 
 ### Manually
 
@@ -113,7 +115,7 @@ deploy/local/start.sh
 ```
 
 Open [http://127.0.0.1:3413](http://127.0.0.1:3413). Connect your accounts in
-Settings and follow the first refresh in Health. Setup is complete when
+Connections and follow the first refresh in Data status. Setup is complete when
 readiness succeeds and the account totals agree with your broker.
 
 [Full installation guide →](docs/installation/local-installation.md)
@@ -124,8 +126,10 @@ readiness succeeds and the account totals agree with your broker.
 - **Private local state.** Credentials use the operating-system credential
   manager. Portfolio data, research, saved models, and backups live outside
   the source checkout. The app listens on loopback by default.
-- **Real sources.** Trading 212 supplies account data; market and disclosure
-  adapters supply research. Availability and history vary by provider.
+- **Real sources.** Trading 212 supplies account data; Yahoo-compatible market
+  data and disclosure adapters supply research. Optional Alpaca data enhances
+  supported US historical reconstruction, with YF retained as fallback.
+  [Availability and history vary by provider](docs/guides/data-and-metrics.md).
 - **Optional AI.** Portfolio analytics and research work without a model key.
   Configured model routes can add narrative analysis using bounded context.
 - **Recoverable history.** A failed refresh keeps the last valid snapshot.

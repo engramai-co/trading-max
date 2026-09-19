@@ -31,10 +31,12 @@ def legacy_credential_lookup_enabled(
     """
 
     values = os.environ if environment is None else environment
+    if configured_credential_service(values) != DEFAULT_CREDENTIAL_SERVICE:
+        return False
     explicit = values.get(LEGACY_CREDENTIAL_LOOKUP_ENV)
     if explicit is not None:
         return explicit.strip().lower() in {"1", "true", "yes", "on"}
-    return configured_credential_service(values) == DEFAULT_CREDENTIAL_SERVICE
+    return True
 
 
 __all__ = [

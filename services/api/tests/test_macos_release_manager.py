@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -215,3 +217,39 @@ def test_deployment_does_not_inherit_another_python_environment(tmp_path: Path, 
     host = SimulatedHost(tmp_path)
     assert "VIRTUAL_ENV" not in host.environment
     assert "PYTHONPATH" not in host.environment
+
+
+@pytest.mark.parametrize("eventually_ready", [False, True])
+def test_health_waits_for_ready_json_even_when_http_status_is_200(
+    tmp_path: Path, monkeypatch, eventually_ready: bool
+):
+    host = SimulatedHost(tmp_path)
+    urls = []
+    sleeps = []
+
+    class Response(io.BytesIO):
+        status = 200
+
+    def response(url: str, *, timeout: int):
+        urls.append(url)
+        ready = eventually_ready and len(urls) > 1
+        return Response(json.dumps({"status": "ready" if ready else "not_ready"}).encode())
+
+    monkeypatch.setattr(manager, "urlopen", response)
+    monkeypatch.setattr(manager.time, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        host, "run", lambda *args, **kwargs: SimpleNamespace(stdout="state = running")
+    )
+    if eventually_ready:
+        manager.Deployment.health(host)
+        assert urls == [
+            "http://127.0.0.1:8421/ready",
+            "http://127.0.0.1:8421/ready",
+            "http://127.0.0.1:3413/",
+        ]
+        assert sleeps == [2]
+    else:
+        with pytest.raises(RuntimeError, match="readiness failed"):
+            manager.Deployment.health(host)
+        assert urls == ["http://127.0.0.1:8421/ready"] * 30
+        assert len(sleeps) == 30

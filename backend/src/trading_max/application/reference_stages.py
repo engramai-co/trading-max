@@ -59,7 +59,7 @@ class SecurityMasterEnrichmentStage:
     """Resolve ETF constituents and classify business profiles dynamically."""
 
     name = "reference.security_master"
-    version = "security-master-v9"
+    version = "security-master-v10"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 

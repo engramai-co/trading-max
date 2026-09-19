@@ -249,17 +249,24 @@ class ContentAddressedArtifactStore:
         )
         path = self.path_for(digest)
         metadata_path = path.with_name(f"{digest}.meta.json")
-        if not path.is_file():
+        if path.is_file() and metadata_path.is_file():
+            return self.get_bytes(digest)
+        if path.is_file():
+            if path.read_bytes() != content:
+                raise ArtifactIntegrityError(f"byte artifact digest mismatch: {digest}")
+        else:
             _atomic_write(path, content)
-            _atomic_write(
-                metadata_path,
-                _canonical_json(
-                    {
-                        "ref": ref.model_dump(mode="json", by_alias=False),
-                        "content_sha256": content_sha256,
-                    }
-                ),
-            )
+        # A stopped writer may have committed content before its sidecar.
+        # Retry that incomplete write only after the bytes match this identity.
+        _atomic_write(
+            metadata_path,
+            _canonical_json(
+                {
+                    "ref": ref.model_dump(mode="json", by_alias=False),
+                    "content_sha256": content_sha256,
+                }
+            ),
+        )
         return StoredBytes(ref=ref, path=path)
 
     def get_bytes(self, artifact_id: str) -> StoredBytes:
@@ -274,10 +281,22 @@ class ContentAddressedArtifactStore:
         except (OSError, KeyError, TypeError, ValueError) as exc:
             raise ArtifactIntegrityError(f"invalid byte artifact envelope: {artifact_id}") from exc
         content = path.read_bytes()
+        identity = {
+            "schema_version": ref.schema_version,
+            "key": ref.key,
+            "kind": ref.kind,
+            "media_type": ref.media_type,
+            "as_of": ref.as_of,
+            "producer_version": ref.producer_version,
+            "dependency_artifact_ids": ref.dependency_artifact_ids,
+            "quality": ref.quality.model_dump(mode="json", by_alias=False),
+            "content_sha256": expected,
+        }
         if (
             ref.artifact_id != artifact_id
             or ref.sha256 != expected
             or hashlib.sha256(content).hexdigest() != expected
+            or hashlib.sha256(_canonical_json(identity)).hexdigest() != artifact_id
         ):
             raise ArtifactIntegrityError(f"byte artifact digest mismatch: {artifact_id}")
         return StoredBytes(ref=ref, path=path)

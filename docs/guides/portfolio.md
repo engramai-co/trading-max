@@ -89,7 +89,7 @@ Review shows available account and realized-trade evidence. Realized attribution
 requires matched opening and closing records. Historical imports may have less
 coverage than current positions.
 
-Use **Refresh now** to request a full update and follow the job in **Health**.
+Use **Data status → Start update** to request a full update and follow the job.
 A request being accepted does not mean it has finished. On failure, the last
 published snapshot stays available. Check the failed stage before retrying.
 Never remove the state directory to force a refresh.

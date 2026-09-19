@@ -588,8 +588,10 @@ def analyze_ticker(
     direction = np.sign(close.diff()).fillna(0)
     obv = (direction * volume).cumsum()
     volume20, volume60 = volume.tail(20).mean(), volume.tail(60).mean()
-    up_volume = volume[close.diff() > 0].tail(20).sum()
-    down_volume = volume[close.diff() < 0].tail(20).sum()
+    recent_volume = volume.tail(20)
+    recent_change = close.diff().tail(20)
+    up_volume = recent_volume[recent_change > 0].sum()
+    down_volume = recent_volume[recent_change < 0].sum()
     obv_change = obv.iloc[-1] - obv.iloc[-21] if len(obv) > 20 else np.nan
     prior20_high, prior20_low = high.iloc[-21:-1], low.iloc[-21:-1]
     prior63_high, prior63_low = high.iloc[-64:-1], low.iloc[-64:-1]
@@ -777,6 +779,9 @@ def _oi_weighted_iv(options: pd.DataFrame) -> float | None:
 
 def _max_pain(options: pd.DataFrame) -> float | None:
     if options.empty:
+        return None
+    interest = pd.to_numeric(options["open_interest"], errors="coerce")
+    if not np.isfinite(interest).all() or (interest < 0).any() or interest.sum() <= 0:
         return None
     strikes = np.sort(options["strike"].dropna().unique())
     if not len(strikes):
@@ -1114,8 +1119,10 @@ def analyze_options(
                 "not a measurement of dealer inventory"
             ),
             "gamma_regime": (
-                "positive gamma proxy"
-                if (aggregate["net_gex_1pct_proxy"] or 0) >= 0
+                None
+                if aggregate["net_gex_1pct_proxy"] is None
+                else "positive gamma proxy"
+                if aggregate["net_gex_1pct_proxy"] >= 0
                 else "negative gamma proxy"
             ),
             "gamma_flip_proxy": flip,

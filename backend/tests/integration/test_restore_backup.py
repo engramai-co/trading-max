@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -44,3 +47,19 @@ def test_restore_requires_confirmation_and_preserves_current_state(
     assert safety == (tmp_path / "safety").resolve()
     assert (destination / "watchlist.json").read_text() == "restored"
     assert (tmp_path / "safety" / "watchlist.json").read_text() == "current"
+
+
+def test_restore_cli_help_runs_without_repository_pythonpath(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[3]
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(  # noqa: S603 - execute the repository CLI with help only
+        [sys.executable, str(root / "tools/restore_backup.py"), "--help"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--safety-backup" in result.stdout
