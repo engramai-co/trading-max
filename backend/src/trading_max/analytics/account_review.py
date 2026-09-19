@@ -26,11 +26,12 @@ from .ledger import (
     normalize_transactions_gbp,
     reconstruct_campaigns,
     summarize_campaigns,
+    transaction_fee_issues,
     transaction_gbp_issues,
 )
 
 AccountKind = Literal["invest", "isa"]
-CALCULATION_VERSION = "account-review-v3"
+CALCULATION_VERSION = "account-review-v4"
 SCHEMA_VERSION = 1
 
 
@@ -302,10 +303,14 @@ def _campaign_detail(row: Mapping[str, Any], account_kind: AccountKind) -> dict[
         ),
         "buy_orders": int(_finite(row.get("BuyOrders")) or 0),
         "sell_orders": int(_finite(row.get("SellOrders")) or 0),
-        "buy_notional_gbp": _finite(row.get("BuyNotional")) or 0.0,
-        "sell_notional_gbp": _finite(row.get("SellNotional")) or 0.0,
-        "gross_result_gbp": _finite(row.get("GrossResult")) or 0.0,
-        "fees_gbp": _finite(row.get("Fees")) or 0.0,
+        "buy_notional_gbp": _finite(row.get("BuyNotional")),
+        "sell_notional_gbp": _finite(row.get("SellNotional")),
+        "gross_result_gbp": _finite(row.get("GrossResult")),
+        "fees_gbp": _finite(row.get("Fees")),
+        "fee_status": "available" if _finite(row.get("Fees")) is not None else "unavailable",
+        "fee_unavailable_reason": None
+        if _finite(row.get("Fees")) is not None
+        else "fee_breakdown_unavailable",
         "net_result_gbp": _finite(row.get("NetResult")) or 0.0,
     }
 
@@ -473,7 +478,7 @@ def _aggregate(
     trades: Sequence[Mapping[str, Any]],
     key,
 ) -> list[dict[str, Any]]:
-    buckets: dict[str, dict[str, float | int | str]] = {}
+    buckets: dict[str, dict[str, float | int | str | None]] = {}
     for trade in trades:
         label = str(key(trade))
         bucket = buckets.setdefault(
@@ -492,7 +497,11 @@ def _aggregate(
         bucket["net_result_gbp"] = float(bucket["net_result_gbp"]) + result
         bucket["gross_wins_gbp"] = float(bucket["gross_wins_gbp"]) + max(result, 0.0)
         bucket["gross_losses_gbp"] = float(bucket["gross_losses_gbp"]) + min(result, 0.0)
-        bucket["fees_gbp"] = float(bucket["fees_gbp"]) + float(trade["fees_gbp"])
+        bucket["fees_gbp"] = (
+            float(bucket["fees_gbp"]) + float(trade["fees_gbp"])
+            if bucket["fees_gbp"] is not None and trade["fees_gbp"] is not None
+            else None
+        )
     absolute = sum(abs(float(bucket["net_result_gbp"])) for bucket in buckets.values())
     net = sum(float(bucket["net_result_gbp"]) for bucket in buckets.values())
     result = []
@@ -557,8 +566,21 @@ def _attribution(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "weekday": _aggregate(trades, lambda trade: end_timestamp(trade).strftime("%A")),
     }
     net = sum(float(trade["net_result_gbp"]) for trade in trades)
-    gross = sum(float(trade["gross_result_gbp"]) for trade in trades)
-    fees = sum(float(trade["fees_gbp"]) for trade in trades)
+    breakdown_available = all(
+        trade["gross_result_gbp"] is not None and trade["fees_gbp"] is not None for trade in trades
+    )
+    gross = (
+        sum(float(trade["gross_result_gbp"]) for trade in trades) if breakdown_available else None
+    )
+    fees = sum(float(trade["fees_gbp"]) for trade in trades) if breakdown_available else None
+    components = {
+        "buckets": [
+            {"label": "gross_trade_result", "contribution_gbp": gross},
+            {"label": "transaction_fees", "contribution_gbp": -fees if fees is not None else None},
+            {"label": "net_realised_result", "contribution_gbp": net},
+        ],
+        "conservation_difference_gbp": net - (gross - fees) if breakdown_available else None,
+    }
     dimension_totals = {
         dimension: sum(float(bucket["net_result_gbp"]) for bucket in buckets)
         for dimension, buckets in dimensions.items()
@@ -578,14 +600,9 @@ def _attribution(trades: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         by_direction=_available(buckets=dimensions["by_direction"]),
         by_holding_bucket=_available(buckets=dimensions["by_holding_bucket"]),
         by_calendar=_available(**calendar),
-        components=_available(
-            buckets=[
-                {"label": "gross_trade_result", "contribution_gbp": gross},
-                {"label": "transaction_fees", "contribution_gbp": -fees},
-                {"label": "net_realised_result", "contribution_gbp": net},
-            ],
-            conservation_difference_gbp=net - (gross - fees),
-        ),
+        components=_available(**components)
+        if breakdown_available
+        else _unavailable("fee_breakdown_unavailable", **components),
         conservation={dimension: total - net for dimension, total in dimension_totals.items()},
     )
 
@@ -1192,6 +1209,8 @@ def build_account_review(
     if transactions is not None:
         transactions = normalize_transactions_gbp(transactions)
         warnings.extend(transaction_gbp_issues(transactions))
+        if transaction_fee_issues(transactions):
+            warnings.append("fee_breakdown_unavailable")
     nav_rows, nav_error = _normalized_nav_rows(nav_money_series)
     money_nav_rows = [] if nav_error else nav_rows
     if nav_error:

@@ -28,7 +28,7 @@ class AccountReviewStage:
     """Bind existing authoritative lenses into one review artifact."""
 
     name = "accounts.review"
-    version = "account-review-stage-v5"
+    version = "account-review-stage-v6"
     required_for = frozenset({"all", "accounts"})
     dependencies = (
         "accounts.snapshot",

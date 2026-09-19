@@ -4708,7 +4708,7 @@ export interface components {
              * Feesgbp
              * @default 0
              */
-            feesGbp: number;
+            feesGbp: number | null;
             /**
              * Grosslossesgbp
              * @default 0
@@ -5087,7 +5087,7 @@ export interface components {
              * Buynotionalgbp
              * @default 0
              */
-            buyNotionalGbp: number;
+            buyNotionalGbp: number | null;
             /**
              * Buyorders
              * @default 0
@@ -5103,15 +5103,23 @@ export interface components {
             /** End */
             end?: string | null;
             /**
+             * Feestatus
+             * @default available
+             * @enum {string}
+             */
+            feeStatus: "available" | "partial" | "unavailable";
+            /** Feeunavailablereason */
+            feeUnavailableReason?: string | null;
+            /**
              * Feesgbp
              * @default 0
              */
-            feesGbp: number;
+            feesGbp: number | null;
             /**
              * Grossresultgbp
              * @default 0
              */
-            grossResultGbp: number;
+            grossResultGbp: number | null;
             /** Holdingbucket */
             holdingBucket: string;
             /** Name */
@@ -5125,7 +5133,7 @@ export interface components {
              * Sellnotionalgbp
              * @default 0
              */
-            sellNotionalGbp: number;
+            sellNotionalGbp: number | null;
             /**
              * Sellorders
              * @default 0

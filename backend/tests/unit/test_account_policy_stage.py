@@ -160,3 +160,31 @@ def test_missing_fx_is_local_to_account_metrics_and_does_not_fail_refresh(tmp_pa
     assert recovery_payload["checks_all_ok"]
     assert recovery_payload["holdings"][0]["MarketValueGBP"] == 30
     assert recovery_payload["holdings"][0]["EconomicPnLGBP"] is None
+
+
+def test_missing_fee_fx_publishes_verified_net_cash_and_optional_breakdown_warning(tmp_path: Path):
+    import pandas as pd
+
+    for profile in ("invest", "isa"):
+        export = tmp_path / "trading212" / profile / "exports" / "latest.csv"
+        _export(export)
+        frame = pd.read_csv(export)
+        frame["Currency conversion fee"] = 1
+        frame["Currency (Currency conversion fee)"] = "EUR"
+        frame.to_csv(export, index=False)
+        (tmp_path / "trading212" / profile / "latest_export.json").write_text(
+            '{"profile":"' + profile + '","csv":{"path":"' + profile + '/exports/latest.csv"}}'
+        )
+    store = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    result = AccountPolicyStage(tmp_path, store, fx_resolver=lambda *_args: None).run(
+        StageContext(job_id="fee-breakdown-gap", scope="accounts")
+    )
+    payload = store.get_json(result.artifacts[0].artifact_id).payload
+    assert payload["a_campaign"]["status"] == "available"
+    assert payload["a_campaign"]["expectancy"] == 2
+    assert payload["a_campaign"]["fee_status"] == "unavailable"
+    assert payload["a_campaign"]["best"][0]["GrossResult"] is None
+    assert payload["a_campaign"]["best"][0]["Fees"] is None
+    assert payload["b_policy"][0]["realized_net"] == 2
+    assert result.artifacts[0].quality.status == "warning"
+    assert "A: fee_breakdown_unavailable" in result.warnings

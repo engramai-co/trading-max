@@ -556,8 +556,8 @@ function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
         : object(raw).buckets,
   );
   const components: Record<string, string> = {
-    gross_trade_result: t("交易毛收益", "Gross trading result"),
-    transaction_fees: t("交易费用", "Transaction fees"),
+    gross_trade_result: t("换汇费前交易收益", "Trading result before FX fees"),
+    transaction_fees: t("换汇费用", "FX fees"),
     net_realised_result: t("净收益", "Net result"),
   };
   const label = (r: Json) => components[str(r.label)] ?? reviewLabel(str(r.label ?? r.key), t);
@@ -618,8 +618,8 @@ function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
                   numeric: true,
                 },
                 {
-                  label: t("费用", "Fees"),
-                  value: (r: Json) => currency(r.feesGbp ?? 0, "GBP", 2),
+                  label: t("换汇费用", "FX fees"),
+                  value: (r: Json) => currency(r.feesGbp, "GBP", 2),
                   numeric: true,
                 },
                 {

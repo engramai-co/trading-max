@@ -11271,9 +11271,16 @@
       "ReviewAttributionBucket": {
         "properties": {
           "feesGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0.0,
-            "title": "Feesgbp",
-            "type": "number"
+            "title": "Feesgbp"
           },
           "grossLossesGbp": {
             "default": 0.0,
@@ -12410,9 +12417,16 @@
       "ReviewTrade": {
         "properties": {
           "buyNotionalGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0.0,
-            "title": "Buynotionalgbp",
-            "type": "number"
+            "title": "Buynotionalgbp"
           },
           "buyOrders": {
             "default": 0,
@@ -12439,15 +12453,50 @@
             ],
             "title": "End"
           },
+          "feeStatus": {
+            "default": "available",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable"
+            ],
+            "title": "Feestatus",
+            "type": "string"
+          },
+          "feeUnavailableReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feeunavailablereason"
+          },
           "feesGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0.0,
-            "title": "Feesgbp",
-            "type": "number"
+            "title": "Feesgbp"
           },
           "grossResultGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0.0,
-            "title": "Grossresultgbp",
-            "type": "number"
+            "title": "Grossresultgbp"
           },
           "holdingBucket": {
             "title": "Holdingbucket",
@@ -12463,9 +12512,16 @@
             "type": "number"
           },
           "sellNotionalGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "default": 0.0,
-            "title": "Sellnotionalgbp",
-            "type": "number"
+            "title": "Sellnotionalgbp"
           },
           "sellOrders": {
             "default": 0,
@@ -15288,7 +15344,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.5.2"
+    "version": "1.5.3"
   },
   "openapi": "3.1.0",
   "paths": {

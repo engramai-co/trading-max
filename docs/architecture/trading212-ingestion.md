@@ -60,6 +60,11 @@ not rewritten. Converted buy/sell cash legs determine GBP campaign P&L,
 including changes in exchange rates, rather than treating a converted broker
 result as the complete GBP outcome.
 
+The CSV total remains fee-inclusive in these calculations too. The converted
+fee supports the pre-conversion-fee breakdown, not another cash deduction.
+Unknown fee conversion leaves that breakdown unavailable without suppressing
+otherwise known net settlement cash or closed-campaign P&L.
+
 `analytics/fx.py` accepts a broker rate only when its GBP direction is supported
 by the recorded currencies. Otherwise it uses a cached completed daily close
 available at or before the event, within seven days. It never backfills a

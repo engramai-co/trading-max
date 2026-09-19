@@ -44,6 +44,7 @@ export function reviewLabel(value: string, t: Copy) {
 
 export function systemReason(raw: string, t: Copy): string {
   const rules: Array<[RegExp, string]> = [
+    [/fee_breakdown_unavailable/i, t("缺少可靠的费用换算记录，费用拆分暂不可用；已知的净盈亏仍正常展示。", "Fee conversion evidence is incomplete; the fee breakdown is unavailable while known net P&L remains visible.")],
     [/monetary_data_unavailable/i, t("原始记录缺少计算净额所需的金额或费用，相关结果暂不可用。", "Source records lack amounts or fees needed to calculate the net result.")],
     [/missing.*fx|fx.*unavailable|settlement.*conversion|exchange.rate.*unavailable/i, t("部分交易缺少可靠的历史汇率，相关英镑金额暂不可用。", "Some transactions lack reliable historical exchange rates; affected GBP amounts are unavailable.")],
     [/conflict.*cost|cost.*conflict|ambiguous.*cost|overlap.*cost/i, t("费用记录存在重叠或冲突，相关盈亏需核对后才能显示。", "Cost records overlap or conflict; affected P&L requires reconciliation.")],

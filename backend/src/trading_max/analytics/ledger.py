@@ -219,7 +219,11 @@ def normalize_transactions_gbp(
 
 
 def transaction_gbp_issues(transactions: pd.DataFrame) -> list[str]:
-    """Money needed by campaign/cost metrics; reported local Result is optional."""
+    """Net settlement money needed by campaign/cost metrics.
+
+    Total already includes conversion fees. Its GBP value does not depend on
+    separately converting the fee or the broker-reported Result breakdown.
+    """
     normalized = normalize_transactions_gbp(transactions)
     return list(
         dict.fromkeys(
@@ -229,7 +233,21 @@ def transaction_gbp_issues(transactions: pd.DataFrame) -> list[str]:
             or is_sell(row.get("Action"))
             or is_dividend(row.get("Action"))
             for issue in row["GbpIssues"]
-            if issue.startswith(("TotalGBP:", "FeeGBP:"))
+            if issue.startswith("TotalGBP:")
+        )
+    )
+
+
+def transaction_fee_issues(transactions: pd.DataFrame) -> list[str]:
+    """Optional conversion-fee breakdown gaps, separate from net cash coverage."""
+    normalized = normalize_transactions_gbp(transactions)
+    return list(
+        dict.fromkeys(
+            issue
+            for _, row in normalized.iterrows()
+            if is_buy(row.get("Action")) or is_sell(row.get("Action"))
+            for issue in row["GbpIssues"]
+            if issue.startswith("FeeGBP:")
         )
     )
 
@@ -329,21 +347,25 @@ def transaction_marker_rows(
 
 @dataclass
 class Campaign:
-    """One open or closed cash campaign reconstructed from broker rows."""
+    """One campaign whose settlement cash already includes conversion fees.
+
+    Fee conversion is needed only for the optional before-fee breakdown.
+    Net cash and P&L remain available when that breakdown cannot be priced.
+    """
 
     ticker: str
     name: str
     start: pd.Timestamp
     buy_orders: int = 0
     sell_orders: int = 0
-    gross_buy_cash: float = 0.0
+    buy_settlement_cash: float = 0.0
     buy_fees: float = 0.0
-    gross_sell_cash: float = 0.0
+    sell_settlement_cash: float = 0.0
     sell_fees: float = 0.0
     distributions: float = 0.0
-    gross_result: float = 0.0
     corporate_actions: int = 0
     fx_issues: list[str] = field(default_factory=list)
+    fee_issues: list[str] = field(default_factory=list)
 
     @property
     def available(self) -> bool:
@@ -351,17 +373,43 @@ class Campaign:
 
     @property
     def buy_cash_out(self) -> float | None:
-        return self.gross_buy_cash + self.buy_fees if self.available else None
+        return self.buy_settlement_cash if self.available else None
 
     @property
     def recovered_cash(self) -> float | None:
-        return (
-            self.gross_sell_cash - self.sell_fees + self.distributions if self.available else None
-        )
+        return self.sell_settlement_cash + self.distributions if self.available else None
 
     @property
     def realized_net(self) -> float | None:
-        return self.gross_result - self.buy_fees - self.sell_fees if self.available else None
+        return self.sell_settlement_cash - self.buy_settlement_cash if self.available else None
+
+    @property
+    def fees_available(self) -> bool:
+        return not self.fee_issues
+
+    @property
+    def gross_buy_cash(self) -> float | None:
+        return (
+            self.buy_settlement_cash - self.buy_fees
+            if self.available and self.fees_available
+            else None
+        )
+
+    @property
+    def gross_sell_cash(self) -> float | None:
+        return (
+            self.sell_settlement_cash + self.sell_fees
+            if self.available and self.fees_available
+            else None
+        )
+
+    @property
+    def gross_result(self) -> float | None:
+        return (
+            self.realized_net + self.buy_fees + self.sell_fees
+            if self.available and self.fees_available
+            else None
+        )
 
 
 def _normalized_security_value(value: object) -> str:
@@ -452,9 +500,10 @@ def _reconstruct_campaigns_by_identity(
                     )
                 position += shares
                 current.buy_orders += 1
-                for column, target in (("TotalGBP", "gross_buy_cash"), ("FeeGBP", "buy_fees")):
+                for column, target in (("TotalGBP", "buy_settlement_cash"), ("FeeGBP", "buy_fees")):
                     if row[column] is None:
-                        current.fx_issues.extend(
+                        issues = current.fx_issues if column == "TotalGBP" else current.fee_issues
+                        issues.extend(
                             issue for issue in row["GbpIssues"] if issue.startswith(column + ":")
                         )
                     else:
@@ -465,14 +514,17 @@ def _reconstruct_campaigns_by_identity(
                     continue
                 position -= shares
                 current.sell_orders += 1
-                for column, target in (("TotalGBP", "gross_sell_cash"), ("FeeGBP", "sell_fees")):
+                for column, target in (
+                    ("TotalGBP", "sell_settlement_cash"),
+                    ("FeeGBP", "sell_fees"),
+                ):
                     if row[column] is None:
-                        current.fx_issues.extend(
+                        issues = current.fx_issues if column == "TotalGBP" else current.fee_issues
+                        issues.extend(
                             issue for issue in row["GbpIssues"] if issue.startswith(column + ":")
                         )
                     else:
                         setattr(current, target, getattr(current, target) + float(row[column]))
-                current.gross_result = current.gross_sell_cash - current.gross_buy_cash
                 if position <= 1e-7:
                     closed.append(
                         {
@@ -483,16 +535,20 @@ def _reconstruct_campaigns_by_identity(
                             "DurationDays": (row["Time"] - current.start).total_seconds() / 86400,
                             "BuyOrders": current.buy_orders,
                             "SellOrders": current.sell_orders,
-                            "BuyNotional": current.gross_buy_cash if current.available else None,
-                            "SellNotional": current.gross_sell_cash if current.available else None,
-                            "GrossResult": current.gross_result if current.available else None,
+                            "BuyNotional": current.gross_buy_cash,
+                            "SellNotional": current.gross_sell_cash,
+                            "GrossResult": current.gross_result,
                             "Fees": current.buy_fees + current.sell_fees
-                            if current.available
+                            if current.fees_available
                             else None,
                             "NetResult": current.realized_net if current.available else None,
                             "status": "available" if current.available else "unavailable",
                             "unavailable_reason": "; ".join(dict.fromkeys(current.fx_issues))
                             or None,
+                            "fee_status": "available" if current.fees_available else "unavailable",
+                            "fee_unavailable_reason": "fee_breakdown_unavailable"
+                            if current.fee_issues
+                            else None,
                             "CorporateActions": current.corporate_actions,
                         }
                     )
@@ -500,13 +556,12 @@ def _reconstruct_campaigns_by_identity(
                     position = 0.0
                 continue
             if is_dividend(action) and current is not None:
-                for column, sign in (("TotalGBP", 1), ("FeeGBP", -1)):
-                    if row[column] is None:
-                        current.fx_issues.extend(
-                            issue for issue in row["GbpIssues"] if issue.startswith(column + ":")
-                        )
-                    else:
-                        current.distributions += sign * float(row[column])
+                if row["TotalGBP"] is None:
+                    current.fx_issues.extend(
+                        issue for issue in row["GbpIssues"] if issue.startswith("TotalGBP:")
+                    )
+                else:
+                    current.distributions += float(row["TotalGBP"])
         if current is not None:
             opened[str(identity)] = (current, position)
     return closed, opened
@@ -567,8 +622,17 @@ def summarize_campaigns(
     issues.extend(
         str(row["unavailable_reason"]) for row in closed if row.get("status") == "unavailable"
     )
+    fee_issues = transaction_fee_issues(normalized)
+    fee_issues.extend(
+        "fee_breakdown_unavailable" for row in closed if row.get("fee_status") == "unavailable"
+    )
+    fee_coverage = {
+        "fee_status": "unavailable" if fee_issues else "available",
+        "fee_unavailable_reason": "fee_breakdown_unavailable" if fee_issues else None,
+    }
     if issues:
         return {
+            **fee_coverage,
             "status": "unavailable",
             "unavailable_reason": "; ".join(dict.fromkeys(issues)),
             "closed_campaigns": len(closed),
@@ -592,6 +656,7 @@ def summarize_campaigns(
     gross_wins = sum(wins)
     gross_losses = -sum(losses)
     return {
+        **fee_coverage,
         "status": "available",
         "unavailable_reason": None,
         "closed_campaigns": len(closed),
@@ -769,9 +834,7 @@ def capital_recovery_rows(
                 "status": "available" if campaign.available else "unavailable",
                 "unavailable_reason": "; ".join(dict.fromkeys(campaign.fx_issues)) or None,
                 "NetBuyCashOutGBP": campaign.buy_cash_out if campaign.available else None,
-                "NetSellCashInGBP": campaign.gross_sell_cash - campaign.sell_fees
-                if campaign.available
-                else None,
+                "NetSellCashInGBP": campaign.sell_settlement_cash if campaign.available else None,
                 "DistributionsGBP": campaign.distributions if campaign.available else None,
                 "RecoveredCashGBP": recovered,
                 "CapitalRecoveryRatio": (
@@ -821,6 +884,7 @@ __all__ = [
     "policy_metrics",
     "reconstruct_campaigns",
     "summarize_campaigns",
+    "transaction_fee_issues",
     "transaction_gbp_issues",
     "transaction_marker_rows",
 ]

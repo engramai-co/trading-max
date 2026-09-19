@@ -40,13 +40,21 @@ def calculate_diluted_cost(
     ):
         raise ValueError("diluted cost requires verified GBP campaign amounts")
 
-    buy_cash_out = _campaign_value(campaign, "gross_buy_cash") + _campaign_value(
-        campaign, "buy_fees"
-    )
-    sell_cash_in = _campaign_value(campaign, "gross_sell_cash") - _campaign_value(
-        campaign, "sell_fees"
-    )
-    recovered_cash = sell_cash_in + _campaign_value(campaign, "distributions")
+    if not isinstance(campaign, Mapping) and hasattr(campaign, "buy_cash_out"):
+        # Reconstructed CSV campaigns already hold fee-inclusive settlement
+        # cash. Their optional fee breakdown is not another cash movement.
+        buy_cash_out = _campaign_value(campaign, "buy_cash_out")
+        recovered_cash = _campaign_value(campaign, "recovered_cash")
+    else:
+        # Preserve the explicit gross-input contract for callers constructing
+        # their own mapping rather than passing a broker CSV campaign.
+        buy_cash_out = _campaign_value(campaign, "gross_buy_cash") + _campaign_value(
+            campaign, "buy_fees"
+        )
+        sell_cash_in = _campaign_value(campaign, "gross_sell_cash") - _campaign_value(
+            campaign, "sell_fees"
+        )
+        recovered_cash = sell_cash_in + _campaign_value(campaign, "distributions")
     diluted_cost = buy_cash_out - recovered_cash
     shares = _decimal(remaining_shares)
     per_share = diluted_cost / shares if shares > Decimal("1e-9") else None

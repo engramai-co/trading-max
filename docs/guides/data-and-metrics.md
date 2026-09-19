@@ -104,6 +104,14 @@ currency and the account's headline currency do not determine that currency.
 Totals, fees and broker results retain their original values; GBP analytics
 carry separate conversion evidence. Pence convert at 100 GBX per GBP.
 
+Trading 212's CSV `Total` is the settled cash amount including conversion fees.
+Net buy outflow, sale proceeds, dividend cash and closed-campaign P&L use those
+totals without adding or subtracting the fee again. The separate fee is a
+breakdown: pre-conversion-fee buy/sell amounts and trading results are derived
+only when its GBP value is known. This does not claim to remove other taxes or
+charges. Missing fee-conversion evidence leaves those breakdowns unavailable
+while preserving independently known net cash and net P&L.
+
 Where a broker record proves a GBP conversion, that rate takes precedence.
 Otherwise the conversion uses the most recent completed daily FX close
 available before the event, no more than seven days old. These historical
