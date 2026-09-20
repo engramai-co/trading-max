@@ -21,6 +21,7 @@ from pathlib import Path
 
 from trading_max.domain import ArtifactRef, JobScope, SnapshotManifest
 
+from . import compressed_json
 from .artifacts import ContentAddressedArtifactStore, StoredArtifact, StoredBytes
 
 
@@ -104,7 +105,10 @@ class SnapshotStore:
         content = _canonical_json(raw)
         manifest_hash = hashlib.sha256(content).hexdigest()
         final = self.snapshots_root / run_id / "manifest.json"
-        _atomic_write(final, content + b"\n")
+        stored = content + b"\n"
+        if self.artifacts.storage_mode != "legacy":
+            stored = compressed_json.encode(stored)
+        _atomic_write(final, stored)
         pointer = {
             "schema_version": 1,
             "run_id": run_id,
@@ -119,7 +123,9 @@ class SnapshotStore:
         if not path.is_file():
             raise FileNotFoundError(f"snapshot not found: {run_id}")
         try:
-            manifest = SnapshotManifest.model_validate_json(path.read_text(encoding="utf-8"))
+            manifest = SnapshotManifest.model_validate_json(
+                compressed_json.decode(path.read_bytes())
+            )
         except Exception as exc:
             raise SnapshotIntegrityError(f"invalid snapshot manifest: {run_id}") from exc
         if verify_artifacts:

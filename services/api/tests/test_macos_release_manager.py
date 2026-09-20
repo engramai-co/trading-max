@@ -254,3 +254,50 @@ def test_health_waits_for_ready_json_even_when_http_status_is_200(
             manager.Deployment.health(host)
         assert urls == ["http://127.0.0.1:8421/ready"] * 30
         assert len(sleeps) == 30
+
+
+def standalone_fixture(tmp_path):
+    web = tmp_path / "apps/web"
+    standalone = web / ".next/standalone"
+    for name in (
+        "server.js",
+        "node_modules/next/package.json",
+        ".next/BUILD_ID",
+        ".next/static/a.js",
+        "public/logo.svg",
+    ):
+        path = standalone / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("synthetic runtime")
+    for name in ("node_modules/build-only/data", ".next/cache/compiler", ".next/BUILD_ID"):
+        path = web / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("synthetic build")
+    return web, standalone
+
+
+def test_trim_retains_complete_standalone_and_build_identity(tmp_path):
+    web, standalone = standalone_fixture(tmp_path)
+    expected = {
+        p.relative_to(standalone): p.read_bytes() for p in standalone.rglob("*") if p.is_file()
+    }
+    manager.trim_build_dependencies(tmp_path)
+    assert not (web / "node_modules").exists()
+    assert not (web / ".next/cache").exists()
+    assert (web / ".next/BUILD_ID").is_file()
+    assert {
+        p.relative_to(standalone): p.read_bytes() for p in standalone.rglob("*") if p.is_file()
+    } == expected
+
+
+@pytest.mark.parametrize("failure", ["missing", "external-link"])
+def test_trim_refuses_incomplete_or_external_runtime_before_removing_anything(tmp_path, failure):
+    web, standalone = standalone_fixture(tmp_path)
+    if failure == "missing":
+        (standalone / "server.js").unlink()
+    else:
+        (standalone / "build-link").symlink_to(web / "node_modules", target_is_directory=True)
+    with pytest.raises(RuntimeError, match="standalone"):
+        manager.trim_build_dependencies(tmp_path)
+    assert (web / "node_modules/build-only/data").is_file()
+    assert (web / ".next/cache/compiler").is_file()

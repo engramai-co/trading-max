@@ -216,3 +216,62 @@ def test_archive_import_rejects_unsafe_or_unbounded_members(tmp_path: Path, unsa
         repo.import_archive(archive, max_bytes=1 if unsafe == "budget" else 1024)
     assert archive.exists()
     assert list(repo.snapshots.iterdir()) == []
+
+
+def test_shared_json_and_compressed_cache_restore_without_live_state(tmp_path):
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+
+    state = state_at(tmp_path / "state")
+    writer = ContentAddressedArtifactStore(state / "artifacts", storage_mode="chunked")
+    data = {"rows": [{"n": i, "text": "synthetic" * 30} for i in range(1000)]}
+    item = writer.put_json(key="research/test.json", payload=data)
+    SnapshotStore(state, artifacts=writer).publish(
+        scope="accounts", source="test", artifacts=[item]
+    )
+    raw = writer.content_bytes(item.ref.artifact_id)
+    repo = BackupRepository(tmp_path / "repository")
+    backup = repo.create(state)
+    recovered = tmp_path / "recovered"
+    repo.restore(backup["id"], recovered)
+    reader = ContentAddressedArtifactStore(recovered / "artifacts")
+    assert reader.content_bytes(item.ref.artifact_id) == raw
+    assert reader.get_json(item.ref.artifact_id).payload == data
+    block = writer.physical_paths(writer.descriptor(item.ref.artifact_id))[0]
+    block.unlink()
+    with pytest.raises(ValueError, match="missing chunk"):
+        repo.create(state)
+
+
+def test_packed_backup_retains_original_manifest_hashes_and_byte_exact_restore(tmp_path):
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+    from trading_max.infrastructure.history_chunks import canonical
+
+    state = state_at(tmp_path / "state")
+    writer = ContentAddressedArtifactStore(state / "artifacts")
+    item = writer.put_json(
+        key="research/fixture.json",
+        payload={"rows": [{"n": i, "label": "synthetic" * 20} for i in range(1000)]},
+    )
+    SnapshotStore(state).publish(scope="accounts", source="fixture", artifacts=[item])
+    raw = item.path.read_bytes()
+    repo = BackupRepository(tmp_path / "repository")
+    backup = repo.create(state)
+    manifest_path = Path(backup["manifest"])
+    before = manifest_path.read_bytes()
+    digest = json.loads(before)["files"]["artifacts/sha256/" + item.ref.artifact_id]["sha256"]
+    packed_store = ContentAddressedArtifactStore(repo.root / "packed")
+    descriptor = packed_store.json_chunks.encode(raw)
+    repo.packed_path(digest).write_bytes(canonical(descriptor))
+    repo.blob_path(digest).unlink()
+    assert repo.verify(backup["id"])["snapshotRunId"] == backup["snapshotRunId"]
+    recovered = tmp_path / "recovered"
+    repo.restore(backup["id"], recovered)
+    assert (recovered / "artifacts/sha256" / item.ref.artifact_id).read_bytes() == raw
+    assert manifest_path.read_bytes() == before
+    assert set(packed_store.physical_paths(descriptor)).issubset(repo.blob_files(digest))
+    another = repo.create(state)
+    assert another["snapshotRunId"] == backup["snapshotRunId"]
+    assert not repo.blob_path(digest).exists()
+    packed_store.physical_paths(descriptor)[0].unlink()
+    with pytest.raises(ValueError):
+        repo.verify(backup["id"])

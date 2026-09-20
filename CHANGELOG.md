@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.7] - 2026-09-20
+
+### Fixed
+
+- Add bounded, lossless readers for compressed artifacts, shared research JSON
+  subtrees and filing caches. Keep legacy writes as default until the active
+  runtime and both protected rollback releases support recovery of the format.
+- Include shared physical dependencies in backup verification and restored
+  snapshot validation without changing logical artifact identities or downloads.
+- Retain only verified standalone web output and production Python dependencies
+  in newly built macOS releases; reject incomplete or externally linked runtimes
+  before removing build dependencies or switching the active deployment.
+
 ## [1.5.6] - 2026-09-20
 
 ### Fixed
