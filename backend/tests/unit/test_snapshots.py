@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -35,7 +36,10 @@ def test_snapshot_store_publishes_complete_content_addressed_run(
     }
 
 
-def test_snapshot_store_rejects_a_tampered_latest_manifest(tmp_path: Path) -> None:
+@pytest.mark.parametrize("verify_artifacts", [True, False])
+def test_snapshot_store_rejects_a_tampered_latest_manifest(
+    tmp_path: Path, verify_artifacts: bool
+) -> None:
     store = SnapshotStore(tmp_path / "state")
     artifact = store.artifacts.put_json(
         key="account/snapshot.json",
@@ -46,7 +50,22 @@ def test_snapshot_store_rejects_a_tampered_latest_manifest(tmp_path: Path) -> No
     manifest_path.write_text("{}\n", encoding="utf-8")
 
     with pytest.raises(SnapshotIntegrityError):
+        store.latest(verify_artifacts=verify_artifacts)
+
+
+def test_metadata_only_latest_keeps_pointer_validation_and_default_payload_checks(tmp_path):
+    store = SnapshotStore(tmp_path / "state")
+    item = store.artifacts.put_json(key="account/snapshot.json", payload={"value": 42})
+    published = store.publish(scope="accounts", source="fixture", artifacts=[item])
+    store.artifacts.path_for(item.ref.artifact_id).unlink()
+    assert store.latest(verify_artifacts=False).manifest == published.manifest
+    with pytest.raises(SnapshotIntegrityError):
         store.latest()
+    pointer = json.loads(store.latest_path.read_text())
+    pointer["manifest_sha256"] = "0" * 64
+    store.latest_path.write_text(json.dumps(pointer))
+    with pytest.raises(SnapshotIntegrityError, match="digest mismatch"):
+        store.latest(verify_artifacts=False)
 
 
 def test_partial_snapshot_publish_preserves_previous_artifacts(tmp_path: Path) -> None:

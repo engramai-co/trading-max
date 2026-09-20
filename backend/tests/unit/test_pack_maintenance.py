@@ -179,3 +179,34 @@ def test_pack_reader_probe_exercises_the_installed_reader():
     from trading_max.storage_compatibility import _PACK_PROBE
 
     exec(_PACK_PROBE, {})  # noqa: S102 - fixed synthetic compatibility probe
+
+
+def test_hot_classification_does_not_decode_or_traverse_source_ancestry(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    store = ContentAddressedArtifactStore(state / "artifacts")
+    parent = store.put_json(key="source.json", payload={"value": "original source"})
+    current = store.put_json(
+        key="view.json",
+        payload={"value": "current output"},
+        dependency_artifact_ids=[parent.ref.artifact_id],
+    )
+    expected = {
+        item.ref.artifact_id: store.content_bytes(item.ref.artifact_id)
+        for item in [parent, current]
+    }
+    SnapshotStore(state, artifacts=store).publish(
+        scope="accounts", source="fixture", artifacts=[current]
+    )
+
+    def must_not_decode(*args, **kwargs):
+        pytest.fail("classification decoded a source envelope")
+
+    monkeypatch.setattr(ContentAddressedArtifactStore, "get_ref", must_not_decode)
+    result = pack_state(state, tmp_path / "journals")
+    assert result["convertedFiles"] == 2
+    packed = ContentAddressedArtifactStore(state / "artifacts")
+    assert packed.packs.source("artifact/" + parent.ref.artifact_id) != packed.packs.source(
+        "artifact/" + current.ref.artifact_id
+    )
+    for aid, raw in expected.items():
+        assert packed.content_bytes(aid) == raw

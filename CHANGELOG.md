@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-09-21
+
+### Fixed
+- Classify the interactive storage working set from published outputs and their physical blocks without re-reading the entire historical provenance graph for every maintenance batch. Preserve all source ancestry in immutable cold storage.
+
 ## [1.6.2] - 2026-09-21
 
 ### Changed
