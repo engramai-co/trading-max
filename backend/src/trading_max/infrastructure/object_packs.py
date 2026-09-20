@@ -275,6 +275,42 @@ class ObjectPacks:
                 raise ValueError("object pack locator disagrees with sealed records")
             return raw[offset : offset + size]
 
+    def read_many(self, keys: list[str]) -> list[bytes]:
+        """Batch a manifest's references and decode each sealed block once."""
+        if len(keys) > 1_000_000:
+            raise ValueError("too many packed record references")
+        if not keys:
+            return []
+        for key in keys:
+            safe_key(key)
+        with self._lock:
+            reader = self._reader()
+            if reader is None:
+                raise FileNotFoundError(keys[0])
+            grouped = {}
+            for offset in range(0, len(keys), 400):
+                part = keys[offset : offset + 400]
+                placeholders = ",".join("?" for _ in part)
+                rows = reader.execute(
+                    "SELECT key, pack, offset, size, digest FROM records WHERE key IN ("  # noqa: S608 - only generated placeholders; keys are bound
+                    + placeholders
+                    + ")",
+                    part,
+                )
+                for key, pack, start, size, digest in rows:
+                    grouped.setdefault(pack, {})[key] = (start, size, digest)
+            result = {}
+            for pack, records in grouped.items():
+                entries, raw = self._load(pack)
+                for key, location in records.items():
+                    if entries.get(key) != location:
+                        raise ValueError("object pack locator disagrees with sealed records")
+                    offset, size, _ = location
+                    result[key] = raw[offset : offset + size]
+            if missing := next((key for key in keys if key not in result), None):
+                raise FileNotFoundError(missing)
+            return [result[key] for key in keys]
+
     def add(self, records: Mapping[str, bytes]) -> dict:
         """Commit one bounded batch; callers serialize maintenance against GC."""
         self._validate_root()

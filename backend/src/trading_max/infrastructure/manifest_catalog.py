@@ -80,10 +80,13 @@ class ManifestCatalog:
             raw = record["raw"].encode()
         else:
             files = {}
+            keys = []
             for reference in record["files"]:
                 if type(reference) is not int or not 1 <= reference < 2**64:
                     raise ValueError("invalid backup file reference")
-                name, entry = json.loads(self.packs.read(PREFIX + f"{reference:016x}"))
+                keys.append(PREFIX + f"{reference:016x}")
+            for content in self.packs.read_many(keys):
+                name, entry = json.loads(content)
                 if name in files:
                     raise ValueError("duplicate backup file reference")
                 files[name] = entry

@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-21
+
+### Changed
+- Add bounded, journaled object packing with interrupted-operation recovery and byte-exact validation before retiring loose aliases.
+- Gate activation on a fresh independent backup and the active plus two retained rollback readers; leave existing installations opt-in.
+- After activation, publish compact incremental recovery catalogs and run bounded nightly packing. Keep frequently accessed records in smaller blocks and sealed history in larger blocks.
+
 ## [1.6.0] - 2026-09-21
 
 ### Added
