@@ -202,6 +202,13 @@ both protected rollback runtimes must support packed recovery before enabling
 this mode. Deleting the live state does not affect the independent backup.
 
 
+Incremental capture identifies each artifact and its chunk dependencies by their
+physical file identity and individual sealed record locators. Adding unrelated
+records or rebuilding an equivalent locator index no longer invalidates every
+old source entry. Changed dependency bytes or locators still require fresh
+capture; the independent backup always receives full verification. Older cached
+source identities are harmlessly refreshed on the first capture after upgrade.
+
 ## Daily installation budget
 
 The default complete installation budget is 5,000,000,000 bytes, configurable with

@@ -446,7 +446,12 @@ class BackupRepository:
                 )
                 stamp = _stamp(physical_source)
                 if physical_source != source:
-                    stamp.extend([str(physical_source), _stamp(source_artifacts.packs.index)])
+                    stamp.extend(
+                        [
+                            str(physical_source),
+                            list(source_artifacts.packs.location("artifact/" + source.name)),
+                        ]
+                    )
                 cache_key = str(source)
                 cached = catalog.get(cache_key)
                 logical_artifact = (
@@ -460,10 +465,29 @@ class BackupRepository:
                     descriptor = source_artifacts.descriptor(source.name)
                     if descriptor:
                         closure = []
-                        for chunk in source_artifacts.physical_paths(descriptor):
-                            if chunk not in chunk_stamps:
-                                chunk_stamps[chunk] = _stamp(chunk)
-                            closure.append([str(chunk), chunk_stamps[chunk]])
+                        for chunk in source_artifacts.logical_paths(descriptor):
+                            physical_chunk = chunk
+                            location = None
+                            if not chunk.is_file():
+                                kind = (
+                                    "json"
+                                    if chunk.parent.parent.name == "json-chunks"
+                                    else "history"
+                                )
+                                location = source_artifacts.packs.location(kind + "/" + chunk.stem)
+                                if location is None:
+                                    raise ValueError("logical backup source chunk is missing")
+                                physical_chunk = source_artifacts.packs.path(location[0])
+                            if physical_chunk not in chunk_stamps:
+                                chunk_stamps[physical_chunk] = _stamp(physical_chunk)
+                            closure.append(
+                                [
+                                    str(chunk),
+                                    str(physical_chunk),
+                                    chunk_stamps[physical_chunk],
+                                    location,
+                                ]
+                            )
                         stamp.append(hashlib.sha256(json.dumps(closure).encode()).hexdigest())
                 immutable = (
                     relative.startswith("artifacts/sha256/")

@@ -356,3 +356,79 @@ def test_new_backups_exclude_rebuildable_filings_but_keep_price_history(tmp_path
     assert "research-cache/disclosures/synthetic.html" not in manifest["files"]
     assert "research-cache/security-prices/history.json" in manifest["files"]
     assert repo.verify(backup["id"])["snapshotRunId"]
+
+
+def packed_source_state(tmp_path):
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+    from trading_max.pack_maintenance import pack_state
+
+    state = state_at(tmp_path / "state")
+    store = ContentAddressedArtifactStore(state / "artifacts", storage_mode="chunked")
+    item = store.put_json(
+        key="synthetic-history.json",
+        payload={"rows": [{"n": i, "text": "synthetic" * 40} for i in range(800)]},
+    )
+    raw = store.content_bytes(item.ref.artifact_id)
+    SnapshotStore(state).publish(scope="accounts", source="test", artifacts=[item])
+    while pack_state(state, tmp_path / "journals")["convertedFiles"]:
+        pass
+    return state, store, item, raw
+
+
+def test_backup_source_cache_survives_unrelated_pack_append_and_index_rebuild(
+    tmp_path, monkeypatch
+):
+    from trading_max.pack_maintenance import pack_state
+
+    state, store, item, raw = packed_source_state(tmp_path)
+    repo = BackupRepository(tmp_path / "repository")
+    repo.create(state, artifact_encoding="logical")
+    reads = []
+    original = repo._logical_artifact
+
+    def counted(source, *args):
+        reads.append(source.name)
+        return original(source, *args)
+
+    monkeypatch.setattr(repo, "_logical_artifact", counted)
+    store.packs.add({"synthetic/unrelated": b"new immutable record"})
+    backup = repo.create(state, artifact_encoding="logical")
+    assert reads == []
+    store.packs.rebuild()
+    backup = repo.create(state, artifact_encoding="logical")
+    assert reads == []
+    added = store.put_json(key="new-observation.json", payload={"value": "synthetic increment"})
+    SnapshotStore(state).publish(scope="accounts", source="test", artifacts=[item, added])
+    while pack_state(state, tmp_path / "journals")["convertedFiles"]:
+        pass
+    backup = repo.create(state, artifact_encoding="logical")
+    assert reads == [added.ref.artifact_id]
+    recovered = tmp_path / "recovered"
+    repo.restore(backup["id"], recovered)
+    assert (recovered / "artifacts/sha256" / item.ref.artifact_id).read_bytes() == raw
+
+
+@pytest.mark.parametrize("damage", ["artifact-locator", "chunk-locator", "chunk-bytes"])
+def test_backup_source_cache_rechecks_its_own_packed_dependencies(tmp_path, damage):
+    state, store, item, raw = packed_source_state(tmp_path)
+    repo = BackupRepository(tmp_path / "repository")
+    good = repo.create(state, artifact_encoding="logical")
+    chunk = store.logical_paths(store.descriptor(item.ref.artifact_id))[0]
+    key = (
+        "artifact/" + item.ref.artifact_id if damage == "artifact-locator" else "json/" + chunk.stem
+    )
+    if damage == "chunk-bytes":
+        path = store.packs.source(key)
+        content = bytearray(path.read_bytes())
+        content[-1] ^= 1
+        path.write_bytes(content)
+    else:
+        with sqlite3.connect(store.packs.index) as db:
+            db.execute("UPDATE records SET size=size+1 WHERE key=?", (key,))
+    before = set(repo.snapshots.iterdir())
+    with pytest.raises((ArtifactIntegrityError, ValueError)):
+        repo.create(state, artifact_encoding="logical")
+    assert set(repo.snapshots.iterdir()) == before
+    recovered = tmp_path / "recovered"
+    repo.restore(good["id"], recovered)
+    assert (recovered / "artifacts/sha256" / item.ref.artifact_id).read_bytes() == raw
