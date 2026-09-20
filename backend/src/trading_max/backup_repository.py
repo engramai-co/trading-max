@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -21,8 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from .backup import DATABASE_NAME, EXCLUDED_COMPONENTS, EXCLUDED_SUFFIXES, _included_files
-from .infrastructure import SnapshotStore
-from .infrastructure.history_chunks import HistoryChunks
+from .infrastructure import ContentAddressedArtifactStore, SnapshotStore, compressed_json
+from .infrastructure.history_chunks import read_descriptor
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BACKUP_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
@@ -99,6 +100,40 @@ class BackupRepository:
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = self.root / ".repository.lock"
 
+    def packed_path(self, digest: str) -> Path:
+        if not _DIGEST.fullmatch(digest):
+            raise ValueError("invalid backup digest")
+        root = self.root / "packed"
+        path = root / (digest + ".json")
+        if root.is_symlink() or path.is_symlink():
+            raise ValueError("packed backup must not be a symlink")
+        return path
+
+    def blob_files(self, digest: str) -> list[Path]:
+        packed = self.packed_path(digest)
+        plain = self.blob_path(digest)
+        if not packed.is_file():
+            return [plain]
+        descriptor = read_descriptor(packed)
+        if not descriptor or descriptor["envelopeSha256"] != digest:
+            raise ValueError("packed backup identity mismatch")
+        store = ContentAddressedArtifactStore(self.root / "packed")
+        paths = [packed, *store.physical_paths(descriptor)]
+        if plain.exists():
+            paths.append(plain)
+        return paths
+
+    def open_blob(self, digest: str):
+        """Read the original file bytes regardless of recovery representation."""
+        packed = self.packed_path(digest)
+        if not packed.is_file():
+            return gzip.open(self.blob_path(digest), "rb")
+        descriptor = read_descriptor(packed)
+        if not descriptor or descriptor["envelopeSha256"] != digest:
+            raise ValueError("packed backup identity mismatch")
+        store = ContentAddressedArtifactStore(self.root / "packed")
+        return io.BytesIO(store.physical_store(descriptor).decode(descriptor))
+
     def blob_path(self, digest: str) -> Path:
         if not _DIGEST.fullmatch(digest):
             raise ValueError("invalid backup digest")
@@ -132,7 +167,7 @@ class BackupRepository:
         sha = digest.hexdigest()
         final = self.blob_path(sha)
         final.parent.mkdir(exist_ok=True, mode=0o700)
-        if final.exists():
+        if final.exists() or self.packed_path(sha).exists():
             temporary.unlink()
         else:
             temporary.chmod(0o600)
@@ -286,14 +321,17 @@ class BackupRepository:
                     relative.startswith("artifacts/sha256/")
                     and bool(re.fullmatch(r"[0-9a-f]{64}(\.meta\.json)?", source.name))
                 ) or (
-                    relative.startswith("artifacts/history-chunks/")
+                    relative.startswith(("artifacts/history-chunks/", "artifacts/json-chunks/"))
                     and bool(re.fullmatch(r"[0-9a-f]{64}\.gz", source.name))
                 )
                 if (
                     immutable
                     and cached
                     and cached.get("stamp") == stamp
-                    and self.blob_path(cached["file"]["sha256"]).is_file()
+                    and (
+                        self.blob_path(cached["file"]["sha256"]).is_file()
+                        or self.packed_path(cached["file"]["sha256"]).is_file()
+                    )
                 ):
                     entry = cached["file"]
                 else:
@@ -359,7 +397,7 @@ class BackupRepository:
                 )
                 if output:
                     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with gzip.open(self.blob_path(entry["sha256"]), "rb") as source:
+                with self.open_blob(entry["sha256"]) as source:
                     handle = output.open("wb") if output else None
                     try:
                         while block := source.read(_BLOCK):
@@ -383,15 +421,19 @@ class BackupRepository:
                     raise ValueError("backup blob checksum mismatch")
                 total += size
                 if index:
-                    indexes[name] = json.loads(metadata)
+                    decoded_index = compressed_json.decode(bytes(metadata))
+                    if len(decoded_index) > 16 * _BLOCK:
+                        raise ValueError("backup snapshot index exceeds limit")
+                    indexes[name] = json.loads(decoded_index)
                 elif history_descriptor:
                     physical[name] = json.loads(metadata)
             format_root = Path(temporary) / "format"
-            history = HistoryChunks(format_root / "artifacts")
+            formats = ContentAddressedArtifactStore(format_root / "artifacts")
             referenced_chunks = {}
             for name, descriptor in physical.items():
                 references = [
-                    p.relative_to(format_root).as_posix() for p in history.paths(descriptor)
+                    p.relative_to(format_root).as_posix()
+                    for p in formats.physical_paths(descriptor)
                 ]
                 if any(reference not in files for reference in references):
                     raise ValueError("backup history references a missing chunk")
@@ -444,7 +486,7 @@ class BackupRepository:
                         target = check_root / _safe_relative(name)
                         target.parent.mkdir(parents=True, exist_ok=True)
                         with (
-                            gzip.open(self.blob_path(files[name]["sha256"]), "rb") as source,
+                            self.open_blob(files[name]["sha256"]) as source,
                             target.open("wb") as output,
                         ):
                             while block := source.read(_BLOCK):

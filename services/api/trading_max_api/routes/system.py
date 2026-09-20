@@ -302,7 +302,7 @@ def latest_artifact(artifact_key: str, request: Request) -> Response:
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     store = app_service(request, "store").immutable_artifacts
-    if artifact.media_type == "application/json" and store.descriptor(path.name) is not None:
+    if artifact.media_type == "application/json" and store.requires_decoding(path.name):
         store.get_ref(path.name)
         return Response(
             content=store.content_bytes(path.name),
@@ -330,7 +330,7 @@ def snapshot_artifact(
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     store = app_service(request, "store").immutable_artifacts
-    if artifact.media_type == "application/json" and store.descriptor(path.name) is not None:
+    if artifact.media_type == "application/json" and store.requires_decoding(path.name):
         store.get_ref(path.name)
         return Response(
             content=store.content_bytes(path.name),

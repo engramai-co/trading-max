@@ -181,6 +181,6 @@ def read_descriptor(path: Path) -> dict | None:
     if len(raw) > 8 * 1024 * 1024:
         raise ValueError("history descriptor exceeds size limit")
     descriptor = json.loads(raw)
-    if descriptor.get("$format") != FORMAT:
+    if descriptor.get("$format") not in {FORMAT, "trading-max-json-v1"}:
         raise ValueError("unsupported history storage format")
     return descriptor

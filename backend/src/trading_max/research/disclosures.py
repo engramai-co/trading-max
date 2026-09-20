@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -17,13 +18,14 @@ from contextlib import suppress
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 import yfinance as yf
 
+from trading_max.infrastructure import compressed_json
+from trading_max.infrastructure.history_chunks import atomic_bytes
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import fingerprint, number
 
@@ -408,7 +410,7 @@ class ResearchEvidenceProvider:
         def load() -> str:
             path = self.root / (hashlib.sha256(url.encode()).hexdigest() + ".html")
             if path.is_file():
-                return path.read_text()
+                return self._read_cache(path)
             with self.document_slots:
                 response = httpx.get(
                     url,
@@ -426,16 +428,15 @@ class ResearchEvidenceProvider:
         return self.documents.get_or_compute(url, load)
 
     @staticmethod
+    def _read_cache(path: Path) -> str:
+        return compressed_json.decode(path.read_bytes()).decode("utf-8")
+
+    @staticmethod
     def _write_cache(path: Path, content: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with NamedTemporaryFile(mode="w", dir=path.parent, suffix=".tmp", delete=False) as handle:
-            temporary = Path(handle.name)
-            try:
-                handle.write(content)
-                handle.flush()
-                temporary.replace(path)
-            finally:
-                temporary.unlink(missing_ok=True)
+        raw = content.encode("utf-8")
+        if os.environ.get("TRADING_MAX_ARTIFACT_STORAGE", "legacy") in {"compressed", "chunked"}:
+            raw = compressed_json.encode(raw)
+        atomic_bytes(path, raw)
 
     def _filing(self, filing: dict[str, Any]) -> dict[str, Any] | None:
         form = filing["type"]
@@ -447,7 +448,7 @@ class ResearchEvidenceProvider:
         def load() -> dict[str, Any]:
             path = self.root / (key + ".parsed.json")
             with suppress(OSError, ValueError):
-                saved = json.loads(path.read_text())
+                saved = json.loads(self._read_cache(path))
                 if all(k in saved for k in ("periods", "segments", "observations", "publishedAt")):
                     return saved
             parsed = parse_filing(
@@ -473,7 +474,7 @@ class ResearchEvidenceProvider:
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
         cache = self.root / (fingerprint([ticker, "evidence-v8"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
-            return json.loads(cache.read_text())
+            return json.loads(self._read_cache(cache))
         proxy = yf.Ticker(ticker)
         result: dict[str, Any] = {
             "asOf": datetime.now(UTC).isoformat(),
@@ -652,5 +653,5 @@ class ResearchEvidenceProvider:
         except Exception as exc:
             result["status"]["news"] = {"state": "missing", "reason": type(exc).__name__}
         self.root.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps(result, default=str))
+        self._write_cache(cache, json.dumps(result, default=str))
         return result

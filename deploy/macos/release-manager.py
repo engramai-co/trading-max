@@ -45,6 +45,36 @@ def pin_node_runtime(release: Path, source: str | None = None) -> Path:
     return retained
 
 
+def trim_build_dependencies(release: Path) -> None:
+    """Keep a self-contained standalone server; discard only build-time outputs."""
+    web = release / "apps/web"
+    next_root = web / ".next"
+    standalone = next_root / "standalone"
+    required = (
+        standalone / "server.js",
+        standalone / "node_modules/next/package.json",
+        standalone / ".next/BUILD_ID",
+        standalone / ".next/static",
+        standalone / "public",
+    )
+    if not all(path.exists() for path in required):
+        raise RuntimeError("standalone runtime is incomplete; refusing to trim build dependencies")
+    for root, directories, names in os.walk(standalone, followlinks=False):
+        for name in directories + names:
+            path = Path(root) / name
+            if path.is_symlink() and not path.resolve().is_relative_to(standalone):
+                raise RuntimeError("standalone runtime depends on an external build path")
+    for path in [web / "node_modules", *next_root.iterdir()]:
+        if path.name in {"standalone", "BUILD_ID"}:
+            continue
+        if path.is_symlink():
+            path.unlink()
+        elif path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+
 def expand_plist_paths(value, service: Path, home: Path):
     """Expand parsed values so XML-special characters in paths stay valid."""
     if isinstance(value, str):
@@ -164,7 +194,7 @@ class Deployment:
         self.run("git", "checkout", "--detach", self.target, cwd=self.candidate)
         node = pin_node_runtime(self.candidate, self.environment.get("TRADING_MAX_NODE_BINARY"))
         self.environment["PATH"] = str(node.parent) + os.pathsep + self.environment.get("PATH", "")
-        self.run("uv", "sync", "--all-packages", "--frozen", cwd=self.candidate)
+        self.run("uv", "sync", "--all-packages", "--no-dev", "--frozen", cwd=self.candidate)
         web = self.candidate / "apps" / "web"
         self.run("npm", "ci", "--no-audit", "--no-fund", cwd=web)
         self.run("npm", "run", "build", cwd=web)
@@ -177,6 +207,7 @@ class Deployment:
             raise RuntimeError("candidate build is incomplete")
         if not (self.active / "apps/web/.next/BUILD_ID").is_file():
             raise RuntimeError("previous web build is unavailable for rollback")
+        trim_build_dependencies(self.candidate)
 
     def capture_configuration(self) -> None:
         self.private.mkdir(parents=True, mode=0o700)

@@ -253,7 +253,7 @@ class ServiceRetention:
             # All existing manifests root blobs, even those proposed for retirement.
             # A later plan collects orphan blobs after the grace period.
             for entry in manifest["files"].values():
-                referenced.add(self.repository.blob_path(entry["sha256"]))
+                referenced.update(self.repository.blob_files(entry["sha256"]))
             path = self.repository.manifest_path(name)
             if name not in keep_backups and path.stat().st_mtime < self.cutoff:
                 candidates.append(("backup-manifest", path))
@@ -267,6 +267,24 @@ class ServiceRetention:
                     raise ValueError("unknown backup blob")
                 if path not in referenced and path.stat().st_mtime < self.cutoff:
                     candidates.append(("backup-blob", path))
+        # Packed backup chunks can be shared by multiple original file blobs.
+        # Only known representation paths outside the retained closure qualify.
+        packed = self.repository.root / "packed"
+        if packed.is_symlink():
+            raise ValueError("packed backup directory must not be a symlink")
+        for path in packed.rglob("*") if packed.exists() else []:
+            if path.is_symlink():
+                raise ValueError("packed backup files must not be symlinks")
+            if not path.is_file():
+                continue
+            relative = path.relative_to(packed).as_posix()
+            if not re.fullmatch(
+                r"[0-9a-f]{64}\.json|(?:history|json)-chunks/[0-9a-f]{2}/[0-9a-f]{64}\.gz",
+                relative,
+            ):
+                raise ValueError("unknown packed backup file")
+            if path not in referenced and path.stat().st_mtime < self.cutoff:
+                candidates.append(("backup-blob", path))
         return candidates
 
     def plan(self) -> dict:
