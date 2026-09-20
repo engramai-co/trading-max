@@ -148,3 +148,53 @@ def test_packed_cache_is_bounded_and_keeps_claims_and_source_identity(tmp_path, 
     os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
     with pytest.raises(ValueError):
         read("json/0")
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+def test_logical_backup_capture_reuses_source_chunks_with_a_fresh_cache(
+    tmp_path, monkeypatch, sealed
+):
+    import sqlite3
+
+    from trading_max.backup_repository import BackupRepository
+    from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+    from trading_max.pack_maintenance import pack_state
+
+    state = tmp_path / "state"
+    state.mkdir()
+    with sqlite3.connect(state / "trading_max.db") as db:
+        db.execute("CREATE TABLE observations(value INTEGER)")
+    store = ContentAddressedArtifactStore(state / "artifacts", storage_mode="chunked")
+    series = [{"n": i, "text": "synthetic" * 80} for i in range(512)]
+    items = [
+        store.put_json(key=f"synthetic-{i}.json", payload={"series": series}) for i in range(4)
+    ]
+    SnapshotStore(state, artifacts=store).publish(scope="accounts", source="test", artifacts=items)
+    if sealed:
+        while pack_state(state, tmp_path / "journals")["convertedFiles"]:
+            pass
+    reads = []
+    original = verified_chunks.read_verified
+    packed_read = ObjectPacks.read
+
+    def counted(path, size, digest):
+        if path.is_relative_to(state):
+            reads.append(str(path))
+        return original(path, size, digest)
+
+    def counted_pack(pool, key):
+        if pool.root == store.packs.root and key.startswith(("json/", "history/")):
+            reads.append(key)
+        return packed_read(pool, key)
+
+    monkeypatch.setattr(verified_chunks, "read_verified", counted)
+    monkeypatch.setattr(ObjectPacks, "read", counted_pack)
+    for index in range(2):
+        reads.clear()
+        repo = BackupRepository(tmp_path / f"recovery-{index}")
+        assert repo.create(state, artifact_encoding="logical")["snapshotRunId"]
+        physical_reads = (
+            [r for r in reads if r.startswith(("json/", "history/"))] if sealed else reads
+        )
+        assert physical_reads
+        assert len(physical_reads) == len(set(physical_reads))

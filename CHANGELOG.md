@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-09-21
+
+### Fixed
+
+- Reuse verified source chunks during logical backup capture as well as verification. Keep caches bounded and separate for each operation and storage location, avoiding repeated reads of shared live history without changing independent recovery checks.
+
 ## [1.6.4] - 2026-09-21
 
 ### Fixed
