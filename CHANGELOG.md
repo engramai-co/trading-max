@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-09-21
+
+### Fixed
+
+- Read an artifact’s sealed chunks in physical block groups before restoring logical order, reducing repeated decompression during backup and history reads. Check the total selected byte budget before loading blocks, retain bounded verified caches, and preserve full original-envelope validation and corruption detection.
+
 ## [1.6.5] - 2026-09-21
 
 ### Fixed

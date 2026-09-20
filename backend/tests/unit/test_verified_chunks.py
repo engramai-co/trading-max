@@ -102,6 +102,14 @@ def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeyp
         return packed_read(pool, key)
 
     monkeypatch.setattr(ObjectPacks, "read", counted_pack)
+    packed_many = ObjectPacks.read_many
+
+    def counted_many(pool, keys, **kwargs):
+        if pool.root == repo.packed_store.packs.root:
+            pack_reads.extend(key for key in keys if key.startswith(("json/", "history/")))
+        return packed_many(pool, keys, **kwargs)
+
+    monkeypatch.setattr(ObjectPacks, "read_many", counted_many)
     for _ in range(2):
         reads.clear()
         pack_reads.clear()
@@ -113,7 +121,8 @@ def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeyp
         assert len(packed_reads) == len(set(packed_reads))
 
 
-def test_packed_cache_is_bounded_and_keeps_claims_and_source_identity(tmp_path, monkeypatch):
+@pytest.mark.parametrize("batch", [False, True])
+def test_packed_cache_is_bounded_and_keeps_claims_and_source_identity(tmp_path, monkeypatch, batch):
     pool = ObjectPacks(tmp_path / "packs")
     items = {f"json/{i}": bytes([i]) * 90 for i in range(4)}
     pool.add(items)
@@ -125,10 +134,20 @@ def test_packed_cache_is_bounded_and_keeps_claims_and_source_identity(tmp_path, 
         return original(key)
 
     monkeypatch.setattr(pool, "read", counted)
+    original_many = pool.read_many
+
+    def counted_many(keys, **kwargs):
+        reads.extend(keys)
+        return original_many(keys, **kwargs)
+
+    monkeypatch.setattr(pool, "read_many", counted_many)
     cache = VerifiedChunkCache(max_bytes=200, max_entries=2)
 
     def read(key, size=90):
-        return cache.read_packed(pool, key, size, hashlib.sha256(items[key]).hexdigest())
+        digest = hashlib.sha256(items[key]).hexdigest()
+        if batch:
+            return cache.read_packed_many(pool, [(key, size, digest)])[key]
+        return cache.read_packed(pool, key, size, digest)
 
     assert read("json/0") == read("json/0") == items["json/0"]
     assert reads == ["json/0"]
@@ -189,6 +208,14 @@ def test_logical_backup_capture_reuses_source_chunks_with_a_fresh_cache(
 
     monkeypatch.setattr(verified_chunks, "read_verified", counted)
     monkeypatch.setattr(ObjectPacks, "read", counted_pack)
+    packed_many = ObjectPacks.read_many
+
+    def counted_many(pool, keys, **kwargs):
+        if pool.root == store.packs.root:
+            reads.extend(key for key in keys if key.startswith(("json/", "history/")))
+        return packed_many(pool, keys, **kwargs)
+
+    monkeypatch.setattr(ObjectPacks, "read_many", counted_many)
     for index in range(2):
         reads.clear()
         repo = BackupRepository(tmp_path / f"recovery-{index}")
@@ -198,3 +225,80 @@ def test_logical_backup_capture_reuses_source_chunks_with_a_fresh_cache(
         )
         assert physical_reads
         assert len(physical_reads) == len(set(physical_reads))
+
+
+@pytest.mark.parametrize("family", ["json", "history"])
+def test_envelope_batches_cross_pack_chunks_and_keeps_loose_corruption_visible(
+    tmp_path, monkeypatch, family
+):
+    from datetime import UTC, datetime, timedelta
+
+    from trading_max.infrastructure import ArtifactIntegrityError, ContentAddressedArtifactStore
+
+    store = ContentAddressedArtifactStore(
+        tmp_path / "artifacts", storage_mode="chunked", history_mode="chunked"
+    )
+    if family == "json":
+        key = "synthetic.json"
+        payload = {"rows": [{"n": i, "text": "synthetic" * 32} for i in range(2500)]}
+    else:
+        key = "account/nav/valuation_history.json"
+        payload = {
+            "points": [
+                {
+                    "bucket_at": (datetime(2025, 1, 1, tzinfo=UTC) + timedelta(days=i)).isoformat(),
+                    "n": i,
+                    "source_artifact_ids": ["synthetic"],
+                }
+                for i in range(100)
+            ]
+        }
+    ref = store.put_json(key=key, payload=payload).ref
+    expected = store.content_bytes(ref.artifact_id)
+    descriptor = store.descriptor(ref.artifact_id)
+    paths = store.logical_paths(descriptor)
+    assert len(paths) > 4
+    records = {family + "/" + p.stem: gzip.decompress(p.read_bytes()) for p in paths}
+    keys = list(records)
+    store.packs.add({key: records[key] for key in keys[::2]})
+    store.packs.add({key: records[key] for key in keys[1::2]})
+    for path in paths:
+        path.unlink()
+    store.packs.cache_bytes = 0
+    store.packs._cache.clear()
+    store.packs._cached_bytes = 0
+    loads = []
+    original = store.packs._load
+
+    def counted(digest):
+        loads.append(digest)
+        return original(digest)
+
+    monkeypatch.setattr(store.packs, "_load", counted)
+    assert store.content_bytes(ref.artifact_id) == expected
+    assert len(loads) == len(set(loads)) == 2
+    paths[0].write_bytes(b"corrupt loose alias")
+    with pytest.raises(ArtifactIntegrityError):
+        store.content_bytes(ref.artifact_id)
+
+
+def test_batch_budget_rejects_false_size_before_loading_blocks(tmp_path, monkeypatch):
+    pool = ObjectPacks(tmp_path / "packs")
+    raw = b"synthetic" * 100
+    digest = hashlib.sha256(raw).hexdigest()
+    key = "json/" + digest
+    pool.add({key: raw})
+    loads = []
+    original = pool._load
+
+    def counted(value):
+        loads.append(value)
+        return original(value)
+
+    monkeypatch.setattr(pool, "_load", counted)
+    with pytest.raises(ValueError, match="byte budget"):
+        verified_chunks.read_packable_chunks(
+            [(tmp_path / "absent.gz", 1, digest, key)], pool, max_bytes=1
+        )
+    assert not loads
+    assert pool.read_many([key, key], max_bytes=len(raw)) == [raw, raw]

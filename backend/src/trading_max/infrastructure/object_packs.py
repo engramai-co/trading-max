@@ -275,12 +275,14 @@ class ObjectPacks:
                 raise ValueError("object pack locator disagrees with sealed records")
             return raw[offset : offset + size]
 
-    def read_many(self, keys: list[str]) -> list[bytes]:
+    def read_many(self, keys: list[str], *, max_bytes: int | None = None) -> list[bytes]:
         """Batch a manifest's references and decode each sealed block once."""
         if len(keys) > 1_000_000:
             raise ValueError("too many packed record references")
         if not keys:
             return []
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0):
+            raise ValueError("invalid packed read byte budget")
         for key in keys:
             safe_key(key)
         with self._lock:
@@ -288,6 +290,8 @@ class ObjectPacks:
             if reader is None:
                 raise FileNotFoundError(keys[0])
             grouped = {}
+            seen = set()
+            total = 0
             for offset in range(0, len(keys), 400):
                 part = keys[offset : offset + 400]
                 placeholders = ",".join("?" for _ in part)
@@ -298,6 +302,13 @@ class ObjectPacks:
                     part,
                 )
                 for key, pack, start, size, digest in rows:
+                    if key not in seen:
+                        if size < 0:
+                            raise ValueError("invalid packed record size")
+                        total += size
+                        seen.add(key)
+                        if max_bytes is not None and total > max_bytes:
+                            raise ValueError("packed records exceed read byte budget")
                     grouped.setdefault(pack, {})[key] = (start, size, digest)
             result = {}
             for pack, records in grouped.items():
