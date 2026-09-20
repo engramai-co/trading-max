@@ -309,10 +309,12 @@ class ServiceRetention:
             }
 
     def maintain_repository(self, verified_backup_id: str) -> dict:
-        """Nightly bounded retention; runtime/archive cleanup stays an operator action."""
+        """Nightly bounded cleanup after a verified backup; protect rollback runtimes."""
         plan = self.plan()
         plan["items"] = [
-            item for item in plan["items"] if item["kind"] in {"backup-manifest", "backup-blob"}
+            item
+            for item in plan["items"]
+            if item["kind"] in {"backup-manifest", "backup-blob", "release"}
         ]
         plan["candidateBytes"] = sum(item["bytes"] for item in plan["items"])
         plan_path = self.service / "maintenance-plans" / (verified_backup_id + ".json")

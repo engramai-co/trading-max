@@ -310,6 +310,11 @@ class BackupRepository:
             files = {DATABASE_NAME: self._store(database, scratch)}
             for source in _included_files(state):
                 relative = source.relative_to(state).as_posix()
+                # Public filings and parser result caches can be fetched again.
+                # Keep old manifests/imports fully readable, but do not perpetuate
+                # this disposable cache in every new recovery point.
+                if relative.startswith("research-cache/disclosures/"):
+                    continue
                 _safe_relative(relative)
                 stamp = _stamp(source)
                 cache_key = str(source)

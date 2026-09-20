@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.9] - 2026-09-20
+
+### Fixed
+
+- Account for the complete macOS installation with file and allocated-byte
+  totals, a configurable 5 GB budget, bounded daily growth history and capacity
+  thresholds visible in operator diagnostics.
+- Retire old unprotected runtimes during verified nightly backup maintenance,
+  keeping current and both rollback runtimes, age gates and bounded removals.
+- Bound retrievable filing caches and omit them from new recovery copies while
+  preserving original broker observations, price history and old backup contracts.
+
 ## [1.5.8] - 2026-09-20
 
 ### Fixed

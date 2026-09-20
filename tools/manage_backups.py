@@ -8,6 +8,7 @@ from pathlib import Path
 
 from trading_max.backup_repository import BackupRepository
 from trading_max.service_retention import ServiceRetention
+from trading_max.storage_budget import nightly_storage
 
 
 def main() -> int:
@@ -34,7 +35,11 @@ def main() -> int:
             raise ValueError("nightly retention must use this service's backup repository")
         result = repository.create(args.state_root, label=args.label)
         if maintenance:
-            result["retention"] = maintenance.maintain_repository(result["id"])
+            try:
+                result["retention"] = maintenance.maintain_repository(result["id"])
+            finally:
+                # A blocked cleanup must not hide continuing capacity growth.
+                result["storage"] = nightly_storage(maintenance.service, args.state_root)
     elif args.command == "import-archive":
         result = repository.import_archive(args.archive, max_bytes=args.max_bytes)
     elif args.command == "verify":

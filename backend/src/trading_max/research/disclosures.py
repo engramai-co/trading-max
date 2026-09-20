@@ -410,6 +410,8 @@ class ResearchEvidenceProvider:
         def load() -> str:
             path = self.root / (hashlib.sha256(url.encode()).hexdigest() + ".html")
             if path.is_file():
+                with suppress(OSError):
+                    os.utime(path, None)  # Immutable document recency, not result-cache TTL.
                 return self._read_cache(path)
             with self.document_slots:
                 response = httpx.get(

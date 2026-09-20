@@ -484,3 +484,30 @@ def test_init_alias_uses_safe_noninteractive_service_default(
         == 0
     )
     assert captured[0].service_action == "skip"
+
+
+@pytest.mark.parametrize("used,expected", [(3_000_000_000, 0), (5_100_000_000, 1)])
+def test_doctor_reports_installation_capacity_without_changing_records(
+    tmp_path, monkeypatch, capsys, used, expected
+):
+    import json
+
+    monkeypatch.setattr(cli, "inspect_source_checkout", _clean_source)
+    state_root = tmp_path / "Trading Max"
+    assert main(["setup", "--state-root", str(state_root)]) == 0
+    capacity = state_root / "runtime/storage-budget.json"
+    capacity.parent.mkdir(parents=True, exist_ok=True)
+    capacity.write_text(
+        json.dumps(
+            {
+                "usedBytes": used,
+                "budgetBytes": 5_000_000_000,
+                "status": "ok" if used < 5_000_000_000 else "over-budget",
+                "measuredAt": "2026-09-20T12:00:00+00:00",
+            }
+        )
+    )
+    before = capacity.read_bytes()
+    assert main(["doctor", "--state-root", str(state_root)]) == expected
+    assert "installation storage:" in capsys.readouterr().out
+    assert capacity.read_bytes() == before

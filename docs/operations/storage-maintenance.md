@@ -53,10 +53,11 @@ monthly representatives, as well as backups referenced by protected deployments.
 Legacy deployment archives retain at least the newest three plus weekly/monthly
 representatives and protected rollback copies.
 
-The nightly job automatically applies only backup-manifest and orphan-backup-blob
-retention, after its new backup passes verification. Each night is bounded to
-64 objects and 2 GB; its plan and removal journal are retained. Release directories,
-legacy archives and rehearsals still require the reviewed operator procedure below.
+The nightly job applies backup-manifest, orphan-backup-blob and old unprotected
+release retention after its new backup passes verification. Each night is bounded
+to 64 objects and 2 GB; its plan and removal journal are retained. Current and both
+rollback runtimes remain protected. Legacy archives and rehearsals still require
+the reviewed operator procedure below.
 An explicitly overridden backup destination is not automatically pruned.
 
 Candidates must be at least 24 hours old. Unknown directories, application
@@ -151,3 +152,35 @@ failed replacement is removed so it cannot hide the valid original recovery
 blob. Re-running a completed batch is safe; repeated observations are shared,
 not interpolated or downsampled. Directory entries are synced after publication
 so a crash cannot publish a descriptor before its durable block writes.
+
+
+## Daily installation budget
+
+The default complete installation budget is 5,000,000,000 bytes, configurable with
+`TRADING_MAX_STORAGE_BUDGET_BYTES`. The daily census includes live state, all
+recovery copies, all retained releases, service tools/rehearsals, logs and the
+legacy archive directory. It measures both file lengths and allocated blocks,
+deduplicates hard links and does not count the app symlink again. Unclassified
+files inside the service directory remain included. Global shared developer-tool
+caches outside these roots are not attributed to this installation.
+
+The nightly repository workflow also limits the publicly retrievable filing
+cache to 250 MB, with a 24-hour grace period and a per-run maximum of 256 files or
+128 MiB. Recently accessed filing documents are retained first. Broker exports,
+original account observations, quote history and application snapshots are never
+cache-eviction candidates. New backups omit only the disposable disclosures
+cache; old recovery manifests and archives retain their exact restore contract.
+
+Reports live in `maintenance/storage-budget/latest.json` under the service root
+and `runtime/storage-budget.json` under state. `trading-max doctor` shows the last
+census and reports an exceeded budget. A bounded 90-day history estimates growth
+from seven-day observations. Thresholds are watch at 70%, warning at 80%, critical
+at 90%, and over-budget above 100%. A census can be refreshed with
+`tools/storage_budget.py --service-root SERVICE --state-root STATE`.
+
+This is a capacity policy, not permission to erase permanent financial records.
+If unique records eventually approach the budget, archive or expand storage
+before the reserve is exhausted. Maintenance must report any remaining excess
+rather than silently downsample observations or stop account ingestion. Fresh
+builds and recovery validation require temporary headroom beyond normal steady
+state; do not provision a filesystem with only 5 GB of free space.
