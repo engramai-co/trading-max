@@ -95,13 +95,14 @@ def test_cleanup_is_bounded_and_preserves_current_rollback_and_unknown_paths(tmp
     assert not Path(journal["items"][0]["quarantine"]).exists()
 
 
-def test_one_cleanup_batch_can_retire_multiple_shared_runtime_aliases(tmp_path):
+@pytest.mark.parametrize("dependency", [False, True])
+def test_one_cleanup_batch_can_retire_multiple_shared_runtime_aliases(tmp_path, dependency):
     service, releases, backup = host(tmp_path)
     content = b"synthetic immutable Node executable"
     pool = service / "toolchains/node-blobs" / hashlib.sha256(content).hexdigest()
     pool.parent.mkdir(parents=True)
     pool.write_bytes(content)
-    pool.chmod(0o555)
+    pool.chmod(0o444 if dependency else 0o555)
     for release in releases:
         (release / ".node-runtime").mkdir()
         os.link(pool, release / ".node-runtime/node")
@@ -300,3 +301,23 @@ def test_nightly_keeps_linked_node_and_retires_only_old_unreferenced_verified_bi
     maintenance.maintain_repository(backup["id"])
     assert paths[0].exists() and paths[2].exists() and unknown.exists()
     assert not paths[1].exists()
+
+
+def test_nightly_reclaims_only_unlinked_old_dependency_blob(tmp_path):
+    service, releases, backup = host(tmp_path)
+    from trading_max.shared_runtime import share_dependencies
+
+    release = releases[-1]
+    dependency = release / ".venv/lib/python3.12/site-packages/pkg/data"
+    dependency.parent.mkdir(parents=True)
+    dependency.write_bytes(b"synthetic dependency " * 1000)
+    pool = service / "toolchains/package-blobs"
+    share_dependencies(release, pool)
+    blob = next(pool.iterdir())
+    os.utime(blob, (0, 0))
+    maintenance = ServiceRetention(service)
+    assert not any(p["kind"] == "runtime-dependency" for p in maintenance.plan()["items"])
+    dependency.unlink()
+    assert any(p["kind"] == "runtime-dependency" for p in maintenance.plan()["items"])
+    maintenance.maintain_repository(backup["id"])
+    assert not blob.exists()

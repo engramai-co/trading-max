@@ -62,3 +62,22 @@ class VerifiedChunkCache:
             self.entries[key] = raw
             self.bytes += len(raw)
         return raw
+
+
+def read_packable_chunk(path: Path, size: int, digest: str, packs, key: str, cache=None) -> bytes:
+    """A concurrently retired alias can only fall through on ENOENT, never corruption."""
+    reader = cache.read if cache else read_verified
+    try:
+        return reader(path, size, digest)
+    except (ValueError, FileNotFoundError) as exc:
+        if not isinstance(exc, FileNotFoundError) and not isinstance(
+            exc.__cause__, FileNotFoundError
+        ):
+            raise
+    try:
+        raw = packs.read(key)
+    except OSError as exc:
+        raise ValueError("packed chunk cannot be read") from exc
+    if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("packed chunk checksum mismatch")
+    return raw
