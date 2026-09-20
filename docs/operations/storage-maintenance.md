@@ -89,9 +89,10 @@ the journal and any remaining quarantine data before resuming maintenance;
 subsequent cleanup refuses to proceed while a journal remains unfinished.
 Never remove an arbitrary directory based only on its size or age.
 
-Raw history retention and future immutable-history chunking require separate
-data-migration validation. This maintenance does not shorten market or broker
-history, interpolate missing observations, or alter financial calculations.
+Recovery retention and physical history conversion are separate operations.
+The lossless chunk migration below has its own reader, backup and byte-parity
+gates. Routine retention does not shorten market or broker history, interpolate
+missing observations, or alter financial calculations.
 
 ## Import an existing recovery date
 
