@@ -1,6 +1,6 @@
 [project]
 name = "trading-max-backend"
-version = "1.5.14"
+version = "1.6.0"
 description = "Installable domain, application, and worker package for Trading Max Portfolio"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
@@ -15,6 +15,7 @@ dependencies = [
     "pypdf>=6.15,<7",
     "xlrd>=2.0,<3",
     "yfinance>=0.2.54",
+    "zstandard>=0.25,<0.26",
 ]
 
 [project.urls]

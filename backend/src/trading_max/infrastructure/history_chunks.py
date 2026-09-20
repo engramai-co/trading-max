@@ -5,13 +5,13 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-import os
 import re
-import tempfile
 from datetime import UTC, datetime
 from itertools import groupby
 from pathlib import Path
 
+from .durable_files import atomic_bytes, durable_directory, sync_directory  # noqa: F401
+from .object_packs import ObjectPacks
 from .verified_chunks import VerifiedChunkCache, read_verified
 
 FORMAT = "trading-max-history-v1"
@@ -26,42 +26,6 @@ def canonical(value: object) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 
 
-def sync_directory(path: Path) -> None:
-    if os.name != "nt":
-        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-
-
-def durable_directory(path: Path) -> None:
-    missing = []
-    parent = path
-    while not parent.exists():
-        missing.append(parent)
-        parent = parent.parent
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    for directory in reversed(missing):
-        sync_directory(directory.parent)
-
-
-def atomic_bytes(path: Path, content: bytes) -> None:
-    durable_directory(path.parent)
-    if path.is_symlink():
-        raise ValueError("history storage must not follow symlinks")
-    fd, temporary = tempfile.mkstemp(prefix=".pending-", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        Path(temporary).replace(path)
-        sync_directory(path.parent)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
-
-
 def _utc_day(point: dict) -> str:
     instant = datetime.fromisoformat(point["bucket_at"])
     if instant.tzinfo is None:
@@ -70,9 +34,10 @@ def _utc_day(point: dict) -> str:
 
 
 class HistoryChunks:
-    def __init__(self, artifact_root: Path):
+    def __init__(self, artifact_root: Path, *, packs: ObjectPacks | None = None):
         self.root = artifact_root / "history-chunks"
         self.read_cache: VerifiedChunkCache | None = None
+        self.packs = packs or ObjectPacks(artifact_root / "object-packs")
 
     def path(self, digest: str) -> Path:
         if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
@@ -89,7 +54,7 @@ class HistoryChunks:
         digest = hashlib.sha256(raw).hexdigest()
         block = {"sha256": digest, "bytes": len(raw)}
         path = self.path(digest)
-        if path.exists():
+        if path.exists() or self.packs.contains("history/" + digest):
             self._read(block)  # Never reuse already-corrupt content.
         else:
             atomic_bytes(path, gzip.compress(raw, compresslevel=3, mtime=0))
@@ -100,7 +65,17 @@ class HistoryChunks:
         if type(size) is not int or not 0 <= size <= _MAX_BLOCK_BYTES:
             raise ValueError("invalid history block size")
         reader = self.read_cache.read if self.read_cache else read_verified
-        raw = reader(self.path(block["sha256"]), size, block["sha256"])
+        digest = block["sha256"]
+        path = self.path(digest)
+        if path.is_file():
+            raw = reader(path, size, digest)
+        else:
+            try:
+                raw = self.packs.read("history/" + digest)
+            except OSError as exc:
+                raise ValueError("packed chunk cannot be read") from exc
+            if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("packed chunk checksum mismatch")
         values = json.loads(raw)
         if not isinstance(values, list):
             raise ValueError("history block must contain an array")

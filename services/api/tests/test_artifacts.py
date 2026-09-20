@@ -118,16 +118,23 @@ def test_latest_manifest_cache_tracks_cross_process_publication(tmp_path: Path) 
     ]
 
 
-@pytest.mark.parametrize("storage_mode", ["history", "compressed", "chunked"])
+@pytest.mark.parametrize(
+    "storage_mode",
+    ["history", "compressed", "chunked", "packed-history", "packed-compressed", "packed-chunked"],
+)
 def test_history_download_returns_original_envelope_not_storage_descriptor(
     tmp_path: Path, storage_mode
 ):
+    import gzip
+
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from trading_max.infrastructure import ContentAddressedArtifactStore
 
     from services.api.trading_max_api.routes.system import router
 
+    packed = storage_mode.startswith("packed-")
+    storage_mode = storage_mode.removeprefix("packed-")
     store = ArtifactStore(tmp_path / "state")
     writer = ContentAddressedArtifactStore(
         store.data_root / "artifacts",
@@ -142,6 +149,16 @@ def test_history_download_returns_original_envelope_not_storage_descriptor(
         * 128
     }
     item = writer.put_json(key=key, payload=payload)
+    if packed:
+        records = {"artifact/" + item.ref.artifact_id: item.path.read_bytes()}
+        paths = [item.path]
+        for directory, prefix in [("json-chunks", "json"), ("history-chunks", "history")]:
+            for path in (writer.root / directory).rglob("*.gz"):
+                records[prefix + "/" + path.stem] = gzip.decompress(path.read_bytes())
+                paths.append(path)
+        writer.packs.add(records)
+        for path in paths:
+            path.unlink()
     manifest = store.publish_typed(scope="accounts", source="fixture", artifacts=[item])
     original = writer.content_bytes(item.ref.artifact_id)
     assert manifest.artifacts[0].size_bytes == len(original)

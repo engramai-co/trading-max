@@ -31,7 +31,7 @@ def main() -> int:
             result = readers
         else:
             repository = BackupRepository(service / "backups/repository")
-            manifest = json.loads(repository.manifest_path(args.verified_backup_id).read_text())
+            manifest = repository.read_manifest(args.verified_backup_id)
             state = args.state_root.resolve(strict=True)
             if manifest.get("sourceState") != str(state):
                 raise ValueError("recovery snapshot does not belong to this state")
