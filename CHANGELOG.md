@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-09-21
+
+### Fixed
+
+- Reuse verified logical chunks while checking or restoring packed backups, avoiding repeated decompression of shared history blocks. Keep operation-local memory bounds, source-change detection and complete original-file checksum verification.
+
 ## [1.6.3] - 2026-09-21
 
 ### Fixed
