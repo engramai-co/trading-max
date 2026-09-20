@@ -15,6 +15,34 @@ def payload():
     }
 
 
+def test_coarser_layout_reduces_allocation_and_both_layouts_remain_readable(tmp_path, monkeypatch):
+    from trading_max.infrastructure import json_chunks
+
+    source = ContentAddressedArtifactStore(tmp_path / "source")
+    item = source.put_json(
+        key="research/synthetic.json",
+        payload={"rows": [{"n": i, "text": "synthetic" + str(i) * 250} for i in range(1024)]},
+    )
+    raw = item.path.read_bytes()
+    small = json_chunks.JsonChunks(tmp_path / "small")
+    large = json_chunks.JsonChunks(tmp_path / "large")
+    monkeypatch.setattr(json_chunks, "TARGET_BYTES", 32 * 1024)
+    small_descriptor = small.encode(raw)
+    monkeypatch.setattr(json_chunks, "TARGET_BYTES", 128 * 1024)
+    large_descriptor = large.encode(raw)
+    assert small.decode(small_descriptor) == raw
+    monkeypatch.setattr(json_chunks, "TARGET_BYTES", 32 * 1024)
+    assert large.decode(large_descriptor) == raw
+
+    # Model ordinary 4 KiB block allocation independently of filesystem compression.
+    def allocated(writer):
+        return sum(
+            ((path.stat().st_size + 4095) // 4096) * 4096 for path in writer.root.rglob("*.gz")
+        )
+
+    assert allocated(large) < allocated(small)
+
+
 def test_shared_subtrees_retain_exact_envelope_and_append_reuses_prior_data(tmp_path):
     store = ContentAddressedArtifactStore(tmp_path, storage_mode="chunked")
     data = payload()

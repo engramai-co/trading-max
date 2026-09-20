@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.11] - 2026-09-20
+
+### Fixed
+
+- Reduce small-file allocation in shared JSON storage with coarser lossless blocks while preserving compatibility with existing descriptors and retained readers.
+
 ## [1.5.10] - 2026-09-20
 
 ### Fixed
