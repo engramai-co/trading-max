@@ -8,7 +8,9 @@ Application-state rollback is deliberately separate from code rollback.
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
+import hashlib
 import json
 import logging
 import os
@@ -28,7 +30,9 @@ SERVICES = ("api", "web", "worker", "backup")
 LOGGER = logging.getLogger(__name__)
 
 
-def pin_node_runtime(release: Path, source: str | None = None) -> Path:
+def pin_node_runtime(
+    release: Path, source: str | None = None, *, shared: Path | None = None
+) -> Path:
     """Retain the supported executable used for both build and service runtime."""
     executable = Path(source or shutil.which("node") or "").resolve()
     if not executable.is_file() or not os.access(executable, os.X_OK):
@@ -41,7 +45,48 @@ def pin_node_runtime(release: Path, source: str | None = None) -> Path:
     directory = release / ".node-runtime"
     directory.mkdir(mode=0o700)
     retained = directory / "node"
-    shutil.copy2(executable, retained)
+    if shared is None:
+        shutil.copy2(executable, retained)
+        return retained
+    if shared.is_symlink() or shared.parent.is_symlink():
+        raise RuntimeError("shared Node runtime directory must not be a symlink")
+    shared.mkdir(parents=True, mode=0o700, exist_ok=True)
+
+    def digest(path):
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+
+    sha = digest(executable)
+    blob = shared / sha
+    if blob.is_symlink():
+        raise RuntimeError("shared Node runtime must not be a symlink")
+    if not blob.exists():
+        fd, name = tempfile.mkstemp(prefix=".pending-", dir=shared)
+        os.close(fd)
+        temporary = Path(name)
+        try:
+            shutil.copyfile(executable, temporary)
+            if digest(temporary) != sha:
+                raise RuntimeError("Node runtime changed while being copied")
+            temporary.chmod(0o555)
+            with temporary.open("rb") as stream:
+                os.fsync(stream.fileno())
+            temporary.replace(blob)
+            directory_fd = os.open(shared, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
+    if digest(blob) != sha or blob.stat().st_mode & 0o222 or not os.access(blob, os.X_OK):
+        raise RuntimeError("shared Node runtime is corrupt or writable")
+    try:
+        os.link(blob, retained)
+    except OSError as exc:
+        if exc.errno not in {errno.EXDEV, errno.EPERM, errno.ENOTSUP}:
+            raise
+        shutil.copy2(blob, retained)
     return retained
 
 
@@ -192,7 +237,11 @@ class Deployment:
         self.run("git", "clone", "--no-hardlinks", "--no-checkout", self.active, self.candidate)
         self.run("git", "remote", "set-url", "origin", origin, cwd=self.candidate)
         self.run("git", "checkout", "--detach", self.target, cwd=self.candidate)
-        node = pin_node_runtime(self.candidate, self.environment.get("TRADING_MAX_NODE_BINARY"))
+        node = pin_node_runtime(
+            self.candidate,
+            self.environment.get("TRADING_MAX_NODE_BINARY"),
+            shared=self.service / "toolchains/node-blobs",
+        )
         self.environment["PATH"] = str(node.parent) + os.pathsep + self.environment.get("PATH", "")
         self.run("uv", "sync", "--all-packages", "--no-dev", "--frozen", cwd=self.candidate)
         web = self.candidate / "apps" / "web"

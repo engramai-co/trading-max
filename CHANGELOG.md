@@ -9,6 +9,7 @@ All notable public Trading Max releases are recorded here.
 ### Fixed
 
 - Reduce duplicate physical reads within each backup verification using a bounded, operation-local cache; every verification still re-reads physical chunks and validates full original file checksums.
+- Share checksum-verified immutable Node executables across retained macOS releases, and retire aged toolchain objects only after their final runtime link disappears.
 
 ## [1.5.11] - 2026-09-20
 
