@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.7] - 2026-09-21
+
+### Fixed
+
+- Keep unchanged logical backup entries reusable when unrelated sealed records are added or the locator index is rebuilt. Bind source identity to the artifact and its exact physical dependencies, so changed record locators or corrupted chunks still invalidate capture and stop publication.
+
 ## [1.6.6] - 2026-09-21
 
 ### Fixed
