@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 from trading_max.backup_repository import BackupRepository, exclusive_lock
 from trading_max.infrastructure import SnapshotStore
-from trading_max.service_retention import ServiceRetention, retained_dates
+from trading_max.service_retention import (
+    ServiceRetention,
+    retain_immutable_coverage,
+    retained_dates,
+)
 
 
 def host(root: Path):
@@ -137,6 +141,39 @@ def test_date_buckets_do_not_keep_every_deployment_on_the_same_day():
     start = datetime(2026, 9, 1, tzinfo=UTC)
     items = [(str(i), start + timedelta(minutes=i)) for i in range(50)]
     assert retained_dates(items) == {"47", "48", "49"}
+
+
+def test_date_rotation_cannot_remove_last_copy_of_published_or_imported_history():
+    def point(hour, entries):
+        return {
+            "createdAt": f"2026-01-01T{hour:02d}:00:00+00:00",
+            "files": {name: {"sha256": digest} for name, digest in entries},
+        }
+
+    older = [("artifacts/sha256/old", "a"), ("snapshots/old/manifest.json", "b")]
+    current = [("artifacts/sha256/current", "c")]
+    manifests = {
+        "old": point(1, older),
+        "old-superset": point(2, [*older, ("imports/source.csv", "d")]),
+        "recent": point(3, current),
+        "latest": point(4, current),
+    }
+    retained = retain_immutable_coverage(manifests, {"latest"})
+    assert retained == {"latest", "old-superset"}
+    original = {(n, e["sha256"]) for m in manifests.values() for n, e in m["files"].items()}
+    recovered = {(n, e["sha256"]) for name in retained for n, e in manifests[name]["files"].items()}
+    assert recovered == original
+
+
+def test_changed_bytes_at_equal_immutable_path_are_conservatively_retained():
+    manifests = {
+        str(i): {
+            "createdAt": f"2026-01-01T0{i}:00:00+00:00",
+            "files": {"artifacts/sha256/same": {"sha256": str(i)}},
+        }
+        for i in (1, 2)
+    }
+    assert retain_immutable_coverage(manifests, {"2"}) == {"1", "2"}
 
 
 def test_referenced_backup_blobs_are_never_cleanup_candidates(tmp_path):

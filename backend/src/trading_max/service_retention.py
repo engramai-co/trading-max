@@ -92,6 +92,40 @@ def retained_dates(
     return keep
 
 
+def retain_immutable_coverage(manifests: dict[str, dict], keep: set[str]) -> set[str]:
+    """A date policy must not retire the last backup of immutable history.
+
+    Compare original file digests, including binary sidecars and import sources.
+    A representation change can conservatively retain an extra point; never
+    infer that equal paths with different bytes prove equivalent observations.
+    """
+    keep = set(keep)
+
+    def identities(manifest):
+        return {
+            (name, entry["sha256"])
+            for name, entry in manifest["files"].items()
+            if name.startswith(("artifacts/", "snapshots/", "imports/"))
+        }
+
+    covered = set()
+    for name in keep:
+        if name in manifests:
+            covered.update(identities(manifests[name]))
+    for name, manifest in sorted(
+        manifests.items(),
+        key=lambda item: datetime.fromisoformat(item[1]["createdAt"]),
+        reverse=True,
+    ):
+        if name in keep:
+            continue
+        required = identities(manifest)
+        if not required.issubset(covered):
+            keep.add(name)
+            covered.update(required)
+    return keep
+
+
 class ServiceRetention:
     def __init__(self, service: Path, *, now: datetime | None = None, min_age_hours: int = 24):
         self.service = service.expanduser().resolve()
@@ -248,6 +282,7 @@ class ServiceRetention:
         keep_backups = retained_dates(
             [(name, datetime.fromisoformat(data["createdAt"])) for name, data in manifests.items()]
         ) | set(context["protectedBackupIds"])
+        keep_backups = retain_immutable_coverage(manifests, keep_backups)
         referenced = set()
         referenced_digests = set()
         for name, manifest in manifests.items():

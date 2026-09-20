@@ -53,6 +53,12 @@ monthly representatives, as well as backups referenced by protected deployments.
 Legacy deployment archives retain at least the newest three plus weekly/monthly
 representatives and protected rollback copies.
 
+Date buckets are a minimum recovery set. Retention also keeps the newest
+additional points needed to preserve every original file digest under
+`artifacts/`, `snapshots/` and `imports/`. Equal paths with different bytes are
+conservatively retained. Unique history can therefore keep more points than
+the date policy alone; capacity warnings never override this protection.
+
 The nightly job applies backup-manifest, orphan-backup-blob, old unprotected
 release and unreferenced shared Node retention after its new backup passes verification. Each night is bounded
 to 64 objects and 2 GB; its plan and removal journal are retained. Current and both
