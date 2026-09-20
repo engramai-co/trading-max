@@ -254,10 +254,12 @@ representation. Journals are outside business state, under
 interrupted batch verifies committed records and remaining originals before
 resuming. Changed sources stop conversion without deleting the changed bytes.
 
-Current-snapshot artifacts and their dependencies use small target blocks for
-interactive reads; older immutable objects and independent backup content use
-larger blocks. New records published after classification wait for the next
-cycle. Exact endpoints, financial calculations, precision and original records
+Current published outputs and their physical block dependencies use small target
+blocks for interactive reads; older source ancestry and independent backup
+content use larger blocks. Classification inspects descriptors without decoding
+the entire historical provenance graph. All original source records remain
+readable and independently recoverable. New records published after classification
+wait for the next cycle. Exact endpoints, financial calculations, precision and original records
 are unchanged. This does not constitute a fixed lifetime storage cap: the
 existing complete-installation census and growth alerts remain authoritative.
 

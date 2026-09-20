@@ -144,14 +144,14 @@ class SnapshotStore:
         snapshots.sort(key=lambda item: item.manifest.created_at, reverse=True)
         return snapshots[:limit]
 
-    def latest(self) -> StoredSnapshot | None:
+    def latest(self, *, verify_artifacts: bool = True) -> StoredSnapshot | None:
         if not self.latest_path.is_file():
             return None
         try:
             pointer = json.loads(self.latest_path.read_text(encoding="utf-8"))
             run_id = str(pointer["run_id"])
             expected = str(pointer["manifest_sha256"])
-            snapshot = self.load(run_id)
+            snapshot = self.load(run_id, verify_artifacts=verify_artifacts)
             actual = hashlib.sha256(
                 _canonical_json(snapshot.manifest.model_dump(mode="json", by_alias=False))
             ).hexdigest()

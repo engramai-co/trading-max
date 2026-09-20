@@ -221,17 +221,14 @@ def artifact_candidates(root: Path):
 def pack_state(state: Path, journals: Path, **budgets) -> dict:
     cutoff = time.time_ns()
     store = ContentAddressedArtifactStore(state / "artifacts")
-    snapshot = SnapshotStore(state, artifacts=store).latest()
+    snapshot = SnapshotStore(state, artifacts=store).latest(verify_artifacts=False)
     hot = set()
-    pending = [ref.artifact_id for ref in snapshot.manifest.artifacts] if snapshot else []
-    while pending:
-        artifact_id = pending.pop()
-        key = "artifact/" + artifact_id
-        if key in hot:
-            continue
-        hot.add(key)
-        ref = store.get_ref(artifact_id)
-        pending.extend(ref.dependency_artifact_ids)
+    # The published view reads these outputs and their physical blocks. Source
+    # ancestry is retained evidence, not a reason to re-read every prior value
+    # or classify the whole historical graph as an interactive working set.
+    for ref in snapshot.manifest.artifacts if snapshot else []:
+        artifact_id = ref.artifact_id
+        hot.add("artifact/" + artifact_id)
         if store.path_for(artifact_id).with_name(artifact_id + ".meta.json").exists():
             continue
         descriptor = store.descriptor(artifact_id)
