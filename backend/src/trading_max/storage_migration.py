@@ -206,7 +206,7 @@ def compact_repository(
     with exclusive_lock(repository.lock):
         entries = {}
         for path in sorted(repository.snapshots.glob("*.json")):
-            manifest = json.loads(path.read_text())
+            manifest = repository.read_manifest(path.stem)
             if manifest.get("schemaVersion") != 1:
                 raise ValueError("unsupported backup manifest")
             files = manifest["files"]

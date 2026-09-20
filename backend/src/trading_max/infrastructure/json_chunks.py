@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from .history_chunks import atomic_bytes, canonical
+from .object_packs import ObjectPacks
 from .verified_chunks import VerifiedChunkCache, read_verified
 
 FORMAT = "trading-max-json-v1"
@@ -23,9 +24,10 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 
 
 class JsonChunks:
-    def __init__(self, artifact_root: Path):
+    def __init__(self, artifact_root: Path, *, packs: ObjectPacks | None = None):
         self.root = artifact_root / "json-chunks"
         self.read_cache: VerifiedChunkCache | None = None
+        self.packs = packs or ObjectPacks(artifact_root / "object-packs")
 
     def path(self, digest: str) -> Path:
         if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
@@ -39,7 +41,7 @@ class JsonChunks:
         digest = hashlib.sha256(raw).hexdigest()
         node = ["blob", digest, len(raw)]
         path = self.path(digest)
-        if path.exists():
+        if path.exists() or self.packs.contains("json/" + digest):
             self._read(node)
         else:
             atomic_bytes(path, gzip.compress(raw, compresslevel=3, mtime=0))
@@ -50,7 +52,16 @@ class JsonChunks:
         if type(size) is not int or not 0 <= size <= MAX_BYTES:
             raise ValueError("invalid JSON block size")
         reader = self.read_cache.read if self.read_cache else read_verified
-        raw = reader(self.path(digest), size, digest)
+        path = self.path(digest)
+        if path.is_file():
+            raw = reader(path, size, digest)
+        else:
+            try:
+                raw = self.packs.read("json/" + digest)
+            except OSError as exc:
+                raise ValueError("packed chunk cannot be read") from exc
+            if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("packed chunk checksum mismatch")
         return json.loads(raw)
 
     def _encode(self, value: object, depth: int = 0) -> list:

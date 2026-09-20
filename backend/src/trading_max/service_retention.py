@@ -301,7 +301,7 @@ class ServiceRetention:
         for path in self.repository.snapshots.glob("*.json"):
             if path != self.repository.manifest_path(path.stem):
                 raise ValueError("invalid backup manifest location")
-            manifest = json.loads(path.read_text())
+            manifest = self.repository.read_manifest(path.stem)
             if manifest.get("schemaVersion") != 1 or not isinstance(manifest.get("files"), dict):
                 raise ValueError("unrecognized backup manifest; cleanup stopped")
             manifests[path.stem] = manifest
@@ -342,6 +342,8 @@ class ServiceRetention:
             if not path.is_file():
                 continue
             relative = path.relative_to(packed).as_posix()
+            if relative.startswith("object-packs/"):
+                continue  # Sealed packs need record-aware compaction, not loose-file GC.
             if not re.fullmatch(
                 r"[0-9a-f]{64}\.json|(?:history|json)-chunks/[0-9a-f]{2}/[0-9a-f]{64}\.gz",
                 relative,
@@ -439,7 +441,7 @@ class ServiceRetention:
             if context["fingerprint"] != plan["context"]:
                 raise ValueError("deployment changed; generate a new cleanup plan")
             backup_path = self.repository.manifest_path(verified_backup_id)
-            backup = json.loads(backup_path.read_text())
+            backup = self.repository.read_manifest(verified_backup_id)
             active_record = context["records"].get(Path(context["active"]).name, {})
             live_state = active_record.get("state")
             if not live_state or backup.get("sourceState") != str(Path(live_state).resolve()):

@@ -111,13 +111,12 @@ class ArtifactStore:
     def _api_manifest(self, manifest) -> SnapshotManifest:
         artifacts: list[ArtifactInfo] = []
         for ref in manifest.artifacts:
-            path = self.immutable_artifacts.path_for(ref.artifact_id)
             artifacts.append(
                 ArtifactInfo(
                     key=ref.key,
                     source_path=f"artifacts/sha256/{ref.artifact_id}",
                     size_bytes=self.immutable_artifacts.logical_size(ref.artifact_id)
-                    if path.is_file()
+                    if self.immutable_artifacts.exists(ref.artifact_id)
                     else 0,
                     sha256=ref.sha256,
                     media_type=ref.media_type,
@@ -251,7 +250,7 @@ class ArtifactStore:
             raise FileNotFoundError(f"artifact not found: {safe_key}")
         artifact_id = _artifact_id(artifact)
         path = self.immutable_artifacts.path_for(artifact_id)
-        if not path.is_file():
+        if not self.immutable_artifacts.exists(artifact_id):
             raise FileNotFoundError(f"artifact file missing: {safe_key}")
         return path, artifact
 

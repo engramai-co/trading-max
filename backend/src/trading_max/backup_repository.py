@@ -29,6 +29,9 @@ from .infrastructure.history_chunks import (
     read_descriptor,
     sync_directory,
 )
+from .infrastructure.manifest_catalog import FORMAT as CATALOG_FORMAT
+from .infrastructure.manifest_catalog import ManifestCatalog
+from .infrastructure.object_packs import ObjectPacks
 from .infrastructure.verified_chunks import VerifiedChunkCache
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -96,6 +99,9 @@ class BackupRepository:
                 raise ValueError("backup repository directories must not be symlinks")
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = self.root / ".repository.lock"
+        self.packs = ObjectPacks(self.root / "object-packs")
+        self.manifest_catalog = ManifestCatalog(self.packs)
+        self.packed_store = ContentAddressedArtifactStore(self.root / "packed")
 
     def packed_path(self, digest: str) -> Path:
         if not _DIGEST.fullmatch(digest):
@@ -106,16 +112,53 @@ class BackupRepository:
             raise ValueError("packed backup must not be a symlink")
         return path
 
+    def packed_descriptor(self, digest: str) -> dict | None:
+        path = self.packed_path(digest)
+        if path.is_file():
+            descriptor = read_descriptor(path)
+            if descriptor is None:
+                raise ValueError("packed backup descriptor is invalid")
+            return descriptor
+        if self.packs.contains("descriptor/" + digest):
+            descriptor = json.loads(self.packs.read("descriptor/" + digest))
+            if descriptor.get("$format") not in {"trading-max-history-v1", "trading-max-json-v1"}:
+                raise ValueError("packed backup descriptor is invalid")
+            return descriptor
+        return None
+
+    def has_blob(self, digest: str) -> bool:
+        return (
+            self.blob_path(digest).is_file()
+            or self.packed_path(digest).is_file()
+            or self.packs.contains("blob/" + digest)
+            or self.packs.contains("descriptor/" + digest)
+        )
+
+    def manifest_bytes(self, backup_id: str) -> bytes:
+        raw = self.manifest_path(backup_id).read_bytes()
+        value = json.loads(raw)
+        if value.get("$format") == CATALOG_FORMAT:
+            if value.get("id") != backup_id:
+                raise ValueError("backup catalog identity mismatch")
+            return self.manifest_catalog.decode(value)
+        return raw
+
+    def read_manifest(self, backup_id: str) -> dict:
+        return json.loads(self.manifest_bytes(backup_id))
+
     def blob_files(self, digest: str) -> list[Path]:
-        packed = self.packed_path(digest)
+        descriptor = self.packed_descriptor(digest)
         plain = self.blob_path(digest)
-        if not packed.is_file():
-            return [plain]
-        descriptor = read_descriptor(packed)
-        if not descriptor or descriptor["envelopeSha256"] != digest:
+        if descriptor is None:
+            return [plain if plain.is_file() else self.packs.source("blob/" + digest)]
+        if descriptor["envelopeSha256"] != digest:
             raise ValueError("packed backup identity mismatch")
-        store = ContentAddressedArtifactStore(self.root / "packed")
-        paths = [packed, *store.physical_paths(descriptor)]
+        store = self.packed_store
+        packed = self.packed_path(digest)
+        paths = [
+            packed if packed.is_file() else self.packs.source("descriptor/" + digest),
+            *store.physical_paths(descriptor),
+        ]
         if plain.exists():
             paths.append(plain)
         return paths
@@ -125,11 +168,16 @@ class BackupRepository:
         return self._open_blob(digest)
 
     def _open_blob(self, digest: str, store: ContentAddressedArtifactStore | None = None):
-        packed = self.packed_path(digest)
-        if not packed.is_file():
-            return gzip.open(self.blob_path(digest), "rb")
-        descriptor = read_descriptor(packed)
-        if not descriptor or descriptor["envelopeSha256"] != digest:
+        descriptor = self.packed_descriptor(digest)
+        if descriptor is None:
+            path = self.blob_path(digest)
+            if path.is_file():
+                return gzip.open(path, "rb")
+            raw = self.packs.read("blob/" + digest)
+            if hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("packed backup blob checksum mismatch")
+            return io.BytesIO(raw)
+        if descriptor["envelopeSha256"] != digest:
             raise ValueError("packed backup identity mismatch")
         store = store or ContentAddressedArtifactStore(self.root / "packed")
         return io.BytesIO(store.physical_store(descriptor).decode(descriptor))
@@ -167,7 +215,7 @@ class BackupRepository:
         sha = digest.hexdigest()
         final = self.blob_path(sha)
         durable_directory(final.parent)
-        if final.exists() or self.packed_path(sha).exists():
+        if self.has_blob(sha):
             temporary.unlink()
         else:
             temporary.chmod(0o600)
@@ -209,7 +257,7 @@ class BackupRepository:
         ):
             existing = self.manifest_path(backup_id)
             if existing.exists():
-                manifest = json.loads(existing.read_text())
+                manifest = self.read_manifest(backup_id)
                 if manifest.get("sourceArchive", {}).get("sha256") != archive_digest:
                     raise ValueError("import backup identity conflict")
                 verified = self._verify(manifest)
@@ -286,14 +334,15 @@ class BackupRepository:
         """Share one logical envelope across legacy and compact live layouts."""
         from .storage_migration import verified_envelope
 
-        before = _stamp(source)
+        physical = store.source_path(source.name)
+        before = _stamp(physical)
         raw = store.content_bytes(source.name)
         envelope = verified_envelope(raw, source.name)
-        if _stamp(source) != before:
+        if _stamp(physical) != before:
             raise RuntimeError("artifact changed during backup; retry without pruning")
         digest = hashlib.sha256(raw).hexdigest()
-        entry = {"sha256": digest, "size": len(raw), "mode": source.stat().st_mode & 0o700}
-        if self.blob_path(digest).is_file() or self.packed_path(digest).is_file():
+        entry = {"sha256": digest, "size": len(raw), "mode": physical.stat().st_mode & 0o700}
+        if self.has_blob(digest):
             return entry  # The complete manifest verification checks existing bytes.
         if len(raw) <= 64 * 1024:
             return self._store_stream(io.BytesIO(raw), scratch, mode=entry["mode"])
@@ -348,8 +397,21 @@ class BackupRepository:
             next_catalog: dict = {}
             source_artifacts = ContentAddressedArtifactStore(state / "artifacts")
             chunk_stamps: dict[Path, list[int]] = {}
+            if source_artifacts.packs.index.exists():
+                # Packed logical artifacts restore to standalone original JSON.
+                # Do not copy a live derived SQLite index or create a second
+                # physical backup of the same immutable records.
+                artifact_encoding = "logical"
             files = {DATABASE_NAME: self._store(database, scratch)}
-            for source in _included_files(state):
+            sources = list(_included_files(state))
+            if artifact_encoding == "logical":
+                present = {p.name for p in sources if p.parent == source_artifacts.content_root}
+                sources.extend(
+                    source_artifacts.path_for(a)
+                    for a in source_artifacts.artifact_ids()
+                    if a not in present
+                )
+            for source in sources:
                 relative = source.relative_to(state).as_posix()
                 # Public filings and parser result caches can be fetched again.
                 # Keep old manifests/imports fully readable, but do not perpetuate
@@ -357,11 +419,22 @@ class BackupRepository:
                 if relative.startswith("research-cache/disclosures/"):
                     continue
                 if artifact_encoding == "logical" and relative.startswith(
-                    ("artifacts/history-chunks/", "artifacts/json-chunks/")
+                    (
+                        "artifacts/history-chunks/",
+                        "artifacts/json-chunks/",
+                        "artifacts/object-packs/",
+                    )
                 ):
                     continue  # Logical envelopes own independent repository chunks.
                 _safe_relative(relative)
-                stamp = _stamp(source)
+                physical_source = (
+                    source_artifacts.source_path(source.name)
+                    if relative.startswith("artifacts/sha256/") and _DIGEST.fullmatch(source.name)
+                    else source
+                )
+                stamp = _stamp(physical_source)
+                if physical_source != source:
+                    stamp.extend([str(physical_source), _stamp(source_artifacts.packs.index)])
                 cache_key = str(source)
                 cached = catalog.get(cache_key)
                 logical_artifact = (
@@ -392,10 +465,7 @@ class BackupRepository:
                     and cached
                     and cached.get("stamp") == stamp
                     and cached.get("artifactEncoding", "physical") == encoding
-                    and (
-                        self.blob_path(cached["file"]["sha256"]).is_file()
-                        or self.packed_path(cached["file"]["sha256"]).is_file()
-                    )
+                    and self.has_blob(cached["file"]["sha256"])
                 ):
                     entry = cached["file"]
                 elif logical_artifact:
@@ -505,8 +575,7 @@ class BackupRepository:
             referenced_chunks = {}
             for name, descriptor in physical.items():
                 references = [
-                    p.relative_to(format_root).as_posix()
-                    for p in formats.physical_paths(descriptor)
+                    p.relative_to(format_root).as_posix() for p in formats.logical_paths(descriptor)
                 ]
                 if any(reference not in files for reference in references):
                     raise ValueError("backup history references a missing chunk")
@@ -576,7 +645,7 @@ class BackupRepository:
 
     def verify(self, backup_id: str) -> dict:
         with exclusive_lock(self.lock):
-            return self._verify(json.loads(self.manifest_path(backup_id).read_text()))
+            return self._verify(self.read_manifest(backup_id))
 
     def restore(self, backup_id: str, destination: Path) -> dict:
         destination = destination.expanduser().absolute()
@@ -593,7 +662,7 @@ class BackupRepository:
         ):
             staging = Path(temporary) / "state"
             staging.mkdir(mode=0o700)
-            result = self._verify(json.loads(self.manifest_path(backup_id).read_text()), staging)
+            result = self._verify(self.read_manifest(backup_id), staging)
             if destination.exists() or destination.is_symlink():
                 raise FileExistsError("restore destination appeared during verification")
             staging.rename(destination)

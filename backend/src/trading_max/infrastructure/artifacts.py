@@ -22,6 +22,8 @@ from . import compressed_json
 from .history_chunks import HISTORY_KEYS, HistoryChunks, atomic_bytes, canonical, read_descriptor
 from .json_chunks import FORMAT as JSON_CHUNKS_FORMAT
 from .json_chunks import JsonChunks
+from .object_packs import ObjectPacks
+from .object_packs import stamp as pack_stamp
 from .singleflight import SingleFlightCache
 
 JsonObject = dict[str, Any]
@@ -101,8 +103,9 @@ class ContentAddressedArtifactStore:
     ) -> None:
         self.root = root.expanduser().resolve()
         self.content_root = self.root / "sha256"
-        self.history = HistoryChunks(self.root)
-        self.json_chunks = JsonChunks(self.root)
+        self.packs = ObjectPacks(self.root / "object-packs")
+        self.history = HistoryChunks(self.root, packs=self.packs)
+        self.json_chunks = JsonChunks(self.root, packs=self.packs)
         self.history_mode = history_mode or os.environ.get("TRADING_MAX_HISTORY_STORAGE", "legacy")
         if self.history_mode not in {"legacy", "shadow", "chunked"}:
             raise ValueError("history storage must be legacy, shadow or chunked")
@@ -118,6 +121,23 @@ class ContentAddressedArtifactStore:
         ):
             raise ValueError(f"invalid artifact id: {artifact_id}")
         return self.content_root / artifact_id
+
+    def exists(self, artifact_id: str) -> bool:
+        return self.path_for(artifact_id).is_file() or self.packs.contains(
+            "artifact/" + artifact_id
+        )
+
+    def artifact_ids(self) -> list[str]:
+        loose = {p.name for p in self.content_root.glob("*") if len(p.name) == 64 and p.is_file()}
+        return sorted(loose | {k.removeprefix("artifact/") for k in self.packs.keys("artifact/")})
+
+    def stored_bytes(self, artifact_id: str) -> bytes:
+        path = self.path_for(artifact_id)
+        return path.read_bytes() if path.is_file() else self.packs.read("artifact/" + artifact_id)
+
+    def source_path(self, artifact_id: str) -> Path:
+        path = self.path_for(artifact_id)
+        return path if path.is_file() else self.packs.source("artifact/" + artifact_id)
 
     def put_json(
         self,
@@ -166,7 +186,7 @@ class ContentAddressedArtifactStore:
         }
         content = _canonical_json(envelope)
         path = self.path_for(digest)
-        if path.is_file():
+        if self.exists(digest):
             # generated_at is intentionally not part of the content identity;
             # preserve the first immutable envelope instead of rewriting it
             # with a different timestamp on an idempotent publish.
@@ -193,7 +213,7 @@ class ContentAddressedArtifactStore:
 
     def get_json(self, artifact_id: str) -> StoredArtifact:
         path = self.path_for(artifact_id)
-        if not path.is_file():
+        if not self.exists(artifact_id):
             raise FileNotFoundError(f"artifact not found: {artifact_id}")
         try:
             envelope = json.loads(self.content_bytes(artifact_id))
@@ -221,16 +241,34 @@ class ContentAddressedArtifactStore:
 
     def descriptor(self, artifact_id: str) -> dict | None:
         path = self.path_for(artifact_id)
-        stat = path.stat()
-        key = (artifact_id, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
-        return self._descriptors.get_or_compute(key, lambda: read_descriptor(path))
+        source = self.source_path(artifact_id)
+        key = (
+            artifact_id,
+            pack_stamp(source),
+            pack_stamp(self.packs.index) if source != path else (),
+        )
+
+        def load():
+            if path.is_file():
+                return read_descriptor(path)
+            raw = self.stored_bytes(artifact_id)
+            if not raw.startswith(b'{"$format":'):
+                return None
+            if len(raw) > 8 * 1024 * 1024:
+                raise ValueError("packed artifact descriptor exceeds limit")
+            value = json.loads(raw)
+            if value.get("$format") not in {"trading-max-history-v1", JSON_CHUNKS_FORMAT}:
+                raise ValueError("unsupported packed artifact descriptor")
+            return value
+
+        return self._descriptors.get_or_compute(key, load)
 
     def content_bytes(self, artifact_id: str) -> bytes:
         """Return the original envelope, never a physical storage descriptor."""
         try:
             descriptor = self.descriptor(artifact_id)
             if descriptor is None:
-                raw = self.path_for(artifact_id).read_bytes()
+                raw = self.stored_bytes(artifact_id)
                 if self.path_for(artifact_id).with_name(f"{artifact_id}.meta.json").is_file():
                     return raw
                 return compressed_json.decode(raw)
@@ -247,21 +285,31 @@ class ContentAddressedArtifactStore:
         descriptor = self.descriptor(artifact_id)
         if descriptor:
             return descriptor["envelopeBytes"]
+        if not path.is_file():
+            return len(compressed_json.decode(self.stored_bytes(artifact_id)))
         size = compressed_json.stored_size(path)
         return path.stat().st_size if size is None else size
 
     def physical_store(self, descriptor: dict) -> HistoryChunks | JsonChunks:
         return self.json_chunks if descriptor.get("$format") == JSON_CHUNKS_FORMAT else self.history
 
-    def physical_paths(self, descriptor: dict) -> list[Path]:
+    def logical_paths(self, descriptor: dict) -> list[Path]:
         return self.physical_store(descriptor).paths(descriptor)
+
+    def physical_paths(self, descriptor: dict) -> list[Path]:
+        result = []
+        for path in self.logical_paths(descriptor):
+            kind = "json" if path.parent.parent.name == "json-chunks" else "history"
+            result.append(path if path.is_file() else self.packs.source(kind + "/" + path.stem))
+        return list(dict.fromkeys(result))
 
     def requires_decoding(self, artifact_id: str) -> bool:
         path = self.path_for(artifact_id)
         if path.with_name(f"{artifact_id}.meta.json").is_file():
             return False
         return (
-            self.descriptor(artifact_id) is not None
+            not path.is_file()
+            or self.descriptor(artifact_id) is not None
             or compressed_json.stored_size(path) is not None
         )
 
@@ -378,7 +426,8 @@ class ContentAddressedArtifactStore:
         )
         return (
             artifact_id,
-            stamp(path),
+            stamp(self.source_path(artifact_id)),
+            pack_stamp(self.packs.index) if self.packs.index.is_file() else (),
             stamp(metadata_path) if metadata_path.is_file() else None,
             chunks,
         )

@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-21
+
+### Added
+- Read self-describing immutable compressed object packs through a rebuildable SQLite location index while preserving original artifact identities and downloads.
+- Read compact recovery manifests that reuse immutable file entries and preserve every historical manifest byte without depending on a parent backup.
+
+### Changed
+- Prepare a reader-first storage rollout: existing writers and loose files remain supported; conversion is not enabled by installing this release.
+- Normalize backups of packed artifacts to independent original envelopes, with corruption checks and original-state restore support.
+
 ## [1.5.14] - 2026-09-20
 
 ### Fixed

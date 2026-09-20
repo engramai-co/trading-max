@@ -6,12 +6,21 @@ import sqlite3
 import tarfile
 import tempfile
 from collections.abc import Iterator
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from shutil import copy2
 
 EXCLUDED_COMPONENTS = {"secrets", "logs", "__pycache__"}
-EXCLUDED_SUFFIXES = {".env", ".log", ".db-shm", ".db-wal"}
+EXCLUDED_SUFFIXES = {
+    ".env",
+    ".log",
+    ".db-shm",
+    ".db-wal",
+    ".sqlite3-shm",
+    ".sqlite3-wal",
+    ".sqlite3-journal",
+}
 DATABASE_NAME = "trading_max.db"
 
 
@@ -77,8 +86,26 @@ def create_backup(
             integrity = target.execute("PRAGMA integrity_check").fetchone()
         if integrity != ("ok",):
             raise RuntimeError(f"backup database integrity check failed: {integrity}")
+        # Capture derived pack locators before inventorying immutable blocks.
+        # Packs referenced by this consistent image already exist; later packs
+        # are harmless extras. Sealed packs are never deleted by live writers.
+        captured_indexes = set()
+        for source in state_root.glob("artifacts/object-packs/index.sqlite3"):
+            if source.is_symlink():
+                raise ValueError("pack index must not be a symlink")
+            relative = source.relative_to(state_root)
+            target = state_stage / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with (
+                closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as reader,
+                closing(sqlite3.connect(target)) as writer,
+            ):
+                reader.backup(writer)
+            captured_indexes.add(relative)
         for source in _included_files(state_root):
             relative = source.relative_to(state_root)
+            if relative in captured_indexes:
+                continue
             target = state_stage / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             copy2(source, target)
