@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.13] - 2026-09-20
+
+### Fixed
+
+- Preserve recovery points that are the last copy of immutable artifacts, published snapshots, import sources or legacy broker records, even when ordinary date-based retention would retire them.
+
 ## [1.5.12] - 2026-09-20
 
 ### Fixed
