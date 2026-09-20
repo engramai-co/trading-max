@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.10] - 2026-09-20
+
+### Fixed
+
+- Reuse one lossless artifact representation across legacy and compact managed backups, avoiding duplicate live chunk copies in daily recovery storage.
+- Check source chunk changes before reusing logical backup entries, and inspect each recovery digest once during retention planning.
+
 ## [1.5.9] - 2026-09-20
 
 ### Fixed

@@ -18,6 +18,7 @@ def main() -> int:
     create = sub.add_parser("create")
     create.add_argument("--state-root", type=Path, required=True)
     create.add_argument("--label", default="manual")
+    create.add_argument("--artifact-encoding", choices=("physical", "logical"), default="physical")
     create.add_argument("--retain-for-service", type=Path)
     archive_import = sub.add_parser("import-archive")
     archive_import.add_argument("archive", type=Path)
@@ -33,7 +34,9 @@ def main() -> int:
         maintenance = ServiceRetention(args.retain_for_service) if args.retain_for_service else None
         if maintenance and maintenance.repository.root != repository.root:
             raise ValueError("nightly retention must use this service's backup repository")
-        result = repository.create(args.state_root, label=args.label)
+        result = repository.create(
+            args.state_root, label=args.label, artifact_encoding=args.artifact_encoding
+        )
         if maintenance:
             try:
                 result["retention"] = maintenance.maintain_repository(result["id"])

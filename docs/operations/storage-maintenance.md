@@ -153,6 +153,20 @@ blob. Re-running a completed batch is safe; repeated observations are shared,
 not interpolated or downsampled. Directory entries are synced after publication
 so a crash cannot publish a descriptor before its durable block writes.
 
+The managed nightly and deployment backups use `--artifact-encoding logical`.
+They recover each JSON artifact as its exact original envelope, so old full JSON
+and new live descriptors share one independent recovery representation. Physical
+live chunks are not copied a second time. Binary source artifacts, SQLite and
+all non-artifact files keep their existing byte-preserving contract. Original
+artifact IDs, amounts, timestamps and provenance remain unchanged. Existing
+physical backup manifests remain valid and are never rewritten.
+
+The library and manual CLI retain `physical` as their default. A logical restore
+materializes full JSON envelopes; allow their reported `logicalBytes` on the
+recovery disk, then use the verified state compactor if desired. The current and
+both protected rollback runtimes must support packed recovery before enabling
+this mode. Deleting the live state does not affect the independent backup.
+
 
 ## Daily installation budget
 

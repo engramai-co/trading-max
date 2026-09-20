@@ -258,6 +258,8 @@ class Deployment:
             self.state,
             "--label",
             self.transaction,
+            "--artifact-encoding",
+            "logical",
             capture=True,
         )
         created = json.loads(result.stdout)
