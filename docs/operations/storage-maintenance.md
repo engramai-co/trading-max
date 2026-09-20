@@ -224,3 +224,39 @@ before the reserve is exhausted. Maintenance must report any remaining excess
 rather than silently downsample observations or stop account ingestion. Fresh
 builds and recovery validation require temporary headroom beyond normal steady
 state; do not provision a filesystem with only 5 GB of free space.
+
+## Optional immutable object packs
+
+The [object-pack reader](../architecture/immutable-object-packs.md) preserves
+logical records while consolidating loose files and repeated recovery catalogs.
+This is an operator-managed format rollout. Installing the code leaves it off.
+Activation requires the active application and both rollback runtimes to pass
+actual pack, manifest-rebuild and independent-restore probes.
+
+```bash
+"$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/pack_storage.py" \
+  --service-root "$SERVICE_ROOT" --state-root "$STATE_ROOT" \
+  --verified-backup-id BACKUP_ID check
+```
+
+Use `activate` after those checks and a fresh independent recovery point. It
+writes a small versioned policy in state and the recovery repository; credentials
+are not part of it. Subsequent managed nightly backups publish compact catalog
+references and pack at most 4,096 live files / 256 MiB of logical input, plus the
+same bounded recovery batch. Unchanged sealed bytes are reused. A failed pack
+must not prune recovery points; the capacity census still runs.
+
+The same command supports `state`, `backups` and `catalog` for reviewed, bounded
+initial-conversion batches. `--max-files` and `--max-bytes` control each batch.
+Every invocation verifies fresh recovery and retained readers before changing
+representation. Journals are outside business state, under
+`maintenance/object-packs`; completed journals are losslessly compressed. An
+interrupted batch verifies committed records and remaining originals before
+resuming. Changed sources stop conversion without deleting the changed bytes.
+
+Current-snapshot artifacts and their dependencies use small target blocks for
+interactive reads; older immutable objects and independent backup content use
+larger blocks. New records published after classification wait for the next
+cycle. Exact endpoints, financial calculations, precision and original records
+are unchanged. This does not constitute a fixed lifetime storage cap: the
+existing complete-installation census and growth alerts remain authoritative.

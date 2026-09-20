@@ -198,6 +198,15 @@ class BackupRepository:
             raise ValueError("backup manifests must not be symlinks")
         return path
 
+    def _publish_manifest(self, backup_id: str, manifest: dict) -> None:
+        from .pack_maintenance import enabled
+
+        if enabled(self.root):
+            raw = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+            atomic_json(self.manifest_path(backup_id), self.manifest_catalog.encode(raw, backup_id))
+        else:
+            atomic_json(self.manifest_path(backup_id), manifest)
+
     def _store_stream(self, stream, scratch: Path, *, mode: int = 0o600) -> dict:
         digest = hashlib.sha256()
         temporary = scratch / (uuid.uuid4().hex + ".gz")
@@ -327,7 +336,7 @@ class BackupRepository:
             }
             verified = self._verify(manifest)
             manifest["verification"] = verified
-            atomic_json(existing, manifest)
+            self._publish_manifest(backup_id, manifest)
             return {"id": backup_id, "manifest": str(existing), "reused": False, **verified}
 
     def _logical_artifact(self, source: Path, store, scratch: Path) -> dict:
@@ -498,7 +507,7 @@ class BackupRepository:
             # verifies decompression, file digests, database and snapshot references.
             verified = self._verify(manifest)
             manifest["verification"] = verified
-            atomic_json(self.manifest_path(backup_id), manifest)
+            self._publish_manifest(backup_id, manifest)
             atomic_json(catalog_path, next_catalog)
             return {"id": backup_id, "manifest": str(self.manifest_path(backup_id)), **verified}
 

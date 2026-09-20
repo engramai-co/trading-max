@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from trading_max.backup_repository import BackupRepository
+from trading_max.pack_maintenance import nightly_packs
 from trading_max.service_retention import ServiceRetention
 from trading_max.storage_budget import nightly_storage
 
@@ -39,6 +40,9 @@ def main() -> int:
         )
         if maintenance:
             try:
+                result["packing"] = nightly_packs(
+                    maintenance.service, args.state_root, result["id"]
+                )
                 result["retention"] = maintenance.maintain_repository(result["id"])
             finally:
                 # A blocked cleanup must not hide continuing capacity growth.

@@ -302,3 +302,16 @@ def test_legacy_tar_backup_captures_consistent_packed_state(tmp_path):
     assert (
         SnapshotStore(tmp_path / "copy/state").latest().manifest.run_id == snapshot.manifest.run_id
     )
+
+
+def test_batch_reads_preserve_request_order_and_detect_bad_locators(tmp_path):
+    store = ObjectPacks(tmp_path)
+    store.add({"first": b"alpha", "second": b"beta"})
+    store.add({"third": b"gamma"})
+    assert store.read_many(["third", "first", "third"]) == [b"gamma", b"alpha", b"gamma"]
+    with pytest.raises(FileNotFoundError):
+        store.read_many(["first", "missing"])
+    with sqlite3.connect(store.index) as db:
+        db.execute("UPDATE records SET size=3 WHERE key='second'")
+    with pytest.raises(ValueError, match="locator"):
+        store.read_many(["third", "second"])
