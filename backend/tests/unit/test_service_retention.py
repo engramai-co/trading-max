@@ -150,7 +150,13 @@ def test_date_rotation_cannot_remove_last_copy_of_published_or_imported_history(
             "files": {name: {"sha256": digest} for name, digest in entries},
         }
 
-    older = [("artifacts/sha256/old", "a"), ("snapshots/old/manifest.json", "b")]
+    older = [
+        ("artifacts/sha256/old", "a"),
+        ("snapshots/old/manifest.json", "b"),
+        ("trading212/invest/snapshots/old.json", "e"),
+        ("raw/fund-holdings/fund.json", "f"),
+        ("legacy-archive-compat/old/recovery.json", "g"),
+    ]
     current = [("artifacts/sha256/current", "c")]
     manifests = {
         "old": point(1, older),
@@ -163,6 +169,25 @@ def test_date_rotation_cannot_remove_last_copy_of_published_or_imported_history(
     original = {(n, e["sha256"]) for m in manifests.values() for n, e in m["files"].items()}
     recovered = {(n, e["sha256"]) for name in retained for n, e in manifests[name]["files"].items()}
     assert recovered == original
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    [
+        "trading212/invest/exports/source.csv",
+        "raw/fund-holdings/fund.json",
+        "legacy-archive-compat/old/excluded-members.tar.gz",
+    ],
+)
+def test_legacy_source_without_modern_artifact_copy_is_preserved(source_path):
+    manifests = {
+        "old": {
+            "createdAt": "2026-01-01T00:00:00+00:00",
+            "files": {source_path: {"sha256": "original"}},
+        },
+        "latest": {"createdAt": "2026-01-02T00:00:00+00:00", "files": {}},
+    }
+    assert retain_immutable_coverage(manifests, {"latest"}) == {"old", "latest"}
 
 
 def test_changed_bytes_at_equal_immutable_path_are_conservatively_retained():

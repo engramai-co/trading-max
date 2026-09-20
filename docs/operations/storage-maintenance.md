@@ -55,7 +55,8 @@ representatives and protected rollback copies.
 
 Date buckets are a minimum recovery set. Retention also keeps the newest
 additional points needed to preserve every original file digest under
-`artifacts/`, `snapshots/` and `imports/`. Equal paths with different bytes are
+`artifacts/`, `snapshots/`, `imports/`, legacy `trading212/` and `raw/` sources,
+and lossless archive-compatibility supplements. Equal paths with different bytes are
 conservatively retained. Unique history can therefore keep more points than
 the date policy alone; capacity warnings never override this protection.
 

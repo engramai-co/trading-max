@@ -8,7 +8,7 @@ All notable public Trading Max releases are recorded here.
 
 ### Fixed
 
-- Preserve recovery points that are the last copy of immutable artifacts, published snapshots or import sources, even when ordinary date-based retention would retire them.
+- Preserve recovery points that are the last copy of immutable artifacts, published snapshots, import sources or legacy broker records, even when ordinary date-based retention would retire them.
 
 ## [1.5.12] - 2026-09-20
 

@@ -105,7 +105,16 @@ def retain_immutable_coverage(manifests: dict[str, dict], keep: set[str]) -> set
         return {
             (name, entry["sha256"])
             for name, entry in manifest["files"].items()
-            if name.startswith(("artifacts/", "snapshots/", "imports/"))
+            if name.startswith(
+                (
+                    "artifacts/",
+                    "snapshots/",
+                    "imports/",
+                    "trading212/",
+                    "raw/",
+                    "legacy-archive-compat/",
+                )
+            )
         }
 
     covered = set()
