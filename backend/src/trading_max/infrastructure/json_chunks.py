@@ -17,7 +17,7 @@ from .history_chunks import atomic_bytes, canonical
 
 FORMAT = "trading-max-json-v1"
 MAX_BYTES = 256 * 1024 * 1024
-TARGET_BYTES = 32 * 1024
+TARGET_BYTES = 128 * 1024
 GROUP_ITEMS = 128
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 

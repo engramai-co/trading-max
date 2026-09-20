@@ -43,7 +43,9 @@ production measurements belong in this repository.
 
 The same logical contract applies to research artifacts. `trading-max-json-v1`
 uses content-addressed gzip JSON subtrees, sorted object keys, and fixed groups
-of 128 array elements. Subtrees up to 32 KiB remain single blocks; large scalar
+of 128 array elements. Subtrees up to 128 KiB remain single blocks; older 32 KiB
+layouts remain readable. The coarser target reduces small-file block allocation
+without changing the descriptor format or observation precision. Large scalar
 strings remain bounded by the 256 MiB envelope limit. The descriptor records
 original envelope length and SHA-256. Decoding must reproduce the original
 canonical bytes, including every observation, provenance field and null.
