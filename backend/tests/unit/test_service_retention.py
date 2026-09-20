@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
 import sqlite3
@@ -176,3 +177,26 @@ def test_interrupted_quarantine_stops_subsequent_cleanup(tmp_path):
     with pytest.raises(ValueError, match="unfinished cleanup"):
         maintenance.apply(plan, verified_backup_id=backup["id"])
     assert all(path.exists() for path in releases)
+
+
+def test_nightly_keeps_linked_node_and_retires_only_old_unreferenced_verified_binary(tmp_path):
+    service, releases, backup = host(tmp_path)
+    pool = service / "toolchains/node-blobs"
+    pool.mkdir(parents=True)
+    paths = []
+    for data in [b"linked runtime", b"unreferenced runtime", b"recent runtime"]:
+        path = pool / hashlib.sha256(data).hexdigest()
+        path.write_bytes(data)
+        os.utime(path, (datetime.now(UTC).timestamp() - 172800,) * 2)
+        paths.append(path)
+    os.link(paths[0], releases[-1] / "node")
+    os.utime(paths[2], None)
+    unknown = pool / "user-work"
+    unknown.write_text("keep")
+    maintenance = ServiceRetention(service)
+    plan = maintenance.plan()
+    toolchains = [p for p in plan["items"] if p["kind"] == "toolchain"]
+    assert [p["path"] for p in toolchains] == [str(paths[1].relative_to(service))]
+    maintenance.maintain_repository(backup["id"])
+    assert paths[0].exists() and paths[2].exists() and unknown.exists()
+    assert not paths[1].exists()

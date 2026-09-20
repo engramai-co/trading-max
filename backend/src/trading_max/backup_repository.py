@@ -29,6 +29,7 @@ from .infrastructure.history_chunks import (
     read_descriptor,
     sync_directory,
 )
+from .infrastructure.verified_chunks import VerifiedChunkCache
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BACKUP_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
@@ -121,13 +122,16 @@ class BackupRepository:
 
     def open_blob(self, digest: str):
         """Read the original file bytes regardless of recovery representation."""
+        return self._open_blob(digest)
+
+    def _open_blob(self, digest: str, store: ContentAddressedArtifactStore | None = None):
         packed = self.packed_path(digest)
         if not packed.is_file():
             return gzip.open(self.blob_path(digest), "rb")
         descriptor = read_descriptor(packed)
         if not descriptor or descriptor["envelopeSha256"] != digest:
             raise ValueError("packed backup identity mismatch")
-        store = ContentAddressedArtifactStore(self.root / "packed")
+        store = store or ContentAddressedArtifactStore(self.root / "packed")
         return io.BytesIO(store.physical_store(descriptor).decode(descriptor))
 
     def blob_path(self, digest: str) -> Path:
@@ -441,6 +445,8 @@ class BackupRepository:
             ):
                 raise ValueError("archive root metadata checksum mismatch")
         files = manifest["files"]
+        packed = ContentAddressedArtifactStore(self.root / "packed")
+        packed.json_chunks.read_cache = packed.history.read_cache = VerifiedChunkCache()
         if DATABASE_NAME not in files:
             raise ValueError("backup database is missing")
         with tempfile.TemporaryDirectory(prefix=".verify-", dir=self.root) as temporary:
@@ -464,7 +470,7 @@ class BackupRepository:
                 )
                 if output:
                     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                with self.open_blob(entry["sha256"]) as source:
+                with self._open_blob(entry["sha256"], packed) as source:
                     handle = output.open("wb") if output else None
                     try:
                         while block := source.read(_BLOCK):
@@ -553,7 +559,7 @@ class BackupRepository:
                         target = check_root / _safe_relative(name)
                         target.parent.mkdir(parents=True, exist_ok=True)
                         with (
-                            self.open_blob(files[name]["sha256"]) as source,
+                            self._open_blob(files[name]["sha256"], packed) as source,
                             target.open("wb") as output,
                         ):
                             while block := source.read(_BLOCK):

@@ -18,6 +18,45 @@ manager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manager)
 
 
+def test_shared_node_is_immutable_independent_of_source_and_survives_retired_release(tmp_path):
+    source = tmp_path / "source-node"
+    source.write_text("#!/bin/sh\nprintf 'v22.22.2\\n'\n")
+    source.chmod(0o755)
+    shared = tmp_path / "toolchains/node-blobs"
+    releases = [tmp_path / name for name in ("one", "two")]
+    for release in releases:
+        release.mkdir()
+    first, second = [
+        manager.pin_node_runtime(release, str(source), shared=shared) for release in releases
+    ]
+    assert first.stat().st_ino == second.stat().st_ino
+    assert first.stat().st_ino != source.stat().st_ino
+    assert not first.stat().st_mode & 0o222
+    original = first.read_bytes()
+    source.write_text("external source changed")
+    first.unlink()
+    assert second.read_bytes() == original
+    assert next(shared.iterdir()).stat().st_nlink == 2
+
+
+def test_shared_node_rejects_tampering_before_reuse(tmp_path):
+    source = tmp_path / "source-node"
+    source.write_text("#!/bin/sh\nprintf 'v22.22.2\\n'\n")
+    source.chmod(0o755)
+    shared = tmp_path / "toolchains/node-blobs"
+    first = tmp_path / "first"
+    first.mkdir()
+    manager.pin_node_runtime(first, str(source), shared=shared)
+    blob = next(shared.iterdir())
+    blob.chmod(0o755)
+    blob.write_text("tampered")
+    second = tmp_path / "second"
+    second.mkdir()
+    with pytest.raises(RuntimeError, match="corrupt or writable"):
+        manager.pin_node_runtime(second, str(source), shared=shared)
+    assert not (second / ".node-runtime/node").exists()
+
+
 class SimulatedHost(manager.Deployment):
     def __init__(self, directory: Path, failure: str | None = None):
         service = directory / "service"

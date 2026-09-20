@@ -10,10 +10,10 @@ import gzip
 import hashlib
 import json
 import re
-import zlib
 from pathlib import Path
 
 from .history_chunks import atomic_bytes, canonical
+from .verified_chunks import VerifiedChunkCache, read_verified
 
 FORMAT = "trading-max-json-v1"
 MAX_BYTES = 256 * 1024 * 1024
@@ -25,6 +25,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 class JsonChunks:
     def __init__(self, artifact_root: Path):
         self.root = artifact_root / "json-chunks"
+        self.read_cache: VerifiedChunkCache | None = None
 
     def path(self, digest: str) -> Path:
         if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
@@ -48,13 +49,8 @@ class JsonChunks:
         _, digest, size = node
         if type(size) is not int or not 0 <= size <= MAX_BYTES:
             raise ValueError("invalid JSON block size")
-        try:
-            with gzip.open(self.path(digest), "rb") as stream:
-                raw = stream.read(size + 1)
-        except (OSError, EOFError, zlib.error) as exc:
-            raise ValueError("JSON block cannot be decompressed") from exc
-        if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
-            raise ValueError("JSON block checksum mismatch")
+        reader = self.read_cache.read if self.read_cache else read_verified
+        raw = reader(self.path(digest), size, digest)
         return json.loads(raw)
 
     def _encode(self, value: object, depth: int = 0) -> list:

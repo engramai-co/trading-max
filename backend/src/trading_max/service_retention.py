@@ -288,6 +288,21 @@ class ServiceRetention:
                 raise ValueError("unknown packed backup file")
             if path not in referenced and path.stat().st_mtime < self.cutoff:
                 candidates.append(("backup-blob", path))
+        toolchains = self.service / "toolchains/node-blobs"
+        if toolchains.is_symlink() or toolchains.parent.is_symlink():
+            raise ValueError("shared toolchains must not be symlinks")
+        for path in toolchains.iterdir() if toolchains.exists() else []:
+            if path.is_symlink() or not re.fullmatch(r"[0-9a-f]{64}", path.name):
+                continue
+            info = path.stat()
+            # Any retained runtime, including non-current releases, roots its
+            # immutable executable via a hard link. Financial data is not linked.
+            if not path.is_file() or info.st_nlink != 1 or info.st_mtime >= self.cutoff:
+                continue
+            with path.open("rb") as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != path.name:
+                    raise ValueError("unreferenced shared Node runtime checksum mismatch")
+            candidates.append(("toolchain", path))
         return candidates
 
     def plan(self) -> dict:
@@ -317,7 +332,7 @@ class ServiceRetention:
         plan["items"] = [
             item
             for item in plan["items"]
-            if item["kind"] in {"backup-manifest", "backup-blob", "release"}
+            if item["kind"] in {"backup-manifest", "backup-blob", "release", "toolchain"}
         ]
         plan["candidateBytes"] = sum(item["bytes"] for item in plan["items"])
         plan_path = self.service / "maintenance-plans" / (verified_backup_id + ".json")

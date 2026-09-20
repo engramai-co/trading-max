@@ -53,8 +53,8 @@ monthly representatives, as well as backups referenced by protected deployments.
 Legacy deployment archives retain at least the newest three plus weekly/monthly
 representatives and protected rollback copies.
 
-The nightly job applies backup-manifest, orphan-backup-blob and old unprotected
-release retention after its new backup passes verification. Each night is bounded
+The nightly job applies backup-manifest, orphan-backup-blob, old unprotected
+release and unreferenced shared Node retention after its new backup passes verification. Each night is bounded
 to 64 objects and 2 GB; its plan and removal journal are retained. Current and both
 rollback runtimes remain protected. Legacy archives and rehearsals still require
 the reviewed operator procedure below.
@@ -93,6 +93,14 @@ Recovery retention and physical history conversion are separate operations.
 The lossless chunk migration below has its own reader, backup and byte-parity
 gates. Routine retention does not shorten market or broker history, interpolate
 missing observations, or alter financial calculations.
+
+New releases pin the Node executable in `toolchains/node-blobs/<sha256>` and
+retain a hard link at each release's `.node-runtime/node`. The shared executable
+is copied independently from the external source, checksum-verified and made
+read-only; a source upgrade cannot rewrite retained runtimes. Unsupported hard
+links fall back to independent copies. Old pool objects qualify for cleanup only
+when no runtime links remain, their checksum still matches, and the 24-hour
+grace has elapsed. Application state and recovery data never share these links.
 
 ## Import an existing recovery date
 
@@ -161,6 +169,12 @@ live chunks are not copied a second time. Binary source artifacts, SQLite and
 all non-artifact files keep their existing byte-preserving contract. Original
 artifact IDs, amounts, timestamps and provenance remain unchanged. Existing
 physical backup manifests remain valid and are never rewritten.
+
+Each full backup verification uses a fresh 16 MiB byte cache, bounded to 512
+entries, for unchanged chunks already read and checksum-verified during that
+operation. File identity changes invalidate a cache hit. This does not persist
+verification results across backups or skip original-file checksum, SQLite,
+or snapshot validation.
 
 The library and manual CLI retain `physical` as their default. A logical restore
 materializes full JSON envelopes; allow their reported `logicalBytes` on the
