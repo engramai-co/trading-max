@@ -4,6 +4,7 @@ import os
 
 import pytest
 from trading_max.infrastructure import verified_chunks
+from trading_max.infrastructure.object_packs import ObjectPacks
 from trading_max.infrastructure.verified_chunks import VerifiedChunkCache
 
 
@@ -61,11 +62,13 @@ def test_equal_digests_at_different_locations_do_not_share_trust(tmp_path):
         cache.read(backup, len(raw), digest)
 
 
-def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeypatch):
+@pytest.mark.parametrize("sealed", [False, True])
+def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeypatch, sealed):
     import sqlite3
 
     from trading_max.backup_repository import BackupRepository
     from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+    from trading_max.pack_maintenance import pack_repository
 
     state = tmp_path / "state"
     state.mkdir()
@@ -79,6 +82,9 @@ def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeyp
     SnapshotStore(state, artifacts=store).publish(scope="accounts", source="test", artifacts=items)
     repo = BackupRepository(tmp_path / "recovery")
     backup = repo.create(state, artifact_encoding="logical")
+    if sealed:
+        while pack_repository(repo, tmp_path / "journals")["convertedFiles"]:
+            pass
     reads = []
     original = verified_chunks.read_verified
 
@@ -87,9 +93,58 @@ def test_each_backup_verification_reads_physical_chunks_afresh(tmp_path, monkeyp
         return original(path, size, digest)
 
     monkeypatch.setattr(verified_chunks, "read_verified", counted)
+    pack_reads = []
+    packed_read = ObjectPacks.read
+
+    def counted_pack(pool, key):
+        if pool.root == repo.packed_store.packs.root and key.startswith(("json/", "history/")):
+            pack_reads.append(key)
+        return packed_read(pool, key)
+
+    monkeypatch.setattr(ObjectPacks, "read", counted_pack)
     for _ in range(2):
         reads.clear()
+        pack_reads.clear()
         assert repo.verify(backup["id"])["snapshotRunId"]
-        packed_reads = [p for p in reads if p.is_relative_to(repo.root / "packed")]
+        packed_reads = (
+            pack_reads if sealed else [p for p in reads if p.is_relative_to(repo.root / "packed")]
+        )
         assert packed_reads
         assert len(packed_reads) == len(set(packed_reads))
+
+
+def test_packed_cache_is_bounded_and_keeps_claims_and_source_identity(tmp_path, monkeypatch):
+    pool = ObjectPacks(tmp_path / "packs")
+    items = {f"json/{i}": bytes([i]) * 90 for i in range(4)}
+    pool.add(items)
+    reads = []
+    original = pool.read
+
+    def counted(key):
+        reads.append(key)
+        return original(key)
+
+    monkeypatch.setattr(pool, "read", counted)
+    cache = VerifiedChunkCache(max_bytes=200, max_entries=2)
+
+    def read(key, size=90):
+        return cache.read_packed(pool, key, size, hashlib.sha256(items[key]).hexdigest())
+
+    assert read("json/0") == read("json/0") == items["json/0"]
+    assert reads == ["json/0"]
+    with pytest.raises(ValueError, match="checksum"):
+        read("json/0", size=91)
+    for key in list(items)[1:]:
+        assert read(key) == items[key]
+        assert cache.bytes <= 200 and len(cache.entries) <= 2
+    read("json/0")
+    assert reads.count("json/0") == 3  # Original read, bad size claim, then eviction.
+
+    source = pool.source("json/0")
+    before = source.stat()
+    damaged = bytearray(source.read_bytes())
+    damaged[-1] ^= 1
+    source.write_bytes(damaged)
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    with pytest.raises(ValueError):
+        read("json/0")

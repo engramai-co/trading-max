@@ -260,7 +260,11 @@ content use larger blocks. Classification inspects descriptors without decoding
 the entire historical provenance graph. All original source records remain
 readable and independently recoverable. New records published after classification
 wait for the next cycle. Exact endpoints, financial calculations, precision and original records
-are unchanged. This does not constitute a fixed lifetime storage cap: the
+are unchanged. Backup verification and restore reuse verified logical chunks
+within the existing bounded, operation-local cache, including when their loose
+files have moved into sealed blocks. Cache hits recheck source identity; each new
+verification reads physical content again and every envelope still receives its
+full checksum verification. This does not constitute a fixed lifetime storage cap: the
 existing complete-installation census and growth alerts remain authoritative.
 
 ## Shared installed dependencies

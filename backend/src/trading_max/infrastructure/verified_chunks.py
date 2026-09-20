@@ -53,6 +53,23 @@ class VerifiedChunkCache:
         raw = read_verified(path, size, digest)
         if _stamp(path) != before:
             raise ValueError("chunk changed while being verified")
+        return self._remember(key, raw)
+
+    def read_packed(self, packs, record: str, size: int, digest: str) -> bytes:
+        path = packs.source(record)
+        before = _stamp(path)
+        key = (str(path), record, size, digest, before)
+        if key in self.entries:
+            self.entries.move_to_end(key)
+            return self.entries[key]
+        raw = packs.read(record)
+        if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+            raise ValueError("packed chunk checksum mismatch")
+        if _stamp(path) != before:
+            raise ValueError("packed chunk changed while being verified")
+        return self._remember(key, raw)
+
+    def _remember(self, key: tuple, raw: bytes) -> bytes:
         if len(raw) <= self.max_bytes:
             while self.entries and (
                 self.bytes + len(raw) > self.max_bytes or len(self.entries) >= self.max_entries
@@ -75,7 +92,7 @@ def read_packable_chunk(path: Path, size: int, digest: str, packs, key: str, cac
         ):
             raise
     try:
-        raw = packs.read(key)
+        raw = cache.read_packed(packs, key, size, digest) if cache else packs.read(key)
     except OSError as exc:
         raise ValueError("packed chunk cannot be read") from exc
     if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
