@@ -151,7 +151,7 @@ def test_referenced_backup_blobs_are_never_cleanup_candidates(tmp_path):
     assert not any(item["path"].endswith(backup["id"] + ".json") for item in plan["items"])
 
 
-def test_nightly_maintenance_never_deletes_runtime_or_legacy_archives(tmp_path):
+def test_nightly_maintenance_retires_only_old_unprotected_runtimes_and_orphans(tmp_path):
     service, releases, backup = host(tmp_path)
     maintenance = ServiceRetention(service)
     blob = maintenance.repository.blob_path("f" * 64)
@@ -159,9 +159,10 @@ def test_nightly_maintenance_never_deletes_runtime_or_legacy_archives(tmp_path):
     blob.write_bytes(gzip.compress(b"unpublished"))
     os.utime(blob, (datetime.now(UTC).timestamp() - 172800,) * 2)
     result = maintenance.maintain_repository(backup["id"])
-    assert result["removedItems"] == 1
+    assert result["removedItems"] == 4
     assert not blob.exists()
-    assert all(path.exists() for path in releases)
+    assert not any(path.exists() for path in releases[:3])
+    assert all(path.exists() for path in releases[3:])
     assert maintenance.repository.verify(backup["id"])["snapshotRunId"]
 
 

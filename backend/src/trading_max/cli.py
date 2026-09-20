@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import secrets
 import shlex
@@ -384,6 +385,23 @@ def doctor(
         if update_current:
             print("updates: canonical main is current")
     _print_runtime_check_scope()
+    capacity_path = state_root / "runtime/storage-budget.json"
+    if capacity_path.is_file():
+        try:
+            capacity = json.loads(capacity_path.read_text())
+            used, limit = capacity["usedBytes"], capacity["budgetBytes"]
+            if type(used) is not int or type(limit) is not int or used < 0 or limit <= 0:
+                raise ValueError("invalid capacity values")
+            print(
+                f"installation storage: {used / 1e9:.2f} / {limit / 1e9:.2f} GB ({capacity['status']})"
+            )
+            print(f"storage census: {capacity['measuredAt']}")
+            if used >= limit:
+                failures.append(
+                    "installation exceeds its storage budget; inspect the capacity report"
+                )
+        except (OSError, KeyError, TypeError, ValueError):
+            print("installation storage: capacity report unavailable")
     if failures:
         print("doctor found problems:")
         print("\n".join(f"- {failure}" for failure in failures))

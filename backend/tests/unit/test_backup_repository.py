@@ -275,3 +275,19 @@ def test_packed_backup_retains_original_manifest_hashes_and_byte_exact_restore(t
     packed_store.physical_paths(descriptor)[0].unlink()
     with pytest.raises(ValueError):
         repo.verify(backup["id"])
+
+
+def test_new_backups_exclude_rebuildable_filings_but_keep_price_history(tmp_path):
+    state = state_at(tmp_path / "state")
+    documents = state / "research-cache/disclosures"
+    prices = state / "research-cache/security-prices"
+    documents.mkdir(parents=True)
+    prices.mkdir(parents=True)
+    (documents / "synthetic.html").write_text("retrievable public filing")
+    (prices / "history.json").write_text("synthetic historical quotes")
+    repo = BackupRepository(tmp_path / "backups")
+    backup = repo.create(state)
+    manifest = json.loads(Path(backup["manifest"]).read_text())
+    assert "research-cache/disclosures/synthetic.html" not in manifest["files"]
+    assert "research-cache/security-prices/history.json" in manifest["files"]
+    assert repo.verify(backup["id"])["snapshotRunId"]
