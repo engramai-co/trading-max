@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.14] - 2026-09-20
+
+### Fixed
+
+- Allow a verified cleanup batch to retire multiple releases sharing an immutable Node executable. Validate its contents instead of treating another alias being removed as unexpected file modification.
+
 ## [1.5.13] - 2026-09-20
 
 ### Fixed
