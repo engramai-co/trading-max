@@ -23,7 +23,12 @@ from pathlib import Path, PurePosixPath
 
 from .backup import DATABASE_NAME, EXCLUDED_COMPONENTS, EXCLUDED_SUFFIXES, _included_files
 from .infrastructure import ContentAddressedArtifactStore, SnapshotStore, compressed_json
-from .infrastructure.history_chunks import read_descriptor
+from .infrastructure.history_chunks import (
+    atomic_bytes,
+    durable_directory,
+    read_descriptor,
+    sync_directory,
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BACKUP_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
@@ -57,16 +62,7 @@ def exclusive_lock(path: Path):
 
 
 def atomic_json(path: Path, value: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=".pending-", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as handle:
-            json.dump(value, handle, sort_keys=True, separators=(",", ":"))
-            handle.flush()
-            os.fsync(handle.fileno())
-        Path(name).replace(path)
-    finally:
-        Path(name).unlink(missing_ok=True)
+    atomic_bytes(path, json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
 
 
 def _safe_relative(value: str) -> Path:
@@ -166,12 +162,13 @@ class BackupRepository:
             os.fsync(compressed.fileno())
         sha = digest.hexdigest()
         final = self.blob_path(sha)
-        final.parent.mkdir(exist_ok=True, mode=0o700)
+        durable_directory(final.parent)
         if final.exists() or self.packed_path(sha).exists():
             temporary.unlink()
         else:
             temporary.chmod(0o600)
             temporary.replace(final)
+            sync_directory(final.parent)
         return {"sha256": sha, "size": size, "mode": mode & 0o700}
 
     def _store(self, source: Path, scratch: Path) -> dict:

@@ -121,3 +121,33 @@ Reads and downloads support both forms; backups include physical dependencies.
 Do not opt into `chunked` writes until the active and both protected rollback
 releases have the dual reader and have passed restore validation. This release
 never automatically migrates or deletes existing application objects.
+
+## Lossless representation migration
+
+`tools/compact_storage.py --service-root SERVICE check-readers` exercises the
+current runtime and both retained rollback runtimes against synthetic compact
+artifacts, snapshot indexes, filing caches and independent backup recovery.
+Missing or incompatible rollback readers block mutation. Legacy writing remains
+the default until this check succeeds; do not bypass it by changing environment
+variables on an incompatible installation.
+
+After a fresh, verified recovery snapshot exists, use the `state` or `backups`
+subcommand with `--state-root STATE --verified-backup-id ID`. Both operations
+accept `--max-files` and `--max-bytes` to bound each run. They acquire the service
+deployment lock and coordinate with the recovery repository lock. Inspect their
+JSON reports before increasing an initial migration's budget.
+
+State migration preserves artifact identities, exact original envelope bytes,
+all historical records and immutable filing text. A prepared journal precedes
+each atomic replacement. Restart reconciles interrupted entries; unexpected
+content stops the run. A failed verification restores the original content.
+Mutable filing result caches are allowed to expire and rewrite normally, rather
+than being raced by the migration. No unique financial observations are pruned.
+
+Recovery compaction shares independently owned blocks while retaining original
+manifest IDs, recovery dates and file SHA-256 values. Each original compressed
+blob is retired only after the replacement reproduces every original byte. A
+failed replacement is removed so it cannot hide the valid original recovery
+blob. Re-running a completed batch is safe; repeated observations are shared,
+not interpolated or downsampled. Directory entries are synced after publication
+so a crash cannot publish a descriptor before its durable block writes.
