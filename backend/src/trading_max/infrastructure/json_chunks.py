@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .history_chunks import atomic_bytes, canonical
 from .object_packs import ObjectPacks
-from .verified_chunks import VerifiedChunkCache, read_packable_chunk
+from .verified_chunks import VerifiedChunkCache, read_packable_chunk, read_packable_chunks
 
 FORMAT = "trading-max-json-v1"
 MAX_BYTES = 256 * 1024 * 1024
@@ -93,6 +93,9 @@ class JsonChunks:
         return descriptor
 
     def paths(self, descriptor: dict) -> list[Path]:
+        return list(self._blocks(descriptor))
+
+    def _blocks(self, descriptor: dict) -> dict[Path, list]:
         if descriptor.get("$format") != FORMAT:
             raise ValueError("unsupported JSON storage format")
         size = descriptor.get("envelopeBytes")
@@ -112,7 +115,10 @@ class JsonChunks:
                 total += node[2]
                 if total > size + 2 * count or total > MAX_BYTES:
                     raise ValueError("JSON blocks exceed envelope size")
-                paths[self.path(node[1])] = None
+                path = self.path(node[1])
+                if path in paths and paths[path] != node:
+                    raise ValueError("conflicting JSON block claims")
+                paths[path] = node
                 continue
             if len(node) != 2 or not isinstance(node[1], list):
                 raise ValueError("invalid JSON branch")
@@ -129,15 +135,21 @@ class JsonChunks:
                 pending.extend((child, depth + 1) for child in node[1])
             else:
                 raise ValueError("unknown JSON node")
-        return list(paths)
+        return paths
 
     def decode(self, descriptor: dict) -> bytes:
-        self.paths(descriptor)
+        blocks = self._blocks(descriptor)
+        chunks = read_packable_chunks(
+            [(path, node[2], node[1], "json/" + node[1]) for path, node in blocks.items()],
+            self.packs,
+            self.read_cache,
+            max_bytes=MAX_BYTES,
+        )
 
         def read(node):
             kind = node[0]
             if kind == "blob":
-                return self._read(node)
+                return json.loads(chunks["json/" + node[1]])
             if kind == "map":
                 return {key: read(child) for key, child in node[1]}
             values = [read(child) for child in node[1]]

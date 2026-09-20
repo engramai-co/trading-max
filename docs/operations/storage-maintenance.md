@@ -188,6 +188,13 @@ operation. File identity changes invalidate a cache hit. This does not persist
 verification results across backups or skip original-file checksum, SQLite,
 or snapshot validation.
 
+Within one envelope, sealed chunk reads are grouped by physical block, then
+reassembled in the original order. Selected bytes are bounded by the envelope
+format limits before block decoding; a temporary envelope buffer is released
+after reconstruction. This is separate from the 16 MiB reusable cache. Loose
+chunk corruption remains an error even if an equivalent sealed record exists.
+Only a concurrently retired, missing alias may fall through to its sealed copy.
+
 The library and manual CLI retain `physical` as their default. A logical restore
 materializes full JSON envelopes; allow their reported `logicalBytes` on the
 recovery disk, then use the verified state compactor if desired. The current and

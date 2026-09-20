@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .durable_files import atomic_bytes, durable_directory, sync_directory  # noqa: F401
 from .object_packs import ObjectPacks
-from .verified_chunks import VerifiedChunkCache, read_packable_chunk
+from .verified_chunks import VerifiedChunkCache, read_packable_chunk, read_packable_chunks
 
 FORMAT = "trading-max-history-v1"
 HISTORY_KEYS = {"account/nav/valuation_history.json", "account/nav/intraday_anchors.json"}
@@ -60,14 +60,15 @@ class HistoryChunks:
             atomic_bytes(path, gzip.compress(raw, compresslevel=3, mtime=0))
         return block
 
-    def _read(self, block: dict) -> list:
+    def _read(self, block: dict, raw: bytes | None = None) -> list:
         size = block["bytes"]
         if type(size) is not int or not 0 <= size <= _MAX_BLOCK_BYTES:
             raise ValueError("invalid history block size")
         digest = block["sha256"]
-        raw = read_packable_chunk(
-            self.path(digest), size, digest, self.packs, "history/" + digest, self.read_cache
-        )
+        if raw is None:
+            raw = read_packable_chunk(
+                self.path(digest), size, digest, self.packs, "history/" + digest, self.read_cache
+            )
         values = json.loads(raw)
         if not isinstance(values, list):
             raise ValueError("history block must contain an array")
@@ -129,6 +130,7 @@ class HistoryChunks:
             raise ValueError("invalid history envelope size")
         points = []
         decoded_bytes = 0
+        records = []
         for chunk in descriptor["chunks"]:
             count = chunk["count"]
             if type(count) is not int or not 1 <= count <= _POINTS_PER_BLOCK:
@@ -136,7 +138,21 @@ class HistoryChunks:
             decoded_bytes += chunk["values"]["bytes"] + chunk["sources"]["bytes"]
             if decoded_bytes > _MAX_ENVELOPE_BYTES * 2:
                 raise ValueError("history representation exceeds size limit")
-            values, sources = self._read(chunk["values"]), self._read(chunk["sources"])
+            for kind in ("values", "sources"):
+                block = chunk[kind]
+                if type(block["bytes"]) is not int or not 0 <= block["bytes"] <= _MAX_BLOCK_BYTES:
+                    raise ValueError("invalid history block size")
+                digest = block["sha256"]
+                records.append((self.path(digest), block["bytes"], digest, "history/" + digest))
+        raw_chunks = read_packable_chunks(
+            records, self.packs, self.read_cache, max_bytes=_MAX_ENVELOPE_BYTES * 2
+        )
+        for chunk in descriptor["chunks"]:
+            count = chunk["count"]
+            values = self._read(chunk["values"], raw_chunks["history/" + chunk["values"]["sha256"]])
+            sources = self._read(
+                chunk["sources"], raw_chunks["history/" + chunk["sources"]["sha256"]]
+            )
             if len(values) != count or len(sources) != count:
                 raise ValueError("history block count mismatch")
             for value, source in zip(values, sources, strict=True):

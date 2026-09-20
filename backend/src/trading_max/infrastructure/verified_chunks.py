@@ -80,6 +80,63 @@ class VerifiedChunkCache:
             self.bytes += len(raw)
         return raw
 
+    def read_packed_many(self, packs, claims: list[tuple[str, int, str]]) -> dict[str, bytes]:
+        result = {}
+        missing = {}
+        for record, size, digest in claims:
+            path = packs.source(record)
+            before = _stamp(path)
+            key = (str(path), record, size, digest, before)
+            if key in self.entries:
+                self.entries.move_to_end(key)
+                result[record] = self.entries[key]
+            else:
+                missing[record] = (path, before, key, size, digest)
+        records = list(missing)
+        values = packs.read_many(records, max_bytes=sum(item[3] for item in missing.values()))
+        for record, raw in zip(records, values, strict=True):
+            path, before, key, size, digest = missing[record]
+            if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
+                raise ValueError("packed chunk checksum mismatch")
+            if _stamp(path) != before:
+                raise ValueError("packed chunk changed while being verified")
+            result[record] = self._remember(key, raw)
+        return result
+
+
+def read_packable_chunks(items, packs, cache=None, *, max_bytes: int) -> dict[str, bytes]:
+    """Read one validated envelope's chunks in physical block order, then restore logical order."""
+    claims = {}
+    total = 0
+    for path, size, digest, record in items:
+        if type(size) is not int or not 0 <= size <= max_bytes:
+            raise ValueError("invalid chunk size")
+        claim = (path, size, digest)
+        if record in claims and claims[record] != claim:
+            raise ValueError("conflicting chunk claims")
+        if record not in claims:
+            total += size
+            if total > max_bytes:
+                raise ValueError("chunks exceed read byte budget")
+            claims[record] = claim
+    reader = cache or VerifiedChunkCache()
+    result = {}
+    packed = []
+    for record, (path, size, digest) in claims.items():
+        try:
+            result[record] = reader.read(path, size, digest)
+        except (ValueError, FileNotFoundError) as exc:
+            if not isinstance(exc, FileNotFoundError) and not isinstance(
+                exc.__cause__, FileNotFoundError
+            ):
+                raise
+            packed.append((record, size, digest))
+    try:
+        result.update(reader.read_packed_many(packs, packed))
+    except OSError as exc:
+        raise ValueError("packed chunk cannot be read") from exc
+    return result
+
 
 def read_packable_chunk(path: Path, size: int, digest: str, packs, key: str, cache=None) -> bytes:
     """A concurrently retired alias can only fall through on ENOENT, never corruption."""

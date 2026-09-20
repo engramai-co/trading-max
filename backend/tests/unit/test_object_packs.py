@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import json
 import shutil
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -362,8 +363,9 @@ def test_descriptor_open_survives_concurrent_retirement(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("family", ["json", "history"])
+@pytest.mark.parametrize("batch", [False, True])
 def test_chunk_concurrent_retirement_but_not_corruption_uses_sealed_bytes(
-    tmp_path, monkeypatch, family
+    tmp_path, monkeypatch, family, batch
 ):
     import gzip
     import hashlib
@@ -389,8 +391,17 @@ def test_chunk_concurrent_retirement_but_not_corruption_uses_sealed_bytes(
     node = (
         ["block", digest, len(raw)] if family == "json" else {"sha256": digest, "bytes": len(raw)}
     )
-    assert chunks._read(node) == [1, 2, 3]
+
+    def read():
+        if batch:
+            result = verified_chunks.read_packable_chunks(
+                [(path, len(raw), digest, family + "/" + digest)], chunks.packs, max_bytes=100
+            )
+            return json.loads(result[family + "/" + digest])
+        return chunks._read(node)
+
+    assert read() == [1, 2, 3]
     monkeypatch.setattr(verified_chunks, "read_verified", original)
     path.write_bytes(b"corrupt loose bytes")
     with pytest.raises(ValueError, match="decompressed"):
-        chunks._read(node)
+        read()
