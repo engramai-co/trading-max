@@ -98,7 +98,13 @@ def test_daily_incremental_history_and_backups_remain_independent_and_lossless(t
         item = writer.put_json(key="account/nav/valuation_history.json", payload={"points": points})
         snapshots.publish(scope="accounts", source="synthetic-daily", artifacts=[item])
         logical += writer.logical_size(item.ref.artifact_id)
-        saved.append((repository.create(state)["id"], item.ref.artifact_id, len(points)))
+        saved.append(
+            (
+                repository.create(state, artifact_encoding="logical")["id"],
+                item.ref.artifact_id,
+                len(points),
+            )
+        )
     for index in (0, -1):
         backup, artifact_id, count = saved[index]
         restored = tmp_path / ("restored-" + str(index))

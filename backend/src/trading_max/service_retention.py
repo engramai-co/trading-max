@@ -249,14 +249,17 @@ class ServiceRetention:
             [(name, datetime.fromisoformat(data["createdAt"])) for name, data in manifests.items()]
         ) | set(context["protectedBackupIds"])
         referenced = set()
+        referenced_digests = set()
         for name, manifest in manifests.items():
             # All existing manifests root blobs, even those proposed for retirement.
             # A later plan collects orphan blobs after the grace period.
             for entry in manifest["files"].values():
-                referenced.update(self.repository.blob_files(entry["sha256"]))
+                referenced_digests.add(entry["sha256"])
             path = self.repository.manifest_path(name)
             if name not in keep_backups and path.stat().st_mtime < self.cutoff:
                 candidates.append(("backup-manifest", path))
+        for digest in referenced_digests:
+            referenced.update(self.repository.blob_files(digest))
         for directory in self.repository.blobs.iterdir():
             if not re.fullmatch(r"[0-9a-f]{2}", directory.name) or directory.is_symlink():
                 raise ValueError("unknown backup blob directory")

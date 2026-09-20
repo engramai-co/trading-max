@@ -58,10 +58,11 @@ if [[ "$FORMAT" == "repository" ]]; then
   if [[ "$DESTINATION" == "$SERVICE_ROOT/backups/repository" ]]; then
     exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
       --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly \
-      --retain-for-service "$SERVICE_ROOT"
+      --artifact-encoding logical --retain-for-service "$SERVICE_ROOT"
   fi
   exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
-    --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly
+    --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly \
+    --artifact-encoding logical
 fi
 
 mkdir -p "$DESTINATION"

@@ -278,7 +278,42 @@ class BackupRepository:
             atomic_json(existing, manifest)
             return {"id": backup_id, "manifest": str(existing), "reused": False, **verified}
 
-    def create(self, state: Path, *, label: str = "manual", now: datetime | None = None) -> dict:
+    def _logical_artifact(self, source: Path, store, scratch: Path) -> dict:
+        """Share one logical envelope across legacy and compact live layouts."""
+        from .storage_migration import verified_envelope
+
+        before = _stamp(source)
+        raw = store.content_bytes(source.name)
+        envelope = verified_envelope(raw, source.name)
+        if _stamp(source) != before:
+            raise RuntimeError("artifact changed during backup; retry without pruning")
+        digest = hashlib.sha256(raw).hexdigest()
+        entry = {"sha256": digest, "size": len(raw), "mode": source.stat().st_mode & 0o700}
+        if self.blob_path(digest).is_file() or self.packed_path(digest).is_file():
+            return entry  # The complete manifest verification checks existing bytes.
+        if len(raw) <= 64 * 1024:
+            return self._store_stream(io.BytesIO(raw), scratch, mode=entry["mode"])
+        from .infrastructure.history_chunks import HISTORY_KEYS, canonical
+
+        packed = ContentAddressedArtifactStore(self.root / "packed")
+        descriptor = (
+            packed.history.encode(raw)
+            if envelope["ref"]["key"] in HISTORY_KEYS
+            else packed.json_chunks.encode(raw)
+        )
+        atomic_bytes(self.packed_path(digest), canonical(descriptor))
+        return entry
+
+    def create(
+        self,
+        state: Path,
+        *,
+        label: str = "manual",
+        now: datetime | None = None,
+        artifact_encoding: str = "physical",
+    ) -> dict:
+        if artifact_encoding not in {"physical", "logical"}:
+            raise ValueError("unsupported backup artifact encoding")
         state = state.expanduser().resolve()
         if not state.is_dir() or not (state / DATABASE_NAME).is_file():
             raise FileNotFoundError("backup requires an initialized state database")
@@ -307,6 +342,8 @@ class BackupRepository:
             catalog_path = self.root / "catalog.json"
             catalog = json.loads(catalog_path.read_text()) if catalog_path.is_file() else {}
             next_catalog: dict = {}
+            source_artifacts = ContentAddressedArtifactStore(state / "artifacts")
+            chunk_stamps: dict[Path, list[int]] = {}
             files = {DATABASE_NAME: self._store(database, scratch)}
             for source in _included_files(state):
                 relative = source.relative_to(state).as_posix()
@@ -315,10 +352,30 @@ class BackupRepository:
                 # this disposable cache in every new recovery point.
                 if relative.startswith("research-cache/disclosures/"):
                     continue
+                if artifact_encoding == "logical" and relative.startswith(
+                    ("artifacts/history-chunks/", "artifacts/json-chunks/")
+                ):
+                    continue  # Logical envelopes own independent repository chunks.
                 _safe_relative(relative)
                 stamp = _stamp(source)
                 cache_key = str(source)
                 cached = catalog.get(cache_key)
+                logical_artifact = (
+                    artifact_encoding == "logical"
+                    and relative.startswith("artifacts/sha256/")
+                    and bool(_DIGEST.fullmatch(source.name))
+                    and not source.with_name(source.name + ".meta.json").exists()
+                )
+                encoding = "logical" if logical_artifact else "physical"
+                if logical_artifact:
+                    descriptor = source_artifacts.descriptor(source.name)
+                    if descriptor:
+                        closure = []
+                        for chunk in source_artifacts.physical_paths(descriptor):
+                            if chunk not in chunk_stamps:
+                                chunk_stamps[chunk] = _stamp(chunk)
+                            closure.append([str(chunk), chunk_stamps[chunk]])
+                        stamp.append(hashlib.sha256(json.dumps(closure).encode()).hexdigest())
                 immutable = (
                     relative.startswith("artifacts/sha256/")
                     and bool(re.fullmatch(r"[0-9a-f]{64}(\.meta\.json)?", source.name))
@@ -330,19 +387,26 @@ class BackupRepository:
                     immutable
                     and cached
                     and cached.get("stamp") == stamp
+                    and cached.get("artifactEncoding", "physical") == encoding
                     and (
                         self.blob_path(cached["file"]["sha256"]).is_file()
                         or self.packed_path(cached["file"]["sha256"]).is_file()
                     )
                 ):
                     entry = cached["file"]
+                elif logical_artifact:
+                    entry = self._logical_artifact(source, source_artifacts, scratch)
                 else:
                     entry = self._store(
                         captured_pointer if relative == "latest.json" else source, scratch
                     )
                 files[relative] = entry
                 if immutable:
-                    next_catalog[cache_key] = {"stamp": stamp, "file": entry}
+                    next_catalog[cache_key] = {
+                        "stamp": stamp,
+                        "file": entry,
+                        "artifactEncoding": encoding,
+                    }
             instant = now or datetime.now(UTC)
             backup_id = (
                 instant.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
@@ -353,6 +417,7 @@ class BackupRepository:
                 "createdAt": instant.isoformat(),
                 "label": label,
                 "sourceState": str(state),
+                "artifactEncoding": artifact_encoding,
                 "files": files,
             }
             # No manifest or retention change is published until a full restore read

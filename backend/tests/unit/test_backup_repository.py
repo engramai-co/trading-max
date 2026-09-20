@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import shutil
 import sqlite3
 import tarfile
 from contextlib import closing
@@ -25,6 +26,70 @@ def state_at(root: Path) -> Path:
     item = store.artifacts.put_json(key="example.json", payload={"value": [1, 2, 3]})
     store.publish(scope="accounts", source="test", artifacts=[item])
     return root
+
+
+def test_logical_backup_reuses_legacy_bytes_after_live_compaction(tmp_path):
+    from trading_max.storage_migration import StateCompactor
+
+    state = state_at(tmp_path / "state")
+    store = SnapshotStore(state).artifacts
+    item = store.put_json(
+        key="research/synthetic.json",
+        payload={"rows": [{"n": i, "text": "synthetic" * 100} for i in range(1000)]},
+    )
+    SnapshotStore(state).publish(scope="accounts", source="fixture", artifacts=[item])
+    raw = item.path.read_bytes()
+    repo = BackupRepository(tmp_path / "backups")
+    old = repo.create(state)
+    key = "artifacts/sha256/" + item.ref.artifact_id
+    old_entry = json.loads(Path(old["manifest"]).read_text())["files"][key]
+    StateCompactor(state, tmp_path / "journals").run()
+    physical = repo.create(state)
+    compact_bytes = item.path.read_bytes()
+    assert compact_bytes != raw
+    logical = repo.create(state, artifact_encoding="logical")
+    manifest = json.loads(Path(logical["manifest"]).read_text())
+    assert manifest["files"][key] == old_entry
+    assert not any("chunks/" in p for p in manifest["files"])
+    # Catalog entries must not cross encoding modes, even with identical source stamps.
+    assert json.loads(Path(physical["manifest"]).read_text())["files"][key] != old_entry
+    assert repo.create(state, artifact_encoding="logical")["files"] == logical["files"]
+    shutil.rmtree(state)
+    repo.restore(logical["id"], tmp_path / "logical-restore")
+    assert (tmp_path / "logical-restore" / key).read_bytes() == raw
+    repo.restore(physical["id"], tmp_path / "physical-restore")
+    assert (tmp_path / "physical-restore" / key).read_bytes() == compact_bytes
+
+
+def test_new_logical_backup_packs_independent_chunks_and_invalidates_source_cache(tmp_path):
+    from trading_max.infrastructure import ContentAddressedArtifactStore
+
+    state = state_at(tmp_path / "state")
+    store = ContentAddressedArtifactStore(state / "artifacts", storage_mode="chunked")
+    item = store.put_json(
+        key="research/synthetic.json",
+        payload={"rows": [{"n": i, "text": "合成" * 100} for i in range(1000)]},
+    )
+    raw = store.content_bytes(item.ref.artifact_id)
+    SnapshotStore(state).publish(scope="accounts", source="fixture", artifacts=[item])
+    repo = BackupRepository(tmp_path / "backups")
+    one = repo.create(state, artifact_encoding="logical")
+    manifest = json.loads(Path(one["manifest"]).read_text())
+    entry = manifest["files"]["artifacts/sha256/" + item.ref.artifact_id]
+    assert repo.packed_path(entry["sha256"]).exists()
+    assert not repo.blob_path(entry["sha256"]).exists()
+    chunks = set((repo.root / "packed").rglob("*.gz"))
+    repo.create(state, artifact_encoding="logical")
+    assert set((repo.root / "packed").rglob("*.gz")) == chunks
+    block = store.physical_paths(store.descriptor(item.ref.artifact_id))[0]
+    block.write_bytes(gzip.compress(b"corrupted", mtime=0))
+    before = set(repo.snapshots.iterdir())
+    with pytest.raises(ArtifactIntegrityError):
+        repo.create(state, artifact_encoding="logical")
+    assert set(repo.snapshots.iterdir()) == before
+    shutil.rmtree(state)
+    repo.restore(one["id"], tmp_path / "recovered")
+    assert (tmp_path / "recovered/artifacts/sha256" / item.ref.artifact_id).read_bytes() == raw
 
 
 def test_backup_is_independent_deduplicated_and_restorable(tmp_path: Path):
