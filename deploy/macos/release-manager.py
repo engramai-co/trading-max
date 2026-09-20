@@ -257,6 +257,15 @@ class Deployment:
         if not (self.active / "apps/web/.next/BUILD_ID").is_file():
             raise RuntimeError("previous web build is unavailable for rollback")
         trim_build_dependencies(self.candidate)
+        self.run(
+            self.candidate / ".venv/bin/python",
+            "tools/share_runtime_dependencies.py",
+            "--release",
+            self.candidate,
+            "--pool",
+            self.service / "toolchains/package-blobs",
+            cwd=self.candidate,
+        )
 
     def capture_configuration(self) -> None:
         self.private.mkdir(parents=True, mode=0o700)

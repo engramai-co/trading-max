@@ -65,6 +65,17 @@ if [[ "$FORMAT" == "repository" ]]; then
     --artifact-encoding logical
 fi
 
+# Packed state needs the logical recovery path: copying a mutable locator
+# and concurrently retired loose aliases into tar is not a consistent backup.
+if [[ -f "$STATE_ROOT/artifacts/object-packs/index.sqlite3" ]]; then
+  exec "$BACKUP_PYTHON" - "$STATE_ROOT" "$DESTINATION" "$RETAIN_ARCHIVES" <<'PY_BACKUP'
+import sys
+from pathlib import Path
+from trading_max.backup import create_backup
+print(create_backup(Path(sys.argv[1]), Path(sys.argv[2]), retain=int(sys.argv[3])))
+PY_BACKUP
+fi
+
 mkdir -p "$DESTINATION"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/trading_max-backup.XXXXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT

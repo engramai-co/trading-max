@@ -260,3 +260,31 @@ larger blocks. New records published after classification wait for the next
 cycle. Exact endpoints, financial calculations, precision and original records
 are unchanged. This does not constitute a fixed lifetime storage cap: the
 existing complete-installation census and growth alerts remain authoritative.
+
+## Shared installed dependencies
+
+New macOS candidates consolidate identical Python site-package files, standalone
+web dependencies and Git pack files into a private `toolchains/package-blobs`
+pool. Files smaller than 4 KiB, bytecode, writable caches and symlinks are excluded.
+Every new pool object is independently copied and checksum-verified before an
+atomic hard-link replacement; external package-cache permissions are unchanged.
+Pool objects are read-only and separated by executable mode. The current and
+rollback releases retain their own links, so removing a different release or an
+unused pool name cannot break them. Unsupported hard links keep independent files.
+
+The existing deployment lock serializes this operation. For retained versions,
+operators can invoke `tools/share_runtime_dependencies.py --release RELEASE
+--pool SERVICE/toolchains/package-blobs` under that same lock, followed by runtime
+and rollback validation. This changes installed file representation only; state
+and independent backup files are never shared this way.
+
+Nightly retention recognizes immutable aliases by content, and only retires pool
+objects with one remaining link after the normal 24-hour grace period. Unknown,
+changed or writable objects fail closed. The complete-installation census counts
+each physical inode once, including the shared pool and its fallback files.
+
+Manual tar exports of packed state first materialize an independently verified
+logical recovery. They do not copy a changing pack locator or rely on loose
+aliases remaining present. This preserves original JSON downloads and needs
+temporary space for the logical envelopes; repository backups remain the normal
+compact nightly path. Temporary export staging is removed after publication.

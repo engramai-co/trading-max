@@ -315,3 +315,82 @@ def test_batch_reads_preserve_request_order_and_detect_bad_locators(tmp_path):
         db.execute("UPDATE records SET size=3 WHERE key='second'")
     with pytest.raises(ValueError, match="locator"):
         store.read_many(["third", "second"])
+
+
+def test_artifact_read_survives_alias_retired_after_lookup(tmp_path, monkeypatch):
+    from trading_max.infrastructure import artifacts
+
+    store = artifacts.ContentAddressedArtifactStore(tmp_path)
+    item = store.put_json(key="fixture.json", payload={"value": 42})
+    aid = item.ref.artifact_id
+    original = store.content_bytes(aid)
+    real_stamp = artifacts.pack_stamp
+    triggered = False
+
+    def retire_on_stamp(path):
+        nonlocal triggered
+        if path == store.path_for(aid) and not triggered:
+            triggered = True
+            store.packs.add({"artifact/" + aid: path.read_bytes()})
+            path.unlink()
+        return real_stamp(path)
+
+    monkeypatch.setattr(artifacts, "pack_stamp", retire_on_stamp)
+    assert store.get_ref(aid).artifact_id == aid
+    assert store.content_bytes(aid) == original
+    assert store.logical_size(aid) == len(original)
+
+
+def test_descriptor_open_survives_concurrent_retirement(tmp_path, monkeypatch):
+    from trading_max.infrastructure import artifacts
+
+    store = artifacts.ContentAddressedArtifactStore(tmp_path)
+    item = store.put_json(key="fixture.json", payload={"value": 42})
+    aid = item.ref.artifact_id
+    original = store.content_bytes(aid)
+    store = artifacts.ContentAddressedArtifactStore(tmp_path)
+    real_read = artifacts.read_descriptor
+
+    def retire_on_open(path):
+        if path.exists():
+            store.packs.add({"artifact/" + aid: path.read_bytes()})
+            path.unlink()
+        return real_read(path)
+
+    monkeypatch.setattr(artifacts, "read_descriptor", retire_on_open)
+    assert store.content_bytes(aid) == original
+
+
+@pytest.mark.parametrize("family", ["json", "history"])
+def test_chunk_concurrent_retirement_but_not_corruption_uses_sealed_bytes(
+    tmp_path, monkeypatch, family
+):
+    import gzip
+    import hashlib
+
+    from trading_max.infrastructure import verified_chunks
+    from trading_max.infrastructure.history_chunks import HistoryChunks
+    from trading_max.infrastructure.json_chunks import JsonChunks
+
+    chunks = JsonChunks(tmp_path) if family == "json" else HistoryChunks(tmp_path)
+    raw = b"[1,2,3]"
+    digest = hashlib.sha256(raw).hexdigest()
+    path = chunks.path(digest)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(gzip.compress(raw))
+    chunks.packs.add({family + "/" + digest: raw})
+    original = verified_chunks.read_verified
+
+    def retire_then_read(path, size, sha):
+        path.unlink(missing_ok=True)
+        return original(path, size, sha)
+
+    monkeypatch.setattr(verified_chunks, "read_verified", retire_then_read)
+    node = (
+        ["block", digest, len(raw)] if family == "json" else {"sha256": digest, "bytes": len(raw)}
+    )
+    assert chunks._read(node) == [1, 2, 3]
+    monkeypatch.setattr(verified_chunks, "read_verified", original)
+    path.write_bytes(b"corrupt loose bytes")
+    with pytest.raises(ValueError, match="decompressed"):
+        chunks._read(node)

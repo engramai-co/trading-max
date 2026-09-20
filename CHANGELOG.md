@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-09-21
+
+### Changed
+- Share checksum-verified, read-only installed dependency files across retained macOS releases, independently of external package caches and all business data.
+- Keep independent files when hard links are unavailable; reclaim only verified, unreferenced dependency blobs after the existing cleanup grace period.
+- Detect content changes while allowing bounded retirement of multiple immutable runtime aliases.
+- Route manual tar exports of packed state through a verified independent logical recovery, avoiding mutable index copies during concurrent maintenance.
+- Keep original artifact downloads and reads available when background packing retires a loose alias between file inspection and opening; never hide corruption with a fallback.
+
 ## [1.6.1] - 2026-09-21
 
 ### Changed

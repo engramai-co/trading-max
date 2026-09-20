@@ -133,7 +133,10 @@ class ContentAddressedArtifactStore:
 
     def stored_bytes(self, artifact_id: str) -> bytes:
         path = self.path_for(artifact_id)
-        return path.read_bytes() if path.is_file() else self.packs.read("artifact/" + artifact_id)
+        try:
+            return path.read_bytes()
+        except FileNotFoundError:
+            return self.packs.read("artifact/" + artifact_id)
 
     def source_path(self, artifact_id: str) -> Path:
         path = self.path_for(artifact_id)
@@ -241,17 +244,19 @@ class ContentAddressedArtifactStore:
 
     def descriptor(self, artifact_id: str) -> dict | None:
         path = self.path_for(artifact_id)
-        source = self.source_path(artifact_id)
         key = (
             artifact_id,
-            pack_stamp(source),
-            pack_stamp(self.packs.index) if source != path else (),
+            self._source_stamp(path, "artifact/" + artifact_id),
+            pack_stamp(self.packs.index) if self.packs.index.is_file() else (),
         )
 
         def load():
-            if path.is_file():
+            try:
                 return read_descriptor(path)
-            raw = self.stored_bytes(artifact_id)
+            except FileNotFoundError:
+                # Packing publishes a verified sealed record before unlinking.
+                # Only a missing loose alias may use that representation.
+                raw = self.packs.read("artifact/" + artifact_id)
             if not raw.startswith(b'{"$format":'):
                 return None
             if len(raw) > 8 * 1024 * 1024:
@@ -285,10 +290,11 @@ class ContentAddressedArtifactStore:
         descriptor = self.descriptor(artifact_id)
         if descriptor:
             return descriptor["envelopeBytes"]
-        if not path.is_file():
+        try:
+            size = compressed_json.stored_size(path)
+            return path.stat().st_size if size is None else size
+        except FileNotFoundError:
             return len(compressed_json.decode(self.stored_bytes(artifact_id)))
-        size = compressed_json.stored_size(path)
-        return path.stat().st_size if size is None else size
 
     def physical_store(self, descriptor: dict) -> HistoryChunks | JsonChunks:
         return self.json_chunks if descriptor.get("$format") == JSON_CHUNKS_FORMAT else self.history
@@ -307,11 +313,14 @@ class ContentAddressedArtifactStore:
         path = self.path_for(artifact_id)
         if path.with_name(f"{artifact_id}.meta.json").is_file():
             return False
-        return (
-            not path.is_file()
-            or self.descriptor(artifact_id) is not None
-            or compressed_json.stored_size(path) is not None
-        )
+        try:
+            return (
+                not path.is_file()
+                or self.descriptor(artifact_id) is not None
+                or compressed_json.stored_size(path) is not None
+            )
+        except FileNotFoundError:
+            return self.packs.contains("artifact/" + artifact_id)
 
     def put_bytes(
         self,
@@ -411,6 +420,12 @@ class ContentAddressedArtifactStore:
             raise ArtifactIntegrityError(f"byte artifact digest mismatch: {artifact_id}")
         return StoredBytes(ref=ref, path=path)
 
+    def _source_stamp(self, path: Path, key: str) -> tuple:
+        try:
+            return pack_stamp(path)
+        except FileNotFoundError:
+            return pack_stamp(self.packs.source(key))
+
     def _ref_key(self, artifact_id: str) -> tuple:
 
         path = self.path_for(artifact_id)
@@ -422,11 +437,20 @@ class ContentAddressedArtifactStore:
 
         descriptor = self.descriptor(artifact_id) if not metadata_path.is_file() else None
         chunks = (
-            tuple(stamp(block) for block in self.physical_paths(descriptor)) if descriptor else ()
+            tuple(
+                self._source_stamp(
+                    block,
+                    ("json/" if block.parent.parent.name == "json-chunks" else "history/")
+                    + block.stem,
+                )
+                for block in self.logical_paths(descriptor)
+            )
+            if descriptor
+            else ()
         )
         return (
             artifact_id,
-            stamp(self.source_path(artifact_id)),
+            self._source_stamp(path, "artifact/" + artifact_id),
             pack_stamp(self.packs.index) if self.packs.index.is_file() else (),
             stamp(metadata_path) if metadata_path.is_file() else None,
             chunks,

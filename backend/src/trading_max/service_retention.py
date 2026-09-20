@@ -53,17 +53,15 @@ def inventory(path: Path) -> dict:
             paths.extend(Path(directory) / name for name in sorted(directories + names))
     for item in paths:
         info = item.lstat()
-        shared_node = (
+        shared_immutable = (
             stat.S_ISREG(info.st_mode)
-            and stat.S_IMODE(info.st_mode) == 0o555
+            and stat.S_IMODE(info.st_mode) in {0o444, 0o555}
             and info.st_nlink > 1
-            and item.name == "node"
-            and item.parent.name == ".node-runtime"
         )
         content_digest = None
-        if shared_node:
+        if shared_immutable:
             # Unlinking another retired release changes this inode's ctime.
-            # Compare immutable executable content instead, so a bounded batch
+            # Compare immutable file content instead, so a bounded batch
             # can retire multiple aliases without weakening tamper detection.
             with item.open("rb") as stream:
                 content_digest = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -76,7 +74,7 @@ def inventory(path: Path) -> dict:
                     info.st_mode,
                     info.st_size,
                     info.st_mtime_ns,
-                    None if shared_node else info.st_ctime_ns,
+                    None if shared_immutable else info.st_ctime_ns,
                     info.st_uid,
                     info.st_gid,
                     content_digest,
@@ -366,6 +364,12 @@ class ServiceRetention:
                 if hashlib.file_digest(stream, "sha256").hexdigest() != path.name:
                     raise ValueError("unreferenced shared Node runtime checksum mismatch")
             candidates.append(("toolchain", path))
+        from .shared_runtime import orphan_dependencies
+
+        candidates.extend(
+            ("runtime-dependency", path)
+            for path in orphan_dependencies(self.service / "toolchains/package-blobs", self.cutoff)
+        )
         return candidates
 
     def plan(self) -> dict:
@@ -395,7 +399,8 @@ class ServiceRetention:
         plan["items"] = [
             item
             for item in plan["items"]
-            if item["kind"] in {"backup-manifest", "backup-blob", "release", "toolchain"}
+            if item["kind"]
+            in {"backup-manifest", "backup-blob", "release", "toolchain", "runtime-dependency"}
         ]
         plan["candidateBytes"] = sum(item["bytes"] for item in plan["items"])
         plan_path = self.service / "maintenance-plans" / (verified_backup_id + ".json")

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .durable_files import atomic_bytes, durable_directory, sync_directory  # noqa: F401
 from .object_packs import ObjectPacks
-from .verified_chunks import VerifiedChunkCache, read_verified
+from .verified_chunks import VerifiedChunkCache, read_packable_chunk
 
 FORMAT = "trading-max-history-v1"
 HISTORY_KEYS = {"account/nav/valuation_history.json", "account/nav/intraday_anchors.json"}
@@ -64,18 +64,10 @@ class HistoryChunks:
         size = block["bytes"]
         if type(size) is not int or not 0 <= size <= _MAX_BLOCK_BYTES:
             raise ValueError("invalid history block size")
-        reader = self.read_cache.read if self.read_cache else read_verified
         digest = block["sha256"]
-        path = self.path(digest)
-        if path.is_file():
-            raw = reader(path, size, digest)
-        else:
-            try:
-                raw = self.packs.read("history/" + digest)
-            except OSError as exc:
-                raise ValueError("packed chunk cannot be read") from exc
-            if len(raw) != size or hashlib.sha256(raw).hexdigest() != digest:
-                raise ValueError("packed chunk checksum mismatch")
+        raw = read_packable_chunk(
+            self.path(digest), size, digest, self.packs, "history/" + digest, self.read_cache
+        )
         values = json.loads(raw)
         if not isinstance(values, list):
             raise ValueError("history block must contain an array")
