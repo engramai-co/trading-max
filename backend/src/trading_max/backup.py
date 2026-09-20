@@ -6,7 +6,6 @@ import sqlite3
 import tarfile
 import tempfile
 from collections.abc import Iterator
-from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from shutil import copy2
@@ -76,39 +75,30 @@ def create_backup(
     ) as temporary:
         staging = Path(temporary)
         state_stage = staging / "state"
-        state_stage.mkdir()
-        staged_database = state_stage / DATABASE_NAME
-        with (
-            sqlite3.connect(database_path) as source,
-            sqlite3.connect(staged_database) as target,
-        ):
-            source.backup(target)
-            integrity = target.execute("PRAGMA integrity_check").fetchone()
-        if integrity != ("ok",):
-            raise RuntimeError(f"backup database integrity check failed: {integrity}")
-        # Capture derived pack locators before inventorying immutable blocks.
-        # Packs referenced by this consistent image already exist; later packs
-        # are harmless extras. Sealed packs are never deleted by live writers.
-        captured_indexes = set()
-        for source in state_root.glob("artifacts/object-packs/index.sqlite3"):
-            if source.is_symlink():
-                raise ValueError("pack index must not be a symlink")
-            relative = source.relative_to(state_root)
-            target = state_stage / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
+        if (state_root / "artifacts/object-packs/index.sqlite3").exists():
+            # Materialize a verified logical recovery, never tar a changing
+            # locator beside aliases that maintenance may retire concurrently.
+            from .backup_repository import BackupRepository
+
+            recovery = BackupRepository(staging / "recovery")
+            manifest = recovery.create(state_root, artifact_encoding="logical")
+            recovery.restore(manifest["id"], state_stage)
+        else:
+            state_stage.mkdir()
+            staged_database = state_stage / DATABASE_NAME
             with (
-                closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as reader,
-                closing(sqlite3.connect(target)) as writer,
+                sqlite3.connect(database_path) as source,
+                sqlite3.connect(staged_database) as target,
             ):
-                reader.backup(writer)
-            captured_indexes.add(relative)
-        for source in _included_files(state_root):
-            relative = source.relative_to(state_root)
-            if relative in captured_indexes:
-                continue
-            target = state_stage / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            copy2(source, target)
+                source.backup(target)
+                integrity = target.execute("PRAGMA integrity_check").fetchone()
+            if integrity != ("ok",):
+                raise RuntimeError(f"backup database integrity check failed: {integrity}")
+            for source in _included_files(state_root):
+                relative = source.relative_to(state_root)
+                target = state_stage / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                copy2(source, target)
 
         temporary_archive = staging / archive.name
         with tarfile.open(temporary_archive, mode="w:gz") as handle:

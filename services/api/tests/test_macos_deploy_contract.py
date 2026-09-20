@@ -159,14 +159,20 @@ def test_backup_rejects_destination_inside_state_root(tmp_path: Path):
     assert not destination.exists()
 
 
-def test_macos_backup_excludes_environment_variants_and_is_private(tmp_path: Path):
+@pytest.mark.parametrize("packed", [False, True])
+def test_macos_backup_excludes_environment_variants_and_is_private(tmp_path: Path, packed):
     zsh = shutil.which("zsh")
     if zsh is None:
         pytest.skip("zsh is required to exercise the macOS backup contract")
     service = tmp_path / "service"
     binary = service / "app/.venv/bin/python"
     binary.parent.mkdir(parents=True)
-    binary.symlink_to(sys.executable)
+    # Preserve the real virtualenv prefix; a relocated interpreter symlink
+    # would run the base interpreter without installed project dependencies.
+    import shlex
+
+    binary.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable) + ' "$@"\n')
+    binary.chmod(0o755)
     validator = service / "app/tools/verify_backup_archive.py"
     validator.parent.mkdir()
     shutil.copy2(ROOT / "tools/verify_backup_archive.py", validator)
@@ -175,6 +181,18 @@ def test_macos_backup_excludes_environment_variants_and_is_private(tmp_path: Pat
     with sqlite3.connect(state / "trading_max.db") as connection:
         connection.execute("CREATE TABLE fixture (value TEXT)")
     (state / "watchlist.json").write_text("{}")
+    if packed:
+        from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+
+        store = ContentAddressedArtifactStore(state / "artifacts")
+        item = store.put_json(key="fixture.json", payload={"v": 1})
+        SnapshotStore(state, artifacts=store).publish(
+            scope="accounts", source="fixture", artifacts=[item]
+        )
+        aid = item.ref.artifact_id
+        original = store.content_bytes(aid)
+        store.packs.add({"artifact/" + aid: original})
+        store.path_for(aid).unlink()
     for name in (".env.local", ".env.bak", "bootstrap.env.bak"):
         (state / name).write_text("SYNTHETIC_SECRET=exclude-me")
     destination = tmp_path / "backups"
@@ -197,3 +215,7 @@ def test_macos_backup_excludes_environment_variants_and_is_private(tmp_path: Pat
         names = handle.getnames()
     assert "state/./watchlist.json" in names or "state/watchlist.json" in names
     assert not any(".env" in name for name in names)
+    if packed:
+        with tarfile.open(archive, "r:gz") as handle:
+            assert handle.extractfile("state/artifacts/sha256/" + aid).read() == original
+        assert not any("object-packs" in name for name in names)

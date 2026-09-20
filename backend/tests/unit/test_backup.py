@@ -105,3 +105,41 @@ def test_backup_rejects_a_database_symlink_before_opening_its_target(
     monkeypatch.setattr(backup.sqlite3, "connect", must_not_open)
     with pytest.raises(ValueError, match="symlink"):
         create_backup(state, tmp_path / "backups")
+
+
+def test_packed_archive_rejects_retiring_source_then_materializes_independent_originals(
+    tmp_path, monkeypatch
+):
+    from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+
+    state = tmp_path / "state"
+    _state(state)
+    store = ContentAddressedArtifactStore(state / "artifacts")
+    item = store.put_json(key="fixture.json", payload={"value": "unchanged"})
+    aid = item.ref.artifact_id
+    original = store.content_bytes(aid)
+    SnapshotStore(state, artifacts=store).publish(
+        scope="accounts", source="fixture", artifacts=[item]
+    )
+    store.packs.add({"artifact/" + aid: original})
+    real_content = ContentAddressedArtifactStore.content_bytes
+
+    def retire_then_read(self, artifact_id):
+        if self.root == store.root:
+            self.path_for(artifact_id).unlink(missing_ok=True)
+        return real_content(self, artifact_id)
+
+    monkeypatch.setattr(ContentAddressedArtifactStore, "content_bytes", retire_then_read)
+    # A changing source must abort without publishing or pruning recovery.
+    with pytest.raises(FileNotFoundError):
+        create_backup(state, tmp_path / "backups")
+    assert not list((tmp_path / "backups").glob("*.tar.gz"))
+    archive = create_backup(state, tmp_path / "backups")
+    store.packs.close()
+    import shutil
+
+    shutil.rmtree(state)
+    with tarfile.open(archive, "r:gz") as handle:
+        assert handle.extractfile("state/artifacts/sha256/" + aid).read() == original
+        assert not any("object-packs" in n for n in handle.getnames())
+    assert not list((tmp_path / "backups").glob(".trading-max-backup-*"))

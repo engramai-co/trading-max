@@ -282,3 +282,9 @@ Nightly retention recognizes immutable aliases by content, and only retires pool
 objects with one remaining link after the normal 24-hour grace period. Unknown,
 changed or writable objects fail closed. The complete-installation census counts
 each physical inode once, including the shared pool and its fallback files.
+
+Manual tar exports of packed state first materialize an independently verified
+logical recovery. They do not copy a changing pack locator or rely on loose
+aliases remaining present. This preserves original JSON downloads and needs
+temporary space for the logical envelopes; repository backups remain the normal
+compact nightly path. Temporary export staging is removed after publication.
