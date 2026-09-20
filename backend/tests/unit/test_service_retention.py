@@ -14,6 +14,7 @@ from trading_max.backup_repository import BackupRepository, exclusive_lock
 from trading_max.infrastructure import SnapshotStore
 from trading_max.service_retention import (
     ServiceRetention,
+    inventory,
     retain_immutable_coverage,
     retained_dates,
 )
@@ -92,6 +93,43 @@ def test_cleanup_is_bounded_and_preserves_current_rollback_and_unknown_paths(tmp
     journal = json.loads(Path(result["journal"]).read_text())
     assert journal["items"][0]["status"] == "removed"
     assert not Path(journal["items"][0]["quarantine"]).exists()
+
+
+def test_one_cleanup_batch_can_retire_multiple_shared_runtime_aliases(tmp_path):
+    service, releases, backup = host(tmp_path)
+    content = b"synthetic immutable Node executable"
+    pool = service / "toolchains/node-blobs" / hashlib.sha256(content).hexdigest()
+    pool.parent.mkdir(parents=True)
+    pool.write_bytes(content)
+    pool.chmod(0o555)
+    for release in releases:
+        (release / ".node-runtime").mkdir()
+        os.link(pool, release / ".node-runtime/node")
+        (release / ".git/info/exclude").write_text(".node-runtime/\n")
+        os.utime(release, (0, 0))
+    maintenance = ServiceRetention(service)
+    result = maintenance.apply(maintenance.plan(), verified_backup_id=backup["id"], max_items=2)
+    assert result["removedItems"] == 2
+    assert all(not release.exists() for release in releases[:2])
+    assert all((release / ".node-runtime/node").read_bytes() == content for release in releases[2:])
+    assert pool.read_bytes() == content
+
+
+def test_shared_runtime_content_changes_are_detected_even_with_restored_mtime(tmp_path):
+    runtime = tmp_path / "release/.node-runtime"
+    runtime.mkdir(parents=True)
+    node = runtime / "node"
+    node.write_bytes(b"original")
+    node.chmod(0o555)
+    os.link(node, tmp_path / "pool")
+    before = inventory(runtime.parent)
+    stamp = node.stat()
+    node.chmod(0o755)
+    node.write_bytes(b"modified")
+    node.chmod(0o555)
+    os.utime(node, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert node.stat().st_size == stamp.st_size
+    assert inventory(runtime.parent)["fingerprint"] != before["fingerprint"]
 
 
 @pytest.mark.parametrize("change", ["deployment", "target", "corrupt-backup", "wrong-state"])

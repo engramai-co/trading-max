@@ -53,6 +53,20 @@ def inventory(path: Path) -> dict:
             paths.extend(Path(directory) / name for name in sorted(directories + names))
     for item in paths:
         info = item.lstat()
+        shared_node = (
+            stat.S_ISREG(info.st_mode)
+            and stat.S_IMODE(info.st_mode) == 0o555
+            and info.st_nlink > 1
+            and item.name == "node"
+            and item.parent.name == ".node-runtime"
+        )
+        content_digest = None
+        if shared_node:
+            # Unlinking another retired release changes this inode's ctime.
+            # Compare immutable executable content instead, so a bounded batch
+            # can retire multiple aliases without weakening tamper detection.
+            with item.open("rb") as stream:
+                content_digest = hashlib.file_digest(stream, "sha256").hexdigest()
         digest.update(
             json.dumps(
                 [
@@ -62,7 +76,10 @@ def inventory(path: Path) -> dict:
                     info.st_mode,
                     info.st_size,
                     info.st_mtime_ns,
-                    info.st_ctime_ns,
+                    None if shared_node else info.st_ctime_ns,
+                    info.st_uid,
+                    info.st_gid,
+                    content_digest,
                     str(item.readlink()) if item.is_symlink() else None,
                 ]
             ).encode()

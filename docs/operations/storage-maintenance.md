@@ -53,6 +53,10 @@ monthly representatives, as well as backups referenced by protected deployments.
 Legacy deployment archives retain at least the newest three plus weekly/monthly
 representatives and protected rollback copies.
 
+Cleanup fingerprints verify the content of shared, read-only Node executables;
+removing another release alias must not stop an otherwise unchanged batch.
+Changes to contents, permissions or source identity still invalidate the plan.
+
 Date buckets are a minimum recovery set. Retention also keeps the newest
 additional points needed to preserve every original file digest under
 `artifacts/`, `snapshots/`, `imports/`, legacy `trading212/` and `raw/` sources,
