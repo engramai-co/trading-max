@@ -181,7 +181,8 @@ all non-artifact files keep their existing byte-preserving contract. Original
 artifact IDs, amounts, timestamps and provenance remain unchanged. Existing
 physical backup manifests remain valid and are never rewritten.
 
-Each full backup verification uses a fresh 16 MiB byte cache, bounded to 512
+Logical backup capture and each full backup verification use separate, fresh
+16 MiB byte caches, each bounded to 512
 entries, for unchanged chunks already read and checksum-verified during that
 operation. File identity changes invalidate a cache hit. This does not persist
 verification results across backups or skip original-file checksum, SQLite,

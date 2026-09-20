@@ -405,6 +405,9 @@ class BackupRepository:
             catalog = json.loads(catalog_path.read_text()) if catalog_path.is_file() else {}
             next_catalog: dict = {}
             source_artifacts = ContentAddressedArtifactStore(state / "artifacts")
+            source_artifacts.json_chunks.read_cache = source_artifacts.history.read_cache = (
+                VerifiedChunkCache()
+            )
             chunk_stamps: dict[Path, list[int]] = {}
             if source_artifacts.packs.index.exists():
                 # Packed logical artifacts restore to standalone original JSON.
