@@ -65,12 +65,13 @@ class JsonChunks:
             return self._store(raw)
         if isinstance(value, dict):
             return ["map", [[key, self._encode(value[key], depth + 1)] for key in sorted(value)]]
-        if len(value) > GROUP_ITEMS:
+        if len(value) > 16:
+            group_items = GROUP_ITEMS if len(value) > GROUP_ITEMS else 16
             return [
                 "concat",
                 [
-                    self._encode(value[i : i + GROUP_ITEMS], depth + 1)
-                    for i in range(0, len(value), GROUP_ITEMS)
+                    self._encode(value[i : i + group_items], depth + 1)
+                    for i in range(0, len(value), group_items)
                 ],
             ]
         return ["list", [self._encode(item, depth + 1) for item in value]]

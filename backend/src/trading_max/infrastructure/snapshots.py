@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -23,6 +21,7 @@ from trading_max.domain import ArtifactRef, JobScope, SnapshotManifest
 
 from . import compressed_json
 from .artifacts import ContentAddressedArtifactStore, StoredArtifact, StoredBytes
+from .history_chunks import atomic_bytes
 
 
 class SnapshotIntegrityError(RuntimeError):
@@ -39,21 +38,7 @@ def _canonical_json(value: Mapping[str, object]) -> bytes:
 
 
 def _atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        Path(temporary).replace(path)
-    except Exception:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+    atomic_bytes(path, content)
 
 
 @dataclass(frozen=True, slots=True)

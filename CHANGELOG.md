@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.8] - 2026-09-20
+
+### Fixed
+
+- Compact existing state and recovery blobs in bounded, resumable batches with
+  byte-exact checks, prepared journals and rollback-reader compatibility gates.
+  Retain original recovery dates, manifests, observations and artifact IDs.
+- Group medium research arrays before storage to avoid excessive small-file
+  allocation, and sync physical block and index directory entries on publication.
+- Restore the original representation when post-write verification fails;
+  preserve valid recovery blobs until their independent replacement is verified.
+
 ## [1.5.7] - 2026-09-20
 
 ### Fixed

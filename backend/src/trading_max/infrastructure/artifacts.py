@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -20,7 +19,7 @@ from typing import Any
 from trading_max.domain import ArtifactQuality, ArtifactRef
 
 from . import compressed_json
-from .history_chunks import HISTORY_KEYS, HistoryChunks, canonical, read_descriptor
+from .history_chunks import HISTORY_KEYS, HistoryChunks, atomic_bytes, canonical, read_descriptor
 from .json_chunks import FORMAT as JSON_CHUNKS_FORMAT
 from .json_chunks import JsonChunks
 from .singleflight import SingleFlightCache
@@ -78,21 +77,7 @@ def _identity(
 
 
 def _atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        Path(temporary).replace(path)
-    except Exception:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+    atomic_bytes(path, content)
 
 
 @dataclass(frozen=True, slots=True)
