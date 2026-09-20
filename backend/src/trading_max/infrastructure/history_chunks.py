@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from itertools import groupby
 from pathlib import Path
 
+from .verified_chunks import VerifiedChunkCache, read_verified
+
 FORMAT = "trading-max-history-v1"
 HISTORY_KEYS = {"account/nav/valuation_history.json", "account/nav/intraday_anchors.json"}
 _DIGEST = re.compile(r"[0-9a-f]{64}")
@@ -70,6 +72,7 @@ def _utc_day(point: dict) -> str:
 class HistoryChunks:
     def __init__(self, artifact_root: Path):
         self.root = artifact_root / "history-chunks"
+        self.read_cache: VerifiedChunkCache | None = None
 
     def path(self, digest: str) -> Path:
         if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
@@ -96,13 +99,8 @@ class HistoryChunks:
         size = block["bytes"]
         if type(size) is not int or not 0 <= size <= _MAX_BLOCK_BYTES:
             raise ValueError("invalid history block size")
-        try:
-            with gzip.open(self.path(block["sha256"]), "rb") as stream:
-                raw = stream.read(size + 1)
-        except (OSError, EOFError) as exc:
-            raise ValueError("history block cannot be decompressed") from exc
-        if len(raw) != size or hashlib.sha256(raw).hexdigest() != block["sha256"]:
-            raise ValueError("history block checksum mismatch")
+        reader = self.read_cache.read if self.read_cache else read_verified
+        raw = reader(self.path(block["sha256"]), size, block["sha256"])
         values = json.loads(raw)
         if not isinstance(values, list):
             raise ValueError("history block must contain an array")

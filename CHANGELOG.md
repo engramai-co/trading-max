@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.5.12] - 2026-09-20
+
+### Fixed
+
+- Reduce duplicate physical reads within each backup verification using a bounded, operation-local cache; every verification still re-reads physical chunks and validates full original file checksums.
+
 ## [1.5.11] - 2026-09-20
 
 ### Fixed
