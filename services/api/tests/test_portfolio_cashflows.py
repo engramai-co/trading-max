@@ -1,8 +1,8 @@
 import pytest
 
-from services.api.trading_max_api.dashboard import _intraday_nav_points
 from services.api.trading_max_api.dashboard_models import NavPoint
 from services.api.trading_max_api.portfolio_cashflows import CashFlowTimeline
+from services.api.trading_max_api.projections.nav import intraday_nav_points
 
 
 def history(*, verified=True):
@@ -65,18 +65,18 @@ def test_withdrawal_changes_nav_but_not_intraday_pnl_or_return_certification():
             for stamp, value in [("2026-01-06T11:50:00Z", 110), ("2026-01-06T12:00:00Z", 95)]
         ]
     }
-    points = _intraday_nav_points(payload, {"invest": history(), "isa": history()})
+    points = intraday_nav_points(payload, {"invest": history(), "isa": history()})
     assert [point["totalNetContributionsGbp"] for point in points] == [200, 170]
     assert [point["totalNetPnlGbp"] for point in points] == [20, 20]
     assert all(point["totalTwr"] is None for point in points)
     # The complete API response validates each point, not just its calculations.
     assert all(NavPoint.model_validate(point).flow_status == "verified" for point in points)
-    uncovered = _intraday_nav_points(payload)
+    uncovered = intraday_nav_points(payload)
     assert all(point["totalNetPnlGbp"] is None for point in uncovered)
 
 
 def test_each_broker_account_uses_its_own_observation_time():
-    point = _intraday_nav_points(
+    point = intraday_nav_points(
         {
             "points": [
                 {

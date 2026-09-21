@@ -6,16 +6,18 @@ from pathlib import Path
 import pytest
 
 from services.api.trading_max_api.artifacts import ArtifactStore
-from services.api.trading_max_api.dashboard import (
-    _latest_daily_return,
-    _latest_twr,
-    _nav_series,
-    _option_rows,
-    _technical_rows,
-    _valuation_rows,
-    build_dashboard_data,
-)
+from services.api.trading_max_api.dashboard import build_dashboard_data
 from services.api.trading_max_api.dashboard_models import DashboardResponse, ValuationScenario
+from services.api.trading_max_api.projections.nav import (
+    latest_daily_return,
+    latest_twr,
+    nav_series,
+)
+from services.api.trading_max_api.projections.research import (
+    option_rows,
+    technical_rows,
+    valuation_rows,
+)
 
 
 @pytest.mark.parametrize("reason", ["missing_dated_cash_events", "ambiguous_observation_time"])
@@ -36,7 +38,7 @@ def test_explicitly_ineligible_nav_cannot_recreate_returns_or_money_pnl(reason: 
         + "2026-01-12,55,0,0,0.1,1.1,0,eligible\n"
         + "2026-01-13,55,0,0,0,1.1,0,eligible\n"
     )
-    series = _nav_series(invest, isa)
+    series = nav_series(invest, isa)
     assert series[-1]["total"] == 255
     assert series[-1]["isaTwr"] == pytest.approx(0.1)
     assert series[-1]["isaNetPnlGbp"] == 5
@@ -47,9 +49,9 @@ def test_explicitly_ineligible_nav_cannot_recreate_returns_or_money_pnl(reason: 
         for scope in ("invest", "total", "household"):
             for suffix in ("NetContributionsGbp", "NetPnlGbp", "PnlDrawdownGbp"):
                 assert point[f"{scope}{suffix}"] is None
-    assert _latest_daily_return(invest) is None
-    assert _latest_twr(invest) is None
-    assert _latest_twr(isa) == pytest.approx(0.1)
+    assert latest_daily_return(invest) is None
+    assert latest_twr(invest) is None
+    assert latest_twr(isa) == pytest.approx(0.1)
 
 
 def test_analyst_fallback_valuation_scenario_allows_missing_dcf_inputs() -> None:
@@ -80,7 +82,7 @@ def test_missing_cfd_conversion_does_not_zero_or_carry_forward_money() -> None:
         "2026-01-02,20,15,15,0,5\n"
         "2026-01-05,,,,,\n"
     )
-    rows = _nav_series(invest, "Date,SyntheticNAVGBP\n", cfd)
+    rows = nav_series(invest, "Date,SyntheticNAVGBP\n", cfd)
     assert rows[0]["household"] == 120
     assert rows[0]["householdNetPnlGbp"] == 5
     for row in rows[1:]:
@@ -341,7 +343,7 @@ def test_combined_twr_is_unchanged_by_an_internal_account_transfer() -> None:
     invest = header + "2026-01-02,1000,1000,1000,,1,0\n" + "2026-01-05,500,-500,-250,0,1,0\n"
     isa = header + "2026-01-02,1000,1000,1000,,1,0\n" + "2026-01-05,1500,500,250,0,1,0\n"
 
-    series = _nav_series(invest, isa)
+    series = nav_series(invest, isa)
 
     assert series[-1]["invest"] == 500
     assert series[-1]["isa"] == 1500
@@ -367,7 +369,7 @@ def test_cash_deposit_changes_nav_but_not_net_pnl_or_combined_twr() -> None:
         + "2026-01-06,1600,500,500,0,1.1,0\n"
     )
 
-    series = _nav_series(invest, header)
+    series = nav_series(invest, header)
 
     assert series[-1]["invest"] == 1600
     assert series[-1]["investNetContributionsGbp"] == 1500
@@ -389,7 +391,7 @@ def test_money_drawdown_is_measured_from_peak_net_pnl_in_gbp() -> None:
         + "2026-01-06,1050,0,0,-0.0454545,1.05,-0.0454545\n"
     )
 
-    series = _nav_series(invest, header)
+    series = nav_series(invest, header)
 
     assert series[-1]["totalNetPnlGbp"] == 50
     assert series[-1]["totalPnlDrawdownGbp"] == -50
@@ -403,7 +405,7 @@ def test_new_account_funding_is_neutral_at_the_combined_portfolio_boundary() -> 
     invest = header + "2026-01-02,1000,1000,1000,,1,0\n" + "2026-01-05,1100,0,0,0.1,1.1,0\n"
     isa = header + "2026-01-05,1000,1000,0,,1,0\n"
 
-    series = _nav_series(invest, isa)
+    series = nav_series(invest, isa)
 
     assert series[-1]["total"] == 2100
     assert series[-1]["totalNetContributionsGbp"] == 2000
@@ -488,7 +490,7 @@ def test_cfd_and_household_money_lenses_keep_internal_transfers_out_of_household
         "2026-01-02,55,55,70,50,-15,-15,-5,-12,2\n"
     )
 
-    series = _nav_series(invest, isa, cfd)
+    series = nav_series(invest, isa, cfd)
     latest = series[-1]
 
     assert latest["cfd"] == 55
@@ -521,7 +523,7 @@ def test_household_money_lens_cancels_a_verified_invest_to_cfd_transfer() -> Non
         "2026-01-02,70,70,50,20,20,0,verified,0,0\n"
     )
 
-    latest = _nav_series(invest, isa, cfd)[-1]
+    latest = nav_series(invest, isa, cfd)[-1]
 
     assert latest["household"] == 250
     assert latest["householdInternalTransferCounterflowGbp"] == 20
@@ -549,7 +551,7 @@ def test_household_money_lens_uses_labelled_counterflow_when_verification_is_par
         "2026-01-02,160,160,100,60,0,60,partial,0,0\n"
     )
 
-    latest = _nav_series(invest, isa, cfd)[-1]
+    latest = nav_series(invest, isa, cfd)[-1]
 
     assert latest["household"] == 310
     assert latest["householdInternalTransferCounterflowGbp"] == 60
@@ -560,7 +562,7 @@ def test_household_money_lens_uses_labelled_counterflow_when_verification_is_par
 
 
 def test_technical_contract_preserves_adr_coverage_and_parity() -> None:
-    rows = _technical_rows(
+    rows = technical_rows(
         {
             "as_of": "2026-08-04",
             "rows": [
@@ -610,7 +612,7 @@ def test_technical_contract_preserves_adr_coverage_and_parity() -> None:
 
 
 def test_typed_research_adapters_preserve_options_and_valuation_fields() -> None:
-    options = _option_rows(
+    options = option_rows(
         {
             "rows": [
                 {
@@ -657,7 +659,7 @@ def test_typed_research_adapters_preserve_options_and_valuation_fields() -> None
             ]
         }
     )
-    valuations = _valuation_rows(
+    valuations = valuation_rows(
         {
             "as_of": "2026-08-07",
             "rows": [
@@ -695,7 +697,7 @@ def test_technical_readings_expose_real_observations_and_preserve_missing():
             }
         ]
     }
-    row = _technical_rows(source)[0]
+    row = technical_rows(source)[0]
     assert row["atr"] == 1.5
     assert row["adx"] == 20
     assert row["plusDi"] == 0

@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from trading_max.research.facts import ResearchContext, build_financial_facts, make_quote
 
-from services.api.trading_max_api.dashboard import _valuation_rows
 from services.api.trading_max_api.dashboard_models import ResearchLensSnapshot
+from services.api.trading_max_api.projections.research import valuation_rows
 from services.api.trading_max_api.research_journal import ResearchJournalStore
 from services.api.trading_max_api.routes.research import router
 from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
@@ -45,7 +45,7 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
         "exitFcfMultiple": 15,
         "shareCagr": 0,
     }
-    valuation = _valuation_rows(
+    valuation = valuation_rows(
         {
             "rows": [
                 {

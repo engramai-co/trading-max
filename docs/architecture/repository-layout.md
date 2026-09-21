@@ -13,6 +13,7 @@ outputs, runtime data and operational evidence are separate from source code.
 | `apps/web/lib/` | Typed transport, query hooks, server adapters and shared non-view utilities | Route layouts and provider-side financial reconstruction |
 | `apps/web/ui/` | Theme, formatting and shared chart lifecycle | Page-specific fetching and accounting rules |
 | `services/api/trading_max_api/routes/` | HTTP validation, authorization and request orchestration | Long-running broker/provider work |
+| `services/api/trading_max_api/projections/` | Pure NAV, broker and research artifact conversion shared by readers | HTTP routes, storage access and imports from dashboard orchestration |
 | `services/api/trading_max_api/` | Typed API projections, artifact readers, settings and job control | Browser presentation logic |
 | `backend/src/trading_max/domain/` | Domain contracts | Network and UI dependencies |
 | `backend/src/trading_max/application/` | Pipeline stages and use-case orchestration | HTTP route contracts and UI components |
