@@ -223,11 +223,12 @@ def create_app(
         deepseek_api_key=settings.deepseek_api_key,
         deepseek_base_url=settings.deepseek_base_url,
         provider_factory=provider_factory,
+        enabled=settings.llm_analysis_enabled,
     )
     analysis.reload_provider()
 
     def on_snapshot_published(published, trigger) -> None:
-        if trigger in {"intraday", "live"}:
+        if not analysis.enabled or trigger in {"intraday", "live"}:
             return
         try:
             analysis.submit(
@@ -307,22 +308,23 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         try:
             manifest = store.ensure_bootstrap()
-            try:
-                analysis.latest(
-                    lens="daily_cio_brief",
-                    snapshot_run_id=manifest.run_id,
-                )
-            except FileNotFoundError:
+            if analysis.enabled:
                 try:
-                    analysis.submit(
+                    analysis.latest(
+                        lens="daily_cio_brief",
                         snapshot_run_id=manifest.run_id,
-                        trigger="snapshot",
                     )
-                except ProviderRuntimeError as exc:
-                    logger.warning(
-                        "initial analysis deferred until a provider is configured",
-                        extra={"provider_error_code": exc.code},
-                    )
+                except FileNotFoundError:
+                    try:
+                        analysis.submit(
+                            snapshot_run_id=manifest.run_id,
+                            trigger="snapshot",
+                        )
+                    except ProviderRuntimeError as exc:
+                        logger.warning(
+                            "initial analysis deferred until a provider is configured",
+                            extra={"provider_error_code": exc.code},
+                        )
             threading.Thread(
                 target=prewarm_research,
                 name="trading-max-research-prewarm",

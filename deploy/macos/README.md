@@ -77,34 +77,17 @@ exists. Provider secrets are configured from the Settings page or the host
 configurator and stored in the operating-system credential store; they must
 never be committed or exposed to browser JavaScript.
 
-OpenCode Go and DeepSeek use the same secret boundary. Select
-`TRADING_MAX_LLM_PROVIDER=opencode` or `deepseek` only for bootstrap/migration;
-the durable route policy in Settings controls the actual workload route. The
-browser-facing API and stored analysis schema remain unchanged.
+Use Settings → Models to connect OpenAI through ChatGPT sign-in or a separate
+API key, or select Anthropic or Google. The durable route policy controls the
+actual workload route. DeepSeek/OpenCode remain compatible with historical
+records but are retired from new connections and disabled by the upgrade.
 
-In production, DeepSeek and Trading 212 secrets live in the login Keychain
-under the neutral service `com.engram.trading-max.credentials`; the environment
-file contains only non-secret bootstrap configuration. Configure the provider
-and store the key with:
-
-```bash
-printf '%s\n' "$DEEPSEEK_API_KEY" |
-  .venv/bin/python deploy/macos/configure-host.py \
-    --llm-provider deepseek \
-    --llm-model deepseek-v4-flash \
-    --deepseek-api-key-stdin
-```
-
-For OpenCode Go, use the provider-specific migration flag:
-
-```bash
-printf '%s\n' "$OPENCODE_API_KEY" |
-  .venv/bin/python deploy/macos/configure-host.py \
-    --llm-provider opencode \
-    --llm-model deepseek-v4-flash \
-    --opencode-api-key-stdin
-```
-
+Credentials live in the login Keychain under
+`com.engram.trading-max.credentials`; the environment file contains only
+non-secret bootstrap configuration. ChatGPT authorization runs on the Mac mini:
+complete its device-code link in your browser. Tokens remain in the server's
+Keychain and Pi handles refresh. A separate local installation needs its own
+authorization; do not copy rotating refresh tokens between active hosts.
 
 Historical CFD records are imported once into the external state root by the
 approved migration procedure. They remain a clearly labelled realized-cash
@@ -122,16 +105,20 @@ A host lock rejects concurrent deployments. After a successful build:
    current application stays available. Capture the existing service definitions
    and bootstrap env in `state/secrets/deployment-backups`.
 2. Stop the existing services, including scheduled backup, and wait for their
-   processes to exit. Backup compression no longer extends this downtime.
+   processes to exit. Capture the non-secret model configuration for rollback.
+   Backup compression no longer extends this downtime.
 3. Retain the complete previous release and atomically point `app` at the new
    directory. The first upgrade converts the original directory to this layout.
 4. Normalize bootstrap configuration, apply additive migrations, start the
    existing services, and check readiness, worker and dynamic web routes.
 
 A failure after cutover starts restores the retained application, its installed
-Python dependencies, web build, env and service definitions. Rollback never
+Python dependencies, web build, env, service definitions and prior model
+connection metadata/routes. Keychain credentials are not exported or changed.
+Rollback never
 requires a package download or rebuild. It does not restore the database:
-legitimate writes and compatible migrations must remain intact. Release
+account records, jobs, broker settings and compatible migrations remain intact;
+only the model configuration is restored to the pre-upgrade selection. Release
 acceptance must verify backward compatibility before upgrading. General state
 restore is a separate operation; see [backup/restore](../../docs/installation/local-installation.md#backup-and-recovery).
 

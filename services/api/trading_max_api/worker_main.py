@@ -46,6 +46,7 @@ def _run_typed_worker(settings: Settings) -> None:
         deepseek_api_key=settings.deepseek_api_key,
         deepseek_base_url=settings.deepseek_base_url,
         provider_factory=make_provider_factory(settings, preferences, credentials),
+        enabled=settings.llm_analysis_enabled,
     )
     database = SqliteDatabase(
         store.data_root / "trading_max.db",
@@ -59,7 +60,7 @@ def _run_typed_worker(settings: Settings) -> None:
     analysis_queue = SqliteJobQueue(analysis_database)
 
     def on_snapshot_published(snapshot, trigger: str) -> None:
-        if trigger in {"intraday", "live"}:
+        if not analysis.enabled or trigger in {"intraday", "live"}:
             return
         try:
             analysis.submit(

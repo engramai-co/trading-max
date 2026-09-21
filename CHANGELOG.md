@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-22
+
 ### Changed
 
 - Offer ChatGPT/Codex sign-in through Pi’s device-code OAuth, with native credential
@@ -18,6 +20,19 @@ All notable public Trading Max releases are recorded here.
   unselected provider when the selected credential is unavailable.
 - Require Node.js 22.19 or newer and install the locked model transport alongside
   local setup and Mac mini release builds.
+- Keep model use focused on security name resolution. Disable legacy automatic
+  portfolio/ticker synthesis and taxonomy by default, including previously queued
+  analysis runs, without disabling account or market-data refresh.
+- Display overview chart footer P&L as a percentage of opening account value,
+  using the same cash-flow-adjusted period calculation as the performance chart.
+
+### Fixed
+
+- Preserve system instructions and declared tools when using Pi's Codex transport,
+  and omit the unsupported temperature parameter. Verify real Luna replies and
+  schema-validated bilingual analysis before release.
+- Restore prior model connection metadata and routing when a macOS upgrade rolls
+  back, while retaining newer account records, jobs, broker settings and credentials.
 
 ## [1.7.4] - 2026-09-21
 

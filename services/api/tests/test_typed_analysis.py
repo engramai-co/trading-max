@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from trading_max.application import StageRegistry
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -73,6 +74,33 @@ def _seed_snapshot(state: Path) -> None:
         source="typed-analysis-test",
         artifacts=[source],
     )
+
+
+def test_disabled_analysis_rejects_new_and_previously_queued_runs(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    _seed_snapshot(state)
+    manager = _manager(state)
+    queued = manager.submit(lenses=["watchlist_opportunity_map"])
+    manager.enabled = False
+    monkeypatch.setattr(
+        manager.synthesis, "analyze", lambda *args, **kwargs: pytest.fail("unexpected LLM call")
+    )
+    monkeypatch.setattr(
+        manager.taxonomy_workflow,
+        "execute",
+        lambda *args, **kwargs: pytest.fail("unexpected taxonomy call"),
+    )
+    try:
+        with pytest.raises(ProviderRuntimeError, match="analysis_disabled"):
+            manager.submit(lenses=["daily_cio_brief"])
+        assert manager.provider_available() is False
+        manager.execute(queued.run_id, force=True)
+        result = manager.get(queued.run_id)
+        assert result.status.value == "failed"
+        assert any("analysis_disabled" in error for error in result.errors)
+        assert result.artifact_ids == []
+    finally:
+        manager.close()
 
 
 def test_typed_analysis_runs_in_worker_and_reuses_identical_artifact(

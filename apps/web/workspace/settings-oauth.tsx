@@ -74,10 +74,10 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
       "Use your ChatGPT account’s Codex allowance. Authorization stays on the device running Trading Max. API keys are billed separately.",
     )}</Notice>
-    <Select label={t("分析模型", "Analysis model")} data={provider.models} value={model}
+    <Select label={t("模型", "Model")} data={provider.models} value={model}
       onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} allowDeselect={false} />
     <Checkbox checked={defaultModel} onChange={(event) => setDefaultModel(event.currentTarget.checked)}
-      disabled={pending} label={t("设为默认分析模型", "Use as the default analysis model")} />
+      disabled={pending} label={t("设为默认模型", "Use as the default model")} />
     {current?.state === "pending" && current.userCode && current.verificationUrl && <Stack gap="md" aria-live="polite">
       <Text fw={600}>{t("在 OpenAI 完成授权", "Authorize with OpenAI")}</Text>
       <Text size="sm">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorization page. This screen will connect automatically when you finish.")}</Text>

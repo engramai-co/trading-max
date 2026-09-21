@@ -104,7 +104,11 @@ def create_analysis_run(
             status_code=422,
             detail={
                 "code": exc.code,
-                "message": ("analysis route is not available; configure the selected provider"),
+                "message": (
+                    "LLM analysis is disabled; models are used for security name resolution"
+                    if exc.code == "analysis_disabled"
+                    else "analysis route is not available; configure the selected provider"
+                ),
             },
         ) from exc
     except (FileNotFoundError, ValueError) as exc:

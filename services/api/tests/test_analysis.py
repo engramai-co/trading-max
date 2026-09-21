@@ -8,6 +8,24 @@ from fastapi.testclient import TestClient
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.config import Settings
+from services.api.trading_max_api.credentials import InMemoryCredentialStore
+
+
+def test_default_app_keeps_legacy_synthesis_off_with_a_connected_model(
+    research_root, tmp_path, typed_fixture
+):
+    typed_fixture(research_root, ArtifactStore(tmp_path))
+    settings = Settings(data_root=tmp_path, openai_api_key="synthetic-key")
+    assert settings.llm_analysis_enabled is False
+    app = create_app(settings, credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        assert app.state.analysis.provider.name == "openai"
+        assert app.state.analysis.enabled is False
+        assert app.state.analysis.list() == []
+        response = client.post("/v1/analysis/runs", json={})
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "analysis_disabled"
+        assert app.state.analysis.list() == []
 
 
 def _decoded_analysis() -> dict:
@@ -51,6 +69,7 @@ def test_fake_provider_smoke_runs_portfolio_and_ticker_analysis(
     typed_fixture(research_root, store)
     app = create_app(
         Settings(
+            llm_analysis_enabled=True,
             data_root=tmp_path / "runtime",
             api_token="secret",
             llm_provider="fake",
@@ -88,6 +107,7 @@ def test_fake_provider_smoke_runs_portfolio_and_ticker_analysis(
 
 def test_deepseek_configuration_can_use_os_credential_store(tmp_path: Path) -> None:
     settings = Settings(
+        llm_analysis_enabled=True,
         data_root=tmp_path,
         llm_provider="deepseek",
         llm_model="deepseek-v4-flash",

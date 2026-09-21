@@ -32,8 +32,8 @@ class OpenCodeWebSearchResolver:
     """Run an approved model tool loop with only one web search exposed.
 
     The historical class name remains public for compatibility. Runtime routing
-    may supply OpenCode or direct DeepSeek; both use the same bounded,
-    Pi message contract; the workflow still decides both calls.
+    supplies the selected Pi provider. The workflow still decides both calls;
+    Pi does not run an autonomous agent loop.
     """
 
     def __init__(
@@ -133,7 +133,9 @@ class OpenCodeWebSearchResolver:
             "traded US equity ticker or tickers. You must call websearch exactly once "
             "before answering. Do not guess and do not treat brands as legal issuer "
             "names without web evidence. Return one JSON object with keys: resolved "
-            "(boolean), companyName (string), searchQueries (array of up to four ticker "
+            "(boolean), companyName (official English legal issuer name only, without "
+            "translations, aliases, parenthetical explanations or share-class suffixes), "
+            "searchQueries (array of up to four ticker "
             "symbols), and evidenceUrls (array of source URLs). Include multiple ticker "
             "symbols only for genuine listed share classes."
         )

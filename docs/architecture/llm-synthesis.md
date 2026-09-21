@@ -1,5 +1,11 @@
 # LLM synthesis boundary
 
+Legacy synthesis is disabled by default. The current product uses its optional
+model connection for security name resolution only. API and worker require an
+explicit `TRADING_MAX_LLM_ANALYSIS_ENABLED=true` to admit or execute synthesis,
+including previously queued jobs. Account capture, performance and deterministic
+research updates do not depend on that switch. Historical artifacts remain readable.
+
 The canonical provider contracts live under
 `backend/src/trading_max/synthesis/`.
 
@@ -53,9 +59,8 @@ See [transport decision](pi-ai-transport.md) for compatibility and rollback.
 
 The API-compatible analysis response remains unchanged.
 `TypedAnalysisManager` persists analysis runs as SQLite jobs with the
-`synthesis.llm` worker stage. There is no in-process analysis executor or
-feature flag: API requests only admit a run, and the dedicated typed worker
-executes it.
+`synthesis.llm` worker stage. When explicitly enabled, API requests only admit a
+run, and the dedicated typed worker executes it; there is no in-process executor.
 
 The durable path has coverage for both an embedded test worker and the normal
 refresh worker registry. It preserves non-blocking analysis, snapshot-bound

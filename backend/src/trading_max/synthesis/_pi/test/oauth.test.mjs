@@ -68,13 +68,18 @@ test("ChatGPT Luna requests use Pi's Codex transport and account header, not the
   let body;
   const result = await complete({
     provider: "openai-codex", model: "gpt-5.6-luna", apiKey: token(),
-    baseUrl: "https://chatgpt.com/backend-api", maxRetries: 0, timeoutMs: 2000,
-    context: { systemPrompt: "Return JSON.", messages: [{ role: "user", content: "fixture", timestamp: 1 }] },
+    baseUrl: "https://chatgpt.com/backend-api", maxRetries: 0, timeoutMs: 2000, temperature: 0.1,
+    context: {
+      systemPrompt: "Return JSON.", messages: [{ role: "user", content: "fixture", timestamp: 1 }],
+      tools: [{ name: "lookup", description: "Read synthetic evidence.", parameters: { type: "object", properties: {} } }],
+    },
   }, { fetch: async (url, init) => {
     assert.equal(new URL(url).origin, "https://chatgpt.com");
     assert.equal(new Headers(init.headers).get("chatgpt-account-id"), "synthetic-account");
     body = JSON.parse(new Headers(init.headers).get("content-encoding") === "zstd"
       ? zstdDecompressSync(init.body).toString() : init.body);
+    // Match the live ChatGPT endpoint: a generic sampling parameter is rejected.
+    if ("temperature" in body) return response({ detail: "Unsupported parameter: temperature" }, 400);
     const events = [
       { type: "response.created", response: { id: "fixture", status: "in_progress" } },
       { type: "response.output_item.added", output_index: 0, item: { type: "message", id: "m1", role: "assistant", content: [] } },
@@ -86,6 +91,10 @@ test("ChatGPT Luna requests use Pi's Codex transport and account header, not the
   } });
   assert.equal(body.model, "gpt-5.6-luna");
   assert.equal(body.store, false);
+  assert.equal("temperature" in body, false);
+  assert.equal(body.instructions, "Return JSON.");
+  assert.equal(body.tools[0].name, "lookup");
+  assert.equal(body.input[0].role, "user");
   assert.equal(result.error, undefined);
   assert.equal(result.text, '{"ok":true}');
 });

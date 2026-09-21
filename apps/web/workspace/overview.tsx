@@ -336,9 +336,9 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
             }}
           />
           <div className="mx-chart-footer">
-            <span>
+            <span title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}>
               {t("区间净盈亏", "Period P&L")}{" "}
-              <strong>{currency(money.pnl, "GBP", 2)}</strong>
+              <strong>{percent(money.pnl == null ? null : money.pnlPercents.at(-1), true, 2)}</strong>
             </span>
             <TextLink href={portfolioPerformanceHref(scope, range)}>
               <ChartLine size={14} />

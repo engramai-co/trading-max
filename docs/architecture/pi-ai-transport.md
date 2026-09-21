@@ -1,6 +1,6 @@
 # Pi AI transport consolidation
 
-Status: implementation, based on product 1.7.4; not a production deployment.
+Status: accepted for product 1.8.0.
 
 ## Decision
 
@@ -16,6 +16,15 @@ without an explicit override. The fast defaults are GPT-5.6 Luna, Claude Haiku
 4.5 (20251001), and Gemini 3.8 Flash; Flash-Lite 3.5 is also available. Existing
 explicit model choices remain supported. Model IDs were checked against Pi and
 the providers’ official catalogs on 2026-09-22.
+
+The active product use is ticker resolution: a company name or alias becomes
+market-validated security candidates. Connecting a model does not enable
+portfolio narratives, ticker analysis or automatic taxonomy. The API and worker
+default `TRADING_MAX_LLM_ANALYSIS_ENABLED` to false, skip synthesis hooks on
+startup/snapshot publication, reject new synthesis runs and stop old queued
+synthesis runs before any model call. Deterministic research updates, live
+account capture and performance refresh remain independent. Historical analysis
+artifacts and explicitly enabled legacy compatibility tests remain supported.
 
 The Python worker calls a short-lived Node process over stdin/stdout. Node 22 is
 already a product dependency; Pi requires 22.19 or newer. The bridge uses Pi's
@@ -51,9 +60,11 @@ new connection picker. No model call is made by the migration.
 Install the locked bridge dependencies as part
 of setup/release, before running a model job. Missing runtime dependencies fail
 clearly rather than silently using the old HTTP implementation. Fake-provider
-tests remain offline. Rollback restores the previous source/dependencies and the pre-upgrade database
-backup together. Migration 0019 changes the active default route, so rolling
-back code alone does not restore the previous routing policy.
+tests remain offline. The macOS deployer captures model connection metadata and
+routes after stopping the old services. Rollback restores that configuration
+with the retained runtime, without reverting the business database or touching
+Keychain credentials. Migration 0019 changes the active default route, so a
+manual code-only rollback must also restore the previous model configuration.
 
 ## ChatGPT OAuth
 
@@ -71,7 +82,9 @@ auth.json, browser storage, logs, or process arguments. SQLite contains only
 connection metadata. Before inference, Pi resolves/refreshes the credential
 under a lock shared by API and worker processes. Rotated tokens are persisted
 before inference, so an inference failure cannot discard the refreshed token.
-The subsequently authorized call uses Pi’s Codex transport. Disconnect and login
+The subsequently authorized call uses Pi’s Codex transport and public context
+normalizer, preserving system instructions and declared tools. Codex requests
+omit the unsupported temperature option. Disconnect and login
 persistence use the same lock. Cancellation cannot persist a late login result.
 Failures leave the previous connection/default intact.
 

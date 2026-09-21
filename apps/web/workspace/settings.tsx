@@ -85,7 +85,7 @@ export function SettingsWorkspace() {
   const [selectedProvider, setSelectedProvider] = useState("openai");
   const tabs = [
     { value: "accounts", label: t("账户与数据", "Accounts & data") },
-    { value: "models", label: t("AI 分析", "AI analysis") },
+    { value: "models", label: t("模型连接", "Model connections") },
     { value: "automation", label: t("更新计划", "Update schedule") },
     { value: "preferences", label: t("个人偏好", "Preferences") },
   ];
@@ -217,7 +217,7 @@ export function SettingsWorkspace() {
           {view === "models" && (
             <>
               <Panel
-                title={t("分析模型（可选）", "Analysis models (optional)")}
+                title={t("模型连接（可选）", "Model connections (optional)")}
               >
                 <div className="mx-connection-grid mx-model-connections">
                   {visibleProviders.map((provider) => (
@@ -264,7 +264,7 @@ export function SettingsWorkspace() {
         opened={view === "models" && Boolean(data?.llmProviders.length) &&
           !hasModelConnection && offerModelConnection && !connection}
         onClose={() => setOfferModelConnection(false)}
-        title={t("连接你的分析模型", "Connect your analysis model")}
+        title={t("连接你的模型", "Connect your model")}
         centered
       >
         <Stack gap="lg">
@@ -467,7 +467,7 @@ function ConnectionForm({
               "Use this account’s read-only API credentials. Saved keys are never filled back into the form.",
             )
           : t(
-              "分析请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
+              "证券识别请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
               "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
             )}
       </Notice>
@@ -534,8 +534,8 @@ function ConnectionForm({
           )}
           {connection.kind === "model" && (
             <Checkbox
-              label={t("设为默认分析模型", "Use as the default analysis model")}
-              description={t("未单独分配的分析共用此模型。", "Used by every analysis without a separate assignment.")}
+              label={t("设为默认模型", "Use as the default model")}
+              description={t("用于未单独指定模型的证券名称识别。", "Used for security name resolution without a separate assignment.")}
               checked={useAsDefault}
               onChange={(event) => setUseAsDefault(event.currentTarget.checked)}
               disabled={busy}
@@ -669,12 +669,7 @@ function ModelRouting({
     if (!options.some((o) => o.value === route)) options.push({ value: route, label: route });
   }
   const lenses = [
-    { value: "portfolio", label: t("组合摘要", "Portfolio analysis") },
-    { value: "ticker", label: t("个股研究", "Security research") },
-    {
-      value: "taxonomy",
-      label: t("标的搜索与分类", "Security search & classification"),
-    },
+    { value: "taxonomy", label: t("证券名称识别", "Security name resolution") },
   ];
   const mutation = useMutation({
     mutationFn: (submitted: { defaultRoute: string; overrides: typeof overrides; expectedRevision: number }) =>
@@ -688,8 +683,8 @@ function ModelRouting({
     <Panel
       title={t("模型分配", "Model assignments")}
       description={t(
-        "默认模型用于未单独指定的分析。",
-        "The default model handles any analysis without its own assignment.",
+        "模型用于将公司名、简称或描述识别为证券候选。",
+        "Models resolve company names, aliases, or descriptions into security candidates.",
       )}
     >
       <Stack gap="lg">
@@ -704,7 +699,7 @@ function ModelRouting({
         />
         <details className="mx-details">
           <summary>
-            {t("按分析类型单独设置", "Assign models by analysis type")}
+            {t("证券识别单独设置", "Override security resolution model")}
           </summary>
           <div className="mx-form-grid">
             {lenses.map((lens) => (

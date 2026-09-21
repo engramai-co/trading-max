@@ -13,7 +13,9 @@ from services.api.trading_max_api.security_entity_resolution import (
 )
 
 
-@pytest.mark.parametrize("provider_name", ["opencode", "deepseek"])
+@pytest.mark.parametrize(
+    "provider_name", ["opencode", "deepseek", "openai-codex", "openai", "anthropic", "google"]
+)
 def test_resolver_runs_one_websearch_tool_call(provider_name: str) -> None:
     web_requests = []
     model_calls = []
@@ -36,6 +38,7 @@ def test_resolver_runs_one_websearch_tool_call(provider_name: str) -> None:
 
     def complete(**kwargs):
         model_calls.append(kwargs)
+        assert "official English legal issuer name only" in kwargs["system"]
         if len(model_calls) == 1:
             assert kwargs["tool_choice"] == "required"
             assert kwargs["tools"][0]["name"] == "websearch"

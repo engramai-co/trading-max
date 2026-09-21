@@ -48,7 +48,10 @@ test.describe("model connection setup", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
 
-  test("setup can be dismissed without connecting or choosing a different provider", async ({ page }) => {
+  test("setup can be dismissed without connecting or choosing a different provider", async ({ page, request }) => {
+    const overview = await (await request.get("/api/backend/settings/integrations")).json() as IntegrationOverview;
+    overview.integrations = overview.integrations.map((item) => ({ ...item, configured: false, enabled: false }));
+    await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
     await page.goto("/settings?tab=models");
     await page.getByRole("dialog").getByRole("button", { name: /稍后设置|Set up later/ }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);

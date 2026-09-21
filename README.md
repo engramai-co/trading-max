@@ -131,7 +131,8 @@ readiness succeeds and the account totals agree with your broker.
   supported US historical reconstruction, with YF retained as fallback.
   [Availability and history vary by provider](docs/guides/data-and-metrics.md).
 - **Optional AI.** Portfolio analytics and research work without a model key.
-  Configured model routes can add narrative analysis using bounded context.
+  Connect a model to resolve company names and aliases into verified security
+  candidates. Automatic AI portfolio analysis is disabled by default.
 - **Recoverable history.** A failed refresh keeps the last valid snapshot.
   Verified independent backups and retained macOS releases support recovery.
   Optional compact storage preserves original records, while charts load only

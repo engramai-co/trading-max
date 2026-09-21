@@ -260,7 +260,7 @@ curl -fsSI http://127.0.0.1:3413/
 
 The onboarding wizard can configure providers directly. If you skipped them,
 open **Settings → Accounts & data** for broker connections. Optional model
-providers and routes live in **Settings → AI analysis**.
+providers and routes live in **Settings → Model connections**.
 
 For each connection:
 
@@ -283,8 +283,10 @@ For Trading 212, create read-only keys with only the account/history access
 needed by the application. Do not grant trading permission. Invest and Stocks
 ISA use separate connection profiles.
 
-LLM configuration is optional. The deterministic fake provider exercises the
-analysis storage path without sending data to an external model.
+LLM configuration is optional and supports security name resolution. Connecting
+a model does not start portfolio/ticker AI analysis. Legacy synthesis requires
+an explicit `TRADING_MAX_LLM_ANALYSIS_ENABLED=true` operator setting; the default
+is false. Offline compatibility tests use a deterministic fake provider.
 
 Yahoo Finance-compatible data remains the default market-data path. Optional
 Alpaca keys are configured in **Accounts & data → Reconstruction market data**,

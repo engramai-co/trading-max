@@ -1,5 +1,5 @@
 // Pi owns model transport. Trading Max owns prompts, credentials and validation.
-import { contentText, createModels } from "@earendil-works/pi-ai";
+import { contentText, createModels, normalizeContext } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
@@ -59,7 +59,8 @@ export async function complete(request, { fetch: fetchImpl = globalThis.fetch } 
       maxRetries: request.maxRetries ?? 2,
       maxRetryDelayMs: 10_000,
       maxTokens: request.maxTokens ?? 12_000,
-      temperature: request.temperature ?? 0.1,
+      // ChatGPT's Codex endpoint rejects temperature, including for Luna.
+      temperature: request.provider === "openai-codex" ? undefined : request.temperature ?? 0.1,
       toolChoice: request.toolChoice ?? undefined,
       cacheRetention: "none",
       transport: "sse",
@@ -84,7 +85,7 @@ export async function complete(request, { fetch: fetchImpl = globalThis.fetch } 
     // OAuth was resolved by Pi under the host's cross-process keychain lock.
     // Dispatch through the provider so Models does not try a second credential lookup.
     const message = request.provider === "openai-codex"
-      ? await provider.streamSimple(model, request.context, options).result()
+      ? await provider.streamSimple(model, normalizeContext(request.context), options).result()
       : await models.completeSimple(model, request.context, options);
     if (signal.aborted || ["error", "aborted"].includes(message.stopReason)) {
       return { error: errorCode(status) };
