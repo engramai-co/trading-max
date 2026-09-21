@@ -5735,6 +5735,45 @@
         "title": "HistoryCoverage",
         "type": "object"
       },
+      "HistorySnapshot": {
+        "properties": {
+          "brokerAsOf": {
+            "title": "Brokerasof",
+            "type": "string"
+          },
+          "dataRevision": {
+            "title": "Datarevision",
+            "type": "string"
+          },
+          "intradayNav": {
+            "items": {
+              "$ref": "#/components/schemas/NavPoint"
+            },
+            "title": "Intradaynav",
+            "type": "array"
+          },
+          "nav": {
+            "items": {
+              "$ref": "#/components/schemas/NavPoint"
+            },
+            "title": "Nav",
+            "type": "array"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "brokerAsOf",
+          "dataRevision",
+          "nav",
+          "intradayNav"
+        ],
+        "title": "HistorySnapshot",
+        "type": "object"
+      },
       "Holding": {
         "properties": {
           "account": {
@@ -15344,7 +15383,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.6.7"
+    "version": "1.7.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15837,6 +15876,90 @@
           }
         },
         "summary": "Dashboard"
+      }
+    },
+    "/v1/dashboard/history": {
+      "get": {
+        "operationId": "dashboard_history_v1_dashboard_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "3M",
+              "enum": [
+                "1D",
+                "1W",
+                "1M",
+                "3M",
+                "6M",
+                "YTD",
+                "1Y",
+                "ALL"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "total",
+              "enum": [
+                "invest",
+                "isa",
+                "total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,100}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistorySnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard History"
       }
     },
     "/v1/dashboard/lens/{view}": {

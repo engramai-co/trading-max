@@ -38,6 +38,7 @@ from .dashboard_models import (
     ResearchShell,
 )
 from .flow_diagnostics import SnapshotFlowDiagnostics
+from .history_reader import HistoryReader
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
 from .market_data_runtime import reconstruction_loader_factory
@@ -98,7 +99,7 @@ def create_app(
     )
 
     dashboard_cache_lock = threading.Lock()
-    dashboard_cache: tuple[str, DashboardResponse] | None = None
+    dashboard_cache: tuple[tuple[str, bool], DashboardResponse] | None = None
     research_cache_lock = threading.Lock()
     research_cache_run_id: str | None = None
     research_cache: dict[
@@ -108,15 +109,18 @@ def create_app(
     research_shell_cache: SingleFlightCache[tuple, ResearchShell] = SingleFlightCache(32)
     research_lens_cache: SingleFlightCache[tuple, ResearchLensSnapshot] = SingleFlightCache(256)
 
-    def cached_dashboard(manifest: SnapshotManifest) -> DashboardResponse:
+    def cached_dashboard(
+        manifest: SnapshotManifest, *, include_history: bool = True
+    ) -> DashboardResponse:
         nonlocal dashboard_cache
         with dashboard_cache_lock:
-            if dashboard_cache is not None and dashboard_cache[0] == manifest.run_id:
+            key = (manifest.run_id, include_history)
+            if dashboard_cache is not None and dashboard_cache[0] == key:
                 return dashboard_cache[1]
             payload = DashboardResponse.model_validate(
-                build_dashboard_data(store, manifest),
+                build_dashboard_data(store, manifest, include_history=include_history),
             )
-            dashboard_cache = (manifest.run_id, payload)
+            dashboard_cache = (key, payload)
             return payload
 
     def cached_research(
@@ -382,6 +386,7 @@ def create_app(
 
     app.state.settings = settings
     app.state.store = store
+    app.state.history_reader = HistoryReader(store)
     app.state.settings_repository = preferences
     app.state.credential_store = credentials
     app.state.jobs = jobs

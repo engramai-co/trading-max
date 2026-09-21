@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-21
+
+### Added
+
+- Load portfolio curves through a snapshot-pinned history endpoint, with a bounded SQLite observation index and exact records fetched only when their table is opened or paged. Reuse immutable observations across cached revisions and exclude only this rebuildable index from backups.
+
+### Changed
+
+- Calculate period P&L and drawdown from all eligible observations on the server before reducing chart transport to the existing display cadence. Preserve original values, source transitions, cash-flow cutoffs, gap connectors and calendar positions across every range and account scope.
+- Overview and performance summary requests no longer load the complete intraday artifact. Keep existing full lens responses and raw artifact downloads compatible; cache eviction or failure never changes the underlying financial records.
+
 ## [1.6.7] - 2026-09-21
 
 ### Fixed

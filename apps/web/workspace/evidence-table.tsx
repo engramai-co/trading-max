@@ -28,12 +28,14 @@ export function EvidenceTable<T>({
   label,
   pageSize = 20,
   rowHeaderIndex = 0,
+  totalRows,
 }: {
   rows: T[];
   columns: EvidenceColumn<T>[];
   label: string;
   pageSize?: number;
   rowHeaderIndex?: number;
+  totalRows?: number;
 }) {
   const t = useCopy();
   const paginationLabels = usePaginationLabels();
@@ -52,7 +54,7 @@ export function EvidenceTable<T>({
       >
         <table className="mx-table">
           <caption className="mx-table-caption">
-            {label} · {rows.length} {t("条记录", "records")}
+            {label} · {totalRows ?? rows.length} {t("条记录", "records")}
           </caption>
           <thead>
             <tr>

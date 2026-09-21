@@ -199,7 +199,7 @@ export function selectPortfolioHistory({
     carriedCfdValue: source === "intraday" && scope === "household" ? cfdValue : null,
   };
 }
-export type PortfolioHistory = ReturnType<typeof selectPortfolioHistory>;
+export type PortfolioHistory = Omit<ReturnType<typeof selectPortfolioHistory>, "startDay" | "endDay"> & { startDay?: string; endDay?: string };
 
 export function valuationNote(point: NavPoint, t: (zh: string, en: string) => string) {
   if (!point.intraday) return t("日终估值", "End-of-day valuation");

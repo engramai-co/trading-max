@@ -30,6 +30,10 @@ def _included_files(state_root: Path) -> Iterator[Path]:
         if not path.is_file():
             continue
         relative = path.relative_to(state_root)
+        # Only this versioned, rebuildable query index is excluded. Financial
+        # ledgers, original artifacts and other runtime files remain protected.
+        if relative.parts[:2] == ("runtime", "history-query-cache-v1"):
+            continue
         if any(component in EXCLUDED_COMPONENTS for component in relative.parts):
             continue
         if (

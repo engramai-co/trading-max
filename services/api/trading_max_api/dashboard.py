@@ -827,6 +827,8 @@ def _overlay_live_broker_snapshot(
 def build_dashboard_data(
     store: ArtifactStore,
     manifest: SnapshotManifest | None = None,
+    *,
+    include_history: bool = True,
 ) -> JsonObject:
     manifest = manifest or store.latest_manifest()
     if manifest is None:
@@ -870,20 +872,22 @@ def build_dashboard_data(
         cfd_analysis_raw = store.read_json(run_id, "account/cfd_analysis.json")
     except FileNotFoundError:
         cfd_analysis_raw = None
-    try:
-        intraday_nav = store.read_json(
-            run_id,
-            "account/nav/valuation_history.json",
-        )
-    except (FileNotFoundError, TypeError, ValueError):
-        try:
-            intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
-        except (FileNotFoundError, TypeError, ValueError):
-            intraday_nav = None
+    intraday_nav = None
     cash_flows: dict[str, JsonObject] = {}
-    for profile, code in (("invest", "a"), ("isa", "b")):
-        with suppress(FileNotFoundError, TypeError, ValueError):
-            cash_flows[profile] = store.read_json(run_id, f"account/nav/cash_flows_{code}.json")
+    if include_history:
+        try:
+            intraday_nav = store.read_json(
+                run_id,
+                "account/nav/valuation_history.json",
+            )
+        except (FileNotFoundError, TypeError, ValueError):
+            try:
+                intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
+            except (FileNotFoundError, TypeError, ValueError):
+                intraday_nav = None
+        for profile, code in (("invest", "a"), ("isa", "b")):
+            with suppress(FileNotFoundError, TypeError, ValueError):
+                cash_flows[profile] = store.read_json(run_id, f"account/nav/cash_flows_{code}.json")
     try:
         account_analysis_raw = store.read_json(run_id, "account/analysis_metrics.json")
     except FileNotFoundError:

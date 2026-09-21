@@ -45,6 +45,7 @@ import { HistoryCoverage } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
 import { portfolioMoney } from "./portfolio-money";
 import { portfolioValueLines } from "./portfolio-value-lines";
+import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
@@ -52,7 +53,7 @@ export function PerformanceWorkspace() {
   const requested = portfolioRange(params.get("range"));
   const range = params.get("view") && params.get("view") !== "money" && requested === "1D" ? "3M" : requested;
   const scope = ["invest", "isa", "household", "cfd"].includes(params.get("scope") ?? "") ? params.get("scope")! : "total";
-  const selection = useMemo(() => ({ range, scope }), [range, scope]);
+  const selection = useMemo(() => ({ range, scope, detail: "summary" as const }), [range, scope]);
   const query = useDashboardLens("analytics", undefined, true, selection);
   return (
     <Page title={t("收益与风险", "Performance & risk")}>
@@ -92,11 +93,14 @@ export function PerformanceContent({
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const daily = useMemo(() => (data.nav ?? []).filter((p) => !p.intraday), [data.nav]);
   const actualRange = view !== "money" && range === "1D" ? "3M" : range;
-  const history = useMemo(() => selectPortfolioHistory({
+  const historySelection = { runId: data.runId, range: actualRange, scope };
+  const historyQuery = usePortfolioHistory(historySelection, view === "money");
+  const fallbackHistory = useMemo(() => selectPortfolioHistory({
     daily, intraday: data.intradayNav, range: actualRange, scope,
     asOf: data.brokerAsOf,
     requireCashFlows: view === "money",
   }), [daily, data.intradayNav, actualRange, scope, data.brokerAsOf, view]);
+  const history = view === "money" ? historyQuery.data?.history ?? fallbackHistory : fallbackHistory;
   const isIntraday = view === "money" && history.source === "intraday";
   const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) => navNumber(p, scope) != null);
   const allScope = [
@@ -148,7 +152,7 @@ export function PerformanceContent({
   const points = view === "returns" ? returnsPoints : availablePoints;
   const first = points[0],
     last = points.at(-1);
-  const money = portfolioMoney(points, scope);
+  const money = view === "money" && historyQuery.data ? historyQuery.data.money : portfolioMoney(points, scope);
   const { contributions, pnl } = money;
   const twr =
     points.length > 1
@@ -306,7 +310,9 @@ export function PerformanceContent({
             "Select Invest, ISA, or all investment accounts to analyze returns and risk.",
           )}
         </Notice>
-      ) : view === "risk" ? (
+      ) : view === "money" && historyQuery.isPending ? <Pending />
+        : view === "money" && historyQuery.isError ? <QueryError retry={historyQuery.refetch} />
+        : view === "risk" ? (
         <RiskDashboard data={data} scope={scope} />
       ) : (
         <>
@@ -408,6 +414,7 @@ export function PerformanceContent({
                 intraday={isIntraday}
                 timeline={view === "money" ? history.timeline : undefined}
                 observations={view === "money" ? points : undefined}
+                recordSource={view === "money" ? historySelection : undefined}
                 tooltip={timelineTooltip}
                 details={isIntraday ? [
                   { label: t("区间价值变化", "Value change"), values: valueChanges },

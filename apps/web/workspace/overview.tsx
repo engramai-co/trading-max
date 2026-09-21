@@ -38,10 +38,11 @@ import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
 import { portfolioMoney } from "./portfolio-money";
+import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 
 export function OverviewWorkspace() {
   const t = useCopy();
-  const query = useDashboardLens("overview");
+  const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   return (
     <Page
       className="mx-overview-page"
@@ -173,7 +174,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           </div>
         )}
         <div className="mx-overview-split">
-          <OverviewHistory scope={scope} />
+          <OverviewHistory scope={scope} runId={data.runId} />
           <Allocation holdings={holdings} />
         </div>
       </div>
@@ -285,20 +286,16 @@ function OverviewContent({ data }: { data: DashboardLens }) {
     </>
   );
 }
-function OverviewHistory({ scope }: { scope: Scope }) {
+function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
   const t = useCopy();
   const { params, update } = useRouteState();
   const range = portfolioRange(params.get("range"));
-  const selection = useMemo(() => ({ range, scope }), [range, scope]);
-  const query = useDashboardLens("analytics", undefined, true, selection);
-  const history = useMemo(() => selectPortfolioHistory({
-    daily: query.data?.nav, intraday: query.data?.intradayNav,
-    range, scope, asOf: query.data?.brokerAsOf,
-    requireCashFlows: true,
-  }), [query.data?.nav, query.data?.intradayNav, query.data?.brokerAsOf, range, scope]);
+  const selection = useMemo(() => ({ range, scope, runId }), [range, scope, runId]);
+  const query = usePortfolioHistory(selection);
+  const history = query.data?.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
-  const money = portfolioMoney(points, scope);
+  const money = query.data?.money ?? portfolioMoney([], scope);
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
   return (
     <Panel
@@ -333,6 +330,7 @@ function OverviewHistory({ scope }: { scope: Scope }) {
             intraday={isIntraday}
             timeline={history.timeline}
             observations={points}
+            recordSource={selection}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
               unit: "GBP",
