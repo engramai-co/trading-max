@@ -1,4 +1,4 @@
-import { currency, number, percent } from "./data";
+import { currency, number, percent } from "@/workspace/data";
 
 type Copy = (zh: string, en: string) => string;
 const diagnostics: Record<string, [string, string, "money" | "ratio" | "days"]> = {

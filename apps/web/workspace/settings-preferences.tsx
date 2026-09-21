@@ -18,7 +18,7 @@ import type {
   CfdImportStatus,
   UserProfile,
 } from "@/lib/types";
-import { api, jsonRequest, number } from "./data";
+import { api, jsonRequest, number } from "@/workspace/data";
 import {
   Empty,
   Facts,

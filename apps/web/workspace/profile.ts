@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import type { UserProfile } from "@/lib/types";
-import { api } from "./data";
+import { api } from "@/workspace/data";
 export function useWorkspaceProfile() {
   return useQuery({
     queryKey: ["workspace-profile"],

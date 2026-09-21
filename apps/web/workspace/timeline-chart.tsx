@@ -3,14 +3,14 @@
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
-import { currency, percent } from "./data";
+import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
 import { timelineOption, type TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
-import { historyDay, valuationNote, type CalendarTimeline } from "./portfolio-history";
+import { historyDay, valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
 import type { NavPoint } from "@/lib/types";
-import type { HistorySelection } from "./prepared-history";
+import type { HistorySelection } from "@/lib/portfolio/prepared";
 import { HistoryRecords } from "./history-records";
 
 export function TimelineChart({

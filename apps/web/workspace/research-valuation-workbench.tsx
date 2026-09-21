@@ -18,18 +18,8 @@ import {
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import {
-  api,
-  compact,
-  currency,
-  jsonRequest,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-} from "./data";
+import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import {
   Empty,
   Facts,

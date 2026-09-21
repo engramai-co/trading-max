@@ -10,6 +10,7 @@ outputs, runtime data and operational evidence are separate from source code.
 |---|---|---|
 | `apps/web/app/` | Next.js routes, stable page shells and browser-facing API proxies | Financial formulas and provider credentials |
 | `apps/web/workspace/` | Portfolio/research views, chart presentation and view-specific helpers | Broker ingestion and persisted source records |
+| `apps/web/lib/portfolio/` | Shared history selection, money calculations, display sampling and chart/detail preparation | React, network requests, server-only adapters and workspace components |
 | `apps/web/lib/` | Typed transport, query hooks, server adapters and shared non-view utilities | Route layouts and provider-side financial reconstruction |
 | `apps/web/ui/` | Theme, formatting and shared chart lifecycle | Page-specific fetching and accounting rules |
 | `services/api/trading_max_api/routes/` | HTTP validation, authorization and request orchestration | Long-running broker/provider work |

@@ -1,4 +1,4 @@
-import type { CalendarTimeline } from "./portfolio-history";
+import type { CalendarTimeline } from "@/lib/portfolio/history";
 
 /** Only empty display buckets become gaps; all readings remain original observations. */
 export function historySeries(

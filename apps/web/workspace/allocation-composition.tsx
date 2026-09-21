@@ -6,7 +6,7 @@ import { useId, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { allocationChartColours, useChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
-import { currency, percent } from "./data";
+import { currency, percent } from "@/workspace/data";
 import { Empty, useCopy } from "./foundation";
 
 export type AllocationSlice = {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
 import type { ChartColours } from "@/ui/charts/palette";
-import { historyGapSeries, historySeries } from "./history-series";
-import { historyDisplayInterval, selectPortfolioHistory } from "./portfolio-history";
-import { portfolioMoney } from "./portfolio-money";
+import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { historyDisplayInterval, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioMoney } from "@/lib/portfolio/money";
 import { timelineOption } from "./timeline-option";
 
 const dates = Array.from({ length: 9 }, (_, i) => new Date(Date.UTC(2026, 8, 17, 9, i * 10)).toISOString());

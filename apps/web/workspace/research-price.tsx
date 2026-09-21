@@ -7,16 +7,8 @@ import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
 import { Legend, Plot } from "./charts";
-import {
-  compact,
-  inRange,
-  number,
-  object,
-  objects,
-  percent,
-  str,
-  type Range,
-} from "./data";
+import { compact, number, object, objects, percent, str } from "@/workspace/data";
+import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,

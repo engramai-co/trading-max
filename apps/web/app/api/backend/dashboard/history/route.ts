@@ -1,7 +1,7 @@
 import { privateJsonResponse } from "@/lib/backend-proxy";
 import { HistoryRequestError, readPreparedHistory } from "@/lib/history-server";
-import { PORTFOLIO_RANGES } from "@/workspace/portfolio-history";
-import { historyPage, type HistorySelection } from "@/workspace/prepared-history";
+import { PORTFOLIO_RANGES } from "@/lib/portfolio/history";
+import { historyPage, type HistorySelection } from "@/lib/portfolio/prepared";
 
 export const dynamic = "force-dynamic";
 

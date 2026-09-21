@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { timelineAxis } from "./timeline-axis";
-import { historySeries } from "./history-series";
+import { historySeries } from "@/lib/portfolio/series";
 
 describe("sampled trading-time axis", () => {
   it("keeps ten-minute spacing and clock labels while hovering between thirty-minute display points", () => {

@@ -4,16 +4,8 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
-import {
-  compact,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  safeUrl,
-  str,
-} from "./data";
+import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { Empty, Facts, Metric, Panel, Segments, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
 import { chartName, chartNumber } from "./research-chart-format";

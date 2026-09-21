@@ -6,7 +6,7 @@ import {
   portfolioCalendarDateKey,
   summarizeTimelineCoverage,
 } from "@/lib/chart-domain";
-import { navNumber, type Range, type Scope } from "./data";
+import { navNumber, type Range, type Scope } from "@/lib/portfolio/nav";
 
 export type CalendarTimeline = {
   categories: string[];

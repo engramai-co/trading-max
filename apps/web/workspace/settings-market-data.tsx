@@ -4,7 +4,7 @@ import { Button, Group, Modal, PasswordInput, Stack } from "@mantine/core";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { IntegrationSummary } from "@/lib/types";
-import { api, jsonRequest } from "./data";
+import { api, jsonRequest } from "@/workspace/data";
 import { Freshness, Notice, Panel, Tag, useCopy } from "./foundation";
 
 const path = "/settings/integrations/alpaca";

@@ -2,7 +2,8 @@
 import { Button, Modal, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import { Plot } from "./charts";
-import { number, numeric, object, percent } from "./data";
+import { number, object, percent } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Pending, Segments, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";

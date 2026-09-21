@@ -4,7 +4,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Drawer, Group, Select } from "@mantine/core";
 import { useState } from "react";
 import { Legend, Plot } from "./charts";
-import { compact, number, percent } from "./data";
+import { compact, number, percent } from "@/workspace/data";
 import { Empty, Metric, Panel, Segments, useCopy } from "./foundation";
 import { FinancialStatements } from "./research-company";
 import {

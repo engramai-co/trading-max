@@ -4,16 +4,8 @@ import { behaviorObservation, reviewLabel, systemReason } from "./review-copy";
 import { useState } from "react";
 import { Select } from "@mantine/core";
 import { Bars, HistoryChart } from "./charts";
-import {
-  currency,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  type Json,
-} from "./data";
+import { currency, number, object, objects, percent, str, type Json } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Facts, Notice, Panel, useCopy } from "./foundation";
 

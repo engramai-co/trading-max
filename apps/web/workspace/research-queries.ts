@@ -1,6 +1,6 @@
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { queryOptions } from "@tanstack/react-query";
-import { api } from "./data";
+import { api } from "@/workspace/data";
 
 export function researchLensQuery(
   ticker: string,

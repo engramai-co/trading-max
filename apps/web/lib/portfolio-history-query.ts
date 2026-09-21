@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { decodeTimeline, type HistorySelection, type PreparedHistory } from "@/workspace/prepared-history";
+import { decodeTimeline, type HistorySelection, type PreparedHistory } from "@/lib/portfolio/prepared";
 
 export async function fetchHistory<T>(selection: HistorySelection, signal: AbortSignal, page?: number): Promise<T> {
   const params = new URLSearchParams(selection);

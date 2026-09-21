@@ -1,5 +1,6 @@
-import type { Json } from "./data";
-import { currency, number, numeric, percent } from "./data";
+import type { Json } from "@/workspace/data";
+import { currency, number, percent } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import type { FinancialFacts } from "./research-facts";
 
 export type StatementUnit = "money" | "shares" | "ratio" | "per-share";

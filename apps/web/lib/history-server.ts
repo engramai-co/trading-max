@@ -1,6 +1,6 @@
 import "server-only";
 import { backendFetch } from "./backend";
-import { prepareHistory, type HistoryInput, type HistorySelection } from "@/workspace/prepared-history";
+import { prepareHistory, type HistoryInput, type HistorySelection } from "@/lib/portfolio/prepared";
 
 type Prepared = ReturnType<typeof prepareHistory>;
 const cache = new Map<string, { value: Prepared; bytes: number; expires: number }>();

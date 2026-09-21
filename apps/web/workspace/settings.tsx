@@ -24,7 +24,7 @@ import type {
   LLMProviderDescriptor,
   LLMRoutePolicy,
 } from "@/lib/types";
-import { api, ApiError, jsonRequest } from "./data";
+import { api, ApiError, jsonRequest } from "@/workspace/data";
 import {
   Empty,
   Freshness,

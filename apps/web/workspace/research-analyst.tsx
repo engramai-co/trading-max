@@ -9,16 +9,8 @@ import {
   recommendationChange,
 } from "./analyst-data";
 import { Plot } from "./charts";
-import {
-  currency,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  safeUrl,
-  str,
-} from "./data";
+import { currency, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { AnalystExpectations } from "./research-expectations";

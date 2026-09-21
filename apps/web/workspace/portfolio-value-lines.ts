@@ -1,6 +1,6 @@
 import type { NavPoint } from "@/lib/types";
 import type { ChartLine } from "./charts";
-import { navNumber, type Scope } from "./data";
+import { navNumber, type Scope } from "@/lib/portfolio/nav";
 
 /** Overview is the first performance layer, including its cash-flow baseline. */
 export function portfolioValueLines(

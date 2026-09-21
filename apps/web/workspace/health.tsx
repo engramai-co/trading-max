@@ -21,7 +21,7 @@ import {
   shortRunId,
 } from "@/lib/health";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
-import { api, ApiError, jsonRequest, number } from "./data";
+import { api, ApiError, jsonRequest, number } from "@/workspace/data";
 import {
   Empty,
   Facts,

@@ -12,15 +12,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  api,
-  compact,
-  currency,
-  jsonRequest,
-  number,
-  percent,
-  safeUrl,
-} from "./data";
+import { api, compact, currency, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,

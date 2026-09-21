@@ -27,6 +27,11 @@ observation, first broker boundary and latest point as window context. The
 public full dashboard/lens defaults remain compatible. `detail=summary` skips
 the intraday artifact and its cash-flow projection.
 
+Pure history selection, money calculations and display preparation live in
+`apps/web/lib/portfolio/`. The BFF and browser import the same modules; transport
+and UI remain outside that dependency tree. The architecture check follows
+runtime imports to prevent view or framework dependencies entering it.
+
 The Next.js history endpoint computes the existing `selectPortfolioHistory`
 and `portfolioMoney` functions on **all eligible observations**, before selecting
 display points. It returns the exact summary, existing sampled observations,

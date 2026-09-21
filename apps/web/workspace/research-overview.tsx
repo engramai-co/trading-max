@@ -2,15 +2,7 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button } from "@mantine/core";
 import { useState } from "react";
-import {
-  compact,
-  currency,
-  object,
-  objects,
-  percent,
-  safeUrl,
-  str,
-} from "./data";
+import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { Facts, Metric, Panel, TextLink, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
 import { useRouteState } from "./route-state";

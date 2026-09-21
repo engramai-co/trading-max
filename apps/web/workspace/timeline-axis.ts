@@ -1,4 +1,4 @@
-import type { CalendarTimeline } from "./portfolio-history";
+import type { CalendarTimeline } from "@/lib/portfolio/history";
 
 /** Numeric trading-time positions retain spacing and let ECharts snap across
  * display buckets. A category axis only matches within half a ten-minute slot,

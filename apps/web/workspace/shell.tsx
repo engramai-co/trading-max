@@ -36,7 +36,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
-import { api } from "./data";
+import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
 import { useCopy } from "./foundation";
 

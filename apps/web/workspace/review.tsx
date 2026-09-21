@@ -21,20 +21,9 @@ import {
   field,
 } from "./review-evidence";
 import { Bars, HistoryChart } from "./charts";
-import {
-  currency,
-  navNumber,
-  observedNav,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  tone,
-  type Json,
-  type Scope,
-} from "./data";
+import { currency, number, object, objects, percent, str, tone, type Json } from "@/workspace/data";
+import { navNumber, observedNav, type Scope } from "@/lib/portfolio/nav";
+import { numeric } from "@/lib/numeric";
 import {
   Empty,
   Facts,

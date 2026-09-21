@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  currency,
-  difference,
-  inRange,
-  numeric,
-  percent,
-  periodReturn,
-  safeUrl,
-} from "./data";
+import { currency, percent, safeUrl } from "@/workspace/data";
+import { difference, inRange, periodReturn } from "@/lib/portfolio/nav";
+import { numeric } from "@/lib/numeric";
 
 describe("financial presentation boundaries", () => {
   it("keeps absent, nonnumeric and non-scalar amounts out of financial totals", () => {

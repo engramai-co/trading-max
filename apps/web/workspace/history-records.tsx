@@ -4,11 +4,12 @@ import { useState } from "react";
 import { Pagination } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { fetchHistory } from "@/lib/portfolio-history-query";
-import { currency, navNumber, percent } from "./data";
+import { currency, percent } from "@/workspace/data";
+import { navNumber } from "@/lib/portfolio/nav";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
 import { Pending, QueryError, useCopy } from "./foundation";
-import { valuationNote } from "./portfolio-history";
-import type { HistoryPage, HistorySelection } from "./prepared-history";
+import { valuationNote } from "@/lib/portfolio/history";
+import type { HistoryPage, HistorySelection } from "@/lib/portfolio/prepared";
 
 /** Exact source rows load only when opened; page keys pin the chart's snapshot. */
 export function HistoryRecords({ selection, label }: { selection: HistorySelection; label: string }) {
