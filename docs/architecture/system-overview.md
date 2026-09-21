@@ -24,15 +24,22 @@ Immutable snapshot and analysis artifacts
   and projects immutable artifacts into small interface lenses.
 - `backend` owns domain models, broker ingestion, analytics, reference data,
   research, persistence, and worker execution.
-- SQLite stores durable job state and local settings metadata. Provider secrets
-  live in the operating-system credential manager.
+- SQLite stores durable job state and local settings metadata. Separate,
+  rebuildable SQLite indexes accelerate immutable-object lookup and selected
+  history queries; they do not replace the original financial records. Provider
+  secrets live in the operating-system credential manager.
+
+See [repository layout](repository-layout.md) for code ownership and generated
+files, and [interface lenses](interface-lenses.md) for the browser/API boundary.
 
 The web and API bind to loopback in the supported local profile. Trading Max is
 not designed as a public-internet or multi-user service.
 
 ## Snapshot publication
 
-Each successful full run is published into a new immutable directory. A
+Each successful publication creates an immutable snapshot manifest. Artifacts
+are content addressed and may reuse objects from earlier runs; a snapshot is
+not a full copy of the application state. A
 manifest records artifact identity, schema, checksums, dependencies, provenance,
 freshness, and quality. `latest.json` moves atomically only after every required
 artifact validates, so a failed refresh leaves the previous snapshot readable.
@@ -72,6 +79,22 @@ evidence qualifies the P&L calculation. Missing evidence leaves P&L unavailable.
 The independent daily performance path remains authoritative for TWR; a
 percentage of opening account value is not TWR. See
 [unified NAV history](unified-nav-history.md).
+
+## History reads and storage
+
+The overview and performance summary load independently of chart history. A
+pinned history request uses the parent snapshot ID and selected range/scope;
+the browser receives chart points and fetches exact records a page at a time.
+P&L and drawdown are calculated before display sampling. Daily risk/TWR keep
+their independent history path.
+
+Optional compressed envelopes, shared chunks and sealed object packs preserve
+original artifact bytes and provenance. Conversion is separately verified and
+requires compatible retained readers. Backups own independent recovery data,
+with bounded retention that protects unique history. Derived query caches can
+be rebuilt from snapshots. See [history storage](history-storage.md),
+[object packs](immutable-object-packs.md) and the
+[operator procedure](../operations/storage-maintenance.md).
 
 ## LLM boundary
 

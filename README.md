@@ -133,11 +133,16 @@ readiness succeeds and the account totals agree with your broker.
 - **Optional AI.** Portfolio analytics and research work without a model key.
   Configured model routes can add narrative analysis using bounded context.
 - **Recoverable history.** A failed refresh keeps the last valid snapshot.
-  Verified backups and retained macOS releases support recovery.
+  Verified independent backups and retained macOS releases support recovery.
+  Optional compact storage preserves original records, while charts load only
+  the requested view and fetch exact history on demand.
+  [Storage and recovery guide](docs/operations/storage-maintenance.md).
 
 This is a local, single-user application. See [Privacy](PRIVACY.md) for provider
 requests and storage, and [data conventions](docs/guides/data-and-metrics.md)
 for valuation, return, and coverage limits.
+
+<a id="documentation"></a>
 
 ## Find your next step
 

@@ -1,7 +1,8 @@
 # Storage maintenance and recovery copies
 
 This procedure is for the operator-managed [macOS service](../../deploy/macos/README.md).
-Keep application state and this repository outside Git. A local recovery copy
+Keep application state and the recovery repository outside the source checkout
+and outside Git. A local recovery copy
 protects against an upgrade mistake; copy the whole backup repository off-host
 to protect against loss of the machine or disk. Credentials remain in their
 original credential store and private bootstrap directory.
@@ -138,10 +139,12 @@ and original name remain in the manifest for the deletion journal.
 See [immutable history storage](../architecture/history-storage.md). The default
 writer remains legacy. An operator can use `TRADING_MAX_HISTORY_STORAGE=shadow`
 to verify chunked representations while retaining complete original objects.
-Reads and downloads support both forms; backups include physical dependencies.
+Reads and downloads support both forms. Physical backups include dependencies;
+managed logical backups reconstruct the original envelopes as described below.
 Do not opt into `chunked` writes until the active and both protected rollback
-releases have the dual reader and have passed restore validation. This release
-never automatically migrates or deletes existing application objects.
+releases have the dual reader and have passed restore validation. Installation
+and ordinary reads do not trigger conversion; the explicit migration and
+activated nightly packing described below have separate verification gates.
 
 ## Lossless representation migration
 
@@ -208,6 +211,20 @@ records or rebuilding an equivalent locator index no longer invalidates every
 old source entry. Changed dependency bytes or locators still require fresh
 capture; the independent backup always receives full verification. Older cached
 source identities are harmlessly refreshed on the first capture after upgrade.
+
+## Rebuildable query caches
+
+Portfolio history requests use the derived
+`runtime/history-query-cache-v1/index.sqlite3` cache, separate from durable
+business records. It retains at most two datasets within a 64 MiB file budget.
+A cache miss rebuilds from the pinned snapshot; it cannot change historical
+values. The exact versioned directory is excluded from repository and manual
+archive backups. Other runtime state remains subject to its existing contract.
+
+For suspected cache corruption, stop the API, preserve a private diagnostic copy
+if needed, then remove only this derived directory and restart. Do not delete the
+business database or immutable source artifacts. See the
+[query-cache recovery contract](../architecture/history-storage.md#rebuildable-history-query-index).
 
 ## Daily installation budget
 
