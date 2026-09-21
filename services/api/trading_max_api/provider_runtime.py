@@ -14,9 +14,9 @@ from .llm_routing import (
     PROVIDER_REGISTRY,
     LLMRoute,
     LLMRouteError,
-    default_route,
     parse_route,
 )
+from .oauth import OAuthCredentialVault
 from .settings import SettingsRepository
 
 
@@ -46,47 +46,6 @@ def _annotate_provider(
     return provider
 
 
-def _legacy_opencode_migration(
-    preferences: SettingsRepository,
-    credentials: CredentialStore,
-) -> None:
-    """Move the old OpenCode-as-DeepSeek record once, without exposing its key."""
-
-    legacy = preferences.get_integration("deepseek")
-    if (
-        legacy is None
-        or not legacy.configured
-        or not legacy.base_url
-        or not legacy.base_url.startswith("https://opencode.ai/zen/go/v1")
-        or preferences.get_integration("opencode") is not None
-    ):
-        return
-    try:
-        secret = credentials.get(preferences.credential_reference("deepseek"))
-    except CredentialStoreError:
-        # Importing the API on Linux/CI must not require the native keychain.
-        # The migration can retry on the real host when the provider is used.
-        return
-    if not secret:
-        return
-    spec = PROVIDER_REGISTRY["opencode"]
-    model = legacy.model if legacy.model in spec.models else spec.default_model
-    credentials.put(preferences.credential_reference("opencode"), secret)
-    preferences.save_integration(
-        provider="opencode",
-        profile=None,
-        enabled=legacy.enabled,
-        model=model,
-        base_url=spec.base_url,
-        credential_fingerprint=legacy.credential_fingerprint,
-        test_status=legacy.last_test_status,
-        error_code=legacy.last_error_code,
-        actor="migration",
-    )
-    credentials.delete(preferences.credential_reference("deepseek"))
-    preferences.remove_integration(provider="deepseek", profile=None, actor="migration")
-
-
 def make_provider_factory(
     settings: Settings,
     preferences: SettingsRepository,
@@ -99,8 +58,6 @@ def make_provider_factory(
     provider. A workload lookup is strict and fails the actual analysis job
     loudly instead of silently spending a fake result in production.
     """
-
-    _legacy_opencode_migration(preferences, credentials)
 
     def credential_for(route: LLMRoute) -> tuple[str | None, CredentialStoreError | None]:
         spec = PROVIDER_REGISTRY[route.provider]
@@ -115,48 +72,12 @@ def make_provider_factory(
         else:
             credential_error = None
         if not secret:
-            secret = (
-                settings.opencode_api_key
-                if route.provider == "opencode"
-                else settings.deepseek_api_key
-            )
+            secret = {
+                "openai": settings.openai_api_key,
+                "opencode": settings.opencode_api_key,
+                "deepseek": settings.deepseek_api_key,
+            }.get(route.provider)
         return secret, credential_error
-
-    def available_route(
-        preferred: LLMRoute,
-    ) -> tuple[LLMRoute, str | None, CredentialStoreError | None]:
-        """Use the preferred route, then the other configured approved provider.
-
-        This fallback happens before any provider request. It avoids making an
-        optional model look required when a user configured only one of the two
-        supported services, without silently duplicating a failed paid request.
-        """
-
-        candidates = [preferred]
-        for provider in PROVIDER_REGISTRY:
-            if provider == preferred.provider:
-                continue
-            integration = preferences.get_integration(provider)
-            model = (
-                integration.model
-                if integration is not None
-                and integration.model in PROVIDER_REGISTRY[provider].models
-                else None
-            )
-            candidates.append(
-                LLMRoute(
-                    provider=provider,
-                    model=model or default_route(provider).model,
-                )
-            )
-
-        credential_error: CredentialStoreError | None = None
-        for route in candidates:
-            secret, error = credential_for(route)
-            credential_error = credential_error or error
-            if secret:
-                return route, secret, credential_error
-        return preferred, None, credential_error
 
     def build(workload: str | None = None) -> Any:
         strict = workload is not None
@@ -169,7 +90,7 @@ def make_provider_factory(
                     f"configured LLM route is invalid for {workload}: {exc}",
                 ) from exc
             route = parse_route(DEFAULT_ROUTE)
-        route, secret, credential_store_error = available_route(route)
+        secret, credential_store_error = credential_for(route)
         spec = PROVIDER_REGISTRY[route.provider]
         integration = preferences.get_integration(route.provider)
         if not secret:
@@ -201,19 +122,14 @@ def make_provider_factory(
                 effective_route="fake/trading-max-fake-v1",
             )
 
-        if route.provider == "opencode":
-            provider = create_provider(
-                provider="opencode",
-                model=route.model,
-                opencode_api_key=secret,
-                opencode_base_url=spec.base_url,
-            )
+        if route.provider == "openai-codex":
+            provider = OAuthCredentialVault(settings.data_root, credentials).provider(route.model)
         else:
             provider = create_provider(
-                provider="deepseek",
+                provider=route.provider,
                 model=route.model,
-                deepseek_api_key=secret,
-                deepseek_base_url=spec.base_url,
+                api_key=secret,
+                base_url=spec.base_url,
             )
         return _annotate_provider(
             provider,

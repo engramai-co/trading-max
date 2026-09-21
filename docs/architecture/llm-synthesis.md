@@ -1,5 +1,11 @@
 # LLM synthesis boundary
 
+Legacy synthesis is disabled by default. The current product uses its optional
+model connection for security name resolution only. API and worker require an
+explicit `TRADING_MAX_LLM_ANALYSIS_ENABLED=true` to admit or execute synthesis,
+including previously queued jobs. Account capture, performance and deterministic
+research updates do not depend on that switch. Historical artifacts remain readable.
+
 The canonical provider contracts live under
 `backend/src/trading_max/synthesis/`.
 
@@ -19,18 +25,42 @@ audit lists, so provider wording drift cannot turn one observation into five
 copies in the UI.
 
 `FakeProvider` is deterministic and is the default for offline smoke tests.
-`OpenAIResponsesProvider` uses `store=false` and strict JSON schema output.
-`OpenCodeProvider` and `DeepSeekProvider` use the same OpenAI-compatible
-chat-completions adapter with `response_format=json_object`, disabled thinking
-for Flash smoke runs, bounded retries, and response validation. API keys are
-only passed in Authorization headers; normalized provider errors do not include
-request headers, response bodies, or response secrets.
+The network providers are compatibility constructors around `PiProvider`.
+Only `@earendil-works/pi-ai` handles model HTTP requests, message conversion,
+stream parsing and bounded network retries. The Python worker invokes a
+short-lived Node child over stdin/stdout; it adds no server or agent runtime.
+OpenAI API retains `store=false` and strict JSON schema; DeepSeek/OpenCode retain
+JSON-object mode and Pi's provider-specific thinking behavior. The existing
+Pydantic response validation still rejects invalid or truncated research.
+Invalid domain output fails once rather than spending more requests in a second
+application retry loop. Keys/context use stdin, not process arguments, ambient
+credentials, files or logs. Upstream errors return only stable error codes.
+
+Settings connectivity checks, taxonomy judgments and the existing bounded
+security-name lookup use this same Pi boundary. Saved provider/model assignments
+use OpenAI / gpt-5.6-luna by default. First-time AI settings offer OpenAI,
+Anthropic and Google, and saving can set the selected model as the shared
+default. OpenAI also offers ChatGPT OAuth through Pi’s device-code flow and
+`openai-codex` transport, using native credential storage and serialized token
+refresh; it does not add an agent runtime. Subscription and API-key connections
+are distinct. Fast defaults are GPT-5.6 Luna, Claude Haiku 4.5, and Gemini 3.8 Flash.
+Legacy DeepSeek/OpenCode defaults are retired by migration 0019; migration 0020
+adds OAuth metadata without replacing configured model choices.
+There is no automatic cross-provider fallback. The settings registry limits the providers approved to
+receive account data; importing the SDK does not enable all its providers.
+
+Install the pinned SDK with `npm run llm:install` (Node >=22.19). Local onboarding,
+foreground start and the Mac mini release builder include this step. Verify with
+`npm run test:llm`; synthetic transport tests exercise the real Pi SDK without
+paid provider requests. Backend wheels retain `_pi` scripts and npm locks, but
+not `node_modules`; a package-only install must run `npm ci --ignore-scripts`
+in the installed `trading_max/synthesis/_pi` directory before model use.
+See [transport decision](pi-ai-transport.md) for compatibility and rollback.
 
 The API-compatible analysis response remains unchanged.
 `TypedAnalysisManager` persists analysis runs as SQLite jobs with the
-`synthesis.llm` worker stage. There is no in-process analysis executor or
-feature flag: API requests only admit a run, and the dedicated typed worker
-executes it.
+`synthesis.llm` worker stage. When explicitly enabled, API requests only admit a
+run, and the dedicated typed worker executes it; there is no in-process executor.
 
 The durable path has coverage for both an embedded test worker and the normal
 refresh worker registry. It preserves non-blocking analysis, snapshot-bound

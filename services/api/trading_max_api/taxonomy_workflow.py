@@ -10,7 +10,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, ClassVar
 
-import httpx
 from trading_max.application import RawTaxonomyCatalogProvider
 from trading_max.domain import ArtifactQuality, InstrumentId
 from trading_max.infrastructure import ContentAddressedArtifactStore
@@ -20,6 +19,7 @@ from trading_max.research import (
     TaxonomyWorkflowDecision,
     TaxonomyWorkflowEngine,
 )
+from trading_max.synthesis.providers.pi import ProviderError
 
 from .watchlist import WatchlistStore
 
@@ -86,10 +86,7 @@ class ConfiguredTaxonomyJudge:
                 "remain_pending|manual_review), taxonomyId or null, confidence 0..1, rationale."
             ),
         }[stage]
-        api_key = str(getattr(self.provider, "api_key", ""))
-        base_url = str(getattr(self.provider, "base_url", "")).rstrip("/")
-        model = str(getattr(self.provider, "model", ""))
-        if not api_key or not base_url or not model:
+        if not callable(getattr(self.provider, "json", None)):
             return {
                 "verdict": "manual_review",
                 "confidence": 0,
@@ -103,40 +100,17 @@ class ConfiguredTaxonomyJudge:
             "Return exactly one JSON object and no markdown."
         )
         try:
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(
-                    f"{base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {
-                                "role": "user",
-                                "content": json.dumps(
-                                    {"promptVersion": prompt_version, **dict(payload)},
-                                    ensure_ascii=False,
-                                    separators=(",", ":"),
-                                ),
-                            },
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "thinking": {"type": "disabled"},
-                        "temperature": 0,
-                        "max_tokens": 2_000,
-                    },
-                )
-                response.raise_for_status()
-                body = response.json()
-                content = body["choices"][0]["message"]["content"]
-                decoded = json.loads(content)
-                if not isinstance(decoded, dict):
-                    raise ValueError("taxonomy judgment is not an object")
-                return decoded
-        except (httpx.HTTPError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            return self.provider.json(
+                system=system,
+                user=json.dumps(
+                    {"promptVersion": prompt_version, **dict(payload)},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                max_tokens=2_000,
+                timeout=self.timeout,
+            )
+        except (ProviderError, KeyError, TypeError, ValueError) as exc:
             return {
                 "verdict": "manual_review",
                 "confidence": 0,

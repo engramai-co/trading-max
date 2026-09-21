@@ -101,12 +101,12 @@ def test_fake_route_is_explicitly_recorded_as_fake(
         assert provider.name == "fake"
         assert provider.route_id == "fake/trading-max-fake-v1"
         assert provider.adapter == "fake"
-        assert provider.route_policy_revision == 1
+        assert provider.route_policy_revision == preferences.get_route_policy().revision
     finally:
         preferences.close()
 
 
-def test_runtime_falls_back_to_the_only_configured_approved_provider(
+def test_runtime_never_falls_back_to_an_unselected_provider(
     tmp_path: Path,
 ) -> None:
     preferences = SettingsRepository(tmp_path)
@@ -128,11 +128,9 @@ def test_runtime_falls_back_to_the_only_configured_approved_provider(
             credentials,
         )
 
-        provider = factory("taxonomy")
-
-        assert provider.name == "deepseek"
-        assert provider.route_id == "deepseek/deepseek-v4-flash"
-        assert provider.provider_revision == 1
+        with pytest.raises(ProviderRuntimeError) as error:
+            factory("taxonomy")
+        assert error.value.code == "provider_not_configured"
     finally:
         preferences.close()
 
@@ -143,7 +141,7 @@ def test_runtime_keeps_the_preferred_route_when_it_is_configured(
     preferences = SettingsRepository(tmp_path)
     credentials = InMemoryCredentialStore(
         {
-            "opencode:default": "preferred-key",
+            "openai:default": "preferred-key",
             "deepseek:default": "fallback-key",
         }
     )
@@ -156,7 +154,7 @@ def test_runtime_keeps_the_preferred_route_when_it_is_configured(
 
         provider = factory("taxonomy")
 
-        assert provider.name == "opencode"
-        assert provider.route_id == "opencode/deepseek-v4-flash"
+        assert provider.name == "openai"
+        assert provider.route_id == "openai/gpt-5.6-luna"
     finally:
         preferences.close()

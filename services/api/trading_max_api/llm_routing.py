@@ -10,20 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-LLMProvider = Literal["opencode", "deepseek"]
+LLMProvider = Literal["openai-codex", "openai", "anthropic", "google", "opencode", "deepseek"]
 
 
 class LLMRouteError(ValueError):
     """Raised when a provider/model route is not trusted or well formed."""
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderCapabilities:
-    """Wire-level behavior required by the shared chat-completions adapter."""
-
-    json_object: bool = True
-    disable_thinking: bool = True
-    reasoning_content: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +26,9 @@ class ProviderSpec:
     models: tuple[str, ...]
     default_model: str
     credential_ref: str
-    capabilities: ProviderCapabilities = ProviderCapabilities()
+    legacy: bool = False
+    auth_method: str = "api_key"
+    legacy_models: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,22 +42,62 @@ class LLMRoute:
 
 
 PROVIDER_REGISTRY: dict[LLMProvider, ProviderSpec] = {
+    "openai": ProviderSpec(
+        provider="openai",
+        label="OpenAI",
+        adapter="pi-ai",
+        base_url="https://api.openai.com/v1",
+        models=("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"),
+        default_model="gpt-5.6-luna",
+        legacy_models=("gpt-5.4-mini", "gpt-5.4", "gpt-4.1-mini"),
+        credential_ref="openai:default",
+    ),
+    "openai-codex": ProviderSpec(
+        provider="openai-codex",
+        label="OpenAI · ChatGPT",
+        adapter="pi-ai",
+        base_url="https://chatgpt.com/backend-api",
+        models=("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"),
+        default_model="gpt-5.6-luna",
+        credential_ref="openai-codex:default",
+        auth_method="oauth",
+    ),
+    "anthropic": ProviderSpec(
+        provider="anthropic",
+        label="Anthropic",
+        adapter="pi-ai",
+        base_url="https://api.anthropic.com",
+        models=("claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-fable-5-1"),
+        default_model="claude-haiku-4-5-20251001",
+        legacy_models=("claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-6"),
+        credential_ref="anthropic:default",
+    ),
+    "google": ProviderSpec(
+        provider="google",
+        label="Google",
+        adapter="pi-ai",
+        base_url="https://generativelanguage.googleapis.com/v1beta",
+        models=("gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"),
+        default_model="gemini-3.8-flash",
+        legacy_models=("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"),
+        credential_ref="google:default",
+    ),
     "opencode": ProviderSpec(
         provider="opencode",
         label="OpenCode",
-        adapter="openai-chat",
+        adapter="pi-ai",
         base_url="https://opencode.ai/zen/go/v1",
         models=("deepseek-v4-flash", "deepseek-v4-pro"),
         default_model="deepseek-v4-flash",
         credential_ref="opencode:default",
+        legacy=True,
     ),
     "deepseek": ProviderSpec(
         provider="deepseek",
         label="DeepSeek",
-        adapter="openai-chat",
+        adapter="pi-ai",
         base_url="https://api.deepseek.com",
-        # Keep the legacy aliases valid for existing installations while
-        # offering the current direct-API models to new connections.
+        # Retain old API routes for compatibility, outside the connection picker.
         models=(
             "deepseek-v4-flash",
             "deepseek-v4-pro",
@@ -73,10 +106,11 @@ PROVIDER_REGISTRY: dict[LLMProvider, ProviderSpec] = {
         ),
         default_model="deepseek-v4-flash",
         credential_ref="deepseek:default",
+        legacy=True,
     ),
 }
 
-DEFAULT_ROUTE = "opencode/deepseek-v4-flash"
+DEFAULT_ROUTE = "openai/gpt-5.6-luna"
 WORKLOADS = ("portfolio", "ticker", "taxonomy")
 
 
@@ -88,7 +122,7 @@ def provider_spec(provider: str) -> ProviderSpec:
         raise LLMRouteError(f"unknown LLM provider: {provider}") from exc
 
 
-def parse_route(value: str, *, default_provider: str = "opencode") -> LLMRoute:
+def parse_route(value: str, *, default_provider: str = "openai") -> LLMRoute:
     """Parse ``provider/model`` or a bare model using the default provider."""
 
     text = value.strip()
@@ -102,7 +136,7 @@ def parse_route(value: str, *, default_provider: str = "opencode") -> LLMRoute:
     model = model.strip()
     if not model:
         raise LLMRouteError("LLM route model cannot be empty")
-    if model not in spec.models:
+    if model not in (*spec.models, *spec.legacy_models):
         raise LLMRouteError(f"model {model!r} is not approved for provider {spec.provider!r}")
     return LLMRoute(provider=spec.provider, model=model)
 
@@ -123,8 +157,10 @@ def provider_routes() -> list[dict[str, object]]:
             "baseUrl": spec.base_url,
             "models": list(spec.models),
             "defaultModel": spec.default_model,
+            "authMethod": spec.auth_method,
         }
         for spec in PROVIDER_REGISTRY.values()
+        if not spec.legacy
     ]
 
 
@@ -135,7 +171,6 @@ __all__ = [
     "LLMProvider",
     "LLMRoute",
     "LLMRouteError",
-    "ProviderCapabilities",
     "ProviderSpec",
     "default_route",
     "parse_route",

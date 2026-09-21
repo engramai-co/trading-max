@@ -56,7 +56,7 @@ external state.
 - Git
 - Python **3.12**
 - [uv](https://docs.astral.sh/uv/)
-- Node.js **22 LTS** (minimum supported version: 20.19)
+- Node.js **22 LTS** (minimum supported version: 22.19)
 - npm, included with Node.js
 - Free disk space for dependencies and a production build, plus growing external
   state and a separate backup; long histories can consume many gigabytes
@@ -89,7 +89,7 @@ The guided command:
 - creates the external state directory and database;
 - builds the production web application;
 - optionally connects Trading 212 Invest and Stocks ISA;
-- optionally connects OpenCode Go or DeepSeek;
+- optionally connects OpenAI (the default), Anthropic or Google through Pi AI;
 - hides every credential entry and tests it before saving;
 - saves secrets only to the operating-system credential manager;
 - optionally installs the per-user macOS services;
@@ -260,7 +260,7 @@ curl -fsSI http://127.0.0.1:3413/
 
 The onboarding wizard can configure providers directly. If you skipped them,
 open **Settings → Accounts & data** for broker connections. Optional model
-providers and routes live in **Settings → AI analysis**.
+providers and routes live in **Settings → Model connections**.
 
 For each connection:
 
@@ -283,8 +283,10 @@ For Trading 212, create read-only keys with only the account/history access
 needed by the application. Do not grant trading permission. Invest and Stocks
 ISA use separate connection profiles.
 
-LLM configuration is optional. The deterministic fake provider exercises the
-analysis storage path without sending data to an external model.
+LLM configuration is optional and supports security name resolution. Connecting
+a model does not start portfolio/ticker AI analysis. Legacy synthesis requires
+an explicit `TRADING_MAX_LLM_ANALYSIS_ENABLED=true` operator setting; the default
+is false. Offline compatibility tests use a deterministic fake provider.
 
 Yahoo Finance-compatible data remains the default market-data path. Optional
 Alpaca keys are configured in **Accounts & data → Reconstruction market data**,

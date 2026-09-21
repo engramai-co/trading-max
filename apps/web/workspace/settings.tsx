@@ -2,11 +2,13 @@
 
 import {
   Button,
+  Checkbox,
   Drawer,
   Group,
   Modal,
   PasswordInput,
   Select,
+  SegmentedControl,
   Stack,
 } from "@mantine/core";
 import {
@@ -44,6 +46,8 @@ import {
   PersonalPreferences,
 } from "./settings-preferences";
 
+import { OpenAIOAuthConnection } from "./settings-oauth";
+
 import { ReconstructionMarketData } from "./settings-market-data";
 
 const settingsKey = ["workspace-settings"];
@@ -59,6 +63,7 @@ type Connection =
       provider: LLMProviderDescriptor;
       title: string;
       existing?: IntegrationSummary;
+      useAsDefault?: boolean;
     };
 type TestResult = {
   status: "succeeded" | "failed";
@@ -76,9 +81,11 @@ export function SettingsWorkspace() {
   });
   const [connection, setConnection] = useState<Connection | null>(null);
   const [saved, setSaved] = useState<"saved" | "disconnected" | null>(null);
+  const [offerModelConnection, setOfferModelConnection] = useState(true);
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const tabs = [
     { value: "accounts", label: t("账户与数据", "Accounts & data") },
-    { value: "models", label: t("AI 分析", "AI analysis") },
+    { value: "models", label: t("模型连接", "Model connections") },
     { value: "automation", label: t("更新计划", "Update schedule") },
     { value: "preferences", label: t("个人偏好", "Preferences") },
   ];
@@ -86,6 +93,22 @@ export function SettingsWorkspace() {
     ? params.get("tab")!
     : "accounts";
   const data = query.data;
+  const hasModelConnection = data?.llmProviders.some((provider) =>
+    data.integrations.some((item) => item.provider === provider.provider &&
+      item.configured && item.enabled && !item.needsSecret),
+  );
+  const visibleProviders = data?.llmProviders.filter((provider) => provider.provider !== "openai-codex") ?? [];
+  function openModel(provider: LLMProviderDescriptor, first = false) {
+    const existingApi = data?.integrations.some((item) => item.provider === "openai" && item.configured && item.enabled);
+    const existingOAuth = data?.integrations.some((item) => item.provider === "openai-codex" && item.configured && item.enabled);
+    const chosen = provider.provider === "openai" && (!existingApi || existingOAuth)
+      ? data?.llmProviders.find((item) => item.provider === "openai-codex") ?? provider : provider;
+    setSaved(null);
+    setConnection({ kind: "model", title: provider.label, provider: chosen,
+      existing: data?.integrations.find((item) => item.provider === chosen.provider),
+      useAsDefault: first || !hasModelConnection || data?.llmRoutePolicy?.defaultRoute.startsWith(chosen.provider + "/"),
+    });
+  }
   return (
     <Page
       title={t("设置与连接", "Settings & connections")}
@@ -194,29 +217,18 @@ export function SettingsWorkspace() {
           {view === "models" && (
             <>
               <Panel
-                title={t("分析模型（可选）", "Analysis models (optional)")}
+                title={t("模型连接（可选）", "Model connections (optional)")}
               >
-                <div className="mx-connection-grid">
-                  {data.llmProviders.map((provider) => (
+                <div className="mx-connection-grid mx-model-connections">
+                  {visibleProviders.map((provider) => (
                     <ConnectionCard
                       key={provider.provider}
                       title={provider.label}
                       connectLabel={t("连接模型", "Connect model")}
                       subtitle={provider.defaultModel}
-                      integration={data.integrations.find(
-                        (i) => i.provider === provider.provider,
-                      )}
-                      onOpen={() => {
-                        setSaved(null);
-                        setConnection({
-                          kind: "model",
-                          title: provider.label,
-                          provider,
-                          existing: data.integrations.find(
-                            (i) => i.provider === provider.provider,
-                          ),
-                        });
-                      }}
+                      integration={(provider.provider === "openai" ? data.integrations.find((i) => i.provider === "openai-codex" && i.configured && i.enabled) : undefined) ??
+                        data.integrations.find((i) => i.provider === provider.provider)}
+                      onOpen={() => openModel(provider)}
                     />
                   ))}
                 </div>
@@ -231,6 +243,7 @@ export function SettingsWorkspace() {
               </Panel>
               {data.llmRoutePolicy && (
                 <ModelRouting
+                  key={data.llmRoutePolicy.revision}
                   policy={data.llmRoutePolicy}
                   providers={data.llmProviders}
                   refresh={() => void query.refetch()}
@@ -247,6 +260,42 @@ export function SettingsWorkspace() {
           )}
         </>
       )}
+      <Modal
+        opened={view === "models" && Boolean(data?.llmProviders.length) &&
+          !hasModelConnection && offerModelConnection && !connection}
+        onClose={() => setOfferModelConnection(false)}
+        title={t("连接你的模型", "Connect your model")}
+        centered
+      >
+        <Stack gap="lg">
+          <p>{t(
+            "选择你想使用的提供商。OpenAI 支持 ChatGPT 登录或 API Key；你也可以稍后再设置。",
+            "Choose a provider. OpenAI supports ChatGPT sign-in or an API key. You can also set this up later.",
+          )}</p>
+          <Select
+            label={t("模型提供商", "Model provider")}
+            value={selectedProvider}
+            onChange={(value) => setSelectedProvider(value ?? "openai")}
+            data={visibleProviders.map((provider) => ({
+              value: provider.provider, label: provider.label,
+            })) ?? []}
+            allowDeselect={false}
+          />
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={() => setOfferModelConnection(false)}>
+              {t("稍后设置", "Set up later")}
+            </Button>
+            <Button onClick={() => {
+              const provider = data?.llmProviders.find((item) => item.provider === selectedProvider);
+              if (!provider) return;
+              setOfferModelConnection(false);
+              openModel(provider, true);
+            }} rightSection={<ArrowRight size={16} />}>
+              {t("继续连接", "Continue")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Drawer
         opened={connection !== null}
         onClose={() => setConnection(null)}
@@ -254,21 +303,28 @@ export function SettingsWorkspace() {
         position="right"
         size={480}
       >
-        {connection && (
-          <ConnectionForm
-            key={
-              connection.kind === "broker"
-                ? connection.profile
-                : connection.provider.provider
-            }
-            connection={connection}
-            onSaved={(result) => {
-              setConnection(null);
-              setSaved(result);
-              void client.invalidateQueries({ queryKey: settingsKey });
-            }}
-          />
-        )}
+        {connection && <Stack gap="lg">
+          {connection.kind === "model" && ["openai", "openai-codex"].includes(connection.provider.provider) &&
+            <SegmentedControl fullWidth aria-label={t("OpenAI 连接方式", "OpenAI connection method")}
+              value={connection.provider.provider}
+              data={[{ value: "openai-codex", label: t("ChatGPT 登录", "ChatGPT sign-in") }, { value: "openai", label: "API Key" }]}
+              onChange={(value) => {
+                const provider = data?.llmProviders.find((item) => item.provider === value);
+                if (provider) setConnection({ ...connection, provider,
+                  existing: data?.integrations.find((item) => item.provider === value) });
+              }} />}
+          {connection.kind === "model" && connection.provider.authMethod === "oauth"
+            ? <OpenAIOAuthConnection provider={connection.provider} existing={connection.existing}
+                useAsDefault={connection.useAsDefault} onSaved={(result) => {
+                  setConnection(null); setSaved(result);
+                  void client.invalidateQueries({ queryKey: settingsKey });
+                }} />
+            : <ConnectionForm key={connection.kind === "broker" ? connection.profile : connection.provider.provider}
+                connection={connection} onSaved={(result) => {
+                  setConnection(null); setSaved(result);
+                  void client.invalidateQueries({ queryKey: settingsKey });
+                }} />}
+        </Stack>}
       </Drawer>
     </Page>
   );
@@ -350,6 +406,9 @@ function ConnectionForm({
       : "",
   );
   const [token, setToken] = useState<string | null>(null);
+  const [useAsDefault, setUseAsDefault] = useState(
+    connection.kind === "model" && Boolean(connection.useAsDefault),
+  );
   const [disconnecting, setDisconnecting] = useState(false);
   const path =
     connection.kind === "broker"
@@ -373,6 +432,7 @@ function ConnectionForm({
           ...payload,
           enabled: true,
           validationToken: token,
+          ...(connection.kind === "model" ? { useAsDefault } : {}),
         }),
       ),
     onSuccess: () => {
@@ -407,8 +467,8 @@ function ConnectionForm({
               "Use this account’s read-only API credentials. Saved keys are never filled back into the form.",
             )
           : t(
-              "分析请求会发送到你选择的模型提供商。密钥仅用于建立连接。",
-              "Analysis requests are sent to the provider you choose. Your key is used only to establish the connection.",
+              "证券识别请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
+              "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
             )}
       </Notice>
       <form
@@ -467,8 +527,17 @@ function ConnectionForm({
               label={t("测试模型", "Model to test")}
               value={model}
               onChange={(v) => edit(() => setModel(v ?? ""))}
-              data={connection.provider.models}
+              data={Array.from(new Set([model, ...connection.provider.models].filter(Boolean)))}
               searchable
+              disabled={busy}
+            />
+          )}
+          {connection.kind === "model" && (
+            <Checkbox
+              label={t("设为默认模型", "Use as the default model")}
+              description={t("用于未单独指定模型的证券名称识别。", "Used for security name resolution without a separate assignment.")}
+              checked={useAsDefault}
+              onChange={(event) => setUseAsDefault(event.currentTarget.checked)}
               disabled={busy}
             />
           )}
@@ -596,15 +665,11 @@ function ModelRouting({
       label: provider.label + " · " + model,
     })),
   );
-  if (!options.some((o) => o.value === policy.defaultRoute))
-    options.push({ value: policy.defaultRoute, label: policy.defaultRoute });
+  for (const route of [policy.defaultRoute, ...Object.values(policy.overrides)]) {
+    if (!options.some((o) => o.value === route)) options.push({ value: route, label: route });
+  }
   const lenses = [
-    { value: "portfolio", label: t("组合摘要", "Portfolio analysis") },
-    { value: "ticker", label: t("个股研究", "Security research") },
-    {
-      value: "taxonomy",
-      label: t("标的搜索与分类", "Security search & classification"),
-    },
+    { value: "taxonomy", label: t("证券名称识别", "Security name resolution") },
   ];
   const mutation = useMutation({
     mutationFn: (submitted: { defaultRoute: string; overrides: typeof overrides; expectedRevision: number }) =>
@@ -618,8 +683,8 @@ function ModelRouting({
     <Panel
       title={t("模型分配", "Model assignments")}
       description={t(
-        "默认模型用于未单独指定的分析。",
-        "The default model handles any analysis without its own assignment.",
+        "模型用于将公司名、简称或描述识别为证券候选。",
+        "Models resolve company names, aliases, or descriptions into security candidates.",
       )}
     >
       <Stack gap="lg">
@@ -634,7 +699,7 @@ function ModelRouting({
         />
         <details className="mx-details">
           <summary>
-            {t("按分析类型单独设置", "Assign models by analysis type")}
+            {t("证券识别单独设置", "Override security resolution model")}
           </summary>
           <div className="mx-form-grid">
             {lenses.map((lens) => (

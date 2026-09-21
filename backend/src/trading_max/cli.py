@@ -105,7 +105,7 @@ def _bootstrap_defaults(
         "PORTFOLIO_BACKEND_TOKEN": token,
         "TRADING_MAX_ALLOWED_ORIGINS": ("http://127.0.0.1:3413,http://localhost:3413"),
         "TRADING_MAX_LLM_PROVIDER": "fake",
-        "TRADING_MAX_LLM_MODEL": "gpt-5.4-mini",
+        "TRADING_MAX_LLM_MODEL": "gpt-5.6-luna",
         # Build the security catalog incrementally on a new workstation.  A
         # later refresh reuses durable records and advances through deferred
         # ETF constituents instead of blocking first-run onboarding on the

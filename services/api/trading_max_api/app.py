@@ -43,6 +43,7 @@ from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
 from .market_data_runtime import reconstruction_loader_factory
 from .models import ResearchOverview, SnapshotManifest
+from .oauth import OAuthCredentialVault, OAuthLoginManager
 from .provider_runtime import ProviderRuntimeError, make_provider_factory
 from .research import ResearchLedger
 from .research_funds import FundResearchService
@@ -80,6 +81,9 @@ def create_app(
         research_enabled=settings.research_enabled,
     )
     credentials = credential_store or default_credential_store()
+    oauth_login = OAuthLoginManager(
+        OAuthCredentialVault(settings.data_root, credentials), preferences
+    )
     validation_secret = (settings.api_token or uuid.uuid4().hex).encode()
     watchlist = WatchlistStore(settings.data_root)
     valuation_assumptions = ValuationAssumptionsStore(settings.data_root)
@@ -219,11 +223,12 @@ def create_app(
         deepseek_api_key=settings.deepseek_api_key,
         deepseek_base_url=settings.deepseek_base_url,
         provider_factory=provider_factory,
+        enabled=settings.llm_analysis_enabled,
     )
     analysis.reload_provider()
 
     def on_snapshot_published(published, trigger) -> None:
-        if trigger in {"intraday", "live"}:
+        if not analysis.enabled or trigger in {"intraday", "live"}:
             return
         try:
             analysis.submit(
@@ -303,22 +308,23 @@ def create_app(
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
         try:
             manifest = store.ensure_bootstrap()
-            try:
-                analysis.latest(
-                    lens="daily_cio_brief",
-                    snapshot_run_id=manifest.run_id,
-                )
-            except FileNotFoundError:
+            if analysis.enabled:
                 try:
-                    analysis.submit(
+                    analysis.latest(
+                        lens="daily_cio_brief",
                         snapshot_run_id=manifest.run_id,
-                        trigger="snapshot",
                     )
-                except ProviderRuntimeError as exc:
-                    logger.warning(
-                        "initial analysis deferred until a provider is configured",
-                        extra={"provider_error_code": exc.code},
-                    )
+                except FileNotFoundError:
+                    try:
+                        analysis.submit(
+                            snapshot_run_id=manifest.run_id,
+                            trigger="snapshot",
+                        )
+                    except ProviderRuntimeError as exc:
+                        logger.warning(
+                            "initial analysis deferred until a provider is configured",
+                            extra={"provider_error_code": exc.code},
+                        )
             threading.Thread(
                 target=prewarm_research,
                 name="trading-max-research-prewarm",
@@ -356,6 +362,7 @@ def create_app(
         alert_monitor.close()
         jobs.close()
         analysis.close()
+        oauth_login.close()
         preferences.close()
 
     app = FastAPI(
@@ -389,6 +396,7 @@ def create_app(
     app.state.history_reader = HistoryReader(store)
     app.state.settings_repository = preferences
     app.state.credential_store = credentials
+    app.state.oauth_login = oauth_login
     app.state.jobs = jobs
     app.state.watchlist = watchlist
     app.state.scheduler = scheduler

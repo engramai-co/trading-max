@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from trading_max.analytics.alpaca_prices import AlpacaDataError, AlpacaHistoricalClient
 from trading_max.ingestion.brokers.trading212 import (
     Trading212Client,
@@ -19,6 +19,7 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212Error,
 )
 from trading_max.synthesis import ProviderError
+from trading_max.synthesis.providers.pi import PiProvider, user_message
 
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
@@ -48,6 +49,8 @@ from ..models import (
     LLMProvidersResponse,
     LLMRoutePolicy,
     LLMRoutePolicyUpdate,
+    OAuthLoginRequest,
+    OAuthLoginStatus,
     Trading212IntegrationCandidate,
     Trading212IntegrationRequest,
     UserProfile,
@@ -112,28 +115,9 @@ def _automation_settings(request: Request) -> AutomationSettings:
 
 
 def _check_deepseek_connection(*, api_key: str, model: str, base_url: str) -> str:
-    with httpx.Client(timeout=15, follow_redirects=False) as client:
-        response = client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with OK."}],
-                "max_tokens": 32,
-                "temperature": 0,
-                "thinking": {"type": "disabled"},
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("provider returned an empty completion")
-    return "DeepSeek connectivity check succeeded"
+    return _check_openai_compatible_connection(
+        api_key=api_key, model=model, base_url=base_url, provider_label="DeepSeek"
+    )
 
 
 def _check_openai_compatible_connection(
@@ -143,27 +127,18 @@ def _check_openai_compatible_connection(
     base_url: str,
     provider_label: str,
 ) -> str:
-    with httpx.Client(timeout=20, follow_redirects=False) as client:
-        response = client.post(
-            f"{base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with OK."}],
-                "max_tokens": 32,
-                "temperature": 0,
-                "thinking": {"type": "disabled"},
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("provider returned an empty completion")
+    provider = PiProvider(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        provider_name=provider_label.lower(),
+        max_attempts=1,
+    )
+    result = provider.complete(
+        messages=[user_message("Reply with OK.")], max_tokens=32, timeout=20, temperature=0
+    )
+    if not result.get("text", "").strip():
+        raise ValueError("provider returned an empty completion")
     return f"{provider_label} connectivity check succeeded"
 
 
@@ -175,8 +150,7 @@ def _integration_overview(request: Request) -> IntegrationOverview:
         ("alpaca", None),
         ("trading212", "invest"),
         ("trading212", "isa"),
-        ("opencode", None),
-        ("deepseek", None),
+        *((spec.provider, None) for spec in PROVIDER_REGISTRY.values() if not spec.legacy),
     )
     existing = {(item.provider, item.profile): item for item in preferences.list_integrations()}
     integrations: list[IntegrationSummary] = []
@@ -375,7 +349,9 @@ def _validate_llm_candidate(
     candidate: LLMIntegrationCandidate,
 ) -> tuple[LLMIntegrationCandidate, ProviderSpec]:
     spec = _llm_spec_or_404(provider)
-    if candidate.model not in spec.models:
+    if spec.auth_method != "api_key":
+        raise HTTPException(status_code=422, detail={"code": "oauth_login_required"})
+    if candidate.model not in (*spec.models, *spec.legacy_models):
         raise HTTPException(
             status_code=422,
             detail={
@@ -822,6 +798,14 @@ def save_llm_provider(
     request_body: LLMIntegrationRequest,
     request: Request,
 ) -> IntegrationSummary:
+    if request_body.use_as_default and not request_body.enabled:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_route_policy",
+                "message": "the default provider must be enabled",
+            },
+        )
     candidate, spec = _validate_llm_candidate(provider, request_body)
     preferences = app_service(request, "settings_repository")
     integration_id = preferences.credential_reference(spec.provider)
@@ -846,6 +830,7 @@ def save_llm_provider(
         base_url=spec.base_url,
         credential_fingerprint=secret_fingerprint(candidate.api_key),
         test_status="succeeded",
+        use_as_default=request_body.use_as_default,
     )
 
 
@@ -858,12 +843,55 @@ def delete_llm_provider(provider: str, request: Request) -> None:
     spec = _llm_spec_or_404(provider)
     preferences = app_service(request, "settings_repository")
     try:
+        if spec.auth_method == "oauth":
+            app_service(request, "oauth_login").disconnect()
+            return
         app_service(request, "credential_store").delete(
             preferences.credential_reference(spec.provider),
         )
     except CredentialStoreError as exc:
         raise _safe_integration_error(exc) from exc
     preferences.remove_integration(provider=spec.provider, profile=None)
+
+
+@router.post(
+    "/v1/settings/llm/oauth/openai/start",
+    response_model=OAuthLoginStatus,
+    dependencies=[Depends(require_write_auth)],
+)
+def start_openai_oauth(body: OAuthLoginRequest, request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    if body.model not in provider_spec("openai-codex").models:
+        raise HTTPException(status_code=422, detail={"code": "model_not_allowed"})
+    try:
+        return app_service(request, "oauth_login").start(body.model, body.use_as_default)
+    except RuntimeError:
+        raise HTTPException(status_code=409, detail={"code": "oauth_login_in_progress"}) from None
+
+
+@router.get(
+    "/v1/settings/llm/oauth/openai/{session_id}",
+    response_model=OAuthLoginStatus,
+    dependencies=[Depends(require_write_auth)],
+)
+def get_openai_oauth(session_id: str, request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return app_service(request, "oauth_login").status(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "oauth_session_not_found"}) from None
+
+
+@router.delete(
+    "/v1/settings/llm/oauth/openai/{session_id}",
+    status_code=204,
+    dependencies=[Depends(require_write_auth)],
+)
+def cancel_openai_oauth(session_id: str, request: Request):
+    try:
+        app_service(request, "oauth_login").cancel(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "oauth_session_not_found"}) from None
 
 
 @router.post(

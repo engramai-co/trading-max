@@ -599,7 +599,16 @@ class CfdAccountPreferenceUpdate(ApiModel):
 
 class IntegrationSummary(ApiModel):
     integration_id: str
-    provider: Literal["trading212", "deepseek", "openai", "opencode", "alpaca"]
+    provider: Literal[
+        "trading212",
+        "deepseek",
+        "openai",
+        "openai-codex",
+        "opencode",
+        "alpaca",
+        "anthropic",
+        "google",
+    ]
     profile: str | None = None
     enabled: bool = False
     configured: bool = False
@@ -615,12 +624,13 @@ class IntegrationSummary(ApiModel):
 
 
 class LLMProviderDescriptor(ApiModel):
-    provider: Literal["opencode", "deepseek"]
+    provider: Literal["openai", "openai-codex", "anthropic", "google", "opencode", "deepseek"]
     label: str
     adapter: str
     base_url: str
     models: list[str] = Field(default_factory=list)
     default_model: str
+    auth_method: Literal["api_key", "oauth"] = "api_key"
 
 
 class LLMRoutePolicy(ApiModel):
@@ -631,7 +641,7 @@ class LLMRoutePolicy(ApiModel):
 
 
 class LLMRoutePolicyUpdate(ApiModel):
-    default_route: str = "opencode/deepseek-v4-flash"
+    default_route: str = "openai/gpt-5.6-luna"
     overrides: dict[str, str] = Field(default_factory=dict)
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -644,6 +654,21 @@ class LLMIntegrationCandidate(ApiModel):
 class LLMIntegrationRequest(LLMIntegrationCandidate):
     validation_token: str = Field(min_length=1, max_length=2_000)
     enabled: bool = True
+    use_as_default: bool = False
+
+
+class OAuthLoginRequest(ApiModel):
+    model: str = "gpt-5.6-luna"
+    use_as_default: bool = True
+
+
+class OAuthLoginStatus(ApiModel):
+    session_id: str
+    state: Literal["starting", "pending", "connected", "error", "cancelled", "expired"]
+    verification_url: str | None = None
+    user_code: str | None = None
+    expires_at: datetime
+    error_code: str | None = None
 
 
 class IntegrationOverview(ApiModel):

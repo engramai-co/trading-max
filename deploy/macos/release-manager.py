@@ -18,6 +18,7 @@ import plistlib
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import tempfile
 import time
@@ -28,6 +29,55 @@ from urllib.request import urlopen
 
 SERVICES = ("api", "web", "worker", "backup")
 LOGGER = logging.getLogger(__name__)
+LLM_PROVIDERS = ("deepseek", "opencode", "openai", "openai-codex", "anthropic", "google")
+
+
+def capture_llm_settings(database: Path, destination: Path) -> None:
+    """Retain non-secret model configuration so older runtimes can resume it."""
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("BEGIN")
+        integrations = connection.execute(
+            "SELECT * FROM integration_settings WHERE provider IN (?,?,?,?,?,?)", LLM_PROVIDERS
+        ).fetchall()
+        routes = connection.execute("SELECT * FROM llm_route_policy").fetchall()
+    atomic_write(
+        destination,
+        json.dumps(
+            {
+                "integrations": [dict(row) for row in integrations],
+                "routes": [dict(row) for row in routes],
+            }
+        ).encode(),
+    )
+
+
+def restore_llm_settings(database: Path, source: Path) -> None:
+    """Restore only model metadata; keep account records, jobs and Keychain intact."""
+    if not source.exists():
+        return  # Recovery records from older deployers have no model snapshot.
+    saved = json.loads(source.read_text())
+    with sqlite3.connect(f"{database.as_uri()}?mode=rw", uri=True) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "DELETE FROM integration_settings WHERE provider IN (?,?,?,?,?,?)", LLM_PROVIDERS
+        )
+        connection.execute("DELETE FROM llm_route_policy")
+        for table, rows in (
+            ("integration_settings", saved["integrations"]),
+            ("llm_route_policy", saved["routes"]),
+        ):
+            columns = {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+            for row in rows:
+                if not row or not set(row).issubset(columns):
+                    raise RuntimeError("saved model configuration is incompatible")
+                names = ",".join('"' + name.replace('"', '""') + '"' for name in row)
+                placeholders = ",".join("?" for _ in row)
+                connection.execute(
+                    # Table is fixed; identifiers are checked against SQLite's schema above.
+                    f"INSERT INTO {table} ({names}) VALUES ({placeholders})",  # noqa: S608
+                    tuple(row.values()),
+                )
 
 
 def pin_node_runtime(
@@ -244,6 +294,7 @@ class Deployment:
         )
         self.environment["PATH"] = str(node.parent) + os.pathsep + self.environment.get("PATH", "")
         self.run("uv", "sync", "--all-packages", "--no-dev", "--frozen", cwd=self.candidate)
+        self.run("npm", "run", "llm:install", cwd=self.candidate)
         web = self.candidate / "apps" / "web"
         self.run("npm", "ci", "--no-audit", "--no-fund", cwd=web)
         self.run("npm", "run", "build", cwd=web)
@@ -304,6 +355,9 @@ class Deployment:
                         time.sleep(1)
                     else:
                         raise RuntimeError(f"service did not stop: {service}")
+
+    def capture_models(self) -> None:
+        capture_llm_settings(self.state / "trading_max.db", self.private / "previous-models.json")
 
     def backup(self) -> None:
         result = self.run(
@@ -413,6 +467,7 @@ class Deployment:
             atomic_write(self.env_file, saved_env.read_bytes())
         else:
             self.env_file.unlink(missing_ok=True)
+        restore_llm_settings(self.state / "trading_max.db", self.private / "previous-models.json")
         self.start(restore=True)
         self.health()
         self.smoke()
@@ -428,6 +483,7 @@ class Deployment:
             self.cutover_started = True
             self.save_record("stopping")
             self.stop()
+            self.capture_models()
             self.save_record("activating")
             self.activate()
             self.save_record("configuring")

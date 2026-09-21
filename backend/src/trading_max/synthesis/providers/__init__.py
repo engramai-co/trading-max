@@ -10,12 +10,15 @@ from .deepseek import (
 )
 from .fake import FakeProvider
 from .openai import OpenAIResponsesProvider
+from .pi import PiProvider
 
 
 def create_provider(
     *,
     provider: str,
     model: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
     openai_api_key: str | None = None,
     openai_base_url: str = "https://api.openai.com/v1",
     deepseek_api_key: str | None = None,
@@ -26,6 +29,15 @@ def create_provider(
     normalized = provider.strip().lower()
     if normalized == "fake":
         return FakeProvider()
+    if normalized not in {"openai", "anthropic", "google", "deepseek", "opencode"}:
+        raise ValueError(f"unsupported LLM provider: {provider}")
+    if api_key is not None and base_url is not None:
+        return PiProvider(
+            api_key=api_key,
+            model=model,
+            provider_name=normalized,
+            base_url=base_url,
+        )
     if normalized == "openai":
         return OpenAIResponsesProvider(
             api_key=openai_api_key or "",

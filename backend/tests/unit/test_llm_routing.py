@@ -30,5 +30,10 @@ def test_direct_deepseek_keeps_legacy_routes_and_exposes_current_models() -> Non
 
 def test_provider_registry_is_safe_frontend_metadata() -> None:
     routes = provider_routes()
-    assert {item["provider"] for item in routes} == {"opencode", "deepseek"}
+    assert {item["provider"] for item in routes} == {
+        "openai",
+        "openai-codex",
+        "anthropic",
+        "google",
+    }
     assert all("api_key" not in item and "secret" not in item for item in routes)

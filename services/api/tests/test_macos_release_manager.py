@@ -5,17 +5,98 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import shutil
+import sqlite3
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from trading_max.infrastructure import SqliteDatabase
 
 SCRIPT = Path(__file__).resolve().parents[3] / "deploy/macos/release-manager.py"
 spec = importlib.util.spec_from_file_location("release_manager", SCRIPT)
 assert spec and spec.loader
 manager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manager)
+
+
+def test_model_rollback_preserves_business_writes_and_broker_settings(tmp_path):
+    migrations = SCRIPT.parents[2] / "backend/migrations"
+    previous_migrations = tmp_path / "old-migrations"
+    previous_migrations.mkdir()
+    for source in migrations.glob("*.sql"):
+        if source.name < "0019":
+            shutil.copyfile(source, previous_migrations / source.name)
+    database = tmp_path / "trading_max.db"
+    SqliteDatabase(database, previous_migrations).close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE llm_route_policy SET default_route='deepseek/deepseek-v4-flash'")
+        for provider in ("deepseek", "trading212"):
+            connection.execute(
+                "INSERT INTO integration_settings (integration_id,provider,enabled,updated_at) "
+                "VALUES (?,?,1,'before')",
+                (provider + ":default", provider),
+            )
+        connection.execute("CREATE TABLE synthetic_account_records (value INTEGER)")
+        connection.execute("INSERT INTO synthetic_account_records VALUES (100)")
+    snapshot = tmp_path / "previous-models.json"
+    manager.capture_llm_settings(database, snapshot)
+    assert snapshot.stat().st_mode & 0o777 == 0o600
+    assert "trading212" not in snapshot.read_text()
+    SqliteDatabase(database, migrations).close()
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE llm_route_policy SET default_route='openai-codex/gpt-5.6-luna'")
+        connection.execute(
+            "INSERT INTO integration_settings (integration_id,provider,enabled,updated_at) "
+            "VALUES ('openai-codex:default','openai-codex',1,'after')"
+        )
+        connection.execute("UPDATE integration_settings SET revision=2 WHERE provider='trading212'")
+        connection.execute("INSERT INTO synthetic_account_records VALUES (200)")
+    manager.restore_llm_settings(database, snapshot)
+    # The previous runtime's migration runner can reopen the upgraded database.
+    old = SqliteDatabase(database, previous_migrations)
+    with old.read() as connection:
+        assert (
+            connection.execute("SELECT default_route FROM llm_route_policy").fetchone()[0]
+            == "deepseek/deepseek-v4-flash"
+        )
+        assert (
+            connection.execute(
+                "SELECT enabled FROM integration_settings WHERE provider='deepseek'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM integration_settings WHERE provider='openai-codex'"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT revision FROM integration_settings WHERE provider='trading212'"
+            ).fetchone()[0]
+            == 2
+        )
+        assert (
+            connection.execute("SELECT sum(value) FROM synthetic_account_records").fetchone()[0]
+            == 300
+        )
+    old.close()
+
+
+def test_invalid_model_restore_is_transactional(tmp_path):
+    database = tmp_path / "trading_max.db"
+    SqliteDatabase(database).close()
+    with sqlite3.connect(database) as connection:
+        before = connection.execute("SELECT * FROM llm_route_policy").fetchall()
+    snapshot = tmp_path / "invalid.json"
+    snapshot.write_text(json.dumps({"integrations": [], "routes": [{"unknown": "invalid"}]}))
+    with pytest.raises(RuntimeError, match="incompatible"):
+        manager.restore_llm_settings(database, snapshot)
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT * FROM llm_route_policy").fetchall() == before
 
 
 def test_shared_node_is_immutable_independent_of_source_and_survives_retired_release(tmp_path):
@@ -95,6 +176,10 @@ class SimulatedHost(manager.Deployment):
         self.running = False
         self.check("stop")
 
+    def capture_models(self) -> None:
+        assert not self.running
+        self.check("capture-models")
+
     def backup(self) -> None:
         assert self.running
         self.check("backup")
@@ -132,6 +217,7 @@ class SimulatedHost(manager.Deployment):
         "build",
         "capture",
         "stop",
+        "capture-models",
         "backup",
         "activate",
         "configure",

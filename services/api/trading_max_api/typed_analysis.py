@@ -41,6 +41,7 @@ from .models import (
     AnalysisStatus,
     AnalysisTrigger,
 )
+from .provider_runtime import ProviderRuntimeError
 from .taxonomy_workflow import TaxonomyWorkflowManager
 from .watchlist import WatchlistStore
 
@@ -173,8 +174,10 @@ class TypedAnalysisManager:
         provider_factory: Callable[[str | None], Any] | Callable[[], Any] | None = None,
         context_builder: AnalysisContextBuilder | None = None,
         synthesis_provider: Any | None = None,
+        enabled: bool = True,
     ) -> None:
         self.store = store
+        self.enabled = enabled
         self.watchlist = watchlist
         self.contexts = context_builder or AnalysisContextBuilder(store, watchlist)
         self.artifacts: ContentAddressedArtifactStore = store.immutable_artifacts
@@ -252,6 +255,8 @@ class TypedAnalysisManager:
     def provider_available(self, workload: str | None = None) -> bool:
         """Report route availability without mutating the active provider."""
 
+        if not self.enabled:
+            return False
         try:
             provider = (
                 self._call_provider_factory(workload)
@@ -294,6 +299,8 @@ class TypedAnalysisManager:
         trigger: AnalysisTrigger = "on_demand",
         force: bool = False,
     ) -> AnalysisRunRecord:
+        if not self.enabled:
+            raise ProviderRuntimeError("analysis_disabled", "LLM analysis is disabled")
         manifest = (
             self.store.load_manifest(snapshot_run_id)
             if snapshot_run_id
@@ -395,6 +402,8 @@ class TypedAnalysisManager:
         self.repository.save(run)
         cache_hits = 0
         try:
+            if not self.enabled:
+                raise ProviderRuntimeError("analysis_disabled", "LLM analysis is disabled")
             manifest = self.store.load_manifest(run.snapshot_run_id)
             source_ids = [self.store.artifact_id(artifact) for artifact in manifest.artifacts]
             for lens in run.lenses:

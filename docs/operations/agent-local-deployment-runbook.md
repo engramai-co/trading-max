@@ -17,7 +17,7 @@ A provisioned remote macOS host uses the separate
 Record the platform, current source branch and commit, `VERSION`, intended state
 root, process owner, and whether the user requested foreground or login startup.
 Use Python 3.12, uv and Node 22 LTS. The web package declares a minimum of Node
-20.19, but CI and the advanced macOS deployer use Node 22. Do not replace an
+22.19, but CI and the advanced macOS deployer use Node 22. Do not replace an
 existing global runtime silently.
 
 On macOS or Linux, inspect:
