@@ -1,11 +1,13 @@
-# Immutable history storage migration
+# Immutable history storage and query cache
 
 ## Motivation and contract
 
-Appending an observation currently serializes another complete history object.
-File-level content addressing cannot reuse the unchanged observations. This RFC
-adds a physical representation, without changing the logical artifact identity,
-financial values, observation cadence, provenance or snapshot schema.
+Legacy history writes serialize a complete history object for each revision.
+The optional chunked representation reuses unchanged observations while keeping
+the logical artifact identity, financial values, observation cadence, provenance
+and snapshot schema unchanged. This page describes the implemented formats;
+[storage maintenance](../operations/storage-maintenance.md) describes activation,
+conversion and recovery. Installing an update alone does not enable conversion.
 
 History objects use consecutive UTC-date groups, bounded to 512 observations per
 block. Values and `source_artifact_ids` are stored separately, preserving field
@@ -23,9 +25,10 @@ forms. `chunked` is an explicit operator opt-in, not an automatic migration.
 Do not enable chunked production writes until the active release and both
 protected rollback releases contain the dual reader and have passed recovery
 tests. Older releases require their matching legacy backup or a verified full
-JSON export. A later bounded migration may replace old representations only
-after checking references, dependencies and restore parity; this release does
-not perform that migration or garbage-collect application objects.
+JSON export. The bounded, resumable `tools/compact_storage.py` migration can replace old
+representations after checking retained readers, independent recovery and exact
+logical-byte parity. It is a separate operator action, not a side effect of
+reading an artifact or installing a release.
 
 ## Alternatives and verification
 
@@ -39,7 +42,7 @@ invalidation, atomic publication, downloads and backup/restore. Shadow writes
 verify the original bytes before publication. No real account fixtures or
 production measurements belong in this repository.
 
-## General envelope and filing compression (reader rollout)
+## General envelope and filing compression
 
 The same logical contract applies to research artifacts. `trading-max-json-v1`
 uses content-addressed gzip JSON subtrees, sorted object keys, and fixed groups
@@ -52,12 +55,13 @@ canonical bytes, including every observation, provenance field and null.
 Small envelopes and cached filing text can instead use the bounded `TMJSON1`
 compression header. Binary source artifacts with metadata sidecars stay raw.
 
-This release installs dual readers in artifact downloads, reference validation,
-research filing caches and backup recovery. Default writes are still `legacy`.
+Artifact downloads, reference validation, research filing caches and backup
+recovery all support the original and compressed forms. Fresh installations
+default to `legacy` writes; an operator-managed installation may opt in.
 `TRADING_MAX_ARTIFACT_STORAGE=compressed` enables whole-envelope compression;
 `chunked` additionally shares large JSON subtrees. History-specific blocks take
-precedence when `TRADING_MAX_HISTORY_STORAGE=chunked` is selected. No existing
-file is migrated automatically by this reader rollout.
+precedence when `TRADING_MAX_HISTORY_STORAGE=chunked` is selected. Changing writer mode affects new writes; existing files need the separate
+verified migration.
 
 Activation requires the current release and both protected rollback runtimes to
 read these formats. Subsequent migration must be bounded and resumable, verify
@@ -85,7 +89,11 @@ representations. They return exactly the file bytes referenced by the existing
 manifest; recovery dates, file hashes and manifests are unchanged. The packed
 root owns independent blocks, never links to the live artifact store. Retention
 traces this extra physical closure across every existing recovery manifest.
-This reader release does not create packed backups or retire original blobs.
+The `backups` command of `tools/compact_storage.py` creates this representation
+in bounded, independently verified batches. This per-file representation is
+distinct from [sealed object packs and recovery catalogs](immutable-object-packs.md),
+which consolidate immutable records and deduplicate manifest entries. Both
+remain compatible with the original logical file hashes.
 
 ## Rebuildable history query index
 

@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-21
+
+### Changed
+
+- Align storage, recovery and architecture documentation with the shipped chunked storage, object packs and on-demand history path. Distinguish fresh defaults from explicit operator activation.
+- Add a repository ownership map, generated-file guidance and links from the README and documentation index to current maintenance procedures.
+- Preserve the earlier space/time decision as a decision record with an implementation map, removing obsolete pending-rollout claims.
+
 ## [1.7.0] - 2026-09-21
 
 ### Added

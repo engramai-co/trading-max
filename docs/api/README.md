@@ -16,6 +16,7 @@ schema. CI rejects drift on either side.
 |---|---|---|
 | Health | `/health`, `/ready` | JSON health and runtime readiness; HTTP 200 alone is not readiness |
 | Dashboard | `/v1/dashboard/lens/` | Small overview, holdings, analytics, and account projections |
+| Portfolio history | `/v1/dashboard/history` | Snapshot-pinned NAV and cash-flow history for the selected range/scope |
 | Research | `/v1/research/` | Directory, ticker shell, lenses, prices, history, events, models, impact, and alerts |
 | Watchlist | `/v1/watchlist` | Local ticker collection and per-ticker refresh |
 | Jobs | `/v1/jobs` | Durable refresh submission, status, logs, and cancellation |
@@ -27,7 +28,10 @@ schema. CI rejects drift on either side.
 
 The legacy aggregate `/v1/dashboard` remains a typed compatibility surface.
 Interactive pages use interface-lens endpoints so unrelated price histories and
-research payloads are not transferred on every navigation.
+research payloads are not transferred on every navigation. Overview and
+performance use `detail=summary`; their separate history request must retain
+the returned `runId`. The [history data flow](../architecture/interface-lenses.md#on-demand-portfolio-history)
+distinguishes the typed API response from the Next.js chart/detail projection.
 
 Both health routes can return HTTP 200 with `degraded` / `not_ready`. Check the
 JSON `status`: readiness requires a published snapshot, no bootstrap error and

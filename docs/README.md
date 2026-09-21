@@ -20,7 +20,8 @@ contracts.
 ## Develop and integrate
 
 - [Contributing and release checks](../CONTRIBUTING.md)
-- [System overview](architecture/system-overview.md)
+- [System overview](architecture/system-overview.md) and
+  [repository layout and ownership](architecture/repository-layout.md)
 - [API and generated contracts](api/README.md)
 - [Interface lenses](architecture/interface-lenses.md) and
   [UI experience](architecture/ui-experience.md)
@@ -43,6 +44,13 @@ contracts.
   existing-state triage, JSON readiness, optional providers and first refresh.
 - [Advanced macOS upgrades and rollback](../deploy/macos/README.md)
 - [Durable jobs and worker recovery](architecture/durable-job-runtime.md)
+- [Storage maintenance and recovery copies](operations/storage-maintenance.md)
+  — independent backups, bounded cleanup, format activation and capacity alerts.
+- [History storage and query cache](architecture/history-storage.md) and
+  [immutable object packs](architecture/immutable-object-packs.md)
+  — physical formats, logical identity and recovery boundaries.
+- [Space/time maintenance decision record](architecture/space-time-maintenance.md)
+  — implementation map and the constraints behind the current design.
 - [Broker-only development preview](operations/broker-mock-preview.md)
 
 Public documentation and demonstration screenshots belong in the repository.

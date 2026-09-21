@@ -1,6 +1,24 @@
-# Space and time maintenance RFC
+# Space and time maintenance decision record
 
-Status: accepted for staged implementation by the release owner, 2026-09-19.
+Decision accepted: 2026-09-19. Implementation status reviewed: 2026-09-21.
+
+The sections below preserve the design constraints. The core changes now ship
+in 1.5.x–1.7.x; storage activation remains operator-managed. This record is not
+a list of pending migrations. Use the current procedures linked below.
+
+## Implementation map
+
+| Decision | Current implementation and source of truth |
+|---|---|
+| Transfer only the selected view | [Interface lenses and pinned history](interface-lenses.md), including separate chart and exact-record requests |
+| Reuse history without changing values | [History formats and derived query index](history-storage.md) |
+| Consolidate immutable files and backup manifests | [Object packs and recovery catalogs](immutable-object-packs.md); activation follows reader and restore checks |
+| Independent recovery and bounded cleanup | [Storage maintenance](../operations/storage-maintenance.md), including plan/apply, unique-history retention and nightly limits |
+| Account for the complete installation | [Capacity policy](../operations/storage-maintenance.md#daily-installation-budget), including retained runtimes, recovery, logs and growth alerts |
+
+A smaller payload is a transfer-size improvement. It does not alone establish a
+browser latency improvement; use the same client, route, network and cold/warm
+conditions when comparing elapsed times.
 
 ## Motivation and scope
 
