@@ -324,6 +324,7 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
             layers={[{ label: t("净盈亏", "Net P&L"), lines, zeroBaseline: true }]}
             label={t("区间净盈亏曲线", "Period net profit and loss over time")}
             intraday={isIntraday}
+            range={range}
             timeline={history.timeline}
             observations={points}
             recordSource={selection}

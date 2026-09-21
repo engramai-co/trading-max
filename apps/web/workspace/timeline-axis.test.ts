@@ -1,6 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { timelineAxis } from "./timeline-axis";
+import { shortTimelineTicks, timelineAxis } from "./timeline-axis";
 import { historySeries } from "@/lib/portfolio/series";
+import { omitPortfolioWeekendDisplayWindow } from "@/lib/chart-domain";
+
+describe("short-range timestamps", () => {
+  it("uses the available width without crowding the current-time label", () => {
+    const categories = Array.from({ length: 62 }, (_, i) =>
+      new Date(Date.UTC(2026, 8, 21, 6, i * 10)).toISOString());
+    for (const count of [4, 5, 8]) {
+      const ticks = shortTimelineTicks(categories, count);
+      expect(ticks.length).toBeLessThanOrEqual(count);
+      expect(ticks[0]).toBe(0);
+      expect(ticks.at(-1)).toBe(61);
+      const gaps = ticks.slice(1).map((tick, i) => tick - ticks[i]);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(Math.max(...gaps) / 2);
+    }
+    expect(shortTimelineTicks(categories, 8).length).toBeGreaterThan(4);
+  });
+  it("spreads five-day ticks across plotted time, preserving the weekend fold and source rows", () => {
+    const categories = Array.from({ length: 6 * 144 + 61 }, (_, i) =>
+      new Date(Date.UTC(2026, 8, 14, 23, i * 10)).toISOString());
+    const timeline = omitPortfolioWeekendDisplayWindow({ categories, rowIndexes: categories.map((_, i) => i % 7 ? i : null) });
+    const before = structuredClone(timeline);
+    for (const count of [4, 5, 8]) {
+      const ticks = shortTimelineTicks(timeline.categories, count);
+      expect(ticks.length).toBeLessThanOrEqual(count);
+      expect(ticks[0]).toBe(0);
+      expect(ticks.at(-1)).toBe(timeline.categories.length - 1);
+      const gaps = ticks.slice(1).map((tick, i) => tick - ticks[i]);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(Math.max(...gaps) / 2);
+      expect(ticks.map((index) => timeline.categories[index]).every((date) => Number.isFinite(Date.parse(date)))).toBe(true);
+    }
+    expect(timeline).toEqual(before);
+  });
+  it("handles empty and single-observation windows", () => {
+    expect(shortTimelineTicks([], 5)).toEqual([]);
+    expect(shortTimelineTicks(["2026-09-21T12:00:00Z"], 5)).toEqual([0]);
+  });
+});
 
 describe("sampled trading-time axis", () => {
   it("keeps ten-minute spacing and clock labels while hovering between thirty-minute display points", () => {

@@ -401,6 +401,7 @@ export function PerformanceContent({
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
                 intraday={isIntraday}
+                range={actualRange}
                 timeline={view === "money" ? history.timeline : undefined}
                 observations={view === "money" ? points : undefined}
                 recordSource={view === "money" ? historySelection : undefined}

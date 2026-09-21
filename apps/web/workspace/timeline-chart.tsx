@@ -12,6 +12,7 @@ import { historyDay, valuationNote, type CalendarTimeline } from "@/lib/portfoli
 import type { NavPoint } from "@/lib/types";
 import type { HistorySelection } from "@/lib/portfolio/prepared";
 import { HistoryRecords } from "./history-records";
+import type { Range } from "@/lib/portfolio/nav";
 
 export function TimelineChart({
   dates,
@@ -23,6 +24,7 @@ export function TimelineChart({
   observations,
   tooltip,
   recordSource,
+  range,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -33,9 +35,11 @@ export function TimelineChart({
   observations?: NavPoint[];
   tooltip?: TimelineTooltip;
   recordSource?: HistorySelection;
+  range?: Range;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const shortRange = intraday && (range === "1D" || range === "1W");
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
   if (
     !dates.length ||
@@ -58,6 +62,10 @@ export function TimelineChart({
         option={(colours) =>
           timelineOption(dates, layers, colours, (time) => {
             const zone = intraday ? timeZone : "UTC";
+            if (shortRange && range === "1W") {
+              return formatDate(time, locale, { year: "numeric", month: "numeric", day: "numeric", timeZone: zone })
+                + "\n" + formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
+            }
             if (intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)) {
               return formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
             }
@@ -68,6 +76,7 @@ export function TimelineChart({
               ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
               : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
             tooltip,
+            shortRange,
           )
         }
       />

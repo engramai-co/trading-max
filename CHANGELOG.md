@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.7.4] - 2026-09-21
+
+### Fixed
+
+- Space 1D and 5D timeline labels according to the chart width and the plotted
+  trading-time positions, with room for the latest timestamp. The 5D axis now
+  shows a compact date including its year and a separate time in the selected
+  display zone. Overview and performance share the same tick selection;
+  historical observations, sampling, financial values and longer ranges are unchanged.
+
 ## [1.7.3] - 2026-09-21
 
 ### Changed

@@ -27,6 +27,21 @@ const options = () =>
   );
 
 describe("shared performance timeline", () => {
+  it("changes only short-view labels, keeping every series and panel aligned", () => {
+    const categories = Array.from({ length: 62 }, (_, i) =>
+      new Date(Date.UTC(2026, 8, 21, 6, i * 10)).toISOString());
+    const calendar = { categories, rowIndexes: categories.map((_, i) => i), displayIntervalMinutes: 10 };
+    const format = (time: number) => new Date(time).toISOString().slice(11, 16);
+    const before = timelineOption(categories, layers, colours, format, calendar);
+    const after = timelineOption(categories, layers, colours, format, calendar, [], format, undefined, true);
+    expect(after.series).toEqual(before.series);
+    expect(after.grid).toEqual(before.grid);
+    expect(JSON.stringify(after.yAxis)).toBe(JSON.stringify(before.yAxis));
+    const axes = after.xAxis as Array<{ min: number; max: number; axisLabel: { customValues: number[] } }>;
+    expect(axes.every((axis) => axis.min === 0 && axis.max === 61)).toBe(true);
+    expect(axes.every((axis) => JSON.stringify(axis.axisLabel.customValues) === JSON.stringify(axes[0].axisLabel.customValues))).toBe(true);
+    expect(axes[0].axisLabel.customValues.at(-1)).toBe(61);
+  });
   it("spaces each responsive date density evenly across the full timeline", () => {
     const categories = Array.from({ length: 70 * 12 }, (_, i) =>
       new Date(Date.UTC(2025, 11, 1, i * 2)).toISOString());
