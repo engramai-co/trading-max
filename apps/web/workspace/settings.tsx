@@ -8,6 +8,7 @@ import {
   Modal,
   PasswordInput,
   Select,
+  SegmentedControl,
   Stack,
 } from "@mantine/core";
 import {
@@ -44,6 +45,8 @@ import {
   CfdImports,
   PersonalPreferences,
 } from "./settings-preferences";
+
+import { OpenAIOAuthConnection } from "./settings-oauth";
 
 import { ReconstructionMarketData } from "./settings-market-data";
 
@@ -94,6 +97,18 @@ export function SettingsWorkspace() {
     data.integrations.some((item) => item.provider === provider.provider &&
       item.configured && item.enabled && !item.needsSecret),
   );
+  const visibleProviders = data?.llmProviders.filter((provider) => provider.provider !== "openai-codex") ?? [];
+  function openModel(provider: LLMProviderDescriptor, first = false) {
+    const existingApi = data?.integrations.some((item) => item.provider === "openai" && item.configured && item.enabled);
+    const existingOAuth = data?.integrations.some((item) => item.provider === "openai-codex" && item.configured && item.enabled);
+    const chosen = provider.provider === "openai" && (!existingApi || existingOAuth)
+      ? data?.llmProviders.find((item) => item.provider === "openai-codex") ?? provider : provider;
+    setSaved(null);
+    setConnection({ kind: "model", title: provider.label, provider: chosen,
+      existing: data?.integrations.find((item) => item.provider === chosen.provider),
+      useAsDefault: first || !hasModelConnection || data?.llmRoutePolicy?.defaultRoute.startsWith(chosen.provider + "/"),
+    });
+  }
   return (
     <Page
       title={t("设置与连接", "Settings & connections")}
@@ -205,28 +220,15 @@ export function SettingsWorkspace() {
                 title={t("分析模型（可选）", "Analysis models (optional)")}
               >
                 <div className="mx-connection-grid mx-model-connections">
-                  {data.llmProviders.map((provider) => (
+                  {visibleProviders.map((provider) => (
                     <ConnectionCard
                       key={provider.provider}
                       title={provider.label}
                       connectLabel={t("连接模型", "Connect model")}
                       subtitle={provider.defaultModel}
-                      integration={data.integrations.find(
-                        (i) => i.provider === provider.provider,
-                      )}
-                      onOpen={() => {
-                        setSaved(null);
-                        setConnection({
-                          kind: "model",
-                          title: provider.label,
-                          provider,
-                          existing: data.integrations.find(
-                            (i) => i.provider === provider.provider,
-                          ),
-                          useAsDefault: !hasModelConnection ||
-                            data.llmRoutePolicy?.defaultRoute.startsWith(provider.provider + "/"),
-                        });
-                      }}
+                      integration={(provider.provider === "openai" ? data.integrations.find((i) => i.provider === "openai-codex" && i.configured && i.enabled) : undefined) ??
+                        data.integrations.find((i) => i.provider === provider.provider)}
+                      onOpen={() => openModel(provider)}
                     />
                   ))}
                 </div>
@@ -267,14 +269,14 @@ export function SettingsWorkspace() {
       >
         <Stack gap="lg">
           <p>{t(
-            "选择你想使用的提供商，下一步连接 API 密钥。默认使用 OpenAI；你也可以稍后再设置。",
-            "Choose a provider, then connect your API key. OpenAI is selected by default. You can also set this up later.",
+            "选择你想使用的提供商。OpenAI 支持 ChatGPT 登录或 API Key；你也可以稍后再设置。",
+            "Choose a provider. OpenAI supports ChatGPT sign-in or an API key. You can also set this up later.",
           )}</p>
           <Select
             label={t("模型提供商", "Model provider")}
             value={selectedProvider}
             onChange={(value) => setSelectedProvider(value ?? "openai")}
-            data={data?.llmProviders.map((provider) => ({
+            data={visibleProviders.map((provider) => ({
               value: provider.provider, label: provider.label,
             })) ?? []}
             allowDeselect={false}
@@ -287,7 +289,7 @@ export function SettingsWorkspace() {
               const provider = data?.llmProviders.find((item) => item.provider === selectedProvider);
               if (!provider) return;
               setOfferModelConnection(false);
-              setConnection({ kind: "model", provider, title: provider.label, useAsDefault: true });
+              openModel(provider, true);
             }} rightSection={<ArrowRight size={16} />}>
               {t("继续连接", "Continue")}
             </Button>
@@ -301,21 +303,28 @@ export function SettingsWorkspace() {
         position="right"
         size={480}
       >
-        {connection && (
-          <ConnectionForm
-            key={
-              connection.kind === "broker"
-                ? connection.profile
-                : connection.provider.provider
-            }
-            connection={connection}
-            onSaved={(result) => {
-              setConnection(null);
-              setSaved(result);
-              void client.invalidateQueries({ queryKey: settingsKey });
-            }}
-          />
-        )}
+        {connection && <Stack gap="lg">
+          {connection.kind === "model" && ["openai", "openai-codex"].includes(connection.provider.provider) &&
+            <SegmentedControl fullWidth aria-label={t("OpenAI 连接方式", "OpenAI connection method")}
+              value={connection.provider.provider}
+              data={[{ value: "openai-codex", label: t("ChatGPT 登录", "ChatGPT sign-in") }, { value: "openai", label: "API Key" }]}
+              onChange={(value) => {
+                const provider = data?.llmProviders.find((item) => item.provider === value);
+                if (provider) setConnection({ ...connection, provider,
+                  existing: data?.integrations.find((item) => item.provider === value) });
+              }} />}
+          {connection.kind === "model" && connection.provider.authMethod === "oauth"
+            ? <OpenAIOAuthConnection provider={connection.provider} existing={connection.existing}
+                useAsDefault={connection.useAsDefault} onSaved={(result) => {
+                  setConnection(null); setSaved(result);
+                  void client.invalidateQueries({ queryKey: settingsKey });
+                }} />
+            : <ConnectionForm key={connection.kind === "broker" ? connection.profile : connection.provider.provider}
+                connection={connection} onSaved={(result) => {
+                  setConnection(null); setSaved(result);
+                  void client.invalidateQueries({ queryKey: settingsKey });
+                }} />}
+        </Stack>}
       </Drawer>
     </Page>
   );
@@ -518,7 +527,7 @@ function ConnectionForm({
               label={t("测试模型", "Model to test")}
               value={model}
               onChange={(v) => edit(() => setModel(v ?? ""))}
-              data={connection.provider.models}
+              data={Array.from(new Set([model, ...connection.provider.models].filter(Boolean)))}
               searchable
               disabled={busy}
             />
@@ -656,8 +665,9 @@ function ModelRouting({
       label: provider.label + " · " + model,
     })),
   );
-  if (!options.some((o) => o.value === policy.defaultRoute))
-    options.push({ value: policy.defaultRoute, label: policy.defaultRoute });
+  for (const route of [policy.defaultRoute, ...Object.values(policy.overrides)]) {
+    if (!options.some((o) => o.value === route)) options.push({ value: route, label: route });
+  }
   const lenses = [
     { value: "portfolio", label: t("组合摘要", "Portfolio analysis") },
     { value: "ticker", label: t("个股研究", "Security research") },

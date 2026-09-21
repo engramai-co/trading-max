@@ -831,6 +831,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/llm/oauth/openai/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Openai Oauth */
+        post: operations["start_openai_oauth_v1_settings_llm_oauth_openai_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/llm/oauth/openai/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Openai Oauth */
+        get: operations["get_openai_oauth_v1_settings_llm_oauth_openai__session_id__get"];
+        put?: never;
+        post?: never;
+        /** Cancel Openai Oauth */
+        delete: operations["cancel_openai_oauth_v1_settings_llm_oauth_openai__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/llm/providers": {
         parameters: {
             query?: never;
@@ -2982,7 +3017,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca" | "anthropic" | "google";
+            provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "anthropic" | "google";
             /**
              * Revision
              * @default 1
@@ -3190,6 +3225,12 @@ export interface components {
         LLMProviderDescriptor: {
             /** Adapter */
             adapter: string;
+            /**
+             * Authmethod
+             * @default api_key
+             * @enum {string}
+             */
+            authMethod: "api_key" | "oauth";
             /** Baseurl */
             baseUrl: string;
             /** Defaultmodel */
@@ -3202,7 +3243,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "opencode" | "deepseek";
+            provider: "openai" | "openai-codex" | "anthropic" | "google" | "opencode" | "deepseek";
         };
         /** LLMProvidersResponse */
         LLMProvidersResponse: {
@@ -3232,7 +3273,7 @@ export interface components {
         LLMRoutePolicyUpdate: {
             /**
              * Defaultroute
-             * @default openai/gpt-5.4-mini
+             * @default openai/gpt-5.6-luna
              */
             defaultRoute: string;
             /** Expectedrevision */
@@ -3600,6 +3641,40 @@ export interface components {
              * Format: date-time
              */
             savedAt: string;
+        };
+        /** OAuthLoginRequest */
+        OAuthLoginRequest: {
+            /**
+             * Model
+             * @default gpt-5.6-luna
+             */
+            model: string;
+            /**
+             * Useasdefault
+             * @default true
+             */
+            useAsDefault: boolean;
+        };
+        /** OAuthLoginStatus */
+        OAuthLoginStatus: {
+            /** Errorcode */
+            errorCode?: string | null;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "starting" | "pending" | "connected" | "error" | "cancelled" | "expired";
+            /** Usercode */
+            userCode?: string | null;
+            /** Verificationurl */
+            verificationUrl?: string | null;
         };
         /** OptionAvailability */
         OptionAvailability: {
@@ -7893,6 +7968,105 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IntegrationTestResult"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_openai_oauth_v1_settings_llm_oauth_openai_start_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthLoginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_openai_oauth_v1_settings_llm_oauth_openai__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthLoginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_openai_oauth_v1_settings_llm_oauth_openai__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

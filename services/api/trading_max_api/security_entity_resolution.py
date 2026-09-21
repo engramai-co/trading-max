@@ -117,6 +117,7 @@ class OpenCodeWebSearchResolver:
             return None
         if getattr(provider, "name", "") not in {
             "openai",
+            "openai-codex",
             "anthropic",
             "google",
             "opencode",

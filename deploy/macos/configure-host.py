@@ -260,7 +260,7 @@ def main() -> int:
     )
     llm_model = args.llm_model or values.get(
         "TRADING_MAX_LLM_MODEL",
-        "gpt-5.4-mini",
+        "gpt-5.6-luna",
     )
     broker_export_lookback_days = min(
         max(int(values.get("TRADING_MAX_BROKER_EXPORT_LOOKBACK_DAYS", "365")), 1),

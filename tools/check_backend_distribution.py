@@ -20,7 +20,7 @@ def validate_distributions(directory: Path) -> None:
     }
     if not references:
         raise ValueError("backend reference data is missing from the source checkout")
-    for name in ("package.json", "package-lock.json", "index.mjs", "complete.mjs"):
+    for name in ("package.json", "package-lock.json", "index.mjs", "complete.mjs", "oauth.mjs"):
         references[f"synthesis/_pi/{name}"] = (
             ROOT / "backend/src/trading_max/synthesis/_pi" / name
         ).read_bytes()

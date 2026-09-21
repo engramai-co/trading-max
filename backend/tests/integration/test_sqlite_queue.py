@@ -431,6 +431,7 @@ def test_concurrent_database_startup_applies_migrations_once(tmp_path: Path) -> 
         "0017_three_scope_jobs.sql",
         "0018_alpaca_market_data.sql",
         "0019_pi_model_connections.sql",
+        "0020_openai_oauth.sql",
     ]
     profile = database.connection.execute(
         "SELECT account_labels_json FROM user_profile WHERE profile_id = 'local'"

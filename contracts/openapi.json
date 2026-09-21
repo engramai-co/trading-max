@@ -6054,6 +6054,7 @@
               "trading212",
               "deepseek",
               "openai",
+              "openai-codex",
               "opencode",
               "alpaca",
               "anthropic",
@@ -6636,6 +6637,15 @@
             "title": "Adapter",
             "type": "string"
           },
+          "authMethod": {
+            "default": "api_key",
+            "enum": [
+              "api_key",
+              "oauth"
+            ],
+            "title": "Authmethod",
+            "type": "string"
+          },
           "baseUrl": {
             "title": "Baseurl",
             "type": "string"
@@ -6658,6 +6668,7 @@
           "provider": {
             "enum": [
               "openai",
+              "openai-codex",
               "anthropic",
               "google",
               "opencode",
@@ -6738,7 +6749,7 @@
       "LLMRoutePolicyUpdate": {
         "properties": {
           "defaultRoute": {
-            "default": "openai/gpt-5.4-mini",
+            "default": "openai/gpt-5.6-luna",
             "title": "Defaultroute",
             "type": "string"
           },
@@ -7965,6 +7976,87 @@
           "content"
         ],
         "title": "NoteRevision",
+        "type": "object"
+      },
+      "OAuthLoginRequest": {
+        "properties": {
+          "model": {
+            "default": "gpt-5.6-luna",
+            "title": "Model",
+            "type": "string"
+          },
+          "useAsDefault": {
+            "default": true,
+            "title": "Useasdefault",
+            "type": "boolean"
+          }
+        },
+        "title": "OAuthLoginRequest",
+        "type": "object"
+      },
+      "OAuthLoginStatus": {
+        "properties": {
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "starting",
+              "pending",
+              "connected",
+              "error",
+              "cancelled",
+              "expired"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "userCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usercode"
+          },
+          "verificationUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verificationurl"
+          }
+        },
+        "required": [
+          "sessionId",
+          "state",
+          "expiresAt"
+        ],
+        "title": "OAuthLoginStatus",
         "type": "object"
       },
       "OptionAvailability": {
@@ -18328,6 +18420,172 @@
           }
         },
         "summary": "Test Trading212",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/llm/oauth/openai/start": {
+      "post": {
+        "operationId": "start_openai_oauth_v1_settings_llm_oauth_openai_start_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthLoginStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Openai Oauth",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/llm/oauth/openai/{session_id}": {
+      "delete": {
+        "operationId": "cancel_openai_oauth_v1_settings_llm_oauth_openai__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Openai Oauth",
+        "tags": [
+          "settings"
+        ]
+      },
+      "get": {
+        "operationId": "get_openai_oauth_v1_settings_llm_oauth_openai__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthLoginStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Openai Oauth",
         "tags": [
           "settings"
         ]

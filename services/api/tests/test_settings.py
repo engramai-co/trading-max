@@ -39,16 +39,18 @@ def test_profile_and_integration_overview_are_non_secret(
             "trading212:invest",
             "trading212:isa",
             "openai:default",
+            "openai-codex:default",
             "anthropic:default",
             "google:default",
             "alpaca:default",
         }
         assert {item["provider"] for item in payload["llmProviders"]} == {
             "openai",
+            "openai-codex",
             "anthropic",
             "google",
         }
-        assert payload["llmRoutePolicy"]["defaultRoute"] == "openai/gpt-5.4-mini"
+        assert payload["llmRoutePolicy"]["defaultRoute"] == "openai/gpt-5.6-luna"
         assert all(
             "secretKey" not in item and "apiKey" not in item for item in payload["integrations"]
         )

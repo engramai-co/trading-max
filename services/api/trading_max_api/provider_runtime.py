@@ -16,6 +16,7 @@ from .llm_routing import (
     LLMRouteError,
     parse_route,
 )
+from .oauth import OAuthCredentialVault
 from .settings import SettingsRepository
 
 
@@ -121,12 +122,15 @@ def make_provider_factory(
                 effective_route="fake/trading-max-fake-v1",
             )
 
-        provider = create_provider(
-            provider=route.provider,
-            model=route.model,
-            api_key=secret,
-            base_url=spec.base_url,
-        )
+        if route.provider == "openai-codex":
+            provider = OAuthCredentialVault(settings.data_root, credentials).provider(route.model)
+        else:
+            provider = create_provider(
+                provider=route.provider,
+                model=route.model,
+                api_key=secret,
+                base_url=spec.base_url,
+            )
         return _annotate_provider(
             provider,
             route,

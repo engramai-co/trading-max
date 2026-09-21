@@ -155,6 +155,6 @@ def test_runtime_keeps_the_preferred_route_when_it_is_configured(
         provider = factory("taxonomy")
 
         assert provider.name == "openai"
-        assert provider.route_id == "openai/gpt-5.4-mini"
+        assert provider.route_id == "openai/gpt-5.6-luna"
     finally:
         preferences.close()

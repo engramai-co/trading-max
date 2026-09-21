@@ -1,4 +1,5 @@
-// One request per child; no listener, background service, agent loop or disk state.
+// One request per child; OAuth device login may emit progress before its result.
+// No listener, agent loop or disk state.
 let size = 0;
 const chunks = [];
 try {
@@ -8,8 +9,21 @@ try {
     chunks.push(chunk);
   }
   const request = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  const { complete } = await import("./complete.mjs");
-  process.stdout.write(JSON.stringify(await complete(request)));
+  if (["login", "resolve"].includes(request.operation)) {
+    const { oauth } = await import("./oauth.mjs");
+    const abort = new AbortController();
+    process.once("SIGTERM", () => abort.abort());
+    const signal = AbortSignal.any([
+      abort.signal, AbortSignal.timeout(request.operation === "login" ? 900_000 : 25_000),
+    ]);
+    const result = await oauth(request, (event) => {
+      process.stdout.write(JSON.stringify(event) + "\n");
+    }, { signal });
+    process.stdout.write(JSON.stringify(result) + "\n");
+  } else {
+    const { complete } = await import("./complete.mjs");
+    process.stdout.write(JSON.stringify(await complete(request)));
+  }
 } catch {
   process.stdout.write(JSON.stringify({ error: "provider_runtime_unavailable" }));
   process.exitCode = 1;

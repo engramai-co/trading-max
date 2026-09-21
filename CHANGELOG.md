@@ -6,6 +6,10 @@ All notable public Trading Max releases are recorded here.
 
 ### Changed
 
+- Offer ChatGPT/Codex sign-in through Pi’s device-code OAuth, with native credential
+  storage, serialized refresh, cancellation, and a separate OpenAI API-key option.
+- Refresh fast model recommendations to GPT-5.6 Luna, Claude Haiku 4.5, and
+  Gemini 3.8 Flash, keeping existing explicit model selections compatible.
 - Consolidate model requests on the pinned Pi AI SDK while retaining the existing
   research workflows and output validation. No agent runtime is introduced.
 - Default model assignments to OpenAI and offer a first-connection provider picker

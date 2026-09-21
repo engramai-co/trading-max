@@ -88,7 +88,7 @@ class Settings:
     worker_lease_seconds: int = 300
     worker_poll_seconds: float = 1.0
     llm_provider: str = "fake"
-    llm_model: str = "gpt-5.4-mini"
+    llm_model: str = "gpt-5.6-luna"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     opencode_api_key: str | None = None
@@ -176,7 +176,7 @@ class Settings:
             worker_lease_seconds=int(os.environ.get("TRADING_MAX_WORKER_LEASE_SECONDS", "300")),
             worker_poll_seconds=float(os.environ.get("TRADING_MAX_WORKER_POLL_SECONDS", "1")),
             llm_provider=os.environ.get("TRADING_MAX_LLM_PROVIDER", "openai"),
-            llm_model=os.environ.get("TRADING_MAX_LLM_MODEL", "gpt-5.4-mini"),
+            llm_model=os.environ.get("TRADING_MAX_LLM_MODEL", "gpt-5.6-luna"),
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             openai_base_url=os.environ.get(
                 "OPENAI_BASE_URL",

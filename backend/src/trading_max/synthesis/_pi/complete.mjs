@@ -3,6 +3,7 @@ import { contentText, createModels } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { opencodeGoProvider } from "@earendil-works/pi-ai/providers/opencode-go";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 
@@ -10,6 +11,7 @@ const providers = {
   deepseek: deepseekProvider(),
   opencode: opencodeGoProvider(),
   openai: openaiProvider(),
+  "openai-codex": openaiCodexProvider(),
   anthropic: anthropicProvider(),
   google: googleProvider(),
 };
@@ -50,7 +52,7 @@ export async function complete(request, { fetch: fetchImpl = globalThis.fetch } 
     // Google's SDK uses global fetch. Each bridge process handles exactly one
     // request, so the same no-redirect boundary can be scoped to that call.
     if (request.provider === "google") globalThis.fetch = guardedFetch;
-    const message = await models.completeSimple(model, request.context, {
+    const options = {
       apiKey: request.apiKey,
       signal,
       timeoutMs: request.timeoutMs ?? 180_000,
@@ -78,7 +80,12 @@ export async function complete(request, { fetch: fetchImpl = globalThis.fetch } 
           payload.config.responseMimeType = "application/json";
         }
       },
-    });
+    };
+    // OAuth was resolved by Pi under the host's cross-process keychain lock.
+    // Dispatch through the provider so Models does not try a second credential lookup.
+    const message = request.provider === "openai-codex"
+      ? await provider.streamSimple(model, request.context, options).result()
+      : await models.completeSimple(model, request.context, options);
     if (signal.aborted || ["error", "aborted"].includes(message.stopReason)) {
       return { error: errorCode(status) };
     }

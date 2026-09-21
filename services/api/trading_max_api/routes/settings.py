@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from trading_max.analytics.alpaca_prices import AlpacaDataError, AlpacaHistoricalClient
 from trading_max.ingestion.brokers.trading212 import (
     Trading212Client,
@@ -49,6 +49,8 @@ from ..models import (
     LLMProvidersResponse,
     LLMRoutePolicy,
     LLMRoutePolicyUpdate,
+    OAuthLoginRequest,
+    OAuthLoginStatus,
     Trading212IntegrationCandidate,
     Trading212IntegrationRequest,
     UserProfile,
@@ -347,7 +349,9 @@ def _validate_llm_candidate(
     candidate: LLMIntegrationCandidate,
 ) -> tuple[LLMIntegrationCandidate, ProviderSpec]:
     spec = _llm_spec_or_404(provider)
-    if candidate.model not in spec.models:
+    if spec.auth_method != "api_key":
+        raise HTTPException(status_code=422, detail={"code": "oauth_login_required"})
+    if candidate.model not in (*spec.models, *spec.legacy_models):
         raise HTTPException(
             status_code=422,
             detail={
@@ -839,12 +843,55 @@ def delete_llm_provider(provider: str, request: Request) -> None:
     spec = _llm_spec_or_404(provider)
     preferences = app_service(request, "settings_repository")
     try:
+        if spec.auth_method == "oauth":
+            app_service(request, "oauth_login").disconnect()
+            return
         app_service(request, "credential_store").delete(
             preferences.credential_reference(spec.provider),
         )
     except CredentialStoreError as exc:
         raise _safe_integration_error(exc) from exc
     preferences.remove_integration(provider=spec.provider, profile=None)
+
+
+@router.post(
+    "/v1/settings/llm/oauth/openai/start",
+    response_model=OAuthLoginStatus,
+    dependencies=[Depends(require_write_auth)],
+)
+def start_openai_oauth(body: OAuthLoginRequest, request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    if body.model not in provider_spec("openai-codex").models:
+        raise HTTPException(status_code=422, detail={"code": "model_not_allowed"})
+    try:
+        return app_service(request, "oauth_login").start(body.model, body.use_as_default)
+    except RuntimeError:
+        raise HTTPException(status_code=409, detail={"code": "oauth_login_in_progress"}) from None
+
+
+@router.get(
+    "/v1/settings/llm/oauth/openai/{session_id}",
+    response_model=OAuthLoginStatus,
+    dependencies=[Depends(require_write_auth)],
+)
+def get_openai_oauth(session_id: str, request: Request, response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        return app_service(request, "oauth_login").status(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "oauth_session_not_found"}) from None
+
+
+@router.delete(
+    "/v1/settings/llm/oauth/openai/{session_id}",
+    status_code=204,
+    dependencies=[Depends(require_write_auth)],
+)
+def cancel_openai_oauth(session_id: str, request: Request):
+    try:
+        app_service(request, "oauth_login").cancel(session_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail={"code": "oauth_session_not_found"}) from None
 
 
 @router.post(

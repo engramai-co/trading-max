@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -63,9 +64,9 @@ def _node() -> str:
     return shutil.which("node") or "node"
 
 
-def _invoke(request: JsonObject, timeout: float) -> JsonObject:
-    provider = str(request["provider"])
-    environment = {
+def bridge_environment() -> dict[str, str]:
+    """Do not inherit unrelated provider keys or Node preload hooks."""
+    return {
         key: value
         for key, value in os.environ.items()
         if key
@@ -80,6 +81,10 @@ def _invoke(request: JsonObject, timeout: float) -> JsonObject:
             "NODE_EXTRA_CA_CERTS",
         }
     }
+
+
+def _invoke(request: JsonObject, timeout: float) -> JsonObject:
+    provider = str(request["provider"])
     try:
         # Executable and script are trusted local paths; all request data is stdin.
         result = subprocess.run(  # noqa: S603
@@ -88,7 +93,7 @@ def _invoke(request: JsonObject, timeout: float) -> JsonObject:
             text=True,
             capture_output=True,
             timeout=timeout + 5,
-            env=environment,
+            env=bridge_environment(),
             check=False,
         )
         payload = json.loads(result.stdout)
@@ -128,13 +133,15 @@ class PiProvider:
         base_url: str,
         timeout_seconds: float = 180,
         max_attempts: int = 3,
+        authorization: Callable[[], JsonObject] | None = None,
     ) -> None:
-        if not api_key:
+        if not api_key and authorization is None:
             raise RuntimeError(f"{provider_name} credential is required")
         self.api_key, self.model, self.name = api_key, model, provider_name
         self.base_url = _validate_base_url(base_url)
         self.timeout_seconds = timeout_seconds
         self.max_retries = max(0, max_attempts - 1)
+        self.authorization = authorization
 
     def complete(
         self,
@@ -150,12 +157,13 @@ class PiProvider:
         timeout: float | None = None,
     ) -> JsonObject:
         seconds = timeout if timeout is not None else self.timeout_seconds
+        auth = self.authorization() if self.authorization else {"apiKey": self.api_key}
         return _invoke(
             {
                 "provider": self.name,
                 "model": self.model,
                 "baseUrl": self.base_url,
-                "apiKey": self.api_key,
+                "apiKey": auth["apiKey"],
                 "context": {"systemPrompt": system, "messages": messages, "tools": tools or []},
                 "toolChoice": tool_choice,
                 "json": json_output,

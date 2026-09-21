@@ -23,7 +23,7 @@ The network providers are compatibility constructors around `PiProvider`.
 Only `@earendil-works/pi-ai` handles model HTTP requests, message conversion,
 stream parsing and bounded network retries. The Python worker invokes a
 short-lived Node child over stdin/stdout; it adds no server or agent runtime.
-OpenAI retains `store=false` and strict JSON schema; DeepSeek/OpenCode retain
+OpenAI API retains `store=false` and strict JSON schema; DeepSeek/OpenCode retain
 JSON-object mode and Pi's provider-specific thinking behavior. The existing
 Pydantic response validation still rejects invalid or truncated research.
 Invalid domain output fails once rather than spending more requests in a second
@@ -32,9 +32,14 @@ credentials, files or logs. Upstream errors return only stable error codes.
 
 Settings connectivity checks, taxonomy judgments and the existing bounded
 security-name lookup use this same Pi boundary. Saved provider/model assignments
-use OpenAI / gpt-5.4-mini by default. First-time AI settings offer OpenAI,
+use OpenAI / gpt-5.6-luna by default. First-time AI settings offer OpenAI,
 Anthropic and Google, and saving can set the selected model as the shared
-default. Legacy DeepSeek/OpenCode defaults are retired by migration 0019.
+default. OpenAI also offers ChatGPT OAuth through Pi’s device-code flow and
+`openai-codex` transport, using native credential storage and serialized token
+refresh; it does not add an agent runtime. Subscription and API-key connections
+are distinct. Fast defaults are GPT-5.6 Luna, Claude Haiku 4.5, and Gemini 3.8 Flash.
+Legacy DeepSeek/OpenCode defaults are retired by migration 0019; migration 0020
+adds OAuth metadata without replacing configured model choices.
 There is no automatic cross-provider fallback. The settings registry limits the providers approved to
 receive account data; importing the SDK does not enable all its providers.
 

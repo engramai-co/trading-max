@@ -13,14 +13,14 @@ const sse = (events) => new Response(events.map((e) => `data: ${JSON.stringify(e
 });
 test("Anthropic uses the native Messages API through Pi", async () => {
   let seen;
-  const result = await complete({...request,provider:"anthropic",model:"claude-sonnet-4-6"}, {
+  const result = await complete({...request,provider:"anthropic",model:"claude-haiku-4-5-20251001"}, {
     fetch:async (url,init) => {
       seen=JSON.parse(init.body);
       assert.equal(new URL(url).pathname,"/v1/messages");
       assert.equal(new Headers(init.headers).get("x-api-key"),"synthetic-key");
       assert.equal(init.redirect,"error");
       const events=[
-        {type:"message_start",message:{id:"fixture",role:"assistant",content:[],model:"claude-sonnet-4-6",usage:{input_tokens:10,output_tokens:0}}},
+        {type:"message_start",message:{id:"fixture",role:"assistant",content:[],model:"claude-haiku-4-5-20251001",usage:{input_tokens:10,output_tokens:0}}},
         {type:"content_block_start",index:0,content_block:{type:"text",text:""}},
         {type:"content_block_delta",index:0,delta:{type:"text_delta",text:'{"ok":true}'}},
         {type:"content_block_stop",index:0},
@@ -32,14 +32,14 @@ test("Anthropic uses the native Messages API through Pi", async () => {
   });
   assert.equal(result.error,undefined);
   assert.equal(result.text,'{"ok":true}');
-  assert.equal(seen.model,"claude-sonnet-4-6");
+  assert.equal(seen.model,"claude-haiku-4-5-20251001");
   assert.equal(result.usage.input,10);
 });
 test("Google uses the native SDK, JSON mode, and restores the fetch boundary", async () => {
   const previous=globalThis.fetch;
-  const result=await complete({...request,provider:"google",model:"gemini-2.5-flash",baseUrl:"https://provider.example.test/v1beta"}, {
+  const result=await complete({...request,provider:"google",model:"gemini-3.8-flash",baseUrl:"https://provider.example.test/v1beta"}, {
     fetch:async (url,init) => {
-      assert.match(String(url),/models\/gemini-2.5-flash:streamGenerateContent/);
+      assert.match(String(url),/models\/gemini-3.8-flash:streamGenerateContent/);
       assert.equal(new Headers(init.headers).get("x-goog-api-key"),"synthetic-key");
       assert.equal(init.redirect,"error");
       const body=JSON.parse(init.body);
