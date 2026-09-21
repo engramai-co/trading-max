@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { extname, join, relative } from "node:path";
+import { extname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 
 const root = new URL("../", import.meta.url).pathname;
 const allowedCss = new Set(["app/globals.css"]);
@@ -57,6 +58,51 @@ for (const file of sourceFiles) {
   }
   if (/#[0-9a-fA-F]{3,8}\b/.test(source) && !path.includes(".test.") && !rawColourAllowlist.has(path)) {
     violations.push(`Raw colour outside theme/palette: ${path}`);
+  }
+}
+
+// Traverse runtime imports: shared portfolio calculations must remain usable by
+// both the BFF and the browser without pulling in view, transport or UI code.
+const authoredPaths = new Set(sourceFiles);
+const inspected = new Set();
+async function inspectPortfolioModule(file) {
+  if (inspected.has(file)) return;
+  inspected.add(file);
+  const path = relative(root, file);
+  if (!path.startsWith("lib/")) {
+    violations.push(`Portfolio runtime dependency outside shared lib: ${path}`);
+    return;
+  }
+  const source = await readFile(file, "utf8");
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  for (const statement of tree.statements) {
+    if (ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression)
+      && ["use client", "use server"].includes(statement.expression.text)) {
+      violations.push(`Framework boundary in pure portfolio dependency: ${path}`);
+    }
+    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+    const specifier = statement.moduleSpecifier;
+    if (!specifier || !ts.isStringLiteral(specifier)) continue;
+    if (ts.isExportDeclaration(statement) && statement.isTypeOnly) continue;
+    const clause = ts.isImportDeclaration(statement) ? statement.importClause : undefined;
+    if (clause?.isTypeOnly || clause?.namedBindings && ts.isNamedImports(clause.namedBindings)
+      && !clause.name && clause.namedBindings.elements.every((item) => item.isTypeOnly)) continue;
+    const target = specifier.text;
+    const base = target.startsWith("@/") ? resolve(root, target.slice(2))
+      : target.startsWith(".") ? resolve(file, "..", target) : undefined;
+    if (!base) {
+      violations.push(`External runtime import in pure portfolio dependency: ${path} -> ${target}`);
+      continue;
+    }
+    const dependency = [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]
+      .find((candidate) => authoredPaths.has(candidate));
+    if (!dependency) violations.push(`Unresolved portfolio runtime dependency: ${path} -> ${target}`);
+    else await inspectPortfolioModule(dependency);
+  }
+}
+for (const file of sourceFiles) {
+  if (relative(root, file).startsWith("lib/portfolio/") && !file.includes(".test.")) {
+    await inspectPortfolioModule(file);
   }
 }
 

@@ -13,11 +13,12 @@ import type {
   YAXisComponentOption,
 } from "echarts";
 import { useId, useMemo, useRef, useState, type RefObject } from "react";
-import { compact, number, numeric, percent } from "./data";
+import { compact, number, percent } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
-import { historyGapSeries, historySeries } from "./history-series";
-import { historyDay, type CalendarTimeline } from "./portfolio-history";
+import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
 import { chartNumber } from "./research-chart-format";
 

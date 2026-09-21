@@ -3,16 +3,8 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useState, type ReactNode } from "react";
 import { Plot } from "./charts";
-import {
-  compact,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  safeUrl,
-  str,
-} from "./data";
+import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { factIndex } from "./research-facts";

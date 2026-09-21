@@ -5,15 +5,8 @@ import { Group, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Plot } from "./charts";
-import {
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  tone,
-} from "./data";
+import { number, object, objects, percent, str, tone } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
 import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";

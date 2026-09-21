@@ -16,7 +16,7 @@ import { useLocalStorage } from "@mantine/hooks";
 import type { EChartsOption } from "echarts";
 import { useState } from "react";
 import { Plot } from "./charts";
-import { compact, number, object, percent, str } from "./data";
+import { compact, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { quoteValue } from "./financial-values";
 import {

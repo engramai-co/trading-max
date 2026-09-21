@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { portfolioPerformanceHref, portfolioRange, PORTFOLIO_RANGES, selectPortfolioHistory } from "./portfolio-history";
+import { portfolioPerformanceHref, portfolioRange, PORTFOLIO_RANGES, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioValueLines } from "./portfolio-value-lines";
-import { portfolioMoney } from "./portfolio-money";
+import { portfolioMoney } from "@/lib/portfolio/money";
 
 const t = (_zh: string, en: string) => en;
 const points = [

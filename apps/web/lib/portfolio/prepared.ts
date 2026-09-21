@@ -1,8 +1,8 @@
 import type { NavPoint } from "@/lib/types";
-import { navNumber, type Range, type Scope } from "./data";
-import { historySeries } from "./history-series";
-import { selectPortfolioHistory, type CalendarTimeline, type PortfolioHistory } from "./portfolio-history";
-import { portfolioMoney } from "./portfolio-money";
+import { navNumber, type Range, type Scope } from "@/lib/portfolio/nav";
+import { historySeries } from "@/lib/portfolio/series";
+import { selectPortfolioHistory, type CalendarTimeline, type PortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioMoney } from "@/lib/portfolio/money";
 
 export type HistorySelection = { runId: string; range: Range; scope: Scope };
 export type HistoryInput = { runId: string; brokerAsOf: string; dataRevision: string; nav?: NavPoint[]; intradayNav?: NavPoint[] };

@@ -11,12 +11,8 @@ import { useMemo } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
-import {
-  currency,
-  percent,
-  tone,
-  type Scope,
-} from "./data";
+import { currency, percent, tone } from "@/workspace/data";
+import { type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
   Freshness,
@@ -36,8 +32,8 @@ import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp } from "./history-coverage";
-import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
-import { portfolioMoney } from "./portfolio-money";
+import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 
 export function OverviewWorkspace() {

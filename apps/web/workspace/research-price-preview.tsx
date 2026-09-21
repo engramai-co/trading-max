@@ -3,7 +3,8 @@ import { researchPriceQuery } from "./research-queries";
 
 import { useQuery } from "@tanstack/react-query";
 import { Plot } from "./charts";
-import { inRange, number } from "./data";
+import { inRange } from "@/lib/portfolio/nav";
+import { number } from "@/workspace/data";
 import {
   Empty,
   Panel,

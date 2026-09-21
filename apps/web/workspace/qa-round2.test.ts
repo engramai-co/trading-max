@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError } from "./data";
+import { api, ApiError } from "@/workspace/data";
 import { statementUnit, statementValue } from "./financial-values";
 import { resolveResearchIdentity } from "./research-identity";
 

@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-09-21
+
+### Changed
+
+- Move shared portfolio history selection, P&L calculations, display sampling and chart/detail preparation into a framework-independent frontend library with colocated tests.
+- Give finite-number parsing and NAV helpers explicit shared owners, updating consumers instead of retaining legacy re-exports.
+- Check transitive runtime dependencies so the shared calculation path cannot acquire workspace components or framework adapters.
+
 ## [1.7.2] - 2026-09-21
 
 ### Changed

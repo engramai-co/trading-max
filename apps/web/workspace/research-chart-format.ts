@@ -1,4 +1,5 @@
-import { compact, number, numeric } from "./data";
+import { compact, number } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 
 /** Compact display only: source records and copy/export retain their precision. */
 export function chartNumber(value: unknown) {

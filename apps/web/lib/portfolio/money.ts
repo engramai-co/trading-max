@@ -1,6 +1,6 @@
 import type { NavPoint } from "@/lib/types";
-import { difference, navNumber, type Scope } from "./data";
-import { drawdowns, minimumObserved } from "./performance-math";
+import { difference, navNumber, type Scope } from "@/lib/portfolio/nav";
+import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 
 /** Same cash-flow-adjusted money basis at every valuation cadence. */
 export function portfolioMoney(points: NavPoint[], scope: Scope) {

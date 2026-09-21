@@ -1,9 +1,10 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
-import { numeric, percent } from "./data";
-import { historyGapSeries, historySeries } from "./history-series";
-import type { CalendarTimeline } from "./portfolio-history";
+import { numeric } from "@/lib/numeric";
+import { percent } from "@/workspace/data";
+import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import type { CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
 import { timelineAxis } from "./timeline-axis";
 

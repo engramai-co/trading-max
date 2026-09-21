@@ -1,7 +1,7 @@
 "use client";
 
 import { Freshness, useCopy } from "./foundation";
-import type { PortfolioHistory } from "./portfolio-history";
+import type { PortfolioHistory } from "@/lib/portfolio/history";
 
 /** Missing observations are conveyed by the dashed stroke, not another status row. */
 export function HistoryCoverage({ history }: { history: PortfolioHistory }) {

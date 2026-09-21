@@ -2,7 +2,7 @@
 
 import type { Preview } from "./research-facts";
 import { Plot } from "./charts";
-import { currency, percent, tone } from "./data";
+import { currency, percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 
 export function ValuationScenarioComparison({ preview, selected, onSelect }: {

@@ -1,4 +1,5 @@
-import { numeric, object, objects, str, type Json } from "./data";
+import { numeric } from "@/lib/numeric";
+import { object, objects, str, type Json } from "@/workspace/data";
 
 export function reviewHighlights(review: Json, cfd: boolean) {
   const attribution = object(review.attribution);

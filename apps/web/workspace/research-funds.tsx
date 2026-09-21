@@ -5,7 +5,7 @@ import { Select, TextInput } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Plot } from "./charts";
-import { api, number, object, percent, safeUrl, str } from "./data";
+import { api, number, object, percent, safeUrl, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,

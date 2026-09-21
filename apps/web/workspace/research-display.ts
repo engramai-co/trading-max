@@ -1,4 +1,5 @@
-import { numeric, object, percent, str, type Json } from "./data";
+import { numeric } from "@/lib/numeric";
+import { object, percent, str, type Json } from "@/workspace/data";
 
 /** The solver returns sentinel values outside its search bounds, not estimates. */
 export function impliedGrowthLabel(value: unknown, bound: unknown) {

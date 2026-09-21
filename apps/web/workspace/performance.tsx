@@ -1,7 +1,7 @@
 "use client";
 
 import { Group, Select, Tooltip } from "@mantine/core";
-import { drawdowns, minimumObserved } from "./performance-math";
+import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, NavPoint, RiskMetrics } from "@/lib/types";
@@ -9,20 +9,9 @@ import { HistoryChart, Legend, type ChartLine } from "./charts";
 import { TimelineChart } from "./timeline-chart";
 import type { TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
-import {
-  currency,
-  inRange,
-  navNumber,
-  observedNav,
-  number,
-  numeric,
-  object,
-  percent,
-  periodReturn,
-  tone,
-  type Range,
-  type Scope,
-} from "./data";
+import { currency, number, object, percent, tone } from "@/workspace/data";
+import { inRange, navNumber, observedNav, periodReturn, type Range, type Scope } from "@/lib/portfolio/nav";
+import { numeric } from "@/lib/numeric";
 import {
   Empty,
   Facts,
@@ -42,8 +31,8 @@ import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { HistoryCoverage } from "./history-coverage";
-import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "./portfolio-history";
-import { portfolioMoney } from "./portfolio-money";
+import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 

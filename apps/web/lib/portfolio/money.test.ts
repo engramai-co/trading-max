@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { portfolioMoney } from "./portfolio-money";
+import { portfolioMoney } from "@/lib/portfolio/money";
 
 describe("one money basis for intraday and daily ranges", () => {
   const rows = [[100, 100], [180, 180], [200, 180], [150, 130], [140, 130]];

@@ -1,4 +1,5 @@
-import { numeric, str, type Json } from "./data";
+import { numeric } from "@/lib/numeric";
+import { str, type Json } from "@/workspace/data";
 
 export const ratingKeys = [
   "strongBuy",

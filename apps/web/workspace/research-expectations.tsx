@@ -5,17 +5,9 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { ratingSummary, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
-import {
-  currency,
-  inRange,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  tone,
-} from "./data";
+import { currency, number, object, objects, percent, str, tone } from "@/workspace/data";
+import { inRange } from "@/lib/portfolio/nav";
+import { numeric } from "@/lib/numeric";
 import { Help, Panel, Tag, useCopy } from "./foundation";
 
 function ConsensusGauge({

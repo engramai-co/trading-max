@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawdowns, minimumObserved } from "./performance-math";
-import { inRange } from "./data";
+import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
+import { inRange } from "@/lib/portfolio/nav";
 
 describe("period performance", () => {
   it("measures cash-adjusted P&L from observed highs and preserves gaps", () => {

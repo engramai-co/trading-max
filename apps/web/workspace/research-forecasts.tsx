@@ -2,17 +2,8 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button } from "@mantine/core";
-import {
-  compact,
-  currency,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  tone,
-} from "./data";
+import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { estimateGroups } from "./research-display";
 import { useRouteState } from "./route-state";

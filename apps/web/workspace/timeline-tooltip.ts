@@ -1,4 +1,5 @@
-import { currency, numeric, percent } from "./data";
+import { currency, percent } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 
 export type TimelineTooltipRow = {
   label: string;

@@ -3,17 +3,8 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Checkbox, Group, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
-import {
-  compact,
-  currency,
-  number,
-  numeric,
-  object,
-  objects,
-  percent,
-  str,
-  type Json,
-} from "./data";
+import { compact, currency, number, object, objects, percent, str, type Json } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import {
   statementUnit,
   statementValue,

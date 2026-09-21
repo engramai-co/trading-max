@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { historyDisplayInterval, selectPortfolioHistory } from "./portfolio-history";
-import { historyGapSeries, historySeries } from "./history-series";
-import { portfolioMoney } from "./portfolio-money";
+import { historyDisplayInterval, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { portfolioMoney } from "@/lib/portfolio/money";
 
 function point(date: string, intraday = false, value: number | null = 100): NavPoint {
   return {

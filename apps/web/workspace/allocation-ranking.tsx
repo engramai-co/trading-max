@@ -1,7 +1,7 @@
 "use client";
 
 import type { AllocationSlice } from "./allocation-composition";
-import { currency, percent } from "./data";
+import { currency, percent } from "@/workspace/data";
 import { Empty, useCopy } from "./foundation";
 
 /** HTML labels let long category names wrap without clipping the chart. */

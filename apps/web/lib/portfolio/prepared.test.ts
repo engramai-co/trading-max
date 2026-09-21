@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { navNumber, type Scope } from "./data";
-import { historyGapSeries, historySeries } from "./history-series";
-import { PORTFOLIO_RANGES, selectPortfolioHistory } from "./portfolio-history";
-import { portfolioMoney } from "./portfolio-money";
-import { decodeTimeline, historyPage, prepareHistory, type HistoryInput } from "./prepared-history";
+import { navNumber, type Scope } from "@/lib/portfolio/nav";
+import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { PORTFOLIO_RANGES, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioMoney } from "@/lib/portfolio/money";
+import { decodeTimeline, historyPage, prepareHistory, type HistoryInput } from "@/lib/portfolio/prepared";
 
 function row(date: string, index: number, intraday = true): NavPoint {
   const value = 1000 + Math.sin(index / 19) * 50 + (index === 761 ? -300 : 0);

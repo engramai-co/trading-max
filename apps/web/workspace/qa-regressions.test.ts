@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Holding, NavPoint } from "@/lib/types";
-import { observedNav } from "./data";
+import { observedNav } from "@/lib/portfolio/nav";
 import { statementUnit, statementValue, quoteValue } from "./financial-values";
 import { behaviorObservation, reviewLabel, systemReason } from "./review-copy";
 import { compareHoldings, holdingSortDirection } from "./holdings-data";

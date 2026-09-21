@@ -33,7 +33,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, currency, jsonRequest, object, percent, tone } from "./data";
+import { api, currency, jsonRequest, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import {
   Empty,

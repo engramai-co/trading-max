@@ -24,16 +24,8 @@ import { compareHoldings, holdingSortDirection } from "./holdings-data";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
 import { AllocationComposition } from "./allocation-composition";
 import { AllocationRanking } from "./allocation-ranking";
-import {
-  currency,
-  number,
-  numeric,
-  objects,
-  percent,
-  safeUrl,
-  str,
-  tone,
-} from "./data";
+import { currency, number, objects, percent, safeUrl, str, tone } from "@/workspace/data";
+import { numeric } from "@/lib/numeric";
 import {
   Empty,
   Facts,
