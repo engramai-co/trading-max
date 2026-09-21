@@ -86,3 +86,32 @@ manifest; recovery dates, file hashes and manifests are unchanged. The packed
 root owns independent blocks, never links to the live artifact store. Retention
 traces this extra physical closure across every existing recovery manifest.
 This reader release does not create packed backups or retire original blobs.
+
+## Rebuildable history query index
+
+The API stores derived observations in
+`runtime/history-query-cache-v1/index.sqlite3`, separate from the canonical
+business ledger and immutable artifact store. Dataset identities include the
+exact NAV/history/cash-flow artifact hashes and the projection format version.
+Research-only publications reuse the same dataset; chart and detail requests
+still return the explicitly requested snapshot ID and its broker timestamp.
+
+SQLite keeps compressed, checksum-verified observation rows and dataset
+membership indexes. Unchanged rows are shared between at most two cached
+datasets. Transactions publish complete datasets; reads are serialized with
+rebuilds within the API process. Eviction removes only unreferenced derived
+rows, and full auto-vacuum returns freed database pages. The retained-file
+budget is 64 MiB: an oversized projection is served but is not retained. This
+is not a hard bound on transient parsing memory or transaction scratch space.
+
+A missing index rebuilds from original artifacts. Invalid compressed rows,
+checksum mismatches or SQLite failures fall back to the original projection,
+preserving the damaged cache for diagnosis. They never substitute an estimated
+balance or delete evidence. An unrecognized database identity or symlink is
+rejected. To rebuild a damaged index, stop the API and remove only this derived
+namespace after preserving any diagnostic copy needed; restart the API normally.
+
+Daily repository backups and manual archive backups exclude only this exact
+versioned cache namespace. Other runtime files, business SQLite data, immutable
+history and source downloads retain their existing backup contracts. Old
+readers can ignore the new cache; restoring financial data never depends on it.

@@ -10,6 +10,8 @@ import { timelineOption, type TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
 import { historyDay, valuationNote, type CalendarTimeline } from "./portfolio-history";
 import type { NavPoint } from "@/lib/types";
+import type { HistorySelection } from "./prepared-history";
+import { HistoryRecords } from "./history-records";
 
 export function TimelineChart({
   dates,
@@ -20,6 +22,7 @@ export function TimelineChart({
   details = [],
   observations,
   tooltip,
+  recordSource,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -29,6 +32,7 @@ export function TimelineChart({
   details?: Array<{ label: string; values: Array<number | null>; percentage?: boolean }>;
   observations?: NavPoint[];
   tooltip?: TimelineTooltip;
+  recordSource?: HistorySelection;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -67,7 +71,7 @@ export function TimelineChart({
           )
         }
       />
-      <details className="mx-chart-data">
+      {recordSource ? <HistoryRecords key={JSON.stringify(recordSource)} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable
           label={label}
@@ -93,7 +97,7 @@ export function TimelineChart({
             })),
           ]}
         />
-      </details>
+      </details>}
     </>
   );
 }

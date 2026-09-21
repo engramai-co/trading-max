@@ -192,6 +192,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboard/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard History */
+        get: operations["dashboard_history_v1_dashboard_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboard/lens/{view}": {
         parameters: {
             query?: never;
@@ -2856,6 +2873,19 @@ export interface components {
             requestedPeriod: string;
             /** Warning */
             warning: string | null;
+        };
+        /** HistorySnapshot */
+        HistorySnapshot: {
+            /** Brokerasof */
+            brokerAsOf: string;
+            /** Datarevision */
+            dataRevision: string;
+            /** Intradaynav */
+            intradayNav: components["schemas"]["NavPoint"][];
+            /** Nav */
+            nav: components["schemas"]["NavPoint"][];
+            /** Runid */
+            runId: string;
         };
         /** Holding */
         Holding: {
@@ -6406,6 +6436,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+        };
+    };
+    dashboard_history_v1_dashboard_history_get: {
+        parameters: {
+            query?: {
+                range?: "1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL";
+                scope?: "invest" | "isa" | "total" | "household" | "cfd";
+                run_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorySnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

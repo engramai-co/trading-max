@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 
 from ..dashboard_models import (
@@ -19,6 +19,7 @@ from ..dashboard_models import (
     OverviewReviewSummary,
 )
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
+from ..history_reader import HistorySnapshot
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
 from .dependencies import app_service, latest_or_503
 
@@ -132,6 +133,26 @@ def dashboard(request: Request) -> DashboardResponse:
 
 
 @router.get(
+    "/v1/dashboard/history",
+    response_model=HistorySnapshot,
+    response_model_exclude_defaults=True,
+    response_model_exclude_none=True,
+)
+def dashboard_history(
+    request: Request,
+    range: HistoryRange = "3M",
+    scope: HistoryScope = "total",
+    run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
+) -> HistorySnapshot:
+    store = app_service(request, "store")
+    try:
+        manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    return app_service(request, "history_reader").read(manifest, range, scope)
+
+
+@router.get(
     "/v1/dashboard/lens/{view}",
     response_model=DashboardLensSnapshot,
     response_model_exclude_defaults=True,
@@ -146,7 +167,9 @@ def dashboard_lens(
     detail: Literal["full", "summary"] = "full",
 ) -> DashboardLensSnapshot:
     manifest = latest_or_503(request)
-    dashboard_data = request.app.state.cached_dashboard(manifest)
+    dashboard_data = request.app.state.cached_dashboard(
+        manifest, include_history=detail != "summary"
+    )
     base = {
         "view": view,
         "run_id": manifest.run_id,
