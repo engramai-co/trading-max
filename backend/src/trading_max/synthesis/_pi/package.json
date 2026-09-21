@@ -1,0 +1,9 @@
+{
+  "name": "@trading-max/pi-transport",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": { "@earendil-works/pi-ai": "0.86.1" }
+}

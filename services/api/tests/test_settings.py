@@ -38,15 +38,17 @@ def test_profile_and_integration_overview_are_non_secret(
         assert {item["integrationId"] for item in payload["integrations"]} == {
             "trading212:invest",
             "trading212:isa",
-            "opencode:default",
-            "deepseek:default",
+            "openai:default",
+            "anthropic:default",
+            "google:default",
             "alpaca:default",
         }
         assert {item["provider"] for item in payload["llmProviders"]} == {
-            "opencode",
-            "deepseek",
+            "openai",
+            "anthropic",
+            "google",
         }
-        assert payload["llmRoutePolicy"]["defaultRoute"] == "opencode/deepseek-v4-flash"
+        assert payload["llmRoutePolicy"]["defaultRoute"] == "openai/gpt-5.4-mini"
         assert all(
             "secretKey" not in item and "apiKey" not in item for item in payload["integrations"]
         )
@@ -300,10 +302,8 @@ def test_deepseek_candidate_test_is_non_persistent_and_receipt_is_bound(
         assert tested.status_code == 200
         receipt = tested.json()["validationToken"]
         overview = client.get("/v1/settings/integrations").json()
-        deepseek = next(
-            item for item in overview["integrations"] if item["integrationId"] == "deepseek:default"
-        )
-        assert deepseek["configured"] is False
+        assert all(item["integrationId"] != "deepseek:default" for item in overview["integrations"])
+        assert app.state.settings_repository.get_integration("deepseek") is None
 
         changed = client.put(
             "/v1/settings/integrations/deepseek",

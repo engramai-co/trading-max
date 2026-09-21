@@ -599,7 +599,9 @@ class CfdAccountPreferenceUpdate(ApiModel):
 
 class IntegrationSummary(ApiModel):
     integration_id: str
-    provider: Literal["trading212", "deepseek", "openai", "opencode", "alpaca"]
+    provider: Literal[
+        "trading212", "deepseek", "openai", "opencode", "alpaca", "anthropic", "google"
+    ]
     profile: str | None = None
     enabled: bool = False
     configured: bool = False
@@ -615,7 +617,7 @@ class IntegrationSummary(ApiModel):
 
 
 class LLMProviderDescriptor(ApiModel):
-    provider: Literal["opencode", "deepseek"]
+    provider: Literal["openai", "anthropic", "google", "opencode", "deepseek"]
     label: str
     adapter: str
     base_url: str
@@ -631,7 +633,7 @@ class LLMRoutePolicy(ApiModel):
 
 
 class LLMRoutePolicyUpdate(ApiModel):
-    default_route: str = "opencode/deepseek-v4-flash"
+    default_route: str = "openai/gpt-5.4-mini"
     overrides: dict[str, str] = Field(default_factory=dict)
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -644,6 +646,7 @@ class LLMIntegrationCandidate(ApiModel):
 class LLMIntegrationRequest(LLMIntegrationCandidate):
     validation_token: str = Field(min_length=1, max_length=2_000)
     enabled: bool = True
+    use_as_default: bool = False
 
 
 class IntegrationOverview(ApiModel):

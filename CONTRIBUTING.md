@@ -33,13 +33,14 @@ maintain the project.
 Requirements:
 
 - Python 3.12 and uv;
-- Node.js 22 LTS and npm;
+- Node.js 22 LTS (22.19 or newer) and npm;
 - Git.
 
 ```bash
 git clone https://github.com/engramai-co/trading-max.git
 cd trading-max
 uv sync --all-packages --group dev --frozen
+npm run llm:install
 npm --prefix apps/web ci --no-audit --no-fund
 uv run pytest services/api/tests backend/tests
 npm --prefix apps/web run build
@@ -81,6 +82,8 @@ The normal CI and Release checks still run. It cannot be combined with
 
 ```bash
 uv sync --all-packages --group dev --frozen
+npm run llm:install
+npm run test:llm
 uv run ruff check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
 uv run ruff format --check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
 uv run pytest services/api/tests backend/tests

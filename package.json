@@ -10,6 +10,8 @@
   "bugs": "https://github.com/engramai-co/trading-max/issues",
   "homepage": "https://github.com/engramai-co/trading-max#readme",
   "scripts": {
+    "llm:install": "npm --prefix backend/src/trading_max/synthesis/_pi ci --ignore-scripts --no-audit --no-fund",
+    "test:llm": "npm --prefix backend/src/trading_max/synthesis/_pi test",
     "api": "uv run uvicorn services.api.trading_max_api.app:app --host 127.0.0.1 --port 8421",
     "build": "npm --prefix apps/web run build",
     "check:api-types": "npm --prefix apps/web run check:api-types",

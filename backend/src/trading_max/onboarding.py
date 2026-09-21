@@ -26,7 +26,7 @@ from .source_checkout import (
 
 API_URL = "http://127.0.0.1:8421"
 WEB_URL = "http://127.0.0.1:3413"
-SUPPORTED_NODE_VERSION = (20, 19, 0)
+SUPPORTED_NODE_VERSION = (22, 19, 0)
 
 
 class OnboardingError(RuntimeError):
@@ -102,7 +102,7 @@ def preflight(app_root: Path) -> None:
     except ValueError as exc:
         raise OnboardingError(f"could not parse Node version: {versions['Node']}") from exc
     if node_version < SUPPORTED_NODE_VERSION:
-        raise OnboardingError("Node.js 20.19 or newer is required; Node 22 LTS is recommended")
+        raise OnboardingError("Node.js 22.19 or newer is required; Node 22 LTS is recommended")
     for label, value in versions.items():
         print(f"  ✓ {label}: {value}")
     try:
@@ -121,6 +121,7 @@ def preflight(app_root: Path) -> None:
 def build_web(app_root: Path) -> None:
     print("\n[3/6] Installing locked web dependencies and building")
     _run(["uv", "sync", "--all-packages", "--frozen"], cwd=app_root)
+    _run(["npm", "run", "llm:install"], cwd=app_root)
     _run(
         ["npm", "--prefix", "apps/web", "ci", "--no-audit", "--no-fund"],
         cwd=app_root,
@@ -338,12 +339,12 @@ def _configure_llm(
 ) -> bool:
     selection = _choose(
         "\nChoose an analysis provider:",
-        ["Keep current analysis configuration", "OpenCode Go", "DeepSeek"],
+        ["Keep current analysis configuration", "OpenAI", "Anthropic", "Google"],
     )
     if selection == 0:
         print("  ✓ current analysis configuration kept")
         return False
-    provider = "opencode" if selection == 1 else "deepseek"
+    provider = ("openai", "anthropic", "google")[selection - 1]
     providers = _request(
         client,
         "GET",

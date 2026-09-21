@@ -28,6 +28,9 @@ if [[ ! -f "$APP_ROOT/apps/web/.next/BUILD_ID" || ! -f "$APP_ROOT/apps/web/.next
   npm --prefix apps/web ci --no-audit --no-fund
   npm --prefix apps/web run build
 fi
+if [[ ! -f "$APP_ROOT/backend/src/trading_max/synthesis/_pi/node_modules/@earendil-works/pi-ai/package.json" ]]; then
+  npm run llm:install
+fi
 
 mkdir -p "$STATE_ROOT/logs"
 export TRADING_MAX_STATE_ROOT="$STATE_ROOT"

@@ -542,7 +542,7 @@ export type UserProfile = {
 
 export type IntegrationSummary = {
   integrationId: string;
-  provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca";
+  provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca" | "anthropic" | "google";
   profile: string | null;
   enabled: boolean;
   configured: boolean;
@@ -557,7 +557,7 @@ export type IntegrationSummary = {
   updatedAt: string;
 };
 
-export type LLMProvider = "opencode" | "deepseek";
+export type LLMProvider = "openai" | "anthropic" | "google" | "opencode" | "deepseek";
 
 export type LLMProviderDescriptor = {
   provider: LLMProvider;

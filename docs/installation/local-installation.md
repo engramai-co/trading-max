@@ -56,7 +56,7 @@ external state.
 - Git
 - Python **3.12**
 - [uv](https://docs.astral.sh/uv/)
-- Node.js **22 LTS** (minimum supported version: 20.19)
+- Node.js **22 LTS** (minimum supported version: 22.19)
 - npm, included with Node.js
 - Free disk space for dependencies and a production build, plus growing external
   state and a separate backup; long histories can consume many gigabytes
@@ -89,7 +89,7 @@ The guided command:
 - creates the external state directory and database;
 - builds the production web application;
 - optionally connects Trading 212 Invest and Stocks ISA;
-- optionally connects OpenCode Go or DeepSeek;
+- optionally connects OpenAI (the default), Anthropic or Google through Pi AI;
 - hides every credential entry and tests it before saving;
 - saves secrets only to the operating-system credential manager;
 - optionally installs the per-user macOS services;

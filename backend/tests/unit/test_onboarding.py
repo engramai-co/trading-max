@@ -17,7 +17,7 @@ from trading_max.onboarding import (
 from trading_max.source_checkout import SourceCheckout
 
 
-@pytest.mark.parametrize("node_version", ["v20.0.0", "v20.18.3", "v18.20.8"])
+@pytest.mark.parametrize("node_version", ["v20.19.0", "v22.18.0", "v18.20.8"])
 def test_preflight_enforces_the_declared_minimum_node_release(
     tmp_path: Path,
     monkeypatch,
@@ -35,11 +35,11 @@ def test_preflight_enforces_the_declared_minimum_node_release(
         lambda root: SourceCheckout(root, "a" * 40, "main", False, "origin"),
     )
 
-    with pytest.raises(OnboardingError, match=r"20\.19"):
+    with pytest.raises(OnboardingError, match=r"22\.19"):
         onboarding.preflight(tmp_path)
 
 
-@pytest.mark.parametrize("node_version", ["v20.19.0", "v20.20.1", "v22.0.0", "v24.1.0"])
+@pytest.mark.parametrize("node_version", ["v22.19.0", "v22.22.2", "v24.1.0"])
 def test_preflight_accepts_supported_node_releases(
     tmp_path: Path,
     monkeypatch,

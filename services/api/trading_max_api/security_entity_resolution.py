@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from trading_max.synthesis.providers.pi import ProviderError, decode_json, user_message
 
 from .provider_runtime import ProviderRuntimeError
 
@@ -31,7 +33,7 @@ class OpenCodeWebSearchResolver:
 
     The historical class name remains public for compatibility. Runtime routing
     may supply OpenCode or direct DeepSeek; both use the same bounded,
-    OpenAI-compatible tool-call contract.
+    Pi message contract; the workflow still decides both calls.
     """
 
     def __init__(
@@ -44,28 +46,6 @@ class OpenCodeWebSearchResolver:
         self.provider_factory = provider_factory
         self.timeout = timeout
         self._http = http_client
-
-    @staticmethod
-    def _message(payload: Any) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            raise ValueError("model response is not an object")
-        choices = payload.get("choices")
-        if not isinstance(choices, list) or not choices:
-            raise ValueError("model response contains no choices")
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            raise ValueError("model response contains no message")
-        return message
-
-    @staticmethod
-    def _decode_json_content(message: dict[str, Any]) -> dict[str, Any]:
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("model response contains no JSON content")
-        decoded = json.loads(content)
-        if not isinstance(decoded, dict):
-            raise ValueError("entity resolution must be an object")
-        return decoded
 
     @staticmethod
     def _parse_mcp_result(body: str) -> str:
@@ -115,24 +95,13 @@ class OpenCodeWebSearchResolver:
     @staticmethod
     def _tool_definition() -> dict[str, Any]:
         return {
-            "type": "function",
-            "function": {
-                "name": "websearch",
-                "description": (
-                    "Search the public web for current company identity, ticker, "
-                    "exchange, and share-class information."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "A focused web search query.",
-                        }
-                    },
-                    "required": ["query"],
-                    "additionalProperties": False,
-                },
+            "name": "websearch",
+            "description": "Search public company identity, ticker, exchange and share-class information.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
             },
         }
 
@@ -146,15 +115,17 @@ class OpenCodeWebSearchResolver:
             provider = self.provider_factory("taxonomy")
         except ProviderRuntimeError:
             return None
-        if getattr(provider, "name", "") not in {"opencode", "deepseek"} or getattr(
-            provider, "fake", False
-        ):
+        if getattr(provider, "name", "") not in {
+            "openai",
+            "anthropic",
+            "google",
+            "opencode",
+            "deepseek",
+        } or getattr(provider, "fake", False):
             return None
-        api_key = getattr(provider, "api_key", "")
-        base_url = str(getattr(provider, "base_url", "")).rstrip("/")
+        if not callable(getattr(provider, "complete", None)):
+            return None
         request_model = str(getattr(provider, "model", ""))
-        if not api_key or not base_url or not request_model:
-            return None
 
         system = (
             "Resolve a user's colloquial company name to the corresponding publicly "
@@ -165,82 +136,54 @@ class OpenCodeWebSearchResolver:
             "symbols), and evidenceUrls (array of source URLs). Include multiple ticker "
             "symbols only for genuine listed share classes."
         )
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": normalized},
-        ]
-        first_request = {
-            "model": request_model,
-            "messages": messages,
-            "tools": [self._tool_definition()],
-            "tool_choice": "required",
-            "thinking": {"type": "disabled"},
-            "temperature": 0,
-            "max_tokens": 1_200,
-        }
-
+        messages = [user_message(normalized)]
         client = self._http or httpx.Client(timeout=self.timeout)
         owns_client = self._http is None
         try:
-            first = client.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=first_request,
+            first = provider.complete(
+                system=system,
+                messages=messages,
+                tools=[self._tool_definition()],
+                tool_choice="required",
+                max_tokens=1_200,
+                temperature=0,
+                timeout=self.timeout,
             )
-            first.raise_for_status()
-            first_payload = first.json()
-            assistant = self._message(first_payload)
-            tool_calls = assistant.get("tool_calls")
-            if not isinstance(tool_calls, list) or len(tool_calls) != 1:
+            assistant = first["message"]
+            tool_calls = [part for part in assistant["content"] if part.get("type") == "toolCall"]
+            if len(tool_calls) != 1 or tool_calls[0].get("name") != "websearch":
                 return None
             tool_call = tool_calls[0]
-            function = tool_call.get("function") if isinstance(tool_call, dict) else None
-            if not isinstance(function, dict) or function.get("name") != "websearch":
-                return None
-            arguments = function.get("arguments")
-            if not isinstance(arguments, str):
-                return None
-            parsed_arguments = json.loads(arguments)
-            tool_query = parsed_arguments.get("query")
+            arguments = tool_call.get("arguments")
+            tool_query = arguments.get("query") if isinstance(arguments, dict) else None
+            tool_call_id = tool_call.get("id")
             if not isinstance(tool_query, str) or not tool_query.strip():
                 return None
-            web_result = self._web_search(client, tool_query.strip()[:300])
-            tool_call_id = tool_call.get("id")
             if not isinstance(tool_call_id, str) or not tool_call_id:
                 return None
-
-            final_messages = [
-                *messages,
-                assistant,
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": web_result[:20_000],
-                },
-            ]
-            final = client.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": request_model,
-                    "messages": final_messages,
-                    "tools": [self._tool_definition()],
-                    "tool_choice": "none",
-                    "response_format": {"type": "json_object"},
-                    "thinking": {"type": "disabled"},
-                    "temperature": 0,
-                    "max_tokens": 1_200,
-                },
+            web_result = self._web_search(client, tool_query.strip()[:300])
+            final = provider.complete(
+                system=system,
+                messages=[
+                    *messages,
+                    assistant,
+                    {
+                        "role": "toolResult",
+                        "toolCallId": tool_call_id,
+                        "toolName": "websearch",
+                        "content": [{"type": "text", "text": web_result[:20_000]}],
+                        "isError": False,
+                        "timestamp": int(time.time() * 1000),
+                    },
+                ],
+                tools=[self._tool_definition()],
+                tool_choice="none",
+                json_output=True,
+                max_tokens=1_200,
+                temperature=0,
+                timeout=self.timeout,
             )
-            final.raise_for_status()
-            final_payload = final.json()
-            decoded = self._decode_json_content(self._message(final_payload))
+            decoded = decode_json(final["text"])
             if decoded.get("resolved") is not True:
                 return None
             raw_queries = decoded.get("searchQueries")
@@ -264,14 +207,14 @@ class OpenCodeWebSearchResolver:
                 else ()
             )
             company_name = str(decoded.get("companyName") or normalized).strip()[:200]
-            provider_model = str(final_payload.get("model") or request_model)[:100]
+            provider_model = str(final["message"].get("model") or request_model)[:100]
             return WebEntityResolution(
                 company_name=company_name or normalized,
                 search_queries=tuple(search_queries),
                 evidence_urls=evidence_urls,
                 provider_model=provider_model,
             )
-        except (httpx.HTTPError, TypeError, ValueError):
+        except (ProviderError, httpx.HTTPError, KeyError, TypeError, ValueError):
             return None
         finally:
             if owns_client:

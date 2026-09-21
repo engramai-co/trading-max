@@ -244,6 +244,7 @@ class Deployment:
         )
         self.environment["PATH"] = str(node.parent) + os.pathsep + self.environment.get("PATH", "")
         self.run("uv", "sync", "--all-packages", "--no-dev", "--frozen", cwd=self.candidate)
+        self.run("npm", "run", "llm:install", cwd=self.candidate)
         web = self.candidate / "apps" / "web"
         self.run("npm", "ci", "--no-audit", "--no-fund", cwd=web)
         self.run("npm", "run", "build", cwd=web)

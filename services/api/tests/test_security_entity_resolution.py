@@ -15,119 +15,90 @@ from services.api.trading_max_api.security_entity_resolution import (
 
 @pytest.mark.parametrize("provider_name", ["opencode", "deepseek"])
 def test_resolver_runs_one_websearch_tool_call(provider_name: str) -> None:
-    requests: list[httpx.Request] = []
+    web_requests = []
+    model_calls = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append(request)
+    def handler(request):
+        web_requests.append(request)
+        assert str(request.url) == WEB_SEARCH_MCP_URL
         body = json.loads(request.content)
-        if str(request.url) == WEB_SEARCH_MCP_URL:
-            assert body["method"] == "tools/call"
-            assert body["params"]["name"] == "web_search_exa"
-            assert (
-                "Google publicly traded parent company ticker share classes"
-                in (body["params"]["arguments"]["query"])
-            )
-            return httpx.Response(
-                200,
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "result": {
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": (
-                                    "Alphabet Inc. is Google's listed parent. "
-                                    "Class A trades as GOOGL and Class C as GOOG. "
-                                    "https://abc.xyz/investor/"
-                                ),
-                            }
-                        ]
-                    },
-                },
-            )
-        if len([item for item in requests if "chat/completions" in str(item.url)]) == 1:
-            assert body["model"] == "deepseek-v4-flash"
-            assert body["tool_choice"] == "required"
-            assert [item["function"]["name"] for item in body["tools"]] == ["websearch"]
-            return httpx.Response(
-                200,
-                json={
-                    "model": "ds-v4-flash-07-31",
-                    "choices": [
-                        {
-                            "message": {
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [
-                                    {
-                                        "id": "call_1",
-                                        "type": "function",
-                                        "function": {
-                                            "name": "websearch",
-                                            "arguments": json.dumps(
-                                                {
-                                                    "query": (
-                                                        "Google publicly traded parent "
-                                                        "company ticker share classes"
-                                                    )
-                                                }
-                                            ),
-                                        },
-                                    }
-                                ],
-                            }
-                        }
-                    ],
-                },
-            )
-        assert body["messages"][-1]["role"] == "tool"
-        assert body["messages"][-1]["tool_call_id"] == "call_1"
-        assert "Alphabet Inc." in body["messages"][-1]["content"]
+        assert body["params"]["arguments"]["query"] == "Google parent ticker"
         return httpx.Response(
             200,
             json={
-                "model": "ds-v4-flash-07-31",
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": json.dumps(
-                                {
-                                    "resolved": True,
-                                    "companyName": "Alphabet Inc.",
-                                    "searchQueries": ["GOOGL", "GOOG"],
-                                    "evidenceUrls": ["https://abc.xyz/investor/"],
-                                }
-                            ),
-                        }
-                    }
-                ],
+                "result": {
+                    "content": [
+                        {"type": "text", "text": "Alphabet GOOGL and GOOG https://abc.xyz/"}
+                    ]
+                }
             },
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    def complete(**kwargs):
+        model_calls.append(kwargs)
+        if len(model_calls) == 1:
+            assert kwargs["tool_choice"] == "required"
+            assert kwargs["tools"][0]["name"] == "websearch"
+            return {
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolCall",
+                            "id": "call_1",
+                            "name": "websearch",
+                            "arguments": {"query": "Google parent ticker"},
+                        }
+                    ],
+                }
+            }
+        assert kwargs["tool_choice"] == "none"
+        assert kwargs["messages"][-1]["role"] == "toolResult"
+        assert kwargs["messages"][-1]["toolCallId"] == "call_1"
+        assert "Alphabet" in kwargs["messages"][-1]["content"][0]["text"]
+        return {
+            "text": json.dumps(
+                {
+                    "resolved": True,
+                    "companyName": "Alphabet Inc.",
+                    "searchQueries": ["GOOGL", "GOOG"],
+                    "evidenceUrls": ["https://abc.xyz/investor/"],
+                }
+            ),
+            "message": {"model": "saved-model"},
+        }
+
     provider = SimpleNamespace(
-        api_key="not-a-secret",
-        base_url=(
-            "https://opencode.ai/zen/go/v1"
-            if provider_name == "opencode"
-            else "https://api.deepseek.com"
-        ),
-        fake=False,
-        model="deepseek-v4-flash",
-        name=provider_name,
+        name=provider_name, fake=False, model="saved-model", complete=complete
     )
-    resolver = OpenCodeWebSearchResolver(lambda _: provider, http_client=client)
-
+    resolver = OpenCodeWebSearchResolver(
+        lambda _: provider, http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
     result = resolver.resolve("google")
-
-    assert result is not None
     assert result.company_name == "Alphabet Inc."
     assert result.search_queries == ("GOOGL", "GOOG")
-    assert result.evidence_urls == ("https://abc.xyz/investor/",)
-    assert result.provider_model == "ds-v4-flash-07-31"
-    assert len(requests) == 3
+    assert result.provider_model == "saved-model"
+    assert len(model_calls) == 2 and len(web_requests) == 1
+
+
+@pytest.mark.parametrize(
+    "calls",
+    [
+        [],
+        [
+            {"type": "toolCall", "id": "1", "name": "websearch", "arguments": {"query": "one"}},
+            {"type": "toolCall", "id": "2", "name": "websearch", "arguments": {"query": "two"}},
+        ],
+    ],
+)
+def test_resolver_does_not_expand_the_tool_loop(calls):
+    provider = SimpleNamespace(
+        name="deepseek",
+        fake=False,
+        model="saved-model",
+        complete=lambda **kwargs: {"message": {"content": calls}},
+    )
+    assert OpenCodeWebSearchResolver(lambda _: provider).resolve("google") is None
 
 
 def test_opencode_resolver_is_optional_when_provider_is_unavailable() -> None:

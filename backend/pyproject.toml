@@ -34,6 +34,9 @@ trading-max = "trading_max.cli:main"
 packages = ["src/trading_max"]
 artifacts = ["src/trading_max/reference/data/*.json"]
 
+[tool.hatch.build]
+exclude = ["**/node_modules/**", "**/_pi/test/**"]
+
 [tool.hatch.build.targets.sdist]
 artifacts = ["src/trading_max/reference/data/*.json"]
 include = [

@@ -1,16 +1,9 @@
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
-import httpx
 from fastapi.testclient import TestClient
-from trading_max.synthesis import (
-    AnalysisDefinition,
-    DeepSeekProvider,
-    OpenAIResponsesProvider,
-)
 
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.artifacts import ArtifactStore
@@ -91,73 +84,6 @@ def test_fake_provider_smoke_runs_portfolio_and_ticker_analysis(
         technical = client.get("/v1/analysis/latest?lens=technical_regime&ticker=BE").json()
         assert technical["ticker"] == "BE"
         assert technical["analysisId"] == "technical_regime"
-
-
-def test_openai_responses_provider_uses_strict_schema(monkeypatch) -> None:
-    captured: dict = {}
-
-    def fake_post(_client, url: str, *, headers: dict, json: dict) -> httpx.Response:
-        captured.update({"url": url, "headers": headers, "json": json})
-        request = httpx.Request("POST", url)
-        return httpx.Response(
-            200,
-            request=request,
-            json={
-                "output_text": json_module.dumps(_decoded_analysis()),
-                "usage": {"input_tokens": 10, "output_tokens": 20, "total_tokens": 30},
-            },
-        )
-
-    json_module = json
-    monkeypatch.setattr(httpx.Client, "post", fake_post)
-    provider = OpenAIResponsesProvider(api_key="test-key", model="test-model")
-    result = provider.analyze(
-        AnalysisDefinition(analysis_id="test", title="Test"),
-        {"snapshotRunId": "test"},
-    )
-
-    assert captured["url"].endswith("/responses")
-    assert captured["json"]["store"] is False
-    assert captured["json"]["text"]["format"]["strict"] is True
-    assert result.response.headline.en == "Conclusion"
-    assert result.usage.total_tokens == 30
-
-
-def test_deepseek_provider_retries_and_validates_json_mode(monkeypatch) -> None:
-    captured: list[dict] = []
-    contents = ["", '{"headline": {}}', json.dumps(_decoded_analysis())]
-
-    def fake_post(_client, url: str, *, headers: dict, json: dict) -> httpx.Response:
-        captured.append({"url": url, "headers": headers, "json": json})
-        request = httpx.Request("POST", url)
-        return httpx.Response(
-            200,
-            request=request,
-            json={
-                "choices": [{"message": {"content": contents[len(captured) - 1]}}],
-                "usage": {"prompt_tokens": 11, "completion_tokens": 22, "total_tokens": 33},
-            },
-        )
-
-    monkeypatch.setattr(httpx.Client, "post", fake_post)
-    provider = DeepSeekProvider(
-        api_key="test-key",
-        model="deepseek-v4-flash",
-        sleep=lambda _seconds: None,
-    )
-    result = provider.analyze(
-        AnalysisDefinition(analysis_id="test", title="Test"),
-        {"snapshotRunId": "test"},
-    )
-
-    assert len(captured) == 3
-    request = captured[-1]
-    assert request["url"] == "https://api.deepseek.com/chat/completions"
-    assert request["json"]["response_format"] == {"type": "json_object"}
-    assert request["json"]["thinking"] == {"type": "disabled"}
-    assert "schema" in request["json"]["messages"][0]["content"]
-    assert result.response.headline.en == "Conclusion"
-    assert result.usage.total_tokens == 33
 
 
 def test_deepseek_configuration_can_use_os_credential_store(tmp_path: Path) -> None:

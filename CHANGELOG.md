@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidate model requests on the pinned Pi AI SDK while retaining the existing
+  research workflows and output validation. No agent runtime is introduced.
+- Default model assignments to OpenAI and offer a first-connection provider picker
+  for OpenAI, Anthropic and Google. Retire legacy DeepSeek/OpenCode defaults without
+  deleting their credentials or historical results. Requests never switch to an
+  unselected provider when the selected credential is unavailable.
+- Require Node.js 22.19 or newer and install the locked model transport alongside
+  local setup and Mac mini release builds.
+
 ## [1.7.4] - 2026-09-21
 
 ### Fixed

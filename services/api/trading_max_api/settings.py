@@ -440,7 +440,11 @@ class SettingsRepository:
         test_status: str,
         error_code: str | None = None,
         actor: str = "local",
+        use_as_default: bool = False,
     ) -> IntegrationSummary:
+        route = parse_route(f"{provider}/{model}").route_id if use_as_default else None
+        if route and not enabled:
+            raise ValueError("the default provider must be enabled")
         integration_id = _integration_id(provider, profile)
         now = _iso()
         tested_at = now if test_status != "untested" else None
@@ -487,6 +491,23 @@ class SettingsRepository:
                 revision=revision,
                 metadata={"provider": provider, "profile": profile, "enabled": enabled},
             )
+            if route:
+                connection.execute(
+                    """UPDATE llm_route_policy SET default_route = ?,
+                       revision = revision + 1, updated_at = ? WHERE policy_id = 'active'""",
+                    (route, now),
+                )
+                policy_revision = connection.execute(
+                    "SELECT revision FROM llm_route_policy WHERE policy_id = 'active'"
+                ).fetchone()["revision"]
+                self._audit(
+                    connection,
+                    actor=actor,
+                    action="llm_route_policy.updated",
+                    integration_id=integration_id,
+                    revision=policy_revision,
+                    metadata={"default_route": route},
+                )
         result = self.get_integration(provider, profile)
         if result is None:  # pragma: no cover - transaction invariant
             raise RuntimeError("integration metadata was not persisted")

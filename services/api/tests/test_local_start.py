@@ -27,6 +27,11 @@ def foreground_host(tmp_path: Path):
     (build / "standalone").mkdir(parents=True)
     (build / "BUILD_ID").write_text("synthetic")
     (build / "standalone/server.js").touch()
+    pi_package = (
+        checkout / "backend/src/trading_max/synthesis/_pi/node_modules/@earendil-works/pi-ai"
+    )
+    pi_package.mkdir(parents=True)
+    (pi_package / "package.json").write_text('{"version":"synthetic"}')
     state = tmp_path / "state with spaces"
     (state / "secrets").mkdir(parents=True)
     (state / "secrets/trading_max.env").write_text(

@@ -2982,7 +2982,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca";
+            provider: "trading212" | "deepseek" | "openai" | "opencode" | "alpaca" | "anthropic" | "google";
             /**
              * Revision
              * @default 1
@@ -3178,6 +3178,11 @@ export interface components {
             enabled: boolean;
             /** Model */
             model: string;
+            /**
+             * Useasdefault
+             * @default false
+             */
+            useAsDefault: boolean;
             /** Validationtoken */
             validationToken: string;
         };
@@ -3197,7 +3202,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "opencode" | "deepseek";
+            provider: "openai" | "anthropic" | "google" | "opencode" | "deepseek";
         };
         /** LLMProvidersResponse */
         LLMProvidersResponse: {
@@ -3227,7 +3232,7 @@ export interface components {
         LLMRoutePolicyUpdate: {
             /**
              * Defaultroute
-             * @default opencode/deepseek-v4-flash
+             * @default openai/gpt-5.4-mini
              */
             defaultRoute: string;
             /** Expectedrevision */

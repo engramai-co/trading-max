@@ -2,6 +2,7 @@
 
 import {
   Button,
+  Checkbox,
   Drawer,
   Group,
   Modal,
@@ -59,6 +60,7 @@ type Connection =
       provider: LLMProviderDescriptor;
       title: string;
       existing?: IntegrationSummary;
+      useAsDefault?: boolean;
     };
 type TestResult = {
   status: "succeeded" | "failed";
@@ -76,6 +78,8 @@ export function SettingsWorkspace() {
   });
   const [connection, setConnection] = useState<Connection | null>(null);
   const [saved, setSaved] = useState<"saved" | "disconnected" | null>(null);
+  const [offerModelConnection, setOfferModelConnection] = useState(true);
+  const [selectedProvider, setSelectedProvider] = useState("openai");
   const tabs = [
     { value: "accounts", label: t("账户与数据", "Accounts & data") },
     { value: "models", label: t("AI 分析", "AI analysis") },
@@ -86,6 +90,10 @@ export function SettingsWorkspace() {
     ? params.get("tab")!
     : "accounts";
   const data = query.data;
+  const hasModelConnection = data?.llmProviders.some((provider) =>
+    data.integrations.some((item) => item.provider === provider.provider &&
+      item.configured && item.enabled && !item.needsSecret),
+  );
   return (
     <Page
       title={t("设置与连接", "Settings & connections")}
@@ -196,7 +204,7 @@ export function SettingsWorkspace() {
               <Panel
                 title={t("分析模型（可选）", "Analysis models (optional)")}
               >
-                <div className="mx-connection-grid">
+                <div className="mx-connection-grid mx-model-connections">
                   {data.llmProviders.map((provider) => (
                     <ConnectionCard
                       key={provider.provider}
@@ -215,6 +223,8 @@ export function SettingsWorkspace() {
                           existing: data.integrations.find(
                             (i) => i.provider === provider.provider,
                           ),
+                          useAsDefault: !hasModelConnection ||
+                            data.llmRoutePolicy?.defaultRoute.startsWith(provider.provider + "/"),
                         });
                       }}
                     />
@@ -231,6 +241,7 @@ export function SettingsWorkspace() {
               </Panel>
               {data.llmRoutePolicy && (
                 <ModelRouting
+                  key={data.llmRoutePolicy.revision}
                   policy={data.llmRoutePolicy}
                   providers={data.llmProviders}
                   refresh={() => void query.refetch()}
@@ -247,6 +258,42 @@ export function SettingsWorkspace() {
           )}
         </>
       )}
+      <Modal
+        opened={view === "models" && Boolean(data?.llmProviders.length) &&
+          !hasModelConnection && offerModelConnection && !connection}
+        onClose={() => setOfferModelConnection(false)}
+        title={t("连接你的分析模型", "Connect your analysis model")}
+        centered
+      >
+        <Stack gap="lg">
+          <p>{t(
+            "选择你想使用的提供商，下一步连接 API 密钥。默认使用 OpenAI；你也可以稍后再设置。",
+            "Choose a provider, then connect your API key. OpenAI is selected by default. You can also set this up later.",
+          )}</p>
+          <Select
+            label={t("模型提供商", "Model provider")}
+            value={selectedProvider}
+            onChange={(value) => setSelectedProvider(value ?? "openai")}
+            data={data?.llmProviders.map((provider) => ({
+              value: provider.provider, label: provider.label,
+            })) ?? []}
+            allowDeselect={false}
+          />
+          <Group justify="flex-end">
+            <Button variant="subtle" onClick={() => setOfferModelConnection(false)}>
+              {t("稍后设置", "Set up later")}
+            </Button>
+            <Button onClick={() => {
+              const provider = data?.llmProviders.find((item) => item.provider === selectedProvider);
+              if (!provider) return;
+              setOfferModelConnection(false);
+              setConnection({ kind: "model", provider, title: provider.label, useAsDefault: true });
+            }} rightSection={<ArrowRight size={16} />}>
+              {t("继续连接", "Continue")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Drawer
         opened={connection !== null}
         onClose={() => setConnection(null)}
@@ -350,6 +397,9 @@ function ConnectionForm({
       : "",
   );
   const [token, setToken] = useState<string | null>(null);
+  const [useAsDefault, setUseAsDefault] = useState(
+    connection.kind === "model" && Boolean(connection.useAsDefault),
+  );
   const [disconnecting, setDisconnecting] = useState(false);
   const path =
     connection.kind === "broker"
@@ -373,6 +423,7 @@ function ConnectionForm({
           ...payload,
           enabled: true,
           validationToken: token,
+          ...(connection.kind === "model" ? { useAsDefault } : {}),
         }),
       ),
     onSuccess: () => {
@@ -407,8 +458,8 @@ function ConnectionForm({
               "Use this account’s read-only API credentials. Saved keys are never filled back into the form.",
             )
           : t(
-              "分析请求会发送到你选择的模型提供商。密钥仅用于建立连接。",
-              "Analysis requests are sent to the provider you choose. Your key is used only to establish the connection.",
+              "分析请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
+              "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
             )}
       </Notice>
       <form
@@ -469,6 +520,15 @@ function ConnectionForm({
               onChange={(v) => edit(() => setModel(v ?? ""))}
               data={connection.provider.models}
               searchable
+              disabled={busy}
+            />
+          )}
+          {connection.kind === "model" && (
+            <Checkbox
+              label={t("设为默认分析模型", "Use as the default analysis model")}
+              description={t("未单独分配的分析共用此模型。", "Used by every analysis without a separate assignment.")}
+              checked={useAsDefault}
+              onChange={(event) => setUseAsDefault(event.currentTarget.checked)}
               disabled={busy}
             />
           )}

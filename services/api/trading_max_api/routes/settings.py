@@ -19,6 +19,7 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212Error,
 )
 from trading_max.synthesis import ProviderError
+from trading_max.synthesis.providers.pi import PiProvider, user_message
 
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
@@ -112,28 +113,9 @@ def _automation_settings(request: Request) -> AutomationSettings:
 
 
 def _check_deepseek_connection(*, api_key: str, model: str, base_url: str) -> str:
-    with httpx.Client(timeout=15, follow_redirects=False) as client:
-        response = client.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with OK."}],
-                "max_tokens": 32,
-                "temperature": 0,
-                "thinking": {"type": "disabled"},
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("provider returned an empty completion")
-    return "DeepSeek connectivity check succeeded"
+    return _check_openai_compatible_connection(
+        api_key=api_key, model=model, base_url=base_url, provider_label="DeepSeek"
+    )
 
 
 def _check_openai_compatible_connection(
@@ -143,27 +125,18 @@ def _check_openai_compatible_connection(
     base_url: str,
     provider_label: str,
 ) -> str:
-    with httpx.Client(timeout=20, follow_redirects=False) as client:
-        response = client.post(
-            f"{base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with OK."}],
-                "max_tokens": 32,
-                "temperature": 0,
-                "thinking": {"type": "disabled"},
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        content = (choices[0].get("message") or {}).get("content") if choices else None
-        if not isinstance(content, str) or not content.strip():
-            raise ValueError("provider returned an empty completion")
+    provider = PiProvider(
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        provider_name=provider_label.lower(),
+        max_attempts=1,
+    )
+    result = provider.complete(
+        messages=[user_message("Reply with OK.")], max_tokens=32, timeout=20, temperature=0
+    )
+    if not result.get("text", "").strip():
+        raise ValueError("provider returned an empty completion")
     return f"{provider_label} connectivity check succeeded"
 
 
@@ -175,8 +148,7 @@ def _integration_overview(request: Request) -> IntegrationOverview:
         ("alpaca", None),
         ("trading212", "invest"),
         ("trading212", "isa"),
-        ("opencode", None),
-        ("deepseek", None),
+        *((spec.provider, None) for spec in PROVIDER_REGISTRY.values() if not spec.legacy),
     )
     existing = {(item.provider, item.profile): item for item in preferences.list_integrations()}
     integrations: list[IntegrationSummary] = []
@@ -822,6 +794,14 @@ def save_llm_provider(
     request_body: LLMIntegrationRequest,
     request: Request,
 ) -> IntegrationSummary:
+    if request_body.use_as_default and not request_body.enabled:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "invalid_route_policy",
+                "message": "the default provider must be enabled",
+            },
+        )
     candidate, spec = _validate_llm_candidate(provider, request_body)
     preferences = app_service(request, "settings_repository")
     integration_id = preferences.credential_reference(spec.provider)
@@ -846,6 +826,7 @@ def save_llm_provider(
         base_url=spec.base_url,
         credential_fingerprint=secret_fingerprint(candidate.api_key),
         test_status="succeeded",
+        use_as_default=request_body.use_as_default,
     )
 
 

@@ -175,7 +175,7 @@ class Settings:
             embedded_worker=_bool_from_env("TRADING_MAX_EMBEDDED_WORKER", False),
             worker_lease_seconds=int(os.environ.get("TRADING_MAX_WORKER_LEASE_SECONDS", "300")),
             worker_poll_seconds=float(os.environ.get("TRADING_MAX_WORKER_POLL_SECONDS", "1")),
-            llm_provider=os.environ.get("TRADING_MAX_LLM_PROVIDER", "fake"),
+            llm_provider=os.environ.get("TRADING_MAX_LLM_PROVIDER", "openai"),
             llm_model=os.environ.get("TRADING_MAX_LLM_MODEL", "gpt-5.4-mini"),
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             openai_base_url=os.environ.get(
@@ -258,10 +258,15 @@ class Settings:
             raise RuntimeError("TRADING_MAX_ALERT_HELD_INTERVAL_SECONDS must be at least 60")
         if self.alert_watchlist_interval_seconds < 60:
             raise RuntimeError("TRADING_MAX_ALERT_WATCHLIST_INTERVAL_SECONDS must be at least 60")
-        if self.llm_provider not in {"fake", "openai", "deepseek", "opencode"}:
-            raise RuntimeError(
-                "TRADING_MAX_LLM_PROVIDER must be fake, openai, deepseek, or opencode"
-            )
+        if self.llm_provider not in {
+            "fake",
+            "openai",
+            "anthropic",
+            "google",
+            "deepseek",
+            "opencode",
+        }:
+            raise RuntimeError("TRADING_MAX_LLM_PROVIDER must name a supported provider or fake")
         # Provider secrets may live in the OS credential store and are loaded
         # by provider_runtime.py for each task. Bootstrap env keys remain a
         # migration fallback, not a startup requirement.
