@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from pydantic import ValidationError
 
 from .artifacts import ArtifactStore
-from .dashboard import _intraday_nav_points, _nav_series, _overlay_live_broker_snapshot
 from .dashboard_models import NavPoint
 from .history_projection import (
     HistoryRange,
@@ -25,6 +24,8 @@ from .history_projection import (
     window_start,
 )
 from .models import ApiModel, SnapshotManifest
+from .projections.broker import overlay_live_broker_snapshot
+from .projections.nav import intraday_nav_points, nav_series
 
 _KEYS = (
     "account/nav/daily_nav_a.csv",
@@ -58,7 +59,7 @@ def load_history(
     c_text = None
     with suppress(FileNotFoundError):
         c_text = store.read_text(run, _KEYS[2])
-    daily = _nav_series(store.read_text(run, _KEYS[0]), store.read_text(run, _KEYS[1]), c_text)
+    daily = nav_series(store.read_text(run, _KEYS[0]), store.read_text(run, _KEYS[1]), c_text)
     raw = None
     for key in _KEYS[3:5]:
         try:
@@ -72,7 +73,7 @@ def load_history(
             flows[profile] = store.read_json(run, key)
     return (
         [NavPoint.model_validate(p) for p in daily],
-        [NavPoint.model_validate(p) for p in _intraday_nav_points(raw, flows)],
+        [NavPoint.model_validate(p) for p in intraday_nav_points(raw, flows)],
     )
 
 
@@ -182,8 +183,8 @@ class HistoryReader:
         ]
         if scope == "cfd":
             return daily, []
-        # Intraday projection admits only rows with all A/B/total values. Preserve
-        # the first record, first broker boundary and last record before windowing.
+            # Intraday projection admits only rows with all A/B/total values. Preserve
+            # the first record, first broker boundary and last record before windowing.
         anchors = []
         for clause in (
             "ORDER BY o.stamp LIMIT 1",
@@ -221,7 +222,7 @@ class HistoryReader:
         with suppress(FileNotFoundError, TypeError, ValueError):
             live = self.store.read_json(manifest.run_id, "account/intraday/broker_values.json")
         as_of = str(
-            _overlay_live_broker_snapshot(broker, live).get("generated_at_utc")
+            overlay_live_broker_snapshot(broker, live).get("generated_at_utc")
             or manifest.created_at.isoformat()
         )
         try:

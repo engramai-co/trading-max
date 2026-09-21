@@ -8,9 +8,9 @@ from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
-from services.api.trading_max_api.dashboard import _intraday_nav_points
 from services.api.trading_max_api.flow_diagnostics import SnapshotFlowDiagnostics
 from services.api.trading_max_api.intraday_scheduler import IntradayScheduler
+from services.api.trading_max_api.projections.nav import intraday_nav_points
 
 
 def _anchor(stamp="2026-01-05T12:00:00Z", **extra):
@@ -124,7 +124,7 @@ def test_counts_effective_current_anchor_coverage_like_the_dashboard(tmp_path):
     assert result.flow_anchor_count == 4
     assert result.flow_unverified_count == 1
     assert result.flow_unverified_count == sum(
-        point["flowStatus"] != "verified" for point in _intraday_nav_points(history, flows)
+        point["flowStatus"] != "verified" for point in intraday_nav_points(history, flows)
     )
 
 

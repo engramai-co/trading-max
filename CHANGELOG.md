@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-09-21
+
+### Changed
+
+- Separate shared NAV, broker-overlay and research projections from dashboard orchestration, with one numeric/CSV decoding module and explicit imports for dashboard, history and research readers.
+- Preserve existing financial calculations, provenance, typed responses and cache formats while making the API projection boundary independently testable.
+
 ## [1.7.1] - 2026-09-21
 
 ### Changed

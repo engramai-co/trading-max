@@ -19,7 +19,6 @@ from trading_max.research.facts import (
 from trading_max.research.option_terms import chain_availability
 
 from .artifacts import ArtifactStore
-from .dashboard import _option_rows, _technical_rows, _valuation_rows
 from .dashboard_models import (
     PriceSeriesPoint,
     ResearchDirectoryInstrument,
@@ -43,6 +42,8 @@ from .models import (
     ResearchTimelinePoint,
     SnapshotManifest,
 )
+from .projections.research import option_rows, valuation_rows
+from .projections.research import technical_rows as project_technical_rows
 from .watchlist import WatchlistStore
 
 if TYPE_CHECKING:
@@ -261,7 +262,7 @@ def _enrich_fundamentals(
     analyst_raw: JsonObject | None = None,
 ) -> list[JsonObject]:
     earnings_rows = [dict(row) for row in earnings_raw.get("rows", []) if isinstance(row, dict)]
-    technical_rows = _technical_rows(technical_raw)
+    technical_rows = project_technical_rows(technical_raw)
     analyst_rows = _analyst_rows(analyst_raw) if analyst_raw else []
     enriched: list[JsonObject] = []
     for row in fundamentals:
@@ -276,9 +277,9 @@ def _enrich_fundamentals(
             item["seasonalityCoverage"] = dict(technical.get("seasonalityCoverage") or {})
             item["seasonalityMatrix"] = list(technical.get("seasonalityMatrix") or [])
             item["yearPaths"] = dict(technical.get("yearPaths") or {})
-        # Reported-versus-estimate history lives in the analyst artifact; the
-        # earnings calendar only carries the upcoming event, which left the
-        # fundamentals earnings card with a date and nothing else.
+            # Reported-versus-estimate history lives in the analyst artifact; the
+            # earnings calendar only carries the upcoming event, which left the
+            # fundamentals earnings card with a date and nothing else.
         analyst_row = _find(analyst_rows, ticker)
         if analyst_row is not None:
             analyst = analyst_row.get("analyst")
@@ -472,9 +473,9 @@ class ResearchLedger:
         for artifact in manifest.artifacts:
             if not artifact.key.startswith("research/"):
                 continue
-            # ``daily_market.json`` was the pre-typed market artifact. Once a
-            # typed market snapshot exists it is superseded, not a second
-            # freshness requirement for the same data boundary.
+                # ``daily_market.json`` was the pre-typed market artifact. Once a
+                # typed market snapshot exists it is superseded, not a second
+                # freshness requirement for the same data boundary.
             if artifact.key == LEGACY_MARKET_KEY and has_current_market:
                 continue
             age, freshness = _freshness(artifact, now)
@@ -508,12 +509,12 @@ class ResearchLedger:
         manifest: SnapshotManifest,
     ) -> list[ResearchInstrument]:
         market = self._market_rows(manifest)
-        technical = _technical_rows(self._read_optional(manifest, "research/technical.json"))
-        valuations = _valuation_rows(self._read_optional(manifest, "research/valuation.json"))
+        technical = project_technical_rows(self._read_optional(manifest, "research/technical.json"))
+        valuations = valuation_rows(self._read_optional(manifest, "research/valuation.json"))
         options_raw = self._read_optional(manifest, "research/options.json")
         if not options_raw:
             options_raw = self._read_optional(manifest, "research/technical.json")
-        options = _option_rows(options_raw)
+        options = option_rows(options_raw)
         earnings_raw = self._read_optional(manifest, "research/earnings.json")
         earnings = earnings_raw.get("companies", {})
         if not earnings and isinstance(earnings_raw.get("rows"), list):
@@ -722,18 +723,18 @@ class ResearchLedger:
         ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         technical = _find(
-            self._cached_rows(manifest, "research/technical.json", _technical_rows),
+            self._cached_rows(manifest, "research/technical.json", project_technical_rows),
             ticker,
         )
         valuation = _find(
-            self._cached_rows(manifest, "research/valuation.json", _valuation_rows),
+            self._cached_rows(manifest, "research/valuation.json", valuation_rows),
             ticker,
         )
         options = _find(
             self._cached_rows(
                 manifest,
                 "research/options.json",
-                _option_rows,
+                option_rows,
                 fallback_key="research/technical.json",
             ),
             ticker,
@@ -948,12 +949,12 @@ class ResearchLedger:
                 datasets.append(DatasetClock(dataset=name))
                 continue
             parser = {
-                "technical": _technical_rows,
+                "technical": project_technical_rows,
                 "fundamentals": _fundamentals_rows,
                 "financials": _financials_rows,
                 "analyst": _analyst_rows,
-                "valuation": _valuation_rows,
-                "options": _option_rows,
+                "valuation": valuation_rows,
+                "options": option_rows,
                 "earnings": _fundamentals_rows,
             }[name]
             if not _find(self._cached_rows(manifest, "research/" + name + ".json", parser), ticker):
@@ -1041,7 +1042,7 @@ class ResearchLedger:
                 self._cached_rows(
                     manifest,
                     "research/technical.json",
-                    _technical_rows,
+                    project_technical_rows,
                 ),
                 ticker,
             )
@@ -1050,7 +1051,7 @@ class ResearchLedger:
                 self._cached_rows(
                     manifest,
                     "research/valuation.json",
-                    _valuation_rows,
+                    valuation_rows,
                 ),
                 ticker,
             )
@@ -1059,7 +1060,7 @@ class ResearchLedger:
                 self._cached_rows(
                     manifest,
                     "research/options.json",
-                    _option_rows,
+                    option_rows,
                     fallback_key="research/technical.json",
                 ),
                 ticker,
@@ -1083,7 +1084,8 @@ class ResearchLedger:
                 payload.fundamentals["earningsCalendar"] = calendar
             technical = (
                 _find(
-                    self._cached_rows(manifest, "research/technical.json", _technical_rows), ticker
+                    self._cached_rows(manifest, "research/technical.json", project_technical_rows),
+                    ticker,
                 )
                 or {}
             )
@@ -1146,12 +1148,12 @@ class ResearchLedger:
             payload.events = events
             payload.models = self.models(ticker, limit=limit)
             payload.alerts = self.alerts(ticker, manifest)
-        # Fields are assigned conditionally above to keep the lens logic
-        # readable. Re-validate once before returning so nested dictionaries
-        # become their declared Pydantic models and response serialization can
-        # never silently drift from the OpenAPI contract.
-        # A legacy snapshot has no coverage index. Only claim a lens is usable
-        # after its own security row has actually been loaded.
+            # Fields are assigned conditionally above to keep the lens logic
+            # readable. Re-validate once before returning so nested dictionaries
+            # become their declared Pydantic models and response serialization can
+            # never silently drift from the OpenAPI contract.
+            # A legacy snapshot has no coverage index. Only claim a lens is usable
+            # after its own security row has actually been loaded.
         if dataset_coverage is None:
             field = {
                 "fundamentals": "financials",
@@ -1282,18 +1284,18 @@ class ResearchLedger:
             # every historical run, which dominated the research page latency.
             market = _find(self._market_rows(manifest), ticker)
             technical = _find(
-                self._cached_rows(manifest, "research/technical.json", _technical_rows),
+                self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                 ticker,
             )
             valuation = _find(
-                self._cached_rows(manifest, "research/valuation.json", _valuation_rows),
+                self._cached_rows(manifest, "research/valuation.json", valuation_rows),
                 ticker,
             )
             options = _find(
                 self._cached_rows(
                     manifest,
                     "research/options.json",
-                    _option_rows,
+                    option_rows,
                     fallback_key="research/technical.json",
                 ),
                 ticker,
@@ -1338,7 +1340,7 @@ class ResearchLedger:
                 continue
             seen.add(artifact.sha256)
             valuation = _find(
-                self._cached_rows(manifest, "research/valuation.json", _valuation_rows),
+                self._cached_rows(manifest, "research/valuation.json", valuation_rows),
                 ticker,
             )
             if valuation is None:
