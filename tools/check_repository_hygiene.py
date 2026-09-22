@@ -70,6 +70,7 @@ BLOCKED_BINARY_SUFFIXES = {
 }
 ALLOWED_PUBLIC_BINARY_PREFIXES = (
     "apps/web/public/brand/",
+    "apps/desktop/src-tauri/icons/",
     "docs/assets/",
 )
 ALLOWED_REFERENCE_DATA_PREFIXES = ("backend/src/trading_max/reference/data/",)

@@ -121,7 +121,7 @@ def project_versions(root: Path = ROOT) -> dict[str, str]:
         if isinstance(package, dict)
     }
 
-    return {
+    versions = {
         "VERSION": (root / "VERSION").read_text(encoding="utf-8").strip(),
         "root pyproject": str(root_pyproject["project"]["version"]),
         "backend pyproject": str(backend_pyproject["project"]["version"]),
@@ -134,6 +134,31 @@ def project_versions(root: Path = ROOT) -> dict[str, str]:
         "uv lock root package": str(uv_packages.get("trading-max")),
         "uv lock backend package": str(uv_packages.get("trading-max-backend")),
     }
+
+    desktop = root / "apps/desktop"
+    if (desktop / "package.json").exists():
+        package = _read_json(desktop / "package.json")
+        lock = _read_json(desktop / "package-lock.json")
+        tauri = _read_json(desktop / "src-tauri/tauri.conf.json")
+        cargo = tomllib.loads((desktop / "src-tauri/Cargo.toml").read_text())
+        cargo_lock = tomllib.loads((desktop / "src-tauri/Cargo.lock").read_text())
+        locked = next(
+            (p for p in cargo_lock["package"] if p["name"] == cargo["package"]["name"]),
+            None,
+        )
+        if locked is None:
+            raise ReleaseContractError("desktop package missing from Cargo lock")
+        versions.update(
+            {
+                "desktop package": str(package["version"]),
+                "desktop lock": str(lock["version"]),
+                "desktop lock root package": str(lock["packages"][""]["version"]),
+                "Tauri app": str(tauri["version"]),
+                "Cargo package": str(cargo["package"]["version"]),
+                "Cargo lock package": str(locked["version"]),
+            }
+        )
+    return versions
 
 
 def validate_project_versions(expected: str, root: Path = ROOT) -> dict[str, str]:

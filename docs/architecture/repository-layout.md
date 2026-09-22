@@ -8,6 +8,7 @@ outputs, runtime data and operational evidence are separate from source code.
 
 | Path | Responsibility | Keep out |
 |---|---|---|
+| `apps/desktop/` | Internal native shell, workspace entry, runtime packaging and isolated demo | Bundled runtimes, generated targets, credentials and real state |
 | `apps/web/app/` | Next.js routes, stable page shells and browser-facing API proxies | Financial formulas and provider credentials |
 | `apps/web/workspace/` | Portfolio/research views, chart presentation and view-specific helpers | Broker ingestion and persisted source records |
 | `apps/web/lib/portfolio/` | Shared history selection, money calculations, display sampling and chart/detail preparation | React, network requests, server-only adapters and workspace components |
@@ -43,7 +44,7 @@ a directory listing.
 |---|---|
 | `contracts/openapi.json` | Generate with `uv run python tools/generate_openapi.py` from API response models |
 | `apps/web/lib/api-schema.ts` | Generate with `npm --prefix apps/web run generate:api-types` from OpenAPI |
-| `uv.lock`, `apps/web/package-lock.json` | Commit reproducible dependency locks; retain unrelated resolved versions during a version bump |
+| `uv.lock`, npm package locks, desktop `Cargo.lock` | Commit reproducible dependency locks; retain unrelated resolved versions during a version bump |
 | `.venv/`, `node_modules/`, `.next/` | Local dependency/build outputs; ignored, never application state |
 | Playwright reports and test results | Generated test evidence; ignored, never authored UI source |
 | Snapshot manifests, artifacts, broker exports and saved research | External application state root; never commit real records |

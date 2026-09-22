@@ -1,5 +1,9 @@
 # Deployment profiles
 
+The new user-facing entry is [desktop onboarding](../docs/installation/desktop-onboarding.md).
+These scripts remain available for existing source installations and operators;
+the former agent workflow is [archived](../docs/archive/onboarding/README.md).
+
 Trading Max separates the guided local product from an advanced, unattended
 macOS service profile.
 

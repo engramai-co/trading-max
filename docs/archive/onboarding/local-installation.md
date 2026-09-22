@@ -1,3 +1,5 @@
+> **Archived on 2026-09-22.** This is the former source/agent onboarding workflow, retained for existing installations. It is no longer the primary onboarding entry or an active agent skill. See the [current desktop onboarding guide](../../installation/desktop-onboarding.md) and [archive status](README.md).
+
 # Install Trading Max locally
 
 This guide installs Trading Max on one computer for one operating-system user.
@@ -21,10 +23,10 @@ Set this project up completely for local use.
 
 That is the complete foreground-setup request. Codex automatically discovers
 the repository-level
-[`AGENTS.md`](../../AGENTS.md) and
-[`trading-max-onboard`](../../.agents/skills/trading-max-onboard/SKILL.md)
+[`AGENTS.md`](../../../AGENTS.md) and
+[`trading-max-onboard`](agent-skill/SKILL.md)
 skill. They route Codex to the dedicated
-[`agent-local-deployment-runbook.md`](../operations/agent-local-deployment-runbook.md)
+[`agent-local-deployment-runbook.md`](agent-local-deployment-runbook.md)
 and require it to perform every safe local installation step instead of asking
 for more setup instructions.
 
@@ -294,7 +296,7 @@ not in the CLI wizard. Choose **Test connection**, then **Save and enable** to
 activate it. Use **Turn off enhancement** to disable it later. It improves
 supported US historical reconstruction and retains YF
 fallback; it does not promise complete overnight data or replace broker
-observations. See [coverage and permissions](../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
+observations. See [coverage and permissions](../../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
 
 ## 6. Publish the first snapshot
 
@@ -332,12 +334,12 @@ preferences. Collection requires the host and worker to remain running.
 New default intraday retention is 210 days. Existing explicit shorter overrides
 remain unchanged during upgrades. Earlier daily-only records stay daily, and
 reconstruction is limited by ledger and provider coverage. See the
-[range and sampling guide](../guides/portfolio.md#read-money-and-pl).
+[range and sampling guide](../../guides/portfolio.md#read-money-and-pl).
 
 ## Updates
 
 This procedure is for a foreground local installation. For an advanced managed
-macOS host, use the [verified-SHA deployment procedure](../../deploy/macos/README.md).
+macOS host, use the [verified-SHA deployment procedure](../../../deploy/macos/README.md).
 Do not run a foreground launcher alongside installed login services; stop those
 through their owning service manager before rebuilding.
 
@@ -389,7 +391,7 @@ Archives exclude bootstrap tokens and provider secrets; restoring on another
 installation requires its own bootstrap and re-entered credentials in Settings.
 
 Restore remains deliberately operator-gated. Follow
-[`tools/restore_backup.py`](../../tools/restore_backup.py) only after stopping
+[`tools/restore_backup.py`](../../../tools/restore_backup.py) only after stopping
 all Trading Max processes and creating a separate safety backup.
 
 ## Troubleshooting
