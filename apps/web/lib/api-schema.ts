@@ -329,6 +329,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/local-workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Local Workspace */
+        get: operations["local_workspace_v1_local_workspace_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/local-workspace/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Workspace */
+        post: operations["confirm_workspace_v1_local_workspace_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/local-workspace/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** First Refresh */
+        post: operations["first_refresh_v1_local_workspace_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/profile": {
         parameters: {
             query?: never;
@@ -3283,6 +3334,23 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** LocalWorkspaceStatus */
+        LocalWorkspaceStatus: {
+            /** Activejobid */
+            activeJobId: string | null;
+            /** Canconfirm */
+            canConfirm: boolean;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Connectedaccounts */
+            connectedAccounts: string[];
+            latestFullJob: components["schemas"]["JobRecord"] | null;
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            readiness: components["schemas"]["ReadinessResponse"];
+        };
         /** LocalizedAnalysisText */
         LocalizedAnalysisText: {
             /** En */
@@ -6155,6 +6223,11 @@ export interface components {
              */
             updatedAt?: string;
         };
+        /** WorkspaceConfirmation */
+        WorkspaceConfirmation: {
+            /** Runid */
+            runId: string;
+        };
         /** ValuationScenario */
         services__api__trading_max_api__dashboard_models__ValuationScenario: {
             /** Discountrate */
@@ -6789,6 +6862,92 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    local_workspace_v1_local_workspace_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalWorkspaceStatus"];
+                };
+            };
+        };
+    };
+    confirm_workspace_v1_local_workspace_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceConfirmation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalWorkspaceStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    first_refresh_v1_local_workspace_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobRecord"];
                 };
             };
             /** @description Validation Error */

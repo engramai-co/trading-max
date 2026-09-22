@@ -4,7 +4,7 @@ mod connection;
 mod runtime;
 
 use connection::{Mode, Probe, Profile};
-use runtime::Runtime;
+use runtime::{Runtime, Workspace};
 use serde::Serialize;
 use std::{
     path::PathBuf,
@@ -20,11 +20,13 @@ use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
     Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
+use tauri_plugin_dialog::DialogExt;
 
 #[derive(Clone, Serialize)]
 struct Session {
     app_version: &'static str,
     profile: Profile,
+    workspaces: Vec<Workspace>,
     generation: u64,
     stage: String,
     message: String,
@@ -84,6 +86,7 @@ impl Desktop {
         .into();
         session.message = match &session.desired {
             Some(p) if p.mode == Mode::Remote => format!("正在连接{}…", p.name),
+            Some(p) if p.mode == Mode::Local => format!("正在打开{}…", p.name),
             Some(_) => "正在打开本机演示…".into(),
             None => "选择你的数据来源。".into(),
         };
@@ -247,14 +250,19 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                     }
                     next_probe = Instant::now() + Duration::from_secs(45);
                 }
-                Some(_) => {
-                    if let Err(error) = desktop.runtime.start() {
+                Some(profile) => {
+                    if let Err(error) = desktop.runtime.start(
+                        profile
+                            .workspace
+                            .as_ref()
+                            .filter(|_| profile.mode == Mode::Local),
+                    ) {
                         failed(&app, &desktop, generation, error);
                     }
                 }
             }
         } else if let Some(profile) = &snapshot.desired {
-            if profile.mode == Mode::Demo {
+            if profile.mode != Mode::Remote {
                 let runtime = desktop.runtime.status();
                 if runtime.stage == "ready"
                     && snapshot.active_url.is_none()
@@ -266,7 +274,11 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                             &desktop,
                             generation,
                             url,
-                            "本机演示 · 模拟数据".into(),
+                            if profile.mode == Mode::Local {
+                                profile.name.clone()
+                            } else {
+                                "本机演示 · 模拟数据".into()
+                            },
                         );
                         loading_since = Instant::now();
                     }
@@ -353,13 +365,96 @@ fn request_connection(
     home(app, desktop, generation);
     Ok(())
 }
+fn read_workspaces(root: &std::path::Path) -> Vec<Workspace> {
+    std::fs::read(root.join("workspaces.json"))
+        .ok()
+        .filter(|bytes| bytes.len() <= 65536)
+        .and_then(|bytes| serde_json::from_slice::<Vec<Workspace>>(&bytes).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .take(8)
+        .collect()
+}
+#[tauri::command]
+async fn choose_workspace_folder(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<Option<PathBuf>, String> {
+    local_command(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title("选择本机文件夹")
+            .blocking_pick_folder()
+            .map(|file| {
+                file.into_path()
+                    .map_err(|_| "请选择本机文件夹。".to_string())
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|_| "未能打开文件夹选择器。".to_string())?
+}
+#[tauri::command]
+async fn prepare_workspace(
+    window: WebviewWindow,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    path: PathBuf,
+    name: Option<String>,
+) -> Result<Workspace, String> {
+    local_command(&window)?;
+    let desktop = desktop.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || desktop.runtime.workspace(&path, name.as_deref()))
+        .await
+        .map_err(|_| "工作区检查没有完成。".to_string())?
+}
+#[tauri::command]
+async fn open_local_workspace(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    workspace: Workspace,
+) -> Result<(), String> {
+    local_command(&window)?;
+    let desktop = desktop.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let checked = desktop.runtime.workspace(&workspace.path, None)?;
+        if checked != workspace {
+            return Err("工作区已变化，请重新选择。".into());
+        }
+        {
+            let mut session = desktop.session.lock().unwrap();
+            let mut recent = session.workspaces.clone();
+            recent.retain(|item| item.path != checked.path);
+            recent.insert(0, checked.clone());
+            recent.truncate(8);
+            connection::write_private_json(&desktop.root, "workspaces.json", &recent)?;
+            session.workspaces = recent;
+        }
+        let profile = Profile {
+            mode: Mode::Local,
+            name: checked.name.clone(),
+            url: String::new(),
+            workspace: Some(checked),
+            auto_connect: false,
+            ..Profile::default()
+        };
+        request_connection(&app, &desktop, Some(profile), false)
+    })
+    .await
+    .map_err(|_| "工作区没有打开。".to_string())?
+}
 #[tauri::command]
 fn desktop_status(
     window: WebviewWindow,
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<Session, String> {
     local_command(&window)?;
-    Ok(desktop.snapshot())
+    let mut snapshot = desktop.snapshot();
+    if let Ok(Some(saved)) = connection::read_profile(&desktop.root) {
+        snapshot.profile = saved;
+    }
+    Ok(snapshot)
 }
 #[tauri::command]
 fn connect_profile(
@@ -429,6 +524,7 @@ fn open_demo(
     // A quick demo is temporary: reopening still uses the saved server profile.
     let profile = Profile {
         mode: Mode::Demo,
+        workspace: None,
         ..desktop.snapshot().profile
     };
     request_connection(&app, &desktop, Some(profile.validated()?), false)
@@ -509,6 +605,7 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
 }
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = reveal_window(&window);
@@ -523,7 +620,10 @@ fn main() {
             disconnect,
             open_settings,
             open_demo,
-            open_in_browser
+            open_in_browser,
+            choose_workspace_folder,
+            prepare_workspace,
+            open_local_workspace
         ])
         .setup(|app| {
             let root = app.path().app_data_dir()?;
@@ -538,10 +638,11 @@ fn main() {
                 && config_error.is_none();
             let desktop = Arc::new(Desktop {
                 runtime: Runtime::new(root.clone(), app.path().resource_dir()?.join("runtime")),
-                root,
+                root: root.clone(),
                 session: Mutex::new(Session {
                     app_version: env!("CARGO_PKG_VERSION"),
                     profile: profile.clone(),
+                    workspaces: read_workspaces(&root),
                     generation: 0,
                     stage: if config_error.is_some() {
                         "error"
@@ -690,6 +791,7 @@ mod tests {
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
                 profile: profile.clone(),
+                workspaces: vec![],
                 generation: 0,
                 stage: "idle".into(),
                 message: String::new(),
@@ -725,6 +827,7 @@ mod tests {
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
                 profile: Profile::default(),
+                workspaces: vec![],
                 generation: 0,
                 stage: "idle".into(),
                 message: String::new(),

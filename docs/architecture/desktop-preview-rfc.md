@@ -83,3 +83,37 @@ The prior source/agent documentation and auto-discovered skill move to the
 source deployments, backup and recovery support remain intact. Current entry
 points describe the desktop preview's actual capabilities and link existing
 source users to the retained references.
+
+
+## Local workspace enrollment — 2026-09-22
+
+The second increment adds an OS folder picker available only from the bundled
+native entry. Directory operations run through the bundled Python runtime and
+one shared workspace identity module. Creating requires a new child directory;
+opening validates a known desktop marker, rejects newer application/database
+versions and symlinked state, then claims a per-directory nonblocking lock before
+starting services. Source deployment adoption and cross-version data migration
+are deliberately outside this increment.
+
+Local mode uses the existing typed worker, Trading 212 credential/settings flow,
+Yahoo research path and API/BFF contracts. It supplies a workspace-specific
+Keychain namespace and strips inherited configuration/credentials. Demo mode
+retains its fake providers, empty credential adapter and rejected mutations.
+The supervisor waits for HTTP service health for an empty local workspace,
+while demo still requires its seeded snapshot readiness. This distinction lets
+Settings load before the first real snapshot exists.
+
+The desktop-only typed onboarding endpoint is absent without a matching workspace
+identity/environment. It follows existing refresh jobs, reuses an active queue
+entry, and only accepts balance confirmation after a successful non-skipped full
+account refresh, current snapshot/connection revisions and healthy readiness.
+The browser never receives native filesystem or process capabilities. Credentials
+are entered and tested in the existing BFF Settings flow; no custom broker
+connector or plaintext-secret fallback is introduced.
+
+Recent local folders are saved independently of the existing-service startup
+preference. Local sessions are foreground-only, with all automatic schedules
+initially disabled. Existing user preferences in an opened workspace persist.
+Quitting or switching sources stops only the current owned process group.
+Real-account acceptance is separate from synthetic tests and requires direct
+credential entry and user confirmation; production remains untouched.

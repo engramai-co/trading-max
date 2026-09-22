@@ -2,6 +2,7 @@
 const { invoke } = window.__TAURI__.core;
 const $ = (id) => document.getElementById(id);
 const settings = new URLSearchParams(location.search).has("settings");
+let selectedWorkspace = null, localRecentsKey = "";
 let initialized = false, busy = false, savedProfile = null, current = null, view = "welcome";
 if (settings) document.body.classList.add("settings");
 const labels = {
@@ -15,16 +16,20 @@ function showView(next, focus = true) {
   view = next;
   $("welcome").hidden = view !== "welcome";
   $("form").hidden = view !== "remote";
-  $("local-preview").hidden = !["create", "open"].includes(view);
+  $("local-form").hidden = !["create", "open"].includes(view);
   $("back").hidden = view === "welcome";
   text("heading", labels[view][0]);
   text("subtitle", labels[view][1]);
   $("feedback").hidden = true;
   if (view === "create" || view === "open") {
-    text("local-title", view === "create" ? "一个属于你的本地资料库" : "账户与历史记录，接着使用");
-    text("local-description", view === "create" ? "即将支持在 App 里创建工作区，并连接你的真实账户。" : "即将支持打开已有工作区，并检查它与当前 App 是否兼容。");
-    const steps = view === "create" ? ["选择保存位置，为工作区命名。", "连接 Trading 212 只读账户。", "完成首次同步，核对金额后开始使用。"] : ["选择已有资料目录。", "检查格式、版本与运行状态。", "确认兼容后继续使用已有记录。"];
-    $("local-steps").replaceChildren(...steps.map((label) => { const li = document.createElement("li"); li.textContent = label; return li; }));
+    selectedWorkspace = null;
+    $("workspace-name-field").hidden = view !== "create";
+    $("workspace-name").required = view === "create";
+    $("workspace-path").value = "";
+    $("workspace-summary").hidden = true;
+    text("workspace-location-label", view === "create" ? "保存位置" : "工作区文件夹");
+    text("workspace-hint", view === "create" ? "将在这里新建同名文件夹。已有文件夹不会被覆盖。" : "选择由桌面 App 创建的工作区。检查兼容后才会打开；旧版源码数据暂不迁移。");
+    text("local-submit", view === "create" ? "创建并连接账户 →" : "打开工作区 →");
   }
   if (focus) $("heading").focus({ preventScroll: true });
 }
@@ -47,7 +52,7 @@ function feedback(message, tone = "") {
 }
 function lock(value) {
   busy = value;
-  for (const id of ["test", "save", "connect", "retry", "resume", "demo", "local-demo"]) $(id).disabled = value;
+  for (const id of ["test", "save", "connect", "retry", "resume", "demo", "pick-folder", "local-submit"]) $(id).disabled = value;
 }
 async function action(work) {
   if (busy) return;
@@ -67,6 +72,22 @@ async function refresh() {
   try {
     const state = await invoke("desktop_status");
     current = state;
+    const localKey = JSON.stringify(state.workspaces ?? []);
+    if (localKey !== localRecentsKey) {
+      localRecentsKey = localKey;
+      const container = $("local-recents");
+      container.hidden = !state.workspaces?.length;
+      container.replaceChildren();
+      for (const workspace of state.workspaces ?? []) {
+        const row = document.createElement("div"); row.className = "recent-body local-recent";
+        const labels = document.createElement("div"); labels.className = "recent-name";
+        const title = document.createElement("strong"); title.textContent = workspace.name;
+        const path = document.createElement("span"); path.textContent = workspace.path;
+        const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; button.textContent = "打开";
+        button.addEventListener("click", () => action(async () => { await invoke("open_local_workspace", { workspace }); await refresh(); }));
+        labels.append(title, path); row.append(labels, button); container.append(row);
+      }
+    }
     if (!initialized) {
       applyProfile(state.profile);
       text("version", state.app_version ? "v" + state.app_version : "");
@@ -97,7 +118,7 @@ async function refresh() {
 function remoteForm() { showView("remote"); }
 $("choose-remote").addEventListener("click", remoteForm);
 $("edit-remote").addEventListener("click", remoteForm);
-$("local-remote").addEventListener("click", remoteForm);
+
 $("create-workspace").addEventListener("click", () => showView("create"));
 $("open-workspace").addEventListener("click", () => showView("open"));
 $("back").addEventListener("click", () => showView("welcome"));
@@ -128,7 +149,7 @@ $("resume").addEventListener("click", () => action(async () => {
 }));
 function demo() { return action(async () => { await invoke("open_demo"); await refresh(); }); }
 $("demo").addEventListener("click", demo);
-$("local-demo").addEventListener("click", demo);
+
 $("retry").addEventListener("click", () => action(async () => { await invoke("retry_connection"); await refresh(); }));
 $("browser").addEventListener("click", () => action(() => invoke("open_in_browser")));
 $("change").addEventListener("click", () => invoke("open_settings"));
@@ -136,3 +157,39 @@ $("cancel").addEventListener("click", () => action(() => invoke("disconnect")));
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 1000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+$("pick-folder").addEventListener("click", () => action(async () => {
+  const path = await invoke("choose_workspace_folder");
+  if (!path) return;
+  selectedWorkspace = null;
+  $("workspace-path").value = path;
+  $("workspace-summary").hidden = true;
+  if (view === "open") {
+    selectedWorkspace = await invoke("prepare_workspace", { path, name: null });
+    text("workspace-title", selectedWorkspace.name);
+    text("workspace-description", "工作区格式兼容。打开后会检查账户连接和首次同步状态。");
+    $("workspace-summary").hidden = false;
+  }
+}));
+$("local-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  action(async () => {
+    const path = $("workspace-path").value;
+    if (!path) { feedback("请先选择保存位置。", "error"); return; }
+    if (view === "create") {
+      selectedWorkspace = await invoke("prepare_workspace", { path, name: $("workspace-name").value });
+      // If launch fails, retry opens the created directory rather than recreating it.
+      view = "open";
+      text("heading", labels.open[0]);
+      text("subtitle", labels.open[1]);
+      text("workspace-location-label", "工作区文件夹");
+      text("workspace-hint", "工作区已创建。可以直接打开，继续连接账户。");
+      $("workspace-path").value = selectedWorkspace.path;
+      $("workspace-name-field").hidden = true;
+      text("local-submit", "打开工作区 →");
+    }
+    if (!selectedWorkspace) { feedback("请选择兼容的工作区。", "error"); return; }
+    await invoke("open_local_workspace", { workspace: selectedWorkspace });
+    await refresh();
+  });
+});

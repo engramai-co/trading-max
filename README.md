@@ -81,8 +81,8 @@ one App. The internal Apple Silicon Mac preview can connect to your own HTTPS
 service, remember it and recover when it is unavailable. A separate local demo
 uses synthetic data.
 
-Real local workspace enrollment and signed public installers are the next
-steps. See [desktop onboarding and current capabilities](docs/installation/desktop-onboarding.md).
+Local workspace enrollment is available in the internal preview. Signed public
+installers remain a later step. See [desktop onboarding and current capabilities](docs/installation/desktop-onboarding.md).
 
 Already using a source installation? The existing CLI and local launch scripts
 remain supported. The former Codex skill, runbook and source-installation guide

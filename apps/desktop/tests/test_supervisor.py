@@ -35,6 +35,24 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(env["TRADING_MAX_RESEARCH_ENABLED"], "false")
         self.assertEqual(env["HOSTNAME"], "127.0.0.1")
 
+    def test_real_workspace_has_independent_credentials_and_no_demo_mode(self):
+        with patch.dict(
+            os.environ, {"OPENAI_API_KEY": "not-inherited", "TRADING_MAX_INTRADAY_ENABLED": "true"}
+        ):
+            first = supervisor.clean_environment(
+                Path("/workspace"), 42000, 42001, "token", "workspace-one"
+            )
+            second = supervisor.clean_environment(
+                Path("/other"), 42002, 42003, "token", "workspace-two"
+            )
+        self.assertNotEqual(
+            first["TRADING_MAX_CREDENTIAL_SERVICE"], second["TRADING_MAX_CREDENTIAL_SERVICE"]
+        )
+        self.assertEqual(first["TRADING_MAX_ENV"], "desktop-local")
+        self.assertEqual(first["TRADING_MAX_LLM_PROVIDER"], "openai")
+        self.assertEqual(first["TRADING_MAX_INTRADAY_ENABLED"], "false")
+        self.assertNotIn("OPENAI_API_KEY", first)
+
     def test_busy_port_is_preserved_and_skipped(self):
         with socket.socket() as occupied:
             occupied.bind(("127.0.0.1", 0))

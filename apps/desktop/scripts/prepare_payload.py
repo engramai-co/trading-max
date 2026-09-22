@@ -158,7 +158,7 @@ def main():
         "product_version": (ROOT / "VERSION").read_text().strip(),
         "source_revision": revision,
         "runtime": "Tauri/WKWebView + Node 22 + Python 3.12",
-        "data": "synthetic only",
+        "data": "isolated synthetic demo or explicitly selected local workspace",
         "node_sha256": hashlib.sha256(args.node.read_bytes()).hexdigest(),
         "python_version": subprocess.check_output(
             [str(payload / "python/bin/python3.12"), "--version"], text=True

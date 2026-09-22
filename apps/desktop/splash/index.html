@@ -25,9 +25,10 @@
           <div class="recent-top"><span class="tiny-label">已保存的服务</span><button id="edit-remote" class="text-button" type="button">管理连接</button></div>
           <div class="recent-body"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8M12 16v5"/></svg></span><div class="recent-name"><strong id="recent-name"></strong><span id="recent-host"></span></div><button id="resume" type="button">打开 <span aria-hidden="true">→</span></button></div>
         </section>
+        <section id="local-recents" class="recent" hidden aria-label="最近的本地工作区"></section>
         <div class="choices">
-          <button class="choice" id="create-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8Z"/><path d="M12 10v7M8.5 13.5h7"/></svg></span><span class="choice-copy"><strong>创建本地工作区 <span class="later-tag">即将支持</span></strong><span>在这台 Mac 保存你的账户与投资记录。</span></span><span class="arrow" aria-hidden="true">›</span></button>
-          <button class="choice" id="open-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10V5h6l2 3h9v3M3 10h19l-3 10H2Z"/></svg></span><span class="choice-copy"><strong>打开已有工作区 <span class="later-tag">即将支持</span></strong><span>继续使用已经保存的本地资料。</span></span><span class="arrow" aria-hidden="true">›</span></button>
+          <button class="choice" id="create-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8Z"/><path d="M12 10v7M8.5 13.5h7"/></svg></span><span class="choice-copy"><strong>创建本地工作区</strong><span>在这台 Mac 保存你的账户与投资记录。</span></span><span class="arrow" aria-hidden="true">›</span></button>
+          <button class="choice" id="open-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10V5h6l2 3h9v3M3 10h19l-3 10H2Z"/></svg></span><span class="choice-copy"><strong>打开已有工作区</strong><span>继续使用已经保存的本地资料。</span></span><span class="arrow" aria-hidden="true">›</span></button>
           <button class="choice" id="choose-remote" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01M10 6.5h8M10 17.5h8"/></svg></span><span class="choice-copy"><strong>连接已有服务</strong><span>访问你的 Mac mini 或其他常开设备。</span></span><span class="arrow" aria-hidden="true">›</span></button>
         </div>
         <div class="demo-row"><div><strong>想先看看？</strong><span>用独立的模拟资料体验完整工作台。</span></div><button id="demo" type="button" class="secondary">打开演示 <span aria-hidden="true">↗</span></button></div>
@@ -40,11 +41,16 @@
         <label class="checkbox"><input id="auto" type="checkbox" checked><span>下次启动时自动打开这个服务</span></label>
         <div class="actions"><button id="test" type="button" class="secondary">测试连接</button><span class="spacer"></span><button id="save" type="button" class="text-button">仅保存</button><button id="connect" type="submit">保存并打开 <span aria-hidden="true">→</span></button></div>
       </form>
-      <section id="local-preview" hidden aria-labelledby="local-title">
-        <div class="preview-note"><span class="tiny-label">即将支持</span><h2 id="local-title"></h2><p id="local-description"></p><ol id="local-steps"></ol></div>
-        <p class="hint">当前预览可连接已有服务，或使用独立演示。这里暂时不会创建、打开或修改本地资料。</p>
-        <div class="actions"><button id="local-demo" type="button">先体验演示</button><button id="local-remote" type="button" class="secondary">连接已有服务</button></div>
-      </section>
+      <form id="local-form" hidden aria-label="本地工作区">
+        <div class="form-context"><span class="dot"></span><span>资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></div>
+        <label class="field" id="workspace-name-field" for="workspace-name">工作区名称<input id="workspace-name" maxlength="60" value="我的投资记录" autocomplete="off" required></label>
+        <label class="field" for="workspace-path" id="workspace-location-label">保存位置</label>
+        <div class="folder-field"><input id="workspace-path" placeholder="选择本机文件夹" readonly required><button id="pick-folder" class="secondary" type="button">选择文件夹…</button></div>
+        <p id="workspace-hint" class="hint"></p>
+        <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong><p id="workspace-description"></p></div>
+        <p class="hint">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</p>
+        <div class="actions"><button id="local-submit" type="submit">创建并连接账户 →</button></div>
+      </form>
     </div>
     <div id="feedback" role="status" aria-live="polite" hidden></div>
     <div id="pending-actions" class="actions" hidden><button id="change" class="secondary" type="button">修改连接</button><button id="cancel" class="text-button" type="button">取消</button></div>

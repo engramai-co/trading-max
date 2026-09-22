@@ -7,9 +7,9 @@ The current onboarding direction is the native desktop entry described in
 source/agent workflow is [archived](docs/archive/onboarding/README.md); do not
 activate its skill or treat it as the default onboarding experience.
 
-The internal desktop preview supports existing HTTPS services and an isolated
-synthetic local demo. Real local create/open-workspace enrollment is a later
-increment. Do not describe the preview as a signed public installer or silently
+The internal desktop preview supports existing HTTPS services, explicitly selected
+local workspaces, and an isolated synthetic demo. New workspaces start empty;
+first-sync acceptance remains incomplete until the user checks real broker totals. Do not describe the preview as a signed public installer or silently
 substitute demo data when a real connection fails.
 
 For an explicit request to maintain an existing source installation, use the

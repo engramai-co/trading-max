@@ -2,19 +2,20 @@
 
 An internal Apple Silicon macOS packaging experiment for product **1.8.0**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
-window, or run the bundled web app and typed API with synthetic data locally.
-Real local account enrollment remains a later onboarding step. Connecting to
+window, or run the bundled web app and typed API with an explicitly selected
+local workspace. A separate synthetic demo remains available. Connecting to
 the owner's existing service does not migrate or reconfigure that service.
 
 ## Workspace entry
 
 The bundled entry follows the accepted onboarding direction: create a local
 workspace, open an existing workspace, or connect to an existing HTTPS service.
-The create/open destinations are explicitly marked as upcoming and explain the
-next enrollment steps; they do not create directories, accept broker secrets or
-pretend to load real local data in this increment.
+Create chooses a parent folder and creates a private named workspace; Open
+inspects an existing desktop workspace. The App starts an empty workspace into
+Settings, where the existing test-before-save account UI leads to first-sync
+progress and an explicit balance check. Read the [current onboarding guide](../../docs/installation/desktop-onboarding.md).
 
-A saved HTTPS service appears as a recent entry. Settings and the first-run
+A saved HTTPS service and up to eight local workspaces appear as recent entries. Settings and the first-run
 screen share the same entry and connection form. The separate local demo is a
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
@@ -71,7 +72,13 @@ The browser app receives no native filesystem, shell or credential capabilities.
 
 ## Data and ownership
 
-The app uses `~/Library/Application Support/com.engram.trading-max.desktop-preview`.
+App preferences and demo state use
+`~/Library/Application Support/com.engram.trading-max.desktop-preview`.
+Real account state lives exclusively in the user-selected workspace folder. Its
+`trading-max-workspace.json` stores a UUID, name, format and application version;
+Keychain uses `com.engram.trading-max.workspace.<uuid>`. A separate confirmation
+receipt records the checked snapshot and connection revisions, not secrets.
+The App does not import or modify an existing source-deployment root.
 The directory must have the preview's identity marker; an unknown existing
 directory is rejected. Synthetic state is seeded once and survives reopening.
 Deleting the app leaves this independent preview data in place.
@@ -130,6 +137,11 @@ python3 apps/desktop/scripts/validate_runtime.py \
   apps/desktop/payload /absolute/path/outside/checkout/runtime-checks.json
 ```
 
+The harness also creates a real-mode empty workspace with no credentials, verifies
+Settings remains accessible while data readiness is false, rejects premature
+refresh/confirmation, tests ownership and reopening, and checks no demo data was
+seeded.
+
 The integration harness launches the real packaged runtimes with a fresh HOME,
 system-only PATH, synthetic state and paths containing spaces. It probes page
 responses, history data, occupied ports, duplicate ownership, rejected mutations,
@@ -164,7 +176,7 @@ persisting the temporary selection.
 
 The current configuration uses ad-hoc signing for an internal local experiment.
 Do not describe it as a public installer. Developer ID signing, notarization,
-update signing, clean-machine verification and the real onboarding flow must be
+update signing, clean-machine verification and real-account acceptance must be
 accepted before a public desktop release. No production deployment or data
 migration is part of this experiment. The former source/agent onboarding
 documentation is [archived](../../docs/archive/onboarding/README.md); the current

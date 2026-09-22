@@ -187,6 +187,78 @@ def main(payload: Path, output: Path):
                     process.terminate()
                     process.wait(timeout=10)
         results["checks"].append("restart preserves seeded state")
+        # A real workspace starts empty and can reach Settings without a snapshot.
+        create = subprocess.run(
+            [
+                str(payload / "python/bin/python3.12"),
+                "-I",
+                "-B",
+                str(payload / "supervisor.py"),
+                "workspace-create",
+                "--state-root",
+                temporary,
+                "--name",
+                "Local empty workspace",
+            ],
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        workspace = json.loads(create.stdout)
+        root = Path(workspace["path"])
+        manifest_before = (root / "trading-max-workspace.json").read_bytes()
+        for _repeat in range(2):
+            process = start("--workspace-id", workspace["id"])
+            try:
+                value = ready(process)
+                base = f"http://127.0.0.1:{value['web_port']}"
+                with urllib.request.urlopen(value["web_url"], timeout=15) as response:
+                    assert response.status == 200
+                    assert "onboarding=1" in value["web_url"]
+                with urllib.request.urlopen(
+                    base + "/api/backend/local-workspace", timeout=5
+                ) as response:
+                    state = json.load(response)
+                    assert (
+                        not state["connectedAccounts"]
+                        and not state["canConfirm"]
+                        and not state["confirmed"]
+                    )
+                    assert state["readiness"]["status"] == "not_ready"
+                with urllib.request.urlopen(
+                    base + "/api/backend/settings/integrations", timeout=5
+                ) as response:
+                    integrations = json.load(response)["integrations"]
+                    assert all(not item["configured"] for item in integrations)
+                for path, body in [("refresh", {}), ("confirm", {"runId": "imaginary"})]:
+                    request = urllib.request.Request(
+                        base + "/api/backend/local-workspace/" + path,
+                        data=json.dumps(body).encode(),
+                        headers={"Content-Type": "application/json", "Origin": base},
+                    )
+                    try:
+                        urllib.request.urlopen(request, timeout=5)
+                        raise AssertionError("Incomplete enrollment accepted")
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 409, error.code
+                duplicate = start("--workspace-id", workspace["id"])
+                assert duplicate.wait(timeout=10) == 73
+                assert read()["supervisor_pid"] == process.pid
+                assert not (root / ".seeded-v1").exists() and not (root / "latest.json").exists()
+            finally:
+                process.terminate()
+                process.wait(timeout=10)
+            stopped(value)
+        assert (root / "trading-max-workspace.json").read_bytes() == manifest_before
+        results["checks"].extend(
+            [
+                "empty real workspace reaches Settings without fake balances",
+                "real workspace does not inherit configured integrations",
+                "refresh and confirmation require a connected account",
+                "real workspace duplicate owner rejected and restart preserves identity",
+            ]
+        )
     after = fingerprint(payload)
     changed = sorted(
         key for key in before.keys() | after.keys() if before.get(key) != after.get(key)

@@ -50,6 +50,8 @@ import { OpenAIOAuthConnection } from "./settings-oauth";
 
 import { ReconstructionMarketData } from "./settings-market-data";
 
+import { LocalOnboarding } from "./local-onboarding";
+
 const settingsKey = ["workspace-settings"];
 type Connection =
   | {
@@ -150,6 +152,7 @@ export function SettingsWorkspace() {
         <>
           {view === "accounts" && (
             <>
+              {params.get("onboarding") === "1" && <LocalOnboarding />}
               <Panel
                 title={t("Trading 212 账户", "Trading 212 accounts")}
               >
@@ -182,6 +185,7 @@ export function SettingsWorkspace() {
                   })}
                 </div>
               </Panel>
+              {params.get("onboarding") !== "1" && <>
               <Panel
                 title={t("公开市场数据", "Public market research")}
               >
@@ -212,6 +216,7 @@ export function SettingsWorkspace() {
               </Panel>
               <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} onSaved={() => { void client.invalidateQueries({ queryKey: settingsKey }); }} />
               <CfdImports />
+              </>}
             </>
           )}
           {view === "models" && (

@@ -10,6 +10,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Workspace {
+    pub path: PathBuf,
+    pub id: String,
+    pub name: String,
+}
+
+struct OwnedRuntime {
+    child: Child,
+    root: PathBuf,
+}
+
 const MARKER: &str = "trading-max-desktop-preview-v1\n";
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -47,7 +59,7 @@ impl Status {
 pub struct Runtime {
     root: PathBuf,
     resources: PathBuf,
-    child: Mutex<Option<Child>>,
+    child: Mutex<Option<OwnedRuntime>>,
     last: Mutex<Status>,
 }
 
@@ -87,12 +99,42 @@ impl Runtime {
             last: Mutex::new(Status::starting()),
         }
     }
-    pub fn start(&self) -> Result<(), String> {
+    pub fn workspace(&self, path: &Path, name: Option<&str>) -> Result<Workspace, String> {
+        let mut command = Command::new(self.resources.join("python/bin/python3.12"));
+        command
+            .args(["-I", "-B", "-u"])
+            .arg(self.resources.join("supervisor.py"))
+            .arg(if name.is_some() {
+                "workspace-create"
+            } else {
+                "workspace-inspect"
+            })
+            .arg("--state-root")
+            .arg(path)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+        if let Some(name) = name {
+            command.arg("--name").arg(name);
+        }
+        let result = command.output().map_err(|_| "无法检查工作区。")?;
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout)
+            .map_err(|_| "工作区检查未完成，原有资料未修改。")?;
+        if !result.status.success() {
+            return Err(value["error"]
+                .as_str()
+                .unwrap_or("无法打开工作区。")
+                .to_string());
+        }
+        serde_json::from_value(value).map_err(|_| "工作区标记无法识别。".into())
+    }
+    pub fn start(&self, workspace: Option<&Workspace>) -> Result<(), String> {
         self.stop();
         prepare_root(&self.root)?;
-        let status_path = self.root.join("runtime-status.json");
-        if status_path.exists() {
-            fs::remove_file(&status_path).map_err(|e| e.to_string())?;
+        let root = workspace.map_or(&self.root, |w| &w.path);
+        if let Some(workspace) = workspace {
+            if self.workspace(root, None)? != *workspace {
+                return Err("工作区已变化，请重新选择。".into());
+            }
         }
         *self.last.lock().unwrap() = Status::starting();
         let log = fs::OpenOptions::new()
@@ -106,10 +148,10 @@ impl Runtime {
             .arg(self.resources.join("supervisor.py"))
             .arg("supervise")
             .arg("--state-root")
-            .arg(&self.root)
+            .arg(root)
             .arg("--parent-pid")
             .arg(std::process::id().to_string())
-            .current_dir(&self.root)
+            .current_dir(root)
             .env_clear()
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .env("LANG", "en_US.UTF-8")
@@ -123,16 +165,23 @@ impl Runtime {
                 cmd.env(key, value);
             }
         }
+        if let Some(workspace) = workspace {
+            cmd.arg("--workspace-id").arg(&workspace.id);
+        }
         let child = cmd
             .spawn()
             .map_err(|e| format!("无法启动已打包的 Python：{e}"))?;
-        *self.child.lock().unwrap() = Some(child);
+        *self.child.lock().unwrap() = Some(OwnedRuntime {
+            child,
+            root: root.clone(),
+        });
         Ok(())
     }
     pub fn status(&self) -> Status {
         let mut holder = self.child.lock().unwrap();
-        if let Some(child) = holder.as_mut() {
-            if let Ok(text) = fs::read_to_string(self.root.join("runtime-status.json")) {
+        if let Some(owned) = holder.as_mut() {
+            let child = &mut owned.child;
+            if let Ok(text) = fs::read_to_string(owned.root.join("runtime-status.json")) {
                 if let Ok(value) = serde_json::from_str::<Status>(&text) {
                     if value.supervisor_pid == child.id() {
                         *self.last.lock().unwrap() = value;
@@ -147,7 +196,11 @@ impl Runtime {
                 if last.stage != "error" {
                     *last = Status::error(
                         "本机服务已经停止，可以重新尝试。",
-                        format!("服务退出：{code}。诊断日志保存在独立演示资料目录的 logs 文件夹。"),
+                        if code.code() == Some(73) {
+                            "工作区已被另一个进程打开，请先关闭那个工作区。".into()
+                        } else {
+                            format!("服务退出：{code}。可检查本机工作区的 logs 文件夹。")
+                        },
                     );
                 }
                 // Drop the reaped child so a later poll can never signal a reused PID.
@@ -157,7 +210,8 @@ impl Runtime {
         self.last.lock().unwrap().clone()
     }
     pub fn stop(&self) {
-        if let Some(mut child) = self.child.lock().unwrap().take() {
+        if let Some(mut owned) = self.child.lock().unwrap().take() {
+            let child = &mut owned.child;
             let pid = child.id() as i32;
             // A dedicated group is created by us; never signal by name or port.
             unsafe {

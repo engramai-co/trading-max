@@ -6776,6 +6776,69 @@
         "title": "LLMRoutePolicyUpdate",
         "type": "object"
       },
+      "LocalWorkspaceStatus": {
+        "properties": {
+          "activeJobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activejobid"
+          },
+          "canConfirm": {
+            "title": "Canconfirm",
+            "type": "boolean"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "connectedAccounts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Connectedaccounts",
+            "type": "array"
+          },
+          "latestFullJob": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/ReadinessResponse"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "connectedAccounts",
+          "readiness",
+          "latestFullJob",
+          "activeJobId",
+          "canConfirm",
+          "confirmed"
+        ],
+        "title": "LocalWorkspaceStatus",
+        "type": "object"
+      },
       "LocalizedAnalysisText": {
         "properties": {
           "en": {
@@ -15326,6 +15389,21 @@
         "title": "WatchlistState",
         "type": "object"
       },
+      "WorkspaceConfirmation": {
+        "properties": {
+          "runId": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "title": "WorkspaceConfirmation",
+        "type": "object"
+      },
       "services__api__trading_max_api__dashboard_models__ValuationScenario": {
         "properties": {
           "discountRate": {
@@ -16522,6 +16600,135 @@
         "summary": "Job Log",
         "tags": [
           "operations"
+        ]
+      }
+    },
+    "/v1/local-workspace": {
+      "get": {
+        "operationId": "local_workspace_v1_local_workspace_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWorkspaceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Local Workspace",
+        "tags": [
+          "local-workspace"
+        ]
+      }
+    },
+    "/v1/local-workspace/confirm": {
+      "post": {
+        "operationId": "confirm_workspace_v1_local_workspace_confirm_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceConfirmation"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalWorkspaceStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Workspace",
+        "tags": [
+          "local-workspace"
+        ]
+      }
+    },
+    "/v1/local-workspace/refresh": {
+      "post": {
+        "operationId": "first_refresh_v1_local_workspace_refresh_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "First Refresh",
+        "tags": [
+          "local-workspace"
         ]
       }
     },

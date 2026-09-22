@@ -8,8 +8,8 @@ Trading Max's desktop entry has three destinations:
 
 | Destination | Current capability |
 | --- | --- |
-| Create a local workspace | Entry is visible; real local enrollment is the next step. |
-| Open an existing workspace | Entry is visible; compatibility checks and local opening are the next step. |
+| Create a local workspace | Choose a folder and name, connect a read-only account, sync and check balances. |
+| Open an existing workspace | Inspect a desktop workspace, check compatibility and open it. Older source-deployment roots are not adopted. |
 | Connect to an existing service | Working HTTPS connection, remembered preferences and recovery. |
 
 The separate **local demo** uses synthetic data. It must remain clearly labeled
@@ -28,19 +28,43 @@ preference. Remote pages receive no native filesystem, process or credential
 permissions. The local settings window is available even when the service is
 unreachable.
 
-## Next: a real local workspace
+## Create or open a local workspace
 
-The next increment connects the create/open entries to a validated local data
-directory, read-only Trading 212 setup, the first refresh and readiness checks.
-Credentials are entered only through Settings and stored in the operating
-system credential manager. Existing directories must be inspected before any
-write or migration. Models are optional and currently used for security-name
-resolution, not automatic portfolio analysis.
+Choose **Create a local workspace**, give it a name and choose a parent folder.
+The App creates a new private subfolder; it never overwrites an existing folder.
+Choose **Open an existing workspace** to select a folder previously created by
+the desktop App. Its identity, format, application/database compatibility and
+process ownership are checked before startup. Future versions, demo state,
+symlinked state and arbitrary source-deployment roots are rejected without migration.
 
-Acceptance requires a healthy worker, a successful first refresh and plausible
-broker totals. A rendered page or HTTP 200 alone is insufficient. App closure,
-recovery and collection choices must be explicit; hidden login services are not
-part of this increment.
+Each workspace has a stable ID, independent data and its own OS credential
+namespace. Recent workspaces are remembered separately from the existing HTTPS
+service preference. A temporary local/demo session does not replace a saved
+Mac mini connection or its auto-open preference. Moving a workspace to another
+Mac preserves data, but credentials need to be connected again on that Mac.
+
+An empty workspace opens **Settings → Accounts & data** with three steps:
+
+1. Connect the Invest and/or ISA accounts you actually use. Enter read-only
+   Trading 212 credentials directly into Settings, test, then save. Secrets are
+   stored in Keychain, never the workspace folder.
+2. Start the first full refresh. Progress follows the existing durable job queue;
+   an active job is reused. A failure leaves settings and any previous successful
+   snapshot intact, with a link to Data status and an explicit retry.
+3. Once a fresh account refresh succeeds and readiness/worker checks pass,
+   compare the displayed GBP account values with Trading 212 and confirm them.
+   A page load, old snapshot, skipped broker sync or research-only success does
+   not complete onboarding. Changed account connections require a new check.
+
+The App remains usable for Settings before it has a snapshot. Models and Alpaca
+are optional; Yahoo-compatible market data remains the default. Automatic
+recording can be enabled in Update schedule for the foreground App session.
+Quitting the App stops its owned services; sleep pauses collection. No login
+service is installed. The personal Mac mini collector is independent.
+
+Implementation and synthetic tests are not a claim that a real account has been
+accepted. Final real-account acceptance needs the owner's direct credentials,
+a successful refresh, healthy worker and explicit balance confirmation.
 
 ## Development and current source installations
 
@@ -55,7 +79,7 @@ remains available for source/configuration diagnostics. The former agent skill
 and runbook are [archived](../archive/onboarding/README.md) and no longer selected
 automatically.
 
-Before a public desktop release, complete real local onboarding, Developer ID
+Before a public desktop release, complete real-account installation acceptance, Developer ID
 signing/notarization, signed updates and installation acceptance on a Mac without
 development tools. A virtual machine is not required for the current local
 preview acceptance.

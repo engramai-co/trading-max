@@ -15,6 +15,7 @@ const MAX_BODY: u64 = 65_536;
 pub enum Mode {
     Remote,
     Demo,
+    Local,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -25,6 +26,8 @@ pub struct Profile {
     pub name: String,
     pub url: String,
     pub auto_connect: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<crate::runtime::Workspace>,
 }
 
 impl Default for Profile {
@@ -35,6 +38,7 @@ impl Default for Profile {
             name: "我的工作台".into(),
             url: String::new(),
             auto_connect: true,
+            workspace: None,
         }
     }
 }
@@ -73,6 +77,14 @@ impl Profile {
         // Validate even the dormant remote address so secrets cannot be stored in it.
         if !self.url.trim().is_empty() || self.mode == Mode::Remote {
             self.url = remote_url(&self.url)?.to_string();
+        }
+        if self.mode == Mode::Local
+            && self
+                .workspace
+                .as_ref()
+                .is_none_or(|w| !w.path.is_absolute())
+        {
+            return Err("请选择有效的本地工作区。".into());
         }
         Ok(self)
     }
@@ -158,7 +170,7 @@ fn probe_endpoint(endpoint: Url) -> Result<Probe, String> {
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())
-        .user_agent("Trading-Max-Desktop/1.7.4")
+        .user_agent(concat!("Trading-Max-Desktop/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|_| "无法初始化安全连接。")?;
     let response = client
