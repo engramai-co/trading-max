@@ -57,7 +57,12 @@ impl Desktop {
         let _ = connection::write_private_json(&self.root, "connection-status.json", &*session);
         true
     }
-    fn request(&self, profile: Option<Profile>, save: bool) -> Result<u64, String> {
+    fn request(
+        &self,
+        profile: Option<Profile>,
+        save: bool,
+        dismiss_settings: bool,
+    ) -> Result<u64, String> {
         let mut session = self.session.lock().unwrap();
         if let Some(profile) = &profile {
             if save {
@@ -67,7 +72,7 @@ impl Desktop {
         }
         session.generation += 1;
         session.desired = profile;
-        session.dismiss_settings = save;
+        session.dismiss_settings = dismiss_settings;
         session.active_url = None;
         session.active_name = None;
         session.probe = None;
@@ -117,6 +122,15 @@ fn open_external(url: &tauri::Url) {
     {
         let _ = Command::new("/usr/bin/open").arg(url.as_str()).spawn();
     }
+}
+fn reveal_window(window: &WebviewWindow) -> tauri::Result<()> {
+    // A background launch can leave the application hidden even when its
+    // NSWindow is visible. Unhide the application before focusing the webview.
+    #[cfg(target_os = "macos")]
+    window.app_handle().show()?;
+    window.unminimize()?;
+    window.show()?;
+    window.set_focus()
 }
 fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
     let app = app.clone();
@@ -172,10 +186,10 @@ fn enter(
                 if let Some(settings) = app.get_webview_window("settings") {
                     if dismiss_settings {
                         let _ = settings.close();
-                        let _ = window.set_focus();
+                        let _ = reveal_window(&window);
                     }
                 } else {
-                    let _ = window.set_focus();
+                    let _ = reveal_window(&window);
                 }
             }
         }
@@ -309,9 +323,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
 }
 fn show_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("settings") {
-        window.show()?;
-        window.set_focus()?;
-        return Ok(());
+        return reveal_window(&window);
     }
     let window = WebviewWindowBuilder::new(
         app,
@@ -326,8 +338,7 @@ fn show_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     .visible(false)
     .on_navigation(internal_url)
     .build()?;
-    window.show()?;
-    window.set_focus()
+    reveal_window(&window)
 }
 fn request_connection(
     app: &tauri::AppHandle,
@@ -335,7 +346,10 @@ fn request_connection(
     profile: Option<Profile>,
     save: bool,
 ) -> Result<(), String> {
-    let generation = desktop.request(profile, save)?;
+    // Opening a workspace should reveal it, even for a temporary demo that
+    // deliberately leaves the saved connection profile untouched.
+    let dismiss_settings = profile.is_some();
+    let generation = desktop.request(profile, save, dismiss_settings)?;
     home(app, desktop, generation);
     Ok(())
 }
@@ -497,9 +511,7 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
+                let _ = reveal_window(&window);
             }
         }))
         .invoke_handler(tauri::generate_handler![
@@ -551,13 +563,15 @@ fn main() {
             install_menu(app.handle())?;
             let navigation = desktop.clone();
             let pages = desktop.clone();
+            // Start visible: showing a hidden window during setup can leave
+            // a subsequent WKWebView navigation hidden and its charts unpainted.
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Trading Max · 工作区与连接")
                     .inner_size(1280.0, 840.0)
                     .min_inner_size(900.0, 640.0)
                     .center()
-                    .visible(false)
+                    .visible(true)
                     .on_navigation(move |url| {
                         if internal_url(url)
                             || workspace_url(url, navigation.snapshot().active_url.as_deref())
@@ -590,8 +604,7 @@ fn main() {
                         }
                     })
                     .build()?;
-            window.show()?;
-            window.set_focus()?;
+            reveal_window(&window)?;
             #[cfg(feature = "diagnostics")]
             window.open_devtools();
             let exit = app.handle().clone();
@@ -601,7 +614,7 @@ fn main() {
                 }
             });
             if autostart {
-                let _ = desktop.request(Some(profile), false);
+                let _ = desktop.request(Some(profile), false, false);
             }
             let app = app.handle().clone();
             thread::spawn(move || drive(app, desktop));
@@ -692,7 +705,8 @@ mod tests {
             mode: Mode::Demo,
             ..profile.clone()
         };
-        desktop.request(Some(demo), false).unwrap();
+        desktop.request(Some(demo), false, true).unwrap();
+        assert!(desktop.snapshot().dismiss_settings);
         assert_eq!(desktop.snapshot().desired.unwrap().mode, Mode::Demo);
         assert_eq!(connection::read_profile(&root).unwrap(), Some(profile));
         std::fs::remove_dir_all(root).unwrap();
@@ -726,8 +740,8 @@ mod tests {
             url: "https://mini.example.test/".into(),
             ..Profile::default()
         };
-        let old = desktop.request(Some(profile), false).unwrap();
-        desktop.request(None, false).unwrap();
+        let old = desktop.request(Some(profile), false, false).unwrap();
+        desktop.request(None, false, false).unwrap();
         assert!(!desktop.update(old, |s| s.active_url =
             Some("https://mini.example.test/".into())));
         assert!(desktop.snapshot().active_url.is_none());

@@ -152,9 +152,13 @@ production page.
 
 For a local investigation of a WebView rendering problem, build with
 `npm run build --prefix apps/desktop -- --features diagnostics`. This opt-in build
-opens Web Inspector. Rebuild without the flag for the distributable. The normal
-window is laid out while hidden, centered, then explicitly shown and focused;
-startup must render without requiring a manual window resize.
+opens Web Inspector. Rebuild without the flag for the distributable. The main
+window is created visible, centered, and explicitly focused. Creating
+it hidden and immediately showing it can leave the replacement WKWebView page
+marked as hidden on macOS, postponing rendering and chart initialization.
+Startup must render without requiring a manual window resize. Opening a
+temporary demo reveals the workspace just as a saved connection does, without
+persisting the temporary selection.
 
 ## Distribution gate
 
