@@ -113,9 +113,13 @@ fn workspace_url(url: &tauri::Url, base: Option<&str>) -> bool {
                 }
         })
 }
+fn native_surface(label: &str, url: &tauri::Url) -> bool {
+    matches!(label, "main" | "settings") && internal_url(url)
+}
 fn local_command(window: &WebviewWindow) -> Result<(), String> {
-    if matches!(window.label(), "main" | "settings")
-        && window.url().is_ok_and(|url| internal_url(&url))
+    if window
+        .url()
+        .is_ok_and(|url| native_surface(window.label(), &url))
     {
         Ok(())
     } else {
@@ -147,9 +151,17 @@ fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
         if desktop.snapshot().generation != generation {
             return;
         }
+        // Keep the bundled entry alive independently of a failed HTTP WebView.
+        // Returning a used WKWebView from HTTP to the custom scheme can go blank.
+        if let Some(workspace) = app.get_webview_window("workspace") {
+            let _ = workspace.hide();
+        }
         if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_title("Trading Max · 工作区与连接");
-            let _ = window.navigate("tauri://localhost/index.html".parse().unwrap());
+            if app.get_webview_window("settings").is_some() {
+                let _ = window.show();
+            } else {
+                let _ = reveal_window(&window);
+            }
         }
     });
 }
@@ -178,30 +190,88 @@ fn enter(
             session.message = format!("正在打开{name}…");
             session.detail.clear();
         });
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_title(&format!("Trading Max · {name}"));
-            if let Err(error) = window.navigate(url) {
-                desktop.update(generation, |session| {
-                    session.stage = "error".into();
-                    session.message = "页面暂时没有打开。".into();
-                    session.detail = error.to_string();
-                    session.active_url = None;
-                });
-                home(&app, &desktop, generation);
-            } else {
-                let _ = window.show();
+        let focus = dismiss_settings || app.get_webview_window("settings").is_none();
+        let result = match app.get_webview_window("workspace") {
+            Some(window) => window.navigate(url).map(|_| window),
+            None => create_workspace_window(&app, &desktop, url, focus),
+        };
+        match result {
+            Err(error) => failed(&app, &desktop, generation, error.to_string()),
+            Ok(window) => {
+                let _ = window.set_title(&format!("Trading Max · {name}"));
                 if let Some(settings) = app.get_webview_window("settings") {
                     if dismiss_settings {
                         let _ = settings.close();
-                        let _ = reveal_window(&window);
                     }
-                } else {
+                }
+                if focus {
                     let _ = reveal_window(&window);
+                } else {
+                    let _ = window.show();
+                }
+                if let Some(entry) = app.get_webview_window("main") {
+                    let _ = entry.hide();
                 }
             }
         }
     });
 }
+fn create_workspace_window(
+    app: &tauri::AppHandle,
+    desktop: &Arc<Desktop>,
+    url: tauri::Url,
+    focus: bool,
+) -> tauri::Result<WebviewWindow> {
+    let navigation = desktop.clone();
+    let pages = desktop.clone();
+    let window = WebviewWindowBuilder::new(app, "workspace", WebviewUrl::External(url))
+        .title("Trading Max")
+        .inner_size(1280.0, 840.0)
+        .min_inner_size(900.0, 640.0)
+        .center()
+        .visible(true)
+        .focused(focus)
+        .on_navigation(move |url| {
+            if workspace_url(url, navigation.snapshot().active_url.as_deref()) {
+                return true;
+            }
+            open_external(url);
+            false
+        })
+        .on_new_window(|url, _| {
+            open_external(&url);
+            tauri::webview::NewWindowResponse::Deny
+        })
+        .on_page_load(move |window, payload| {
+            if payload.event() != tauri::webview::PageLoadEvent::Finished {
+                return;
+            }
+            let snapshot = pages.snapshot();
+            if workspace_url(payload.url(), snapshot.active_url.as_deref()) {
+                pages.update(snapshot.generation, |session| {
+                    session.stage = "ready".into();
+                    session.message = format!(
+                        "已连接{}",
+                        session.active_name.as_deref().unwrap_or("资料库")
+                    );
+                });
+                if let Some(name) = snapshot.active_name {
+                    let _ = window.set_title(&format!("Trading Max · {name}"));
+                }
+            }
+        })
+        .build()?;
+    let exit = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+            exit.exit(0);
+        }
+    });
+    #[cfg(feature = "diagnostics")]
+    window.open_devtools();
+    Ok(window)
+}
+
 fn failed(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64, detail: String) {
     let already_showing_error = desktop.snapshot().stage == "error";
     if desktop.update(generation, |session| {
@@ -711,7 +781,9 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
+            let ready = app.state::<Arc<Desktop>>().snapshot().stage == "ready";
+            let label = if ready { "workspace" } else { "main" };
+            if let Some(window) = app.get_webview_window(label) {
                 let _ = reveal_window(&window);
             }
         }))
@@ -770,10 +842,8 @@ fn main() {
             });
             app.manage(desktop.clone());
             install_menu(app.handle())?;
-            let navigation = desktop.clone();
-            let pages = desktop.clone();
-            // Start visible: showing a hidden window during setup can leave
-            // a subsequent WKWebView navigation hidden and its charts unpainted.
+            // The native entry never navigates to HTTP. It remains a working
+            // recovery surface even if the portfolio WebView loses its service.
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Trading Max · 工作区与连接")
@@ -781,37 +851,7 @@ fn main() {
                     .min_inner_size(900.0, 640.0)
                     .center()
                     .visible(true)
-                    .on_navigation(move |url| {
-                        if internal_url(url)
-                            || workspace_url(url, navigation.snapshot().active_url.as_deref())
-                        {
-                            return true;
-                        }
-                        open_external(url);
-                        false
-                    })
-                    .on_new_window(|url, _| {
-                        open_external(&url);
-                        tauri::webview::NewWindowResponse::Deny
-                    })
-                    .on_page_load(move |window, payload| {
-                        if payload.event() != tauri::webview::PageLoadEvent::Finished {
-                            return;
-                        }
-                        let snapshot = pages.snapshot();
-                        if workspace_url(payload.url(), snapshot.active_url.as_deref()) {
-                            pages.update(snapshot.generation, |session| {
-                                session.stage = "ready".into();
-                                session.message = format!(
-                                    "已连接{}",
-                                    session.active_name.as_deref().unwrap_or("资料库")
-                                );
-                            });
-                            if let Some(name) = snapshot.active_name {
-                                let _ = window.set_title(&format!("Trading Max · {name}"));
-                            }
-                        }
-                    })
+                    .on_navigation(internal_url)
                     .build()?;
             reveal_window(&window)?;
             #[cfg(feature = "diagnostics")]
@@ -847,6 +887,10 @@ mod tests {
     use super::*;
     #[test]
     fn native_commands_stay_local() {
+        let native = "tauri://localhost/index.html".parse().unwrap();
+        assert!(native_surface("main", &native));
+        assert!(native_surface("settings", &native));
+        assert!(!native_surface("workspace", &native));
         assert!(internal_url(
             &"tauri://localhost/index.html".parse().unwrap()
         ));
@@ -856,6 +900,8 @@ mod tests {
             "tauri://evil/index.html",
         ] {
             assert!(!internal_url(&url.parse().unwrap()));
+            assert!(!native_surface("main", &url.parse().unwrap()));
+            assert!(!native_surface("workspace", &url.parse().unwrap()));
         }
     }
     #[test]

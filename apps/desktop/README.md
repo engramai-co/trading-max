@@ -178,6 +178,9 @@ persisting the temporary selection.
 ## Recovery and version checks
 
 Local runtime liveness checks run every 15 seconds with a two-second timeout.
+The bundled entry and portfolio use separate WebViews. The entry never navigates
+to HTTP; failures reveal its existing local controls, even when the portfolio
+WebView cannot load. Only bundled entry/settings surfaces accept native commands.
 Four consecutive misses for either service stop the owned pair and return to the
 native recovery screen. A healthy HTTP API with no first snapshot is responsive,
 not a process failure. Local recovery preserves the folder and credentials, and

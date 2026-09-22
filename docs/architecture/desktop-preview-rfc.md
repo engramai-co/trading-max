@@ -130,6 +130,13 @@ state available for an explicit restart. Liveness never substitutes for data
 readiness. Empty local setup has a neutral health state; real worker, snapshot
 and refresh failures remain visible.
 
+Native fault injection exposed a blank view when reusing a failed HTTP WebView
+for the bundled recovery page. The native entry now stays loaded in its own
+WebView; the portfolio uses a separate `workspace` surface with no native command
+permission. Failure reveals the existing entry instead of relying on another
+navigation inside the failed view. Closing either main user window still quits
+the foreground runtime; the preferences window remains independent.
+
 The native entry explains foreground versus remote collection and reveals the
 selected local folder without accepting arbitrary filesystem commands. A manual
 version check reads only the canonical public stable release metadata. Its
