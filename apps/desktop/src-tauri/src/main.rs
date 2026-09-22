@@ -384,6 +384,7 @@ async fn choose_workspace_folder(
     tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
+            .set_parent(&window)
             .set_title("选择本机文件夹")
             .blocking_pick_folder()
             .map(|file| {

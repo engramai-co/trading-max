@@ -72,7 +72,7 @@ type TestResult = {
   validationToken: string | null;
 };
 
-export function SettingsWorkspace() {
+export function SettingsWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   const { params, update } = useRouteState();
   const client = useQueryClient();
@@ -152,7 +152,7 @@ export function SettingsWorkspace() {
         <>
           {view === "accounts" && (
             <>
-              {params.get("onboarding") === "1" && <LocalOnboarding />}
+              {localWorkspace && <LocalOnboarding />}
               <Panel
                 title={t("Trading 212 账户", "Trading 212 accounts")}
               >

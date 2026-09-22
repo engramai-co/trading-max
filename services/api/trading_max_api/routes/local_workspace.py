@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -150,13 +151,19 @@ def confirm_workspace(body: WorkspaceConfirmation, request: Request) -> LocalWor
         "accounts": fingerprints,
         "confirmed_at": datetime.now(UTC).isoformat(),
     }
-    temporary = root / (RECEIPT + ".tmp")
-    with temporary.open("w", encoding="utf-8") as output:
-        temporary.chmod(0o600)
-        json.dump(value, output)
-        output.flush()
-        os.fsync(output.fileno())
-    temporary.replace(root / RECEIPT)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=root, prefix=".workspace-confirmation-", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            json.dump(value, output)
+            output.flush()
+            os.fsync(output.fileno())
+        temporary.replace(root / RECEIPT)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return local_workspace(request)
 
 
@@ -172,11 +179,13 @@ def first_refresh(request: Request) -> JobRecord:
     if not accounts:
         raise HTTPException(status_code=409, detail="Connect and save a Trading 212 account first")
     jobs = app_service(request, "jobs")
-    if jobs.active_job_id:
-        return jobs.get(jobs.active_job_id)
+    active_job_id = jobs.active_job_id
+    if active_job_id:
+        return jobs.get(active_job_id)
     try:
         return jobs.submit("all", skip_sync=False, tickers=[], trigger="on_demand")
     except JobConflict as exc:
-        if jobs.active_job_id:
-            return jobs.get(jobs.active_job_id)
+        active_job_id = jobs.active_job_id
+        if active_job_id:
+            return jobs.get(active_job_id)
         raise HTTPException(status_code=409, detail="Another refresh is already queued") from exc

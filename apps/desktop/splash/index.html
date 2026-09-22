@@ -45,7 +45,7 @@
         <div class="form-context"><span class="dot"></span><span>资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></div>
         <label class="field" id="workspace-name-field" for="workspace-name">工作区名称<input id="workspace-name" maxlength="60" value="我的投资记录" autocomplete="off" required></label>
         <label class="field" for="workspace-path" id="workspace-location-label">保存位置</label>
-        <div class="folder-field"><input id="workspace-path" placeholder="选择本机文件夹" readonly required><button id="pick-folder" class="secondary" type="button">选择文件夹…</button></div>
+        <div class="folder-field"><input id="workspace-path" placeholder="选择文件夹，或粘贴完整路径" autocomplete="off" spellcheck="false" maxlength="4096" required><button id="pick-folder" class="secondary" type="button">选择文件夹…</button></div>
         <p id="workspace-hint" class="hint"></p>
         <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong><p id="workspace-description"></p></div>
         <p class="hint">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</p>

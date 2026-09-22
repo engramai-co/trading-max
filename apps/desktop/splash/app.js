@@ -188,8 +188,10 @@ $("local-form").addEventListener("submit", (event) => {
       $("workspace-name-field").hidden = true;
       text("local-submit", "打开工作区 →");
     }
-    if (!selectedWorkspace) { feedback("请选择兼容的工作区。", "error"); return; }
+    if (!selectedWorkspace) selectedWorkspace = await invoke("prepare_workspace", { path, name: null });
     await invoke("open_local_workspace", { workspace: selectedWorkspace });
     await refresh();
   });
 });
+
+$("workspace-path").addEventListener("input", () => { selectedWorkspace = null; $("workspace-summary").hidden = true; });
