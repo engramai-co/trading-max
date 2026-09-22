@@ -23,6 +23,8 @@ from pathlib import Path
 RUNTIME = Path(__file__).resolve().parent
 MARKER = "trading-max-desktop-preview-v1\n"
 STOP = threading.Event()
+HEARTBEAT_SECONDS = 15
+HEARTBEAT_FAILURES = 4
 
 
 def status(root: Path, stage: str, message: str, **details: object) -> None:
@@ -152,6 +154,45 @@ def await_url(url: str, children: list[subprocess.Popen], *, readiness: bool = F
     raise TimeoutError("Service readiness timed out; see logs")
 
 
+def responsive(url: str, *, api: bool) -> bool:
+    """Check process responsiveness, not account/snapshot readiness."""
+    try:
+        request = urllib.request.Request(url, method="GET" if api else "HEAD")
+        with urllib.request.urlopen(request, timeout=2) as response:
+            if response.status != 200:
+                return False
+            if not api:
+                return True
+            body = response.read(65537)
+            if len(body) > 65536:
+                return False
+            value = json.loads(body)
+            return (
+                isinstance(value, dict)
+                and value.get("service") == "trading_max-api"
+                and value.get("status") in {"ok", "degraded"}
+            )
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+
+
+class Heartbeat:
+    def __init__(self, api_url: str, web_url: str):
+        self.urls = {"资料服务": api_url, "页面服务": web_url}
+        self.failures = dict.fromkeys(self.urls, 0)
+
+    def check(self) -> None:
+        for name, url in self.urls.items():
+            if STOP.is_set():
+                return
+            if responsive(url, api=name == "资料服务"):
+                self.failures[name] = 0
+            else:
+                self.failures[name] += 1
+            if self.failures[name] >= HEARTBEAT_FAILURES:
+                raise TimeoutError(f"{name}持续无响应。请重新打开工作区；已保存的资料会保留。")
+
+
 def watch_parent(parent_pid: int, stop_action) -> None:
     while not STOP.wait(0.3):
         if os.getppid() != parent_pid:
@@ -228,7 +269,7 @@ def supervise(args) -> int:
         status(
             root,
             "web_starting",
-            "资料已就绪，正在打开投资工作台…",
+            "本机服务已启动，正在打开投资工作台…",
             api_port=api_port,
             api_pid=api.pid,
         )
@@ -269,11 +310,16 @@ def supervise(args) -> int:
             "本机服务已启动，请完成账户设置。" if args.workspace_id else "本机演示资料已就绪。",
             **ready,
         )
+        heartbeat = Heartbeat(f"http://127.0.0.1:{api_port}/health", web_url)
+        next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
         while not STOP.wait(0.3):
             if any(child.poll() is not None for child in children):
                 raise RuntimeError(
                     "A bundled service stopped; the other owned services were stopped as well"
                 )
+            if time.monotonic() >= next_heartbeat:
+                heartbeat.check()
+                next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
         terminate_owned(children)
         status(root, "stopped", "预览已关闭。")
         return 0

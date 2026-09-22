@@ -148,6 +148,32 @@ function details(overrides: Partial<HealthDetails> = {}): HealthDetails {
 }
 
 describe("health status model", () => {
+  function emptyLocal() {
+    const emptyQueue = { ...queue, queued: 0, running: 0, succeeded: 0, failed: 0, interrupted: 0, last_success_at: null };
+    const emptyError = "FileNotFoundError: no typed snapshot has been published";
+    return details({
+      health: { ...details().health!, status: "degraded", latestRunId: null, queue: emptyQueue, bootstrapError: emptyError },
+      readiness: { ...details().readiness!, status: "not_ready", latestRunId: null, queue: emptyQueue, bootstrapError: emptyError },
+      refresh: refresh({ latestJob: null, latestFullJob: null }), jobs: [],
+    });
+  }
+
+  it("treats a new local workspace as setup without declaring data ready", () => {
+    expect(deriveHealthTone(emptyLocal(), true)).toBe("setup");
+    expect(deriveHealthTone(emptyLocal())).toBe("degraded");
+  });
+
+  it("never hides a failed worker, prior data loss, or a real bootstrap error behind setup", () => {
+    const empty = emptyLocal();
+    for (const change of [
+      { worker: { ...worker, healthy: false } },
+      { bootstrapError: "IntegrityError: damaged snapshot" },
+      { queue: { ...empty.health!.queue, succeeded: 1 } },
+      { queue: { ...empty.health!.queue, interrupted: 1 } },
+    ]) expect(deriveHealthTone({ ...empty, health: { ...empty.health!, ...change } }, true)).toBe("degraded");
+    expect(deriveHealthTone({ ...empty, errors: [{ scope: "jobs", status: 503, detail: "unavailable" }] }, true)).toBe("degraded");
+  });
+
   it("reports a healthy backend as ready", () => {
     expect(deriveHealthTone(details())).toBe("ready");
   });

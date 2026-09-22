@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod connection;
+mod recovery;
 mod runtime;
+mod updates;
 
 use connection::{Mode, Probe, Profile};
 use runtime::{Runtime, Workspace};
@@ -34,6 +36,7 @@ struct Session {
     active_url: Option<String>,
     active_name: Option<String>,
     probe: Option<Probe>,
+    retry_at_ms: Option<u64>,
     #[serde(skip)]
     desired: Option<Profile>,
     #[serde(skip)]
@@ -78,6 +81,7 @@ impl Desktop {
         session.active_url = None;
         session.active_name = None;
         session.probe = None;
+        session.retry_at_ms = None;
         session.stage = if session.desired.is_some() {
             "connecting"
         } else {
@@ -202,8 +206,18 @@ fn failed(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64, detai
     let already_showing_error = desktop.snapshot().stage == "error";
     if desktop.update(generation, |session| {
         session.stage = "error".into();
-        session.message = "暂时无法打开这份资料。".into();
+        session.message = if session
+            .desired
+            .as_ref()
+            .is_some_and(|p| p.mode != Mode::Remote)
+        {
+            "本机服务需要重新启动。"
+        } else {
+            "暂时无法连接这份资料。"
+        }
+        .into();
         session.detail = detail;
+        session.retry_at_ms = None;
         session.active_url = None;
         session.active_name = None;
     }) && !already_showing_error
@@ -215,7 +229,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
     let mut seen = u64::MAX;
     let mut next_probe = Instant::now();
     let mut loading_since = Instant::now();
-    let mut failures = 0;
+    let mut recovery = recovery::RemoteRecovery::default();
     let mut monitor_remote = false;
     while !desktop.exiting.load(Ordering::Relaxed) {
         let snapshot = desktop.snapshot();
@@ -227,29 +241,39 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                 continue;
             }
             seen = generation;
-            failures = 0;
+            recovery = recovery::RemoteRecovery::default();
             monitor_remote = false;
             match &snapshot.desired {
                 None => {}
-                Some(profile) if profile.mode == Mode::Remote => {
-                    match connection::probe(profile) {
-                        Ok(probe) => {
-                            if desktop.update(generation, |s| s.probe = Some(probe)) {
-                                enter(
-                                    &app,
-                                    &desktop,
-                                    generation,
-                                    profile.url.clone(),
-                                    profile.name.clone(),
-                                );
-                                monitor_remote = true;
-                                loading_since = Instant::now();
-                            }
+                Some(profile) if profile.mode == Mode::Remote => match connection::probe(profile) {
+                    Ok(probe) => {
+                        recovery.recovered();
+                        if desktop.update(generation, |s| s.probe = Some(probe)) {
+                            enter(
+                                &app,
+                                &desktop,
+                                generation,
+                                profile.url.clone(),
+                                profile.name.clone(),
+                            );
+                            monitor_remote = true;
+                            next_probe = Instant::now() + Duration::from_secs(45);
+                            loading_since = Instant::now();
                         }
-                        Err(error) => failed(&app, &desktop, generation, error),
                     }
-                    next_probe = Instant::now() + Duration::from_secs(45);
-                }
+                    Err(error) => {
+                        failed(&app, &desktop, generation, error);
+                        let retry = recovery.failed();
+                        if let Some(delay) = retry.after {
+                            monitor_remote = true;
+                            next_probe = Instant::now() + delay;
+                            desktop.update(generation, |s| {
+                                s.retry_at_ms =
+                                    Some(connection::now_ms() + delay.as_millis() as u64)
+                            });
+                        }
+                    }
+                },
                 Some(profile) => {
                     if let Err(error) = desktop.runtime.start(
                         profile
@@ -290,10 +314,12 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
             } else if monitor_remote && Instant::now() >= next_probe {
                 match connection::probe(profile) {
                     Ok(probe) => {
-                        failures = 0;
+                        recovery.recovered();
+                        next_probe = Instant::now() + Duration::from_secs(45);
                         if desktop.update(generation, |s| {
                             s.probe = Some(probe);
                             s.detail.clear();
+                            s.retry_at_ms = None;
                         }) && snapshot.stage == "error"
                         {
                             enter(
@@ -307,17 +333,25 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                         }
                     }
                     Err(error) => {
-                        failures += 1;
-                        if failures >= 2 {
+                        let retry = recovery.failed();
+                        if retry.show_recovery {
                             failed(&app, &desktop, generation, error);
                         } else {
                             desktop.update(generation, |s| {
                                 s.detail = "连接检查暂时未成功，正在重试。".into()
                             });
                         }
+                        monitor_remote = retry.after.is_some();
+                        if let Some(delay) = retry.after {
+                            next_probe = Instant::now() + delay;
+                        }
+                        desktop.update(generation, |s| {
+                            s.retry_at_ms = retry
+                                .after
+                                .map(|delay| connection::now_ms() + delay.as_millis() as u64)
+                        });
                     }
                 }
-                next_probe = Instant::now() + Duration::from_secs(45);
             }
             if snapshot.stage == "loading" && loading_since.elapsed() > Duration::from_secs(35) {
                 monitor_remote = false;
@@ -449,13 +483,85 @@ async fn open_local_workspace(
 fn desktop_status(
     window: WebviewWindow,
     desktop: tauri::State<'_, Arc<Desktop>>,
-) -> Result<Session, String> {
+) -> Result<DesktopStatus, String> {
     local_command(&window)?;
     let mut snapshot = desktop.snapshot();
+    let mode = snapshot
+        .desired
+        .as_ref()
+        .map(|profile| profile.mode.clone());
+    let workspace = snapshot
+        .desired
+        .as_ref()
+        .and_then(|profile| profile.workspace.clone());
+    let can_open_browser = browser_url(&snapshot).is_some();
     if let Ok(Some(saved)) = connection::read_profile(&desktop.root) {
         snapshot.profile = saved;
     }
-    Ok(snapshot)
+    Ok(DesktopStatus {
+        session: snapshot,
+        mode,
+        workspace,
+        can_open_browser,
+    })
+}
+
+#[derive(Serialize)]
+struct DesktopStatus {
+    #[serde(flatten)]
+    session: Session,
+    mode: Option<Mode>,
+    workspace: Option<Workspace>,
+    can_open_browser: bool,
+}
+
+fn browser_url(session: &Session) -> Option<tauri::Url> {
+    if let Some(address) = &session.active_url {
+        let url: tauri::Url = address.parse().ok()?;
+        if workspace_url(&url, Some(address)) {
+            return Some(url);
+        }
+    }
+    let profile = session.desired.as_ref()?;
+    (profile.mode == Mode::Remote)
+        .then(|| connection::remote_url(&profile.url).ok())
+        .flatten()
+}
+
+#[tauri::command]
+fn show_workspace_folder(
+    window: WebviewWindow,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+) -> Result<(), String> {
+    local_command(&window)?;
+    let workspace = desktop
+        .snapshot()
+        .desired
+        .and_then(|profile| profile.workspace)
+        .ok_or("当前没有选中的本地工作区。")?;
+    if !workspace.path.is_absolute() || !workspace.path.is_dir() {
+        return Err("工作区文件夹暂时不可用，请重新选择位置。".into());
+    }
+    Command::new("/usr/bin/open")
+        .arg(&workspace.path)
+        .spawn()
+        .map_err(|_| "未能打开工作区文件夹。")?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn check_updates(window: WebviewWindow) -> Result<updates::UpdateCheck, String> {
+    local_command(&window)?;
+    tauri::async_runtime::spawn_blocking(updates::check)
+        .await
+        .map_err(|_| "版本检查没有完成。".to_string())?
+}
+
+#[tauri::command]
+fn open_release_notes(window: WebviewWindow, version: String) -> Result<(), String> {
+    local_command(&window)?;
+    open_external(&updates::notes_url(&version)?);
+    Ok(())
 }
 #[tauri::command]
 fn connect_profile(
@@ -498,7 +604,8 @@ fn retry_connection(
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<(), String> {
     local_command(&window)?;
-    let profile = desktop.snapshot().profile.validated()?;
+    let snapshot = desktop.snapshot();
+    let profile = snapshot.desired.unwrap_or(snapshot.profile).validated()?;
     request_connection(&app, &desktop, Some(profile), false)
 }
 #[tauri::command]
@@ -536,7 +643,7 @@ fn open_in_browser(
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<(), String> {
     local_command(&window)?;
-    open_external(&connection::remote_url(&desktop.snapshot().profile.url)?);
+    open_external(&browser_url(&desktop.snapshot()).ok_or("当前没有可打开的网页。")?);
     Ok(())
 }
 fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -580,7 +687,8 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
                 let _ = show_settings(app);
             }
             "reconnect" => {
-                if let Ok(profile) = desktop.snapshot().profile.validated() {
+                let snapshot = desktop.snapshot();
+                if let Ok(profile) = snapshot.desired.unwrap_or(snapshot.profile).validated() {
                     let _ = request_connection(app, &desktop, Some(profile), false);
                 } else {
                     let _ = show_settings(app);
@@ -590,12 +698,7 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
                 let _ = request_connection(app, &desktop, None, false);
             }
             "browser" => {
-                let snapshot = desktop.snapshot();
-                if let Some(url) = snapshot.active_url {
-                    if let Ok(url) = tauri::Url::parse(&url) {
-                        open_external(&url);
-                    }
-                } else if let Ok(url) = connection::remote_url(&snapshot.profile.url) {
+                if let Some(url) = browser_url(&desktop.snapshot()) {
                     open_external(&url);
                 }
             }
@@ -624,7 +727,10 @@ fn main() {
             open_in_browser,
             choose_workspace_folder,
             prepare_workspace,
-            open_local_workspace
+            open_local_workspace,
+            show_workspace_folder,
+            check_updates,
+            open_release_notes
         ])
         .setup(|app| {
             let root = app.path().app_data_dir()?;
@@ -656,6 +762,7 @@ fn main() {
                     active_url: None,
                     active_name: None,
                     probe: None,
+                    retry_at_ms: None,
                     desired: None,
                     dismiss_settings: false,
                 }),
@@ -800,6 +907,7 @@ mod tests {
                 active_url: None,
                 active_name: None,
                 probe: None,
+                retry_at_ms: None,
                 desired: None,
                 dismiss_settings: false,
             }),
@@ -811,6 +919,16 @@ mod tests {
         desktop.request(Some(demo), false, true).unwrap();
         assert!(desktop.snapshot().dismiss_settings);
         assert_eq!(desktop.snapshot().desired.unwrap().mode, Mode::Demo);
+        // The saved service is a recent entry, not a fallback for local recovery.
+        assert!(browser_url(&desktop.snapshot()).is_none());
+        let generation = desktop.snapshot().generation;
+        desktop.update(generation, |s| {
+            s.active_url = Some("http://127.0.0.1:43000/settings".into())
+        });
+        assert_eq!(
+            browser_url(&desktop.snapshot()).unwrap().as_str(),
+            "http://127.0.0.1:43000/settings"
+        );
         assert_eq!(connection::read_profile(&root).unwrap(), Some(profile));
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -836,6 +954,7 @@ mod tests {
                 active_url: None,
                 active_name: None,
                 probe: None,
+                retry_at_ms: None,
                 desired: None,
                 dismiss_settings: false,
             }),

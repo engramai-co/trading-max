@@ -66,6 +66,30 @@ Implementation and synthetic tests are not a claim that a real account has been
 accepted. Final real-account acceptance needs the owner's direct credentials,
 a successful refresh, healthy worker and explicit balance confirmation.
 
+## Recovery and version checks
+
+The native entry remains available even when its selected service fails. A first
+remote connection gets two automatic retries (after 5 and 15 seconds). An
+established connection tolerates one failed check; persistent failures show a
+recovery screen with bounded retries and an explicit cancel/retry action. It
+never switches to demo data. Closing the client leaves a remote collector running.
+
+Local workspaces check both process exit and HTTP responsiveness. Four consecutive
+failed liveness checks, 15 seconds apart, stop only the owned runtime and offer
+**Reopen workspace**. Retry uses the same folder; saved records and Keychain
+connections are not reset. Account/data readiness is separate: an empty workspace
+with a healthy worker shows **Ready for your first sync**, while failed jobs,
+unhealthy workers and unexpected snapshot errors still need attention. An interrupted
+refresh must be checked in Data status and retried; no missing record is fabricated.
+
+Native Settings explains where collection runs and offers **Open data folder** for
+the selected local workspace. **Version & updates** makes an explicit, read-only
+request to the canonical repository's stable release endpoint, sending no account
+or workspace details. A repository version is not a signed desktop update. This
+preview neither downloads nor installs releases, changes the workspace, nor
+updates an existing HTTPS service. Signed installation, migration/backup and
+rollback acceptance remain part of the public distribution gate.
+
 ## Development and current source installations
 
 See the [desktop build and test guide](../../apps/desktop/README.md) and the

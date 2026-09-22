@@ -117,3 +117,28 @@ initially disabled. Existing user preferences in an opened workspace persist.
 Quitting or switching sources stops only the current owned process group.
 Real-account acceptance is separate from synthetic tests and requires direct
 credential entry and user confirmation; production remains untouched.
+
+
+## Recovery and update visibility — 2026-09-22
+
+The third increment adds bounded automatic remote reconnects, cancellable through
+the existing generation boundary. One transient health miss does not replace a
+readable remote page. Retry and browser actions use the active destination,
+independent of the saved startup preference. Local process monitoring gains HTTP
+liveness checks; sustained stalls stop only owned children and leave persisted
+state available for an explicit restart. Liveness never substitutes for data
+readiness. Empty local setup has a neutral health state; real worker, snapshot
+and refresh failures remain visible.
+
+The native entry explains foreground versus remote collection and reveals the
+selected local folder without accepting arbitrary filesystem commands. A manual
+version check reads only the canonical public stable release metadata. Its
+version comparison and release-note links do not constitute desktop update
+availability; no installation, migration, rollback or server upgrade is attempted.
+This avoids introducing an unsigned update channel before the distribution gate.
+
+Validate deterministic retry budgets/cancellation, isolation of current versus
+saved destinations, malformed update metadata, fresh versus damaged/failed state,
+API/web stalls and owned cleanup. Keep real credentials out of tests and leave
+production unchanged. Public signed update and cross-version recovery acceptance
+remain a later milestone.

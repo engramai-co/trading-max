@@ -1,6 +1,7 @@
 """Safety contracts for the native preview supervisor."""
 
 import importlib.util
+import io
 import os
 import socket
 import tempfile
@@ -16,6 +17,33 @@ SPEC.loader.exec_module(supervisor)
 
 
 class SupervisorTests(unittest.TestCase):
+    def test_empty_workspace_is_responsive_even_before_readiness(self):
+        response = io.BytesIO(b'{"service":"trading_max-api","status":"degraded"}')
+        response.status = 200
+        with patch.object(supervisor.urllib.request, "urlopen", return_value=response):
+            self.assertTrue(supervisor.responsive("http://127.0.0.1:42000/health", api=True))
+
+    def test_unrecognized_service_is_not_a_healthy_runtime(self):
+        for body in [b"[]", b"{}", b"not-json", b'{"service":"other","status":"ok"}']:
+            response = io.BytesIO(body)
+            response.status = 200
+            with patch.object(supervisor.urllib.request, "urlopen", return_value=response):
+                self.assertFalse(supervisor.responsive("http://127.0.0.1:42000/health", api=True))
+
+    def test_transient_stall_resets_but_persistent_stall_needs_recovery(self):
+        heartbeat = supervisor.Heartbeat("api", "web")
+        # A brief API stall and an independent web stall must not accumulate together.
+        with patch.object(supervisor, "responsive", side_effect=[False, True, True, False]):
+            heartbeat.check()
+            heartbeat.check()
+        with patch.object(supervisor, "responsive", return_value=True):
+            heartbeat.check()
+        with patch.object(supervisor, "responsive", side_effect=lambda url, **_: url == "web"):
+            for _ in range(supervisor.HEARTBEAT_FAILURES - 1):
+                heartbeat.check()
+            with self.assertRaisesRegex(TimeoutError, "资料服务持续无响应"):
+                heartbeat.check()
+
     def test_inherited_credentials_and_state_are_discarded(self):
         with patch.dict(
             os.environ,

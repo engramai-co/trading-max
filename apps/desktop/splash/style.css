@@ -414,6 +414,13 @@ button:focus-visible,input:focus-visible {
   margin-top:-6px;
   margin-bottom:24px
 }
+.runtime-context { margin:0 0 24px; color:var(--muted); font-size:11px; line-height:1.8; }
+.runtime-context p { margin:0 0 6px; }
+.diagnostics { margin:0 0 20px; font-size:11px; color:var(--muted); }
+.diagnostics summary { cursor:pointer; }
+.diagnostics p { overflow-wrap:anywhere; }
+#updates .recent p { margin-bottom:0; }
+#updates .preview-note { font-size:12px; line-height:1.9; padding:18px; margin-top:22px; }
 .progress {
   height:3px;
   overflow:hidden;

@@ -187,6 +187,28 @@ def main(payload: Path, output: Path):
                     process.terminate()
                     process.wait(timeout=10)
         results["checks"].append("restart preserves seeded state")
+        # A live PID is insufficient: a suspended service must expose recovery.
+        # Signals are sent only to the child IDs of this disposable harness.
+        for target in ("api_pid", "web_pid"):
+            process = start()
+            stalled_pid = None
+            try:
+                value = ready(process)
+                stalled_pid = value[target]
+                os.kill(stalled_pid, signal.SIGSTOP)
+                assert process.wait(timeout=95) != 0
+                stopped(value)
+                assert read()["stage"] == "error"
+                assert "持续无响应" in read()["detail"]
+                results["checks"].append(
+                    f"{target} persistent stall exposes recovery and cleans owned children"
+                )
+            finally:
+                if stalled_pid and alive(stalled_pid):
+                    os.kill(stalled_pid, signal.SIGCONT)
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=10)
         # A real workspace starts empty and can reach Settings without a snapshot.
         create = subprocess.run(
             [

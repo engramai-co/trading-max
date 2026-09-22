@@ -40,8 +40,10 @@ an explicit choice; failed remote connections never fall back to mock balances.
 The native client verifies normal system TLS trust and identifies the backend
 through the existing read-only `/api/backend/health` route. Redirects, credential
 URLs, non-HTTPS endpoints and oversized responses are rejected. Availability is
-checked every 45 seconds while connected; two failures show a local recovery
-screen, with recovery when the service returns. Degraded worker state is visible
+checked every 45 seconds while connected. One failed check keeps the page available;
+persistent failure shows recovery, with retries after 15, 30 and 60 seconds before
+manual retry is required. Initial connection gets two retries after 5 and 15
+seconds. Cancelling invalidates pending attempts; a recovered service opens again. Degraded worker state is visible
 in App Settings without hiding readable data. Initial connection and page-load
 failures offer retry, settings and browser actions. There is no offline portfolio
 copy in this iteration.
@@ -137,7 +139,8 @@ python3 apps/desktop/scripts/validate_runtime.py \
   apps/desktop/payload /absolute/path/outside/checkout/runtime-checks.json
 ```
 
-The harness also creates a real-mode empty workspace with no credentials, verifies
+The harness also suspends each owned API/web process to test sustained liveness
+failures and cleanup, then creates a real-mode empty workspace with no credentials, verifies
 Settings remains accessible while data readiness is false, rejects premature
 refresh/confirmation, tests ownership and reopening, and checks no demo data was
 seeded.
@@ -171,6 +174,24 @@ marked as hidden on macOS, postponing rendering and chart initialization.
 Startup must render without requiring a manual window resize. Opening a
 temporary demo reveals the workspace just as a saved connection does, without
 persisting the temporary selection.
+
+## Recovery and version checks
+
+Local runtime liveness checks run every 15 seconds with a two-second timeout.
+Four consecutive misses for either service stop the owned pair and return to the
+native recovery screen. A healthy HTTP API with no first snapshot is responsive,
+not a process failure. Local recovery preserves the folder and credentials, and
+browser actions target only the active workspace/service rather than a saved
+but inactive server profile. Technical startup details are collapsed by default.
+
+Native Settings explains local versus remote collection and can reveal the
+selected local folder. **Version & updates** checks the canonical GitHub stable
+release only when clicked. The request has TLS verification, no redirects,
+bounded time/body, strict version parsing and a fixed release-notes origin. No
+account, workspace or remote-service address is sent. It reports the repository
+release separately from this internal App, and has no download/install action.
+The check cannot update Mac mini or migrate local data. There is no automatic
+updater or new native permission for web pages.
 
 ## Distribution gate
 

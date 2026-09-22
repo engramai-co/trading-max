@@ -18,8 +18,18 @@
     <section class="intro"><h1 id="heading" tabindex="-1">打开你的投资工作台。</h1><p id="subtitle">从这台 Mac 开始，或连接已经在运行的服务。</p></section>
     <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
     <div id="progress" class="progress" hidden><span></span></div>
-    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button">在浏览器打开</button></div>
+    <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
+    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button">在浏览器打开</button><button id="stop-retry" class="text-button" type="button">取消连接</button></div>
+    <details id="diagnostics" class="diagnostics" hidden><summary>查看诊断详情</summary><p id="diagnostic-detail"></p></details>
+    <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden>打开资料文件夹 ↗</button></div>
     <div id="content">
+      <section id="updates" aria-label="版本与更新" hidden>
+        <div class="recent"><span class="tiny-label">本机 App</span><p><strong id="installed-version"></strong> · 内部预览</p><p class="hint">替换 App 与更新已连接的服务是两件事。检查版本不会改动你的资料，也不会更新 Mac mini。</p></div>
+        <p class="hint">点击后向 GitHub 查询官方稳定版本，不发送工作区、账户或连接地址。</p>
+        <div class="actions"><button id="check-updates" type="button">检查版本</button><button id="release-notes" class="secondary" type="button" hidden>查看版本说明 ↗</button></div>
+        <div id="update-result" class="preview-note" role="status" hidden></div>
+        <p class="hint">当前仍是内部桌面预览。签名更新包尚未开放，不会自动下载或安装。安装新预览前请退出 App，保留原有工作区。</p>
+      </section>
       <section id="welcome" aria-label="选择工作区">
         <section id="recent" class="recent" hidden aria-label="已保存的服务">
           <div class="recent-top"><span class="tiny-label">已保存的服务</span><button id="edit-remote" class="text-button" type="button">管理连接</button></div>
@@ -54,7 +64,7 @@
     </div>
     <div id="feedback" role="status" aria-live="polite" hidden></div>
     <div id="pending-actions" class="actions" hidden><button id="change" class="secondary" type="button">修改连接</button><button id="cancel" class="text-button" type="button">取消</button></div>
-    <footer><span>无需注册 Trading Max 账户</span><span><kbd>⌘ ,</kbd> 工作区与连接</span></footer>
+    <footer><span>无需注册 Trading Max 账户</span><button id="show-updates" class="text-button" type="button">版本与更新</button><span><kbd>⌘ ,</kbd> 工作区与连接</span></footer>
   </main>
 </div>
 <script src="app.js"></script>
