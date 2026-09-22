@@ -4,6 +4,43 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-22
+
+### Added
+
+- Add an internal Apple Silicon desktop preview that bundles the existing web
+  app, API, Node and Python runtimes. Create or reopen an independent local
+  workspace, connect to an existing HTTPS service, or explicitly try synthetic
+  demo data without replacing the saved service connection.
+- Guide an empty local workspace through account connection, first-sync progress
+  and explicit balance confirmation. Keep credentials in its own Keychain
+  namespace and require a successful account refresh before accepting setup.
+- Add bounded remote reconnects, local service liveness checks, one-click workspace
+  recovery, data-folder access and manual official-version checks. Keep native
+  controls separate from portfolio pages, with no native permissions for remote
+  content and cleanup limited to the App's owned processes.
+
+### Changed
+
+- Make desktop onboarding the documented user-facing entry and archive the former
+  agent/source onboarding material while retaining existing installation scripts.
+- Show first-sync guidance for healthy empty local workspaces, while continuing to
+  surface failed jobs, unhealthy workers and unexpected snapshot errors.
+
+### Fixed
+
+- Preserve onboarding progress across Settings navigation and saved remote
+  preferences across local/demo sessions.
+- Keep recovery controls visible after a failed portfolio WebView and reopen the
+  original local workspace without resetting records or connections.
+
+### Notes
+
+- The desktop build remains an internal preview. This source release does not
+  publish a Developer ID signed/notarized installer or enable automatic updates.
+  Real-account first-sync acceptance, signed updates and cross-version recovery
+  remain prerequisites for public desktop distribution.
+
 ## [1.8.0] - 2026-09-22
 
 ### Changed

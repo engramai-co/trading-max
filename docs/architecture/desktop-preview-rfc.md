@@ -1,15 +1,16 @@
 # Desktop runtime preview
 
 Status: internal packaging experiment; no public release or production migration.
-Base product: 1.8.0. Target: Apple Silicon macOS.
+Base product: 1.9.0. Target: Apple Silicon macOS.
 
 ## Purpose and scope
 
 Prove that the existing Next.js/BFF and Python API can run inside an installable
 Mac application without requiring the user to install Node, Python, Git or uv.
-The approved onboarding prototype precedes this experiment. Real local account
-enrollment and background collection remain later stages. A follow-up supports
-explicitly connecting this App to an already configured HTTPS service.
+The desktop entry supports explicitly selected local workspaces and connecting
+to an already configured HTTPS service. Local account enrollment is implemented;
+real-account balance acceptance and unattended background collection remain
+separate gates.
 
 ## Approach and alternatives
 
@@ -53,7 +54,7 @@ Accept against URL validation, wrong-service detection, TLS/transport failures,
 bounded responses, late-result cancellation, native settings availability,
 remembered launch, remote/demo switching, owned-process cleanup and unchanged
 server collection. Keep the prior installed App for rollback. This remains an
-internal desktop build on the 1.8.0 product base, not a new public release.
+internal desktop build on the 1.9.0 product base, not a new public release.
 
 ## Verification and release gate
 

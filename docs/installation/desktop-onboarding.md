@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **internal desktop preview** on the current **1.8.0** application base.
+Status: **internal desktop preview** on the current **1.9.0** application base.
 The entry flow is being integrated in small, independently accepted steps.
 There is no signed public desktop installer yet.
 
