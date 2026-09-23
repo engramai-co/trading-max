@@ -80,12 +80,15 @@ types. It derives only a small routing state:
 OpenFIGI's smaller public batch and rate limits; a key increases capacity
 without changing behavior or the persisted contract.
 
-Issuer-specific download configuration in `BUILTIN_FUND_ADAPTERS` describes
-how Trading Max fetches holdings from supported issuers. It is an adapter
-registry, not an ETF universe. Any ticker can use a normalized snapshot at
-`raw/fund-holdings/<TICKER>.json`; an unsupported fund is reported as
-unavailable instead of being treated as a direct company or silently assigned
-to a sector.
+Issuer-specific defaults in `BUILTIN_FUND_ADAPTERS` coexist with official
+catalogue discovery and ISIN-addressed downloads. Broker ISIN/name observations
+reach both reference enrichment and look-through; ticker alone never overrides
+a conflicting ISIN. The registry is not an ETF universe. Any ticker can use a
+normalized snapshot at `raw/fund-holdings/<TICKER>.json`; include `fundIsin` to
+establish identity when the broker supplies it. Unsupported funds remain
+unavailable rather than being classified as direct companies. See
+[ETF source coverage](../guides/etf-coverage.md) for adapters, cache policy and
+partial-weight handling.
 
 ## Resolution and persistence
 

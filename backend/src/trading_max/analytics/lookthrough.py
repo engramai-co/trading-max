@@ -77,6 +77,8 @@ class FundHolding(DomainModel):
                 "FORWARD",
                 "FX",
                 "MONEY MARKET",
+                "OPTION",
+                "SWAP",
             )
         )
 
@@ -92,6 +94,7 @@ class FundHolding(DomainModel):
 
 class FundSnapshot(DomainModel):
     ticker: str
+    fund_isin: str = ""
     as_of: str
     fetched_at: str = ""
     industry_as_of: str = ""
@@ -101,9 +104,19 @@ class FundSnapshot(DomainModel):
     industry_weights: dict[str, float] = Field(default_factory=dict)
     source_url: str = ""
     issuer: str = ""
+    unweighted_holdings_count: int = Field(default=0, ge=0)
 
     def weight_total_pct(self) -> float:
         return sum(item.weight_pct for item in self.holdings)
+
+
+def fetch_fund_snapshot(provider: Any, security: SecurityDescriptor) -> FundSnapshot | None:
+    """Pass identity to issuer discovery while preserving ticker-only providers."""
+    if hasattr(provider, "fetch_security"):
+        return provider.fetch_security(security)
+    if hasattr(provider, "fetch"):
+        return provider.fetch(security.ticker)
+    return provider(security.ticker)
 
 
 class FundHoldingsProvider(Protocol):
@@ -114,15 +127,18 @@ class FundHoldingsProvider(Protocol):
 class RawFundHoldingsProvider:
     """Read normalized fund files from the private state root.
 
-    Network adapters can write this same schema under ``raw/fund-holdings``;
-    the calculation layer remains deterministic and never depends on mtime.
+    Network adapters write the current schema under ``raw/fund-holdings/v3``;
+    legacy files remain readable without being overwritten during an upgrade.
+    The calculation layer remains deterministic and never depends on mtime.
     """
 
     def __init__(self, state_root: Path) -> None:
         self.root = state_root.expanduser().resolve() / "raw" / "fund-holdings"
 
     def fetch(self, ticker: str) -> FundSnapshot | None:
-        path = self.root / f"{ticker.upper()}.json"
+        path = self.root / "v3" / f"{ticker.upper()}.json"
+        if not path.is_file():
+            path = self.root / f"{ticker.upper()}.json"
         if not path.is_file():
             return None
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -204,11 +220,6 @@ class LookthroughService:
         self.provider = provider
         self.security_master = security_master or CatalogSecurityMaster.default()
 
-    def _fetch(self, ticker: str) -> FundSnapshot | None:
-        if hasattr(self.provider, "fetch"):
-            return self.provider.fetch(ticker)
-        return self.provider(ticker)
-
     def run(self, accounts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
         positions = [
             (profile, position)
@@ -239,7 +250,7 @@ class LookthroughService:
         exposures: dict[str, dict[str, Any]] = {}
         sources: list[dict[str, Any]] = []
         warnings: list[str] = []
-        fund_snapshots: dict[str, FundSnapshot | None] = {}
+        fund_snapshots: dict[tuple[str, str], FundSnapshot | None] = {}
         fund_position_keys: set[tuple[str, str]] = set()
 
         for _, position in positions:
@@ -258,9 +269,22 @@ class LookthroughService:
                 provider_security_type2=resolved.provider_security_type2,
             ):
                 continue
-            snapshot = self._fetch(ticker)
+            try:
+                snapshot = fetch_fund_snapshot(
+                    self.provider,
+                    SecurityDescriptor(
+                        ticker=ticker,
+                        isin=isin,
+                        name=str(position.get("name") or resolved.entity_name),
+                    ),
+                )
+            except Exception as exc:
+                # One unavailable issuer must not suppress other funds and
+                # direct positions in the portfolio's look-through result.
+                warnings.append(f"{ticker}: constituent fetch failed: {type(exc).__name__}")
+                snapshot = None
             fund_position_keys.add((ticker, isin))
-            fund_snapshots[ticker] = snapshot
+            fund_snapshots[(ticker, isin)] = snapshot
 
         def add_exposure(
             *,
@@ -395,15 +419,15 @@ class LookthroughService:
                 share_class_figi=str(position.get("share_class_figi") or ""),
             )
 
-        etf_positions: defaultdict[str, float] = defaultdict(float)
+        etf_positions: defaultdict[tuple[str, str], float] = defaultdict(float)
         for _, position in positions:
             ticker = str(position.get("ticker") or "").strip().upper()
             value = _number(position.get("current_value_gbp"))
             isin = str(position.get("isin") or "").strip().upper()
             if (ticker, isin) in fund_position_keys and value > 0:
-                etf_positions[ticker] += value
-        for ticker, fund_value in etf_positions.items():
-            snapshot = fund_snapshots.get(ticker)
+                etf_positions[(ticker, isin)] += value
+        for (ticker, isin), fund_value in etf_positions.items():
+            snapshot = fund_snapshots.get((ticker, isin))
             if snapshot is None:
                 warning = f"{ticker}: official fund holdings are unavailable"
                 warnings.append(warning)
@@ -411,6 +435,7 @@ class LookthroughService:
                     {
                         "ticker": ticker,
                         "status": "unavailable",
+                        "isin": isin or None,
                         "asOf": "",
                         "sourceUrl": "",
                         "issuer": "",
@@ -422,7 +447,7 @@ class LookthroughService:
                 country_values["Unclassified"] += fund_value
                 industry_values["Unclassified"] += fund_value
                 add_exposure(
-                    isin="",
+                    isin=isin,
                     ticker=ticker,
                     name=ticker,
                     country="Unclassified",
@@ -441,7 +466,7 @@ class LookthroughService:
                 country_values["Unclassified"] += fund_value
                 industry_values["Unclassified"] += fund_value
                 add_exposure(
-                    isin="",
+                    isin=isin,
                     ticker=ticker,
                     name=ticker,
                     country="Unclassified",
@@ -451,6 +476,10 @@ class LookthroughService:
                     security_type_hint="ETF",
                 )
                 continue
+            if snapshot.unweighted_holdings_count:
+                warnings.append(
+                    f"{ticker}: issuer omits weights for {snapshot.unweighted_holdings_count} positions"
+                )
             country_weights = dict(snapshot.country_weights)
             industry_weights = dict(snapshot.industry_weights)
             if not country_weights:
@@ -492,6 +521,8 @@ class LookthroughService:
                 {
                     "ticker": ticker,
                     "status": "verified",
+                    "isin": snapshot.fund_isin or None,
+                    "unweightedHoldingsCount": snapshot.unweighted_holdings_count,
                     "asOf": snapshot.as_of,
                     "industryAsOf": snapshot.industry_as_of or snapshot.as_of,
                     "sourceUrl": snapshot.source_url,

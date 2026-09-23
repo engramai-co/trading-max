@@ -9,7 +9,6 @@ import tempfile
 import time
 from collections import defaultdict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -20,6 +19,11 @@ import pandas as pd
 from pypdf import PdfReader
 
 from trading_max.analytics.lookthrough import FundHolding, FundSnapshot
+from trading_max.reference import SecurityDescriptor
+
+from .fund_catalogs import FundCatalog
+from .fund_downloads import as_of_date, percentage
+from .fund_specs import BUILTIN_FUND_ADAPTERS, FundSpec
 
 ISHARES_API = (
     "https://www.ishares.com/varnish-api/uk-retail01-product-data/"
@@ -123,98 +127,6 @@ ISIN_PREFIX_COUNTRIES = {
     "PK": "Pakistan",
     "RO": "Romania",
     "RU": "Russia",
-}
-
-
-@dataclass(frozen=True, slots=True)
-class FundSpec:
-    ticker: str
-    isin: str
-    name: str
-    issuer: str
-    source_url: str
-    product_id: str | None = None
-    data_isin: str | None = None
-
-
-# These entries configure issuer-specific download adapters. They are not a
-# security universe and are never used to decide whether an instrument is a
-# fund. Security type is resolved dynamically by the reference-data service.
-BUILTIN_FUND_ADAPTERS: dict[str, FundSpec] = {
-    "VUAG": FundSpec(
-        ticker="VUAG",
-        isin="IE00BFMXXD54",
-        name="Vanguard S&P 500 UCITS ETF",
-        issuer="Vanguard",
-        product_id="9694",
-        source_url="https://www.vanguard.co.uk/uk-fund-directory/product/etf/equity/9694/sp-500-ucits-etf-usd-accumulating",
-    ),
-    "VWRP": FundSpec(
-        ticker="VWRP",
-        isin="IE00BK5BQT80",
-        name="Vanguard FTSE All-World UCITS ETF",
-        issuer="Vanguard",
-        product_id="9679",
-        source_url="https://www.vanguard.co.uk/uk-fund-directory/product/etf/equity/9679/ftse-all-world-ucits-etf-usd-accumulating",
-    ),
-    "EIMI": FundSpec(
-        ticker="EIMI",
-        isin="IE00BKM4GZ66",
-        name="iShares Core MSCI EM IMI UCITS ETF",
-        issuer="iShares",
-        product_id="264659",
-        source_url="https://www.ishares.com/uk/individual/en/products/264659",
-    ),
-    "IGLT": FundSpec(
-        ticker="IGLT",
-        isin="IE00B1FZSB30",
-        name="iShares Core UK Gilts UCITS ETF",
-        issuer="iShares",
-        product_id="251806",
-        source_url="https://www.ishares.com/uk/individual/en/products/251806",
-    ),
-    "XUSE": FundSpec(
-        ticker="XUSE",
-        isin="IE000R4ZNTN3",
-        name="iShares MSCI World ex-USA UCITS ETF",
-        issuer="iShares",
-        product_id="340748",
-        source_url="https://www.ishares.com/uk/individual/en/products/340748",
-    ),
-    "SEMI": FundSpec(
-        ticker="SEMI",
-        isin="IE000I8KRLL9",
-        name="iShares MSCI Global Semiconductors UCITS ETF",
-        issuer="iShares",
-        product_id="319084",
-        source_url="https://www.ishares.com/uk/individual/en/products/319084",
-    ),
-    "IUMF": FundSpec(
-        ticker="IUMF",
-        isin="IE00BD1F4N50",
-        name="iShares Edge MSCI USA Momentum Factor UCITS ETF",
-        issuer="iShares",
-        product_id="285208",
-        source_url="https://www.ishares.com/uk/individual/en/products/285208",
-    ),
-    "EQGB": FundSpec(
-        ticker="EQGB",
-        isin="IE00BYVTMW98",
-        name="Invesco EQQQ Nasdaq-100 UCITS ETF",
-        issuer="Invesco",
-        data_isin="IE00BFZXGZ54",
-        source_url=(
-            "https://www.invesco.com/uk/en/financial-products/etfs/"
-            "invesco-eqqq-nasdaq-100-ucits-etf-acc.html"
-        ),
-    ),
-    "HEMC": FundSpec(
-        ticker="HEMC",
-        isin="IE000KCS7J59",
-        name="HSBC MSCI Emerging Markets UCITS ETF",
-        issuer="HSBC Asset Management",
-        source_url=HSBC_PRODUCT_URL,
-    ),
 }
 
 
@@ -381,12 +293,15 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
 
 
 def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
-    if not spec.data_isin:
-        raise ValueError(f"{spec.ticker}: missing Invesco share-class id")
-    base = f"{INVESCO_API}/{spec.data_isin}"
+    base = f"{INVESCO_API}/{spec.isin}"
+    profile = _get_json(client, base, params={"idType": "isin", "loadType": "initial"})
+    if (profile.get("aliases") or {}).get("isin") != spec.isin:
+        raise ValueError(f"{spec.ticker}: Invesco share-class ISIN mismatch")
+    if profile.get("replicationMethod") != "Physical":
+        raise ValueError(f"{spec.ticker}: a swap/substitute basket is not economic look-through")
     holdings_payload = _get_json(
         client,
-        f"{base}/holdings/index",
+        f"{base}/holdings/fund",
         params={"idType": "isin", "loadType": "initial"},
     )
     country_payload = _get_json(
@@ -404,14 +319,20 @@ def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
             isin=_string(item.get("isin")),
             ticker="",
             name=_string(item.get("name")),
-            country=_country_from_isin(_string(item.get("isin"))),
+            country=None,
             industry=None,
-            weight_pct=_number(item.get("weight")),
-            asset_class="Equity",
+            weight_pct=percentage(item.get("weight")),
+            asset_class=(
+                "Cash & derivatives"
+                if item.get("name") == "Cash and/or Derivatives"
+                else str((profile.get("investmentStrategy") or {}).get("assetType") or "Other")
+            ),
         )
         for item in holdings_payload.get("holdings") or []
         if isinstance(item, dict)
     ]
+    if sum(bool(holding.isin) for holding in holdings) != int(holdings_payload["numberOfHoldings"]):
+        raise ValueError(f"{spec.ticker}: incomplete Invesco holdings")
     country_weights: defaultdict[str, float] = defaultdict(float)
     for item in country_payload.get("holdingWeights") or []:
         if isinstance(item, dict) and _string(item.get("name")):
@@ -625,8 +546,9 @@ def fetch_official_snapshot(
     ticker: str,
     *,
     client: httpx.Client | None = None,
+    spec: FundSpec | None = None,
 ) -> FundSnapshot:
-    spec = BUILTIN_FUND_ADAPTERS.get(ticker.upper())
+    spec = spec or BUILTIN_FUND_ADAPTERS.get(ticker.upper())
     if spec is None:
         raise ValueError(f"unsupported ETF: {ticker}")
     owns_client = client is None
@@ -636,15 +558,30 @@ def fetch_official_snapshot(
         headers={"User-Agent": USER_AGENT, "Accept-Language": "en-GB,en;q=0.9"},
     )
     try:
-        if spec.issuer == "iShares":
-            return fetch_ishares(active_client, spec)
-        if spec.issuer == "Invesco":
-            return fetch_invesco(active_client, spec)
-        if spec.issuer == "HSBC Asset Management":
-            return fetch_hsbc(active_client, spec)
-        if spec.issuer == "Vanguard":
-            return fetch_vanguard(active_client, spec)
-        raise ValueError(f"unsupported issuer: {spec.issuer}")
+        from .fund_vaneck_spdr import fetch_spdr, fetch_vaneck
+
+        adapters = {
+            "iShares": fetch_ishares,
+            "Invesco": fetch_invesco,
+            "HSBC Asset Management": fetch_hsbc,
+            "Vanguard": fetch_vanguard,
+            "VanEck": fetch_vaneck,
+            "State Street": fetch_spdr,
+        }
+        if spec.issuer not in adapters:
+            from .fund_isin_issuers import ISIN_ADAPTERS
+
+            adapters.update(ISIN_ADAPTERS)
+        if spec.issuer not in adapters:
+            raise ValueError(f"unsupported issuer: {spec.issuer}")
+        snapshot = adapters[spec.issuer](active_client, spec)
+        return snapshot.model_copy(
+            update={
+                "fund_isin": spec.isin,
+                "cache_schema_version": 3,
+                "as_of": as_of_date(snapshot.as_of),
+            }
+        )
     finally:
         if owns_client:
             active_client.close()
@@ -679,14 +616,20 @@ class OfficialFundHoldingsProvider:
         state_root: Path,
         *,
         max_age: timedelta = timedelta(hours=18),
-        fetcher: Callable[[str], FundSnapshot] = fetch_official_snapshot,
+        fetcher: Callable[[str], FundSnapshot] | None = None,
+        client: httpx.Client | None = None,
     ) -> None:
-        self.root = state_root.expanduser().resolve() / "raw" / "fund-holdings"
+        self.legacy_root = state_root.expanduser().resolve() / "raw" / "fund-holdings"
+        self.root = self.legacy_root / "v3"
         self.max_age = max_age
         self.fetcher = fetcher
+        self.client = client
+        self.catalog = FundCatalog(state_root.expanduser().resolve())
 
     def _read(self, ticker: str) -> FundSnapshot | None:
         path = self.root / f"{ticker}.json"
+        if not path.is_file():
+            path = self.legacy_root / f"{ticker}.json"
         if not path.is_file():
             return None
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -695,34 +638,89 @@ class OfficialFundHoldingsProvider:
         return FundSnapshot.model_validate(payload)
 
     def _is_fresh(self, snapshot: FundSnapshot) -> bool:
-        if snapshot.cache_schema_version != 2 or not snapshot.fetched_at:
+        if snapshot.cache_schema_version != 3 or not snapshot.fetched_at:
             return False
-        fetched_at = datetime.fromisoformat(snapshot.fetched_at.replace("Z", "+00:00"))
+        try:
+            fetched_at = datetime.fromisoformat(snapshot.fetched_at.replace("Z", "+00:00"))
+        except ValueError:
+            return False
         if fetched_at.tzinfo is None:
             fetched_at = fetched_at.replace(tzinfo=UTC)
-        return datetime.now(UTC) - fetched_at <= self.max_age
+        return timedelta(0) <= datetime.now(UTC) - fetched_at <= self.max_age
 
     def fetch(self, ticker: str) -> FundSnapshot | None:
-        normalized = ticker.strip().upper()
-        cached = self._read(normalized)
+        return self.fetch_security(SecurityDescriptor(ticker=ticker))
+
+    def fetch_security(self, security: SecurityDescriptor) -> FundSnapshot | None:
+        normalized = security.ticker.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9._^-]{0,63}", normalized):
+            raise ValueError("invalid fund ticker")
+        try:
+            cached = self._read(normalized)
+        except (ValueError, OSError):
+            cached = None
+        expected_isin = security.isin.strip().upper()
+        legacy = BUILTIN_FUND_ADAPTERS.get(normalized.removesuffix(".L"))
+        if cached is not None and expected_isin:
+            cached_isin = cached.fund_isin or (legacy.isin if legacy else "")
+            if cached_isin and cached_isin != expected_isin:
+                cached = None
+            elif not cached_isin:
+                # A ticker-only file cannot establish an observed ISIN.
+                cached = None
         if cached is not None and self._is_fresh(cached):
             return cached
-        adapter_ticker = normalized.removesuffix(".L")
-        if adapter_ticker not in BUILTIN_FUND_ADAPTERS:
-            # Operator- or adapter-managed snapshots are valid for any fund.
-            # The built-in issuer adapters only define how to refresh the
-            # products they support; they are not an ETF universe whitelist.
-            return cached
+        retry_path = self.root / ".retry" / f"{normalized}.json"
         try:
-            snapshot = self.fetcher(adapter_ticker).model_copy(update={"ticker": normalized})
+            retry = json.loads(retry_path.read_text())
+            if (
+                retry.get("isin") == expected_isin
+                and retry.get("version") == "issuer-adapters-v1"
+                and datetime.now(UTC) < datetime.fromisoformat(retry["retryAfter"])
+            ):
+                return cached
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        owns_client = self.client is None
+        client = self.client or httpx.Client(
+            timeout=httpx.Timeout(30.0),
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT, "Accept-Language": "en-GB,en;q=0.9"},
+        )
+        try:
+            spec = self.catalog.resolve(security, client)
+            if spec is None:
+                return cached
+            snapshot = (
+                self.fetcher(normalized.removesuffix(".L"))
+                if self.fetcher is not None
+                else fetch_official_snapshot(normalized, client=client, spec=spec)
+            )
+            if snapshot.fund_isin and snapshot.fund_isin != spec.isin:
+                raise ValueError(f"{normalized}: holdings snapshot ISIN mismatch")
+            snapshot = snapshot.model_copy(
+                update={"ticker": normalized, "fund_isin": spec.isin, "cache_schema_version": 3}
+            )
         except Exception:
+            _atomic_json(
+                retry_path,
+                {
+                    "isin": expected_isin,
+                    "version": "issuer-adapters-v1",
+                    "retryAfter": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
+                },
+            )
             if cached is not None:
                 return cached
             raise
+        finally:
+            if owns_client:
+                client.close()
         _atomic_json(
             self.root / f"{normalized}.json",
             snapshot.model_dump(mode="json", by_alias=True),
         )
+        retry_path.unlink(missing_ok=True)
         return snapshot
 
 

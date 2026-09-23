@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from trading_max.analytics.lookthrough import FundHolding, FundSnapshot
+from trading_max.analytics.lookthrough import FundHolding, FundSnapshot, RawFundHoldingsProvider
 from trading_max.infrastructure.fund_holdings import (
     FundSpec,
     OfficialFundHoldingsProvider,
@@ -58,7 +58,7 @@ def test_provider_fetches_and_persists_missing_snapshot(tmp_path: Path) -> None:
     assert second is not None
     assert calls == ["XUSE"]
     assert second.holdings[0].ticker == "AAPL"
-    assert (tmp_path / "raw" / "fund-holdings" / "XUSE.json").is_file()
+    assert (tmp_path / "raw" / "fund-holdings" / "v3" / "XUSE.json").is_file()
 
 
 def test_provider_refreshes_expired_snapshot(tmp_path: Path) -> None:
@@ -68,8 +68,11 @@ def test_provider_refreshes_expired_snapshot(tmp_path: Path) -> None:
     )
     root = tmp_path / "raw" / "fund-holdings"
     root.mkdir(parents=True)
+    legacy_payload = old.model_dump_json(
+        by_alias=True, exclude={"fund_isin", "unweighted_holdings_count"}
+    )
     (root / "XUSE.json").write_text(
-        old.model_dump_json(by_alias=True),
+        legacy_payload,
         encoding="utf-8",
     )
     refreshed = _snapshot(fetched_at=datetime.now(UTC).isoformat())
@@ -83,6 +86,9 @@ def test_provider_refreshes_expired_snapshot(tmp_path: Path) -> None:
 
     assert result is not None
     assert result.as_of == "2026-08-08"
+    assert (root / "XUSE.json").read_text() == legacy_payload
+    assert result.fund_isin == "IE000R4ZNTN3"
+    assert RawFundHoldingsProvider(tmp_path).fetch("XUSE").as_of == "2026-08-08"
 
 
 def test_provider_uses_stale_cache_when_issuer_is_temporarily_down(

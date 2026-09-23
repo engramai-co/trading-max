@@ -999,7 +999,15 @@ function Exposure({
                         t("数据日期", "As of"),
                         str(source.asOf ?? source.holdingsAsOf) || "—",
                       ],
-                      [t("状态", "Status"), str(source.status) || "—"],
+                      [
+                        t("状态", "Status"),
+                        (numeric(source.unweightedHoldingsCount) ?? 0) > 0
+                          ? t("部分记录未提供权重", "Some positions have no reported weight")
+                          : source.status === "verified"
+                            ? t("已核验", "Verified")
+                            : t("暂不可用", "Unavailable"),
+                      ],
+                      [t("发行商", "Issuer"), str(source.issuer) || "—"],
                       [
                         t("成分记录数", "Constituent records"),
                         number(source.holdingsCount, 0),

@@ -12,6 +12,8 @@ contracts.
   look-through, money and P&L, return comparison, and review.
 - [Research a security](guides/research.md) — financials, price charts,
   expectations, valuation scenarios, options, and the journal.
+- [ETF source coverage](guides/etf-coverage.md) — issuer discovery, complete
+  holdings, missing weights and unsupported fund structures.
 - [Understand the numbers](guides/data-and-metrics.md) — currencies, cash flows,
   return denominators, source coverage, and model limitations.
 - [Get help](../SUPPORT.md), [privacy](../PRIVACY.md), and

@@ -1156,6 +1156,7 @@ class LookthroughSource(ApiModel):
     as_of: str
     industry_as_of: str | None = None
     holdings_count: int
+    unweighted_holdings_count: int = 0
     weight_total_pct: float
     position_value_gbp: float
 
