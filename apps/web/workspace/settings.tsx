@@ -548,7 +548,19 @@ function ConnectionForm({
           )}
           {test.isError || test.data?.status === "failed" ? (
             <Notice tone="bad">
-              {t(
+              {connection.kind === "broker" && test.error instanceof ApiError && test.error.code === "provider_auth_failed" ? t(
+                "密钥未被 Trading 212 接受。请检查 Key ID、Secret 和真实／模拟账户环境，再重新测试。",
+                "Trading 212 rejected the credentials. Check the Key ID, Secret, and Live/Demo environment, then test again.",
+              ) : connection.kind === "broker" && test.error instanceof ApiError && test.error.code === "provider_permission_denied" ? t(
+                "这组密钥缺少访问权限。请在 Trading 212 开启账户数据与历史记录的只读权限，再重新测试。",
+                "These credentials lack access. Enable read-only account data and history permissions in Trading 212, then test again.",
+              ) : test.error instanceof ApiError && test.error.code === "provider_rate_limited" ? t(
+                "提供商暂时限制了请求频率。请稍等片刻再测试，无需重新输入密钥。",
+                "The provider is rate limiting requests. Wait a moment and test again; you do not need to re-enter the keys.",
+              ) : test.error instanceof ApiError && test.error.code === "provider_unavailable" ? t(
+                "暂时无法连接提供商。请检查网络后重试；这不代表密钥有误。",
+                "The provider is temporarily unreachable. Check your connection and retry; this does not mean the keys are invalid.",
+              ) : t(
                 "连接测试未通过。请检查密钥、账户环境和访问权限后重试。",
                 "Connection test failed. Check the key, account environment, and permissions, then try again.",
               )}

@@ -50,6 +50,12 @@ async function rejected(status: number, body: unknown, raw = false) {
 }
 
 describe("API validation failures", () => {
+  it("preserves safe provider categories for actionable connection errors", async () => {
+    const error = await rejected(422, { detail: { code: "provider_auth_failed", message: "Integration test failed" } });
+    expect((error as ApiError).code).toBe("provider_auth_failed");
+    const invalid = await rejected(422, { detail: { code: "private response / credential" } });
+    expect((invalid as ApiError).code).toBeNull();
+  });
   it("preserves field constraints from detail arrays without carrying rejected inputs", async () => {
     const error = await rejected(422, { detail: [{ loc: ["body", "scenarios", "bear", "discountRate"], type: "greater_than", msg: "private server detail", input: "private rejected input", ctx: { gt: 0, credentials: "private" } }] });
     expect(error).toBeInstanceOf(ApiError);

@@ -1,4 +1,5 @@
 import base64
+import csv
 import json
 import subprocess
 from datetime import UTC, date, datetime
@@ -25,10 +26,13 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212CredentialsError,
     Trading212Error,
     Trading212ExportError,
+    Trading212ExportSchemaError,
+    Trading212HTTPError,
     broker_snapshot_reconciliation,
     default_data_root,
     export_window,
     inspect_export_csv,
+    merge_export_csv_files,
     reconcile_csv_files,
     reconcile_positions,
     snapshot_from_payload,
@@ -38,6 +42,86 @@ CSV_HEADER = (
     "Action,Time (UTC),ISIN,Ticker,Name,ID,No. of shares,Price / share,"
     "Exchange rate,Total,Currency conversion fee\n"
 )
+
+
+def test_cash_only_export_merges_with_trade_history_without_inventing_fields(
+    tmp_path: Path,
+) -> None:
+    cash = {
+        "Action": "Deposit",
+        "Time (UTC)": "2024-01-01 12:00:00",
+        "ID": "cash-1",
+        "Total": "100.00",
+        "Currency (Total)": "GBP",
+    }
+    narrow = tmp_path / "cash.csv"
+    wide = tmp_path / "trades.csv"
+    for path, columns in [
+        (narrow, list(cash)),
+        (wide, sorted(REQUIRED_EXPORT_COLUMNS | set(cash))),
+    ]:
+        with path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=columns)
+            writer.writeheader()
+            writer.writerow(cash)
+    assert inspect_export_csv(narrow)["row_count"] == 1
+    merged = merge_export_csv_files([narrow, wide], tmp_path / "merged.csv")
+    assert inspect_export_csv(merged)["row_count"] == 1
+    with merged.open() as handle:
+        row = next(csv.DictReader(handle))
+    assert row["Total"] == "100.00" and row["Currency (Total)"] == "GBP"
+    assert row["No. of shares"] == row["Ticker"] == ""
+    assert reconcile_csv_files([narrow, wide], []).status == "verified"
+    with wide.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=sorted(REQUIRED_EXPORT_COLUMNS | set(cash)))
+        writer.writeheader()
+        writer.writerow({**cash, "Total": "200.00"})
+    with pytest.raises(Trading212ExportSchemaError, match="conflicting transaction"):
+        merge_export_csv_files([narrow, wide], merged)
+
+
+@pytest.mark.parametrize(
+    "action", ["Market buy", "Market sell", "Dividend (Dividend)", "Unknown action"]
+)
+def test_narrow_export_cannot_hide_securities_or_unknown_actions(
+    tmp_path: Path, action: str
+) -> None:
+    path = tmp_path / "invalid.csv"
+    path.write_text(
+        f"Action,Time (UTC),ID,Total,Currency (Total)\n{action},2024-01-01,test,100,GBP\n"
+    )
+    with pytest.raises(Trading212ExportSchemaError) as caught:
+        inspect_export_csv(path)
+    assert not caught.value.retryable
+    with pytest.raises(Trading212ExportSchemaError):
+        merge_export_csv_files([path], tmp_path / "merged.csv")
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "retryable"),
+    [
+        (401, "provider_auth_failed", False),
+        (403, "provider_permission_denied", False),
+        (429, "provider_rate_limited", True),
+        (503, "provider_unavailable", True),
+    ],
+)
+def test_broker_http_errors_keep_their_category(status: int, code: str, retryable: bool) -> None:
+    client = Trading212Client(
+        Trading212Credentials(profile="invest", api_key="test", api_secret="test"),
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _: httpx.Response(status, json={"error": "rejected"})
+            )
+        ),
+        sleep=lambda _: None,
+    )
+    with pytest.raises(Trading212HTTPError) as caught:
+        client.account_summary()
+    assert caught.value.status_code == status
+    assert caught.value.code == code
+    assert caught.value.retryable == retryable
+    client.close()
 
 
 def _position_payload(
@@ -1027,6 +1111,38 @@ def test_broker_sync_complete_history_crosses_inception_even_after_reconciliatio
     manifest = json.loads((tmp_path / "invest" / "latest_export.json").read_text())
     assert manifest["report"]["time_from"].startswith("2024-08-07")
     assert manifest["csv"]["row_count"] == 1
+
+
+def test_first_sync_keeps_cash_only_year_before_first_trade(tmp_path: Path) -> None:
+    class CashHistoryClient(_CompleteHistoryClient):
+        def download_export(self, download_link: str, destination: Path) -> Path:
+            if len(self.requested_windows) == 2:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text(
+                    "Action,Time (UTC),ID,Total,Currency (Total)\n"
+                    "Deposit,2024-09-01 10:00:00,cash-before-trades,100,GBP\n"
+                )
+                return destination
+            return super().download_export(download_link, destination)
+
+    fake = CashHistoryClient(_snapshot_payload())
+    service = Trading212BrokerSync(
+        credentials_factory=lambda _: _credentials(),
+        client_factory=lambda _credentials, _environment: fake,
+        store_factory=lambda profile: ManagedAccountStore(profile, data_root=tmp_path),
+    )
+    result = service.sync(
+        BrokerSyncRequest(
+            profile="invest",
+            export_start=date(2025, 8, 7),
+            export_end=date(2026, 8, 7),
+            history_floor=date(2020, 1, 1),
+        )
+    )
+    assert result.reconciliation.status == "verified"
+    assert len(fake.requested_windows) == 3
+    assert inspect_export_csv(Path(result.export_path))["row_count"] == 2
+    assert "cash-before-trades" in Path(result.export_path).read_text()
 
 
 def test_broker_sync_backfills_yearly_exports_until_positions_reconcile(

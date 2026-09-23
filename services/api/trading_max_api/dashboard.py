@@ -129,6 +129,7 @@ def build_dashboard_data(
     except (FileNotFoundError, TypeError, ValueError):
         live_broker = None
     broker = overlay_live_broker_snapshot(broker, live_broker)
+    account_codes = tuple(code for code in ("A", "B") if code in broker["accounts"])
     synthetic = store.read_json(run_id, "account/synthetic_nav_metrics.json")
     policy_raw = store.read_json(run_id, "account/policy_metrics.json")
     # Account refreshes are independently publishable.  A fresh installation
@@ -147,8 +148,13 @@ def build_dashboard_data(
         options_raw = store.read_json(run_id, "research/options.json")
     except FileNotFoundError:
         options_raw = technical_raw
-    nav_a = store.read_text(run_id, "account/nav/daily_nav_a.csv")
-    nav_b = store.read_text(run_id, "account/nav/daily_nav_b.csv")
+    # The canonical broker snapshot defines the participating accounts. An
+    # unconnected account has no NAV, while a missing connected NAV is an error.
+    account_nav = {
+        code: store.read_text(run_id, f"account/nav/daily_nav_{code.lower()}.csv")
+        for code in account_codes
+    }
+    nav_a, nav_b = account_nav.get("A", ""), account_nav.get("B", "")
     try:
         nav_c = store.read_text(run_id, "account/nav/daily_nav_c.csv")
     except FileNotFoundError:
@@ -199,14 +205,15 @@ def build_dashboard_data(
         capital_recovery = None
 
     total_value = sum(
-        number_value(broker["accounts"][account].get("total_value_gbp")) for account in ("A", "B")
+        number_value(broker["accounts"][account].get("total_value_gbp"))
+        for account in account_codes
     )
     total_invested = sum(
         number_value(broker["accounts"][account].get("investments_value_gbp"))
-        for account in ("A", "B")
+        for account in account_codes
     )
     total_cash = sum(
-        number_value(broker["accounts"][account].get("cash_gbp")) for account in ("A", "B")
+        number_value(broker["accounts"][account].get("cash_gbp")) for account in account_codes
     )
     try:
         lookthrough = store.read_json(run_id, "account/lookthrough_metrics.json")
@@ -247,7 +254,7 @@ def build_dashboard_data(
             if isinstance(row, dict)
         }
     holdings: list[JsonObject] = []
-    for account in ("A", "B"):
+    for account in account_codes:
         for position in broker["accounts"][account].get("positions", []):
             current = number_value(position.get("current_value_gbp"))
             cost = number_value(position.get("total_cost_gbp"))
@@ -307,7 +314,7 @@ def build_dashboard_data(
         "B": latest_twr(nav_b),
     }
     accounts: list[JsonObject] = []
-    for code in ("A", "B"):
+    for code in account_codes:
         raw = broker["accounts"][code]
         risk = synthetic[code]
         total = number_value(raw.get("total_value_gbp"))
@@ -480,10 +487,7 @@ def build_dashboard_data(
         # Neither source certifies cash-flow-adjusted returns.
         "nav": nav_series(nav_a, nav_b, nav_c),
         "intradayNav": intraday_nav_points(intraday_nav, cash_flows),
-        "risk": {
-            "A": _risk_metrics(synthetic["A"]),
-            "B": _risk_metrics(synthetic["B"]),
-        },
+        "risk": {code: _risk_metrics(synthetic[code]) for code in account_codes},
         "benchmarkSeries": _benchmark_series(technical_raw),
         "technical": technical,
         "options": option_rows(options_raw),

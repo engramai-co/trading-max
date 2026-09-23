@@ -402,7 +402,8 @@ h1, h2, h3, p { margin: 0; }
 .mantine-Modal-title, .mantine-Drawer-title { font-weight: 600; font-size: 16px; }
 .mantine-Button-root, .mantine-ActionIcon-root { transition: background 130ms, border-color 130ms, transform 100ms var(--mx-ease); }
 .mantine-Button-root:not(:disabled):active, .mantine-ActionIcon-root:not(:disabled):active { transform: scale(.98); }
-@keyframes mx-appear { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* Content remains readable if an inactive WebView pauses animation frames. */
+@keyframes mx-appear { from { transform: translateY(4px); } to { transform: none; } }
 @media (hover: hover) {
   .mx-nav-link:not([aria-current]):hover { background: var(--mx-side-hover); }
   .mx-search-trigger:hover { border-color: var(--mx-brand); color: var(--mx-side-ink); }

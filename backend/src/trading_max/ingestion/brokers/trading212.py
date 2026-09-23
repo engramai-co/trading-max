@@ -65,6 +65,18 @@ REQUIRED_EXPORT_COLUMNS = frozenset(
         "Currency conversion fee",
     }
 )
+CASH_EXPORT_COLUMNS = frozenset({"Action", "Time (UTC)", "ID", "Total", "Currency (Total)"})
+CASH_ONLY_ACTIONS = frozenset(
+    {
+        "deposit",
+        "withdrawal",
+        "interest on cash",
+        "lending interest",
+        "card debit",
+        "spending cashback",
+        "currency conversion",
+    }
+)
 KEYCHAIN_SERVICE = "com.engram.trading-max.trading212"
 LEGACY_KEYCHAIN_SERVICE = "portfolio-research-trading212-api"
 SETTINGS_KEYCHAIN_SERVICE = DEFAULT_CREDENTIAL_SERVICE
@@ -74,13 +86,46 @@ KEYCHAIN_EXECUTABLE = "/usr/bin/security"
 class Trading212Error(RuntimeError):
     """Base error for failed or unsafe broker operations."""
 
+    code = "provider_unavailable"
+    retryable = True
+
 
 class Trading212CredentialsError(Trading212Error):
     """Raised when a profile's credentials are unavailable or malformed."""
 
+    code = "provider_auth_failed"
+    retryable = False
+
+
+class Trading212HTTPError(Trading212Error):
+    """Keep the broker status without exposing its response body to settings."""
+
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retryable = status_code in {408, 429} or status_code >= 500
+        self.code = (
+            "provider_auth_failed"
+            if status_code == 401
+            else "provider_permission_denied"
+            if status_code == 403
+            else "provider_rate_limited"
+            if status_code == 429
+            else "provider_unavailable"
+            if self.retryable
+            else "provider_request_rejected"
+        )
+
 
 class Trading212ExportError(Trading212Error):
     """Raised when an asynchronous broker export is invalid or fails."""
+
+
+class Trading212ExportSchemaError(Trading212ExportError):
+    """A deterministic export contract failure that retrying cannot repair."""
+
+    code = "provider_invalid_output"
+    retryable = False
 
 
 def _profile_token(profile: str) -> str:
@@ -507,7 +552,7 @@ class Trading212Client:
                 self._sleep(self._retry_delay(response, attempt))
                 continue
             if response.is_error:
-                raise Trading212Error(self._error_message(response))
+                raise Trading212HTTPError(response.status_code, self._error_message(response))
             try:
                 return response.json()
             except ValueError as exc:
@@ -683,21 +728,41 @@ class Trading212Client:
         return payload
 
 
+def _validated_export_rows(reader: csv.DictReader) -> Iterable[dict[str, str]]:
+    columns = reader.fieldnames or []
+    if not columns or any(not column for column in columns) or len(set(columns)) != len(columns):
+        raise Trading212ExportSchemaError("CSV export has empty or duplicate column names")
+    missing = REQUIRED_EXPORT_COLUMNS - set(columns)
+    if missing and not CASH_EXPORT_COLUMNS.issubset(columns):
+        raise Trading212ExportSchemaError(
+            f"CSV export is missing required columns: {sorted(missing)}"
+        )
+    for row in reader:
+        if None in row or any(value is None for value in row.values()):
+            raise Trading212ExportSchemaError("CSV export row does not match its header")
+        if missing and row["Action"].strip().lower() not in CASH_ONLY_ACTIONS:
+            raise Trading212ExportSchemaError(
+                "CSV export contains a securities or unsupported action without its required columns"
+            )
+        yield row
+
+
+def _nonempty_export_values(row: Mapping[str, object]) -> dict[str, object]:
+    # Official cash-only exports omit unused security columns. Empty columns in
+    # an overlapping wider report are equivalent, but different amounts are not.
+    return {key: value for key, value in row.items() if value not in (None, "")}
+
+
 def inspect_export_csv(path: Path) -> dict[str, Any]:
     """Validate an official export and return non-sensitive file metadata."""
 
     try:
         with path.open(newline="", encoding="utf-8-sig") as handle:
-            reader = csv.DictReader(handle)
+            reader = csv.DictReader(handle, strict=True)
             columns = reader.fieldnames or []
-            missing = REQUIRED_EXPORT_COLUMNS - set(columns)
-            if missing:
-                raise Trading212ExportError(
-                    f"CSV export is missing required columns: {sorted(missing)}"
-                )
-            row_count = sum(1 for _ in reader)
-    except UnicodeError as exc:
-        raise Trading212ExportError(f"CSV export is not valid UTF-8: {path}") from exc
+            row_count = sum(1 for _ in _validated_export_rows(reader))
+    except (UnicodeError, csv.Error) as exc:
+        raise Trading212ExportSchemaError("CSV export is not valid UTF-8 CSV") from exc
 
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -1131,8 +1196,10 @@ def reconcile_positions(
             )
         )
         previous = unique_rows.get(key)
-        if previous is not None and previous != row:
-            raise Trading212Error(f"conflicting transaction rows for {key[-1]}")
+        if previous is not None and _nonempty_export_values(previous) != _nonempty_export_values(
+            row
+        ):
+            raise Trading212ExportSchemaError(f"conflicting transaction rows for {key[-1]}")
         unique_rows[key] = row
 
     ledger: dict[str, Decimal] = {}
@@ -1277,27 +1344,30 @@ def merge_export_csv_files(
         if not path.is_file():
             raise FileNotFoundError(f"missing Trading 212 export: {path}")
         with path.open(newline="", encoding="utf-8-sig") as handle:
-            reader = csv.DictReader(handle)
+            reader = csv.DictReader(handle, strict=True)
             fieldnames = reader.fieldnames or []
-            missing = REQUIRED_EXPORT_COLUMNS - set(fieldnames)
-            if missing:
-                raise Trading212ExportError(
-                    f"CSV export is missing required columns: {sorted(missing)}"
-                )
             for column in fieldnames:
                 if column not in columns:
                     columns.append(column)
-            for row in reader:
+            for row in _validated_export_rows(reader):
                 identifier = str(row.get("ID") or "").strip()
                 key = (
                     ("id", identifier)
                     if identifier
-                    else ("row", *(str(row.get(column) or "") for column in fieldnames))
+                    else (
+                        "row",
+                        *(
+                            f"{column}={value}"
+                            for column, value in sorted(_nonempty_export_values(row).items())
+                        ),
+                    )
                 )
                 normalized = {str(column): str(value or "") for column, value in row.items()}
                 previous = rows_by_key.get(key)
-                if previous is not None and previous != normalized:
-                    raise Trading212ExportError(
+                if previous is not None and _nonempty_export_values(
+                    previous
+                ) != _nonempty_export_values(normalized):
+                    raise Trading212ExportSchemaError(
                         f"conflicting transaction rows for export identity {key[-1]}"
                     )
                 rows_by_key[key] = normalized

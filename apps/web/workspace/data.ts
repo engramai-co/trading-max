@@ -69,6 +69,7 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly issues: ApiValidationIssue[] = [],
+    public readonly code: string | null = null,
   ) {
     super(message);
   }
@@ -89,6 +90,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
           : "Request failed (" + response.status + ")",
       response.status,
       validationIssues(detail),
+      typeof object(detail).code === "string" && /^[a-z_]{1,80}$/.test(String(object(detail).code))
+        ? String(object(detail).code) : null,
     );
   }
   if (response.status === 204) return undefined as T;

@@ -12,6 +12,7 @@ from trading_max.infrastructure import (
 )
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 
+from .account_selection import selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -70,7 +71,7 @@ class PortfolioLookthroughStage:
     def run(self, context: StageContext) -> StageResult:
         accounts: dict[str, dict] = {}
         dependency_ids: list[str] = []
-        for profile in ("invest", "isa"):
+        for _, profile in selected_accounts(self.artifacts, context):
             stored = _account_artifact(self.artifacts, context, profile)
             if stored is None:
                 raise StageExecutionError(

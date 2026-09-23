@@ -18,6 +18,7 @@ from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import latest_export_path
 
+from .account_selection import SELECTION_KEY, accounts_for_profiles, selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -26,7 +27,7 @@ class AccountSnapshotStage:
     """Normalize Invest and ISA snapshots into one versioned account artifact."""
 
     name = "accounts.snapshot"
-    version = "accounts-v2"
+    version = "accounts-v3"
     required_for = frozenset({"all", "accounts", "intraday"})
     dependencies: tuple[str, ...] = ()
 
@@ -35,10 +36,13 @@ class AccountSnapshotStage:
         state_root: Path,
         artifacts: ContentAddressedArtifactStore,
         profiles: tuple[tuple[str, str], ...] = (("A", "invest"), ("B", "isa")),
+        *,
+        profiles_loader=None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
         self.profiles = profiles
+        self.profiles_loader = profiles_loader
 
     def _latest_snapshot(self, profile: str) -> Path:
         roots = (
@@ -65,7 +69,24 @@ class AccountSnapshotStage:
         accounts: dict[str, dict] = {}
         artifact_refs = []
         warnings: list[str] = []
-        for account_code, profile in self.profiles:
+        selection = selected_accounts(self.artifacts, context, ())
+        if not selection:
+            selection = (
+                accounts_for_profiles(self.profiles_loader())
+                if self.profiles_loader
+                else self.profiles
+            )
+            if self.profiles_loader:
+                artifact_refs.append(
+                    self.artifacts.put_json(
+                        key=SELECTION_KEY,
+                        payload={"profiles": [profile for _, profile in selection]},
+                        kind="account_selection",
+                        producer_version=self.version,
+                        quality=ArtifactQuality(status="verified"),
+                    ).ref
+                )
+        for account_code, profile in selection:
             path = self._latest_snapshot(profile)
             try:
                 metrics = metrics_from_snapshot_file(
@@ -139,7 +160,7 @@ class AccountSnapshotStage:
             dependency_artifact_ids=[artifact.artifact_id for artifact in artifact_refs],
             quality=ArtifactQuality(
                 status="warning" if warnings else "verified",
-                coverage=f"{len(accounts)}/{len(self.profiles)}",
+                coverage=f"{len(accounts)}/{len(selection)}",
                 warnings=warnings,
             ),
         )
@@ -192,7 +213,8 @@ class AccountPolicyStage:
 
     def run(self, context: StageContext) -> StageResult:
         transactions = {
-            code: self._transactions(profile) for code, profile in (("A", "invest"), ("B", "isa"))
+            code: self._transactions(profile)
+            for code, profile in selected_accounts(self.artifacts, context)
         }
         payload = policy_metrics(transactions)
         payload["fx_evidence"] = {
@@ -216,7 +238,7 @@ class AccountPolicyStage:
             producer_version=self.version,
             quality=ArtifactQuality(
                 status="warning" if warnings else "verified",
-                coverage=f"{len(transactions)}/2 accounts",
+                coverage=f"{len(transactions)}/{len(selected_accounts(self.artifacts, context))} accounts",
                 warnings=warnings,
             ),
         )
@@ -270,7 +292,11 @@ class _AccountLedgerStage:
                 continue
             profile = "invest" if stored.ref.key.endswith("invest.json") else "isa"
             positions[profile] = list(stored.payload.get("positions", []))
-        missing = [profile for _, profile in self.profiles if profile not in positions]
+        missing = [
+            profile
+            for _, profile in selected_accounts(self.artifacts, context, self.profiles)
+            if profile not in positions
+        ]
         if missing:
             raise StageExecutionError(
                 "account.snapshot_dependency_missing",
@@ -311,7 +337,7 @@ class AccountDilutedCostStage(_AccountLedgerStage):
         accounts: dict[str, dict] = {}
         fx_evidence: dict[str, list] = {}
         try:
-            for code, profile in self.profiles:
+            for code, profile in selected_accounts(self.artifacts, context, self.profiles):
                 transactions = self._transactions(profile)
                 account_rows = diluted_cost_rows(
                     code,
@@ -373,7 +399,7 @@ class AccountCapitalRecoveryStage(_AccountLedgerStage):
         accounts: dict[str, dict] = {}
         fx_evidence: dict[str, list] = {}
         try:
-            for code, profile in self.profiles:
+            for code, profile in selected_accounts(self.artifacts, context, self.profiles):
                 transactions = self._transactions(profile)
                 account_rows, account_checks = capital_recovery_rows(
                     code,

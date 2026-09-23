@@ -4,6 +4,33 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-09-23
+
+### Fixed
+
+- Accept official cash-only Trading 212 history exports without inventing
+  securities fields. Merge overlapping narrow and full reports while preserving
+  strict checks for conflicting transactions and incomplete trade schemas.
+- Stop retrying deterministic CSV validation and authentication failures. Keep
+  broker authentication, permissions, rate limits and outages distinguishable
+  in connection settings without returning provider response bodies.
+- Sync and compute only the explicitly connected Invest and/or ISA accounts.
+  Freeze that selection for each refresh, including refreshes from saved data,
+  and preserve absent accounts as unknown in intraday history and charts.
+- Show first-sync progress and recovery on an empty local workspace instead of
+  implying the service is stopped or an earlier snapshot exists. Disable the
+  general update action while a job is already queued or running.
+- Reveal reused desktop WebViews before navigating to a workspace so WKWebView
+  can paint the new page immediately after a connection switch. Create the
+  native settings window visibly and retain it during workspace handoff. Keep
+  workspace updates active across window switches and content readable when
+  an inactive WebView pauses entrance animations.
+- Replace the bundled Node executable atomically when rebuilding the desktop
+  payload, avoiding stale macOS executable-signature caches during validation.
+- Back up stopped WAL databases on bundled SQLite by permitting sidecar
+  initialization with SQL writes disabled; close both backup handles explicitly
+  and retain committed rows from active WAL files.
+
 ## [1.9.2] - 2026-09-23
 
 ### Fixed

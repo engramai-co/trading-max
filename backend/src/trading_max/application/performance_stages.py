@@ -16,6 +16,7 @@ from trading_max.analytics.performance import (
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 
+from .account_selection import selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -253,7 +254,7 @@ class AccountPerformanceStage:
             "research/technical.json",
         )
         technical_payload = technical.payload if technical is not None else None
-        for account_code in ("A", "B"):
+        for account_code, _ in selected_accounts(self.artifacts, context):
             key = f"account/nav/daily_nav_{account_code.lower()}.csv"
             current = _upstream_byte_artifact(self.artifacts, context, key)
             history = current or _previous_byte_artifact(
@@ -327,7 +328,7 @@ class AccountPerformanceStage:
             dependency_artifact_ids=[ref.artifact_id for ref in refs],
             quality=ArtifactQuality(
                 status="warning" if warnings else "verified",
-                coverage="2/2 accounts",
+                coverage=f"{len(metrics_by_account)}/{len(selected_accounts(self.artifacts, context))} accounts",
                 warnings=warnings,
             ),
         )

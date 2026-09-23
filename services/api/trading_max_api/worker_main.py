@@ -14,6 +14,7 @@ from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue
 from trading_max.worker import DurableWorker
 
 from .artifacts import ArtifactStore
+from .broker_runtime import broker_profiles_loader
 from .config import Settings
 from .credentials import default_credential_store
 from .market_data_runtime import reconstruction_loader_factory
@@ -75,6 +76,7 @@ def _run_typed_worker(settings: Settings) -> None:
 
     runtime = TypedWorkerRuntime(
         store.data_root,
+        broker_profiles_loader=broker_profiles_loader(preferences),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,
         on_snapshot_published=on_snapshot_published,

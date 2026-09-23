@@ -38,6 +38,19 @@ def test_floor_bucket_handles_hour_and_utc_midnight() -> None:
     ) == datetime(2026, 8, 9, 0, tzinfo=UTC)
 
 
+@pytest.mark.parametrize("code, profile", [("A", "invest"), ("B", "isa")])
+def test_single_account_anchor_preserves_absence_and_requires_selected_account(code, profile):
+    accounts = {code: _accounts("2026-09-04T12:00Z")[code]}
+    series = append_intraday_anchor(None, accounts, account_codes=(code,), source_artifact_ids=[])
+    point = series.points[0]
+    assert point.total_value_gbp == accounts[code]["total_value_gbp"]
+    other = "isa" if profile == "invest" else "invest"
+    assert getattr(point, f"{other}_value_gbp") is None
+    assert getattr(point, f"{other}_cash_gbp") is None
+    with pytest.raises(ValueError):
+        append_intraday_anchor(None, accounts, source_artifact_ids=[])
+
+
 def test_retry_replaces_bucket_and_retention_is_bounded() -> None:
     first = append_intraday_anchor(
         None,

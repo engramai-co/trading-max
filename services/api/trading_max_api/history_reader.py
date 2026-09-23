@@ -36,6 +36,7 @@ _KEYS = (
     "account/nav/cash_flows_a.json",
     "account/nav/cash_flows_b.json",
 )
+_BROKER_KEY = "account/broker_snapshot_metrics.json"
 _APPLICATION_ID = 0x544D4801
 
 
@@ -59,7 +60,12 @@ def load_history(
     c_text = None
     with suppress(FileNotFoundError):
         c_text = store.read_text(run, _KEYS[2])
-    daily = nav_series(store.read_text(run, _KEYS[0]), store.read_text(run, _KEYS[1]), c_text)
+    accounts = store.read_json(run, _BROKER_KEY)["accounts"]
+    daily = nav_series(
+        store.read_text(run, _KEYS[0]) if "A" in accounts else "",
+        store.read_text(run, _KEYS[1]) if "B" in accounts else "",
+        c_text,
+    )
     raw = None
     for key in _KEYS[3:5]:
         try:
@@ -183,8 +189,7 @@ class HistoryReader:
         ]
         if scope == "cfd":
             return daily, []
-            # Intraday projection admits only rows with all A/B/total values. Preserve
-            # the first record, first broker boundary and last record before windowing.
+        # Preserve the first record, first broker boundary and last record before windowing.
         anchors = []
         for clause in (
             "ORDER BY o.stamp LIMIT 1",
@@ -215,9 +220,11 @@ class HistoryReader:
     def read(
         self, manifest: SnapshotManifest, range_name: HistoryRange, scope: HistoryScope
     ) -> HistorySnapshot:
-        references = sorted((a.key, a.sha256) for a in manifest.artifacts if a.key in _KEYS)
-        revision = hashlib.sha256(json.dumps([1, references]).encode()).hexdigest()
-        broker = self.store.read_json(manifest.run_id, "account/broker_snapshot_metrics.json")
+        references = sorted(
+            (a.key, a.sha256) for a in manifest.artifacts if a.key in (*_KEYS, _BROKER_KEY)
+        )
+        revision = hashlib.sha256(json.dumps([2, references]).encode()).hexdigest()
+        broker = self.store.read_json(manifest.run_id, _BROKER_KEY)
         live = None
         with suppress(FileNotFoundError, TypeError, ValueError):
             live = self.store.read_json(manifest.run_id, "account/intraday/broker_values.json")

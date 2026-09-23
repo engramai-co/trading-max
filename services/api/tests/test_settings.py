@@ -4,11 +4,33 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from trading_max.ingestion.brokers.trading212 import Trading212HTTPError
 
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
+from services.api.trading_max_api.routes.settings import _safe_integration_error
+
+
+@pytest.mark.parametrize(
+    ("broker_status", "code", "api_status"),
+    [
+        (401, "provider_auth_failed", 422),
+        (403, "provider_permission_denied", 422),
+        (429, "provider_rate_limited", 503),
+        (503, "provider_unavailable", 503),
+    ],
+)
+def test_broker_settings_errors_are_classified_without_response_secrets(
+    broker_status: int, code: str, api_status: int
+) -> None:
+    error = _safe_integration_error(
+        Trading212HTTPError(broker_status, "private response credential")
+    )
+    assert error.status_code == api_status
+    assert error.detail["code"] == code
+    assert "private" not in str(error.detail)
 
 
 def test_profile_and_integration_overview_are_non_secret(

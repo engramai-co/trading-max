@@ -102,9 +102,12 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
       : tone === "ready"
       ? null
       : tone === "running"
-        ? t(
+        ? latestRunId ? t(
             "更新完成前，仍可查看上一次成功发布的快照。",
             "Your last successfully published snapshot stays available while the update runs.",
+          ) : t(
+            "正在准备首次账户数据。完成后即可查看资产与收益；请保持 App 打开和网络连接。",
+            "Preparing your first account data. Investments and returns will appear when it finishes; keep the App open and connected.",
           )
         : t(
             "查看下面的服务状态和任务详情，定位未完成的步骤。",
@@ -178,7 +181,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                   value={scope}
                   onChange={(v) => setScope(v as RefreshJob["scope"])}
                   data={scopes}
-                  disabled={start.isPending}
+                  disabled={start.isPending || queued > 0 || running > 0}
                 />
                 {start.isError && (
                   <Notice tone="bad">
@@ -206,10 +209,10 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                   <Button
                     leftSection={<ArrowClockwise size={16} />}
                     loading={start.isPending}
-                    disabled={!data.health}
+                    disabled={!data.health || queued > 0 || running > 0}
                     onClick={() => start.mutate()}
                   >
-                    {t("开始更新", "Start update")}
+                    {queued > 0 || running > 0 ? t("更新进行中", "Update in progress") : t("开始更新", "Start update")}
                   </Button>
                   <Button
                     component={Link}
@@ -263,7 +266,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                   ],
                 ]}
               />
-              {tone !== "setup" && data.health?.bootstrapError && (
+              {tone !== "setup" && data.health?.bootstrapError && !(localWorkspace && !latestRunId && data.health.bootstrapError === "FileNotFoundError: no typed snapshot has been published") && (
                 <Notice tone="bad"><details><summary>{t("资料加载需要检查；查看诊断详情", "Data loading needs attention; view diagnostics")}</summary>{data.health.bootstrapError}</details></Notice>
               )}
               {data.errors.length > 0 && (

@@ -94,3 +94,25 @@ def test_each_broker_account_uses_its_own_observation_time():
     assert point["investNetContributionsGbp"] == 100
     assert point["isaNetContributionsGbp"] == 85
     assert point["totalNetPnlGbp"] == 20
+
+
+@pytest.mark.parametrize("profile", ["invest", "isa"])
+def test_single_account_chart_has_values_without_fabricating_other_account(profile):
+    other = "isa" if profile == "invest" else "invest"
+    point = intraday_nav_points(
+        {
+            "points": [
+                {
+                    "observed_at": "2026-01-06T12:00:01Z",
+                    f"{profile}_value_gbp": 110,
+                    "total_value_gbp": 110,
+                }
+            ]
+        },
+        {profile: history()},
+    )[0]
+    assert point[profile] == point["total"] == 110
+    assert point[f"{profile}NetPnlGbp"] == point["totalNetPnlGbp"] == 25
+    assert point[other] is None
+    assert point[f"{other}NetPnlGbp"] is None
+    assert NavPoint.model_validate(point).flow_status == "verified"

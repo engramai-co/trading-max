@@ -20,6 +20,7 @@ from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import latest_export_path
 
+from .account_selection import selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -225,10 +226,8 @@ class AccountReviewStage:
         dependencies = [lookthrough_id]
         warnings: list[str] = list(lookthrough_warnings)
 
-        for code, profile, kind in (
-            ("A", "invest", "invest"),
-            ("B", "isa", "isa"),
-        ):
+        for code, profile in selected_accounts(self.artifacts, context):
+            kind = profile
             account, account_id, account_warnings = self._json(
                 context,
                 f"account/{profile}.json",

@@ -25,6 +25,7 @@ from trading_max.reference import CatalogSecurityMaster
 
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
+from .broker_runtime import broker_profiles_loader
 from .config import Settings
 from .credentials import (
     CredentialStore,
@@ -250,6 +251,7 @@ def create_app(
     jobs = TypedJobManager(
         store,
         watchlist,
+        broker_profiles_loader=broker_profiles_loader(preferences),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,
         on_snapshot_published=on_snapshot_published,

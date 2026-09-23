@@ -1,10 +1,38 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from trading_max.application import BrokerSyncStage, StageContext, StageRegistry
+from trading_max.application.errors import StageExecutionError
 from trading_max.application.stages import idempotency_key
+from trading_max.ingestion.brokers.trading212 import (
+    Trading212ExportSchemaError,
+    Trading212HTTPError,
+)
+
+
+@pytest.mark.parametrize("trigger", ["on_demand", "intraday"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        Trading212ExportSchemaError("invalid columns"),
+        Trading212HTTPError(401, "unauthorized"),
+        Trading212HTTPError(503, "unavailable"),
+    ],
+)
+def test_broker_stage_preserves_failure_retryability(
+    tmp_path: Path, trigger: str, error: Exception
+) -> None:
+    sync = Mock()
+    sync.sync.side_effect = error
+    sync.snapshot_only.side_effect = error
+    stage = BrokerSyncStage(tmp_path, Mock(), sync=sync, profiles=("invest",))
+    with pytest.raises(StageExecutionError) as caught:
+        stage.run(StageContext(job_id="test", scope="all", trigger=trigger))
+    assert caught.value.retryable == error.retryable
 
 
 class _FirstStage:

@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An internal Apple Silicon macOS packaging experiment for product **1.9.0**.
+An internal Apple Silicon macOS packaging experiment for product **1.9.3**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -20,7 +20,7 @@ screen share the same entry and connection form. The separate local demo is a
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.9.0 application base. Remote mode
+The native shell and packaged web/API use the 1.9.3 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
