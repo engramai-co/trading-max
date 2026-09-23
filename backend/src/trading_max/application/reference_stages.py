@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from trading_max.analytics.lookthrough import fetch_fund_snapshot
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -59,7 +60,7 @@ class SecurityMasterEnrichmentStage:
     """Resolve ETF constituents and classify business profiles dynamically."""
 
     name = "reference.security_master"
-    version = "security-master-v10"
+    version = "security-master-v11"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -119,11 +120,10 @@ class SecurityMasterEnrichmentStage:
             ):
                 candidates.append(candidate)
                 continue
-            # Issuer data can resolve the same ISIN to another exchange listing.
-            # Official holdings adapters are keyed by the broker-held listing.
+            # Keep the broker's ISIN and listing through issuer discovery.
             ticker = candidate.security.ticker or resolved.canonical_ticker
             try:
-                snapshot = self.fund_provider.fetch(ticker)
+                snapshot = fetch_fund_snapshot(self.fund_provider, candidate.security)
             except Exception as exc:
                 warnings.append(f"{ticker}: constituent fetch failed: {exc}")
                 candidates.append(candidate)

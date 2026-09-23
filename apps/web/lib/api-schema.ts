@@ -2839,6 +2839,11 @@ export interface components {
              * @default
              */
             fetchedAt: string;
+            /**
+             * Fundisin
+             * @default
+             */
+            fundIsin: string;
             /** Holdings */
             holdings?: components["schemas"]["FundHolding"][];
             /**
@@ -2862,6 +2867,11 @@ export interface components {
             sourceUrl: string;
             /** Ticker */
             ticker: string;
+            /**
+             * Unweightedholdingscount
+             * @default 0
+             */
+            unweightedHoldingsCount: number;
         };
         /** GammaPoint */
         GammaPoint: {
@@ -3550,6 +3560,11 @@ export interface components {
             status?: ("verified" | "unavailable") | null;
             /** Ticker */
             ticker: string;
+            /**
+             * Unweightedholdingscount
+             * @default 0
+             */
+            unweightedHoldingsCount: number;
             /** Weighttotalpct */
             weightTotalPct: number;
         };

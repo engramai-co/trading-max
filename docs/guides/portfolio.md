@@ -22,6 +22,8 @@ Switch to **Look-through exposure** to inspect the underlying companies and
 allocations inside supported funds alongside direct holdings. This can reveal
 that several apparently different funds hold the same companies. An unresolved
 portion remains unresolved; a missing fund dataset is not a zero exposure.
+The [ETF coverage guide](etf-coverage.md) lists the supported issuer paths and
+explains the dates and completeness statuses shown under **Sources**.
 
 In country, industry and GICS rankings, names wrap in full. Each bar's full
 background represents 100% of the allocation; the blue fill and percentage

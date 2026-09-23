@@ -36,6 +36,80 @@ def _master_with_funds(*tickers: str) -> CatalogSecurityMaster:
     )
 
 
+def test_issuer_failure_isolated_and_partial_weights_survive_typed_lookthrough():
+    observed = []
+
+    class Provider:
+        def fetch_security(self, security):
+            observed.append((security.ticker, security.isin))
+            if security.ticker == "DOWN":
+                raise TimeoutError("issuer unavailable")
+            return FundSnapshot(
+                ticker="LIVE",
+                fund_isin="IE0000000001",
+                as_of="2026-09-22",
+                unweighted_holdings_count=2,
+                holdings=[FundHolding(ticker="FIX", name="Synthetic company", weight_pct=100)],
+            )
+
+    result = LookthroughService(Provider(), _master_with_funds("DOWN", "LIVE")).run(
+        {
+            "invest": {
+                "investments_value_gbp": 100,
+                "positions": [
+                    {"ticker": "DOWN", "isin": "IE0000000002", "current_value_gbp": 40},
+                    {"ticker": "LIVE", "isin": "IE0000000001", "current_value_gbp": 60},
+                ],
+            },
+        }
+    )
+    assert observed == [("DOWN", "IE0000000002"), ("LIVE", "IE0000000001")]
+    assert result["lookthroughCoveragePct"] == 0.6
+    sources = {row["ticker"]: row for row in result["sources"]}
+    assert sources["DOWN"]["status"] == "unavailable"
+    assert sources["LIVE"]["status"] == "verified"
+    assert sources["LIVE"]["unweightedHoldingsCount"] == 2
+    assert any("issuer omits weights" in warning for warning in result["warnings"])
+
+
+def test_same_ticker_with_different_fund_isins_does_not_merge_portfolios():
+    class Provider:
+        def fetch_security(self, security):
+            first = security.isin == "IE0000000001"
+            return FundSnapshot(
+                ticker=security.ticker,
+                fund_isin=security.isin,
+                as_of="2026-09-22",
+                holdings=[
+                    FundHolding(
+                        isin="US0000000001" if first else "US0000000002",
+                        ticker="ALPHA" if first else "BETA",
+                        name="Synthetic Alpha" if first else "Synthetic Beta",
+                        weight_pct=100,
+                    )
+                ],
+            )
+
+    result = LookthroughService(Provider(), _master_with_funds("DUPE")).run(
+        {
+            "invest": {
+                "positions": [
+                    {"ticker": "DUPE", "isin": "IE0000000001", "current_value_gbp": 30},
+                    {"ticker": "DUPE", "isin": "IE0000000002", "current_value_gbp": 70},
+                ],
+            }
+        }
+    )
+    assert {row["isin"]: row["positionValueGbp"] for row in result["sources"]} == {
+        "IE0000000001": 30,
+        "IE0000000002": 70,
+    }
+    assert {row["isin"]: row["valueGbp"] for row in result["positions"]} == {
+        "US0000000001": 30,
+        "US0000000002": 70,
+    }
+
+
 class _FixtureProvider:
     def fetch(self, ticker: str) -> FundSnapshot | None:
         if ticker != "XUSE":
@@ -165,6 +239,7 @@ def test_lookthrough_reports_missing_fund_source_without_fabricating_coverage() 
         {
             "ticker": "XUSE",
             "status": "unavailable",
+            "isin": "IE000R4ZNTN3",
             "asOf": "",
             "sourceUrl": "",
             "issuer": "",

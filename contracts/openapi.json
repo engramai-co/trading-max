@@ -5450,6 +5450,11 @@
             "title": "Fetchedat",
             "type": "string"
           },
+          "fundIsin": {
+            "default": "",
+            "title": "Fundisin",
+            "type": "string"
+          },
           "holdings": {
             "items": {
               "$ref": "#/components/schemas/FundHolding"
@@ -5482,6 +5487,12 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "unweightedHoldingsCount": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Unweightedholdingscount",
+            "type": "integer"
           }
         },
         "required": [
@@ -7349,6 +7360,11 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "unweightedHoldingsCount": {
+            "default": 0,
+            "title": "Unweightedholdingscount",
+            "type": "integer"
           },
           "weightTotalPct": {
             "title": "Weighttotalpct",
@@ -15563,7 +15579,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.9.0"
+    "version": "1.9.1"
   },
   "openapi": "3.1.0",
   "paths": {

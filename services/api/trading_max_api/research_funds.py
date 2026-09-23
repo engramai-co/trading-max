@@ -10,12 +10,13 @@ from pathlib import Path
 import httpx
 from bs4 import BeautifulSoup
 from pydantic import Field
-from trading_max.analytics.lookthrough import FundSnapshot
+from trading_max.analytics.lookthrough import FundSnapshot, fetch_fund_snapshot
 from trading_max.infrastructure.fund_holdings import (
     BUILTIN_FUND_ADAPTERS,
     USER_AGENT,
     OfficialFundHoldingsProvider,
 )
+from trading_max.reference import SecurityDescriptor
 from trading_max.research.facts import fingerprint, number
 
 from .models import ApiModel
@@ -131,7 +132,8 @@ class FundResearchService:
 
     def get(self, ticker: str, metrics: dict) -> FundResearch:
         with self.lock:
-            path = self.root / (fingerprint([ticker, "fund-research-v2"]) + ".json")
+            reported_isin = str(metrics.get("isin") or "").strip().upper()
+            path = self.root / (fingerprint([ticker, reported_isin, "fund-research-v3"]) + ".json")
             previous = None
             if path.exists():
                 previous = FundResearch.model_validate_json(path.read_text())
@@ -140,17 +142,33 @@ class FundResearchService:
                 ).total_seconds() < 64800:
                     return previous
             spec = BUILTIN_FUND_ADAPTERS.get(ticker.removesuffix(".L"))
+            if spec and reported_isin and spec.isin != reported_isin:
+                spec = None
             result = FundResearch(
                 ticker=ticker,
                 fetched_at=datetime.now(UTC).isoformat(),
                 source_url=spec.source_url if spec else None,
                 issuer=spec.issuer if spec else metrics.get("fundFamily"),
-                isin=spec.isin if spec else None,
+                isin=reported_isin or (spec.isin if spec else None),
                 base_currency=metrics.get("fundCurrency"),
                 expense_ratio=number(metrics.get("annualReportExpenseRatio")),
             )
             try:
-                result.holdings = self.provider.fetch(ticker)
+                result.holdings = fetch_fund_snapshot(
+                    self.provider,
+                    SecurityDescriptor(
+                        ticker=ticker,
+                        isin=reported_isin or (spec.isin if spec else ""),
+                        name=" ".join(
+                            str(metrics.get(key) or "")
+                            for key in ("longName", "shortName", "fundFamily")
+                        ),
+                    ),
+                )
+                if result.holdings is not None:
+                    result.isin = result.holdings.fund_isin or result.isin
+                    result.source_url = result.holdings.source_url or result.source_url
+                    result.issuer = result.holdings.issuer or result.issuer
             except Exception as exc:
                 result.warnings.append("holdings: " + type(exc).__name__)
                 if previous:

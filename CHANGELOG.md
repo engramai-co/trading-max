@@ -4,6 +4,22 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-23
+
+### Fixed
+
+- Resolve SMGB and other VanEck UCITS funds through official full holdings.
+  Add State Street/SPDR, Amundi, Xtrackers and JPMorgan adapters, and discover
+  additional iShares/Vanguard funds through their official catalogues.
+- Preserve broker ISINs through constituent discovery, validate downloaded
+  identities and dates, and keep unsupported or synthetic substitute baskets
+  unexpanded. Retain signed cash/derivatives and expose missing issuer weights.
+- Read Invesco's actual fund holdings for the held share class instead of index
+  constituents. Isolate issuer failures so other portfolio exposures remain
+  available, with stale-cache recovery and bounded retry backoff.
+- Document issuer coverage and limits, and show readable source status and
+  issuer information in the holdings view.
+
 ## [1.9.0] - 2026-09-23
 
 ### Added
