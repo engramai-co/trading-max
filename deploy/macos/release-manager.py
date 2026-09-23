@@ -80,6 +80,14 @@ def restore_llm_settings(database: Path, source: Path) -> None:
                 )
 
 
+def node_source(active: Path, explicit: str | None = None) -> str | None:
+    """Keep unattended upgrades on the already verified runtime, not host PATH."""
+    if explicit:
+        return explicit
+    retained = active / ".node-runtime/node"
+    return str(retained) if retained.is_file() else None
+
+
 def pin_node_runtime(
     release: Path, source: str | None = None, *, shared: Path | None = None
 ) -> Path:
@@ -296,7 +304,7 @@ class Deployment:
         self.run("git", "checkout", "--detach", self.target, cwd=self.candidate)
         node = pin_node_runtime(
             self.candidate,
-            self.environment.get("TRADING_MAX_NODE_BINARY"),
+            node_source(self.active, self.environment.get("TRADING_MAX_NODE_BINARY")),
             shared=self.service / "toolchains/node-blobs",
         )
         self.environment["PATH"] = str(node.parent) + os.pathsep + self.environment.get("PATH", "")

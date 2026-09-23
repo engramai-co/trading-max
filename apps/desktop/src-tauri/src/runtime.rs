@@ -111,6 +111,8 @@ impl Runtime {
             })
             .arg("--state-root")
             .arg(path)
+            .arg("--recovery-root")
+            .arg(self.root.join("workspace-recovery"))
             .env_clear()
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
         if let Some(name) = name {
@@ -166,7 +168,10 @@ impl Runtime {
             }
         }
         if let Some(workspace) = workspace {
-            cmd.arg("--workspace-id").arg(&workspace.id);
+            cmd.arg("--workspace-id")
+                .arg(&workspace.id)
+                .arg("--recovery-root")
+                .arg(self.root.join("workspace-recovery"));
         }
         let child = cmd
             .spawn()

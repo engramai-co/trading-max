@@ -204,10 +204,8 @@ def watch_parent(parent_pid: int, stop_action) -> None:
 def supervise(args) -> int:
     root = args.state_root.resolve()
     if args.workspace_id:
-        from trading_max.desktop_workspace import inspect_workspace
-
-        if inspect_workspace(root)["id"] != args.workspace_id:
-            raise RuntimeError("工作区标识已变化；未启动服务。")
+        if not args.recovery_root:
+            raise RuntimeError("本地工作区缺少独立的升级恢复目录。")
     else:
         prepare_identity(root)
     lock = (root / "runtime.lock").open("a")
@@ -217,6 +215,9 @@ def supervise(args) -> int:
         # The active owner retains its status file and its processes.
         return 73
     children: list[subprocess.Popen] = []
+    upgrade = None
+    prepared = None
+    committed = False
     started = time.monotonic()
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: STOP.set())
@@ -231,6 +232,21 @@ def supervise(args) -> int:
             "starting",
             "正在准备本机工作区…" if args.workspace_id else "正在准备本机演示资料…",
         )
+        if args.workspace_id:
+            from trading_max.desktop_upgrade import WorkspaceUpgrade
+            from trading_max.desktop_workspace import inspect_workspace
+
+            upgrade = WorkspaceUpgrade(
+                root,
+                args.recovery_root,
+                args.workspace_id,
+                progress=lambda details: status(
+                    root, "starting", "正在验证升级前的恢复副本…", backup_phase=details["phase"]
+                ),
+            )
+            prepared = upgrade.prepare()
+            if inspect_workspace(root)["id"] != args.workspace_id:
+                raise RuntimeError("工作区标识已变化；未启动服务。")
         api_port = reserve_port(args.api_port)
         web_port = reserve_port(args.web_port)
         while web_port == api_port:
@@ -255,6 +271,7 @@ def supervise(args) -> int:
                 stdin=subprocess.DEVNULL,
                 stdout=api_log,
                 stderr=subprocess.STDOUT,
+                pass_fds=(lock.fileno(),),
             )
         children.append(api)
         status(root, "api_starting", "正在启动资料与计算服务…", api_port=api_port, api_pid=api.pid)
@@ -281,6 +298,7 @@ def supervise(args) -> int:
                 stdin=subprocess.DEVNULL,
                 stdout=web_log,
                 stderr=subprocess.STDOUT,
+                pass_fds=(lock.fileno(),),
             )
         children.append(web)
         web_url = f"http://127.0.0.1:{web_port}/"
@@ -296,6 +314,15 @@ def supervise(args) -> int:
                 or onboarding.get("readiness", {}).get("status") != "ready"
             ):
                 entry_url += "settings?tab=accounts&onboarding=1"
+            if prepared and prepared.get("snapshotRunId"):
+                readiness = onboarding.get("readiness", {})
+                if readiness.get("status") != "ready" or not readiness.get("worker", {}).get(
+                    "healthy"
+                ):
+                    raise RuntimeError("新版未能正常读取已有资料；将恢复升级前的工作区。")
+            if upgrade:
+                upgrade.commit()
+                committed = True
         ready = {
             "web_url": entry_url,
             "api_port": api_port,
@@ -325,14 +352,23 @@ def supervise(args) -> int:
         return 0
     except InterruptedError:
         terminate_owned(children)
+        if upgrade and not committed:
+            upgrade.rollback()
         status(root, "stopped", "预览已关闭。")
         return 0
     except Exception as error:
         terminate_owned(children)
+        recovery_message = ""
+        if upgrade and not committed:
+            try:
+                if upgrade.rollback():
+                    recovery_message = "升级前的资料已恢复，失败时的资料也已保留。"
+            except Exception as recovery_error:
+                recovery_message = f"自动恢复尚未完成，请重开工作区继续恢复：{recovery_error}"
         status(
             root,
             "error",
-            "本机服务暂时无法启动，可以重新尝试。",
+            recovery_message or "本机服务暂时无法启动，可以重新尝试。",
             detail=f"{type(error).__name__}: {error}",
         )
         return 1
@@ -422,6 +458,7 @@ def main() -> int:
     parser.add_argument("--state-root", type=Path)
     parser.add_argument("--parent-pid", type=int, default=0)
     parser.add_argument("--workspace-id")
+    parser.add_argument("--recovery-root", type=Path)
     parser.add_argument("--name")
     parser.add_argument("--api-port", type=int, default=0)
     parser.add_argument("--web-port", type=int, default=0)
@@ -430,6 +467,10 @@ def main() -> int:
         from trading_max.desktop_workspace import create_workspace, inspect_workspace
 
         try:
+            if args.mode == "workspace-inspect" and args.recovery_root:
+                from trading_max.desktop_upgrade import recover_interrupted
+
+                recover_interrupted(args.state_root, args.recovery_root)
             result = (
                 create_workspace(args.state_root, args.name)
                 if args.mode == "workspace-create"
@@ -437,7 +478,7 @@ def main() -> int:
             )
             sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
             return 0
-        except (ValueError, OSError) as error:
+        except (ValueError, OSError, RuntimeError) as error:
             sys.stdout.write(json.dumps({"error": str(error)}, ensure_ascii=False) + "\n")
             return 1
     if args.parent_pid <= 0:

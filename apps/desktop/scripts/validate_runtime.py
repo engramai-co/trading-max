@@ -54,6 +54,9 @@ def main(payload: Path, output: Path):
     results = {"runtime": str(payload), "checks": [], "launches": []}
     before = fingerprint(payload)
     with tempfile.TemporaryDirectory(prefix="Trading Max runtime checks ") as temporary:
+        # macOS exposes /var as a system alias of /private/var. Pass canonical
+        # paths, as the native workspace picker does, to the recovery boundary.
+        temporary = str(Path(temporary).resolve())
         root = Path(temporary) / "State with spaces"
         env = {
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
@@ -78,6 +81,8 @@ def main(payload: Path, output: Path):
                 str(root),
                 "--parent-pid",
                 str(os.getpid()),
+                "--recovery-root",
+                str(Path(temporary) / "recovery"),
                 *flags,
             ]
             return subprocess.Popen(
@@ -281,6 +286,70 @@ def main(payload: Path, output: Path):
                 "real workspace duplicate owner rejected and restart preserves identity",
             ]
         )
+        # Exercise the actual packaged older-workspace upgrade.
+        marker = root / "trading-max-workspace.json"
+        original = json.loads(marker.read_text())
+        original["app_version"] = "1.9.0"
+        marker.write_text(json.dumps(original))
+        process = start("--workspace-id", workspace["id"])
+        try:
+            value = ready(process)
+            journal = Path(temporary) / "recovery" / workspace["id"] / "transaction.json"
+            transaction = json.loads(journal.read_text())
+            assert transaction["phase"] == "committed"
+            assert json.loads(marker.read_text())["app_version"] != "1.9.0"
+            assert transaction["backupId"]
+            results["checks"].append("older local workspace receives a verified pre-upgrade backup")
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+        stopped(value)
+        original["app_version"] = "1.9.0"
+        marker.write_text(json.dumps(original))
+        failure_script = Path(temporary) / "failed_start.py"
+        failure_script.write_text(
+            "import importlib.util, sys\n"
+            f"spec = importlib.util.spec_from_file_location('supervisor', {str(payload / 'supervisor.py')!r})\n"
+            "supervisor = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(supervisor)\n"
+            "original_await = supervisor.await_url\n"
+            "def fail_web(url, *args, **kwargs):\n"
+            "    if url.endswith('/'):\n"
+            "        raise TimeoutError('synthetic web startup failure')\n"
+            "    return original_await(url, *args, **kwargs)\n"
+            "supervisor.await_url = fail_web\n"
+            "raise SystemExit(supervisor.main())\n"
+        )
+        failed_process = subprocess.Popen(
+            [
+                str(payload / "python/bin/python3.12"),
+                "-I",
+                "-B",
+                str(failure_script),
+                "supervise",
+                "--state-root",
+                str(root),
+                "--workspace-id",
+                workspace["id"],
+                "--recovery-root",
+                str(Path(temporary) / "recovery"),
+                "--parent-pid",
+                str(os.getpid()),
+            ],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            assert failed_process.wait(timeout=90) == 1
+            assert read()["stage"] == "error"
+            assert json.loads(journal.read_text())["phase"] == "rolled-back"
+            assert json.loads(marker.read_text())["app_version"] == "1.9.0"
+            results["checks"].append("failed bundled upgrade restores the original workspace")
+        finally:
+            if failed_process.poll() is None:
+                failed_process.terminate()
+                failed_process.wait(timeout=10)
     after = fingerprint(payload)
     changed = sorted(
         key for key in before.keys() | after.keys() if before.get(key) != after.get(key)

@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An internal Apple Silicon macOS packaging experiment for product **1.9.3**.
+An internal Apple Silicon macOS packaging experiment for product **1.9.4**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -20,7 +20,7 @@ screen share the same entry and connection form. The separate local demo is a
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.9.3 application base. Remote mode
+The native shell and packaged web/API use the 1.9.4 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
@@ -207,3 +207,17 @@ documentation is [archived](../../docs/archive/onboarding/README.md); the curren
 entry and capability status are in [desktop onboarding](../../docs/installation/desktop-onboarding.md).
 
 Architecture and acceptance scope: [desktop preview RFC](../../docs/architecture/desktop-preview-rfc.md).
+
+## Local workspace upgrade safety
+
+Starting a newer App version now creates a verified, deduplicated recovery
+snapshot before starting services against an existing workspace. The supervisor
+keeps ownership of the same runtime lock, commits after startup checks, and
+restores a failed pre-commit startup with a resumable journal. Failed-start files
+are retained separately; credentials and saved server connections are untouched.
+Same-version reopens do not create additional copies. Recovery remains available
+through the existing retry screen; no desktop navigation changes are included.
+
+See [upgrade recovery](../../docs/architecture/desktop-upgrade-recovery.md) for
+failure, storage and compatibility boundaries. Signed binary downloads,
+automatic binary rollback and public distribution are still deferred.
