@@ -239,7 +239,14 @@ class Deployment:
         self.started_services: list[str] = []
         self.backup_manifest: str | None = None
 
-    def run(self, *args: str | Path, cwd: Path | None = None, capture=False, check=True):
+    def run(
+        self,
+        *args: str | Path,
+        cwd: Path | None = None,
+        capture=False,
+        check=True,
+        live_stderr=False,
+    ):
         return subprocess.run(  # noqa: S603 - fixed commands, validated revisions, no shell
             [str(a) for a in args],
             cwd=cwd or self.service,
@@ -247,7 +254,7 @@ class Deployment:
             check=check,
             text=True,
             stdout=subprocess.PIPE if capture else None,
-            stderr=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture and not live_stderr else None,
         )
 
     def save_record(self, phase: str) -> None:
@@ -373,6 +380,7 @@ class Deployment:
             "--artifact-encoding",
             "logical",
             capture=True,
+            live_stderr=True,
         )
         created = json.loads(result.stdout)
         if not created.get("snapshotRunId"):

@@ -112,6 +112,23 @@ def test_backup_is_independent_deduplicated_and_restorable(tmp_path: Path):
         assert db.execute("SELECT * FROM example").fetchall() == [("synthetic",)]
 
 
+def test_backup_reports_publication_only_after_successful_verification(tmp_path):
+    state = state_at(tmp_path / "state")
+    events = []
+    repository = BackupRepository(tmp_path / "backups", progress=events.append)
+    backup = repository.create(state)
+    assert [event["phase"] for event in events] == ["capturing", "verifying", "backup-published"]
+    assert events[-1]["backupId"] == backup["id"]
+    assert events[-1]["snapshotRunId"] == backup["snapshotRunId"]
+    events.clear()
+    manifest = repository.read_manifest(backup["id"])
+    repository.blob_path(manifest["files"]["trading_max.db"]["sha256"]).write_bytes(b"corrupt")
+    with pytest.raises((ValueError, OSError)):
+        repository.verify(backup["id"])
+    assert all(event["phase"] != "backup-published" for event in events)
+    assert repository.packs._scan_cache is None
+
+
 def test_corruption_never_publishes_or_overwrites_state(tmp_path: Path):
     state = state_at(tmp_path / "state")
     repo = BackupRepository(tmp_path / "backups")

@@ -308,12 +308,12 @@ def compact_manifests(repository: BackupRepository, *, max_files=64) -> dict:
     return {"convertedManifests": count, "originalBytes": original, "descriptorBytes": after}
 
 
-def nightly_packs(service: Path, state: Path, backup_id: str) -> dict:
+def nightly_packs(service: Path, state: Path, backup_id: str, *, progress=None) -> dict:
     """Append sealed batches after a fresh verified backup; never force activation."""
     from .backup_repository import exclusive_lock
     from .storage_compatibility import verify_retained_readers
 
-    repository = BackupRepository(service / "backups/repository")
+    repository = BackupRepository(service / "backups/repository", progress=progress)
     if not enabled(state) or not enabled(repository.root):
         return {"enabled": False}
     with exclusive_lock(service / ".deployment.lock"), exclusive_lock(repository.lock):

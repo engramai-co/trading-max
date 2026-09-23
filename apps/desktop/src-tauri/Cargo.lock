@@ -4137,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "trading-max-desktop-preview"
-version = "1.9.1"
+version = "1.9.2"
 dependencies = [
  "libc",
  "reqwest",

@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-09-23
+
+### Fixed
+
+- Avoid repeatedly decoding entire cold storage blocks during backup verification
+  by reusing verified, individually compressed records in a bounded temporary
+  memory cache. Keep full file, database and snapshot recovery checks.
+- Report backup capture, verification, publication and maintenance progress as
+  it happens, including during deployment. Stop at a safe checkpoint when the
+  configurable backup time budget is exceeded instead of waiting indefinitely.
+
 ## [1.9.1] - 2026-09-23
 
 ### Fixed

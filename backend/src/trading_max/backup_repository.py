@@ -16,8 +16,10 @@ import re
 import sqlite3
 import tarfile
 import tempfile
+import time
 import uuid
-from contextlib import closing, contextmanager
+from collections.abc import Callable
+from contextlib import ExitStack, closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -90,7 +92,7 @@ def _stamp(path: Path) -> list[int]:
 
 
 class BackupRepository:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, *, progress: Callable[[dict], None] | None = None):
         self.root = root.expanduser().resolve()
         self.blobs = self.root / "blobs"
         self.snapshots = self.root / "snapshots"
@@ -102,6 +104,11 @@ class BackupRepository:
         self.packs = ObjectPacks(self.root / "object-packs")
         self.manifest_catalog = ManifestCatalog(self.packs)
         self.packed_store = ContentAddressedArtifactStore(self.root / "packed")
+        self.progress = progress
+
+    def _progress(self, phase: str, **details) -> None:
+        if self.progress:
+            self.progress({"phase": phase, **details})
 
     def packed_path(self, digest: str) -> Path:
         if not _DIGEST.fullmatch(digest):
@@ -386,7 +393,9 @@ class BackupRepository:
         with (
             exclusive_lock(self.lock),
             tempfile.TemporaryDirectory(prefix=".capture-", dir=self.root) as temporary,
+            ExitStack() as reads,
         ):
+            self._progress("capturing")
             scratch = Path(temporary)
             # Pin the publication pointer before inventorying immutable artifacts.
             pointer = state / "latest.json"
@@ -405,6 +414,7 @@ class BackupRepository:
             catalog = json.loads(catalog_path.read_text()) if catalog_path.is_file() else {}
             next_catalog: dict = {}
             source_artifacts = ContentAddressedArtifactStore(state / "artifacts")
+            reads.enter_context(source_artifacts.packs.scan_reads())
             source_artifacts.json_chunks.read_cache = source_artifacts.history.read_cache = (
                 VerifiedChunkCache()
             )
@@ -423,7 +433,11 @@ class BackupRepository:
                     for a in source_artifacts.artifact_ids()
                     if a not in present
                 )
-            for source in sources:
+            last_progress = time.monotonic()
+            for position, source in enumerate(sources, 1):
+                if self.progress and time.monotonic() - last_progress >= 5:
+                    self._progress("capturing", files=position, totalFiles=len(sources))
+                    last_progress = time.monotonic()
                 relative = source.relative_to(state).as_posix()
                 # Public filings and parser result caches can be fetched again.
                 # Keep old manifests/imports fully readable, but do not perpetuate
@@ -517,6 +531,7 @@ class BackupRepository:
                         "file": entry,
                         "artifactEncoding": encoding,
                     }
+            reads.close()  # Release capture caches before independent recovery verification.
             instant = now or datetime.now(UTC)
             backup_id = (
                 instant.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
@@ -536,6 +551,7 @@ class BackupRepository:
             manifest["verification"] = verified
             self._publish_manifest(backup_id, manifest)
             atomic_json(catalog_path, next_catalog)
+            self._progress("backup-published", backupId=backup_id, **verified)
             return {"id": backup_id, "manifest": str(self.manifest_path(backup_id)), **verified}
 
     def _verify(self, manifest: dict, restore_to: Path | None = None) -> dict:
@@ -555,12 +571,18 @@ class BackupRepository:
         packed.json_chunks.read_cache = packed.history.read_cache = VerifiedChunkCache()
         if DATABASE_NAME not in files:
             raise ValueError("backup database is missing")
-        with tempfile.TemporaryDirectory(prefix=".verify-", dir=self.root) as temporary:
+        with (
+            tempfile.TemporaryDirectory(prefix=".verify-", dir=self.root) as temporary,
+            self.packs.scan_reads(),
+            packed.packs.scan_reads(),
+        ):
+            started = last_progress = time.monotonic()
+            self._progress("verifying", files=0, totalFiles=len(files))
             db = Path(temporary) / DATABASE_NAME
             indexes: dict[str, dict] = {}
             physical: dict[str, dict] = {}
             total = 0
-            for name, entry in files.items():
+            for position, (name, entry) in enumerate(files.items(), 1):
                 relative = _safe_relative(name)
                 if not isinstance(entry.get("size"), int) or entry["size"] < 0:
                     raise ValueError("invalid backup size")
@@ -599,6 +621,15 @@ class BackupRepository:
                 if size != entry["size"] or digest.hexdigest() != entry["sha256"]:
                     raise ValueError("backup blob checksum mismatch")
                 total += size
+                if self.progress and time.monotonic() - last_progress >= 5:
+                    self._progress(
+                        "verifying",
+                        files=position,
+                        totalFiles=len(files),
+                        logicalBytes=total,
+                        elapsedSeconds=round(time.monotonic() - started, 1),
+                    )
+                    last_progress = time.monotonic()
                 if index:
                     decoded_index = compressed_json.decode(bytes(metadata))
                     if len(decoded_index) > 16 * _BLOCK:
