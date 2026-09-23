@@ -15,6 +15,7 @@ ALLOWED_BINARY_PREFIXES = (
     "apps/web/public/brand/",
     "docs/assets/",
 )
+ALLOWED_BINARY_PATHS = {"apps/desktop/src-tauri/icons/icon.png"}
 ALLOWED_DATA_PREFIXES = ("backend/src/trading_max/reference/data/",)
 BLOCKED_ROOTS = (".impeccable/critique/", ".impeccable/live/", "docs/handoffs/")
 BLOCKED_COMPONENTS = {
@@ -97,8 +98,10 @@ def path_violations() -> list[str]:
         if any(component in BLOCKED_COMPONENTS for component in PurePosixPath(path).parts):
             failures.append(f"{path}: runtime or generated material exists in history")
             continue
-        if PurePosixPath(path).suffix.lower() in BLOCKED_SUFFIXES and not path.startswith(
-            ALLOWED_BINARY_PREFIXES
+        if (
+            PurePosixPath(path).suffix.lower() in BLOCKED_SUFFIXES
+            and not path.startswith(ALLOWED_BINARY_PREFIXES)
+            and path not in ALLOWED_BINARY_PATHS
         ):
             failures.append(f"{path}: binary or data artifact exists in history")
     return failures

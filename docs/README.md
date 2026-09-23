@@ -6,8 +6,8 @@ contracts.
 
 ## Use Trading Max
 
-- [Install and connect accounts](installation/local-installation.md) — supported
-  platforms, first refresh, services, updates, backups, and recovery.
+- [Desktop onboarding](installation/desktop-onboarding.md) — current App capabilities,
+  workspace entry, existing-server connection and the next enrollment step.
 - [Understand your portfolio](guides/portfolio.md) — account scope, holdings,
   look-through, money and P&L, return comparison, and review.
 - [Research a security](guides/research.md) — financials, price charts,
@@ -22,6 +22,8 @@ contracts.
 - [Contributing and release checks](../CONTRIBUTING.md)
 - [System overview](architecture/system-overview.md) and
   [repository layout and ownership](architecture/repository-layout.md)
+- [Desktop build and tests](../apps/desktop/README.md) and
+  [desktop runtime boundaries](architecture/desktop-preview-rfc.md)
 - [API and generated contracts](api/README.md)
 - [Interface lenses](architecture/interface-lenses.md) and
   [UI experience](architecture/ui-experience.md)
@@ -39,9 +41,8 @@ contracts.
 ## Operate and recover
 
 - [Deployment profiles](../deploy/README.md)
-- [Agent-owned local installation and diagnosis](operations/agent-local-deployment-runbook.md)
-  — the [onboarding skill](../.agents/skills/trading-max-onboard/SKILL.md),
-  existing-state triage, JSON readiness, optional providers and first refresh.
+- [Archived source/agent onboarding](archive/onboarding/README.md) — historical
+  installation instructions retained for existing source deployments.
 - [Advanced macOS upgrades and rollback](../deploy/macos/README.md)
 - [Durable jobs and worker recovery](architecture/durable-job-runtime.md)
 - [Storage maintenance and recovery copies](operations/storage-maintenance.md)

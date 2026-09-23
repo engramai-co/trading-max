@@ -12,7 +12,7 @@ MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
 EXTERNAL_PREFIXES = ("#", "http://", "https://", "mailto:")
 CANONICAL_MARKERS = {
     "README.md": ("https://github.com/engramai-co/trading-max",),
-    ".agents/skills/trading-max-onboard/SKILL.md": (
+    "docs/installation/desktop-onboarding.md": (
         "engramai-co/trading-max",
         "trading-max doctor --check-updates",
     ),

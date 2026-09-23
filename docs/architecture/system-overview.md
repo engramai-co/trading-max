@@ -109,7 +109,7 @@ back valid portfolio or research data.
 Local setup, health/readiness acceptance, backup, restore, and optional macOS
 service installation are documented separately:
 
-- [Local installation](../installation/local-installation.md)
-- [Agent onboarding](../operations/agent-local-deployment-runbook.md)
+- [Desktop onboarding](../installation/desktop-onboarding.md)
+- [Archived source/agent installation](../archive/onboarding/README.md)
 - [Durable job runtime](durable-job-runtime.md)
 - [Interface lenses](interface-lenses.md)

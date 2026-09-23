@@ -36,7 +36,7 @@ import {
   useCopy,
 } from "./foundation";
 
-export function HealthWorkspace() {
+export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   const { locale } = useLocale();
   const client = useQueryClient();
@@ -70,7 +70,7 @@ export function HealthWorkspace() {
       void client.invalidateQueries({ queryKey: ["workspace-research-shell"] });
     }
   }, [client, latestRunId]);
-  const tone = deriveHealthTone(data ?? null);
+  const tone = deriveHealthTone(data ?? null, localWorkspace);
   const job =
     data?.jobs.find((j) => j.jobId === selected) ??
     (start.data?.jobId === selected ? start.data : null);
@@ -87,7 +87,9 @@ export function HealthWorkspace() {
     { value: "cfd", label: t("CFD 复盘", "CFD review") },
   ];
   const title =
-    tone === "ready"
+    tone === "setup"
+      ? t("等待首次同步", "Ready for your first sync")
+      : tone === "ready"
       ? t("数据服务运行正常", "Your data service is ready")
       : tone === "running"
         ? t("正在更新你的数据", "Your data is updating")
@@ -95,7 +97,9 @@ export function HealthWorkspace() {
           ? t("需要启动本地服务", "Start your local service")
           : t("数据服务需要检查", "The data service needs attention");
   const subtitle =
-    tone === "ready"
+    tone === "setup"
+      ? t("本机服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
+      : tone === "ready"
       ? null
       : tone === "running"
         ? t(
@@ -134,6 +138,8 @@ export function HealthWorkspace() {
             <div className="mx-health-symbol">
               {tone === "ready" ? (
                 <CheckCircle size={35} />
+              ) : tone === "setup" ? (
+                <Clock size={35} />
               ) : tone === "running" ? (
                 <Pulse size={35} />
               ) : (
@@ -148,8 +154,10 @@ export function HealthWorkspace() {
                 label={t("检查时间", "Checked")}
               />
             </div>
-            <Tag tone={tone === "ready" ? "good" : "warn"}>
-              {tone === "ready"
+            <Tag tone={tone === "setup" ? "neutral" : tone === "ready" ? "good" : "warn"}>
+              {tone === "setup"
+                ? t("待设置", "Setup needed")
+                : tone === "ready"
                 ? t("就绪", "Ready")
                 : tone === "running"
                   ? t("更新中", "Updating")
@@ -161,6 +169,10 @@ export function HealthWorkspace() {
               title={t("更新数据", "Update data")}
             >
               <Stack gap="md">
+                {tone === "setup" ? <>
+                  <Notice>{t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
+                  <Group><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></Group>
+                </> : <>
                 <Select
                   label={t("更新范围", "Update scope")}
                   value={scope}
@@ -208,6 +220,7 @@ export function HealthWorkspace() {
                     {t("管理更新计划", "Manage schedule")}
                   </Button>
                 </Group>
+                </>}
               </Stack>
             </Panel>
             <Panel title={t("服务与快照", "Service & snapshot")}>
@@ -217,7 +230,7 @@ export function HealthWorkspace() {
                     t("账户数据服务", "Account data service"),
                     <Tag
                       key="api"
-                      tone={data.health?.status === "ok" ? "good" : "warn"}
+                      tone={data.health?.status === "ok" || tone === "setup" ? "good" : "warn"}
                     >
                       {data.health
                         ? t("可访问", "Reachable")
@@ -250,8 +263,8 @@ export function HealthWorkspace() {
                   ],
                 ]}
               />
-              {data.health?.bootstrapError && (
-                <Notice tone="bad">{data.health.bootstrapError}</Notice>
+              {tone !== "setup" && data.health?.bootstrapError && (
+                <Notice tone="bad"><details><summary>{t("资料加载需要检查；查看诊断详情", "Data loading needs attention; view diagnostics")}</summary>{data.health.bootstrapError}</details></Notice>
               )}
               {data.errors.length > 0 && (
                 <Notice tone="warn">

@@ -1,6 +1,7 @@
 import type { HealthDetails, RefreshJob, RefreshState } from "@/lib/types";
 
 export type HealthTone =
+  | "setup"
   | "ready"
   | "running"
   | "degraded"
@@ -81,7 +82,7 @@ export function activeAccountJob(
     : null;
 }
 
-export function deriveHealthTone(details: HealthDetails | null): HealthTone {
+export function deriveHealthTone(details: HealthDetails | null, localWorkspace = false): HealthTone {
   if (!details) return "unknown";
 
   const hasBackendProbe = Boolean(
@@ -103,6 +104,16 @@ export function deriveHealthTone(details: HealthDetails | null): HealthTone {
   const readiness = details.readiness;
   const worker = health?.worker ?? readiness?.worker;
   const probeFailure = details.errors.length > 0;
+  const expectedEmpty = (error: string | null | undefined) =>
+    !error || error === "FileNotFoundError: no typed snapshot has been published";
+  if (
+    localWorkspace && health?.status === "degraded" && readiness?.status === "not_ready" &&
+    health.latestRunId === null && readiness.latestRunId === null && worker?.healthy === true &&
+    !probeFailure && expectedEmpty(health.bootstrapError) && expectedEmpty(readiness.bootstrapError) &&
+    details.jobs.length === 0 && !latestFull && !details.refresh?.latestJob &&
+    health.queue.succeeded === 0 && health.queue.failed === 0 && health.queue.interrupted === 0 &&
+    health.queue.running === 0 && health.queue.queued === 0
+  ) return "setup";
   const unhealthy =
     health?.status !== "ok" ||
     readiness?.status !== "ready" ||

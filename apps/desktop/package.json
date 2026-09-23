@@ -1,0 +1,14 @@
+{
+  "name": "trading-max-desktop-preview",
+  "version": "1.9.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "tauri": "tauri",
+    "build": "tauri build --bundles app",
+    "check": "cargo test --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.5"
+  }
+}

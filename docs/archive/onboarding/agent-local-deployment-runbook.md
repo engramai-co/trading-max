@@ -1,16 +1,18 @@
+> **Archived on 2026-09-22.** This is the former source/agent onboarding workflow, retained for existing installations. It is no longer the primary onboarding entry or an active agent skill. See the [current desktop onboarding guide](../../installation/desktop-onboarding.md) and [archive status](README.md).
+
 # Agent runbook: local installation and diagnosis
 
 Use this runbook with the repository's
-[onboarding skill](../../.agents/skills/trading-max-onboard/SKILL.md) when a user
+[onboarding skill](agent-skill/SKILL.md) when a user
 asks to install or run an already-cloned checkout. A setup request covers the
 safe foreground workflow through verification; do not ask for a second setup
 prompt. Reuse authorization already given in the task.
 
 For an existing local installation, diagnose and resume it before considering
 initialization. For a requested update, use the
-[local update procedure](../installation/local-installation.md#updates).
+[local update procedure](local-installation.md#updates).
 A provisioned remote macOS host uses the separate
-[operator deployment procedure](../../deploy/macos/README.md).
+[operator deployment procedure](../../../deploy/macos/README.md).
 
 ## 1. Inspect the workstation and existing installation
 
@@ -167,7 +169,7 @@ never read, transcribe, screenshot, log or store their secrets in chat or files.
   Alpaca is optional, disabled until enabled, and configured through this Settings
   panel rather than the CLI wizard. It supplements supported US reconstruction
   history; it does not replace broker observations, UK/FX data or company research.
-  See [data sources and limits](../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
+  See [data sources and limits](../../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
 - **AI analysis:** optional provider/model routes. Keep the deterministic local
   provider when the user has not requested external model setup.
 
@@ -186,7 +188,7 @@ unchanged authentication or reconciliation error in a loop.
 
 Missing Trading 212 Card merchant cash events can prevent complete historical
 returns even when current broker totals are available. Use the
-[ingestion guidance](../architecture/trading212-ingestion.md) and request a
+[ingestion guidance](../../architecture/trading212-ingestion.md) and request a
 manual history export when relevant. Do not fabricate a balancing cash flow.
 
 ## 7. Accept the installation
@@ -258,7 +260,7 @@ uv run --package trading-max-backend trading-max backup \
 
 The optional local macOS service schedules backups at 03:15; registration alone
 does not prove the first archive exists. See
-[backup and recovery](../installation/local-installation.md#backup-and-recovery).
+[backup and recovery](local-installation.md#backup-and-recovery).
 Report the verified archive path, never its contents.
 
 Report version, branch/full commit, canonical/update status, state root, runtime

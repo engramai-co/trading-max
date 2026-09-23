@@ -1,5 +1,6 @@
 import pytest
 
+from tools import check_public_history
 from tools.release_contract import (
     ROOT,
     ReleaseContractError,
@@ -12,6 +13,22 @@ from tools.release_contract import (
     validate_version_increment,
 )
 from tools.release_scope import is_non_product_path, normalize_version_surface, release_required
+
+
+def test_desktop_brand_icon_does_not_allow_other_binary_history(monkeypatch) -> None:
+    monkeypatch.setattr(
+        check_public_history,
+        "historical_paths",
+        lambda: {
+            "apps/desktop/src-tauri/icons/icon.png",
+            "apps/desktop/src-tauri/icons/account.png",
+            "apps/desktop/screenshot.png",
+        },
+    )
+    assert check_public_history.path_violations() == [
+        "apps/desktop/screenshot.png: binary or data artifact exists in history",
+        "apps/desktop/src-tauri/icons/account.png: binary or data artifact exists in history",
+    ]
 
 
 def test_public_release_baseline_is_exactly_one_zero_zero() -> None:

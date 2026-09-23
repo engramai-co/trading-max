@@ -120,7 +120,7 @@ requires a package download or rebuild. It does not restore the database:
 account records, jobs, broker settings and compatible migrations remain intact;
 only the model configuration is restored to the pre-upgrade selection. Release
 acceptance must verify backward compatibility before upgrading. General state
-restore is a separate operation; see [backup/restore](../../docs/installation/local-installation.md#backup-and-recovery).
+restore is a separate operation; see [backup/restore](../../docs/archive/onboarding/local-installation.md#backup-and-recovery).
 
 Deployment records are mode `0600` in `service-root/deployments`. After an
 uncatchable interruption, recover with the retained controller and the exact

@@ -51,6 +51,7 @@ from .research_journal import ResearchJournalStore
 from .research_prices import SecurityPriceHistory
 from .routes.analysis import router as analysis_router
 from .routes.imports import router as imports_router
+from .routes.local_workspace import router as local_workspace_router
 from .routes.operations import router as operations_router
 from .routes.research import router as research_router
 from .routes.settings import router as settings_router
@@ -428,6 +429,7 @@ def create_app(
     _install_request_guards(app, settings, logger)
     app.include_router(system_router)
     app.include_router(settings_router)
+    app.include_router(local_workspace_router)
     app.include_router(imports_router)
     app.include_router(analysis_router)
     app.include_router(operations_router)

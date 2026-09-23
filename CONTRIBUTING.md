@@ -132,3 +132,17 @@ dispatches the complete Release workflow. That workflow re-runs backend and
 frontend validation, builds the source archive, checksum and SBOM, attests the
 public source bundle, and publishes the GitHub Release. Do not create release
 tags by hand during the normal contribution flow.
+
+
+## Desktop preview changes
+
+The desktop shell is currently an internal Apple Silicon macOS preview.
+[Its build guide](apps/desktop/README.md) owns packaging, native tests and
+supervisor acceptance. Use only synthetic local state; an existing-server
+connection must not change that service or expose native capabilities remotely.
+
+For desktop changes, also run Python lint/tests for `apps/desktop/scripts` and
+`apps/desktop/tests`, Cargo tests, Clippy and formatting checks, and a packaged
+runtime check. Match desktop npm, Cargo and Tauri versions to `VERSION` before
+building. Runtime binaries and generated payloads remain ignored by Git.
+A local preview build is not a signed public desktop release.

@@ -23,8 +23,8 @@ ENGINEERING_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "TRADEMARKS.md",
     "VERSION",
-    "docs/installation/local-installation.md",
-    "docs/operations/agent-local-deployment-runbook.md",
+    "docs/installation/desktop-onboarding.md",
+    "docs/archive/onboarding/README.md",
 )
 LICENSE_FILES = ("LICENSE", "LICENSE.md", "LICENSE.txt")
 PUBLIC_FILES = ("LICENSE", "NOTICE")

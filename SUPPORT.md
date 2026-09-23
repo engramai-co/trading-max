@@ -6,7 +6,8 @@ or uptime advice.
 
 ## Before opening an issue
 
-1. Read the [installation guide](docs/installation/local-installation.md) and
+1. Read [desktop onboarding](docs/installation/desktop-onboarding.md) or the
+   [existing source-installation reference](docs/archive/onboarding/local-installation.md), and
    run `uv run --package trading-max-backend trading-max doctor --check-updates`
    with the installation's state root. This diagnoses configuration/source; it
    does not verify provider access or running services.

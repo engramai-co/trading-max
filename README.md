@@ -76,49 +76,22 @@ examples, not live quotes. Company marks belong to their owners.*
 
 ## Get started
 
-Trading Max runs locally. macOS 13+ is the supported first-class platform;
-Linux desktop support is conditional and Windows support is a preview.
+The new desktop entry brings workspaces and existing-server connections into
+one App. The internal Apple Silicon Mac preview can connect to your own HTTPS
+service, remember it and recover when it is unavailable. A separate local demo
+uses synthetic data.
 
-### With Codex
+Local workspace enrollment is available in the internal preview. Signed public
+installers remain a later step. See [desktop onboarding and current capabilities](docs/installation/desktop-onboarding.md).
 
-Clone the repository, open the folder in Codex, and ask it to complete setup:
+Already using a source installation? The existing CLI and local launch scripts
+remain supported. The former Codex skill, runbook and source-installation guide
+are [archived for reference](docs/archive/onboarding/README.md), including their
+update, backup and recovery procedures. Credentials belong in local Settings,
+never in chat or the source checkout.
 
-```bash
-git clone https://github.com/engramai-co/trading-max.git
-cd trading-max
-```
-
-```text
-Set this project up completely for local use.
-```
-
-Codex follows the included installation workflow, starts the app, and verifies
-it. Enter and test your read-only Trading 212 credentials in local Settings.
-Never paste credentials into chat. The included
-[onboarding skill](.agents/skills/trading-max-onboard/SKILL.md) also distinguishes
-an existing installation from a fresh one.
-
-### Manually
-
-With Git, Python 3.12, [uv](https://docs.astral.sh/uv/), and Node.js 22 LTS
-installed, run this from the cloned repository:
-
-```bash
-uv run --package trading-max-backend trading-max onboard
-```
-
-The guided installer builds the app and offers provider setup. For subsequent
-foreground starts:
-
-```bash
-deploy/local/start.sh
-```
-
-Open [http://127.0.0.1:3413](http://127.0.0.1:3413). Connect your accounts in
-Connections and follow the first refresh in Data status. Setup is complete when
-readiness succeeds and the account totals agree with your broker.
-
-[Full installation guide →](docs/installation/local-installation.md)
+Developers can start with [CONTRIBUTING.md](CONTRIBUTING.md) or the
+[desktop build guide](apps/desktop/README.md).
 
 ## Your data, on your computer
 
@@ -151,7 +124,8 @@ for valuation, return, and coverage limits.
 |---|---|
 | Understand my portfolio | [Portfolio guide](docs/guides/portfolio.md) |
 | Research a company or use a valuation model | [Research guide](docs/guides/research.md) |
-| Install, update, back up, or recover | [Installation and recovery](docs/installation/local-installation.md) |
+| Choose a workspace or connect a service | [Desktop onboarding](docs/installation/desktop-onboarding.md) |
+| Maintain an existing source installation | [Archived installation and recovery](docs/archive/onboarding/local-installation.md) |
 | Understand the architecture or API | [Documentation index](docs/README.md) |
 | Report a problem or contribute | [Support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) |
 | See what shipped | [Changelog](CHANGELOG.md) · [Releases](https://github.com/engramai-co/trading-max/releases) |

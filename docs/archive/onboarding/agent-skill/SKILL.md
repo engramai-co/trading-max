@@ -3,6 +3,8 @@ name: trading-max-onboard
 description: Install and verify an already-cloned Trading Max checkout for local use, or diagnose and resume an existing local installation. Use for local setup, onboarding, or launch requests; not ordinary development, cloning alone, CI, or remote production deployment.
 ---
 
+> **Archived on 2026-09-22.** This is the former source/agent onboarding workflow, retained for existing installations. It is no longer the primary onboarding entry or an active agent skill. See the [current desktop onboarding guide](../../../installation/desktop-onboarding.md) and [archive status](../README.md).
+
 # Trading Max local onboarding
 
 Own the installation through a broker-backed ready snapshot. A request to set
@@ -12,7 +14,7 @@ it into a command-list tutorial or ask for a second setup prompt.
 ## Route the request first
 
 Read the repository's
-[agent deployment runbook](../../../docs/operations/agent-local-deployment-runbook.md)
+[agent deployment runbook](../agent-local-deployment-runbook.md)
 completely before changing the workstation. Resolve paths from the checkout
 root. Use it as the procedure; use this skill for scope and acceptance.
 
@@ -23,7 +25,7 @@ root. Use it as the procedure; use this skill for scope and acceptance.
   redacted status; run `trading-max doctor --check-updates`. Reuse the known
   installation. Use the runbook's update path only when an update is requested.
 - **Provisioned remote host:** use the operator procedure in
-  [deploy/macos](../../../deploy/macos/README.md); this skill does not authorize
+  [deploy/macos](../../../../deploy/macos/README.md); this skill does not authorize
   or perform a production upgrade.
 
 ## Installation contract
