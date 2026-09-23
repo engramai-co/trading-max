@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -236,3 +237,27 @@ def test_replaced_workspace_identity_cannot_receive_an_old_rollback(older):
     with pytest.raises(WorkspaceError, match="另一工作区"):
         recover_interrupted(older.root, older.home.parent)
     assert json.loads((older.root / MANIFEST).read_text())["id"] == manifest["id"]
+
+
+@pytest.mark.parametrize("recovering", [False, True])
+def test_cross_volume_recovery_stops_before_migration_or_moves(older, recovering):
+    if recovering:
+        older.prepare()
+        modify(older)
+    original_stat = Path.stat
+
+    def different_volume(path, *args, **kwargs):
+        result = original_stat(path, *args, **kwargs)
+        return SimpleNamespace(st_dev=result.st_dev + 1) if path == older.home else result
+
+    with (
+        patch.object(Path, "stat", different_volume),
+        pytest.raises(WorkspaceError, match="同一磁盘卷"),
+    ):
+        older.rollback() if recovering else older.prepare()
+    assert amount(older.root) == (456 if recovering else 123)
+    if recovering:
+        assert older.read()["phase"] == "prepared"
+    else:
+        assert older.read() is None
+        assert not (older.home / "repository").exists()

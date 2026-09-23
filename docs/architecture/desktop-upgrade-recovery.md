@@ -27,6 +27,11 @@ restored entries into the original folder. Keep logs, credentials and the lock
 outside the swap. Interrupted moves are idempotent; unknown/conflicting entries
 stop recovery rather than overwrite data. Retain the failed state for diagnosis.
 
+Atomic recovery currently requires the workspace and recovery directory to be
+on the same filesystem volume. A cross-volume upgrade is rejected before
+starting migrations; recovery rechecks this before moving entries. Existing
+same-version workspaces are not restricted by this upgrade-only check.
+
 ## Boundaries and alternatives
 
 Keychain credentials and the App connection profile are never part of the

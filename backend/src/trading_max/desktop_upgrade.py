@@ -103,6 +103,12 @@ class WorkspaceUpgrade:
         value["phase"] = phase
         atomic_json(self.journal, value)
 
+    def check_recovery_volume(self) -> None:
+        # Recovery uses atomic entry renames. Refuse an unsupported cross-volume
+        # upgrade before migrations, rather than discovering EXDEV on rollback.
+        if self.root.stat().st_dev != self.home.stat().st_dev:
+            raise WorkspaceError("工作区与恢复目录需要位于同一磁盘卷；本次操作未修改资料。")
+
     def prepare(self) -> dict | None:
         """Recover an interrupted attempt first; capture before starting services."""
         previous = self.read()
@@ -117,6 +123,7 @@ class WorkspaceUpgrade:
         # nothing to migrate and the identity remains unchanged on failure.
         if not (self.root / "trading_max.db").exists():
             return None
+        self.check_recovery_volume()
         deadline = time.monotonic() + 300
 
         def report(value):
@@ -157,6 +164,7 @@ class WorkspaceUpgrade:
         value = self.read()
         if not value or value["phase"] in _TERMINAL:
             return False
+        self.check_recovery_volume()
         current_manifest = self.root / MANIFEST
         if current_manifest.is_symlink():
             raise WorkspaceError("工作区标记不能是符号链接；未恢复资料。")
