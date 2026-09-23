@@ -318,6 +318,70 @@ def test_batch_reads_preserve_request_order_and_detect_bad_locators(tmp_path):
         store.read_many(["third", "second"])
 
 
+def test_scan_decodes_each_cold_pack_once_and_discards_cache_between_runs(tmp_path, monkeypatch):
+    from trading_max.infrastructure import object_packs
+
+    store = ObjectPacks(tmp_path, cache_bytes=1)
+    expected = {}
+    for block in range(4):
+        records = {f"{block}/{i}": (f"synthetic-{i}" * 200).encode() for i in range(8)}
+        store.add(records)
+        expected.update(records)
+    decode_calls = 0
+    original = object_packs.decode
+
+    def counted(raw):
+        nonlocal decode_calls
+        decode_calls += 1
+        return original(raw)
+
+    monkeypatch.setattr(object_packs, "decode", counted)
+    keys = [f"{block}/{i}" for i in range(8) for block in range(4)]
+    for attempt in range(2):
+        with store.scan_reads():
+            for key in keys:
+                assert store.read(key) == expected[key]
+            assert store.read_many(keys + keys[:2]) == [expected[k] for k in keys + keys[:2]]
+            assert decode_calls == 4 * (attempt + 1)
+        assert store._scan_cache is None
+        assert not store._cache
+
+
+@pytest.mark.parametrize("damage", ["pack", "index", "delete"])
+def test_scan_cache_still_rejects_changed_sources_and_locators(tmp_path, damage):
+    store = ObjectPacks(tmp_path, cache_bytes=1)
+    store.add({"a": b"alpha", "b": b"beta"})
+    with store.scan_reads():
+        assert store.read("a") == b"alpha"
+        if damage == "pack":
+            store.source("a").write_bytes(b"damaged")
+        elif damage == "index":
+            with sqlite3.connect(store.index) as db:
+                db.execute("UPDATE records SET offset=1 WHERE key='a'")
+        else:
+            store.source("a").unlink()
+        with pytest.raises((ValueError, FileNotFoundError)):
+            store.read_many(["a"])
+
+
+def test_scan_cache_is_bounded_and_cleared_after_failure(tmp_path):
+    store = ObjectPacks(tmp_path, cache_bytes=1)
+    for n in range(8):
+        store.add({str(n): bytes([n]) * 1000})
+    with pytest.raises(RuntimeError, match="interrupted"), store.scan_reads(max_bytes=1800):
+        for n in range(8):
+            assert store.read(str(n)) == bytes([n]) * 1000
+            assert store._scan_cache.bytes <= 1800
+        assert len(store._scan_cache.blocks) < 8
+        raise RuntimeError("interrupted")
+    assert store._scan_cache is None
+    assert not store._cache
+    # A record larger than the cache's accounting budget remains readable.
+    with store.scan_reads(max_bytes=1):
+        assert store.read("0") == bytes(1000)
+        assert store._scan_cache.bytes == 0
+
+
 def test_artifact_read_survives_alias_retired_after_lookup(tmp_path, monkeypatch):
     from trading_max.infrastructure import artifacts
 

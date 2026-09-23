@@ -16,12 +16,13 @@ import threading
 import uuid
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path, PurePosixPath
 
 import zstandard as zstd
 
 from .durable_files import atomic_bytes, durable_directory, sync_directory
+from .packed_read_cache import PackedReadCache
 
 MAGIC = b"TMPACK1\0"
 MAX_BYTES = 64 * 1024 * 1024
@@ -146,6 +147,24 @@ class ObjectPacks:
         self._index_inode: tuple[int, int] | None = None
         self._cache: OrderedDict[tuple, tuple[dict, bytes]] = OrderedDict()
         self._cached_bytes = 0
+        self._scan_cache: PackedReadCache | None = None
+
+    @contextmanager
+    def scan_reads(self, *, max_bytes: int = 512 * 1024 * 1024):
+        """Reuse verified records only within one exclusive maintenance scan."""
+        with self._lock:
+            if self._scan_cache is not None:
+                raise RuntimeError("object pack scan is already active")
+            self._cache.clear()
+            self._cached_bytes = 0
+            self._scan_cache = PackedReadCache(max_bytes)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._scan_cache = None
+                self._cache.clear()
+                self._cached_bytes = 0
 
     def close(self) -> None:
         with self._lock:
@@ -154,6 +173,7 @@ class ObjectPacks:
                 self._connection = None
             self._cache.clear()
             self._cached_bytes = 0
+            self._scan_cache = None
 
     def _validate_root(self) -> None:
         if any(p.is_symlink() for p in (self.root, self.directory, self.index)):
@@ -264,16 +284,37 @@ class ObjectPacks:
             self._cached_bytes += cost
         return result
 
+    def _read_records(self, pack: str, records: dict) -> dict[str, bytes]:
+        path = self.path(pack)
+        before = stamp(path)
+        identity = (pack, before)
+        result = {}
+        if self._scan_cache is not None:
+            result = self._scan_cache.read(identity, records)
+            if len(result) == len(records):
+                if stamp(path) != before:
+                    raise ValueError("object pack changed while reading")
+                return result
+        missing = {key: location for key, location in records.items() if key not in result}
+        entries, raw = self._load(pack)
+        for key, location in missing.items():
+            if entries.get(key) != location:
+                raise ValueError("object pack locator disagrees with sealed records")
+            offset, size, _ = location
+            result[key] = raw[offset : offset + size]
+        if stamp(path) != before:
+            raise ValueError("object pack changed while reading")
+        if self._scan_cache is not None:
+            self._scan_cache.remember(identity, entries, raw)
+        return result
+
     def read(self, key: str) -> bytes:
         with self._lock:
             row = self.location(key)
             if row is None:
                 raise FileNotFoundError(key)
             pack, offset, size, digest = row
-            entries, raw = self._load(pack)
-            if entries.get(key) != (offset, size, digest):
-                raise ValueError("object pack locator disagrees with sealed records")
-            return raw[offset : offset + size]
+            return self._read_records(pack, {key: (offset, size, digest)})[key]
 
     def read_many(self, keys: list[str], *, max_bytes: int | None = None) -> list[bytes]:
         """Batch a manifest's references and decode each sealed block once."""
@@ -312,12 +353,7 @@ class ObjectPacks:
                     grouped.setdefault(pack, {})[key] = (start, size, digest)
             result = {}
             for pack, records in grouped.items():
-                entries, raw = self._load(pack)
-                for key, location in records.items():
-                    if entries.get(key) != location:
-                        raise ValueError("object pack locator disagrees with sealed records")
-                    offset, size, _ = location
-                    result[key] = raw[offset : offset + size]
+                result.update(self._read_records(pack, records))
             if missing := next((key for key in keys if key not in result), None):
                 raise FileNotFoundError(missing)
             return [result[key] for key in keys]

@@ -191,6 +191,25 @@ operation. File identity changes invalidate a cache hit. This does not persist
 verification results across backups or skip original-file checksum, SQLite,
 or snapshot validation.
 
+Full maintenance scans additionally keep individually compressed, already
+verified pack records in temporary memory. Each pack reader is capped at
+512 MiB including an allowance for record metadata; recovery verification uses
+two independent readers, capped at 1 GiB in total, plus its current envelope
+buffers. Capture releases its cache before verification starts. Interactive
+requests do not enable this scan cache, and no extra persistent copies are
+created. Source file identity and locator claims are checked on every cache hit;
+new verification operations start cold. This avoids repeatedly decompressing
+an entire cold block to read each small record it contains.
+
+`manage_backups.py` writes phase and aggregate progress to stderr while reserving
+stdout for its final JSON result. A `backup-published` event means recovery has
+passed; subsequent `packing`, `retention` and `storage-census` events describe
+separate maintenance work. Deployment logs expose these events as they happen.
+The CLI defaults to a 1,800-second cooperative budget, adjustable with the global
+`--max-seconds` option. It checks the budget between files and maintenance stages
+and fails closed at a safe checkpoint rather than interrupting an atomic write
+or skipping verification. Inspect the reported stage before retrying a timeout.
+
 Within one envelope, sealed chunk reads are grouped by physical block, then
 reassembled in the original order. Selected bytes are bounded by the envelope
 format limits before block decoding; a temporary envelope buffer is released
