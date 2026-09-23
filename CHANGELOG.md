@@ -4,7 +4,7 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
-## [1.9.0] - 2026-09-22
+## [1.9.0] - 2026-09-23
 
 ### Added
 
