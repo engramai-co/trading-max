@@ -21,11 +21,11 @@ class IntradayAnchor(DomainModel):
 
     observed_at: datetime
     bucket_at: datetime
-    invest_value_gbp: float = Field(ge=0)
-    isa_value_gbp: float = Field(ge=0)
+    invest_value_gbp: float | None = Field(default=None, ge=0)
+    isa_value_gbp: float | None = Field(default=None, ge=0)
     total_value_gbp: float = Field(ge=0)
-    invest_cash_gbp: float = Field(ge=0)
-    isa_cash_gbp: float = Field(ge=0)
+    invest_cash_gbp: float | None = Field(default=None, ge=0)
+    isa_cash_gbp: float | None = Field(default=None, ge=0)
     external_flow_gbp: float | None = None
     flow_status: FlowStatus = "unverified"
     source_artifact_ids: list[str] = Field(default_factory=list)
@@ -97,6 +97,7 @@ def append_intraday_anchor(
     interval_seconds: int = 600,
     retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
     generated_at: datetime | None = None,
+    account_codes: tuple[str, ...] = ("A", "B"),
 ) -> IntradayAnchorSeries:
     """Insert or replace one bucket and retain a bounded rolling series.
 
@@ -112,24 +113,36 @@ def append_intraday_anchor(
         raise ValueError("retention_days must be positive")
     invest = accounts.get("A")
     isa = accounts.get("B")
-    if not isinstance(invest, Mapping) or not isinstance(isa, Mapping):
-        raise ValueError("intraday anchors require Invest and ISA snapshots")
-
-    invest_value = _money(invest, "total_value_gbp")
-    isa_value = _money(isa, "total_value_gbp")
-    invest_fetched = _timestamp(invest.get("fetched_at"), field="Invest fetched_at")
-    isa_fetched = _timestamp(isa.get("fetched_at"), field="ISA fetched_at")
-    if abs((invest_fetched - isa_fetched).total_seconds()) > interval_seconds:
+    if (
+        not account_codes
+        or set(accounts) != set(account_codes)
+        or not set(account_codes) <= {"A", "B"}
+    ):
+        raise ValueError("intraday anchors require all selected account snapshots")
+    if any(not isinstance(account, Mapping) for account in accounts.values()):
+        raise ValueError("invalid selected account snapshot")
+    invest_value = _money(invest, "total_value_gbp") if invest is not None else None
+    isa_value = _money(isa, "total_value_gbp") if isa is not None else None
+    invest_fetched = (
+        _timestamp(invest.get("fetched_at"), field="Invest fetched_at")
+        if invest is not None
+        else None
+    )
+    isa_fetched = (
+        _timestamp(isa.get("fetched_at"), field="ISA fetched_at") if isa is not None else None
+    )
+    times = [stamp for stamp in (invest_fetched, isa_fetched) if stamp is not None]
+    if (max(times) - min(times)).total_seconds() > interval_seconds:
         raise ValueError("account snapshots exceed one collection interval of timestamp skew")
-    observed_at = max(invest_fetched, isa_fetched)
+    observed_at = max(times)
     current = IntradayAnchor(
         observed_at=observed_at,
         bucket_at=floor_bucket(observed_at, interval_seconds),
         invest_value_gbp=invest_value,
         isa_value_gbp=isa_value,
-        total_value_gbp=invest_value + isa_value,
-        invest_cash_gbp=_money(invest, "cash_gbp"),
-        isa_cash_gbp=_money(isa, "cash_gbp"),
+        total_value_gbp=sum(value for value in (invest_value, isa_value) if value is not None),
+        invest_cash_gbp=_money(invest, "cash_gbp") if invest is not None else None,
+        isa_cash_gbp=_money(isa, "cash_gbp") if isa is not None else None,
         external_flow_gbp=None,
         flow_status="unverified",
         source_artifact_ids=list(dict.fromkeys(source_artifact_ids)),

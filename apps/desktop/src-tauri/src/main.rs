@@ -141,7 +141,23 @@ fn reveal_window(window: &WebviewWindow) -> tauri::Result<()> {
     window.app_handle().show()?;
     window.unminimize()?;
     window.show()?;
+    fit_webview(window)?;
     window.set_focus()
+}
+fn fit_webview(window: &WebviewWindow) -> tauri::Result<()> {
+    // Showing an NSWindow does not necessarily update its WKWebView frame
+    // after a hidden/background transition. Explicitly lay out and reveal the
+    // content view as well; no script or native capability is sent to the page.
+    let webview: &tauri::Webview = window.as_ref();
+    webview.set_bounds(tauri::Rect {
+        position: tauri::PhysicalPosition::new(0, 0).into(),
+        size: window.inner_size()?.into(),
+    })?;
+    webview.show()
+}
+fn settings_visible(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window("settings")
+        .is_some_and(|window| window.is_visible().unwrap_or(false))
 }
 fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
     let app = app.clone();
@@ -157,7 +173,7 @@ fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
             let _ = workspace.hide();
         }
         if let Some(window) = app.get_webview_window("main") {
-            if app.get_webview_window("settings").is_some() {
+            if settings_visible(&app) {
                 let _ = window.show();
             } else {
                 let _ = reveal_window(&window);
@@ -190,9 +206,17 @@ fn enter(
             session.message = format!("正在打开{name}…");
             session.detail.clear();
         });
-        let focus = dismiss_settings || app.get_webview_window("settings").is_none();
+        let focus = dismiss_settings || !settings_visible(&app);
         let result = match app.get_webview_window("workspace") {
-            Some(window) => window.navigate(url).map(|_| window),
+            Some(window) => {
+                // home() hides the previous workspace while services switch.
+                // Make WKWebView visible before navigation so its first paint
+                // is not suspended until a resize or manual reload.
+                window
+                    .show()
+                    .and_then(|_| window.navigate(url))
+                    .map(|_| window)
+            }
             None => create_workspace_window(&app, &desktop, url, focus),
         };
         match result {
@@ -201,7 +225,10 @@ fn enter(
                 let _ = window.set_title(&format!("Trading Max · {name}"));
                 if let Some(settings) = app.get_webview_window("settings") {
                     if dismiss_settings {
-                        let _ = settings.close();
+                        // Retain the settings WKWebView while the new workspace
+                        // begins loading. Destroying it here can suspend the
+                        // replacement page before its first visible frame.
+                        let _ = settings.hide();
                     }
                 }
                 if focus {
@@ -231,6 +258,9 @@ fn create_workspace_window(
         .center()
         .visible(true)
         .focused(focus)
+        // Keep progress and recovery responsive across native window switches;
+        // WKWebView's default suspend policy can freeze a newly opened page.
+        .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .on_navigation(move |url| {
             if workspace_url(url, navigation.snapshot().active_url.as_deref()) {
                 return true;
@@ -248,6 +278,7 @@ fn create_workspace_window(
             }
             let snapshot = pages.snapshot();
             if workspace_url(payload.url(), snapshot.active_url.as_deref()) {
+                let _ = fit_webview(&window);
                 pages.update(snapshot.generation, |session| {
                     session.stage = "ready".into();
                     session.message = format!(
@@ -451,8 +482,16 @@ fn show_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
     .min_inner_size(580.0, 680.0)
     .center()
     .resizable(true)
-    .visible(false)
+    // WKWebView can leave a hidden-at-creation settings surface unpainted.
+    // Create it visible, just like the entry and workspace windows.
+    .visible(true)
+    .focused(true)
     .on_navigation(internal_url)
+    .on_page_load(|window, payload| {
+        if payload.event() == tauri::webview::PageLoadEvent::Finished {
+            let _ = fit_webview(&window);
+        }
+    })
     .build()?;
     reveal_window(&window)
 }

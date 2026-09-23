@@ -35,8 +35,9 @@ import { HistoryCoverage, HistoryHelp } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
+import { LocalOnboarding } from "./local-onboarding";
 
-export function OverviewWorkspace() {
+export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   return (
@@ -57,7 +58,7 @@ export function OverviewWorkspace() {
       {query.isPending ? (
         <Pending />
       ) : query.isError ? (
-        <QueryError retry={query.refetch} />
+        localWorkspace ? <LocalOnboarding showAccountLink /> : <QueryError retry={query.refetch} />
       ) : (
         query.data && <OverviewContent data={query.data} />
       )}

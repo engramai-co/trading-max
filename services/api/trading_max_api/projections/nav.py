@@ -268,12 +268,21 @@ def intraday_nav_points(
         invest = nullable_number(raw.get("invest_value_gbp"))
         isa = nullable_number(raw.get("isa_value_gbp"))
         total = nullable_number(raw.get("total_value_gbp"))
-        if invest is None or isa is None or total is None:
+        if (invest is None and isa is None) or total is None:
             continue
-        invest_flow = flows["invest"].at(raw.get("invest_observed_at") or observed)
-        isa_flow = flows["isa"].at(raw.get("isa_observed_at") or observed)
+        invest_flow = (
+            flows["invest"].at(raw.get("invest_observed_at") or observed)
+            if invest is not None
+            else None
+        )
+        isa_flow = (
+            flows["isa"].at(raw.get("isa_observed_at") or observed) if isa is not None else None
+        )
+        selected_flows = [
+            flow for value, flow in ((invest, invest_flow), (isa, isa_flow)) if value is not None
+        ]
         total_flow = (
-            invest_flow + isa_flow if invest_flow is not None and isa_flow is not None else None
+            sum(selected_flows) if all(flow is not None for flow in selected_flows) else None
         )
         points.append(
             {

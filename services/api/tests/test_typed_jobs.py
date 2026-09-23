@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from starlette.testclient import TestClient
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.reference import (
     SecurityEntityRecord,
@@ -97,7 +98,7 @@ def _write_snapshot(root: Path, profile: str, total: str) -> None:
     )
 
 
-def _seed_nav_snapshot(root: Path) -> None:
+def _seed_nav_snapshot(root: Path, codes=("A", "B")) -> None:
     artifacts = ContentAddressedArtifactStore(root / "artifacts")
     nav = (
         b"Date,SyntheticNAVGBP,ExternalFlowGBP,WeightedExternalFlowGBP\n"
@@ -112,13 +113,13 @@ def _seed_nav_snapshot(root: Path) -> None:
             media_type="text/csv",
             producer_version="fixture-v1",
         )
-        for code in ("A", "B")
+        for code in codes
     ]
     SnapshotStore(root).publish(scope="accounts", source="fixture", artifacts=refs)
 
 
-def _seed_ledger(root: Path) -> None:
-    for profile in ("invest", "isa"):
+def _seed_ledger(root: Path, profiles=("invest", "isa")) -> None:
+    for profile in profiles:
         account_root = root / "trading212" / profile
         exports = account_root / "exports"
         exports.mkdir(parents=True)
@@ -168,11 +169,13 @@ def _seed_security_master(root: Path) -> None:
     )
 
 
-def test_typed_manager_runs_accounts_without_legacy_pipeline(tmp_path: Path) -> None:
-    _write_snapshot(tmp_path, "invest", "100")
-    _write_snapshot(tmp_path, "isa", "100")
-    _seed_nav_snapshot(tmp_path)
-    _seed_ledger(tmp_path)
+@pytest.mark.parametrize("profiles", [("invest",), ("isa",), ("invest", "isa")])
+def test_typed_manager_runs_accounts_without_legacy_pipeline(tmp_path: Path, profiles) -> None:
+    for profile in profiles:
+        _write_snapshot(tmp_path, profile, "100")
+    codes = tuple("A" if profile == "invest" else "B" for profile in profiles)
+    _seed_nav_snapshot(tmp_path, codes)
+    _seed_ledger(tmp_path, profiles)
     _seed_security_master(tmp_path)
     store = ArtifactStore(tmp_path)
     manager = TypedJobManager(
@@ -180,6 +183,7 @@ def test_typed_manager_runs_accounts_without_legacy_pipeline(tmp_path: Path) -> 
         WatchlistStore(tmp_path),
         embedded_worker=True,
         worker_poll_seconds=0.01,
+        broker_profiles_loader=lambda: profiles,
     )
     try:
         queued = manager.submit("accounts", skip_sync=True)
@@ -198,6 +202,49 @@ def test_typed_manager_runs_accounts_without_legacy_pipeline(tmp_path: Path) -> 
         assert "account/broker_snapshot_metrics.json" in {
             artifact.key for artifact in latest.artifacts
         }
+        artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+        by_key = {ref.key: ref for ref in SnapshotStore(tmp_path).latest().manifest.artifacts}
+        metrics = artifacts.get_json(
+            by_key["account/broker_snapshot_metrics.json"].artifact_id
+        ).payload
+        assert set(metrics["accounts"]) == set(codes)
+        history = artifacts.get_json(
+            by_key["account/nav/valuation_history.json"].artifact_id
+        ).payload
+        latest_point = history["points"][-1]
+        assert latest_point["total_value_gbp"] == 100 * len(profiles)
+        for profile in ("invest", "isa"):
+            assert (latest_point[f"{profile}_value_gbp"] is None) == (profile not in profiles)
+            assert (f"account/{profile}.json" in by_key) == (profile in profiles)
+        # Acceptance includes public reads, not just a successful publication.
+        # In particular, balance confirmation must work without the other account.
+        with TestClient(create_app(Settings(data_root=tmp_path, llm_provider="fake"))) as client:
+            for view in (
+                "overview",
+                "holdings-positions",
+                "holdings-lookthrough",
+                "analytics",
+                "review",
+                "account-analysis",
+            ):
+                response = client.get(
+                    f"/v1/dashboard/lens/{view}?detail=summary&account={codes[0]}"
+                )
+                assert response.status_code == 200, response.text
+                payload = response.json()
+                if view == "overview":
+                    assert {item["code"] for item in payload["accounts"]} == set(codes)
+                    assert payload["totalValueGbp"] == 100 * len(profiles)
+            response = client.get("/v1/dashboard/history?range=ALL&scope=total")
+            assert response.status_code == 200, response.text
+            assert response.json()["nav"]
+            point = response.json()["nav"][-1]
+            assert point["total"] == 100 * len(profiles)
+            for profile in ("invest", "isa"):
+                response = client.get(f"/v1/dashboard/history?range=ALL&scope={profile}")
+                assert response.status_code == 200, response.text
+                point = response.json()["nav"][-1]
+                assert (point.get(profile) is None) == (profile not in profiles)
     finally:
         manager.close()
 

@@ -223,7 +223,9 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
             code = "provider_unavailable"
         else:
             code = "provider_model_rejected"
-    elif isinstance(exc, (httpx.HTTPError, Trading212Error)):
+    elif isinstance(exc, Trading212Error):
+        code = exc.code
+    elif isinstance(exc, httpx.HTTPError):
         code = "provider_unavailable"
     elif isinstance(exc, ValueError):
         code = "provider_invalid_output"

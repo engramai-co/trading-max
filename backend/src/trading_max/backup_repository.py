@@ -406,9 +406,16 @@ class BackupRepository:
                 captured_pointer.write_bytes(pointer.read_bytes())
             database = scratch / DATABASE_NAME
             with (
-                sqlite3.connect(f"file:{state / DATABASE_NAME}?mode=ro", uri=True) as source,
-                sqlite3.connect(database) as target,
+                closing(
+                    sqlite3.connect(f"{(state / DATABASE_NAME).as_uri()}?mode=rw", uri=True)
+                ) as source,
+                closing(sqlite3.connect(database)) as target,
             ):
+                # A stopped WAL database may have no -wal/-shm sidecars. SQLite
+                # needs a writable handle to initialize them before reading.
+                # Never create a missing source or allow SQL writes; backup()
+                # still captures a consistent snapshot, including live WAL rows.
+                source.execute("PRAGMA query_only=ON")
                 source.backup(target)
             catalog_path = self.root / "catalog.json"
             catalog = json.loads(catalog_path.read_text()) if catalog_path.is_file() else {}

@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **internal desktop preview** on the current **1.9.0** application base.
+Status: **internal desktop preview** on the current **1.9.3** application base.
 The entry flow is being integrated in small, independently accepted steps.
 There is no signed public desktop installer yet.
 
@@ -51,6 +51,9 @@ An empty workspace opens **Settings → Accounts & data** with three steps:
 2. Start the first full refresh. Progress follows the existing durable job queue;
    an active job is reused. A failure leaves settings and any previous successful
    snapshot intact, with a link to Data status and an explicit retry.
+   Each refresh freezes the connected account selection: Invest-only and
+   ISA-only workspaces are supported without creating a zero-valued substitute
+   for an unconnected account.
 3. Once a fresh account refresh succeeds and readiness/worker checks pass,
    compare the displayed GBP account values with Trading 212 and confirm them.
    A page load, old snapshot, skipped broker sync or research-only success does
@@ -107,3 +110,18 @@ Before a public desktop release, complete real-account installation acceptance, 
 signing/notarization, signed updates and installation acceptance on a Mac without
 development tools. A virtual machine is not required for the current local
 preview acceptance.
+
+## First-sync recovery
+
+A history window containing only cash movements may legitimately omit ticker,
+quantity and price columns. The importer validates cash and securities reports
+according to their content, preserves original amounts and currencies, and
+rejects incomplete trade schemas or conflicting transaction IDs. Deterministic
+CSV or authentication failures stop without automatic job retries; transient
+network failures retain bounded retries. Settings distinguishes invalid keys,
+missing permissions, rate limits and provider outages.
+
+Before the first snapshot exists, Home offers the same first-sync progress and
+recovery actions as account settings. Keep the App open during synchronization.
+A successful task, ready JSON status and a healthy worker are technical checks;
+the owner must still compare the real account totals before completing setup.

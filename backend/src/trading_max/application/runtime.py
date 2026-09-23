@@ -62,6 +62,7 @@ class TypedWorkerRuntime:
         intraday_retention_days: int = DEFAULT_INTRADAY_RETENTION_DAYS,
         extra_stages: Iterable[object] = (),
         intraday_history_loader_factory=None,
+        broker_profiles_loader=None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.on_snapshot_published = on_snapshot_published
@@ -77,6 +78,7 @@ class TypedWorkerRuntime:
         self.intraday_interval_seconds = intraday_interval_seconds
         self.intraday_retention_days = intraday_retention_days
         self.intraday_history_loader_factory = intraday_history_loader_factory
+        self.broker_profiles_loader = broker_profiles_loader
         self.extra_stages = tuple(extra_stages)
         self.artifacts = ContentAddressedArtifactStore(self.state_root / "artifacts")
         self.snapshots = SnapshotStore(self.state_root)
@@ -84,8 +86,12 @@ class TypedWorkerRuntime:
     def registry(self) -> StageRegistry:
         return StageRegistry(
             [
-                BrokerSyncStage(self.state_root, self.artifacts),
-                AccountSnapshotStage(self.state_root, self.artifacts),
+                BrokerSyncStage(
+                    self.state_root, self.artifacts, profiles_loader=self.broker_profiles_loader
+                ),
+                AccountSnapshotStage(
+                    self.state_root, self.artifacts, profiles_loader=self.broker_profiles_loader
+                ),
                 AccountIntradayNavStage(
                     self.artifacts,
                     self.snapshots,

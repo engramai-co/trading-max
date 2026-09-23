@@ -13,10 +13,12 @@ from trading_max.application.broker_sync import (
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import (
+    Trading212Error,
     broker_snapshot_reconciliation,
     snapshot_from_payload,
 )
 
+from .account_selection import SELECTION_KEY
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -25,7 +27,7 @@ class BrokerSyncStage:
     """Fetch read-only broker data and persist its typed raw boundary."""
 
     name = "broker.sync"
-    version = "broker-sync-v3"
+    version = "broker-sync-v4"
     required_for = frozenset({"all", "accounts", "intraday"})
     dependencies: tuple[str, ...] = ()
 
@@ -36,10 +38,12 @@ class BrokerSyncStage:
         *,
         sync: Trading212BrokerSync | None = None,
         profiles: tuple[str, ...] = ("invest", "isa"),
+        profiles_loader=None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
         self.profiles = profiles
+        self.profiles_loader = profiles_loader
         self.sync = sync or Trading212BrokerSync(
             store_factory=lambda profile: self._store(profile),
         )
@@ -71,12 +75,15 @@ class BrokerSyncStage:
         return start, today
 
     def run(self, context: StageContext) -> StageResult:
+        profiles = self.profiles_loader() if self.profiles_loader else self.profiles
+        if not profiles or any(profile not in {"invest", "isa"} for profile in profiles):
+            raise StageExecutionError("broker.no_accounts", "connect an account before syncing")
         if context.trigger == "intraday":
-            return self._run_intraday()
+            return self._run_intraday(profiles)
         start, end = self._window()
         refs = []
         warnings: list[str] = []
-        for profile in self.profiles:
+        for profile in profiles:
             request = BrokerSyncRequest(
                 profile=profile,
                 environment=os.environ.get("T212_ENVIRONMENT", "live"),
@@ -96,7 +103,11 @@ class BrokerSyncStage:
             try:
                 result = self.sync.sync(request)
             except Exception as exc:
-                retryable = not isinstance(exc, ValueError)
+                retryable = (
+                    exc.retryable
+                    if isinstance(exc, Trading212Error)
+                    else not isinstance(exc, ValueError)
+                )
                 raise StageExecutionError(
                     "broker.sync_failed",
                     f"{profile}: {exc}",
@@ -119,9 +130,19 @@ class BrokerSyncStage:
             )
             refs.append(artifact.ref)
 
+        refs.append(self._selection(profiles))
         return StageResult(artifacts=tuple(refs), warnings=tuple(warnings))
 
-    def _run_intraday(self) -> StageResult:
+    def _selection(self, profiles):
+        return self.artifacts.put_json(
+            key=SELECTION_KEY,
+            payload={"profiles": list(profiles)},
+            kind="account_selection",
+            producer_version=self.version,
+            quality=ArtifactQuality(status="verified"),
+        ).ref
+
+    def _run_intraday(self, profiles) -> StageResult:
         """Publish current broker values without requesting history exports."""
 
         refs = []
@@ -131,7 +152,7 @@ class BrokerSyncStage:
         )
         warnings = [base_warning]
         environment = os.environ.get("T212_ENVIRONMENT", "live")
-        for profile in self.profiles:
+        for profile in profiles:
             try:
                 raw_snapshot = self.sync.snapshot_only(
                     profile,
@@ -148,7 +169,11 @@ class BrokerSyncStage:
                     require_positions_match=False,
                 )
             except Exception as exc:
-                retryable = not isinstance(exc, ValueError)
+                retryable = (
+                    exc.retryable
+                    if isinstance(exc, Trading212Error)
+                    else not isinstance(exc, ValueError)
+                )
                 raise StageExecutionError(
                     "broker.intraday_snapshot_failed",
                     f"{profile}: {exc}",
@@ -181,6 +206,7 @@ class BrokerSyncStage:
                 ),
             )
             refs.append(artifact.ref)
+        refs.append(self._selection(profiles))
         return StageResult(artifacts=tuple(refs), warnings=tuple(warnings))
 
 

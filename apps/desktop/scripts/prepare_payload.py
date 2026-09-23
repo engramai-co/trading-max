@@ -78,7 +78,12 @@ def main():
             "ensurepip",
         ),
     )
-    shutil.copy2(args.node, payload / "node")
+    # Replace the inode rather than overwriting an executable used by a prior
+    # validation run. macOS can retain its old code-signature cache and SIGKILL
+    # an otherwise valid copied binary until it is atomically replaced.
+    node_staging = payload / "node.new"
+    shutil.copy2(args.node, node_staging)
+    node_staging.replace(payload / "node")
     node_license = args.node.resolve().parents[1] / "LICENSE"
     if not node_license.is_file():
         raise SystemExit("The Node distribution's LICENSE file is required")

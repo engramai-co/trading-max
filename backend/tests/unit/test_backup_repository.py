@@ -166,6 +166,25 @@ def test_wal_database_validation_does_not_add_files_to_restored_state(tmp_path: 
     assert (restored / "trading_max.db").read_bytes() == expected
 
 
+def test_backup_includes_live_uncheckpointed_wal_rows(tmp_path: Path):
+    state = state_at(tmp_path / "state")
+    with closing(sqlite3.connect(state / "trading_max.db")) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO example VALUES ('live-wal')")
+        writer.commit()
+        assert (state / "trading_max.db-wal").stat().st_size > 0
+        repo = BackupRepository(tmp_path / "backups")
+        backup = repo.create(state)
+        restored = tmp_path / "restored"
+        repo.restore(backup["id"], restored)
+        with closing(sqlite3.connect(restored / "trading_max.db")) as recovered:
+            assert recovered.execute("SELECT value FROM example ORDER BY rowid").fetchall() == [
+                ("synthetic",),
+                ("live-wal",),
+            ]
+
+
 def test_missing_snapshot_reference_fails_closed(tmp_path: Path):
     state = state_at(tmp_path / "state")
     for path in (state / "artifacts/sha256").iterdir():

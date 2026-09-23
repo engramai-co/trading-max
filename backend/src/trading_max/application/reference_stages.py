@@ -22,6 +22,7 @@ from trading_max.reference.enrichment import (
     SecurityMasterEnricher,
 )
 
+from .account_selection import selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -48,7 +49,7 @@ def _account_payloads(
             if stored.ref.key == f"account/{profile}.json":
                 accounts[profile] = stored.payload
                 dependencies.append(stored.ref.artifact_id)
-    if set(accounts) != {"invest", "isa"}:
+    if set(accounts) != {profile for _, profile in selected_accounts(artifacts, context)}:
         raise StageExecutionError(
             "reference.security_master_dependency_missing",
             "missing Invest or ISA account snapshot artifact",

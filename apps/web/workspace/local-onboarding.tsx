@@ -11,7 +11,7 @@ import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
 
 type Workspace = components["schemas"]["LocalWorkspaceStatus"];
 
-export function LocalOnboarding() {
+export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?: boolean }) {
   const t = useCopy();
   const client = useQueryClient();
   const query = useQuery({
@@ -43,8 +43,8 @@ export function LocalOnboarding() {
         <Text size="sm" fw={connected && !data.canConfirm && !data.confirmed ? 700 : 400}>{data.canConfirm || data.confirmed ? "✓" : "2"} {t("首次同步", "First sync")}</Text>
         <Text size="sm" fw={data.canConfirm ? 700 : 400}>{data.confirmed ? "✓" : "3"} {t("核对金额", "Check balances")}</Text>
       </Group>
-      {!connected && <Notice>{t("在下方连接 Invest 或 ISA 账户。先测试，再保存；只需连接你实际使用的账户。密钥只保存在这台 Mac 的钥匙串里。", "Connect Invest or ISA below. Test before saving, and connect only the accounts you use. Credentials stay in this Mac’s Keychain.")}</Notice>}
-      {connected && !data.confirmed && !data.canConfirm && !active && <Notice>{t("账户已连接。接下来同步账户、交易记录与公开市场数据；首次同步可能需要几分钟。", "Your account is connected. Sync accounts, transactions and public market data next; the first run can take a few minutes.")}</Notice>}
+      {!connected && <Notice>{t("先连接 Invest 或 ISA 账户。测试通过后再保存，只需连接你实际使用的账户。密钥只保存在这台 Mac 的钥匙串里。", "Connect Invest or ISA first. Test before saving, and connect only the accounts you use. Credentials stay in this Mac’s Keychain.")}</Notice>}
+      {connected && !failed && !data.confirmed && !data.canConfirm && !active && <Notice>{t("账户已连接。接下来同步账户、交易记录与公开市场数据；首次同步可能需要几分钟。", "Your account is connected. Sync accounts, transactions and public market data next; the first run can take a few minutes.")}</Notice>}
       {active && <div role="status" aria-live="polite">
         <Text size="sm" mb="sm">{t("正在同步…", "Syncing…")} {total > 0 ? `${completed} / ${total}` : t("等待任务开始", "Waiting for the worker")}</Text>
         <Progress value={total ? completed / total * 100 : 0} aria-label={t("同步进度", "Sync progress")} />
@@ -57,6 +57,7 @@ export function LocalOnboarding() {
       {data.canConfirm && !data.confirmed && data.readiness.latestRunId && <BalanceConfirmation key={data.readiness.latestRunId} runId={data.readiness.latestRunId} onConfirm={(run) => confirm.mutate(run)} busy={confirm.isPending} />}
       {data.confirmed && <Notice tone="good">{t("账户金额已核对，工作区设置完成。", "Balances checked. Your workspace is set up.")}</Notice>}
       <Group>
+        {showAccountLink && <Button component={Link} href="/settings?tab=accounts&onboarding=1" variant="default">{t("账户连接", "Account connections")}</Button>}
         {!data.confirmed && !data.canConfirm && <Button disabled={!connected || active} loading={start.isPending} onClick={() => start.mutate()}>{failed ? t("重试同步", "Retry sync") : t("开始首次同步", "Start first sync")}</Button>}
         {data.confirmed && ready && <Button component={Link} href="/">{t("进入投资工作台", "Open workspace")}</Button>}
         {job && <Button component={Link} href="/health" variant="subtle">{t("查看同步详情", "View sync details")}</Button>}

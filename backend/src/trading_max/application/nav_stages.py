@@ -36,6 +36,7 @@ from trading_max.ingestion.brokers.trading212 import (
     latest_export_path,
 )
 
+from .account_selection import selected_accounts
 from .errors import StageExecutionError
 from .live_cash_flows import ledger_digest, live_cash_flow_refs
 from .stages import StageContext, StageResult
@@ -180,7 +181,7 @@ class AccountNavStage:
         )
         nav_keys = {f"account/nav/daily_nav_{code.lower()}.csv" for code in ("A", "B")}
         has_existing_nav_ledger = any(key in previous_refs for key in nav_keys)
-        for code, profile in (("A", "invest"), ("B", "isa")):
+        for code, profile in selected_accounts(self.artifacts, context):
             key = f"account/nav/daily_nav_{code.lower()}.csv"
             account = _upstream_json(
                 self.artifacts,
@@ -416,7 +417,7 @@ class AccountIntradayNavStage:
     def run(self, context: StageContext) -> StageResult:
         accounts: dict[str, dict] = {}
         dependencies: list[str] = []
-        for profile in ("invest", "isa"):
+        for _, profile in selected_accounts(self.artifacts, context):
             account = _upstream_json(
                 self.artifacts,
                 context,
@@ -450,7 +451,8 @@ class AccountIntradayNavStage:
             series = append_intraday_anchor(
                 previous.payload if previous is not None else None,
                 accounts,
-                source_artifact_ids=dependencies[:2],
+                account_codes=tuple(accounts),
+                source_artifact_ids=dependencies[: len(accounts)],
                 interval_seconds=self.interval_seconds,
                 retention_days=self.retention_days,
             )
@@ -473,7 +475,7 @@ class AccountIntradayNavStage:
                 else CachedIntradayPriceLoader(self.state_root / "cache" / "nav-prices")
             )
             modeled = {}
-            for code, profile in (("A", "invest"), ("B", "isa")):
+            for code, profile in selected_accounts(self.artifacts, context):
                 try:
                     export = latest_export_path(profile, data_root=self.state_root / "trading212")
                     if export is None:
@@ -496,25 +498,30 @@ class AccountIntradayNavStage:
             ]
             if fallbacks:
                 warnings.append("Alpaca fallback: " + ", ".join(sorted(fallbacks)))
-            if "A" in modeled and "B" in modeled:
-                a, b = modeled["A"], modeled["B"]
+            if modeled and all(code in modeled for code in accounts):
+                stamps = next(iter(modeled.values())).index
+                for frame in modeled.values():
+                    stamps = stamps.intersection(frame.index)
                 points = []
-                for stamp in a.index.intersection(b.index):
-                    invest, isa = a.loc[stamp], b.loc[stamp]
+                for stamp in stamps:
+                    rows = {code: frame.loc[stamp] for code, frame in modeled.items()}
+                    invest, isa = rows.get("A"), rows.get("B")
                     points.append(
                         IntradayAnchor(
                             observed_at=stamp.to_pydatetime(),
                             bucket_at=floor_bucket(stamp.to_pydatetime(), self.interval_seconds),
-                            invest_value_gbp=float(invest.value),
-                            isa_value_gbp=float(isa.value),
-                            total_value_gbp=float(invest.value + isa.value),
-                            invest_cash_gbp=float(invest.cash),
-                            isa_cash_gbp=float(isa.cash),
+                            invest_value_gbp=float(invest.value) if invest is not None else None,
+                            isa_value_gbp=float(isa.value) if isa is not None else None,
+                            total_value_gbp=float(sum(row.value for row in rows.values())),
+                            invest_cash_gbp=float(invest.cash) if invest is not None else None,
+                            isa_cash_gbp=float(isa.cash) if isa is not None else None,
                             source="reconstructed",
                             includes_extended_hours=True,
-                            cadence_seconds=int(max(invest.cadence, isa.cadence)),
-                            price_cadence_seconds=int(max(invest.price_cadence, isa.price_cadence)),
-                            source_artifact_ids=dependencies[:2],
+                            cadence_seconds=int(max(row.cadence for row in rows.values())),
+                            price_cadence_seconds=int(
+                                max(row.price_cadence for row in rows.values())
+                            ),
+                            source_artifact_ids=dependencies[: len(accounts)],
                         )
                     )
                 series = merge_valuation_history(
