@@ -309,6 +309,24 @@ def test_concurrent_deployment_is_rejected_before_building(tmp_path: Path, monke
     assert not (service / "releases").exists()
 
 
+def test_deployment_prefers_retained_node_over_changed_host_path(tmp_path: Path, monkeypatch):
+    retained = tmp_path / "active/.node-runtime/node"
+    retained.parent.mkdir(parents=True)
+    retained.write_text('#!/bin/sh\nprintf "v22.22.2\\n"\n')
+    retained.chmod(0o700)
+    host = tmp_path / "host-node"
+    host.write_text('#!/bin/sh\nprintf "v25.8.2\\n"\n')
+    host.chmod(0o700)
+    monkeypatch.setattr(manager.shutil, "which", lambda _: str(host))
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    pinned = manager.pin_node_runtime(candidate, manager.node_source(tmp_path / "active"))
+    assert "v22.22.2" in pinned.read_text()
+    assert manager.node_source(tmp_path / "active", str(host)) == str(host)
+    with pytest.raises(RuntimeError, match=r"Node\.js 22"):
+        manager.pin_node_runtime(tmp_path, manager.node_source(tmp_path / "active", str(host)))
+
+
 def test_node_runtime_is_retained_and_does_not_follow_host_replacement(tmp_path: Path):
     source = tmp_path / "host-node"
     source.write_text('#!/bin/sh\nprintf "v22.22.2\\n"\n')

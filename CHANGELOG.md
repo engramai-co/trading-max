@@ -4,6 +4,25 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.4] - 2026-09-24
+
+### Fixed
+
+- Reuse the deployed Node 22 runtime for unattended Mac mini upgrades when no
+  explicit override is set, so a host-level Node upgrade cannot break builds.
+- Protect existing local desktop workspaces before a newer App opens them with
+  a verified, deduplicated recovery copy. Commit the workspace version only
+  after startup checks pass; recover failed or interrupted startup transactions
+  without replacing the runtime lock or overwriting credentials.
+- Preserve failed-start data separately during recovery, resume interrupted
+  restores on next open, and leave post-startup financial records intact after
+  ordinary runtime failures. Reopening the same version needs no new backup.
+
+### Notes
+
+- Desktop navigation and settings remain unchanged. Public installers and
+  automatic signed binary updates remain deferred.
+
 ## [1.9.3] - 2026-09-23
 
 ### Fixed

@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **internal desktop preview** on the current **1.9.3** application base.
+Status: **internal desktop preview** on the current **1.9.4** application base.
 The entry flow is being integrated in small, independently accepted steps.
 There is no signed public desktop installer yet.
 
@@ -90,8 +90,8 @@ the selected local workspace. **Version & updates** makes an explicit, read-only
 request to the canonical repository's stable release endpoint, sending no account
 or workspace details. A repository version is not a signed desktop update. This
 preview neither downloads nor installs releases, changes the workspace, nor
-updates an existing HTTPS service. Signed installation, migration/backup and
-rollback acceptance remain part of the public distribution gate.
+updates an existing HTTPS service. Signed installation and binary-update acceptance remain part of the public
+distribution gate. Local workspace startup recovery is described below.
 
 ## Development and current source installations
 
@@ -125,3 +125,28 @@ Before the first snapshot exists, Home offers the same first-sync progress and
 recovery actions as account settings. Keep the App open during synchronization.
 A successful task, ready JSON status and a healthy worker are technical checks;
 the owner must still compare the real account totals before completing setup.
+
+## Upgrade recovery
+
+Before a newer internal App opens an initialized local workspace, it creates a
+verified recovery snapshot under the App data directory's `workspace-recovery`
+folder. These compressed copies share unchanged content; a same-version reopen
+does not make another backup. The folder is outside the workspace, so an upgrade
+cannot recursively back up its own recovery copies.
+
+The supervisor keeps the runtime lock through capture and startup. It confirms
+the new workspace version only after API/web checks pass and an existing snapshot
+is readable. On pre-commit failure, it stops its children, restores the verified
+baseline and preserves failed-start files separately. Interrupted recovery resumes
+on the next open. A failure after successful startup does not rewind newer records.
+The existing recovery screen reports the result; settings and navigation are unchanged.
+
+Credentials stay in Keychain and existing-server profiles stay outside this
+transaction. Capture failure stops before startup. Insufficient recovery space,
+corrupt backup or conflicting files stop restoration without overwriting them.
+Recovery points and failed-start files are currently retained for inspection;
+there is no automatic deletion or unbounded daily full-copy schedule.
+
+This is local data recovery when installing an internal build, not a public
+signed binary updater. Public distribution remains deferred. See the
+[transaction design](../architecture/desktop-upgrade-recovery.md).
