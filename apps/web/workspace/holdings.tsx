@@ -12,7 +12,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { ArrowDown, ArrowRight, MagnifyingGlass } from "@phosphor-icons/react";
-import Link from "next/link";
+import Link from "./link";
 import { useMemo, useRef, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type {

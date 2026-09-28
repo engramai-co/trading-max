@@ -12,6 +12,7 @@ import {
 import { UploadSimple, CheckCircle } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import Link from "./link";
 import { isValidTimeZone, useLocale } from "@/components/locale-provider";
 import type {
   AutomationSettings,
@@ -155,7 +156,7 @@ export function AutomationPreferences() {
   );
 }
 
-export function CfdImports() {
+export function CfdImports({ desktop = false, readOnly = false }: { desktop?: boolean; readOnly?: boolean }) {
   const t = useCopy();
   const query = useQuery({
     queryKey: ["workspace-cfd-imports"],
@@ -219,7 +220,7 @@ export function CfdImports() {
                   { value: "active", label: t("仍在使用", "Still active") },
                   { value: "retired", label: t("已停止使用", "Retired") },
                 ]}
-                disabled={preference.isPending}
+                disabled={preference.isPending || readOnly}
                 onChange={(v) => v && preference.mutate(v)}
               />
             </div>
@@ -247,6 +248,11 @@ export function CfdImports() {
                   : data.warnings.join(" · ")}
               </Notice>
             )}
+            {desktop && <ol className="mx-import-steps" aria-label={t("导入步骤", "Import steps")}>
+              <li data-current={!file && !imported}>{t("1 · 选择 CSV", "1 · Choose CSV")}</li>
+              <li data-current={Boolean(file)}>{t("2 · 确认导入", "2 · Import")}</li>
+              <li data-current={Boolean(imported)}>{t("3 · 更新复盘", "3 · Update review")}</li>
+            </ol>}
             <div className="mx-import-drop">
               <UploadSimple size={26} />
               <div>
@@ -270,16 +276,17 @@ export function CfdImports() {
                   setImported(null);
                   upload.reset();
                 }}
-                disabled={upload.isPending}
+                disabled={upload.isPending || readOnly}
               />
               <Button
                 leftSection={<UploadSimple size={16} />}
-                disabled={!file}
+                disabled={!file || readOnly}
                 loading={upload.isPending}
                 onClick={() => upload.mutate()}
               >
                 {t("导入账本", "Import ledger")}
               </Button>
+              {desktop && file && <p className="mx-form-help">{file.name} · {number(file.size / 1024, 1)} KB · {t("确认后写入当前工作区，重复文件会跳过。", "Import into this workspace; duplicate files will be skipped.")}</p>}
             </div>
             {upload.isError && (
               <Notice tone="bad">
@@ -302,6 +309,7 @@ export function CfdImports() {
                     )}
               </Notice>
             )}
+            {desktop && imported && <Group><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/account-analysis?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></Group>}
             {preference.isError && (
               <Notice tone="bad">
                 {t(

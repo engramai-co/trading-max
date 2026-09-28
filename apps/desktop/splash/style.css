@@ -1,16 +1,16 @@
 :root {
   color-scheme:light dark;
   --bg:#fff;
-  --rail:#f4f7fb;
-  --ink:#1e2c3d;
-  --muted:#6c7c91;
-  --line:#dde5ef;
-  --blue:#2364d9;
-  --soft:#edf3ff;
-  --green:#287c59;
-  --danger:#a8493c;
-  --ease:cubic-bezier(.23,1,.32,1);
-  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;
+  --rail:#f1f5fb;
+  --ink:#17191c;
+  --muted:#536176;
+  --line:#dbe4ef;
+  --blue:#1768e5;
+  --soft:#edf5ff;
+  --green:#2f7a49;
+  --danger:#b4473a;
+  --ease:cubic-bezier(.22,1,.36,1);
+  font:14px/1.6 "Avenir Next",Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;
   color:var(--ink);
   background:var(--bg)
 }
@@ -492,20 +492,20 @@ kbd {
   padding:2px 5px;
   margin-right:5px
 }
-body.settings .sidebar {
+body.picker .sidebar {
   display:none
 }
-body.settings .shell {
+body.picker .shell {
   display:block
 }
-body.settings main {
+body.picker main {
   max-width:700px;
   padding:22px 38px 24px
 }
-body.settings .intro {
+body.picker .intro {
   margin-top:15px
 }
-body.settings .choice {
+body.picker .choice {
   min-height:84px;
   padding-block:18px
 }
@@ -561,7 +561,7 @@ body.settings .choice {
   .sidebar {
     display:none
   }
-  main,body.settings main {
+  main,body.picker main {
     padding:21px 24px
   }
   .intro {
@@ -594,15 +594,15 @@ body.settings .choice {
 }
 @media(prefers-color-scheme:dark) {
   :root {
-    --bg:#121c2a;
-    --rail:#172435;
-    --ink:#e7edf5;
-    --muted:#a1b0c3;
-    --line:#304155;
-    --blue:#82b0ff;
-    --soft:#223a58;
-    --green:#8dceb0;
-    --danger:#ffa997
+    --bg:#111b2b;
+    --rail:#1a2a41;
+    --ink:#f1f5f9;
+    --muted:#aab8cb;
+    --line:#2a3a51;
+    --blue:#7eb3ff;
+    --soft:#172b49;
+    --green:#78cf91;
+    --danger:#ff958a
   }
   button {
     color:#0e213c
@@ -631,3 +631,22 @@ body.settings .choice {
 .folder-field { display:flex; gap:10px; margin-top:9px; }
 .folder-field input { min-width:0; flex:1; background:var(--rail); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:11px; font-size:12px; }
 .local-recent + .local-recent { margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+
+/* Daily workspace selection is compact; first-run entry keeps its full layout. */
+body.picker main { padding:24px 36px; max-width:760px; }
+body.picker .topline { height:24px; }
+body.picker.welcome-view .topline { display:none; }
+body.picker.welcome-view .intro { margin-top:0; }
+body.picker .intro { margin:12px 0 24px; }
+body.picker h1 { font-size:25px; margin-bottom:8px; }
+body.picker #context { visibility:hidden; }
+body.picker .recent { padding:16px 18px; margin-bottom:16px; background:var(--bg); border-radius:10px; }
+body.picker .recent-top { margin-bottom:12px; }
+body.picker .choice { min-height:66px; padding:14px 18px; }
+body.picker .choice-copy>span { margin-top:2px; font-size:11px; }
+body.picker .choice-copy>strong { font-size:13px; }
+body.picker .local-recent + .local-recent { margin-top:13px; padding-top:13px; }
+body.picker .local-recent .recent-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+body.picker .demo-row { padding-top:20px; }
+body.picker footer { margin-top:24px; padding-top:16px; }
+button:not(.text-button) { min-height:40px; }

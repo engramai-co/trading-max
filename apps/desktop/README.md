@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An internal Apple Silicon macOS packaging experiment for product **1.9.4**.
+An internal Apple Silicon macOS packaging experiment for product **1.10.0**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -15,24 +15,36 @@ inspects an existing desktop workspace. The App starts an empty workspace into
 Settings, where the existing test-before-save account UI leads to first-sync
 progress and an explicit balance check. Read the [current onboarding guide](../../docs/installation/desktop-onboarding.md).
 
-A saved HTTPS service and up to eight local workspaces appear as recent entries. Settings and the first-run
-screen share the same entry and connection form. The separate local demo is a
+A saved HTTPS service and up to eight local workspaces appear as recent entries.
+**File → Switch workspace…** (`Cmd-Shift-O`) opens a compact picker; first launch
+retains the full welcome screen. **Trading Max → Settings…** (`Cmd-,`) opens a
+separate App settings window with General, Current workspace, and About & updates.
+Closing either auxiliary window keeps the main workspace open. The separate local demo is a
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.9.4 application base. Remote mode
+The native shell and packaged web/API use the 1.10.0 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
 ## Connect to an existing service
 
-Open **Trading Max → Workspace and connections…** (`Cmd-,`) and choose **Connect to existing
+Open **File → Switch workspace…** (`Cmd-Shift-O`) and choose **Connect to existing
 service**. Enter a display name and an HTTPS root URL, test the connection, then
 save and open it. A Tailscale hostname works when this Mac is already connected
 to the appropriate tailnet. No broker key or internal API token is needed on
 the client. The web service retains its existing permissions.
 
-Settings are a bundled local window, available even when the server is offline.
+App Settings and the workspace picker are bundled local windows, available even
+when the server is offline. General changes only this Mac's saved auto-open
+preference. Current workspace names the active data source independently of the
+saved startup service. Workspace settings, sync activity and imports open separate
+service-owned windows, accessible through the File/Workspace menus and compact
+sidebar controls. Merely opening them does not write server configuration or start
+another runtime. Cmd-Option-comma opens workspace settings; Cmd-Shift-J opens
+activity. The selected service must advertise `/api/desktop` presentation version 1
+for the focused desktop layout; older services keep their original website.
+See the [surface architecture](../../docs/architecture/desktop-ux-surfaces.md).
 Remote mode does not start bundled Node, Python or collection processes.
 Closing this App does not stop or change the remote server. Local demo remains
 an explicit choice; failed remote connections never fall back to mock balances.
@@ -135,6 +147,8 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check
 node --check apps/desktop/splash/app.js
+node --check apps/desktop/splash/settings.mjs
+node --test apps/desktop/tests/presentation.test.mjs
 python3 apps/desktop/scripts/validate_runtime.py \
   apps/desktop/payload /absolute/path/outside/checkout/runtime-checks.json
 ```
@@ -163,7 +177,8 @@ Switching back to remote stopped all three owned demo processes. With the client
 quit, the unchanged remote worker completed its next scheduled 600-second live
 collection. Evidence and real-account screenshots are kept outside the repository.
 This verifies the desktop connection path, not public distribution or every
-production page.
+production page. See [desktop UX surfaces](../../docs/architecture/desktop-ux-surfaces.md)
+for the subsequent App settings/workspace-picker separation and its acceptance scope.
 
 For a local investigation of a WebView rendering problem, build with
 `npm run build --prefix apps/desktop -- --features diagnostics`. This opt-in build
@@ -180,7 +195,7 @@ persisting the temporary selection.
 Local runtime liveness checks run every 15 seconds with a two-second timeout.
 The bundled entry and portfolio use separate WebViews. The entry never navigates
 to HTTP; failures reveal its existing local controls, even when the portfolio
-WebView cannot load. Only bundled entry/settings surfaces accept native commands.
+WebView cannot load. Only bundled entry, picker and settings surfaces accept native commands.
 Four consecutive misses for either service stop the owned pair and return to the
 native recovery screen. A healthy HTTP API with no first snapshot is responsive,
 not a process failure. Local recovery preserves the folder and credentials, and

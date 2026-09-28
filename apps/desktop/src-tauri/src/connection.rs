@@ -210,6 +210,38 @@ pub fn probe(profile: &Profile) -> Result<Probe, String> {
     )
 }
 
+pub fn supports_desktop(address: &str) -> bool {
+    let Ok(root) = Url::parse(address) else {
+        return false;
+    };
+    let Ok(endpoint) = root.join("/api/desktop") else {
+        return false;
+    };
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    else {
+        return false;
+    };
+    let Ok(response) = client.get(endpoint).send() else {
+        return false;
+    };
+    if !response.status().is_success() {
+        return false;
+    }
+    let mut bytes = Vec::new();
+    if response.take(4097).read_to_end(&mut bytes).is_err() || bytes.len() > 4096 {
+        return false;
+    }
+    desktop_contract(&bytes)
+}
+
+fn desktop_contract(bytes: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(bytes)
+        .is_ok_and(|body| body["service"] == "trading-max-web" && body["desktopPresentation"] == 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +250,19 @@ mod tests {
         net::TcpListener,
         thread,
     };
+    #[test]
+    fn desktop_presentation_requires_a_versioned_service_contract() {
+        assert!(desktop_contract(
+            br#"{"service":"trading-max-web","desktopPresentation":1}"#
+        ));
+        for value in [
+            r#"{"service":"trading-max-web","desktopPresentation":2}"#,
+            r#"{"desktopPresentation":1}"#,
+            "<html>old service</html>",
+        ] {
+            assert!(!desktop_contract(value.as_bytes()));
+        }
+    }
     #[test]
     fn only_https_root_without_credentials() {
         assert_eq!(

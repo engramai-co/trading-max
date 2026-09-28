@@ -6,7 +6,7 @@ import {
   ArrowUpRight,
   ChartLine,
 } from "@phosphor-icons/react";
-import Link from "next/link";
+import Link from "./link";
 import { useMemo } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding } from "@/lib/types";

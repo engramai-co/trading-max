@@ -2,7 +2,7 @@
 
 import { Button, Checkbox, Group, Progress, Stack, Text } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import Link from "./link";
 import { useState } from "react";
 import type { components } from "@/lib/api-schema";
 import type { DashboardLens } from "@/lib/types";

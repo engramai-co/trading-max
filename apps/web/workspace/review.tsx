@@ -4,7 +4,7 @@ import { reviewLabel } from "./review-copy";
 import { SystemNotes } from "./review-evidence";
 import { Button, Group, Select, Stack } from "@mantine/core";
 import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
-import Link from "next/link";
+import Link from "./link";
 import { useRef, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { AccountCode, DashboardLens } from "@/lib/types";

@@ -3,7 +3,7 @@ import { extname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 const root = new URL("../", import.meta.url).pathname;
-const allowedCss = new Set(["app/globals.css"]);
+const allowedCss = new Set(["app/globals.css", "app/desktop/desktop.css"]);
 const rawColourAllowlist = new Set(["ui/theme.ts", "ui/charts/palette.ts"]);
 const serverMantineAllowlist = new Set(["app/layout.tsx", "ui/theme.ts"]);
 // Playwright traces contain captured CSS/JS, not authored application code.

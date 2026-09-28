@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **internal desktop preview** on the current **1.9.4** application base.
+Status: **internal desktop preview** on the current **1.10.0** application base.
 The entry flow is being integrated in small, independently accepted steps.
 There is no signed public desktop installer yet.
 
@@ -17,7 +17,7 @@ and never substitute for an unavailable real account or service.
 
 ## Use an existing service
 
-Open the App's **Settings** (`Cmd-,`) to select a workspace or connection. Choose
+Open **File → Switch workspace…** (`Cmd-Shift-O`) to select a workspace or connection. Choose
 the existing-service entry, enter its HTTPS root URL, test, and save/open it.
 Tailscale hostnames work when the Mac is already connected to that network.
 The server continues to own account credentials and collection. Closing the
@@ -26,7 +26,12 @@ client does not stop that server.
 The App preserves previously saved connection profiles and their auto-open
 preference. Remote pages receive no native filesystem, process or credential
 permissions. The local settings window is available even when the service is
-unreachable.
+unreachable. App **Settings** (`Cmd-,`) is a separate window: General controls this
+Mac's startup preference, Current workspace identifies the active local/remote
+source and links to its existing settings/data-status pages, and About & updates
+checks the App version. Changing a startup preference does not reconnect or
+reconfigure the active service. Closing these auxiliary windows leaves the main
+workspace running; closing the main window still quits the preview.
 
 ## Create or open a local workspace
 
@@ -68,6 +73,20 @@ service is installed. The personal Mac mini collector is independent.
 Implementation and synthetic tests are not a claim that a real account has been
 accepted. Final real-account acceptance needs the owner's direct credentials,
 a successful refresh, healthy worker and explicit balance confirmation.
+
+## Daily desktop use
+
+Keep investment reports in the main window. **Workspace → Workspace settings**
+(Cmd-Option-comma) opens the current service's existing account/model forms and
+update preferences. **Workspace → Sync and activity** (Cmd-Shift-J) shows task
+outcomes and recovery details; **File → Import records** opens the CFD CSV flow.
+The compact sidebar links reach the same windows. Closing these windows leaves
+the main workspace open. App preferences remain separate at Cmd-comma.
+
+A remote web service on 1.10.0 advertises the desktop presentation contract;
+older services remain compatible using their existing website. Ordinary browser
+pages retain their current design. All service windows have no native commands,
+filesystem or credential-manager capabilities. Switching sources closes them.
 
 ## Recovery and version checks
 
