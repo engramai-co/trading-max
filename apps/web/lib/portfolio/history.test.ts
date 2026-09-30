@@ -17,6 +17,25 @@ const intraday = [point("2026-09-04T13:30:00Z", true), point("2026-09-04T13:40:0
 const input = { daily, intraday, scope: "total" as const, asOf: "2026-09-04T20:00:00Z" };
 
 describe("unified portfolio history", () => {
+  it("keeps observed values and marks wholly unreconciled cash flows as pending", () => {
+    const result = selectPortfolioHistory({ ...input, range: "1D", requireCashFlows: true });
+    expect(result.points).toEqual(intraday);
+    expect(result.coverage.status).not.toBe("empty");
+    expect(result.pendingCashFlows).toBe(true);
+    expect(result.cashFlowCutoffAt).toBeNull();
+    expect(portfolioMoney(result.points, "total").pnls).toEqual([null, null]);
+  });
+  it("clears pending status only when the selected cash-flow basis is reconciled", () => {
+    const records = intraday.map((p) => ({ ...p, totalNetContributionsGbp: 100 }));
+    const pending = selectPortfolioHistory({ ...input, intraday: [records[0], intraday[1]], range: "1D", requireCashFlows: true });
+    expect(pending.pendingCashFlows).toBe(true);
+    expect(pending.cashFlowCutoffAt).toBe(records[0].date);
+    expect(pending.points).toEqual([records[0]]);
+    const ready = selectPortfolioHistory({ ...input, intraday: records, range: "1D", requireCashFlows: true });
+    expect(ready.pendingCashFlows).toBe(false);
+    expect(portfolioMoney(ready.points, "total").pnl).toBe(20);
+  });
+
   it("does not reuse an old CFD proxy after a newer conversion becomes unavailable", () => {
     const result = selectPortfolioHistory({
       ...input, range: "3M", scope: "household",

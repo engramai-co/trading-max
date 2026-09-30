@@ -9,7 +9,9 @@ export function HistoryCoverage({ history }: { history: PortfolioHistory }) {
   if (!history.pendingCashFlows) return null;
   return (
     <div className="mx-history-coverage" data-history-source={history.source}>
-      <Freshness date={history.points.at(-1)?.date} label={t("现金流待核对 · 统计截至", "Cash flows pending · Calculated through")} />
+      {history.cashFlowCutoffAt
+        ? <Freshness date={history.cashFlowCutoffAt} label={t("现金流待核对 · 统计截至", "Cash flows pending · Calculated through")} />
+        : t("已有估值记录，资金流水待核对。", "Valuations are recorded; cash flows await reconciliation.")}
     </div>
   );
 }

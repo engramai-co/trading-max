@@ -753,6 +753,18 @@ def _nonempty_export_values(row: Mapping[str, object]) -> dict[str, object]:
     return {key: value for key, value in row.items() if value not in (None, "")}
 
 
+def _transaction_export_values(row: Mapping[str, object]) -> dict[str, object]:
+    """A broker display-name edit does not change an identified transaction.
+
+    Preserve every economic/identity field, including unknown columns and notes.
+    Unidentified rows still require the complete source row to agree.
+    """
+    values = _nonempty_export_values(row)
+    if str(row.get("ID") or "").strip():
+        values.pop("Name", None)
+    return values
+
+
 def inspect_export_csv(path: Path) -> dict[str, Any]:
     """Validate an official export and return non-sensitive file metadata."""
 
@@ -1196,9 +1208,9 @@ def reconcile_positions(
             )
         )
         previous = unique_rows.get(key)
-        if previous is not None and _nonempty_export_values(previous) != _nonempty_export_values(
-            row
-        ):
+        if previous is not None and _transaction_export_values(
+            previous
+        ) != _transaction_export_values(row):
             raise Trading212ExportSchemaError(f"conflicting transaction rows for {key[-1]}")
         unique_rows[key] = row
 
@@ -1364,9 +1376,9 @@ def merge_export_csv_files(
                 )
                 normalized = {str(column): str(value or "") for column, value in row.items()}
                 previous = rows_by_key.get(key)
-                if previous is not None and _nonempty_export_values(
+                if previous is not None and _transaction_export_values(
                     previous
-                ) != _nonempty_export_values(normalized):
+                ) != _transaction_export_values(normalized):
                     raise Trading212ExportSchemaError(
                         f"conflicting transaction rows for export identity {key[-1]}"
                     )

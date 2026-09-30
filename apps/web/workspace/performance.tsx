@@ -404,6 +404,7 @@ export function PerformanceContent({
                 range={actualRange}
                 timeline={view === "money" ? history.timeline : undefined}
                 observations={view === "money" ? points : undefined}
+                pendingCashFlows={view === "money" && history.pendingCashFlows}
                 recordSource={view === "money" ? historySelection : undefined}
                 tooltip={timelineTooltip}
                 details={isIntraday ? [

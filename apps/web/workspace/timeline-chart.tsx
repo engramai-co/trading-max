@@ -25,6 +25,7 @@ export function TimelineChart({
   tooltip,
   recordSource,
   range,
+  pendingCashFlows = false,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -36,6 +37,7 @@ export function TimelineChart({
   tooltip?: TimelineTooltip;
   recordSource?: HistorySelection;
   range?: Range;
+  pendingCashFlows?: boolean;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -49,9 +51,17 @@ export function TimelineChart({
     )
   ) {
     return (
-      <Empty
-        title={t("还没有可展示的观测记录", "No observations to chart yet")}
-      />
+      <>
+        <Empty
+          title={pendingCashFlows && dates.length
+            ? t("估值已记录，净盈亏待核对", "Valuations recorded; P&L awaits reconciliation")
+            : t("还没有可展示的观测记录", "No observations to chart yet")}
+          description={pendingCashFlows && dates.length
+            ? t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The P&L chart will return after account cash flows are reconciled. Recorded values remain available below.")
+            : undefined}
+        />
+        {recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} label={label} />}
+      </>
     );
   }
   return (

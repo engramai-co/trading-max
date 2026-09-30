@@ -107,11 +107,31 @@ def performance_refresh_needed(store: ArtifactStore) -> bool:
         return False
     live_projection = _structural_projection(live)
     canonical_projection = _structural_projection(canonical)
-    return (
-        live_projection is not None
-        and canonical_projection is not None
-        and live_projection != canonical_projection
-    )
+    if live_projection is None or canonical_projection is None:
+        return False
+    if live_projection != canonical_projection:
+        return True
+    # Research can refresh the canonical account summary without reconciling
+    # its ledger. Keep a changed account pending against the last verified
+    # cash-flow state even after those two summaries have become identical.
+    from trading_max.analytics.cash_flow_history import account_state_digest
+
+    for code in ("A", "B"):
+        account = live["accounts"].get(code)
+        if account is None:
+            continue
+        try:
+            flows = store.read_json(manifest.run_id, f"account/nav/cash_flows_{code.lower()}.json")
+        except (FileNotFoundError, TypeError, ValueError):
+            continue
+        if (
+            isinstance(flows, dict)
+            and flows.get("verified") is True
+            and flows.get("account_state_digest")
+            and flows["account_state_digest"] != account_state_digest(account)
+        ):
+            return True
+    return False
 
 
 def _migration_dir() -> Path:
