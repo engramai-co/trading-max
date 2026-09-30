@@ -19,6 +19,11 @@ All notable public Trading Max releases are recorded here.
   let launchd archive and verify it after the new service passes health checks.
   Retry pending work every 15 minutes and yield background work to deployments.
 
+### Security
+
+- Update urllib3 to 2.8.0 for the HTTPS proxy TLS and streaming-response fixes
+  reported by the release dependency audit.
+
 ### Notes
 
 - Existing archives and logical repository backups remain readable. Sealed
