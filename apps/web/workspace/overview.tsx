@@ -328,6 +328,7 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
             range={range}
             timeline={history.timeline}
             observations={points}
+            pendingCashFlows={history.pendingCashFlows}
             recordSource={selection}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,

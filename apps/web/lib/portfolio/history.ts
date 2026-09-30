@@ -141,13 +141,15 @@ export function selectPortfolioHistory({
   ]));
   const latestObservationAt = points.at(-1)?.date ?? null;
   let pendingCashFlows = false;
+  let cashFlowCutoffAt: string | null = null;
   // Do not put a newer value beside older P&L. During a real ledger change,
   // keep the last common accounting cutoff until reconciliation catches up.
-  if (requireCashFlows && navNumber(points.at(-1), scope, "NetContributionsGbp") == null) {
+  if (requireCashFlows && points.some((point) => navNumber(point, scope, "NetContributionsGbp") == null)) {
+    pendingCashFlows = true;
     const covered = points.findLastIndex((p) => navNumber(p, scope, "NetContributionsGbp") != null);
     if (covered >= 0) {
       points = points.slice(0, covered + 1);
-      pendingCashFlows = true;
+      cashFlowCutoffAt = points.at(-1)!.date;
     }
   }
   let timeline: CalendarTimeline = { categories: [], rowIndexes: [] };
@@ -195,7 +197,7 @@ export function selectPortfolioHistory({
     }
   });
   return {
-    points, source, fallback, timeline, coverage, pendingCashFlows, latestObservationAt, ...window,
+    points, source, fallback, timeline, coverage, pendingCashFlows, cashFlowCutoffAt, latestObservationAt, ...window,
     carriedCfdValue: source === "intraday" && scope === "household" ? cfdValue : null,
   };
 }

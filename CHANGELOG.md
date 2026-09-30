@@ -4,6 +4,24 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-09-30
+
+### Fixed
+
+- Accept broker display-name revisions for the same identified transaction when
+  merging official exports. Keep strict checks for all other transaction fields
+  and preserve original source reports.
+- Keep ledger reconciliation pending against the last verified cash-flow state
+  when research has already refreshed the account summary, so failed account
+  updates can recover automatically.
+- Distinguish recorded valuations awaiting cash-flow reconciliation from missing
+  observations. Keep those records inspectable without inventing P&L values.
+
+### Security
+
+- Update transitive brace-expansion development dependencies to patched versions
+  while preserving their existing major versions.
+
 ## [1.9.4] - 2026-09-24
 
 ### Fixed
