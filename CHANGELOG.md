@@ -17,6 +17,11 @@ All notable public Trading Max releases are recorded here.
 - Distinguish recorded valuations awaiting cash-flow reconciliation from missing
   observations. Keep those records inspectable without inventing P&L values.
 
+### Security
+
+- Update transitive brace-expansion development dependencies to patched versions
+  while preserving their existing major versions.
+
 ## [1.9.4] - 2026-09-24
 
 ### Fixed
