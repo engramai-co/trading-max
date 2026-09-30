@@ -12,7 +12,12 @@ from pathlib import Path
 
 from .durable_files import atomic_bytes, durable_directory, sync_directory  # noqa: F401
 from .object_packs import ObjectPacks
-from .verified_chunks import VerifiedChunkCache, read_packable_chunk, read_packable_chunks
+from .verified_chunks import (
+    ChunkPathCache,
+    VerifiedChunkCache,
+    read_packable_chunk,
+    read_packable_chunks,
+)
 
 FORMAT = "trading-max-history-v1"
 HISTORY_KEYS = {"account/nav/valuation_history.json", "account/nav/intraday_anchors.json"}
@@ -112,12 +117,16 @@ class HistoryChunks:
             raise ValueError("history representation failed byte-exact verification")
         return descriptor
 
-    def paths(self, descriptor: dict) -> list[Path]:
+    def paths(self, descriptor: dict, *, path_cache: ChunkPathCache | None = None) -> list[Path]:
         if descriptor.get("$format") != FORMAT:
             raise ValueError("unsupported history storage format")
         return list(
             dict.fromkeys(
-                self.path(chunk[k]["sha256"])
+                (
+                    path_cache.resolve(self.root, chunk[k]["sha256"], self.path)
+                    if path_cache is not None
+                    else self.path(chunk[k]["sha256"])
+                )
                 for chunk in descriptor["chunks"]
                 for k in ("values", "sources")
             )

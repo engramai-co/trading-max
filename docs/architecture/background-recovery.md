@@ -43,7 +43,11 @@ size/SHA-256 with the checkpoint. Validate SQLite integrity and foreign keys,
 pack checksums and record indexes, loose chunk hashes, artifact descriptors,
 all retained snapshot/dependency references and the current snapshot. Each pack
 or chunk is decoded once for closure validation, rather than once per historical
-envelope that references it. No partial recovery manifest is published.
+envelope that references it. Shared chunk paths are checked through a bounded,
+scan-local cache; every descriptor still validates its references. The cache is
+discarded before the next verification/restore. Reference validation reports
+progress and honors interruption/deployment yields. No partial recovery manifest
+is published.
 
 Explicit `verify` and `restore` use the same physical verification. Restore writes
 to a new, private staging directory and publishes only after successful checks.

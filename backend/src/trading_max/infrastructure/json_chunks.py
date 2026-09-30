@@ -14,7 +14,12 @@ from pathlib import Path
 
 from .history_chunks import atomic_bytes, canonical
 from .object_packs import ObjectPacks
-from .verified_chunks import VerifiedChunkCache, read_packable_chunk, read_packable_chunks
+from .verified_chunks import (
+    ChunkPathCache,
+    VerifiedChunkCache,
+    read_packable_chunk,
+    read_packable_chunks,
+)
 
 FORMAT = "trading-max-json-v1"
 MAX_BYTES = 256 * 1024 * 1024
@@ -92,10 +97,12 @@ class JsonChunks:
             raise ValueError("JSON representation failed byte-exact verification")
         return descriptor
 
-    def paths(self, descriptor: dict) -> list[Path]:
-        return list(self._blocks(descriptor))
+    def paths(self, descriptor: dict, *, path_cache: ChunkPathCache | None = None) -> list[Path]:
+        return list(self._blocks(descriptor, path_cache=path_cache))
 
-    def _blocks(self, descriptor: dict) -> dict[Path, list]:
+    def _blocks(
+        self, descriptor: dict, *, path_cache: ChunkPathCache | None = None
+    ) -> dict[Path, list]:
         if descriptor.get("$format") != FORMAT:
             raise ValueError("unsupported JSON storage format")
         size = descriptor.get("envelopeBytes")
@@ -115,7 +122,11 @@ class JsonChunks:
                 total += node[2]
                 if total > size + 2 * count or total > MAX_BYTES:
                     raise ValueError("JSON blocks exceed envelope size")
-                path = self.path(node[1])
+                path = (
+                    path_cache.resolve(self.root, node[1], self.path)
+                    if path_cache is not None
+                    else self.path(node[1])
+                )
                 if path in paths and paths[path] != node:
                     raise ValueError("conflicting JSON block claims")
                 paths[path] = node

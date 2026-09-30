@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .backup_repository import BackupRepository, atomic_json, exclusive_lock
+from .infrastructure.verified_chunks import ChunkPathCache
 
 _RELEASE = re.compile(r"(?:previous-)?[0-9a-f]{12}-[a-z0-9_]{8}")
 _ARCHIVE = re.compile(r"trading_max-\d{8}T\d{6}Z\.tar\.gz")
@@ -326,8 +327,11 @@ class ServiceRetention:
             if name not in keep_backups and path.stat().st_mtime < self.cutoff:
                 candidates.append(("backup-manifest", path))
         path_cache = {}
+        chunk_paths = ChunkPathCache()
         for number, digest in enumerate(referenced_digests, 1):
-            referenced.update(self.repository.blob_files(digest, path_cache=path_cache))
+            referenced.update(
+                self.repository.blob_files(digest, path_cache=path_cache, chunk_paths=chunk_paths)
+            )
             if number % 128 == 0:
                 self.repository._progress(
                     "retention-references", files=number, totalFiles=len(referenced_digests)

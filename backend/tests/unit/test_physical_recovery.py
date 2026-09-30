@@ -98,6 +98,28 @@ def test_resumes_after_interruption_without_recopying_completed_files(tmp_path, 
     assert physical.archive_checkpoint(repo, captured["id"]) == result
 
 
+def test_reference_validation_yields_without_publishing_an_incomplete_backup(tmp_path):
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    captured = checkpoints.checkpoint(repo, state)
+
+    def stop(details):
+        if details["phase"] == "verifying-descriptor-references":
+            assert details["descriptors"] <= details["totalDescriptors"]
+            raise InterruptedError("yield during shared-reference validation")
+
+    repo.progress = stop
+    with pytest.raises(InterruptedError, match="shared-reference"):
+        physical.archive_checkpoint(repo, captured["id"])
+    assert pending(repo) == [captured["id"]]
+    assert not list(repo.snapshots.iterdir())
+    repo.progress = None
+    result = physical.archive_checkpoint(repo, captured["id"])
+    assert result["archiveStatus"] == "verified"
+    assert result["reusedFiles"] == result["files"]
+
+
 def test_reused_object_corruption_fails_closed_and_preserves_previous_recovery(tmp_path):
     state = tmp_path / "state"
     example(state)

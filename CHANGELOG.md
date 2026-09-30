@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.7] - 2026-09-30
+
+### Fixed
+
+- Check shared history and JSON chunk paths once per bounded, immutable recovery
+  scan instead of repeating filesystem checks for every retained descriptor.
+  Preserve all checksum, descriptor and dependency validation.
+- Report progress and honor deployment yields during descriptor-reference
+  validation; discard scan caches before the next verification or restore.
+
 ## [1.9.6] - 2026-09-30
 
 ### Fixed
