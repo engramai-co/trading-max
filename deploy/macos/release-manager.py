@@ -23,6 +23,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -30,6 +31,28 @@ from urllib.request import urlopen
 SERVICES = ("api", "web", "worker", "backup")
 LOGGER = logging.getLogger(__name__)
 LLM_PROVIDERS = ("deepseek", "opencode", "openai", "openai-codex", "anthropic", "google")
+DEPLOYMENT_LOCK_TIMEOUT = 30
+
+
+@contextmanager
+def deployment_lock(service: Path):
+    """Ask background maintenance to yield, with a bounded wait before building."""
+    request = service / (".deployment-request-" + uuid.uuid4().hex + ".json")
+    atomic_write(request, json.dumps({"pid": os.getpid()}).encode())
+    try:
+        with (service / ".deployment.lock").open("a") as lock:
+            deadline = time.monotonic() + DEPLOYMENT_LOCK_TIMEOUT
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise SystemExit("another deployment or maintenance is running") from None
+                    time.sleep(0.25)
+            yield
+    finally:
+        request.unlink(missing_ok=True)
 
 
 def capture_llm_settings(database: Path, destination: Path) -> None:
@@ -282,6 +305,8 @@ class Deployment:
                         "privateBackup": str(self.private),
                         "loadedServices": self.started_services,
                         "backupManifest": getattr(self, "backup_manifest", None),
+                        "backupCheckpoint": getattr(self, "backup_checkpoint", None),
+                        "backgroundBackup": getattr(self, "background_backup", None),
                     },
                     indent=2,
                 )
@@ -380,13 +405,11 @@ class Deployment:
             self.candidate / "tools/manage_backups.py",
             "--repository",
             self.service / "backups/repository",
-            "create",
+            "checkpoint",
             "--state-root",
             self.state,
             "--label",
             self.transaction,
-            "--artifact-encoding",
-            "logical",
             capture=True,
             live_stderr=True,
         )
@@ -394,6 +417,20 @@ class Deployment:
         if not created.get("snapshotRunId"):
             raise RuntimeError("deployment backup has no verified published snapshot")
         self.backup_manifest = created["manifest"]
+        self.backup_checkpoint = created["checkpoint"]
+        self.background_backup = "queued"
+
+    def queue_backup(self) -> None:
+        """Launchd owns the job after health acceptance; deployment never waits."""
+        domain = f"gui/{self.uid}/com.engram.trading-max-backup"
+        try:
+            result = self.run("launchctl", "kickstart", domain, capture=True, check=False)
+            self.background_backup = "scheduled" if result.returncode == 0 else "queued-for-retry"
+        except OSError:
+            self.background_backup = "queued-for-retry"
+        if self.background_backup == "queued-for-retry":
+            LOGGER.warning("background backup remains queued; launchd retries within 15 minutes")
+        self.save_record("healthy")
 
     def activate(self) -> None:
         if not self.app.is_symlink():
@@ -512,6 +549,7 @@ class Deployment:
             self.health()
             self.smoke()
             self.save_record("healthy")
+            self.queue_backup()
         except BaseException:
             if self.cutover_started:
                 try:
@@ -548,11 +586,7 @@ def main() -> int:
         parser.error("specify either a protected-main SHA or --recover")
     if args.target and not re.fullmatch(r"[0-9a-f]{40}", args.target):
         parser.error("target must be a full lowercase 40-character commit SHA")
-    with (service / ".deployment.lock").open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SystemExit("another deployment is running") from None
+    with deployment_lock(service):
 
         def interrupted(_signum, _frame):
             raise KeyboardInterrupt("deployment interrupted")

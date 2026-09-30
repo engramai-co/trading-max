@@ -57,12 +57,11 @@ PY
 if [[ "$FORMAT" == "repository" ]]; then
   if [[ "$DESTINATION" == "$SERVICE_ROOT/backups/repository" ]]; then
     exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
-      --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly \
-      --artifact-encoding logical --retain-for-service "$SERVICE_ROOT"
+      --repository "$DESTINATION" background --state-root "$STATE_ROOT" \
+      --service-root "$SERVICE_ROOT"
   fi
   exec "$BACKUP_PYTHON" "$SERVICE_ROOT/app/tools/manage_backups.py" \
-    --repository "$DESTINATION" create --state-root "$STATE_ROOT" --label nightly \
-    --artifact-encoding logical
+    --repository "$DESTINATION" background --state-root "$STATE_ROOT"
 fi
 
 # Packed state needs the logical recovery path: copying a mutable locator

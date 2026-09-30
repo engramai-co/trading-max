@@ -10,7 +10,7 @@ original credential store and private bootstrap directory.
 ## Independent deduplicated backups
 
 Deployments and the installed nightly LaunchAgent use
-`service-root/backups/repository`. Each immutable manifest identifies compressed,
+`service-root/backups/repository`. Each immutable manifest identifies independent,
 SHA-256-checked file blobs. Unchanged files are shared between backup manifests,
 but never linked to live application files. SQLite is captured with its online
 backup API. The published pointer is pinned before the file inventory. Missing
@@ -28,7 +28,7 @@ Run these commands with the installed release's Python; `SERVICE_ROOT` and
 ```bash
 "$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/manage_backups.py" \
   --repository "$SERVICE_ROOT/backups/repository" create \
-  --state-root "$STATE_ROOT" --label manual
+  --state-root "$STATE_ROOT" --label manual --artifact-encoding sealed
 
 "$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/manage_backups.py" \
   --repository "$SERVICE_ROOT/backups/repository" verify BACKUP_ID
@@ -43,6 +43,24 @@ running state or replaces credentials. Validate the recovered snapshot before
 an operator selects it as the runtime state root. `backup.sh` still supports
 legacy archive mode for an explicit invocation; the installed LaunchAgent sets
 `TRADING_MAX_BACKUP_FORMAT=repository`.
+
+Managed backups use [incremental background recovery](../architecture/background-recovery.md).
+Deployment captures a short pre-migration checkpoint and queues full archival
+after health acceptance. Launchd retries queued work every 15 minutes and creates
+a daily point when the last verified recovery is at least 24 hours old. Unchanged
+checks do no archival work. A queued checkpoint is not reported as a completed
+backup. Inspect the persistent result with:
+
+```bash
+"$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/manage_backups.py" \
+  --repository "$SERVICE_ROOT/backups/repository" status
+```
+
+`lastSuccessAt` / `lastBackupId` identify the verified recovery point. `deferred`
+means resumable work remains; `failed` includes its error. `maintenanceError`
+does not erase a successful backup. A managed background run can also be invoked
+with `background --state-root "$STATE_ROOT" --service-root "$SERVICE_ROOT"`;
+`--force` requests a new point. It still resumes any existing queued point first.
 
 ## Plan, verify, clean in small batches
 
@@ -176,7 +194,9 @@ blob. Re-running a completed batch is safe; repeated observations are shared,
 not interpolated or downsampled. Directory entries are synced after publication
 so a crash cannot publish a descriptor before its durable block writes.
 
-The managed nightly and deployment backups use `--artifact-encoding logical`.
+The optional logical recovery mode uses `--artifact-encoding logical`. Managed
+nightly backups now use `sealed` recovery; deployment queues archival from a
+physical checkpoint. The following describes the retained logical compatibility path.
 They recover each JSON artifact as its exact original envelope, so old full JSON
 and new live descriptors share one independent recovery representation. Physical
 live chunks are not copied a second time. Binary source artifacts, SQLite and

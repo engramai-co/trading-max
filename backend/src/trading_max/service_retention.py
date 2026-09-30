@@ -254,6 +254,13 @@ class ServiceRetention:
         return result.returncode == 0 and not result.stdout.strip()
 
     def _eligible(self, context: dict) -> list[tuple[str, Path]]:
+        # Read each old catalog/descriptor pack once per planning operation;
+        # retained legacy points must not turn bounded nightly cleanup into a
+        # repeated historical decompression scan.
+        with self.repository.packs.scan_reads(), self.repository.packed_store.packs.scan_reads():
+            return self._eligible_files(context)
+
+    def _eligible_files(self, context: dict) -> list[tuple[str, Path]]:
         candidates: list[tuple[str, Path]] = []
         known = {
             path
@@ -297,6 +304,7 @@ class ServiceRetention:
                 candidates.append(("archive", path))
         manifests = {}
         for path in self.repository.snapshots.glob("*.json"):
+            self.repository._progress("retention-manifests", files=len(manifests))
             if path != self.repository.manifest_path(path.stem):
                 raise ValueError("invalid backup manifest location")
             manifest = self.repository.read_manifest(path.stem)
@@ -317,8 +325,23 @@ class ServiceRetention:
             path = self.repository.manifest_path(name)
             if name not in keep_backups and path.stat().st_mtime < self.cutoff:
                 candidates.append(("backup-manifest", path))
-        for digest in referenced_digests:
-            referenced.update(self.repository.blob_files(digest))
+        path_cache = {}
+        for number, digest in enumerate(referenced_digests, 1):
+            referenced.update(self.repository.blob_files(digest, path_cache=path_cache))
+            if number % 128 == 0:
+                self.repository._progress(
+                    "retention-references", files=number, totalFiles=len(referenced_digests)
+                )
+        physical_root = self.repository.root / "physical"
+        if physical_root.is_symlink():
+            raise ValueError("physical recovery store must not be a symlink")
+        from .physical_recovery import raw_path
+
+        for path in physical_root.glob("*/*"):
+            if path.is_symlink() or path != raw_path(self.repository, path.name):
+                raise ValueError("unknown physical recovery object")
+            if path not in referenced and path.stat().st_mtime < self.cutoff:
+                candidates.append(("backup-blob", path))
         for directory in self.repository.blobs.iterdir():
             if not re.fullmatch(r"[0-9a-f]{2}", directory.name) or directory.is_symlink():
                 raise ValueError("unknown backup blob directory")

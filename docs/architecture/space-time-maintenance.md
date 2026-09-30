@@ -47,6 +47,11 @@ are excluded. Existing tar archives remain readable and are kept during rollout.
 Publish a backup only after verifying its files, SQLite integrity and snapshot
 references. A failed write or verification must not remove any previous backup.
 
+[Background recovery](background-recovery.md) separates the short pre-migration
+checkpoint from archival after deployment health checks. Its incremental journal
+survives interruption, and the managed backup preserves existing physical chunks
+instead of repeatedly expanding all historical envelopes.
+
 Cleanup is a separate, bounded plan/apply operation, under the deployment lock.
 Protect the active runtime, retained rollback targets, recent verified backups,
 and interrupted deployment recovery records. Revalidate the plan before removal,

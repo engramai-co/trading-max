@@ -9,7 +9,7 @@ Trading Max runs as four user LaunchAgents:
 - `com.engram.trading-max-api` on `127.0.0.1:8421`
 - `com.engram.trading-max-web` on `127.0.0.1:3413`
 - `com.engram.trading-max-worker` for durable refresh jobs
-- `com.engram.trading-max-backup` for the 04:30 state backup
+- `com.engram.trading-max-backup` for daily recovery and 15-minute pending-work retries
 
 The web process talks to the API server-side. If an operator adds a private
 reverse proxy, it must expose only the web process so API credentials never
@@ -101,8 +101,9 @@ and the web app in a new `releases/<sha>-<unique-id>` directory. The active
 `app` directory is untouched during dependency installation and compilation.
 A host lock rejects concurrent deployments. After a successful build:
 
-1. Create and verify an independent, deduplicated recovery snapshot while the
-   current application stays available. Capture the existing service definitions
+1. Capture an independent pre-migration checkpoint while the current application
+   stays available, including SQLite WAL and the pinned current snapshot. Queue
+   full archival separately. Capture the existing service definitions
    and bootstrap env in `state/secrets/deployment-backups`.
 2. Stop the existing services, including scheduled backup, and wait for their
    processes to exit. Capture the non-secret model configuration for rollback.
@@ -111,6 +112,15 @@ A host lock rejects concurrent deployments. After a successful build:
    directory. The first upgrade converts the original directory to this layout.
 4. Normalize bootstrap configuration, apply additive migrations, start the
    existing services, and check readiness, worker and dynamic web routes.
+5. Kick the existing low-priority backup LaunchAgent, without waiting for history
+   archival. It resumes queued checkpoints, verifies all physical bytes and
+   dependencies, then publishes complete recovery points. Its durable status
+   distinguishes queued checkpoints from verified backups; see
+   [background recovery](../../docs/architecture/background-recovery.md).
+
+Background maintenance yields to deployment requests at safe file boundaries.
+The host lock wait is bounded to 30 seconds, and an unsuccessful background
+launch leaves a durable queue item for the next 15-minute retry.
 
 A failure after cutover starts restores the retained application, its installed
 Python dependencies, web build, env, service definitions and prior model
