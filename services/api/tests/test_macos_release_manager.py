@@ -210,6 +210,9 @@ class SimulatedHost(manager.Deployment):
     def smoke(self) -> None:
         self.check("smoke")
 
+    def queue_backup(self) -> None:
+        self.check("queue-backup")
+
 
 @pytest.mark.parametrize(
     "failure",
@@ -251,6 +254,7 @@ def test_success_retains_old_build_and_recovery_uses_it(tmp_path: Path):
     assert (host.previous / "build").read_text() == "old installed runtime"
     assert json.loads(host.record.read_text())["phase"] == "healthy"
     assert host.events.index("backup") < host.events.index("stop")
+    assert host.events.index("queue-backup") > host.events.index("smoke")
     host.rollback()
     assert host.app.resolve() == host.previous
     assert host.events.count("build") == 1
@@ -297,6 +301,7 @@ def test_interrupted_first_directory_conversion_recovers_missing_app_path(tmp_pa
 
 
 def test_concurrent_deployment_is_rejected_before_building(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(manager, "DEPLOYMENT_LOCK_TIMEOUT", 0)
     service = tmp_path / "service"
     service.mkdir()
     monkeypatch.setenv("TRADING_MAX_SERVICE_ROOT", str(service))
@@ -444,3 +449,29 @@ def test_trim_refuses_incomplete_or_external_runtime_before_removing_anything(tm
         manager.trim_build_dependencies(tmp_path)
     assert (web / "node_modules/build-only/data").is_file()
     assert (web / ".next/cache/compiler").is_file()
+
+
+def test_background_launch_failure_keeps_healthy_release_and_durable_queue(tmp_path):
+    host = SimulatedHost(tmp_path)
+    host.queue_backup = lambda: manager.Deployment.queue_backup(host)
+
+    def failed_launch(*args, **kwargs):
+        assert args[:2] == ("launchctl", "kickstart")
+        raise OSError("synthetic launchd unavailable")
+
+    host.run = failed_launch
+    host.execute()
+    record = json.loads(host.record.read_text())
+    assert record["phase"] == "healthy"
+    assert record["backgroundBackup"] == "queued-for-retry"
+    assert host.app.resolve() == host.candidate
+    assert "restore-services" not in host.events
+
+
+def test_deployment_request_is_removed_after_lock_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(manager, "DEPLOYMENT_LOCK_TIMEOUT", 0)
+    with (tmp_path / ".deployment.lock").open("a") as held:
+        manager.fcntl.flock(held, manager.fcntl.LOCK_EX | manager.fcntl.LOCK_NB)
+        with pytest.raises(SystemExit), manager.deployment_lock(tmp_path):
+            pytest.fail("must not enter while locked")
+    assert not list(tmp_path.glob(".deployment-request-*.json"))

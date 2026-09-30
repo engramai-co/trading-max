@@ -134,8 +134,11 @@ class BackupRepository:
         return None
 
     def has_blob(self, digest: str) -> bool:
+        from .physical_recovery import raw_path
+
         return (
-            self.blob_path(digest).is_file()
+            raw_path(self, digest).is_file()
+            or self.blob_path(digest).is_file()
             or self.packed_path(digest).is_file()
             or self.packs.contains("blob/" + digest)
             or self.packs.contains("descriptor/" + digest)
@@ -153,7 +156,12 @@ class BackupRepository:
     def read_manifest(self, backup_id: str) -> dict:
         return json.loads(self.manifest_bytes(backup_id))
 
-    def blob_files(self, digest: str) -> list[Path]:
+    def blob_files(self, digest: str, *, path_cache: dict | None = None) -> list[Path]:
+        from .physical_recovery import raw_path
+
+        physical = raw_path(self, digest)
+        if physical.is_file():
+            return [physical]
         descriptor = self.packed_descriptor(digest)
         plain = self.blob_path(digest)
         if descriptor is None:
@@ -162,9 +170,20 @@ class BackupRepository:
             raise ValueError("packed backup identity mismatch")
         store = self.packed_store
         packed = self.packed_path(digest)
+        if path_cache is None:
+            dependencies = store.physical_paths(descriptor)
+        else:
+            dependencies = []
+            for chunk in store.logical_paths(descriptor):
+                if chunk not in path_cache:
+                    kind = "json" if chunk.parent.parent.name == "json-chunks" else "history"
+                    path_cache[chunk] = (
+                        chunk if chunk.is_file() else store.packs.source(kind + "/" + chunk.stem)
+                    )
+                dependencies.append(path_cache[chunk])
         paths = [
             packed if packed.is_file() else self.packs.source("descriptor/" + digest),
-            *store.physical_paths(descriptor),
+            *dict.fromkeys(dependencies),
         ]
         if plain.exists():
             paths.append(plain)
@@ -175,6 +194,11 @@ class BackupRepository:
         return self._open_blob(digest)
 
     def _open_blob(self, digest: str, store: ContentAddressedArtifactStore | None = None):
+        from .physical_recovery import raw_path
+
+        physical = raw_path(self, digest)
+        if physical.is_file():
+            return physical.open("rb")
         descriptor = self.packed_descriptor(digest)
         if descriptor is None:
             path = self.blob_path(digest)
@@ -381,6 +405,12 @@ class BackupRepository:
         now: datetime | None = None,
         artifact_encoding: str = "physical",
     ) -> dict:
+        if artifact_encoding == "sealed":
+            from .physical_recovery import archive_checkpoint
+            from .recovery_checkpoint import checkpoint
+
+            captured = checkpoint(self, state, label=label)
+            return archive_checkpoint(self, captured["id"])
         if artifact_encoding not in {"physical", "logical"}:
             raise ValueError("unsupported backup artifact encoding")
         state = state.expanduser().resolve()
@@ -564,6 +594,10 @@ class BackupRepository:
     def _verify(self, manifest: dict, restore_to: Path | None = None) -> dict:
         if manifest.get("schemaVersion") != 1 or not isinstance(manifest.get("files"), dict):
             raise ValueError("unsupported backup manifest")
+        if manifest.get("artifactEncoding") == "sealed":
+            from .physical_recovery import verify_manifest
+
+            return verify_manifest(self, manifest, restore_to)
         root_metadata = manifest.get("sourceArchive", {}).get("rootMetadata")
         if root_metadata:
             raw_metadata = base64.b64decode(root_metadata["base64"], validate=True)

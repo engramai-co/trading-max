@@ -4,6 +4,35 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-09-30
+
+### Fixed
+
+- Keep managed backup history in its existing sealed/chunked representation
+  instead of repeatedly expanding and re-encoding every historical JSON value.
+  Preserve independent copies, SQLite WAL contents, pinned snapshot pointers,
+  full physical checksums and reference validation before publishing recovery.
+- Persist incremental archival progress across interruptions. Retain queued
+  checkpoints and the last successful recovery point; report backup success,
+  pending work and optional maintenance errors separately.
+- Capture a short independent pre-migration checkpoint during deployment, then
+  let launchd archive and verify it after the new service passes health checks.
+  Retry pending work every 15 minutes and yield background work to deployments.
+
+### Security
+
+- Update urllib3 to 2.8.0 for the HTTPS proxy TLS and streaming-response fixes
+  reported by the release dependency audit.
+
+### Notes
+
+- Existing archives and logical repository backups remain readable. Sealed
+  recovery points require the new backup tool to restore; the restored physical
+  state remains readable by runtimes supporting the existing object-pack format.
+- Recovery is local; an independent off-host copy is still required for host or
+  disk loss. No credentials, financial observations or historical recovery points
+  are removed by this maintenance release.
+
 ## [1.9.5] - 2026-09-30
 
 ### Fixed

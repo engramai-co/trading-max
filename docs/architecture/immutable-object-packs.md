@@ -43,8 +43,11 @@ A manifest can be reconstructed without a parent manifest or the live state.
 All content belongs independently to the backup repository; there are no links
 to mutable production files. Restoring packed logical artifacts materializes
 standalone original envelopes, allowing older application readers to inspect a
-recovery without the new storage format. Backups of live packed data use this
-logical representation rather than copying a live locator database.
+recovery without the new storage format. This remains the optional logical
+compatibility path. Managed backups use [physical background recovery](background-recovery.md):
+pin an online SQLite locator snapshot before inventorying sealed files, retain
+independent bytes, and verify the complete closure before publication. They never
+copy a live SQLite database without its committed WAL pages.
 
 Retention continues to protect unique historical evidence. Shared sealed packs
 must be treated as reference units, never deleted by loose-file orphan rules.
