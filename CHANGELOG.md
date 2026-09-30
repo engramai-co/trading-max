@@ -14,6 +14,11 @@ All notable public Trading Max releases are recorded here.
 - Report progress and honor deployment yields during descriptor-reference
   validation; discard scan caches before the next verification or restore.
 
+### Security
+
+- Update Next.js and its ESLint configuration to 16.3.6 for
+  [GHSA-vcvr-r3jv-pc5j](https://github.com/advisories/GHSA-vcvr-r3jv-pc5j).
+
 ## [1.9.6] - 2026-09-30
 
 ### Fixed
