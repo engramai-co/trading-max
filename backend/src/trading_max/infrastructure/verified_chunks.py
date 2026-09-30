@@ -6,7 +6,35 @@ import gzip
 import hashlib
 import zlib
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
+
+
+class ChunkPathCache:
+    """Bounded path checks for one immutable-tree or locked maintenance scan.
+
+    This only reuses path resolution, never payload verification. Do not retain
+    it across scans or use it while another writer can replace chunk paths.
+    """
+
+    def __init__(self, max_entries: int = 262_144):
+        if max_entries <= 0:
+            raise ValueError("path cache budget must be positive")
+        self.max_entries = max_entries
+        self.entries: OrderedDict[tuple[Path, str], Path] = OrderedDict()
+
+    def resolve(self, root: Path, digest: str, resolver: Callable[[str], Path]) -> Path:
+        if not isinstance(digest, str):
+            raise ValueError("invalid chunk digest")
+        key = (root, digest)
+        if key in self.entries:
+            self.entries.move_to_end(key)
+            return self.entries[key]
+        path = resolver(digest)
+        if len(self.entries) >= self.max_entries:
+            self.entries.popitem(last=False)
+        self.entries[key] = path
+        return path
 
 
 def _stamp(path: Path) -> tuple[int, ...]:

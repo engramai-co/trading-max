@@ -25,6 +25,7 @@ from .backup_repository import _DIGEST, _safe_relative, _stamp, atomic_json, exc
 from .infrastructure import ContentAddressedArtifactStore, compressed_json
 from .infrastructure.durable_files import sync_directory
 from .infrastructure.object_packs import decode as decode_pack
+from .infrastructure.verified_chunks import ChunkPathCache
 from .recovery_checkpoint import FORMAT, check_snapshot, copy_independent
 
 
@@ -156,13 +157,26 @@ def validate_tree(tree: Path, files: dict, progress=None) -> dict:
             }
         if not snapshot_refs.issubset(artifact_ids):
             raise ValueError("recovery snapshot references a missing artifact or dependency")
-        for descriptor in descriptors:
-            for chunk in store.logical_paths(descriptor):
-                key = (
-                    "json/" if chunk.parent.parent.name == "json-chunks" else "history/"
-                ) + chunk.stem
+        path_cache = ChunkPathCache()
+        reference_keys = {}
+        for number, descriptor in enumerate(descriptors, 1):
+            for chunk in store.logical_paths(descriptor, path_cache=path_cache):
+                key = reference_keys.get(chunk)
+                if key is None:
+                    key = (
+                        "json/" if chunk.parent.parent.name == "json-chunks" else "history/"
+                    ) + chunk.stem
+                    reference_keys[chunk] = key
                 if key not in chunks:
                     raise ValueError("recovery descriptor references a missing chunk")
+            if progress and (number % 128 == 0 or number == len(descriptors)):
+                progress(
+                    {
+                        "phase": "verifying-descriptor-references",
+                        "descriptors": number,
+                        "totalDescriptors": len(descriptors),
+                    }
+                )
         return {
             "snapshotRunId": check_snapshot(tree),
             "artifacts": len(artifact_ids),

@@ -34,7 +34,7 @@ from .infrastructure.history_chunks import (
 from .infrastructure.manifest_catalog import FORMAT as CATALOG_FORMAT
 from .infrastructure.manifest_catalog import ManifestCatalog
 from .infrastructure.object_packs import ObjectPacks
-from .infrastructure.verified_chunks import VerifiedChunkCache
+from .infrastructure.verified_chunks import ChunkPathCache, VerifiedChunkCache
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BACKUP_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
@@ -156,7 +156,13 @@ class BackupRepository:
     def read_manifest(self, backup_id: str) -> dict:
         return json.loads(self.manifest_bytes(backup_id))
 
-    def blob_files(self, digest: str, *, path_cache: dict | None = None) -> list[Path]:
+    def blob_files(
+        self,
+        digest: str,
+        *,
+        path_cache: dict | None = None,
+        chunk_paths: ChunkPathCache | None = None,
+    ) -> list[Path]:
         from .physical_recovery import raw_path
 
         physical = raw_path(self, digest)
@@ -174,7 +180,7 @@ class BackupRepository:
             dependencies = store.physical_paths(descriptor)
         else:
             dependencies = []
-            for chunk in store.logical_paths(descriptor):
+            for chunk in store.logical_paths(descriptor, path_cache=chunk_paths):
                 if chunk not in path_cache:
                     kind = "json" if chunk.parent.parent.name == "json-chunks" else "history"
                     path_cache[chunk] = (

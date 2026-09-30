@@ -25,6 +25,7 @@ from .json_chunks import JsonChunks
 from .object_packs import ObjectPacks
 from .object_packs import stamp as pack_stamp
 from .singleflight import SingleFlightCache
+from .verified_chunks import ChunkPathCache
 
 JsonObject = dict[str, Any]
 
@@ -299,8 +300,10 @@ class ContentAddressedArtifactStore:
     def physical_store(self, descriptor: dict) -> HistoryChunks | JsonChunks:
         return self.json_chunks if descriptor.get("$format") == JSON_CHUNKS_FORMAT else self.history
 
-    def logical_paths(self, descriptor: dict) -> list[Path]:
-        return self.physical_store(descriptor).paths(descriptor)
+    def logical_paths(
+        self, descriptor: dict, *, path_cache: ChunkPathCache | None = None
+    ) -> list[Path]:
+        return self.physical_store(descriptor).paths(descriptor, path_cache=path_cache)
 
     def physical_paths(self, descriptor: dict) -> list[Path]:
         result = []
