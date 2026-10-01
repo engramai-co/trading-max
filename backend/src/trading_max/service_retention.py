@@ -261,6 +261,31 @@ class ServiceRetention:
         with self.repository.packs.scan_reads(), self.repository.packed_store.packs.scan_reads():
             return self._eligible_files(context)
 
+    def _pending_checkpoint_retirements(self, manifests: dict[str, dict]) -> set[str]:
+        from .checkpoint_migration import RECEIPT_FORMAT
+
+        parent = self.backups / "emergency-checkpoints"
+        if parent.is_symlink():
+            raise ValueError("emergency checkpoint directory must not be a symlink")
+        keep = set()
+        for path in parent.glob("*/retirement.json"):
+            if path.is_symlink() or path.parent.is_symlink():
+                raise ValueError("checkpoint receipt must not be a symlink")
+            receipt = json.loads(path.read_bytes())
+            if receipt.get("format") != RECEIPT_FORMAT:
+                raise ValueError("unknown checkpoint retirement receipt")
+            if receipt.get("phase") != "retiring":
+                continue
+            backup_id = receipt["backupId"]
+            self.repository.manifest_path(backup_id)
+            manifest = manifests.get(backup_id, {})
+            if not manifest or manifest.get("importedCheckpointSha256") != receipt.get(
+                "sourceManifestSha256"
+            ):
+                raise ValueError("pending retirement recovery manifest is missing or changed")
+            keep.add(backup_id)
+        return keep
+
     def _eligible_files(self, context: dict) -> list[tuple[str, Path]]:
         candidates: list[tuple[str, Path]] = []
         known = {
@@ -315,6 +340,7 @@ class ServiceRetention:
         keep_backups = retained_dates(
             [(name, datetime.fromisoformat(data["createdAt"])) for name, data in manifests.items()]
         ) | set(context["protectedBackupIds"])
+        keep_backups.update(self._pending_checkpoint_retirements(manifests))
         keep_backups = retain_immutable_coverage(manifests, keep_backups)
         referenced = set()
         referenced_digests = set()

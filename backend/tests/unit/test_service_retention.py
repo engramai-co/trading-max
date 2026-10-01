@@ -182,6 +182,38 @@ def test_date_buckets_do_not_keep_every_deployment_on_the_same_day():
     assert retained_dates(items) == {"47", "48", "49"}
 
 
+def test_interrupted_checkpoint_retirement_protects_its_recovery_point(tmp_path):
+    from trading_max.checkpoint_migration import RECEIPT_FORMAT
+
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    base = maintenance.repository.read_manifest(backup["id"])
+    start = datetime.now(UTC) - timedelta(days=3)
+    for i in range(5):
+        stamp = start + timedelta(minutes=i)
+        backup_id = stamp.strftime("%Y%m%dT%H%M%SZ-") + str(i) * 12
+        manifest = {**base, "id": backup_id, "createdAt": stamp.isoformat()}
+        manifest["importedCheckpointSha256"] = "a" * 64
+        path = maintenance.repository.manifest_path(backup_id)
+        path.write_text(json.dumps(manifest))
+        os.utime(path, (start.timestamp(),) * 2)
+        if i == 0:
+            oldest = backup_id
+    receipt = service / "backups/emergency-checkpoints/synthetic/retirement.json"
+    receipt.parent.mkdir(parents=True)
+    payload = {
+        "format": RECEIPT_FORMAT,
+        "phase": "retiring",
+        "backupId": oldest,
+        "sourceManifestSha256": "a" * 64,
+    }
+    receipt.write_text(json.dumps(payload))
+    assert not any(oldest in item["path"] for item in maintenance.plan()["items"])
+    payload["phase"] = "retired"
+    receipt.write_text(json.dumps(payload))
+    assert any(oldest in item["path"] for item in maintenance.plan()["items"])
+
+
 def test_date_rotation_cannot_remove_last_copy_of_published_or_imported_history():
     def point(hour, entries):
         return {

@@ -38,7 +38,8 @@ The original manifest and a small `retirement.json` receipt remain. An
 interruption before retirement leaves the original copy intact; an interruption
 during removal leaves `.retiring-state`. Rerun the same command with `--retire`
 to verify the published recovery point again and finish only the remaining
-owned files. Imports have deterministic IDs, so retries do not create new
+owned files. Retention protects the published recovery point while a retirement
+is unfinished. Imports have deterministic IDs, so retries do not create new
 recovery points. The original date means an imported checkpoint cannot satisfy
 the requirement for a fresh backup of the running service.
 
