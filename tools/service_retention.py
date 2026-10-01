@@ -21,6 +21,7 @@ def main() -> int:
     apply.add_argument("--verified-backup-id", required=True)
     apply.add_argument("--max-items", type=int, default=2)
     apply.add_argument("--max-bytes", type=int, default=5_000_000_000)
+    apply.add_argument("--max-seconds", type=float, default=60)
     args = parser.parse_args()
     maintenance = ServiceRetention(args.service_root)
     if args.command == "plan":
@@ -44,6 +45,7 @@ def main() -> int:
                     verified_backup_id=args.verified_backup_id,
                     max_items=args.max_items,
                     max_bytes=args.max_bytes,
+                    max_seconds=args.max_seconds,
                 )
             )
         )

@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.9] - 2026-10-01
+
+### Fixed
+
+- Clear small orphan backup files in bounded, durably journaled batches instead
+  of allowing only 64 candidates per night. Keep the 2 GB cap, limit removal to
+  60 seconds between batches, yield to deployment requests, and report remaining
+  work. Preserve independent recovery verification, current reference checks,
+  the 24-hour grace period and all unique-history/rollback protections.
+
 ## [1.9.8] - 2026-10-01
 
 ### Fixed

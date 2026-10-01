@@ -353,3 +353,178 @@ def test_nightly_reclaims_only_unlinked_old_dependency_blob(tmp_path):
     assert any(p["kind"] == "runtime-dependency" for p in maintenance.plan()["items"])
     maintenance.maintain_repository(backup["id"])
     assert not blob.exists()
+
+
+def orphan_blobs(maintenance, count):
+    paths = []
+    for i in range(count):
+        content = f"synthetic orphan {i}".encode()
+        path = maintenance.repository.blob_path(hashlib.sha256(content).hexdigest())
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(gzip.compress(content))
+        os.utime(path, (0, 0))
+        paths.append(path)
+    return paths
+
+
+def orphan_plan(maintenance):
+    plan = maintenance.plan()
+    plan["items"] = [item for item in plan["items"] if item["kind"] == "backup-blob"]
+    return plan
+
+
+def test_nightly_small_file_backlog_is_not_limited_to_64_candidates(tmp_path):
+    service, releases, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 130)
+    result = maintenance.maintain_repository(backup["id"])
+    assert result["removedItems"] == 133
+    assert result["remainingItems"] == 0
+    assert not any(path.exists() for path in paths)
+    assert all(path.exists() for path in releases[-3:])
+
+
+def test_many_small_orphans_use_bounded_journals_and_preserve_referenced_files(
+    tmp_path, monkeypatch
+):
+    import trading_max.service_retention as module
+
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 130)
+    writes = []
+    write = module.atomic_json
+
+    def recording_write(path, value):
+        if path.name == "journal.json":
+            writes.append(len(value["items"]))
+        return write(path, value)
+
+    monkeypatch.setattr(module, "atomic_json", recording_write)
+    result = maintenance.apply(
+        orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=200
+    )
+    assert result["removedItems"] == 130
+    assert result["remainingItems"] == 0
+    assert result["limitReason"] is None
+    assert len(result["journals"]) == 3
+    assert writes == [64, 64, 64, 64, 64, 64, 2, 2, 2]
+    assert not any(path.exists() for path in paths)
+    assert maintenance.repository.verify(backup["id"])["snapshotRunId"]
+
+
+def test_time_budget_stops_at_a_completed_batch_and_next_run_can_continue(tmp_path, monkeypatch):
+    import trading_max.service_retention as module
+
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 130)
+    clock = [0.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    remove = maintenance._remove_batch
+
+    def timed_remove(*args):
+        result = remove(*args)
+        clock[0] += 61
+        return result
+
+    monkeypatch.setattr(maintenance, "_remove_batch", timed_remove)
+    result = maintenance.apply(
+        orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=200
+    )
+    assert result["removedItems"] == 64
+    assert result["remainingItems"] == 66
+    assert result["limitReason"] == "time-budget"
+    assert sum(path.exists() for path in paths) == 66
+    monkeypatch.setattr(maintenance, "_remove_batch", remove)
+    resumed = maintenance.apply(
+        orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=200
+    )
+    assert resumed["removedItems"] == 66
+
+
+def test_deployment_request_yields_between_completed_batches(tmp_path, monkeypatch):
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 130)
+    marker = service / ".deployment-request-test.json"
+    remove = maintenance._remove_batch
+
+    def request_deploy(*args):
+        result = remove(*args)
+        marker.write_text(json.dumps({"pid": os.getpid()}))
+        return result
+
+    monkeypatch.setattr(maintenance, "_remove_batch", request_deploy)
+    with pytest.raises(InterruptedError, match="yielded"):
+        maintenance.apply(orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=200)
+    assert sum(path.exists() for path in paths) == 66
+    marker.unlink()
+    monkeypatch.setattr(maintenance, "_remove_batch", remove)
+    result = maintenance.apply(
+        orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=200
+    )
+    assert result["removedItems"] == 66
+
+
+@pytest.mark.parametrize("stage", ["rename", "unlink"])
+def test_interrupted_small_file_batch_preserves_journal_and_blocks_more_cleanup(
+    tmp_path, monkeypatch, stage
+):
+    service, releases, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 70)
+    plan = orphan_plan(maintenance)
+    original = getattr(Path, stage)
+    calls = 0
+
+    def interrupt(path, *args, **kwargs):
+        nonlocal calls
+        managed = (
+            path in paths if stage == "rename" else path.parent.parent == service / "maintenance"
+        )
+        if managed:
+            calls += 1
+            if calls == 2:
+                raise OSError("synthetic interruption")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, stage, interrupt)
+    with pytest.raises(OSError, match="synthetic interruption"):
+        maintenance.apply(plan, verified_backup_id=backup["id"], max_items=100)
+    monkeypatch.setattr(Path, stage, original)
+    journal_path = next((service / "maintenance").glob("*/journal.json"))
+    journal = json.loads(journal_path.read_text())
+    assert len(journal["items"]) == 64
+    assert {item["status"] for item in journal["items"]} == {
+        "pending" if stage == "rename" else "detached"
+    }
+    assert all(path.exists() for path in releases)
+    with pytest.raises(ValueError, match="unfinished cleanup"):
+        maintenance.apply(orphan_plan(maintenance), verified_backup_id=backup["id"], max_items=100)
+
+
+def test_small_file_batch_still_honors_item_byte_and_age_limits(tmp_path):
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    paths = orphan_blobs(maintenance, 130)
+    os.utime(paths[0], None)
+    plan = orphan_plan(maintenance)
+    assert len(plan["items"]) == 129
+    result = maintenance.apply(plan, verified_backup_id=backup["id"], max_items=80)
+    assert result["removedItems"] == 80
+    assert result["remainingItems"] == 49
+    assert paths[0].exists()
+    assert result["limitReason"] == "item-or-byte-budget"
+    plan = orphan_plan(maintenance)
+    result = maintenance.apply(plan, verified_backup_id=backup["id"], max_items=80, max_bytes=100)
+    assert result["removedBytes"] <= 100
+    assert result["removedItems"] < 49
+
+
+@pytest.mark.parametrize("seconds", [0, -1, float("inf"), float("nan")])
+def test_cleanup_rejects_invalid_time_budget(tmp_path, seconds):
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    with pytest.raises(ValueError, match="limits"):
+        maintenance.apply({}, verified_backup_id=backup["id"], max_seconds=seconds)

@@ -121,10 +121,20 @@ the date policy alone; capacity warnings never override this protection.
 
 The nightly job applies backup-manifest, orphan-backup-blob, old unprotected
 release and unreferenced shared Node retention after its new backup passes verification. Each night is bounded
-to 64 objects and 2 GB; its plan and removal journal are retained. Current and both
+to 16,384 candidates, 2 GB and a 60-second removal budget; its plan and removal journals are retained. Current and both
 rollback runtimes remain protected. Legacy archives and rehearsals still require
 the reviewed operator procedure below.
 An explicitly overridden backup destination is not automatically pruned.
+
+Small orphan files use batches of at most 64 entries and 8 MiB (a larger single
+file runs alone); runtimes, manifests and other large targets run individually.
+Each batch durably records its complete pending list, detached paths and final
+removal state, avoiding a growing journal rewrite for every file. Time limits
+and deployment requests are checked between completed batches. The 60 seconds
+cover removal, not the preceding independent restore and reference scan; a
+batch already in progress finishes before yielding. Results report total and
+removal time, remaining candidate counts/bytes and the limiting budget. A later
+nightly run generates a fresh plan and revalidates eligibility before continuing.
 
 Candidates must be at least 24 hours old. Unknown directories, application
 snapshots, artifacts, database, broker inputs, credentials and rehearsal trees
@@ -138,7 +148,7 @@ separate plans. This is not application-artifact garbage collection.
 
 "$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/service_retention.py" \
   --service-root "$SERVICE_ROOT" apply --plan /private/path/cleanup-plan.json \
-  --verified-backup-id BACKUP_ID --max-items 2 --max-bytes 5000000000
+  --verified-backup-id BACKUP_ID --max-items 2 --max-bytes 5000000000 --max-seconds 60
 ```
 
 Review the generated candidate paths and byte counts before applying. Apply
@@ -148,8 +158,8 @@ The deployment lock and repository lock prevent concurrent changes. Deployment
 changes, changed target metadata or a plan older than 24 hours stop cleanup.
 Regenerate the plan after each batch and check readiness before continuing.
 
-Each target is atomically detached into a private `maintenance/<id>` directory,
-then removed. A JSON journal records the original path and result. Recovery
+Each target is atomically detached into a private `maintenance/<id>` batch directory,
+then removed. A JSON journal records every original path and result. Recovery
 records whose runtimes were removed are marked retired. If interrupted, inspect
 the journal and any remaining quarantine data before resuming maintenance;
 subsequent cleanup refuses to proceed while a journal remains unfinished.
