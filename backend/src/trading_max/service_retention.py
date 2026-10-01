@@ -9,20 +9,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
 import stat
 import subprocess
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .backup_repository import BackupRepository, atomic_json, exclusive_lock
+from .infrastructure.durable_files import durable_directory, sync_directory
 from .infrastructure.verified_chunks import ChunkPathCache
 
 _RELEASE = re.compile(r"(?:previous-)?[0-9a-f]{12}-[a-z0-9_]{8}")
 _ARCHIVE = re.compile(r"trading_max-\d{8}T\d{6}Z\.tar\.gz")
+_SMALL_FILE_KINDS = {"backup-blob", "runtime-dependency"}
 _TERMINAL = {"healthy", "rolled-back", "failed-before-cutover"}
 _KNOWN = _TERMINAL | {
     "building",
@@ -106,6 +110,27 @@ def retained_dates(
             buckets.setdefault(key(instant), name)
         keep.update(list(buckets.values())[:limit])
     return keep
+
+
+def _cleanup_batches(items: list[dict]):
+    """Bound journal rewrites and deployment yield latency independently of backlog."""
+    batch = []
+    size = 0
+    for item in items:
+        if batch and (
+            len(batch) >= 64
+            or size + item["bytes"] > 8 * 1024 * 1024
+            or item["kind"] not in _SMALL_FILE_KINDS
+        ):
+            yield batch
+            batch, size = [], 0
+        batch.append(item)
+        size += item["bytes"]
+        if item["kind"] not in _SMALL_FILE_KINDS:
+            yield batch
+            batch, size = [], 0
+    if batch:
+        yield batch
 
 
 def retain_immutable_coverage(manifests: dict[str, dict], keep: set[str]) -> set[str]:
@@ -463,7 +488,11 @@ class ServiceRetention:
         if not plan["items"]:
             return {"plan": str(plan_path), "removedItems": 0, "removedBytes": 0}
         result = self.apply(
-            plan, verified_backup_id=verified_backup_id, max_items=64, max_bytes=2_000_000_000
+            plan,
+            verified_backup_id=verified_backup_id,
+            max_items=16_384,
+            max_bytes=2_000_000_000,
+            max_seconds=60,
         )
         return {"plan": str(plan_path), **result}
 
@@ -474,8 +503,10 @@ class ServiceRetention:
         verified_backup_id: str,
         max_items: int = 2,
         max_bytes: int = 5_000_000_000,
+        max_seconds: float = 60,
     ) -> dict:
-        if max_items < 1 or max_bytes < 1:
+        started = time.monotonic()
+        if max_items < 1 or max_bytes < 1 or not math.isfinite(max_seconds) or max_seconds <= 0:
             raise ValueError("cleanup limits must be positive")
         if plan.get("schemaVersion") != 1 or plan.get("service") != str(self.service):
             raise ValueError("cleanup plan belongs to another service")
@@ -513,59 +544,103 @@ class ServiceRetention:
                 for kind, path in self._eligible(context)
             }
             selected = []
+            selected_paths = set()
+            candidate_items = candidate_bytes = 0
             total = 0
             for item in plan["items"]:
                 if (item["kind"], item["path"]) not in eligible:
                     raise ValueError("cleanup target is no longer eligible")
                 if item["path"] == str(backup_path.relative_to(self.service)):
                     continue
+                candidate_items += 1
+                candidate_bytes += item["bytes"]
                 if len(selected) >= max_items or total + item["bytes"] > max_bytes:
                     continue
-                if any(previous["path"] == item["path"] for previous in selected):
+                if item["path"] in selected_paths:
                     raise ValueError("duplicate cleanup target")
                 actual = inventory(self.service / item["path"])
                 if any(actual[key] != item[key] for key in actual):
                     raise ValueError("cleanup target changed; generate a new plan")
                 selected.append(item)
+                selected_paths.add(item["path"])
                 total += item["bytes"]
-            transaction = self.service / "maintenance" / uuid.uuid4().hex
-            transaction.mkdir(parents=True, mode=0o700)
-            journal = {
-                "schemaVersion": 1,
-                "backupId": verified_backup_id,
-                "startedAt": self.now.isoformat(),
-                "items": [],
-                "removedBytes": 0,
-            }
-            journal_path = transaction / "journal.json"
-            atomic_json(journal_path, journal)
-            for index, item in enumerate(selected):
-                source = self.service / item["path"]
-                trash = transaction / str(index)
-                record = {**item, "quarantine": str(trash), "status": "pending"}
-                journal["items"].append(record)
-                atomic_json(journal_path, journal)
-                if inventory(source)["fingerprint"] != item["fingerprint"]:
-                    raise ValueError("cleanup target changed immediately before removal")
-                source.rename(trash)
-                record["status"] = "detached"
-                atomic_json(journal_path, journal)
-                if trash.is_dir():
-                    shutil.rmtree(trash)
-                else:
-                    trash.unlink()
-                record["status"] = "removed"
-                if item["kind"] == "release":
-                    for name, deployment in context["records"].items():
-                        if str(source) in (deployment["candidate"], deployment["previous"]):
-                            deployment["retiredRuntimePaths"] = sorted(
-                                set(deployment.get("retiredRuntimePaths", [])) | {str(source)}
-                            )
-                            atomic_json(self.service / "deployments" / (name + ".json"), deployment)
-                journal["removedBytes"] += item["bytes"]
-                atomic_json(journal_path, journal)
+            cleanup_started = time.monotonic()
+            from .background_backup import deployment_requested
+
+            journals = []
+            removed_items = removed_bytes = 0
+            limit_reason = None
+            for batch in _cleanup_batches(selected):
+                # Only yield between committed batches, never leave a partial
+                # quarantine merely because a time budget or deployment is due.
+                if deployment_requested(self.service):
+                    raise InterruptedError("cleanup yielded to requested deployment")
+                self.repository._progress(
+                    "retention-remove", files=removed_items, totalFiles=len(selected)
+                )
+                if time.monotonic() - cleanup_started >= max_seconds:
+                    limit_reason = "time-budget"
+                    break
+                journals.append(self._remove_batch(batch, context, verified_backup_id))
+                removed_items += len(batch)
+                removed_bytes += sum(item["bytes"] for item in batch)
             return {
-                "journal": str(journal_path),
-                "removedItems": len(selected),
-                "removedBytes": journal["removedBytes"],
+                "journal": journals[0] if journals else None,
+                "journals": journals,
+                "removedItems": removed_items,
+                "removedBytes": removed_bytes,
+                "remainingItems": candidate_items - removed_items,
+                "remainingBytes": candidate_bytes - removed_bytes,
+                "limitReason": limit_reason
+                or ("item-or-byte-budget" if removed_items < candidate_items else None),
+                "seconds": round(time.monotonic() - started, 3),
+                "cleanupSeconds": round(time.monotonic() - cleanup_started, 3),
             }
+
+    def _remove_batch(self, items: list[dict], context: dict, backup_id: str) -> str:
+        transaction = self.service / "maintenance" / uuid.uuid4().hex
+        durable_directory(transaction)
+        journal = {
+            "schemaVersion": 1,
+            "backupId": backup_id,
+            "startedAt": datetime.now(UTC).isoformat(),
+            "items": [
+                {**item, "quarantine": str(transaction / str(i)), "status": "pending"}
+                for i, item in enumerate(items)
+            ],
+            "removedBytes": 0,
+        }
+        journal_path = transaction / "journal.json"
+        atomic_json(journal_path, journal)
+        parents = set()
+        for record in journal["items"]:
+            source = self.service / record["path"]
+            if inventory(source)["fingerprint"] != record["fingerprint"]:
+                raise ValueError("cleanup target changed immediately before removal")
+            source.rename(record["quarantine"])
+            parents.add(source.parent)
+        for parent in parents | {transaction}:
+            sync_directory(parent)
+        for record in journal["items"]:
+            record["status"] = "detached"
+        atomic_json(journal_path, journal)
+        for record in journal["items"]:
+            trash = Path(record["quarantine"])
+            if trash.is_dir():
+                shutil.rmtree(trash)
+            else:
+                trash.unlink()
+            if record["kind"] == "release":
+                source = str(self.service / record["path"])
+                for name, deployment in context["records"].items():
+                    if source in (deployment["candidate"], deployment["previous"]):
+                        deployment["retiredRuntimePaths"] = sorted(
+                            set(deployment.get("retiredRuntimePaths", [])) | {source}
+                        )
+                        atomic_json(self.service / "deployments" / (name + ".json"), deployment)
+        sync_directory(transaction)
+        for record in journal["items"]:
+            record["status"] = "removed"
+        journal["removedBytes"] = sum(item["bytes"] for item in items)
+        atomic_json(journal_path, journal)
+        return str(journal_path)
