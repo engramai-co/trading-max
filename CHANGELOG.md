@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-10-01
+
+### Fixed
+
+- Import operator-created offline emergency checkpoints into the shared recovery
+  object store without changing their original date, files or snapshot view.
+  Retire the full source copy only after independently restoring and validating
+  every file, database and historical reference; preserve a durable receipt and
+  resume interrupted imports or removals without discarding the recovery point.
+
 ## [1.9.7] - 2026-09-30
 
 ### Fixed
