@@ -12,6 +12,7 @@ from pathlib import Path
 
 from trading_max.background_backup import deployment_requested, run_background
 from trading_max.backup_repository import BackupRepository
+from trading_max.checkpoint_migration import migrate_checkpoint
 from trading_max.pack_maintenance import nightly_packs
 from trading_max.physical_recovery import archive_checkpoint
 from trading_max.recovery_checkpoint import checkpoint
@@ -50,6 +51,9 @@ def main() -> int:
     archive_import = sub.add_parser("import-archive")
     archive_import.add_argument("archive", type=Path)
     archive_import.add_argument("--max-bytes", type=int, default=64 * 1024**3)
+    checkpoint_import = sub.add_parser("import-checkpoint")
+    checkpoint_import.add_argument("directory", type=Path)
+    checkpoint_import.add_argument("--retire", action="store_true")
     verify = sub.add_parser("verify")
     verify.add_argument("backup_id")
     restore = sub.add_parser("restore")
@@ -64,6 +68,10 @@ def main() -> int:
 
     def progress(details: dict) -> None:
         nonlocal last_report, last_phase
+        if args.command == "import-checkpoint" and deployment_requested(
+            args.repository.expanduser().resolve().parent.parent
+        ):
+            raise InterruptedError("checkpoint import yielded to deployment; rerun to resume")
         if (
             args.command == "background"
             and args.service_root
@@ -147,6 +155,8 @@ def main() -> int:
                 result["storage"] = nightly_storage(maintenance.service, args.state_root)
     elif args.command == "import-archive":
         result = repository.import_archive(args.archive, max_bytes=args.max_bytes)
+    elif args.command == "import-checkpoint":
+        result = migrate_checkpoint(repository, args.directory, retire=args.retire)
     elif args.command == "verify":
         result = repository.verify(args.backup_id)
     else:

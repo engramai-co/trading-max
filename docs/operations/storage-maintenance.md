@@ -9,6 +9,42 @@ original credential store and private bootstrap directory.
 
 ## Independent deduplicated backups
 
+### Retiring an offline emergency checkpoint
+
+Ordinary queued checkpoints already remove their staging copy after verified
+archival. Older operator-created `trading-max-offline-apfs-checkpoint-v1`
+directories need an explicit import; ordinary retention never guesses that a
+newer snapshot covers an older emergency copy.
+
+For a reviewed checkpoint inside this service's `backups/emergency-checkpoints`,
+run the following while no other backup or deployment is holding the repository
+lock. This is online maintenance and does not stop the application:
+
+```bash
+"$SERVICE_ROOT/app/.venv/bin/python" "$SERVICE_ROOT/app/tools/manage_backups.py" \
+  --repository "$SERVICE_ROOT/backups/repository" import-checkpoint \
+  "$SERVICE_ROOT/backups/emergency-checkpoints/CHECKPOINT_NAME" --retire
+```
+
+Omit `--retire` to import and validate while keeping the complete original tree.
+The importer reuses identical repository bytes, preserves the original recovery
+date and file manifest, and restores every file into an independent temporary
+tree before removing the source. Allow temporary disk space for that restore.
+It checks hashes, SQLite integrity, snapshot identity, pack locators and all
+historical references. Unknown formats, unlisted files, changed bytes and
+symlinks stop retirement.
+
+The original manifest and a small `retirement.json` receipt remain. An
+interruption before retirement leaves the original copy intact; an interruption
+during removal leaves `.retiring-state`. Rerun the same command with `--retire`
+to verify the published recovery point again and finish only the remaining
+owned files. Retention protects the published recovery point while a retirement
+is unfinished. Imports have deterministic IDs, so retries do not create new
+recovery points. The original date means an imported checkpoint cannot satisfy
+the requirement for a fresh backup of the running service.
+
+### Regular repository backups
+
 Deployments and the installed nightly LaunchAgent use
 `service-root/backups/repository`. Each immutable manifest identifies independent,
 SHA-256-checked file blobs. Unchanged files are shared between backup manifests,
