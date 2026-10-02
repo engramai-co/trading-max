@@ -28,6 +28,34 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 POLICY = "object-pack-policy.json"
 HOT_BYTES = 256 * 1024
 COLD_BYTES = 8 * 1024 * 1024
+NIGHTLY_FILES = 65_536
+NIGHTLY_BYTES = 2 * 1024 * 1024 * 1024
+NIGHTLY_SECONDS = 120
+
+
+class PackWindow:
+    """Yield only between complete, verified and durably retired packs."""
+
+    def __init__(self, seconds: float, *, should_yield=None, progress=None):
+        if seconds <= 0:
+            raise ValueError("packing time budget must be positive")
+        self.started = time.monotonic()
+        self.deadline = self.started + seconds
+        self.should_yield = should_yield
+        self.progress = progress
+        self.reason: str | None = None
+
+    def stopped(self) -> bool:
+        if self.reason is None:
+            if self.should_yield and self.should_yield():
+                self.reason = "deployment-request"
+            elif time.monotonic() >= self.deadline:
+                self.reason = "time-budget"
+        return self.reason is not None
+
+    def report(self, **details) -> None:
+        if self.progress:
+            self.progress(details)
 
 
 def enabled(root: Path) -> bool:
@@ -122,7 +150,13 @@ class LoosePacker:
             self._finish(path, journal)
 
     def run(
-        self, candidates, *, target_bytes=HOT_BYTES, max_files=4096, max_bytes=256 * 1024 * 1024
+        self,
+        candidates,
+        *,
+        target_bytes=HOT_BYTES,
+        max_files=4096,
+        max_bytes=256 * 1024 * 1024,
+        window: PackWindow | None = None,
     ) -> dict:
         if not 0 < target_bytes <= MAX_BYTES or min(max_files, max_bytes) <= 0:
             raise ValueError("packing budgets must be positive and bounded")
@@ -168,21 +202,33 @@ class LoosePacker:
             sealed += result["bytes"]
             self._finish(journal_path, journal)
             pending, items, pending_bytes = {}, [], 0
+            if window:
+                window.report(
+                    convertedFiles=count, retiredFileBytes=retired, sealedFileBytes=sealed
+                )
 
         for path, key, encoding in candidates:
+            if not pending and window and window.stopped():
+                break
             if not path.exists() and self.packs.contains(key):
                 self.packs.read(key)  # A resumed journal already retired this alias.
                 continue
             if count + len(items) >= max_files:
+                if window:
+                    window.reason = "item-budget"
                 break
             relative = path.relative_to(self.root).as_posix()
             self._path(relative)
             before = stamp(path)
             raw, physical_digest = _read(path, encoding)
             if consumed + len(raw) > max_bytes:
+                if window:
+                    window.reason = "byte-budget"
                 break
             if pending and (pending_bytes + len(raw) > target_bytes or len(items) >= 4096):
                 flush()
+                if window and window.stopped():
+                    break  # The next original has only been read; leave it intact.
             if stamp(path) != before:
                 raise ValueError("loose source changed while reading; preserved")
             items.append(
@@ -250,6 +296,7 @@ def pack_state(state: Path, journals: Path, **budgets) -> dict:
             target_bytes=HOT_BYTES,
             max_files=remaining_files,
             max_bytes=remaining_bytes,
+            window=budgets.get("window"),
         )
         return {key: cold[key] + warm[key] for key in cold}
     return cold
@@ -279,6 +326,7 @@ def pack_repository(repository: BackupRepository, journals: Path, **budgets) -> 
             target_bytes=COLD_BYTES,
             max_files=remaining_files,
             max_bytes=remaining_bytes,
+            window=budgets.get("window"),
         )
         result = {key: result[key] + other[key] for key in result}
     return result
@@ -308,6 +356,26 @@ def compact_manifests(repository: BackupRepository, *, max_files=64) -> dict:
     return {"convertedManifests": count, "originalBytes": original, "descriptorBytes": after}
 
 
+def _nightly_batch(service, target, operation, remaining, *, progress=None) -> dict:
+    from .background_backup import deployment_requested
+
+    def report(details):
+        if progress:
+            progress({"phase": "packing-" + target, **details})
+
+    window = PackWindow(
+        NIGHTLY_SECONDS, should_yield=lambda: deployment_requested(service), progress=report
+    )
+    result = operation(max_files=NIGHTLY_FILES, max_bytes=NIGHTLY_BYTES, window=window)
+    count = remaining()
+    return {
+        **result,
+        "seconds": round(time.monotonic() - window.started, 3),
+        "remainingFiles": count,
+        "limitReason": (window.reason or "new-publications") if count else None,
+    }
+
+
 def nightly_packs(service: Path, state: Path, backup_id: str, *, progress=None) -> dict:
     """Append sealed batches after a fresh verified backup; never force activation."""
     from .backup_repository import exclusive_lock
@@ -326,12 +394,35 @@ def nightly_packs(service: Path, state: Path, backup_id: str, *, progress=None) 
         if not repository._verify(manifest).get("snapshotRunId"):
             raise ValueError("nightly packing requires independent published-state recovery")
         journals = service / "maintenance/object-packs"
+        state_result = _nightly_batch(
+            service,
+            "state",
+            lambda **budgets: pack_state(state, journals / "state", **budgets),
+            lambda: sum(1 for _ in artifact_candidates(state / "artifacts")),
+            progress=progress,
+        )
+        backup_result = _nightly_batch(
+            service,
+            "backups",
+            lambda **budgets: pack_repository(repository, journals / "backups", **budgets),
+            lambda: (
+                sum(1 for _ in artifact_candidates(repository.packed_store.root))
+                + sum(1 for p in repository.root.glob("packed/*.json") if _DIGEST.fullmatch(p.stem))
+                + sum(1 for p in repository.blobs.glob("*/*.gz") if _DIGEST.fullmatch(p.stem))
+            ),
+            progress=progress,
+        )
         result = {
             "enabled": True,
             "readers": readers,
-            "state": pack_state(state, journals / "state"),
-            "backups": pack_repository(repository, journals / "backups"),
-            "catalog": compact_manifests(repository),
+            "state": state_result,
+            "backups": backup_result,
+            "catalog": (
+                {"deferred": "deployment-request"}
+                if "deployment-request"
+                in (state_result["limitReason"], backup_result["limitReason"])
+                else compact_manifests(repository)
+            ),
         }
         atomic_json(journals / "latest.json", result)
         return result
