@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from trading_max.infrastructure.artifacts import ArtifactIntegrityError
 
 from services.api.trading_max_api.artifacts import ArtifactStore
 
@@ -116,6 +117,36 @@ def test_latest_manifest_cache_tracks_cross_process_publication(tmp_path: Path) 
         second.run_id,
         first.run_id,
     ]
+
+
+def test_manifest_reads_do_not_expand_unrelated_payloads(tmp_path, monkeypatch):
+    writer = ArtifactStore(tmp_path / "state")
+    item = writer.immutable_artifacts.put_json(key="fixture.json", payload={"n": 7})
+    published = writer.publish_typed(scope="accounts", source="synthetic", artifacts=[item])
+    reader = ArtifactStore(writer.data_root)
+
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("manifest-only read expanded an artifact")
+
+    monkeypatch.setattr(reader.immutable_artifacts, "get_ref", unexpected)
+    assert reader.latest_manifest().run_id == published.run_id
+    unprimed = ArtifactStore(writer.data_root)
+    monkeypatch.setattr(unprimed.immutable_artifacts, "get_ref", unexpected)
+    assert unprimed.load_manifest(published.run_id).run_id == published.run_id
+
+
+def test_lazy_manifest_reads_still_reject_corrupt_payloads_and_indexes(tmp_path):
+    writer = ArtifactStore(tmp_path / "state")
+    item = writer.immutable_artifacts.put_json(key="fixture.json", payload={"n": 7})
+    published = writer.publish_typed(scope="accounts", source="synthetic", artifacts=[item])
+    item.path.write_bytes(b"corrupted")
+    reader = ArtifactStore(writer.data_root)
+    assert reader.latest_manifest().run_id == published.run_id
+    with pytest.raises(ArtifactIntegrityError):
+        reader.read_json(published.run_id, "fixture.json")
+    path = writer.immutable_snapshots.snapshots_root / published.run_id / "manifest.json"
+    path.write_text("{}")
+    assert ArtifactStore(writer.data_root).latest_manifest() is None
 
 
 @pytest.mark.parametrize(

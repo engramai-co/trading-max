@@ -77,7 +77,10 @@ class ArtifactStore:
             if self._latest_cache is not None and self._latest_signature == signature:
                 return self._latest_cache
             try:
-                latest = self.immutable_snapshots.latest()
+                # A manifest is an authenticated index. Reading it must not
+                # reconstruct unrelated historical payloads on every new run.
+                # Payload readers still validate the content they actually use.
+                latest = self.immutable_snapshots.latest(verify_artifacts=False)
             except (FileNotFoundError, SnapshotIntegrityError):
                 return None
             if latest is None:
@@ -95,7 +98,9 @@ class ArtifactStore:
                 self._manifest_cache.move_to_end(run_id)
                 return cached
         try:
-            manifest = self._api_manifest(self.immutable_snapshots.load(run_id).manifest)
+            manifest = self._api_manifest(
+                self.immutable_snapshots.load(run_id, verify_artifacts=False).manifest
+            )
         except FileNotFoundError:
             raise FileNotFoundError(f"snapshot not found: {run_id}") from None
         with self._manifest_lock:

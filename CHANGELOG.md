@@ -10,6 +10,19 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.9.11] - 2026-10-03
+
+### Fixed
+
+- Read API snapshot indexes without expanding every unrelated artifact after
+  each publication. Manifest identity remains checked, and payload reads still
+  validate their original content, keeping health checks and history selection
+  independent of full historical envelope reconstruction.
+- Prepare sealed recovery readers to restore original bytes from the existing
+  compressed blob and pack pools, with declared-size limits, corruption checks,
+  and an independent compatibility probe. Compression remains inactive until
+  current and retained rollback recovery tools have passed the rollout gate.
+
 ## [1.9.10] - 2026-10-02
 
 ### Fixed

@@ -28,6 +28,18 @@ from .infrastructure.object_packs import decode as decode_pack
 from .infrastructure.verified_chunks import ChunkPathCache
 from .recovery_checkpoint import FORMAT, check_snapshot, copy_independent
 
+COMPRESSION_POLICY = "compressed-recovery-policy.json"
+
+
+def compression_enabled(repository) -> bool:
+    path = repository.root / COMPRESSION_POLICY
+    if path.is_symlink():
+        raise ValueError("recovery compression policy must not be a symlink")
+    return path.is_file() and json.loads(path.read_bytes()) == {
+        "schemaVersion": 1,
+        "enabled": True,
+    }
+
 
 def raw_path(repository, digest: str) -> Path:
     if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
@@ -206,6 +218,7 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
             return metadata["result"]
         tree = directory / "state"
         started = time.monotonic()
+        compressed = compression_enabled(repository)
         files = {}
         reused = written = 0
         journal = repository.root / "physical-journal.sqlite3"
@@ -230,7 +243,7 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
                     cached = previous and source_entry["sourceStamp"] and previous[0] == stamp
                     digest = previous[1] if cached else digest_file(source)
                     target = raw_path(repository, digest)
-                    if target.is_file():
+                    if target.is_file() or (compressed and repository.has_blob(digest)):
                         reused += 1
                     else:
                         target.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
@@ -328,17 +341,41 @@ def verify_objects(
         if type(size) is not int or size < 0:
             raise ValueError("invalid recovery file size")
         source = raw_path(repository, entry["sha256"])
-        if not source.is_file() or source.stat().st_size != size:
-            raise ValueError("recovery object missing or size mismatch")
-        if entry["sha256"] not in checked:
-            if digest_file(source) != entry["sha256"]:
-                raise ValueError("recovery object checksum mismatch")
-            checked.add(entry["sha256"])
+        target = destination / relative if destination else None
+        if source.is_file():
+            if source.stat().st_size != size:
+                raise ValueError("recovery object size mismatch")
+            if entry["sha256"] not in checked:
+                if digest_file(source) != entry["sha256"]:
+                    raise ValueError("recovery object checksum mismatch")
+                checked.add(entry["sha256"])
+            if target:
+                copy_independent(source, target)
+        else:
+            # Recovery files may use the same verified gzip/packed byte pool as
+            # older logical backups. Never fall back past a corrupt raw alias.
+            if target:
+                target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            digest = hashlib.sha256()
+            length = 0
+            with repository.open_blob(entry["sha256"]) as stream:
+                output = target.open("wb") if target else None
+                try:
+                    while block := stream.read(1024 * 1024):
+                        length += len(block)
+                        if length > size:
+                            raise ValueError("recovery object exceeds declared size")
+                        digest.update(block)
+                        if output:
+                            output.write(block)
+                finally:
+                    if output:
+                        output.close()
+            if length != size or digest.hexdigest() != entry["sha256"]:
+                raise ValueError("recovery object checksum or size mismatch")
         if compare and digest_file(compare / relative) != entry["sha256"]:
             raise ValueError("recovery journal does not match checkpoint bytes")
-        if destination:
-            target = destination / relative
-            copy_independent(source, target)
+        if target:
             target.chmod(entry.get("mode", 0o600) & 0o700)
         if number % 128 == 0:
             repository._progress("verifying-physical-bytes", files=number, totalFiles=len(files))

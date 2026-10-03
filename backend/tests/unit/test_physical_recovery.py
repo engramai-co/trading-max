@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import shutil
 import sqlite3
@@ -68,6 +70,66 @@ def test_physical_recovery_survives_source_loss_and_preserves_bytes(tmp_path, pa
     )
     with pytest.raises(FileExistsError):
         repo.restore(result["id"], restored)
+
+
+@pytest.mark.parametrize("representation", ["gzip", "pack"])
+def test_sealed_recovery_reads_compressed_pool_without_recreating_raw_files(
+    tmp_path, representation
+):
+    state = tmp_path / "state"
+    run_id, artifact_id = example(state, packed=True)
+    expected = SnapshotStore(state).artifacts.content_bytes(artifact_id)
+    repo = BackupRepository(tmp_path / "repository")
+    backup = repo.create(state, artifact_encoding="sealed")
+    originals = list((repo.root / "physical").glob("*/*"))
+    for path in originals:
+        raw = path.read_bytes()
+        if representation == "gzip":
+            target = repo.blob_path(path.name)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(gzip.compress(raw, mtime=0))
+        else:
+            repo.packs.add({"blob/" + path.name: raw})
+        path.unlink()
+    if representation == "pack":
+        repo.packs.close()
+        repo.packs.index.unlink()
+        repo.packs.rebuild()
+    (repo.root / physical.COMPRESSION_POLICY).write_text(
+        json.dumps({"schemaVersion": 1, "enabled": True})
+    )
+    assert repo.verify(backup["id"])["snapshotRunId"] == run_id
+    again = repo.create(state, artifact_encoding="sealed")
+    assert again["writtenBytes"] == 0
+    assert not list((repo.root / "physical").glob("*/*"))
+    shutil.rmtree(state)
+    repo.restore(backup["id"], tmp_path / "restored")
+    restored = SnapshotStore(tmp_path / "restored")
+    assert restored.latest().manifest.run_id == run_id
+    assert restored.artifacts.content_bytes(artifact_id) == expected
+
+
+@pytest.mark.parametrize("problem", ["digest", "size", "raw-corrupt"])
+def test_compressed_recovery_fails_closed(tmp_path, problem):
+    repo = BackupRepository(tmp_path / "repository")
+    raw = b"synthetic bytes"
+    digest = hashlib.sha256(raw).hexdigest()
+    path = repo.blob_path(digest)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(gzip.compress(raw if problem != "digest" else b"corrupt content"))
+    if problem == "raw-corrupt":
+        alias = physical.raw_path(repo, digest)
+        alias.parent.mkdir(parents=True)
+        alias.write_bytes(b"corrupt bytes!")
+    files = {"synthetic.txt": {"sha256": digest, "size": 1 if problem == "size" else len(raw)}}
+    with pytest.raises(ValueError, match=r"size|checksum"):
+        physical.verify_objects(repo, files, tmp_path / "restored")
+
+
+def test_sealed_reader_probe_covers_reuse_restore_and_index_rebuild():
+    from trading_max.storage_compatibility import _SEALED_PROBE
+
+    exec(_SEALED_PROBE, {})  # noqa: S102 - fixed synthetic compatibility probe
 
 
 def test_resumes_after_interruption_without_recopying_completed_files(tmp_path, monkeypatch):
