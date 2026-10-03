@@ -376,12 +376,17 @@ def _nightly_batch(service, target, operation, remaining, *, progress=None) -> d
     }
 
 
-def nightly_packs(service: Path, state: Path, backup_id: str, *, progress=None) -> dict:
+def nightly_packs(
+    service: Path, state: Path, backup_id: str, *, progress=None, repository=None
+) -> dict:
     """Append sealed batches after a fresh verified backup; never force activation."""
     from .backup_repository import exclusive_lock
     from .storage_compatibility import verify_retained_readers
 
-    repository = BackupRepository(service / "backups/repository", progress=progress)
+    expected = (service / "backups/repository").resolve()
+    repository = repository or BackupRepository(expected, progress=progress)
+    if repository.root != expected:
+        raise ValueError("nightly packing repository belongs to another service")
     if not enabled(state) or not enabled(repository.root):
         return {"enabled": False}
     with exclusive_lock(service / ".deployment.lock"), exclusive_lock(repository.lock):

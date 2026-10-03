@@ -11,6 +11,7 @@ from pathlib import Path
 from .backup_repository import atomic_json, exclusive_lock
 from .physical_recovery import archive_checkpoint
 from .recovery_checkpoint import checkpoint
+from .recovery_verification import VerificationSession
 
 
 def deployment_requested(service: Path) -> bool:
@@ -64,23 +65,33 @@ def run_background(
     status = {**previous, "updatedAt": datetime.now(UTC).isoformat()}
     started = time.monotonic()
     parent_progress = repository.progress
+    parent_session = repository.verification_session
     last_progress = 0.0
+    last_phase = None
+    in_maintenance = False
 
     def save(state_name, **values):
         status.update(status=state_name, updatedAt=datetime.now(UTC).isoformat(), **values)
         atomic_json(status_path, status)
 
     def progress(details):
-        nonlocal last_progress
+        nonlocal last_progress, last_phase
         # A deployment only waits for a bounded file operation, never the full
         # archival job. Completed objects/journal survive this cooperative yield.
-        if service and (deployment_requested(service) or deployment_active(service)):
+        if service and (
+            deployment_requested(service) or (not in_maintenance and deployment_active(service))
+        ):
             raise InterruptedError("backup yielded to deployment; checkpoint retained")
         if parent_progress:
             parent_progress(details)
-        if time.monotonic() - last_progress > 5:
-            save("running", progress=details)
+        if details["phase"] != last_phase or time.monotonic() - last_progress > 5:
+            save(
+                "running",
+                progress=details,
+                seconds=round(time.monotonic() - started, 3),
+            )
             last_progress = time.monotonic()
+            last_phase = details["phase"]
 
     with exclusive_lock(repository.root / ".background.lock"):
         wait_until = time.monotonic() + wait_for_deployment
@@ -93,12 +104,28 @@ def run_background(
         last = status.get("lastBackup", {}).get("createdAt") or status.get("lastSuccessAt")
         due = not last or datetime.now(UTC) - datetime.fromisoformat(last) >= timedelta(hours=24)
         maintenance_only = (
-            not queued and not force and not due and status.get("maintenanceError") and maintain
+            not queued
+            and not force
+            and not due
+            and (status.get("maintenanceError") or status.get("maintenancePending"))
+            and maintain
         )
         if not queued and not force and not due and not maintenance_only:
             return {**status, "status": "idle", "reason": "recovery-point-current"}
         repository.progress = progress
-        save("running", startedAt=datetime.now(UTC).isoformat(), error=None, reason=None)
+        repository.verification_session = VerificationSession()
+        save(
+            "running",
+            startedAt=datetime.now(UTC).isoformat(),
+            error=None,
+            reason=None,
+            seconds=0,
+            phase="starting",
+            progress=None,
+            maintenance=None,
+            maintenanceError=None,
+            pending=len(queued),
+        )
         results = []
         try:
             if not queued and not maintenance_only:
@@ -119,10 +146,14 @@ def run_background(
             # A successful recovery point remains successful if optional bounded
             # storage maintenance fails. Its error is recorded separately.
             if maintain:
-                save("running", phase="maintenance")
+                in_maintenance = True
+                save("running", phase="maintenance", maintenancePending=True)
                 try:
                     status["maintenance"] = maintain(results[-1])
                     status["maintenanceError"] = None
+                    status["maintenancePending"] = False
+                except (InterruptedError, TimeoutError):
+                    raise
                 except (OSError, ValueError, RuntimeError) as exc:
                     status["maintenanceError"] = type(exc).__name__ + ": " + str(exc)
             save(
@@ -149,3 +180,4 @@ def run_background(
             raise
         finally:
             repository.progress = parent_progress
+            repository.verification_session = parent_session

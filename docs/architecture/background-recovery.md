@@ -1,6 +1,6 @@
 # Incremental background recovery
 
-Tracking: [backup maintenance issue #91](https://github.com/engramai-co/trading-max/issues/91).
+Tracking: [bounded recovery maintenance #100](https://github.com/engramai-co/trading-max/issues/100).
 
 Managed recovery preserves the existing physical chunks, compressed artifacts
 and sealed packs. Expanding every historical JSON envelope reverses the store's
@@ -56,6 +56,16 @@ readable. New `sealed` manifests require the new recovery tool; restored state
 uses the existing application storage format and can be checked by retained
 object-pack-capable runtimes.
 
+One background invocation can reuse its successful independent verification for
+subsequent retention and packing. The in-memory proof binds the complete manifest,
+repository location, source identities (including inode, size, mtime and ctime)
+and compressed locator databases/WAL. Sources are compared before and after
+verification; changed sources trigger full verification. Proofs never survive a
+process restart and explicit `verify`/`restore` always read all original bytes.
+Nightly retention holds deployment and repository locks continuously between
+planning and removal, so historical reachability is scanned once. An externally
+saved plan still requires a fresh eligibility scan before application.
+
 Recovery readers from 1.9.11 can also reconstruct a sealed manifest's exact
 original files from the existing gzip/blob or immutable-pack pool. A present
 but corrupt raw copy remains an error; only an absent alias falls through.
@@ -74,6 +84,8 @@ otherwise a verified point less than 24 hours old makes the check a no-op.
 `background-status.json` records the last successful recovery, active/pending
 phase, elapsed time and failures. Maintenance errors remain distinct from backup
 success and are retried without creating another full recovery point.
+Maintenance progress updates the same status and current elapsed time. A yielded
+maintenance pass remains pending and resumes without capturing another backup.
 
 A deployment request asks background work to yield at a safe file boundary.
 The deployment lock wait is bounded to 30 seconds. An active deployment defers

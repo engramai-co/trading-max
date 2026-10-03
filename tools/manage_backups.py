@@ -113,15 +113,18 @@ def main() -> int:
         def maintain(result):
             if not args.service_root:
                 return None
-            maintenance = ServiceRetention(args.service_root)
+            maintenance = ServiceRetention(args.service_root, repository=repository)
             if maintenance.repository.root != repository.root:
                 raise ValueError("managed backup must use this service's recovery repository")
-            maintenance.repository.progress = progress
             return {
-                "packing": nightly_packs(
-                    maintenance.service, args.state_root, result["id"], progress=progress
-                ),
                 "retention": maintenance.maintain_repository(result["id"]),
+                "packing": nightly_packs(
+                    maintenance.service,
+                    args.state_root,
+                    result["id"],
+                    progress=repository.progress,
+                    repository=repository,
+                ),
                 "storage": nightly_storage(maintenance.service, args.state_root),
             }
 

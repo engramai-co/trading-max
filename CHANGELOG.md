@@ -10,6 +10,18 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.9.12] - 2026-10-03
+
+### Fixed
+
+- Reuse an independent recovery verification within one background run only
+  while the manifest, file identities and compressed locators remain unchanged.
+  Keep explicit verification and restore exhaustive, discard proofs on restart,
+  and scan nightly retention reachability once under uninterrupted locks.
+- Report current maintenance progress and elapsed time, and resume interrupted
+  maintenance without producing another full recovery point. Retention and
+  packing use the same verified repository session.
+
 ## [1.9.11] - 2026-10-03
 
 ### Fixed

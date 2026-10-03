@@ -177,7 +177,14 @@ def retain_immutable_coverage(manifests: dict[str, dict], keep: set[str]) -> set
 
 
 class ServiceRetention:
-    def __init__(self, service: Path, *, now: datetime | None = None, min_age_hours: int = 24):
+    def __init__(
+        self,
+        service: Path,
+        *,
+        now: datetime | None = None,
+        min_age_hours: int = 24,
+        repository=None,
+    ):
         self.service = service.expanduser().resolve()
         self.now = now or datetime.now(UTC)
         if min_age_hours < 24:
@@ -197,7 +204,10 @@ class ServiceRetention:
         app = self.service / "app"
         if not app.is_symlink() or app.resolve(strict=True).parent != self.releases:
             raise ValueError("cleanup requires the immutable release layout")
-        self.repository = BackupRepository(self.backups / "repository")
+        expected = (self.backups / "repository").resolve()
+        self.repository = repository or BackupRepository(expected)
+        if self.repository.root != expected:
+            raise ValueError("cleanup repository belongs to another service")
 
     def _context(self) -> dict:
         active = (self.service / "app").resolve(strict=True)
@@ -456,45 +466,55 @@ class ServiceRetention:
             exclusive_lock(self.repository.lock),
         ):
             context = self._context()
-            items = [
-                {"kind": kind, "path": str(path.relative_to(self.service)), **inventory(path)}
-                for kind, path in self._eligible(context)
-            ]
-            return {
-                "schemaVersion": 1,
-                "service": str(self.service),
-                "createdAt": self.now.isoformat(),
-                "minAgeHours": self.min_age_hours,
-                "context": context["fingerprint"],
-                "protected": context["protected"],
-                "items": items,
-                "candidateBytes": sum(item["bytes"] for item in items),
-            }
+            return self._plan_locked(context, self._eligible(context))
+
+    def _plan_locked(self, context: dict, eligible: list) -> dict:
+        items = [
+            {"kind": kind, "path": str(path.relative_to(self.service)), **inventory(path)}
+            for kind, path in eligible
+        ]
+        return {
+            "schemaVersion": 1,
+            "service": str(self.service),
+            "createdAt": self.now.isoformat(),
+            "minAgeHours": self.min_age_hours,
+            "context": context["fingerprint"],
+            "protected": context["protected"],
+            "items": items,
+            "candidateBytes": sum(item["bytes"] for item in items),
+        }
 
     def maintain_repository(self, verified_backup_id: str) -> dict:
-        """Nightly bounded cleanup after a verified backup; protect rollback runtimes."""
-        plan = self.plan()
-        plan["items"] = [
-            item
-            for item in plan["items"]
-            if item["kind"]
-            in {"backup-manifest", "backup-blob", "release", "toolchain", "runtime-dependency"}
-        ]
-        plan["candidateBytes"] = sum(item["bytes"] for item in plan["items"])
-        plan_path = self.service / "maintenance-plans" / (verified_backup_id + ".json")
-        if plan_path.parent.is_symlink():
-            raise ValueError("maintenance plan directory must not be a symlink")
-        atomic_json(plan_path, plan)
-        if not plan["items"]:
-            return {"plan": str(plan_path), "removedItems": 0, "removedBytes": 0}
-        result = self.apply(
-            plan,
-            verified_backup_id=verified_backup_id,
-            max_items=16_384,
-            max_bytes=2_000_000_000,
-            max_seconds=60,
-        )
-        return {"plan": str(plan_path), **result}
+        """Plan and apply under uninterrupted locks; scan historical reachability once."""
+        with (
+            exclusive_lock(self.service / ".deployment.lock"),
+            exclusive_lock(self.repository.lock),
+        ):
+            context = self._context()
+            eligible = self._eligible(context)
+            plan = self._plan_locked(context, eligible)
+            plan["items"] = [
+                item
+                for item in plan["items"]
+                if item["kind"]
+                in {"backup-manifest", "backup-blob", "release", "toolchain", "runtime-dependency"}
+            ]
+            plan["candidateBytes"] = sum(item["bytes"] for item in plan["items"])
+            plan_path = self.service / "maintenance-plans" / (verified_backup_id + ".json")
+            if plan_path.parent.is_symlink():
+                raise ValueError("maintenance plan directory must not be a symlink")
+            atomic_json(plan_path, plan)
+            if not plan["items"]:
+                return {"plan": str(plan_path), "removedItems": 0, "removedBytes": 0}
+            result = self._apply_locked(
+                plan,
+                verified_backup_id=verified_backup_id,
+                max_items=16_384,
+                max_bytes=2_000_000_000,
+                max_seconds=60,
+                prepared_eligible=eligible,
+            )
+            return {"plan": str(plan_path), **result}
 
     def apply(
         self,
@@ -505,6 +525,28 @@ class ServiceRetention:
         max_bytes: int = 5_000_000_000,
         max_seconds: float = 60,
     ) -> dict:
+        with (
+            exclusive_lock(self.service / ".deployment.lock"),
+            exclusive_lock(self.repository.lock),
+        ):
+            return self._apply_locked(
+                plan,
+                verified_backup_id=verified_backup_id,
+                max_items=max_items,
+                max_bytes=max_bytes,
+                max_seconds=max_seconds,
+            )
+
+    def _apply_locked(
+        self,
+        plan: dict,
+        *,
+        verified_backup_id: str,
+        max_items: int = 2,
+        max_bytes: int = 5_000_000_000,
+        max_seconds: float = 60,
+        prepared_eligible: list | None = None,
+    ) -> dict:
         started = time.monotonic()
         if max_items < 1 or max_bytes < 1 or not math.isfinite(max_seconds) or max_seconds <= 0:
             raise ValueError("cleanup limits must be positive")
@@ -514,88 +556,86 @@ class ServiceRetention:
             raise ValueError("cleanup plan expired; generate a new plan")
         if plan.get("minAgeHours") != self.min_age_hours:
             raise ValueError("cleanup policy changed")
-        with (
-            exclusive_lock(self.service / ".deployment.lock"),
-            exclusive_lock(self.repository.lock),
-        ):
-            # An interrupted removal can leave a detached directory. Preserve it
-            # for operator inspection instead of quietly stacking more cleanups.
-            for journal_path in (self.service / "maintenance").glob("*/journal.json"):
-                if journal_path.parent.is_symlink() or journal_path.is_symlink():
-                    raise ValueError("maintenance journal must not be a symlink")
-                journal = json.loads(journal_path.read_text())
-                if any(item["status"] != "removed" for item in journal["items"]):
-                    raise ValueError("unfinished cleanup journal; inspect quarantine first")
-            context = self._context()
-            if context["fingerprint"] != plan["context"]:
-                raise ValueError("deployment changed; generate a new cleanup plan")
-            backup_path = self.repository.manifest_path(verified_backup_id)
-            backup = self.repository.read_manifest(verified_backup_id)
-            active_record = context["records"].get(Path(context["active"]).name, {})
-            live_state = active_record.get("state")
-            if not live_state or backup.get("sourceState") != str(Path(live_state).resolve()):
-                raise ValueError("cleanup backup must belong to the active application state")
-            if datetime.fromisoformat(backup["createdAt"]) < self.now - timedelta(days=1):
-                raise ValueError("cleanup needs a recovery snapshot from the last 24 hours")
-            if not self.repository._verify(backup).get("snapshotRunId"):
-                raise ValueError("cleanup requires a verified published state snapshot")
-            eligible = {
-                (kind, str(path.relative_to(self.service)))
-                for kind, path in self._eligible(context)
-            }
-            selected = []
-            selected_paths = set()
-            candidate_items = candidate_bytes = 0
-            total = 0
-            for item in plan["items"]:
-                if (item["kind"], item["path"]) not in eligible:
-                    raise ValueError("cleanup target is no longer eligible")
-                if item["path"] == str(backup_path.relative_to(self.service)):
-                    continue
-                candidate_items += 1
-                candidate_bytes += item["bytes"]
-                if len(selected) >= max_items or total + item["bytes"] > max_bytes:
-                    continue
-                if item["path"] in selected_paths:
-                    raise ValueError("duplicate cleanup target")
-                actual = inventory(self.service / item["path"])
-                if any(actual[key] != item[key] for key in actual):
-                    raise ValueError("cleanup target changed; generate a new plan")
-                selected.append(item)
-                selected_paths.add(item["path"])
-                total += item["bytes"]
-            cleanup_started = time.monotonic()
-            from .background_backup import deployment_requested
+        # An interrupted removal can leave a detached directory. Preserve it
+        # for operator inspection instead of quietly stacking more cleanups.
+        for journal_path in (self.service / "maintenance").glob("*/journal.json"):
+            if journal_path.parent.is_symlink() or journal_path.is_symlink():
+                raise ValueError("maintenance journal must not be a symlink")
+            journal = json.loads(journal_path.read_text())
+            if any(item["status"] != "removed" for item in journal["items"]):
+                raise ValueError("unfinished cleanup journal; inspect quarantine first")
+        context = self._context()
+        if context["fingerprint"] != plan["context"]:
+            raise ValueError("deployment changed; generate a new cleanup plan")
+        backup_path = self.repository.manifest_path(verified_backup_id)
+        backup = self.repository.read_manifest(verified_backup_id)
+        active_record = context["records"].get(Path(context["active"]).name, {})
+        live_state = active_record.get("state")
+        if not live_state or backup.get("sourceState") != str(Path(live_state).resolve()):
+            raise ValueError("cleanup backup must belong to the active application state")
+        if datetime.fromisoformat(backup["createdAt"]) < self.now - timedelta(days=1):
+            raise ValueError("cleanup needs a recovery snapshot from the last 24 hours")
+        if not self.repository._verify(backup).get("snapshotRunId"):
+            raise ValueError("cleanup requires a verified published state snapshot")
+        eligible = {
+            (kind, str(path.relative_to(self.service)))
+            for kind, path in (
+                self._eligible(context) if prepared_eligible is None else prepared_eligible
+            )
+        }
+        selected = []
+        selected_paths = set()
+        candidate_items = candidate_bytes = 0
+        total = 0
+        for item in plan["items"]:
+            if (item["kind"], item["path"]) not in eligible:
+                raise ValueError("cleanup target is no longer eligible")
+            if item["path"] == str(backup_path.relative_to(self.service)):
+                continue
+            candidate_items += 1
+            candidate_bytes += item["bytes"]
+            if len(selected) >= max_items or total + item["bytes"] > max_bytes:
+                continue
+            if item["path"] in selected_paths:
+                raise ValueError("duplicate cleanup target")
+            actual = inventory(self.service / item["path"])
+            if any(actual[key] != item[key] for key in actual):
+                raise ValueError("cleanup target changed; generate a new plan")
+            selected.append(item)
+            selected_paths.add(item["path"])
+            total += item["bytes"]
+        cleanup_started = time.monotonic()
+        from .background_backup import deployment_requested
 
-            journals = []
-            removed_items = removed_bytes = 0
-            limit_reason = None
-            for batch in _cleanup_batches(selected):
-                # Only yield between committed batches, never leave a partial
-                # quarantine merely because a time budget or deployment is due.
-                if deployment_requested(self.service):
-                    raise InterruptedError("cleanup yielded to requested deployment")
-                self.repository._progress(
-                    "retention-remove", files=removed_items, totalFiles=len(selected)
-                )
-                if time.monotonic() - cleanup_started >= max_seconds:
-                    limit_reason = "time-budget"
-                    break
-                journals.append(self._remove_batch(batch, context, verified_backup_id))
-                removed_items += len(batch)
-                removed_bytes += sum(item["bytes"] for item in batch)
-            return {
-                "journal": journals[0] if journals else None,
-                "journals": journals,
-                "removedItems": removed_items,
-                "removedBytes": removed_bytes,
-                "remainingItems": candidate_items - removed_items,
-                "remainingBytes": candidate_bytes - removed_bytes,
-                "limitReason": limit_reason
-                or ("item-or-byte-budget" if removed_items < candidate_items else None),
-                "seconds": round(time.monotonic() - started, 3),
-                "cleanupSeconds": round(time.monotonic() - cleanup_started, 3),
-            }
+        journals = []
+        removed_items = removed_bytes = 0
+        limit_reason = None
+        for batch in _cleanup_batches(selected):
+            # Only yield between committed batches, never leave a partial
+            # quarantine merely because a time budget or deployment is due.
+            if deployment_requested(self.service):
+                raise InterruptedError("cleanup yielded to requested deployment")
+            self.repository._progress(
+                "retention-remove", files=removed_items, totalFiles=len(selected)
+            )
+            if time.monotonic() - cleanup_started >= max_seconds:
+                limit_reason = "time-budget"
+                break
+            journals.append(self._remove_batch(batch, context, verified_backup_id))
+            removed_items += len(batch)
+            removed_bytes += sum(item["bytes"] for item in batch)
+        return {
+            "journal": journals[0] if journals else None,
+            "journals": journals,
+            "removedItems": removed_items,
+            "removedBytes": removed_bytes,
+            "remainingItems": candidate_items - removed_items,
+            "remainingBytes": candidate_bytes - removed_bytes,
+            "limitReason": limit_reason
+            or ("item-or-byte-budget" if removed_items < candidate_items else None),
+            "seconds": round(time.monotonic() - started, 3),
+            "cleanupSeconds": round(time.monotonic() - cleanup_started, 3),
+        }
 
     def _remove_batch(self, items: list[dict], context: dict, backup_id: str) -> str:
         transaction = self.service / "maintenance" / uuid.uuid4().hex
