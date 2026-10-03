@@ -109,6 +109,20 @@ uv run python tools/check_release_readiness.py --public
 uv run python tools/check_public_history.py
 ```
 
+The frontend dependency audit runs `npm --prefix apps/web run audit:dependencies`.
+Until an upstream release fixes
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), the lint-only
+`micromatch` dependency uses the exact, integrity-locked
+[braces depth-limit patch](https://github.com/micromatch/braces/pull/72) at commit
+`28d440b5dd449dbf1fe6f3506cf94ecca4d02660`. This is an unmerged upstream patch,
+not a published patched npm version. npm still reports its unchanged `3.0.3`
+version. The audit retains those findings and accepts only this advisory for
+that exact development-only patch, after the installed-code regression tests
+pass. Other advisories, an altered source/digest, another copy, a production
+dependency or an audit failure still fail the gate. This temporary handling
+expires on 2026-11-03. Replace the override with the official fixed release and
+remove the exception once it is available; keep the regression tests.
+
 Use synthetic fixtures only. Do not add Trading 212 exports, portfolio
 snapshots, watchlists, SQLite files, Keychain exports, logs, generated charts,
 real-account screenshots, cached company logos, or LLM outputs. Review the

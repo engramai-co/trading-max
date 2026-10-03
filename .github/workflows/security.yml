@@ -59,7 +59,9 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Audit frontend dependencies
         working-directory: apps/web
-        run: npm audit --audit-level=high
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run audit:dependencies
       - name: Audit Pi transport dependencies
         working-directory: backend/src/trading_max/synthesis/_pi
         run: npm audit --audit-level=high
