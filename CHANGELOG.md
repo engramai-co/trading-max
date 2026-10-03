@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Security
+
+- Repair the pending 1.9.10 release's lint dependency audit with the pinned
+  upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
+  release correction does not change the running application or backup format.
+
 ## [1.9.10] - 2026-10-02
 
 ### Fixed
@@ -13,6 +19,14 @@ All notable public Trading Max releases are recorded here.
   seconds, yield to deployment requests between complete durable packs, and
   report time and remaining work. Preserve original bytes, independent recovery
   verification and compatibility with retained rollback readers.
+
+### Security
+
+- Pin the upstream braces nesting-depth fix for GHSA-vfj7-8cjw-p6xm in the
+  development-only Next.js lint dependency. Validate the patch with malicious
+  input and directory-matching regression tests. Keep audit findings visible;
+  scope temporary handling to the exact patched source and advisory until
+  2026-11-03, while all other high/critical findings continue to block release.
 
 ## [1.9.9] - 2026-10-01
 

@@ -18,7 +18,8 @@
     "check:api-types": "node scripts/check-api-types.mjs",
     "postbuild": "node ../../deploy/local/prepare-standalone.mjs",
     "start": "next start --hostname 127.0.0.1 --port 3413",
-    "lint": "eslint .",
+    "lint": "node --test scripts/check-lint-globs.test.mjs && eslint .",
+    "audit:dependencies": "node --test scripts/check-frontend-audit.test.mjs scripts/check-lint-globs.test.mjs && node scripts/check-frontend-audit.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test"
@@ -36,6 +37,11 @@
     "next": "16.3.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
+  },
+  "overrides": {
+    "micromatch@4.0.8": {
+      "braces": "https://codeload.github.com/micromatch/braces/tar.gz/28d440b5dd449dbf1fe6f3506cf94ecca4d02660"
+    }
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
