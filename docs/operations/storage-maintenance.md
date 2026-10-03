@@ -359,8 +359,13 @@ actual pack, manifest-rebuild and independent-restore probes.
 Use `activate` after those checks and a fresh independent recovery point. It
 writes a small versioned policy in state and the recovery repository; credentials
 are not part of it. Subsequent managed nightly backups publish compact catalog
-references and pack at most 4,096 live files / 256 MiB of logical input, plus the
-same bounded recovery batch. Unchanged sealed bytes are reused. A failed pack
+references and pack at most 65,536 live files / 2 GiB of logical input, plus the
+same bounded recovery batch. Each side has a 120-second packing budget, shared
+across its cold/hot or chunk/blob stages. Time limits and deployment requests
+yield between complete, verified packs; the current pack finishes before yielding.
+Reader checks and independent recovery verification precede that budget. Results
+include packing time, remaining loose files and the reason for stopping, so a
+daily input rate above maintenance throughput is visible. Unchanged sealed bytes are reused. A failed pack
 must not prune recovery points; the capacity census still runs.
 
 The same command supports `state`, `backups` and `catalog` for reviewed, bounded

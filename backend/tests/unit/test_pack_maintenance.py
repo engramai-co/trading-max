@@ -12,6 +12,8 @@ from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotSt
 from trading_max.infrastructure.object_packs import ObjectPacks
 from trading_max.pack_maintenance import (
     LoosePacker,
+    PackWindow,
+    _nightly_batch,
     compact_manifests,
     enable,
     pack_repository,
@@ -210,3 +212,101 @@ def test_hot_classification_does_not_decode_or_traverse_source_ancestry(tmp_path
     )
     for aid, raw in expected.items():
         assert packed.content_bytes(aid) == raw
+
+
+@pytest.mark.parametrize("reason", ["time-budget", "deployment-request"])
+def test_pack_yields_after_a_complete_batch_and_resumes_exact_bytes(tmp_path, monkeypatch, reason):
+    from trading_max import pack_maintenance
+
+    clock = [0.0]
+    requested = [False]
+    monkeypatch.setattr(pack_maintenance.time, "monotonic", lambda: clock[0])
+    root = tmp_path / "source"
+    root.mkdir()
+    candidates = []
+    expected = {}
+    for i in range(3):
+        source = root / str(i)
+        raw = f"row{i}".encode()
+        source.write_bytes(raw)
+        candidates.append((source, str(i), "raw"))
+        expected[str(i)] = raw
+    packer = LoosePacker(root, ObjectPacks(root / "pool"), tmp_path / "journals")
+
+    def after_batch(_):
+        assert not list(packer.journals.glob("pack-*.json"))
+        if reason == "time-budget":
+            clock[0] = 2
+        else:
+            requested[0] = True
+
+    window = PackWindow(1, should_yield=lambda: requested[0], progress=after_batch)
+    result = packer.run(candidates, target_bytes=4, window=window)
+    assert result["convertedFiles"] == 1
+    assert window.reason == reason
+    assert not candidates[0][0].exists()
+    assert all(source.read_bytes() == expected[key] for source, key, _ in candidates[1:])
+    assert packer.run(candidates, target_bytes=4)["convertedFiles"] == 2
+    assert {key: packer.packs.read(key) for key in expected} == expected
+
+
+def test_time_budget_is_shared_with_hot_records(tmp_path, monkeypatch):
+    from trading_max import pack_maintenance
+
+    state = initialized_state(tmp_path / "state")
+    store = ContentAddressedArtifactStore(state / "artifacts")
+    cold = store.put_json(key="source.json", payload={"value": "original"})
+    hot = store.put_json(key="current.json", payload={"value": "current"})
+    SnapshotStore(state, artifacts=store).publish(
+        scope="accounts", source="fixture", artifacts=[hot]
+    )
+    clock = [0.0]
+    monkeypatch.setattr(pack_maintenance.time, "monotonic", lambda: clock[0])
+    window = PackWindow(1, progress=lambda _: clock.__setitem__(0, 2))
+    result = pack_state(state, tmp_path / "journals", window=window)
+    assert result["convertedFiles"] == 1
+    assert store.packs.contains("artifact/" + cold.ref.artifact_id)
+    assert hot.path.exists()
+    assert SnapshotStore(state).latest().manifest.artifacts[0].artifact_id == hot.ref.artifact_id
+
+
+def test_nightly_batch_drains_more_than_the_old_daily_cap(tmp_path):
+    root = tmp_path / "source"
+    root.mkdir()
+    candidates = []
+    for i in range(4100):
+        path = root / str(i)
+        path.write_bytes(str(i).encode())
+        candidates.append((path, str(i), "raw"))
+    packs = ObjectPacks(tmp_path / "pool")
+    packer = LoosePacker(root, packs, tmp_path / "journals")
+    result = _nightly_batch(
+        tmp_path,
+        "fixture",
+        lambda **budgets: packer.run(candidates, **budgets),
+        lambda: sum(path.exists() for path, _, _ in candidates),
+    )
+    assert result["convertedFiles"] == 4100
+    assert result["remainingFiles"] == 0 and result["limitReason"] is None
+    assert all(packs.read(str(i)) == str(i).encode() for i in range(4100))
+
+
+def test_nightly_batch_reports_remaining_work_when_deployment_is_waiting(tmp_path, monkeypatch):
+    from trading_max import background_backup
+
+    monkeypatch.setattr(background_backup, "deployment_requested", lambda _: True)
+    root = tmp_path / "source"
+    root.mkdir()
+    source = root / "original"
+    source.write_bytes(b"original")
+    packer = LoosePacker(root, ObjectPacks(tmp_path / "pool"), tmp_path / "journals")
+    result = _nightly_batch(
+        tmp_path,
+        "fixture",
+        lambda **budgets: packer.run([(source, "original", "raw")], **budgets),
+        lambda: int(source.exists()),
+    )
+    assert result["convertedFiles"] == 0
+    assert result["remainingFiles"] == 1
+    assert result["limitReason"] == "deployment-request"
+    assert source.read_bytes() == b"original"

@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.9.10] - 2026-10-02
+
+### Fixed
+
+- Let daily lossless packing catch up with loose history instead of stopping at
+  4,096 files. Bound each live/recovery batch to 65,536 files, 2 GiB and 120
+  seconds, yield to deployment requests between complete durable packs, and
+  report time and remaining work. Preserve original bytes, independent recovery
+  verification and compatibility with retained rollback readers.
+
 ## [1.9.9] - 2026-10-01
 
 ### Fixed
