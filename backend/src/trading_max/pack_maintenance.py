@@ -88,8 +88,10 @@ def _read(path: Path, encoding: str) -> tuple[bytes, str]:
         if metadata and metadata[0] > MAX_BYTES:
             raise ValueError("decoded packed source exceeds size limit")
         raw = compressed_json.decode(physical)
-    elif encoding == "raw":
+    elif encoding in {"raw", "recovery-raw"}:
         raw = physical
+        if encoding == "recovery-raw" and digest != path.name:
+            raise ValueError("raw recovery source checksum mismatch")
     else:
         raise ValueError("unsupported loose record encoding")
     return raw, digest
@@ -302,6 +304,23 @@ def pack_state(state: Path, journals: Path, **budgets) -> dict:
     return cold
 
 
+def packable_blobs(repository):
+    for path in sorted(repository.blobs.glob("*/*.gz")):
+        if not _DIGEST.fullmatch(path.stem):
+            continue
+        if path.is_symlink() or path.parent.is_symlink():
+            raise ValueError("backup blob must not be a symlink")
+        # Gzip's trailer is only a conservative skip hint, never proof of
+        # integrity. Admitted records still undergo bounded decode + SHA checks;
+        # large streamed files remain independently verified gzip objects.
+        with path.open("rb") as handle:
+            if path.stat().st_size >= 4:
+                handle.seek(-4, 2)
+                if int.from_bytes(handle.read(4), "little") > MAX_BYTES:
+                    continue
+        yield path
+
+
 def pack_repository(repository: BackupRepository, journals: Path, **budgets) -> dict:
     """Caller holds repository lock; retain all original restore identities."""
     store = repository.packed_store
@@ -314,9 +333,8 @@ def pack_repository(repository: BackupRepository, journals: Path, **budgets) -> 
         for path in sorted(repository.root.glob("packed/*.json")):
             if _DIGEST.fullmatch(path.stem):
                 yield path, "descriptor/" + path.stem, "raw"
-        for path in sorted(repository.blobs.glob("*/*.gz")):
-            if _DIGEST.fullmatch(path.stem):
-                yield path, "blob/" + path.stem, "gzip"
+        for path in packable_blobs(repository):
+            yield path, "blob/" + path.stem, "gzip"
 
     remaining_files = budgets.get("max_files", 4096) - result["convertedFiles"]
     remaining_bytes = budgets.get("max_bytes", 256 * 1024 * 1024) - result["logicalBytes"]
@@ -381,6 +399,8 @@ def nightly_packs(
 ) -> dict:
     """Append sealed batches after a fresh verified backup; never force activation."""
     from .backup_repository import exclusive_lock
+    from .physical_recovery import compression_enabled
+    from .sealed_compression import compress_repository, raw_candidates
     from .storage_compatibility import verify_retained_readers
 
     expected = (service / "backups/repository").resolve()
@@ -399,6 +419,22 @@ def nightly_packs(
         if not repository._verify(manifest).get("snapshotRunId"):
             raise ValueError("nightly packing requires independent published-state recovery")
         journals = service / "maintenance/object-packs"
+        compression_result = {"enabled": False}
+        if compression_enabled(repository):
+            sealed_readers = verify_retained_readers(service, sealed_blobs=True)
+            compression_result = {
+                "enabled": True,
+                "readers": sealed_readers,
+                **_nightly_batch(
+                    service,
+                    "sealed-recovery",
+                    lambda **budgets: compress_repository(
+                        repository, journals / "sealed-recovery", **budgets
+                    ),
+                    lambda: sum(1 for _ in raw_candidates(repository)),
+                    progress=progress,
+                ),
+            }
         state_result = _nightly_batch(
             service,
             "state",
@@ -413,13 +449,14 @@ def nightly_packs(
             lambda: (
                 sum(1 for _ in artifact_candidates(repository.packed_store.root))
                 + sum(1 for p in repository.root.glob("packed/*.json") if _DIGEST.fullmatch(p.stem))
-                + sum(1 for p in repository.blobs.glob("*/*.gz") if _DIGEST.fullmatch(p.stem))
+                + sum(1 for _ in packable_blobs(repository))
             ),
             progress=progress,
         )
         result = {
             "enabled": True,
             "readers": readers,
+            "compression": compression_result,
             "state": state_result,
             "backups": backup_result,
             "catalog": (

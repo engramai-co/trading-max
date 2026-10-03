@@ -30,13 +30,28 @@ class VerificationSession:
         paths: set[Path] = set()
         digests = sorted({entry["sha256"] for entry in files.values()})
         locators = False
+        signature = hashlib.sha256()
         for number, digest in enumerate(digests, 1):
             raw = raw_path(repository, digest)
             if raw.is_file():
                 paths.add(raw)
             else:
                 paths.update(repository.blob_files(digest))
-                locators = True
+                descriptor = repository.packed_path(digest)
+                paths.add(descriptor)  # Creating a higher-priority alias invalidates the proof.
+                location = repository.packs.location("descriptor/" + digest)
+                signature.update(json.dumps([digest, "descriptor", location]).encode())
+                if descriptor.is_file() or location is not None:
+                    locators = True  # Descriptor/chunk closures retain conservative index binding.
+                else:
+                    plain = repository.blob_path(digest)
+                    paths.add(plain)
+                    if not plain.is_file():
+                        signature.update(
+                            json.dumps(
+                                [digest, "blob", repository.packs.location("blob/" + digest)]
+                            ).encode()
+                        )
             if number % 128 == 0:
                 repository._progress(
                     "checking-recovery-proof", files=number, totalFiles=len(digests)
@@ -46,7 +61,6 @@ class VerificationSession:
             # reuse a proof even if it still points into the same pack file.
             for index in (repository.packs.index, repository.packed_store.packs.index):
                 paths.update((index, Path(str(index) + "-wal")))
-        signature = hashlib.sha256()
         for path in sorted(paths):
             if path.is_symlink():
                 raise ValueError("recovery proof source must not be a symlink")

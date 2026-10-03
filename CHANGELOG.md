@@ -10,6 +10,21 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.9.13] - 2026-10-03
+
+### Fixed
+
+- Gate lossless sealed-recovery compression on the current and two rollback
+  readers. Migrate raw copies in bounded, resumable, verified batches while
+  preserving original manifests, dates and bytes; stream large files separately.
+  New daily captures reuse compressed objects instead of recreating raw copies.
+- Resume unfinished bounded maintenance on the next scheduled check without
+  taking another backup. Bind verification proofs to relevant compressed blob
+  locations so unrelated manifest catalog appends do not repeat a full scan.
+- Include installed Pi dependencies in the existing verified read-only runtime
+  pool so retained releases share identical packages without sharing credentials
+  or application state.
+
 ## [1.9.12] - 2026-10-03
 
 ### Fixed

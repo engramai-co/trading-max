@@ -52,12 +52,15 @@ def test_mode_separation_exclusions_and_full_dependency_roots(tmp_path):
     web = release / "apps/web/.next/standalone/node_modules/pkg/index.js"
     web.parent.mkdir(parents=True)
     web.write_bytes(readonly.read_bytes())
+    pi = release / "backend/src/trading_max/synthesis/_pi/node_modules/pkg/index.js"
+    pi.parent.mkdir(parents=True)
+    pi.write_bytes(readonly.read_bytes())
     git = release / ".git/objects/pack/data.pack"
     git.parent.mkdir(parents=True)
     git.write_bytes(readonly.read_bytes())
     before = [p.stat().st_ino for p in excluded]
     share_dependencies(release, pool)
-    assert readonly.stat().st_ino == web.stat().st_ino == git.stat().st_ino
+    assert readonly.stat().st_ino == web.stat().st_ino == git.stat().st_ino == pi.stat().st_ino
     assert readonly.stat().st_ino != executable.stat().st_ino
     assert stat.S_IMODE(executable.stat().st_mode) == 0o555
     assert [p.stat().st_ino for p in excluded] == before

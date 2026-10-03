@@ -49,6 +49,14 @@ def pending(repository) -> list[str]:
     return result
 
 
+def maintenance_pending(result) -> bool:
+    if not isinstance(result, dict):
+        return False
+    return any(result.get(key, 0) > 0 for key in ("remainingFiles", "remainingItems")) or any(
+        maintenance_pending(value) for value in result.values() if isinstance(value, dict)
+    )
+
+
 def run_background(
     repository,
     state: Path,
@@ -151,14 +159,14 @@ def run_background(
                 try:
                     status["maintenance"] = maintain(results[-1])
                     status["maintenanceError"] = None
-                    status["maintenancePending"] = False
+                    status["maintenancePending"] = maintenance_pending(status["maintenance"])
                 except (InterruptedError, TimeoutError):
                     raise
                 except (OSError, ValueError, RuntimeError) as exc:
                     status["maintenanceError"] = type(exc).__name__ + ": " + str(exc)
             save(
                 "succeeded",
-                phase="complete",
+                phase="maintenance-pending" if status.get("maintenancePending") else "complete",
                 seconds=round(time.monotonic() - started, 3),
                 pending=len(pending(repository)),
             )

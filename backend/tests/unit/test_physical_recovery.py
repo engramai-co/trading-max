@@ -132,6 +132,107 @@ def test_sealed_reader_probe_covers_reuse_restore_and_index_rebuild():
     exec(_SEALED_PROBE, {})  # noqa: S102 - fixed synthetic compatibility probe
 
 
+def test_compressed_migration_and_changed_daily_capture_restore_without_source(
+    tmp_path, monkeypatch
+):
+    from trading_max import pack_maintenance, sealed_compression
+    from trading_max.backup_repository import atomic_json
+
+    # Exercise streamed large-file handling without a huge synthetic fixture.
+    monkeypatch.setattr(sealed_compression, "MAX_BYTES", 1024)
+    monkeypatch.setattr(pack_maintenance, "MAX_BYTES", 1024)
+    monkeypatch.setattr(sealed_compression, "COLD_BYTES", 1024)
+    monkeypatch.setattr(pack_maintenance, "COLD_BYTES", 1024)
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    first = repo.create(state, artifact_encoding="sealed")
+    original_manifest = repo.manifest_bytes(first["id"])
+    journals = tmp_path / "journals"
+    with pytest.raises(ValueError, match="activation"):
+        sealed_compression.compress_repository(repo, journals)
+    atomic_json(repo.root / physical.COMPRESSION_POLICY, {"schemaVersion": 1, "enabled": True})
+    result = sealed_compression.compress_repository(repo, journals)
+    assert result["convertedFiles"]
+    assert not list(sealed_compression.raw_candidates(repo))
+    assert repo.manifest_bytes(first["id"]) == original_manifest
+    assert repo.verify(first["id"])["snapshotRunId"] == first["snapshotRunId"]
+    with sqlite3.connect(state / "trading_max.db") as db:
+        db.execute("INSERT INTO values_table VALUES (29)")
+    second = repo.create(state, artifact_encoding="sealed")
+    assert second["writtenBytes"] > 0
+    assert repo.create(state, artifact_encoding="sealed")["writtenBytes"] == 0
+    assert not list(sealed_compression.raw_candidates(repo))
+    pack_maintenance.pack_repository(repo, tmp_path / "pack-journals")
+    # Large gzip files survive small-object packing and are excluded from backlog.
+    assert list(repo.blobs.glob("*/*.gz"))
+    assert not list(pack_maintenance.packable_blobs(repo))
+    repo.packs.close()
+    repo.packs.index.unlink()
+    repo.packs.rebuild()
+    shutil.rmtree(state)
+    for backup, values in [(first, [(17,)]), (second, [(17,), (29,)])]:
+        target = tmp_path / backup["id"]
+        repo.restore(backup["id"], target)
+        assert SnapshotStore(target).latest()
+        with sqlite3.connect(target / "trading_max.db") as db:
+            assert db.execute("SELECT * FROM values_table").fetchall() == values
+
+
+def test_large_recovery_compression_resumes_retirement_and_rejects_corruption(
+    tmp_path, monkeypatch
+):
+    from trading_max import sealed_compression
+    from trading_max.backup_repository import atomic_json
+
+    monkeypatch.setattr(sealed_compression, "MAX_BYTES", 16)
+    repo = BackupRepository(tmp_path / "repository")
+    atomic_json(repo.root / physical.COMPRESSION_POLICY, {"schemaVersion": 1, "enabled": True})
+    raw = b"synthetic large file" * 20
+    digest = hashlib.sha256(raw).hexdigest()
+    source = physical.raw_path(repo, digest)
+    source.parent.mkdir(parents=True)
+    source.write_bytes(raw)
+    unlink = Path.unlink
+
+    def fail(path, *args, **kwargs):
+        if path == source:
+            raise InterruptedError("synthetic interruption")
+        return unlink(path, *args, **kwargs)
+
+    journals = tmp_path / "journals"
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", fail)
+        with pytest.raises(InterruptedError):
+            sealed_compression.compress_repository(repo, journals)
+    assert source.read_bytes() == raw
+    target = repo.blob_path(digest)
+    saved = target.read_bytes()
+    target.write_bytes(gzip.compress(b"corrupt"))
+    with pytest.raises(ValueError, match="checksum"):
+        sealed_compression.compress_repository(repo, journals)
+    assert source.exists()
+    target.write_bytes(saved)
+    sealed_compression.compress_repository(repo, journals)
+    assert not source.exists()
+    with repo.open_blob(digest) as stream:
+        assert stream.read() == raw
+
+
+def test_small_recovery_migration_rejects_digest_mismatch_without_retiring_original(tmp_path):
+    from trading_max.backup_repository import atomic_json
+    from trading_max.sealed_compression import compress_repository
+
+    repo = BackupRepository(tmp_path / "repository")
+    atomic_json(repo.root / physical.COMPRESSION_POLICY, {"schemaVersion": 1, "enabled": True})
+    source = physical.raw_path(repo, "a" * 64)
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"synthetic invalid object")
+    with pytest.raises(ValueError, match="checksum"):
+        compress_repository(repo, tmp_path / "journals")
+    assert source.exists()
+
+
 def test_session_reuses_only_unchanged_verified_sources_and_explicit_verify_is_fresh(
     tmp_path, monkeypatch
 ):
@@ -200,8 +301,10 @@ def test_session_detects_compressed_locator_changes(tmp_path):
     repo.packs.add({"blob/" + digest: raw})
     files = {"fixture": {"sha256": digest}}
     before = VerificationSession.fingerprint(repo, files)
+    repo.packs.add({"unrelated/catalog": b"synthetic unrelated record"})
+    assert VerificationSession.fingerprint(repo, files) == before
     with sqlite3.connect(repo.packs.index) as db:
-        db.execute("PRAGMA user_version=2")
+        db.execute("UPDATE records SET offset=offset+1 WHERE key=?", ("blob/" + digest,))
     assert VerificationSession.fingerprint(repo, files) != before
 
 
@@ -225,6 +328,18 @@ def test_background_maintenance_progress_and_interrupted_retry_do_not_capture_ag
     assert first["maintenancePending"]
     second = run_background(repo, state, service=service, maintain=lambda _: {"complete": True})
     assert second["status"] == "succeeded"
+    assert not second["maintenancePending"]
+    assert first["lastBackupId"] == second["lastBackupId"]
+
+
+def test_background_finishes_bounded_backlog_without_duplicate_capture(tmp_path):
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    first = run_background(repo, state, maintain=lambda _: {"packing": {"remainingFiles": 2}})
+    assert first["maintenancePending"]
+    assert first["phase"] == "maintenance-pending"
+    second = run_background(repo, state, maintain=lambda _: {"packing": {"remainingFiles": 0}})
     assert not second["maintenancePending"]
     assert first["lastBackupId"] == second["lastBackupId"]
 
