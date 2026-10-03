@@ -79,7 +79,42 @@ print(json.dumps({"version":__version__,"verified":True,"format":"object-packs-v
 """
 
 
-def verify_retained_readers(service: Path, *, object_packs: bool = False) -> dict:
+_SEALED_PROBE = r"""
+import gzip, json, shutil, sqlite3, tempfile
+from pathlib import Path
+from trading_max import __version__
+from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+from trading_max.backup_repository import BackupRepository
+from trading_max.physical_recovery import COMPRESSION_POLICY
+with tempfile.TemporaryDirectory(prefix="trading-max-sealed-probe-") as scratch:
+    root=Path(scratch);state=root/"state";state.mkdir()
+    with sqlite3.connect(state/"trading_max.db") as db:db.execute("CREATE TABLE synthetic(v INTEGER)")
+    store=ContentAddressedArtifactStore(state/"artifacts",storage_mode="chunked")
+    item=store.put_json(key="synthetic.json",payload={"rows":[{"n":n,"text":"synthetic"*20} for n in range(1000)]})
+    SnapshotStore(state,artifacts=store).publish(scope="accounts",source="sealed-probe",artifacts=[item])
+    original=store.content_bytes(item.ref.artifact_id)
+    repo=BackupRepository(root/"backup");backup=repo.create(state,artifact_encoding="sealed")
+    for n,path in enumerate((repo.root/"physical").glob("*/*")):
+        raw=path.read_bytes()
+        if n%2:
+            target=repo.blob_path(path.name);target.parent.mkdir(parents=True,exist_ok=True)
+            target.write_bytes(gzip.compress(raw,mtime=0))
+        else:repo.packs.add({"blob/"+path.name:raw})
+        path.unlink()
+    repo.packs.close();repo.packs.index.unlink();repo.packs.rebuild()
+    (repo.root/COMPRESSION_POLICY).write_text(json.dumps({"schemaVersion":1,"enabled":True}))
+    assert repo.verify(backup["id"])["snapshotRunId"]
+    again=repo.create(state,artifact_encoding="sealed")
+    assert again["writtenBytes"]==0 and not list((repo.root/"physical").glob("*/*"))
+    shutil.rmtree(state);repo.restore(backup["id"],root/"restore")
+    assert SnapshotStore(root/"restore").artifacts.content_bytes(item.ref.artifact_id)==original
+print(json.dumps({"version":__version__,"verified":True,"format":"sealed-blob-recovery-v1"}))
+"""
+
+
+def verify_retained_readers(
+    service: Path, *, object_packs: bool = False, sealed_blobs: bool = False
+) -> dict:
     retention = ServiceRetention(service)
     context = retention._context()
     protected = context["protected"]
@@ -90,7 +125,11 @@ def verify_retained_readers(service: Path, *, object_packs: bool = False) -> dic
     for name in protected:
         root = Path(name)
         result = subprocess.run(  # noqa: S603 - validated retained runtime, fixed synthetic probe
-            [str(root / ".venv/bin/python"), "-c", _PACK_PROBE if object_packs else _READER_PROBE],
+            [
+                str(root / ".venv/bin/python"),
+                "-c",
+                _SEALED_PROBE if sealed_blobs else _PACK_PROBE if object_packs else _READER_PROBE,
+            ],
             cwd=root,
             env=environment,
             capture_output=True,

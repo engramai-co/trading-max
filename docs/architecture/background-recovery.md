@@ -56,6 +56,16 @@ readable. New `sealed` manifests require the new recovery tool; restored state
 uses the existing application storage format and can be checked by retained
 object-pack-capable runtimes.
 
+Recovery readers from 1.9.11 can also reconstruct a sealed manifest's exact
+original files from the existing gzip/blob or immutable-pack pool. A present
+but corrupt raw copy remains an error; only an absent alias falls through.
+Expanded size, original SHA-256, SQLite and the complete physical reference
+graph are checked before restore publication. This reader rollout does not
+enable compression or retire raw recovery files. Compressed reuse remains
+behind a separate policy; activation requires successful probes of the current
+and two retained rollback recovery tools, including source deletion, locator
+rebuild and a subsequent unchanged backup.
+
 ## Scheduling, priority and retention
 
 The existing low-priority LaunchAgent checks every 15 minutes and at its daily

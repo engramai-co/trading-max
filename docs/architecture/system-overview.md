@@ -88,6 +88,13 @@ the browser receives chart points and fetches exact records a page at a time.
 P&L and drawdown are calculated before display sampling. Daily risk/TWR keep
 their independent history path.
 
+API manifest selection verifies the published pointer, manifest digest and typed
+index without reconstructing every referenced payload. Health/readiness therefore
+checks a valid publication and worker state; it is not a full content audit.
+Artifact reads still verify the bytes they consume, and backup/restore performs
+the complete integrity and reference checks. This keeps a new publication from
+turning a lightweight readiness probe into a historical-data reconstruction.
+
 Optional compressed envelopes, shared chunks and sealed object packs preserve
 original artifact bytes and provenance. Conversion is separately verified and
 requires compatible retained readers. Backups own independent recovery data,
