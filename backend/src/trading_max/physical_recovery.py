@@ -281,7 +281,10 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
                 db.commit()
         # Verify independent repository bytes, including reused objects, on
         # every publication. An acceleration journal never vouches for integrity.
-        verify_objects(repository, files, compare=tree)
+        session = repository.verification_session
+        before = session.fingerprint(repository, files) if session else None
+        with repository.packs.scan_reads(), repository.packed_store.packs.scan_reads():
+            verify_objects(repository, files, compare=tree)
         verified = validate_tree(tree, files, repository.progress)
         if verified["snapshotRunId"] != metadata["snapshotRunId"]:
             raise ValueError("checkpoint snapshot identity changed")
@@ -301,6 +304,8 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
             "files": files,
             "verification": verification,
         }
+        if session:
+            session.remember(repository, manifest, verification, before)
         repository._publish_manifest(checkpoint_id, manifest)
         result = {
             "id": checkpoint_id,
@@ -382,7 +387,11 @@ def verify_objects(
 
 
 def verify_manifest(repository, manifest: dict, destination: Path | None = None) -> dict:
-    with tempfile.TemporaryDirectory(prefix=".verify-physical-", dir=repository.root) as temporary:
+    with (
+        tempfile.TemporaryDirectory(prefix=".verify-physical-", dir=repository.root) as temporary,
+        repository.packs.scan_reads(),
+        repository.packed_store.packs.scan_reads(),
+    ):
         tree = destination or Path(temporary) / "state"
         tree.mkdir(parents=True, exist_ok=True, mode=0o700)
         verify_objects(repository, manifest["files"], tree)

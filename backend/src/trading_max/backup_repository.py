@@ -105,6 +105,7 @@ class BackupRepository:
         self.manifest_catalog = ManifestCatalog(self.packs)
         self.packed_store = ContentAddressedArtifactStore(self.root / "packed")
         self.progress = progress
+        self.verification_session = None
 
     def _progress(self, phase: str, **details) -> None:
         if self.progress:
@@ -598,6 +599,15 @@ class BackupRepository:
             return {"id": backup_id, "manifest": str(self.manifest_path(backup_id)), **verified}
 
     def _verify(self, manifest: dict, restore_to: Path | None = None) -> dict:
+        if (
+            restore_to is None
+            and self.verification_session is not None
+            and manifest.get("artifactEncoding") == "sealed"
+        ):
+            return self.verification_session.verify(self, manifest)
+        return self._verify_full(manifest, restore_to)
+
+    def _verify_full(self, manifest: dict, restore_to: Path | None = None) -> dict:
         if manifest.get("schemaVersion") != 1 or not isinstance(manifest.get("files"), dict):
             raise ValueError("unsupported backup manifest")
         if manifest.get("artifactEncoding") == "sealed":
@@ -759,7 +769,7 @@ class BackupRepository:
 
     def verify(self, backup_id: str) -> dict:
         with exclusive_lock(self.lock):
-            return self._verify(self.read_manifest(backup_id))
+            return self._verify_full(self.read_manifest(backup_id))
 
     def restore(self, backup_id: str, destination: Path) -> dict:
         destination = destination.expanduser().absolute()

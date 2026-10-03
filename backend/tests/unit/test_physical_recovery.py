@@ -132,6 +132,103 @@ def test_sealed_reader_probe_covers_reuse_restore_and_index_rebuild():
     exec(_SEALED_PROBE, {})  # noqa: S102 - fixed synthetic compatibility probe
 
 
+def test_session_reuses_only_unchanged_verified_sources_and_explicit_verify_is_fresh(
+    tmp_path, monkeypatch
+):
+    from trading_max.recovery_verification import VerificationSession
+
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    repo.verification_session = VerificationSession()
+    backup = repo.create(state, artifact_encoding="sealed")
+    manifest = repo.read_manifest(backup["id"])
+    original = repo._verify_full
+    calls = []
+
+    def verify(*args):
+        calls.append(True)
+        return original(*args)
+
+    monkeypatch.setattr(repo, "_verify_full", verify)
+    repo._verify(manifest)
+    repo._verify(manifest)
+    assert not calls
+    repo.verify(backup["id"])
+    repo.restore(backup["id"], tmp_path / "restored")
+    assert len(calls) == 2
+    repo.verification_session = VerificationSession()  # New run cannot reuse disk status.
+    repo._verify(manifest)
+    assert len(calls) == 3
+    entry = manifest["files"]["latest.json"]
+    path = physical.raw_path(repo, entry["sha256"])
+    path.write_bytes(b"x" * path.stat().st_size)
+    with pytest.raises(ValueError, match="checksum"):
+        repo._verify(manifest)
+    assert len(calls) == 4
+
+
+def test_session_rejects_source_changed_during_full_verification(tmp_path, monkeypatch):
+    from trading_max.recovery_verification import VerificationSession
+
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    backup = repo.create(state, artifact_encoding="sealed")
+    manifest = repo.read_manifest(backup["id"])
+    repo.verification_session = VerificationSession()
+    original = repo._verify_full
+
+    def verify(*args):
+        result = original(*args)
+        path = physical.raw_path(repo, manifest["files"]["latest.json"]["sha256"])
+        path.write_bytes(path.read_bytes())
+        return result
+
+    monkeypatch.setattr(repo, "_verify_full", verify)
+    with pytest.raises(ValueError, match="changed during verification"):
+        repo._verify(manifest)
+    assert not repo.verification_session.proofs
+
+
+def test_session_detects_compressed_locator_changes(tmp_path):
+    from trading_max.recovery_verification import VerificationSession
+
+    repo = BackupRepository(tmp_path / "repository")
+    raw = b"synthetic recovery bytes"
+    digest = hashlib.sha256(raw).hexdigest()
+    repo.packs.add({"blob/" + digest: raw})
+    files = {"fixture": {"sha256": digest}}
+    before = VerificationSession.fingerprint(repo, files)
+    with sqlite3.connect(repo.packs.index) as db:
+        db.execute("PRAGMA user_version=2")
+    assert VerificationSession.fingerprint(repo, files) != before
+
+
+def test_background_maintenance_progress_and_interrupted_retry_do_not_capture_again(tmp_path):
+    state = tmp_path / "state"
+    example(state)
+    repo = BackupRepository(tmp_path / "repository")
+    service = tmp_path / "service"
+    service.mkdir()
+
+    def interrupted(_):
+        with exclusive_lock(service / ".deployment.lock"):
+            repo._progress("synthetic-maintenance")
+            current = json.loads((repo.root / "background-status.json").read_bytes())
+            assert current["progress"]["phase"] == "synthetic-maintenance"
+            assert current["seconds"] < 60
+            raise InterruptedError("synthetic yield")
+
+    first = run_background(repo, state, service=service, maintain=interrupted)
+    assert first["status"] == "deferred"
+    assert first["maintenancePending"]
+    second = run_background(repo, state, service=service, maintain=lambda _: {"complete": True})
+    assert second["status"] == "succeeded"
+    assert not second["maintenancePending"]
+    assert first["lastBackupId"] == second["lastBackupId"]
+
+
 def test_resumes_after_interruption_without_recopying_completed_files(tmp_path, monkeypatch):
     state = tmp_path / "state"
     example(state, extra=260)

@@ -20,6 +20,34 @@ from trading_max.service_retention import (
 )
 
 
+def test_nightly_reachability_scan_is_reused_only_under_uninterrupted_locks(tmp_path, monkeypatch):
+    service, _, backup = host(tmp_path)
+    maintenance = ServiceRetention(service)
+    original = maintenance._eligible
+    calls = []
+
+    def eligible(context):
+        with (
+            pytest.raises(RuntimeError, match="holds the lock"),
+            exclusive_lock(service / ".deployment.lock"),
+        ):
+            pass
+        with (
+            pytest.raises(RuntimeError, match="holds the lock"),
+            exclusive_lock(maintenance.repository.lock),
+        ):
+            pass
+        calls.append(True)
+        return original(context)
+
+    monkeypatch.setattr(maintenance, "_eligible", eligible)
+    maintenance.maintain_repository(backup["id"])
+    assert len(calls) == 1
+    plan = maintenance.plan()
+    maintenance.apply(plan, verified_backup_id=backup["id"])
+    assert len(calls) == 3  # A saved/external plan must always recheck reachability.
+
+
 def host(root: Path):
     now = datetime.now(UTC)
     service = root / "service"
