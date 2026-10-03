@@ -33,7 +33,10 @@ local recovery copies, not protection against loss of the host or disk.
 
 ## Durable incremental work and verification
 
-Each distinct physical file is retained once under `physical/<prefix>/<sha256>`.
+Before compressed recovery activation, each distinct physical file is retained
+once under `physical/<prefix>/<sha256>`. After activation, new files use streamed
+gzip objects and bounded packing consolidates small objects without changing
+their original SHA-256 identities. Unchanged captures reuse either representation.
 The private `physical-journal.sqlite3` records completed capture identities in
 durable batches. A timeout, SIGTERM or process restart can reuse completed files.
 The journal is an acceleration index, never proof of recovery integrity.
@@ -59,7 +62,9 @@ object-pack-capable runtimes.
 One background invocation can reuse its successful independent verification for
 subsequent retention and packing. The in-memory proof binds the complete manifest,
 repository location, source identities (including inode, size, mtime and ctime)
-and compressed locator databases/WAL. Sources are compared before and after
+and relevant compressed record locations. Descriptor/chunk closures also bind
+their locator databases/WAL. Unrelated catalog appends do not invalidate a
+direct blob's proof. Sources are compared before and after
 verification; changed sources trigger full verification. Proofs never survive a
 process restart and explicit `verify`/`restore` always read all original bytes.
 Nightly retention holds deployment and repository locks continuously between
@@ -71,10 +76,20 @@ original files from the existing gzip/blob or immutable-pack pool. A present
 but corrupt raw copy remains an error; only an absent alias falls through.
 Expanded size, original SHA-256, SQLite and the complete physical reference
 graph are checked before restore publication. This reader rollout does not
-enable compression or retire raw recovery files. Compressed reuse remains
-behind a separate policy; activation requires successful probes of the current
+automatically enable compression or retire raw recovery files. Compressed reuse
+remains behind a separate policy; activation requires successful probes of the current
 and two retained rollback recovery tools, including source deletion, locator
 rebuild and a subsequent unchanged backup.
+
+`tools/compress_recovery.py` checks the active state, a recovery point less than
+24 hours old, full independent verification, and all three retained readers
+under deployment/repository locks. Its `activate` command enables the policy;
+`run` migrates bounded batches. Small raw aliases use the existing durable pack
+journals. Large files stay streamed gzip objects with a separate retirement
+journal and read-back checks. A corrupt original or compressed copy stops
+retirement. An interrupted batch retains the original or the verified compressed
+copy and resumes through its journal. Original manifests and dates stay unchanged.
+No packing deletes unique history or changes chart data.
 
 ## Scheduling, priority and retention
 
@@ -86,6 +101,8 @@ phase, elapsed time and failures. Maintenance errors remain distinct from backup
 success and are retried without creating another full recovery point.
 Maintenance progress updates the same status and current elapsed time. A yielded
 maintenance pass remains pending and resumes without capturing another backup.
+Bounded unfinished packing/retention is also retried by the existing 15-minute
+job, without waiting another day or producing another recovery point.
 
 A deployment request asks background work to yield at a safe file boundary.
 The deployment lock wait is bounded to 30 seconds. An active deployment defers
