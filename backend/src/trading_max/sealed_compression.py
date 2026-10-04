@@ -72,10 +72,14 @@ def store_gzip(repository, source: Path, digest: str) -> int:
 
 
 def raw_candidates(repository):
+    from .recovery_pack_sharing import keep_structured
+
     for path in sorted((repository.root / "physical").glob("*/*")):
         if len(path.name) == 64:
             if raw_path(repository, path.name) != path:
                 raise ValueError("non-canonical recovery object")
+            if keep_structured(repository, path):
+                continue  # Already compressed authoritative pack, shared by backup readers.
             yield path
 
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from .backup_repository import atomic_json
 
 DEFAULT_BUDGET_BYTES = 5_000_000_000
-DEFAULT_CACHE_BYTES = 250_000_000
+DEFAULT_CACHE_BYTES = 64_000_000
 _CACHE_NAME = re.compile(r"[0-9a-f]{64}(?:\.parsed)?\.(?:json|html)")
 
 

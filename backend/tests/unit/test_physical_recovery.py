@@ -126,6 +126,58 @@ def test_compressed_recovery_fails_closed(tmp_path, problem):
         physical.verify_objects(repo, files, tmp_path / "restored")
 
 
+def test_sealed_verification_reads_each_pack_once_with_a_small_cache(tmp_path, monkeypatch):
+    from trading_max.infrastructure import object_packs
+
+    repo = BackupRepository(tmp_path / "repository")
+    repo.packs.cache_bytes = 48 * 1024  # One decoded block, not the entire recovery.
+    payloads = {}
+    for group in range(4):
+        records = {}
+        for number in range(4):
+            name = f"{number}-{group}.bin"
+            raw = (f"synthetic-{group}-{number}".encode() * 1024)[:8192]
+            digest = hashlib.sha256(raw).hexdigest()
+            records["blob/" + digest] = raw
+            payloads[name] = raw
+        repo.packs.add(records)
+    files = {
+        name: {"sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw), "mode": 0o400}
+        for name, raw in sorted(payloads.items())  # Interleave records from all blocks.
+    }
+    repo.packs.close()
+    decoded = []
+    original = object_packs.decode
+
+    def counted(content):
+        decoded.append(hashlib.sha256(content).hexdigest())
+        return original(content)
+
+    monkeypatch.setattr(object_packs, "decode", counted)
+    destination = tmp_path / "restored"
+    with repo.packs.scan_reads(max_bytes=1):
+        physical.verify_objects(repo, files, destination)
+    assert len(decoded) == len(set(decoded)) == 4
+    for name, raw in payloads.items():
+        assert (destination / name).read_bytes() == raw
+        assert (destination / name).stat().st_mode & 0o777 == 0o400
+
+
+def test_sealed_verification_preserves_raw_precedence(tmp_path, monkeypatch):
+    repo = BackupRepository(tmp_path / "repository")
+    raw = b"synthetic original"
+    digest = hashlib.sha256(raw).hexdigest()
+    source = physical.raw_path(repo, digest)
+    source.parent.mkdir(parents=True)
+    source.write_bytes(raw)
+
+    def unrelated_index(_):
+        raise AssertionError("a raw recovery must not depend on an unrelated pack index")
+
+    monkeypatch.setattr(repo.packs, "location", unrelated_index)
+    physical.verify_objects(repo, {"original.txt": {"sha256": digest, "size": len(raw)}})
+
+
 def test_sealed_reader_probe_covers_reuse_restore_and_index_rebuild():
     from trading_max.storage_compatibility import _SEALED_PROBE
 

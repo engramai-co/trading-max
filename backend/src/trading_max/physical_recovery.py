@@ -219,6 +219,10 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
         tree = directory / "state"
         started = time.monotonic()
         compressed = compression_enabled(repository)
+        from .recovery_pack_sharing import enabled as sharing_enabled
+        from .recovery_pack_sharing import structured_file
+
+        sharing = sharing_enabled(repository)
         files = {}
         reused = written = 0
         journal = repository.root / "physical-journal.sqlite3"
@@ -245,7 +249,7 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
                     target = raw_path(repository, digest)
                     if target.is_file() or (compressed and repository.has_blob(digest)):
                         reused += 1
-                    elif compressed:
+                    elif compressed and not (sharing and structured_file(name)):
                         from .sealed_compression import store_gzip
 
                         written += store_gzip(repository, source, digest)
@@ -340,11 +344,39 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
         return result
 
 
+def _verification_order(repository, files: dict) -> list[tuple[str, dict]]:
+    """Visit direct packed blobs together without changing reader precedence.
+
+    Filename order scatters a recovery over cold blocks. A bounded cache then
+    repeatedly decodes and recompresses the same records. Ordering metadata is
+    only a locality hint: the normal reader still checks every byte and locator.
+    """
+    groups = {}
+    for number, entry in enumerate(files.values(), 1):
+        if number % 128 == 0:
+            repository._progress("ordering-recovery-reads", files=number, totalFiles=len(files))
+        digest = entry["sha256"]
+        if digest in groups:
+            continue
+        group = ("individual", digest)
+        if (
+            not raw_path(repository, digest).is_file()
+            and not repository.packed_path(digest).is_file()
+            and repository.packs.location("descriptor/" + digest) is None
+            and not repository.blob_path(digest).is_file()
+        ):
+            location = repository.packs.location("blob/" + digest)
+            if location is not None:
+                group = ("pack", location[0])
+        groups[digest] = group
+    return sorted(files.items(), key=lambda item: (groups[item[1]["sha256"]], item[0]))
+
+
 def verify_objects(
     repository, files: dict, destination: Path | None = None, *, compare: Path | None = None
 ) -> None:
     checked = set()
-    for number, (name, entry) in enumerate(files.items(), 1):
+    for number, (name, entry) in enumerate(_verification_order(repository, files), 1):
         relative = _safe_relative(name)
         size = entry.get("size")
         if type(size) is not int or size < 0:
