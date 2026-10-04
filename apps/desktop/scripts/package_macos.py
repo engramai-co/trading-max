@@ -254,6 +254,10 @@ def main() -> int:
         sys.stderr.write(
             f"Packaging stopped; input App and existing output were preserved: {error}\n"
         )
+        # Surface codesign/stapler's actual failure, not only its exit status.
+        # These commands use public identities and paths, never secret arguments.
+        if isinstance(error, subprocess.CalledProcessError) and error.stderr:
+            sys.stderr.write(error.stderr[-4096:].rstrip() + "\n")
         return 1
     sys.stdout.write(json.dumps(result, indent=2) + "\n")
     return 0
