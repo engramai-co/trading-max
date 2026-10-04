@@ -99,9 +99,12 @@ Use the existing organization to provision the appropriate identity. Signing key
 stay in Keychain or the release system's secret manager, never this repository.
 
 1. Build the locked desktop payload and application as documented in the
-   [desktop build guide](../../apps/desktop/README.md). Sign the nested Node/Python
-   executables and libraries and the App with Developer ID and the necessary
-   Hardened Runtime entitlements; do not use recursive `--deep` as a signing shortcut.
+   [desktop build guide](../../apps/desktop/README.md), then follow the signing
+   commands below. The packager inventories every Mach-O file, including native
+   Python/Node extensions, and signs them individually before sealing the App.
+   It enables Hardened Runtime, gives only Node its JIT entitlement, and verifies
+   the team, timestamp and entitlements after signing. It does not use `--deep`
+   for signing or weaken library validation.
 2. Notarize and staple the App, package it in a signed DMG, then notarize and staple
    that DMG. The package must retain the current bundle identity, contain only the
    intended Apple Silicon application, and match `VERSION` and its bundled runtime.
@@ -128,3 +131,74 @@ The JSON is release evidence authenticated by the canonical GitHub HTTPS origin;
 it is not a detached cryptographic updater signature. A future automatic binary
 updater must add its own signed-artifact verification and replacement/recovery
 acceptance. The manual signed-package path does not imply that work is complete.
+
+### Reproducible signing and notarization
+
+Use the certificate fingerprint from `security find-identity -v -p codesigning`.
+It must be a **Developer ID Application** identity for the expected team; a
+development or TestFlight certificate cannot replace it. The private key remains
+in Keychain. Use a new output directory outside the checkout for each candidate;
+the scripts refuse to replace an existing output or modify the input App.
+
+```sh
+uv run --frozen python apps/desktop/scripts/package_macos.py prepare \
+  --app '/absolute/build/Trading Max Preview.app' \
+  --output /absolute/output/release-candidate \
+  --identity DEVELOPER_ID_CERTIFICATE_SHA1
+```
+
+This produces the signed App, a ZIP for Apple's notarization upload and a small
+`signing-result.json`. It does not submit or publish anything. To test Hardened
+Runtime locally using an existing **Apple Development** identity, add
+`--internal-rehearsal`; that mode emits no upload ZIP and cannot produce a public
+DMG or a verified release manifest. Test the copied runtime using the packaged
+harness before moving to a real Developer ID candidate.
+
+Create a named `notarytool` profile in Keychain using its secure interactive
+prompt. The account holder enters the credential locally; do not put a password
+in command arguments, shell history, source, screenshots or chat. If an appropriate
+profile already exists, reuse it. For Apple ID authentication:
+
+```sh
+xcrun notarytool store-credentials TradingMax \
+  --apple-id YOUR_APPLE_ACCOUNT_EMAIL --team-id H757XFW8A9
+```
+
+The prompt expects an Apple app-specific password. Store it in Keychain rather
+than a release script. Submission commands use only the non-secret profile name:
+
+```sh
+xcrun notarytool submit /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64-app.zip \
+  --keychain-profile TradingMax --no-wait --output-format json
+xcrun notarytool info APP_SUBMISSION_UUID --keychain-profile TradingMax --output-format json
+```
+
+Save the submission UUID with the private release evidence. Check an existing
+submission until its status is `Accepted`; a timeout or `In Progress` is not a
+rejection and must not trigger duplicate uploads. If a submission command ends
+without a usable UUID, inspect `notarytool history` before submitting again.
+An `Invalid` result stops the release; inspect Apple's log, fix the candidate and
+start a fresh output directory. Do not bypass notarization or Gatekeeper.
+
+After the App submission is accepted:
+
+```sh
+xcrun stapler staple '/absolute/output/release-candidate/Trading Max Preview.app'
+uv run --frozen python apps/desktop/scripts/package_macos.py dmg \
+  --app '/absolute/output/release-candidate/Trading Max Preview.app' \
+  --output /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
+  --identity DEVELOPER_ID_CERTIFICATE_SHA1
+xcrun notarytool submit /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
+  --keychain-profile TradingMax --no-wait --output-format json
+xcrun notarytool info DMG_SUBMISSION_UUID --keychain-profile TradingMax --output-format json
+```
+
+The DMG stage checks the App's signature, staple and Gatekeeper assessment first.
+Once the DMG submission is also accepted, staple the DMG and run
+`verify_distribution.py` as shown above. Keep all outputs outside Git. Complete
+the final installation acceptance before attaching the DMG/manifest pair to a
+public release. The packager never installs, auto-publishes or changes a server.
+
+References: [Apple Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/),
+[Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution),
+and [Tauri macOS signing](https://v2.tauri.app/distribute/sign/macos/).

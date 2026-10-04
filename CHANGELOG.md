@@ -20,6 +20,9 @@ All notable public Trading Max releases are recorded here.
   help in App Settings, with access to existing local workspace recovery files.
 - Add a maintainer gate that verifies the signed/notarized DMG and its actual
   application contents before generating desktop release metadata.
+- Add isolated macOS packaging commands for signing every bundled native runtime,
+  checking minimal entitlements, rehearsing Hardened Runtime with a development
+  certificate, and assembling a DMG after the App passes notarization.
 
 ### Changed
 

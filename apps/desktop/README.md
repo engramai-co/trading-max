@@ -220,6 +220,12 @@ selected local workspace can reveal its existing recovery folder without writing
 or deleting files. See [desktop updates and recovery](../../docs/installation/desktop-updates.md)
 for the user procedure and the maintainer DMG verification gate.
 
+The same guide documents `scripts/package_macos.py` for signing each native
+runtime component and assembling the DMG. It works on a separate copy, keeps keys
+in Keychain and refuses to overwrite earlier candidates. The explicit internal
+rehearsal mode can exercise Hardened Runtime with a development certificate; it
+does not produce a public distribution.
+
 ## Distribution gate
 
 The current configuration uses ad-hoc signing for an internal local experiment.
