@@ -322,7 +322,7 @@ files inside the service directory remain included. Global shared developer-tool
 caches outside these roots are not attributed to this installation.
 
 The nightly repository workflow also limits the publicly retrievable filing
-cache to 250 MB, with a 24-hour grace period and a per-run maximum of 256 files or
+cache to 64 MB, with a 24-hour grace period and a per-run maximum of 256 files or
 128 MiB. Recently accessed filing documents are retained first. Broker exports,
 original account observations, quote history and application snapshots are never
 cache-eviction candidates. New backups omit only the disposable disclosures

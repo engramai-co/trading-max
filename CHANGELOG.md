@@ -10,6 +10,20 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.9.14] - 2026-10-04
+
+### Fixed
+
+- Share identical historical chunks with independently stored recovery packs,
+  retaining every original manifest, date and byte. Gate activation on a fresh
+  verified backup and all retained readers; compact redundant containers with
+  durable locator transactions, readback checks and interruption recovery.
+- Group sealed-recovery reads by physical container to avoid repeated
+  decompression, without skipping full restore or checksum verification. Keep
+  new already-compressed recovery packs available for subsequent shared reads.
+- Bound the disposable public filing cache to 64 MB in daily maintenance;
+  retain recent cache entries and all original financial records.
+
 ## [1.9.13] - 2026-10-03
 
 ### Fixed

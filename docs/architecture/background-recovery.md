@@ -91,6 +91,29 @@ retirement. An interrupted batch retains the original or the verified compressed
 copy and resumes through its journal. Original manifests and dates stay unchanged.
 No packing deletes unique history or changes chart data.
 
+Sealed verification orders direct packed blobs by their physical container,
+then checks each original size, SHA-256 and mode as before. Restore still runs
+full verification; this only avoids decoding the same container repeatedly.
+
+`tools/share_recovery_packs.py` provides `check`, `activate` and `run` with the
+same service/state/verified-backup arguments and finite batch budgets. Activation
+requires a recovery point less than 24 hours old, full verification, and the
+current plus two rollback pack and sealed-reader probes. It is off by default.
+All published manifests, catalog entries and logical chunk references remain
+roots. Identical chunks may reference original self-describing packs already
+stored independently in the recovery repository. Both file names stay inside
+that repository; no live state file is hard-linked into recovery. New captures
+keep these already-compressed files directly, avoiding another wrapper.
+
+Compaction writes and verifies replacement bytes before one durable locator
+transaction; it retires only unshared containers after successful readback.
+Unknown record namespaces are preserved. A crash leaves the original or the
+verified replacement, and missing indexes can be rebuilt from surviving packs.
+Original physical packs remain unchanged so historic manifests still restore
+their exact bytes. The existing background job resumes bounded sharing and
+compaction between deployments, and reports remaining work without creating
+another checkpoint. A migration may temporarily need both representations.
+
 ## Scheduling, priority and retention
 
 The existing low-priority LaunchAgent checks every 15 minutes and at its daily

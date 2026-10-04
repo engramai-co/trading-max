@@ -398,8 +398,11 @@ def nightly_packs(
     service: Path, state: Path, backup_id: str, *, progress=None, repository=None
 ) -> dict:
     """Append sealed batches after a fresh verified backup; never force activation."""
+    from .background_backup import deployment_requested
     from .backup_repository import exclusive_lock
     from .physical_recovery import compression_enabled
+    from .recovery_pack_sharing import enabled as sharing_enabled
+    from .recovery_pack_sharing import share
     from .sealed_compression import compress_repository, raw_candidates
     from .storage_compatibility import verify_retained_readers
 
@@ -419,6 +422,19 @@ def nightly_packs(
         if not repository._verify(manifest).get("snapshotRunId"):
             raise ValueError("nightly packing requires independent published-state recovery")
         journals = service / "maintenance/object-packs"
+        sharing_result = {"enabled": False}
+        if sharing_enabled(repository):
+            sharing_window = PackWindow(
+                NIGHTLY_SECONDS,
+                should_yield=lambda: deployment_requested(service),
+                progress=(lambda details: progress({"phase": "sharing-recovery-packs", **details}))
+                if progress
+                else None,
+            )
+            sharing_result = {
+                "enabled": True,
+                **share(repository, journals / "recovery-sharing", window=sharing_window),
+            }
         compression_result = {"enabled": False}
         if compression_enabled(repository):
             sealed_readers = verify_retained_readers(service, sealed_blobs=True)
@@ -456,6 +472,7 @@ def nightly_packs(
         result = {
             "enabled": True,
             "readers": readers,
+            "sharing": sharing_result,
             "compression": compression_result,
             "state": state_result,
             "backups": backup_result,
