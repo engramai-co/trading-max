@@ -391,9 +391,11 @@ existing complete-installation census and growth alerts remain authoritative.
 
 ## Shared installed dependencies
 
-New macOS candidates consolidate identical Python site-package files, standalone
-web dependencies and Git pack files into a private `toolchains/package-blobs`
-pool. Files smaller than 4 KiB, bytecode, writable caches and symlinks are excluded.
+New macOS candidates consolidate identical Python site-package files, Pi and
+standalone web dependencies, static web assets and Git pack files into a private
+`toolchains/package-blobs` pool. Nonempty files below 4 KiB are included because
+their allocated disk blocks also accumulate across retained versions. Empty
+files, bytecode, writable caches, server-rendered pages and symlinks are excluded.
 Every new pool object is independently copied and checksum-verified before an
 atomic hard-link replacement; external package-cache permissions are unchanged.
 Pool objects are read-only and separated by executable mode. The current and
