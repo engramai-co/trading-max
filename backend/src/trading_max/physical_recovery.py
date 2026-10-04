@@ -245,6 +245,10 @@ def archive_checkpoint(repository, checkpoint_id: str) -> dict:
                     target = raw_path(repository, digest)
                     if target.is_file() or (compressed and repository.has_blob(digest)):
                         reused += 1
+                    elif compressed:
+                        from .sealed_compression import store_gzip
+
+                        written += store_gzip(repository, source, digest)
                     else:
                         target.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
                         temporary = target.with_name(".pending-" + digest)

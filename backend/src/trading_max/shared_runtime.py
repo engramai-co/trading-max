@@ -33,6 +33,7 @@ def candidates(release: Path, minimum_bytes: int = 4096) -> Iterator[Path]:
     roots = [
         *release.glob(".venv/lib/python*/site-packages"),
         release / "apps/web/.next/standalone/node_modules",
+        release / "backend/src/trading_max/synthesis/_pi/node_modules",
         release / ".git/objects/pack",
     ]
     for root in roots:
