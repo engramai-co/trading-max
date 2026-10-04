@@ -43,7 +43,7 @@ import { useCopy } from "./foundation";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
 
-export function WorkspaceShell({ children, desktop = false }: { children: React.ReactNode; desktop?: boolean }) {
+export function WorkspaceShell({ children, desktop = false, localWorkspace = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean }) {
   const t = useCopy();
   const actualPathname = usePathname();
   const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
@@ -317,7 +317,7 @@ export function WorkspaceShell({ children, desktop = false }: { children: React.
           {links(1)}
         </nav>
         <div className="mx-sidebar-bottom">
-          {desktop ? <DesktopStatus /> : <nav aria-label={t("工作台管理", "Workspace management")}>
+          {desktop ? <DesktopStatus localWorkspace={localWorkspace} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
             {links(2)}
           </nav>}
         </div>

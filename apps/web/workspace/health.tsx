@@ -126,7 +126,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
       className={desktop ? "mx-activity-page" : ""}
       actions={
-        <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{t("更新数据", "Update data")}</Button>}<Button
+        <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
           variant="default"
           leftSection={<ArrowClockwise size={16} />}
           loading={query.isFetching}
@@ -445,12 +445,17 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 title={
                   data.jobs.length
                     ? t("没有符合筛选的任务", "No matching tasks")
-                    : t(
+                    : desktop && readOnly
+                      ? t("演示不执行更新任务", "The demo does not run updates")
+                      : t(
                         "第一次更新，从这里开始",
                         "Your first update starts here",
                       )
                 }
-                description={t(
+                description={desktop && readOnly ? t(
+                  "这里展示模拟资料；在你自己的工作区中，更新记录会显示每次采集的进度与结果。",
+                  "These are synthetic records. In your own workspace, this list shows the progress and outcome of each update.",
+                ) : t(
                   "连接账户后，选择更新范围并开始更新。",
                   "Connect an account, choose a scope, and start an update.",
                 )}

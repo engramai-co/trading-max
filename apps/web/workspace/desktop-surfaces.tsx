@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, ArrowSquareOut, CloudCheck, GearSix, Pulse, UploadSimple, WarningCircle } from "@phosphor-icons/react";
+import { ArrowRight, ArrowSquareOut, CloudCheck, GearSix, Info, Pulse, UploadSimple, WarningCircle } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -16,17 +16,18 @@ export function useActivity() {
   return useQuery({ queryKey: ["workspace-health"], queryFn: () => api<HealthDetails>("/health/details"), refetchInterval: 15_000, retry: 1 });
 }
 
-export function DesktopStatus() {
+export function DesktopStatus({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   const query = useActivity();
-  const state = activityState(query.data ?? null);
+  const state = activityState(query.data ?? null, localWorkspace);
   const label = query.isError ? t("同步状态不可用", "Sync status unavailable") : query.isPending ? t("正在检查更新", "Checking updates")
     : state.tone === "degraded" || state.tone === "unavailable" ? t("有更新需要检查", "Updates need attention")
+    : state.tone === "setup" ? t("等待首次同步", "Awaiting first sync")
     : state.running ? t("正在同步", "Syncing") : t("同步与活动", "Sync & activity");
   const Warning = query.isError || state.tone === "degraded" || state.tone === "unavailable";
   return <div className="mx-desktop-tools">
     <Link href="/health" className={"mx-desktop-status" + (Warning ? " mx-desktop-warning" : "")}>
-      {Warning ? <WarningCircle size={19} /> : state.running ? <Pulse size={19} /> : <CloudCheck size={19} />}
+      {Warning ? <WarningCircle size={19} /> : state.tone === "setup" ? <Info size={19} /> : state.running ? <Pulse size={19} /> : <CloudCheck size={19} />}
       <span><strong>{label}</strong><small>{query.data?.health?.queue.last_success_at ? <Freshness date={query.data.health.queue.last_success_at} label={t("最近成功", "Last success")} /> : t("查看进度与更新记录", "Progress and update history")}</small></span>
       <ArrowSquareOut size={14} />
     </Link>

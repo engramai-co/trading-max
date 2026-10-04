@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const picker = new URLSearchParams(location.search).has("picker");
 let selectedWorkspace = null, localRecentsKey = "";
 let initialized = false, busy = false, savedProfile = null, current = null, view = "welcome";
+let lastReadyGeneration = null;
 if (picker) {
   document.body.classList.add("picker");
   document.title = "Trading Max · 工作区";
@@ -62,6 +63,7 @@ function lock(value) {
 async function action(work) {
   if (busy) return;
   lock(true);
+  $("feedback").hidden = true;
   try { await work(); } catch (error) { feedback(String(error), "error"); }
   finally { lock(false); }
 }
@@ -109,6 +111,10 @@ async function refresh() {
   try {
     const state = await invoke("desktop_status");
     current = state;
+    if (state.stage === "ready") {
+      if (picker && initialized && lastReadyGeneration !== state.generation) showView("welcome", false);
+      lastReadyGeneration = state.generation;
+    }
     const localKey = JSON.stringify([state.workspaces ?? [], state.stage, state.workspace?.path]);
     if (localKey !== localRecentsKey) {
       localRecentsKey = localKey;

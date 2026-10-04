@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { activityState } from "@/workspace/desktop-status";
 
 import {
   deriveHealthTone,
@@ -160,6 +161,8 @@ describe("health status model", () => {
 
   it("treats a new local workspace as setup without declaring data ready", () => {
     expect(deriveHealthTone(emptyLocal(), true)).toBe("setup");
+    expect(activityState(emptyLocal(), true).tone).toBe("setup");
+    expect(activityState(emptyLocal()).tone).toBe("degraded");
     expect(deriveHealthTone(emptyLocal())).toBe("degraded");
   });
 

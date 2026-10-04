@@ -10,7 +10,7 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
-## [1.10.0] - 2026-09-30
+## [1.10.0] - 2026-10-04
 
 ### Added
 
@@ -29,6 +29,10 @@ All notable public Trading Max releases are recorded here.
   on source changes, and keep all external WebViews outside native capabilities.
 - Persist only the chosen startup flag when changing App preferences and retain
   saved HTTPS connections while opening temporary synthetic demonstrations.
+- Keep a new local workspace's pending first sync neutral in the desktop sidebar,
+  and explain that synthetic demonstrations do not run update tasks.
+- Return the workspace picker to its list after a successful connection and clear
+  obsolete form errors when retrying a workspace action.
 
 ### Notes
 

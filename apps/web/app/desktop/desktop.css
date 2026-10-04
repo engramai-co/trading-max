@@ -8,6 +8,8 @@
 .mx-desktop-status > span { flex: 1; min-width: 0; }
 .mx-desktop-status strong { display: block; font-size: 12px; font-weight: 550; }
 .mx-desktop-status small { display: block; font-size: 10px; line-height: 1.7; margin-top: 5px; color: var(--mx-side-muted); }
+.mx-desktop-status .mx-freshness { display: inline; }
+.mx-desktop-status .mx-status-dot { display: none; }
 .mx-desktop-warning > svg:first-child { color: var(--mx-warning); }
 .mx-desktop-utilities { display: flex; gap: 4px; margin-top: 12px; }
 .mx-desktop-utilities a { display: flex; gap: 7px; align-items: center; text-decoration: none; font-size: 11px; min-height: 38px; padding: 8px; border-radius: 6px; }
