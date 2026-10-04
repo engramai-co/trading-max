@@ -715,6 +715,62 @@ async fn check_updates(window: WebviewWindow) -> Result<updates::UpdateCheck, St
 }
 
 #[tauri::command]
+async fn open_desktop_download(window: WebviewWindow, version: String) -> Result<(), String> {
+    local_command(&window)?;
+    let url = tauri::async_runtime::spawn_blocking(move || updates::download_url(&version))
+        .await
+        .map_err(|_| "安装包检查没有完成。".to_string())??;
+    local_command(&window)?;
+    Command::new("/usr/bin/open")
+        .arg(url.as_str())
+        .spawn()
+        .map_err(|_| "无法打开浏览器，请稍后重试。".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn show_recovery_folder(
+    window: WebviewWindow,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+) -> Result<(), String> {
+    local_command(&window)?;
+    let workspace = desktop
+        .snapshot()
+        .desired
+        .filter(|p| p.mode == Mode::Local)
+        .and_then(|p| p.workspace)
+        .ok_or("请先选择本地工作区；远程服务的恢复由服务端管理。")?;
+    if workspace.id.len() != 36
+        || !workspace
+            .id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() || b == b'-')
+    {
+        return Err("工作区标识无法识别。".into());
+    }
+    let parent = desktop.root.join("workspace-recovery");
+    let folder = parent.join(workspace.id);
+    if parent.is_symlink() || folder.is_symlink() || !folder.is_dir() {
+        return Err("这份资料还没有本机升级恢复记录，或恢复目录暂时不可用。".into());
+    }
+    Command::new("/usr/bin/open")
+        .arg(folder)
+        .spawn()
+        .map_err(|_| "无法打开恢复目录。".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn open_issue_tracker(window: WebviewWindow) -> Result<(), String> {
+    local_command(&window)?;
+    Command::new("/usr/bin/open")
+        .arg("https://github.com/engramai-co/trading-max/issues")
+        .spawn()
+        .map_err(|_| "无法打开问题反馈页面。".to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn open_release_notes(window: WebviewWindow, version: String) -> Result<(), String> {
     local_command(&window)?;
     open_external(&updates::notes_url(&version)?);
@@ -1030,7 +1086,10 @@ fn main() {
             prepare_workspace,
             open_local_workspace,
             show_workspace_folder,
+            show_recovery_folder,
             check_updates,
+            open_desktop_download,
+            open_issue_tracker,
             open_release_notes
         ])
         .setup(|app| {

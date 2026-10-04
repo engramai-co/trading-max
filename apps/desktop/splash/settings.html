@@ -15,6 +15,7 @@
         <button class="nav-item" data-page="general" aria-current="page" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg>通用</button>
         <button class="nav-item" data-page="workspace" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h6l2 3h10v12H3Z"/></svg>当前工作区</button>
         <button class="nav-item" data-page="updates" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg>关于与更新</button>
+        <button class="nav-item" data-page="support" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 16v1"/></svg>帮助与恢复</button>
       </nav>
       <div class="sidebar-bottom"><span class="scope-label">仅此 Mac</span><p>账户与采集设置<br>属于各自的工作区。</p></div>
     </aside>
@@ -48,11 +49,22 @@
       </section>
       <section id="updates" aria-labelledby="page-title" hidden>
         <div class="about-product"><img src="icon.svg" width="56" height="56" alt=""><div><h2>Trading Max</h2><p><span id="installed-version"></span><span class="preview-badge">内部预览</span></p></div></div>
-        <div class="preference-group"><div class="preference-row"><span><strong>检查官方版本</strong><span class="row-description">查询仓库的最新稳定版本。</span></span><button id="check-updates" class="secondary" type="button">检查版本</button></div></div>
+        <div class="preference-group"><div class="preference-row"><span><strong>检查官方版本</strong><span class="row-description">分别检查桌面安装包和仓库版本。</span></span><button id="check-updates" class="secondary" type="button">检查版本</button></div></div>
         <div id="update-result" class="update-result" role="status" hidden></div>
-        <button id="release-notes" type="button" class="text-button" hidden>查看版本说明 ↗</button>
+        <button id="release-notes" type="button" class="text-button" hidden>查看仓库版本说明 ↗</button>
+        <div class="update-actions"><button id="download-desktop" type="button" hidden>下载 Mac 安装包 ↗</button><button id="update-help" class="secondary" type="button">安装与升级说明</button></div>
+        <details id="package-details" class="support-details" hidden><summary>安装包信息与校验值</summary><p id="package-checksum" class="checksum"></p><p>这里核对的是官方发布信息。浏览器下载后，macOS 仍会验证安装包的签名与公证。</p></details>
         <p class="section-note">仅在点击时向 GitHub 查询，不发送账户、工作区或连接地址。</p>
-        <div class="quiet-note"><strong>关于这个预览版</strong><p>目前不会自动下载或安装更新。更换本机 App 不会更新你连接的 Mac mini；两者各自保留版本与资料。</p></div>
+        <div class="quiet-note"><strong>由你选择何时升级</strong><p>有正式安装包时，在浏览器下载并手动安装。App 不会静默替换自己；更换本机 App 不会更新你连接的远程服务。</p></div>
+      </section>
+      <section id="support" aria-labelledby="page-title" hidden>
+        <div class="quiet-note support-intro"><strong>资料保存在应用之外</strong><p>更换或移除 App 不会删除你选择的工作区、Keychain 中的账户凭据，或远程服务器上的记录。</p></div>
+        <details class="support-details" open><summary>安装与升级</summary><ol><li>在“关于与更新”检查版本，只下载那里提供的官方 Mac 安装包。没有下载按钮时，说明该版本尚未提供可用的桌面安装包。</li><li>下载完成后用 ⌘Q 退出 App，打开 DMG，将应用拖到原来的安装位置并选择替换。通常是“应用程序”文件夹；不要从 DMG 内长期运行。</li><li>重新打开 App，选择原来的服务或工作区。连接与凭据会保留。本地旧工作区首次升级会先准备恢复点，请等待启动完成。</li></ol><p>如果 macOS 提示签名、开发者或文件损坏问题，请停止安装，重新获取官方安装包并反馈；无需关闭系统安全检查。</p></details>
+        <details class="support-details"><summary>升级后打不开，或中途退出</summary><p>先重新打开 App，并选择原来的工作区。未完成的本地升级会尝试恢复升级前的资料；失败时产生的资料也会保留。恢复尚未完成时，按界面提示腾出空间或重新尝试。</p><p>恢复保护覆盖本地工作区的首次启动事务，不会自动换回旧 App。已经成功升级并继续写入的资料不会自动倒退。不要直接用更老版本打开这些资料。</p><p>仍然失败时保留原工作区和恢复目录，记录 App 版本、错误提示、发生时间与本地／远程模式，再联系维护者。不要上传密钥、账户导出或完整工作区。</p><button id="recovery-folder" class="secondary" type="button" disabled>在 Finder 中显示恢复资料</button><p class="section-note">只适用于选中的本地工作区；没有升级记录时会提示，不会创建或删除资料。</p></details>
+        <details class="support-details"><summary>远程服务连接失败</summary><p>确认服务在线、网络可用；Tailscale 地址需要本机已连接对应网络。可在连接页重试或在浏览器打开。更换本机 App 不会升级、迁移或重启远程服务器。</p></details>
+        <details class="support-details"><summary>卸载与资料保留</summary><p>用 ⌘Q 退出后，将 App 移到废纸篓即可。工作区和凭据保留，重新安装后可重新打开原文件夹。远程服务仍独立运行。</p><p>彻底移除资料是另一个操作：确认已有可恢复的备份后，再分别处理工作区、App 偏好和升级恢复副本；账户密钥通过工作区设置或“钥匙串访问”管理。不要让清理工具一并删除这些资料。</p></details>
+        <details class="support-details"><summary>睡眠、关机与记录更新</summary><p>本地工作区在 App 运行、Mac 清醒且联网时采集。退出、睡眠或关机会暂停本地采集；回来后重新打开并检查同步结果。远程服务由服务端的计划负责，本机 App 退出不影响服务器采集。</p></details>
+        <div class="quiet-note"><button id="support-issues" class="secondary" type="button">打开问题反馈 ↗</button><p>前往 GitHub 的公开页面，只填写已脱敏的信息。App 不会自动附带日志、账户数据或密钥。</p></div>
       </section>
       <div id="feedback" role="status" aria-live="polite" hidden></div>
     </main>

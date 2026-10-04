@@ -1,4 +1,5 @@
 import { workspacePresentation, savedRemote } from "./presentation.mjs";
+import { releasePresentation } from "./releases.mjs";
 
 const { invoke } = window.__TAURI__.core;
 const $ = (id) => document.getElementById(id);
@@ -6,8 +7,9 @@ const pages = {
   general: ["通用", "这台 Mac 上的启动与使用偏好。"],
   workspace: ["当前工作区", "确认正在查看哪份资料，以及它由谁更新。"],
   updates: ["关于与更新", "本机 App 的版本与更新信息。"],
+  support: ["帮助与恢复", "安装、升级，以及你的资料保存在哪里。"],
 };
-let refreshing = false, saving = false, checkedRelease = null;
+let refreshing = false, saving = false, checkedRelease = null, checkedDesktop = null;
 function text(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
 function feedback(message, error = false) {
   text("feedback", message);
@@ -53,10 +55,11 @@ async function refresh() {
     for (const id of ["return-workspace", "workspace-settings", "workspace-health"]) $(id).disabled = !workspace.ready;
     $("data-folder").hidden = !workspace.canRevealFolder;
     $("data-folder").disabled = false;
+    $("recovery-folder").disabled = !workspace.canRevealFolder;
   } catch {
     feedback("暂时无法读取 App 状态，请关闭设置后重新打开。", true);
     $("auto-connect").disabled = true;
-    for (const id of ["return-workspace", "workspace-settings", "workspace-health", "data-folder"]) $(id).disabled = true;
+    for (const id of ["return-workspace", "workspace-settings", "workspace-health", "data-folder", "recovery-folder"]) $(id).disabled = true;
   } finally { refreshing = false; }
 }
 for (const id of ["manage-workspaces", "choose-workspace", "switch-workspace"]) {
@@ -66,6 +69,9 @@ for (const [id, page] of [["return-workspace", "current"], ["workspace-settings"
   $(id).addEventListener("click", () => action(() => invoke("open_workspace_page", { page })));
 }
 $("data-folder").addEventListener("click", () => action(() => invoke("show_workspace_folder")));
+$("recovery-folder").addEventListener("click", () => action(() => invoke("show_recovery_folder")));
+$("support-issues").addEventListener("click", () => action(() => invoke("open_issue_tracker")));
+$("update-help").addEventListener("click", () => document.querySelector('[data-page="support"]').click());
 $("auto-connect").addEventListener("change", async () => {
   if (saving) return;
   saving = true; $("auto-connect").disabled = true;
@@ -77,17 +83,36 @@ $("auto-connect").addEventListener("change", async () => {
 });
 $("check-updates").addEventListener("click", async () => {
   $("check-updates").disabled = true;
+  checkedRelease = null; checkedDesktop = null;
   $("release-notes").hidden = true;
+  $("download-desktop").hidden = true;
+  $("package-details").hidden = true;
   $("update-result").hidden = false;
   text("update-result", "正在检查官方版本…");
   try {
     const result = await invoke("check_updates");
     checkedRelease = result.version;
-    const comparison = result.relation === "newer" ? "版本号高于本机 App。" : result.relation === "same" ? "与本机 App 的基础版本号一致。" : "本机是较新的内部预览。";
-    text("update-result", `官方稳定版 v${result.version}，${comparison} 这是仓库版本，不代表已有桌面安装包。`);
+    checkedDesktop = result.desktop;
+    const view = releasePresentation(result);
+    text("update-result", view.message);
+    $("download-desktop").hidden = !view.download;
+    text("download-desktop", view.label);
+    $("package-details").hidden = !view.details;
+    text("package-checksum", view.details);
     $("release-notes").hidden = false;
   } catch (error) { checkedRelease = null; text("update-result", String(error)); }
   finally { $("check-updates").disabled = false; }
+});
+$("download-desktop").addEventListener("click", async () => {
+  if (!checkedDesktop) return;
+  $("download-desktop").disabled = true; $("check-updates").disabled = true;
+  try {
+    await invoke("open_desktop_download", { version: checkedDesktop.version });
+    feedback("已在浏览器打开官方安装包下载。下载完成后，请退出 App，再在 Finder 中替换应用。资料与连接保留。");
+  } catch (error) {
+    checkedDesktop = null; $("download-desktop").hidden = true;
+    feedback(String(error), true);
+  } finally { $("download-desktop").disabled = false; $("check-updates").disabled = false; }
 });
 $("release-notes").addEventListener("click", () => action(() => invoke("open_release_notes", { version: checkedRelease })));
 refresh();

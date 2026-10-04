@@ -106,10 +106,13 @@ refresh must be checked in Data status and retried; no missing record is fabrica
 
 Native Settings explains where collection runs and offers **Open data folder** for
 the selected local workspace. **Version & updates** makes an explicit, read-only
-request to the canonical repository's stable release endpoint, sending no account
-or workspace details. A repository version is not a signed desktop update. This
-preview neither downloads nor installs releases, changes the workspace, nor
-updates an existing HTTPS service. Signed installation and binary-update acceptance remain part of the public
+request to the canonical repository's releases endpoint, sending no account
+or workspace details. A repository version is not a signed desktop update. An
+official desktop DMG is offered only with matching verified release metadata;
+Download rechecks it and opens the browser for manual installation. App replacement
+does not change the workspace or update an existing HTTPS service. Offline Help
+& recovery covers installation, failed upgrades and data retention. See
+[desktop updates](desktop-updates.md). Signed installation and upgrade acceptance remain part of the public
 distribution gate. Local workspace startup recovery is described below.
 
 ## Development and current source installations
@@ -126,7 +129,7 @@ and runbook are [archived](../archive/onboarding/README.md) and no longer select
 automatically.
 
 Before a public desktop release, complete real-account installation acceptance, Developer ID
-signing/notarization, signed updates and installation acceptance on a Mac without
+signing/notarization, signed-package upgrades and installation acceptance on a Mac without
 development tools. A virtual machine is not required for the current local
 preview acceptance.
 
