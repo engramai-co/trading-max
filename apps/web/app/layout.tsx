@@ -4,7 +4,7 @@ import "@mantine/notifications/styles.css";
 import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata, Viewport } from "next";
 
-import { WorkspaceShell } from "@/workspace/shell";
+import { PresentationShell } from "@/workspace/presentation-shell";
 import { LocaleProvider } from "@/components/locale-provider";
 import { TradingMaxProvider } from "@/ui/provider";
 import { brandColours, darkCanvas } from "@/ui/theme";
@@ -44,7 +44,7 @@ export default function RootLayout({
       <body>
         <TradingMaxProvider>
           <LocaleProvider>
-            <WorkspaceShell>{children}</WorkspaceShell>
+            <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
           </LocaleProvider>
         </TradingMaxProvider>
       </body>

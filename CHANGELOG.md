@@ -10,6 +10,37 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.10.0] - 2026-10-04
+
+### Added
+
+- Separate desktop App preferences, workspace selection, service-owned settings,
+  sync activity and CSV imports into focused windows. Reuse the existing account,
+  market-data, model and scheduling forms; keep investment reports together.
+- Add an explicit desktop presentation contract and routes. Browser navigation,
+  appearance and settings remain unchanged; older services stay compatible.
+- Show per-scope update failures in desktop activity even when lightweight
+  balance refreshes succeed. Keep task details, recovery controls and diagnostics
+  available without filling the investment window with service management.
+
+### Fixed
+
+- Preserve unsaved service forms on repeated window opens, close service windows
+  on source changes, and keep all external WebViews outside native capabilities.
+- Persist only the chosen startup flag when changing App preferences and retain
+  saved HTTPS connections while opening temporary synthetic demonstrations.
+- Keep a new local workspace's pending first sync neutral in the desktop sidebar,
+  and explain that synthetic demonstrations do not run update tasks.
+- Return the workspace picker to its list after a successful connection and clear
+  obsolete form errors when retrying a workspace action.
+
+### Notes
+
+- This version continues the internal Apple Silicon desktop preview. Public
+  signing, notarization, binary auto-updates and background collection are not
+  introduced. Desktop presentation on a remote service requires this web version;
+  an older service continues to render its existing browser presentation.
+
 ## [1.9.15] - 2026-10-04
 
 ### Fixed

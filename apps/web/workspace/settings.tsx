@@ -18,7 +18,7 @@ import {
   Plug,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
+import Link from "./link";
 import { useState } from "react";
 import type {
   IntegrationOverview,
@@ -72,7 +72,7 @@ type TestResult = {
   validationToken: string | null;
 };
 
-export function SettingsWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
+export function SettingsWorkspace({ localWorkspace = false, desktop = false }: { localWorkspace?: boolean; desktop?: boolean }) {
   const t = useCopy();
   const { params, update } = useRouteState();
   const client = useQueryClient();
@@ -113,7 +113,8 @@ export function SettingsWorkspace({ localWorkspace = false }: { localWorkspace?:
   }
   return (
     <Page
-      title={t("设置与连接", "Settings & connections")}
+      title={desktop ? t("工作区设置", "Workspace settings") : t("设置与连接", "Settings & connections")}
+      description={desktop ? t("账户连接与更新计划保存在当前服务；App 的启动与连接切换在 ⌘, 中管理。", "Accounts and schedules belong to the selected service. Manage App startup and workspace switching with ⌘,.") : undefined}
       actions={
         <Button
           component={Link}
@@ -215,7 +216,7 @@ export function SettingsWorkspace({ localWorkspace = false }: { localWorkspace?:
                 </div>
               </Panel>
               <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} onSaved={() => { void client.invalidateQueries({ queryKey: settingsKey }); }} />
-              <CfdImports />
+              {!desktop && <CfdImports />}
               </>}
             </>
           )}

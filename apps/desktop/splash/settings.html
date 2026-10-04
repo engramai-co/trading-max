@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Trading Max · 设置</title>
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="settings.css">
+</head>
+<body class="preferences">
+  <div class="preferences-shell">
+    <aside class="preferences-sidebar">
+      <header class="brand"><img src="icon.svg" alt="" width="30" height="30"><span>Trading <strong>Max</strong></span></header>
+      <p class="nav-caption">APP 设置</p>
+      <nav aria-label="App 设置分类">
+        <button class="nav-item" data-page="general" aria-current="page" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg>通用</button>
+        <button class="nav-item" data-page="workspace" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h6l2 3h10v12H3Z"/></svg>当前工作区</button>
+        <button class="nav-item" data-page="updates" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg>关于与更新</button>
+      </nav>
+      <div class="sidebar-bottom"><span class="scope-label">仅此 Mac</span><p>账户与采集设置<br>属于各自的工作区。</p></div>
+    </aside>
+    <main class="preferences-main">
+      <header class="preferences-header"><h1 id="page-title" tabindex="-1">通用</h1><p id="page-description">这台 Mac 上的启动与使用偏好。</p></header>
+      <section id="general" aria-labelledby="page-title">
+        <h2 class="section-label">启动</h2>
+        <div class="preference-group">
+          <label class="preference-row toggle-row" for="auto-connect"><span><strong>自动打开已保存的服务</strong><span class="row-description">下次启动 App 时直接进入这份资料。</span></span><input id="auto-connect" type="checkbox" role="switch" disabled></label>
+          <div class="preference-row"><div class="row-copy"><span class="row-description">已保存的服务</span><strong id="startup-name">尚未保存</strong><span id="startup-address" class="row-description address"></span></div><button id="manage-workspaces" class="secondary" type="button">管理连接…</button></div>
+        </div>
+        <p id="startup-hint" class="section-note">关闭自动打开后，启动时显示工作区选择器。</p>
+        <h2 class="section-label spaced">工作区</h2>
+        <button id="choose-workspace" type="button" class="preference-group destination-row"><span><strong>打开另一份投资记录</strong><span class="row-description">最近的工作区、本地文件夹或已有服务。</span></span><span class="shortcut">⇧⌘O <span aria-hidden="true">›</span></span></button>
+        <p class="section-note">App 设置跟随 macOS 外观；投资工作台保留它自己的外观偏好。</p>
+      </section>
+      <section id="workspace" aria-labelledby="page-title" hidden>
+        <div class="workspace-card">
+          <div class="workspace-card-top"><span id="source-kind" class="scope-label">尚未连接</span><span id="connection-state" class="connection-state">未连接</span></div>
+          <h2 id="active-name">尚未打开工作区</h2><p id="active-address" class="address"></p>
+          <p id="connection-detail" class="row-description"></p>
+          <div class="workspace-card-actions"><button id="return-workspace" type="button" disabled>回到工作台</button><button id="switch-workspace" class="secondary" type="button">切换工作区…</button></div>
+        </div>
+        <h2 class="section-label spaced">这份资料</h2>
+        <div class="preference-group">
+          <button id="workspace-settings" type="button" class="preference-row destination-row" disabled><span><strong id="workspace-settings-label">工作区设置</strong><span class="row-description">账户、行情来源、模型与更新计划。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+          <button id="workspace-health" type="button" class="preference-row destination-row" disabled><span><strong>同步与活动</strong><span class="row-description">查看更新时间、采集任务与需要处理的问题。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+          <button id="data-folder" type="button" class="preference-row destination-row" hidden><span><strong>在 Finder 中显示资料</strong><span class="row-description">打开当前本地工作区的文件夹。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+        </div>
+        <p id="ownership-hint" class="section-note"></p>
+      </section>
+      <section id="updates" aria-labelledby="page-title" hidden>
+        <div class="about-product"><img src="icon.svg" width="56" height="56" alt=""><div><h2>Trading Max</h2><p><span id="installed-version"></span><span class="preview-badge">内部预览</span></p></div></div>
+        <div class="preference-group"><div class="preference-row"><span><strong>检查官方版本</strong><span class="row-description">查询仓库的最新稳定版本。</span></span><button id="check-updates" class="secondary" type="button">检查版本</button></div></div>
+        <div id="update-result" class="update-result" role="status" hidden></div>
+        <button id="release-notes" type="button" class="text-button" hidden>查看版本说明 ↗</button>
+        <p class="section-note">仅在点击时向 GitHub 查询，不发送账户、工作区或连接地址。</p>
+        <div class="quiet-note"><strong>关于这个预览版</strong><p>目前不会自动下载或安装更新。更换本机 App 不会更新你连接的 Mac mini；两者各自保留版本与资料。</p></div>
+      </section>
+      <div id="feedback" role="status" aria-live="polite" hidden></div>
+    </main>
+  </div>
+  <script type="module" src="settings.mjs"></script>
+</body>
+</html>

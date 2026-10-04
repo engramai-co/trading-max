@@ -3,11 +3,12 @@
 mod connection;
 mod recovery;
 mod runtime;
+mod surfaces;
 mod updates;
 
 use connection::{Mode, Probe, Profile};
 use runtime::{Runtime, Workspace};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     process::Command,
@@ -36,6 +37,7 @@ struct Session {
     active_url: Option<String>,
     active_name: Option<String>,
     probe: Option<Probe>,
+    desktop_presentation: bool,
     retry_at_ms: Option<u64>,
     #[serde(skip)]
     desired: Option<Profile>,
@@ -81,6 +83,7 @@ impl Desktop {
         session.active_url = None;
         session.active_name = None;
         session.probe = None;
+        session.desktop_presentation = false;
         session.retry_at_ms = None;
         session.stage = if session.desired.is_some() {
             "connecting"
@@ -114,7 +117,7 @@ fn workspace_url(url: &tauri::Url, base: Option<&str>) -> bool {
         })
 }
 fn native_surface(label: &str, url: &tauri::Url) -> bool {
-    matches!(label, "main" | "settings") && internal_url(url)
+    matches!(label, "main" | "settings" | "workspaces") && internal_url(url)
 }
 fn local_command(window: &WebviewWindow) -> Result<(), String> {
     if window
@@ -156,8 +159,10 @@ fn fit_webview(window: &WebviewWindow) -> tauri::Result<()> {
     webview.show()
 }
 fn settings_visible(app: &tauri::AppHandle) -> bool {
-    app.get_webview_window("settings")
-        .is_some_and(|window| window.is_visible().unwrap_or(false))
+    ["settings", "workspaces"].iter().any(|label| {
+        app.get_webview_window(label)
+            .is_some_and(|window| window.is_visible().unwrap_or(false))
+    })
 }
 fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
     let app = app.clone();
@@ -169,6 +174,7 @@ fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
         }
         // Keep the bundled entry alive independently of a failed HTTP WebView.
         // Returning a used WKWebView from HTTP to the custom scheme can go blank.
+        surfaces::close(&app);
         if let Some(workspace) = app.get_webview_window("workspace") {
             let _ = workspace.hide();
         }
@@ -188,6 +194,9 @@ fn enter(
     address: String,
     name: String,
 ) {
+    // This runs on the connection driver, never on the UI thread. Unsupported
+    // services remain compatible; only an explicit versioned contract opts in.
+    let presentation = connection::supports_desktop(&address);
     let app = app.clone();
     let desktop = desktop.clone();
     let handle = app.clone();
@@ -195,12 +204,16 @@ fn enter(
         if desktop.snapshot().generation != generation {
             return;
         }
-        let Ok(url) = tauri::Url::parse(&address) else {
+        let Ok(mut url) = tauri::Url::parse(&address) else {
             return;
         };
+        if presentation {
+            url = surfaces::presentation_url(url);
+        }
         let dismiss_settings = desktop.snapshot().dismiss_settings;
         desktop.update(generation, |session| {
             session.active_url = Some(address);
+            session.desktop_presentation = presentation;
             session.active_name = Some(name.clone());
             session.stage = "loading".into();
             session.message = format!("正在打开{name}…");
@@ -223,12 +236,14 @@ fn enter(
             Err(error) => failed(&app, &desktop, generation, error.to_string()),
             Ok(window) => {
                 let _ = window.set_title(&format!("Trading Max · {name}"));
-                if let Some(settings) = app.get_webview_window("settings") {
-                    if dismiss_settings {
-                        // Retain the settings WKWebView while the new workspace
-                        // begins loading. Destroying it here can suspend the
-                        // replacement page before its first visible frame.
-                        let _ = settings.hide();
+                if dismiss_settings {
+                    for label in ["settings", "workspaces"] {
+                        if let Some(settings) = app.get_webview_window(label) {
+                            // Retain the settings WKWebView while the new workspace
+                            // begins loading. Destroying it here can suspend the
+                            // replacement page before its first visible frame.
+                            let _ = settings.hide();
+                        }
                     }
                 }
                 if focus {
@@ -251,6 +266,8 @@ fn create_workspace_window(
 ) -> tauri::Result<WebviewWindow> {
     let navigation = desktop.clone();
     let pages = desktop.clone();
+    let links = desktop.clone();
+    let handle = app.clone();
     let window = WebviewWindowBuilder::new(app, "workspace", WebviewUrl::External(url))
         .title("Trading Max")
         .inner_size(1280.0, 840.0)
@@ -268,8 +285,8 @@ fn create_workspace_window(
             open_external(url);
             false
         })
-        .on_new_window(|url, _| {
-            open_external(&url);
+        .on_new_window(move |url, _| {
+            surfaces::follow_link(&handle, &links, links.snapshot().generation, url);
             tauri::webview::NewWindowResponse::Deny
         })
         .on_page_load(move |window, payload| {
@@ -469,30 +486,49 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
     desktop.runtime.stop();
 }
 fn show_settings(app: &tauri::AppHandle) -> tauri::Result<()> {
-    if let Some(window) = app.get_webview_window("settings") {
+    show_auxiliary(app, false)
+}
+fn show_workspaces(app: &tauri::AppHandle) -> tauri::Result<()> {
+    show_auxiliary(app, true)
+}
+fn show_auxiliary(app: &tauri::AppHandle, picker: bool) -> tauri::Result<()> {
+    let (label, path, title, width, height) = if picker {
+        (
+            "workspaces",
+            "index.html?picker=1",
+            "Trading Max · 工作区",
+            760.0,
+            800.0,
+        )
+    } else {
+        (
+            "settings",
+            "settings.html",
+            "Trading Max · 设置",
+            860.0,
+            640.0,
+        )
+    };
+    if let Some(window) = app.get_webview_window(label) {
         return reveal_window(&window);
     }
-    let window = WebviewWindowBuilder::new(
-        app,
-        "settings",
-        WebviewUrl::App("index.html?settings=1".into()),
-    )
-    .title("Trading Max · 工作区与连接")
-    .inner_size(740.0, 860.0)
-    .min_inner_size(580.0, 680.0)
-    .center()
-    .resizable(true)
-    // WKWebView can leave a hidden-at-creation settings surface unpainted.
-    // Create it visible, just like the entry and workspace windows.
-    .visible(true)
-    .focused(true)
-    .on_navigation(internal_url)
-    .on_page_load(|window, payload| {
-        if payload.event() == tauri::webview::PageLoadEvent::Finished {
-            let _ = fit_webview(&window);
-        }
-    })
-    .build()?;
+    let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(path.into()))
+        .title(title)
+        .inner_size(width, height)
+        .min_inner_size(640.0, 540.0)
+        .center()
+        .resizable(true)
+        // WKWebView can leave a hidden-at-creation settings surface unpainted.
+        // Create it visible, just like the entry and workspace windows.
+        .visible(true)
+        .focused(true)
+        .on_navigation(internal_url)
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let _ = fit_webview(&window);
+            }
+        })
+        .build()?;
     reveal_window(&window)
 }
 fn request_connection(
@@ -604,6 +640,14 @@ fn desktop_status(
         .as_ref()
         .and_then(|profile| profile.workspace.clone());
     let can_open_browser = browser_url(&snapshot).is_some();
+    let source_name = snapshot
+        .desired
+        .as_ref()
+        .map(|profile| profile.name.clone());
+    let source_address = snapshot
+        .desired
+        .as_ref()
+        .and_then(|profile| (profile.mode == Mode::Remote).then(|| profile.url.clone()));
     if let Ok(Some(saved)) = connection::read_profile(&desktop.root) {
         snapshot.profile = saved;
     }
@@ -611,6 +655,8 @@ fn desktop_status(
         session: snapshot,
         mode,
         workspace,
+        source_name,
+        source_address,
         can_open_browser,
     })
 }
@@ -621,6 +667,8 @@ struct DesktopStatus {
     session: Session,
     mode: Option<Mode>,
     workspace: Option<Workspace>,
+    source_name: Option<String>,
+    source_address: Option<String>,
     can_open_browser: bool,
 }
 
@@ -732,6 +780,101 @@ fn open_settings(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), Str
     show_settings(&app).map_err(|e| e.to_string())
 }
 #[tauri::command]
+fn open_workspaces(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    local_command(&window)?;
+    show_workspaces(&app).map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WorkspacePage {
+    Current,
+    Settings,
+    Health,
+    Imports,
+}
+
+fn workspace_destination(address: &str, page: &WorkspacePage) -> Result<tauri::Url, String> {
+    let mut url = tauri::Url::parse(address).map_err(|_| "工作区地址不可用。")?;
+    if !workspace_url(&url, Some(address)) || !url.username().is_empty() || url.password().is_some()
+    {
+        return Err("工作区地址不可用。".into());
+    }
+    match page {
+        WorkspacePage::Current => {}
+        WorkspacePage::Settings | WorkspacePage::Health | WorkspacePage::Imports => {
+            url.set_path(match page {
+                WorkspacePage::Settings => "/settings",
+                WorkspacePage::Imports => "/desktop/imports",
+                _ => "/health",
+            });
+            url.set_query(None);
+            url.set_fragment(None);
+        }
+    }
+    Ok(url)
+}
+
+#[tauri::command]
+fn open_workspace_page(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    page: WorkspacePage,
+) -> Result<(), String> {
+    local_command(&window)?;
+    open_service_page(&app, &desktop, page)
+}
+
+fn open_service_page(
+    app: &tauri::AppHandle,
+    desktop: &Arc<Desktop>,
+    page: WorkspacePage,
+) -> Result<(), String> {
+    let snapshot = desktop.snapshot();
+    if snapshot.stage != "ready" {
+        return Err("请先连接工作区。断线时仍可使用 App 设置。".into());
+    }
+    let address = snapshot.active_url.as_deref().ok_or("请先连接工作区。")?;
+    if matches!(page, WorkspacePage::Current) {
+        let workspace = app
+            .get_webview_window("workspace")
+            .ok_or("工作区尚未打开。")?;
+        return reveal_window(&workspace).map_err(|e| e.to_string());
+    }
+    let mut target = workspace_destination(address, &page)?;
+    if snapshot.desktop_presentation {
+        target = surfaces::presentation_url(target);
+    } else if matches!(page, WorkspacePage::Imports) {
+        target.set_path("/settings");
+    }
+    surfaces::open(app, desktop, target)
+}
+
+fn update_auto_connect(root: &std::path::Path, enabled: bool) -> Result<Profile, String> {
+    let mut saved = connection::read_profile(root)?.ok_or("请先保存一个服务连接。")?;
+    if saved.mode != Mode::Remote {
+        return Err("启动偏好仅适用于已保存的服务连接。".into());
+    }
+    saved.auto_connect = enabled;
+    let saved = saved.validated()?;
+    connection::write_private_json(root, "connection.json", &saved)?;
+    Ok(saved)
+}
+
+#[tauri::command]
+fn set_auto_connect(
+    window: WebviewWindow,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    enabled: bool,
+) -> Result<Profile, String> {
+    local_command(&window)?;
+    // Serialize with connection edits, and read the newest saved profile so a
+    // stale settings window cannot replace its name/address or active session.
+    let _session = desktop.session.lock().unwrap();
+    update_auto_connect(&desktop.root, enabled)
+}
+#[tauri::command]
 fn open_demo(
     window: WebviewWindow,
     app: tauri::AppHandle,
@@ -756,7 +899,7 @@ fn open_in_browser(
     Ok(())
 }
 fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let settings = MenuItem::with_id(app, "settings", "工作区与连接…", true, Some("CmdOrCtrl+,"))?;
+    let settings = MenuItem::with_id(app, "settings", "设置…", true, Some("CmdOrCtrl+,"))?;
     let application = SubmenuBuilder::new(app, "Trading Max")
         .about(None)
         .separator()
@@ -768,12 +911,43 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
         .separator()
         .quit()
         .build()?;
+    let workspaces = MenuItem::with_id(
+        app,
+        "workspaces",
+        "切换工作区…",
+        true,
+        Some("CmdOrCtrl+Shift+O"),
+    )?;
+    let file = SubmenuBuilder::new(app, "文件")
+        .item(&workspaces)
+        .text("imports", "导入记录…")
+        .separator()
+        .close_window_with_text("关闭窗口")
+        .build()?;
     let reconnect = MenuItem::with_id(app, "reconnect", "重新连接", true, Some("CmdOrCtrl+R"))?;
     let connection = SubmenuBuilder::new(app, "连接")
         .item(&reconnect)
         .text("browser", "在浏览器打开")
         .separator()
         .text("disconnect", "断开当前连接")
+        .build()?;
+    let activity = MenuItem::with_id(
+        app,
+        "activity",
+        "同步与活动…",
+        true,
+        Some("CmdOrCtrl+Shift+J"),
+    )?;
+    let service_settings = MenuItem::with_id(
+        app,
+        "service-settings",
+        "工作区设置…",
+        true,
+        Some("CmdOrCtrl+Alt+,"),
+    )?;
+    let view = SubmenuBuilder::new(app, "工作区")
+        .item(&activity)
+        .item(&service_settings)
         .build()?;
     let edit = SubmenuBuilder::new(app, "编辑")
         .undo()
@@ -786,7 +960,7 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
         .build()?;
     app.set_menu(
         MenuBuilder::new(app)
-            .items(&[&application, &connection, &edit])
+            .items(&[&application, &file, &edit, &view, &connection])
             .build()?,
     )?;
     app.on_menu_event(|app, event| {
@@ -795,12 +969,25 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
             "settings" => {
                 let _ = show_settings(app);
             }
+            "workspaces" => {
+                let _ = show_workspaces(app);
+            }
+            "activity" | "service-settings" | "imports" => {
+                let page = match event.id().as_ref() {
+                    "activity" => WorkspacePage::Health,
+                    "imports" => WorkspacePage::Imports,
+                    _ => WorkspacePage::Settings,
+                };
+                if open_service_page(app, &desktop, page).is_err() {
+                    let _ = show_workspaces(app);
+                }
+            }
             "reconnect" => {
                 let snapshot = desktop.snapshot();
                 if let Ok(profile) = snapshot.desired.unwrap_or(snapshot.profile).validated() {
                     let _ = request_connection(app, &desktop, Some(profile), false);
                 } else {
-                    let _ = show_settings(app);
+                    let _ = show_workspaces(app);
                 }
             }
             "disconnect" => {
@@ -834,6 +1021,9 @@ fn main() {
             retry_connection,
             disconnect,
             open_settings,
+            open_workspaces,
+            open_workspace_page,
+            set_auto_connect,
             open_demo,
             open_in_browser,
             choose_workspace_folder,
@@ -873,6 +1063,7 @@ fn main() {
                     active_url: None,
                     active_name: None,
                     probe: None,
+                    desktop_presentation: false,
                     retry_at_ms: None,
                     desired: None,
                     dismiss_settings: false,
@@ -929,7 +1120,17 @@ mod tests {
         let native = "tauri://localhost/index.html".parse().unwrap();
         assert!(native_surface("main", &native));
         assert!(native_surface("settings", &native));
+        assert!(native_surface("workspaces", &native));
         assert!(!native_surface("workspace", &native));
+        for label in surfaces::LABELS {
+            assert!(!native_surface(label, &native));
+            assert!(!native_surface(
+                label,
+                &"https://mini.example.test/desktop/settings"
+                    .parse()
+                    .unwrap()
+            ));
+        }
         assert!(internal_url(
             &"tauri://localhost/index.html".parse().unwrap()
         ));
@@ -940,8 +1141,67 @@ mod tests {
         ] {
             assert!(!internal_url(&url.parse().unwrap()));
             assert!(!native_surface("main", &url.parse().unwrap()));
+            assert!(!native_surface("settings", &url.parse().unwrap()));
+            assert!(!native_surface("workspaces", &url.parse().unwrap()));
             assert!(!native_surface("workspace", &url.parse().unwrap()));
         }
+    }
+    #[test]
+    fn settings_links_stay_on_the_selected_service() {
+        for base in [
+            "https://mini.example.test/analytics?range=3M#chart",
+            "http://127.0.0.1:43000/settings?tab=accounts",
+        ] {
+            let original: tauri::Url = base.parse().unwrap();
+            let target = workspace_destination(base, &WorkspacePage::Health).unwrap();
+            assert_eq!(target.origin(), original.origin());
+            assert_eq!(target.path(), "/health");
+            assert!(target.query().is_none() && target.fragment().is_none());
+            assert_eq!(
+                workspace_destination(base, &WorkspacePage::Settings)
+                    .unwrap()
+                    .path(),
+                "/settings"
+            );
+            assert_eq!(
+                workspace_destination(base, &WorkspacePage::Current).unwrap(),
+                original
+            );
+        }
+        for base in [
+            "file:///etc/passwd",
+            "https://user:secret@example.test/",
+            "http://other.test/",
+            "javascript:alert(1)",
+        ] {
+            assert!(workspace_destination(base, &WorkspacePage::Settings).is_err());
+        }
+    }
+    #[test]
+    fn startup_preference_changes_only_the_saved_flag() {
+        let root = std::env::temp_dir().join(format!(
+            "tm-startup-setting-{}-{}",
+            std::process::id(),
+            connection::now_ms()
+        ));
+        assert!(update_auto_connect(&root, false).is_err());
+        let saved = Profile {
+            url: "https://new.example.test/".into(),
+            name: "New connection".into(),
+            auto_connect: true,
+            ..Profile::default()
+        };
+        connection::write_private_json(&root, "connection.json", &saved).unwrap();
+        let updated = update_auto_connect(&root, false).unwrap();
+        assert_eq!(
+            updated,
+            Profile {
+                auto_connect: false,
+                ..saved.clone()
+            }
+        );
+        assert_eq!(update_auto_connect(&root, true).unwrap(), saved);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn active_workspace_has_an_exact_origin() {
@@ -992,6 +1252,7 @@ mod tests {
                 active_url: None,
                 active_name: None,
                 probe: None,
+                desktop_presentation: false,
                 retry_at_ms: None,
                 desired: None,
                 dismiss_settings: false,
@@ -1039,6 +1300,7 @@ mod tests {
                 active_url: None,
                 active_name: None,
                 probe: None,
+                desktop_presentation: false,
                 retry_at_ms: None,
                 desired: None,
                 dismiss_settings: false,

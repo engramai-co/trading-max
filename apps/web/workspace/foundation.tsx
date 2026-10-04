@@ -16,7 +16,7 @@ import {
   Question,
   WarningCircle,
 } from "@phosphor-icons/react";
-import Link from "next/link";
+import Link from "./link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";

@@ -1,0 +1,55 @@
+/* Desktop presentation only. Shared financial views and browser styles stay intact. */
+.mx-desktop-app .mx-sidebar { width: 236px; padding-top: 24px; }
+.mx-desktop-app .mx-content { margin-left: 236px; }
+.mx-desktop-app .mx-brand { margin-bottom: 26px; }
+.mx-desktop-tools { border-top: 1px solid var(--mx-side-border); padding-top: 18px; }
+.mx-desktop-status { display: flex; align-items: center; gap: 10px; padding: 10px 8px; text-decoration: none; border-radius: 8px; }
+.mx-desktop-status:hover, .mx-desktop-utilities a:hover { background: var(--mx-side-hover); }
+.mx-desktop-status > span { flex: 1; min-width: 0; }
+.mx-desktop-status strong { display: block; font-size: 12px; font-weight: 550; }
+.mx-desktop-status small { display: block; font-size: 10px; line-height: 1.7; margin-top: 5px; color: var(--mx-side-muted); }
+.mx-desktop-status .mx-freshness { display: inline; }
+.mx-desktop-status .mx-status-dot { display: none; }
+.mx-desktop-warning > svg:first-child { color: var(--mx-warning); }
+.mx-desktop-utilities { display: flex; gap: 4px; margin-top: 12px; }
+.mx-desktop-utilities a { display: flex; gap: 7px; align-items: center; text-decoration: none; font-size: 11px; min-height: 38px; padding: 8px; border-radius: 6px; }
+.mx-desktop-surface { min-height: 100dvh; background: var(--mx-canvas); }
+.mx-desktop-source { position: sticky; top: 0; z-index: 100; min-height: 68px; padding: 16px 30px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--mx-surface); border-bottom: 1px solid var(--mx-border); }
+.mx-desktop-source > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.mx-desktop-source strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-desktop-source span { color: var(--mx-muted); font-size: 11px; flex-shrink: 0; }
+.mx-desktop-source a { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; }
+.mx-desktop-surface main { max-width: 1060px; margin: 0 auto; padding: 30px 32px 48px; }
+.mx-desktop-surface .mx-page-heading { align-items: flex-start; }
+.mx-desktop-surface .mx-page-heading h1 { font-size: 27px; }
+.mx-desktop-surface .mx-page-heading p { max-width: 590px; }
+.mx-desktop-surface .mx-page { gap: 22px; }
+.mx-desktop-surface .mx-panel { padding: 22px; }
+.mx-desktop-surface .mx-panel-title h2 { font-size: 16px; }
+.mx-desktop-settings .mx-tabs { gap: 10px; padding-bottom: 14px; }
+.mx-desktop-settings .mx-tabs button { padding: 10px 14px; border-radius: 8px; min-height: 40px; }
+.mx-desktop-settings .mx-tabs button[aria-selected="true"] { background: var(--mx-brand-soft); }
+.mx-desktop-settings .mx-tabs button[aria-selected="true"]::after { display: none; }
+.mx-desktop-surface .mx-health-hero { padding: 20px 22px; gap: 16px; }
+.mx-desktop-surface .mx-health-hero h2 { font-size: 19px; }
+.mx-desktop-surface .mx-health-hero p { margin-bottom: 6px; }
+.mx-desktop-surface .mx-health-symbol { width: 40px; height: 40px; }
+.mx-desktop-surface .mx-job-row { padding-block: 18px; }
+.mx-activity-controls { border: 1px solid var(--mx-border); background: var(--mx-surface); border-radius: 10px; }
+.mx-activity-controls > summary { padding: 16px 22px; color: var(--mx-muted); font-size: 13px; }
+.mx-activity-controls[open] > summary { border-bottom: 1px solid var(--mx-border); margin-bottom: 20px; }
+.mx-activity-controls > .mx-grid-two { display: flex; flex-direction: column; margin: 0 20px 20px; }
+.mx-activity-controls > .mx-panel { margin: 0 20px 20px; }
+.mx-import-steps { list-style: none; display: flex; gap: 18px; padding: 0 0 18px; margin: 0; border-bottom: 1px solid var(--mx-border); color: var(--mx-muted); font-size: 12px; }
+.mx-import-steps [data-current="true"] { color: var(--mx-brand); font-weight: 600; }
+.mx-desktop-imports .mx-import-drop > p { grid-column: 2; }
+@media (max-width: 700px) {
+  .mx-desktop-surface main { padding: 24px 18px; }
+  .mx-desktop-source { padding: 14px 18px; }
+  .mx-desktop-source > div { flex-direction: column; gap: 4px; }
+  .mx-desktop-surface .mx-page-heading { flex-direction: column; }
+  .mx-desktop-imports .mx-import-drop > p { grid-column: 1; }
+}
+@media (max-width: 767px) {
+  .mx-desktop-app .mx-content { margin-left: 0; }
+}

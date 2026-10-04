@@ -31,7 +31,7 @@ import {
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
-import Link from "next/link";
+import Link from "./link";
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -40,9 +40,13 @@ import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
 import { useCopy } from "./foundation";
 
-export function WorkspaceShell({ children }: { children: React.ReactNode }) {
+import { desktopPage, presentationLink } from "./desktop-routing";
+import { DesktopStatus } from "./desktop-surfaces";
+
+export function WorkspaceShell({ children, desktop = false, localWorkspace = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean }) {
   const t = useCopy();
-  const pathname = usePathname();
+  const actualPathname = usePathname();
+  const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
   const profile = useWorkspaceProfile();
   const router = useRouter();
   const { locale, setLocale } = useLocale();
@@ -180,7 +184,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
   function navigate(href: string) {
     setSearchOpen(false);
     setMobileOpen(false);
-    router.push(href);
+    const route = presentationLink(actualPathname, href);
+    if (route.separate) window.open(route.href, "_blank", "noopener");
+    else router.push(route.href);
   }
   const brand = (
     <Link
@@ -252,7 +258,7 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </Link>
       ));
   return (
-    <div className="mx-app" inert={searchOpen || mobileOpen}>
+    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen || mobileOpen}>
       <a className="mx-skip" href="#main-content">
         {t("跳到正文", "Skip to content")}
       </a>
@@ -311,9 +317,9 @@ export function WorkspaceShell({ children }: { children: React.ReactNode }) {
           {links(1)}
         </nav>
         <div className="mx-sidebar-bottom">
-          <nav aria-label={t("工作台管理", "Workspace management")}>
+          {desktop ? <DesktopStatus localWorkspace={localWorkspace} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
             {links(2)}
-          </nav>
+          </nav>}
         </div>
       </aside>
       <div className="mx-content">

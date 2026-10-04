@@ -10,8 +10,8 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import Link from "./link";
+import { Fragment, useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
   deriveHealthTone,
@@ -36,7 +36,9 @@ import {
   useCopy,
 } from "./foundation";
 
-export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
+import { activityState } from "./desktop-status";
+
+export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
   const { locale } = useLocale();
   const client = useQueryClient();
@@ -46,9 +48,10 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
     refetchInterval: 5000,
     retry: 1,
   });
-  const [scope, setScope] = useState<RefreshJob["scope"]>("all");
+  const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const [controlsOpen, setControlsOpen] = useState(initialScope !== "all");
   const start = useMutation({
     mutationFn: () =>
       api<RefreshJob>(
@@ -61,6 +64,9 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
       void client.invalidateQueries({ queryKey: ["dashboard-lens", "latest"] });
     },
   });
+  const Controls = desktop ? "details" : Fragment;
+  const Actions = desktop ? Group : Fragment;
+  const controlsProps = desktop ? { className: "mx-activity-controls", open: controlsOpen, onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => setControlsOpen(event.currentTarget.open) } : {};
   const data = query.data;
   const latestRunId = data?.health?.latestRunId;
   useEffect(() => {
@@ -70,9 +76,10 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
       void client.invalidateQueries({ queryKey: ["workspace-research-shell"] });
     }
   }, [client, latestRunId]);
-  const tone = deriveHealthTone(data ?? null, localWorkspace);
+  const activity = activityState(data ?? null, localWorkspace);
+  const tone = desktop ? activity.tone : deriveHealthTone(data ?? null, localWorkspace);
   const job =
-    data?.jobs.find((j) => j.jobId === selected) ??
+    data?.jobs.find((j) => j.jobId === selected) ?? activity.failures.find((j) => j.jobId === selected) ??
     (start.data?.jobId === selected ? start.data : null);
   const queued = data?.health?.queue.queued ?? 0;
   const running = data?.health?.queue.running ?? 0;
@@ -115,16 +122,18 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
           );
   return (
     <Page
-      title={t("数据状态", "Data status")}
+      title={desktop ? t("同步与活动", "Sync & activity") : t("数据状态", "Data status")}
+      description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
+      className={desktop ? "mx-activity-page" : ""}
       actions={
-        <Button
+        <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
           variant="default"
           leftSection={<ArrowClockwise size={16} />}
           loading={query.isFetching}
           onClick={() => void query.refetch()}
         >
           {t("重新检查", "Check now")}
-        </Button>
+        </Button></Actions>
       }
     >
       {query.isPending ? (
@@ -167,13 +176,18 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                   : t("待检查", "Needs attention")}
             </Tag>
           </section>
+          {desktop && activity.failures.length > 0 && <Notice tone="warn">
+            <div className="mx-toolbar"><span>{t("服务在线不代表所有更新都已完成。以下范围最近一次更新需要检查：", "An online service does not mean every update succeeded. Check the latest update for: ")}{activity.failures.map((job) => scopes.find((item) => item.value === job.scope)?.label ?? job.scope).join(" · ")}</span><Button size="compact-sm" variant="subtle" onClick={() => setSelected(activity.failures[0].jobId)}>{t("查看原因", "View issue")}</Button></div>
+          </Notice>}
+          <Controls {...controlsProps}>
+          {desktop && <summary>{t("更新范围、服务与计划", "Update scope, service & schedule")}</summary>}
           <div className="mx-grid-two">
             <Panel
               title={t("更新数据", "Update data")}
             >
               <Stack gap="md">
                 {tone === "setup" ? <>
-                  <Notice>{t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
+                  <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的资金流。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
                   <Group><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></Group>
                 </> : <>
                 <Select
@@ -209,7 +223,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                   <Button
                     leftSection={<ArrowClockwise size={16} />}
                     loading={start.isPending}
-                    disabled={!data.health || queued > 0 || running > 0}
+                    disabled={readOnly || !data.health || queued > 0 || running > 0}
                     onClick={() => start.mutate()}
                   >
                     {queued > 0 || running > 0 ? t("更新进行中", "Update in progress") : t("开始更新", "Start update")}
@@ -347,6 +361,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
               </p>
             </details>
           </Panel>
+          </Controls>
           <Panel
             title={t("更新记录", "Update history")}
             action={
@@ -367,7 +382,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
               />
             }
           >
-            <div className="mx-metric-grid mx-metric-grid-three">
+            {!desktop && <div className="mx-metric-grid mx-metric-grid-three">
               <Metric
                 label={t("等待执行", "In queue")}
                 value={number(queued, 0)}
@@ -380,7 +395,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                 label={t("已成功完成", "Succeeded")}
                 value={number(data.health?.queue.succeeded, 0)}
               />
-            </div>
+            </div>}
             {data.jobs.filter((j) => filter === "all" || j.status === filter)
               .length ? (
               <div className="mx-job-list">
@@ -430,12 +445,17 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                 title={
                   data.jobs.length
                     ? t("没有符合筛选的任务", "No matching tasks")
-                    : t(
+                    : desktop && readOnly
+                      ? t("演示不执行更新任务", "The demo does not run updates")
+                      : t(
                         "第一次更新，从这里开始",
                         "Your first update starts here",
                       )
                 }
-                description={t(
+                description={desktop && readOnly ? t(
+                  "这里展示模拟资料；在你自己的工作区中，更新记录会显示每次采集的进度与结果。",
+                  "These are synthetic records. In your own workspace, this list shows the progress and outcome of each update.",
+                ) : t(
                   "连接账户后，选择更新范围并开始更新。",
                   "Connect an account, choose a scope, and start an update.",
                 )}
@@ -522,10 +542,14 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
             </ol>
             {!job.stages.length && (
               <Notice>
-                {t(
-                  "任务已排队，执行后将显示各阶段进度。",
-                  "The task is queued. Stages appear when execution begins.",
-                )}
+                {desktop && job.status !== "queued"
+                  ? job.status === "running"
+                    ? t("任务正在执行，尚无阶段进度。", "The task is running; no stage progress has been reported yet.")
+                    : t("本次任务没有留下阶段记录，请以上方任务状态和错误信息为准。", "No stage details were recorded. Refer to the task status and any error above.")
+                  : t(
+                    "任务已排队，执行后将显示各阶段进度。",
+                    "The task is queued. Stages appear when execution begins.",
+                  )}
               </Notice>
             )}
             {(job.status === "failed" || job.status === "interrupted") && (
@@ -533,6 +557,7 @@ export function HealthWorkspace({ localWorkspace = false }: { localWorkspace?: b
                 variant="default"
                 onClick={() => {
                   setScope(job.scope);
+                  setControlsOpen(true);
                   setSelected(null);
                 }}
               >
