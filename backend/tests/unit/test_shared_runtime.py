@@ -46,7 +46,7 @@ def test_mode_separation_exclusions_and_full_dependency_roots(tmp_path):
     executable = dependency(release, "package/engine")
     executable.chmod(0o755)
     excluded = [dependency(release, "__pycache__/compiled.pyc"), dependency(release, "a.pth")]
-    excluded.append(dependency(release, "package/small", b"small"))
+    excluded.append(dependency(release, "package/empty", b""))
     dependency(release, "alias").unlink()
     (readonly.parent.parent / "alias").symlink_to(readonly)
     web = release / "apps/web/.next/standalone/node_modules/pkg/index.js"
@@ -64,6 +64,43 @@ def test_mode_separation_exclusions_and_full_dependency_roots(tmp_path):
     assert readonly.stat().st_ino != executable.stat().st_ino
     assert stat.S_IMODE(executable.stat().st_mode) == 0o555
     assert [p.stat().st_ino for p in excluded] == before
+
+
+def test_small_packages_and_static_assets_share_without_touching_server_cache(tmp_path):
+    first, second, pool = tmp_path / "first", tmp_path / "second", tmp_path / "pool"
+    small = [dependency(root, "package/index.js", b"export default 1") for root in (first, second)]
+    assets = []
+    caches = []
+    for root in (first, second):
+        standalone = root / "apps/web/.next/standalone"
+        for name in (".next/static/chunks/app.js", "public/icon.svg"):
+            path = standalone / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"synthetic static asset")
+            assets.append(path)
+        cache = standalone / ".next/server/app/page.html"
+        cache.parent.mkdir(parents=True)
+        cache.write_bytes(b"synthetic mutable page")
+        caches.append((cache, cache.stat().st_ino))
+        share_dependencies(root, pool)
+    assert small[0].stat().st_ino == small[1].stat().st_ino
+    assert len({p.stat().st_ino for p in assets}) == 1
+    assert all(not p.stat().st_mode & 0o222 for p in [*small, *assets])
+    assert all(p.stat().st_ino == inode and p.stat().st_mode & 0o200 for p, inode in caches)
+    shutil.rmtree(first)
+    shutil.rmtree(pool)
+    assert small[1].read_bytes() == b"export default 1"
+    assert assets[-1].read_bytes() == b"synthetic static asset"
+
+
+def test_explicit_minimum_keeps_smaller_files_independent_and_rejects_zero(tmp_path):
+    release, pool = tmp_path / "release", tmp_path / "pool"
+    small = dependency(release, "small.js", b"export default 1")
+    before = small.stat().st_ino
+    share_dependencies(release, pool, minimum_bytes=4096)
+    assert small.stat().st_ino == before and small.stat().st_mode & 0o200
+    with pytest.raises(ValueError, match="positive file threshold"):
+        share_dependencies(release, pool, minimum_bytes=0)
 
 
 def test_cross_filesystem_keeps_independent_source(tmp_path, monkeypatch):

@@ -10,6 +10,15 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.9.15] - 2026-10-04
+
+### Fixed
+
+- Share identical nonempty dependency files below 4 KiB and immutable static web
+  assets across retained macOS releases. Verify independent pool copies before
+  atomic replacement; preserve executable modes, rollback links, mutable server
+  pages, bytecode and application state.
+
 ## [1.9.14] - 2026-10-04
 
 ### Fixed

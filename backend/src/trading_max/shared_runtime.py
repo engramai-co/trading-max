@@ -29,10 +29,12 @@ def file_digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def candidates(release: Path, minimum_bytes: int = 4096) -> Iterator[Path]:
+def candidates(release: Path, minimum_bytes: int = 1) -> Iterator[Path]:
     roots = [
         *release.glob(".venv/lib/python*/site-packages"),
         release / "apps/web/.next/standalone/node_modules",
+        release / "apps/web/.next/standalone/.next/static",
+        release / "apps/web/.next/standalone/public",
         release / "backend/src/trading_max/synthesis/_pi/node_modules",
         release / ".git/objects/pack",
     ]
@@ -53,13 +55,13 @@ def candidates(release: Path, minimum_bytes: int = 4096) -> Iterator[Path]:
             yield path
 
 
-def share_dependencies(release: Path, pool: Path, *, minimum_bytes: int = 4096) -> dict:
+def share_dependencies(release: Path, pool: Path, *, minimum_bytes: int = 1) -> dict:
     release = release.resolve(strict=True)
     pool = pool.absolute()
     if pool.resolve() != pool or pool.is_relative_to(release):
         raise ValueError("shared runtime pool must be separate from its release")
-    if minimum_bytes < 4096:
-        raise ValueError("runtime sharing requires a positive useful file threshold")
+    if minimum_bytes < 1:
+        raise ValueError("runtime sharing requires a positive file threshold")
     pool.mkdir(parents=True, exist_ok=True, mode=0o700)
     linked = reused = independent = fallback = 0
     for source in candidates(release, minimum_bytes):
