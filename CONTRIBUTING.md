@@ -150,7 +150,9 @@ tags by hand during the normal contribution flow.
 
 ## Desktop preview changes
 
-The desktop shell is currently an internal Apple Silicon macOS preview.
+The desktop shell is an Apple Silicon macOS preview. Public DMGs additionally
+pass the [distribution gate](docs/installation/desktop-updates.md#maintainer-distribution-gate);
+ordinary local builds do not inherit a published package's signature or acceptance.
 [Its build guide](apps/desktop/README.md) owns packaging, native tests and
 supervisor acceptance. Use only synthetic local state; an existing-server
 connection must not change that service or expose native capabilities remotely.

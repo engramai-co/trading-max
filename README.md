@@ -76,13 +76,17 @@ examples, not live quotes. Company marks belong to their owners.*
 
 ## Get started
 
-The new desktop entry brings workspaces and existing-server connections into
-one App. The internal Apple Silicon Mac preview can connect to your own HTTPS
+The desktop entry brings workspaces and existing-server connections into
+one App. The Apple Silicon Mac preview can connect to your own HTTPS
 service, remember it and recover when it is unavailable. A separate local demo
 uses synthetic data.
 
-Local workspace enrollment is available in the internal preview. Signed public
-installers remain a later step. See [desktop onboarding and current capabilities](docs/installation/desktop-onboarding.md).
+The [1.11.0 release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0)
+provides the Developer ID signed and Apple-notarized macOS preview DMG and its
+verification manifest. It bundles its Python and Node runtimes; local workspaces
+start empty and guide you through connecting and checking your accounts.
+See [desktop onboarding and acceptance scope](docs/installation/desktop-onboarding.md)
+and [installation, upgrades and recovery](docs/installation/desktop-updates.md).
 
 Already using a source installation? The existing CLI and local launch scripts
 remain supported. The former Codex skill, runbook and source-installation guide

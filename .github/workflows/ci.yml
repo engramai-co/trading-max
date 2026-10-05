@@ -97,6 +97,13 @@ jobs:
       - name: Backend package tests
         run: uv run pytest backend/tests
 
+      - name: Desktop packaging and presentation guard tests
+        run: |
+          uv run ruff check apps/desktop/scripts apps/desktop/tests
+          uv run ruff format --check apps/desktop/scripts apps/desktop/tests
+          uv run python -m unittest discover -s apps/desktop/tests -v
+          node --test apps/desktop/tests/*.test.mjs
+
       - name: Package entry-point smoke
         run: uv run python -c "import trading_max; import services.api.trading_max_api.worker_main"
 

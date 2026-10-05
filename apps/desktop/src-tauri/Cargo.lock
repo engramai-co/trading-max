@@ -4137,12 +4137,13 @@ dependencies = [
 
 [[package]]
 name = "trading-max-desktop-preview"
-version = "1.10.0"
+version = "1.11.0"
 dependencies = [
  "libc",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

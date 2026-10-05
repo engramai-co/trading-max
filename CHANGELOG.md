@@ -10,6 +10,35 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.11.0] - 2026-10-04
+
+### Added
+
+- Add explicit official desktop DMG downloads with release-manifest, publisher,
+  platform and digest checks, separate from source-only repository releases.
+- Bundle offline installation, upgrade recovery and uninstall/data-retention
+  help in App Settings, with access to existing local workspace recovery files.
+- Add a maintainer gate that verifies the signed/notarized DMG and its actual
+  application contents before generating desktop release metadata.
+- Add isolated macOS packaging commands for signing every bundled native runtime,
+  checking minimal entitlements, rehearsing Hardened Runtime with a development
+  certificate, and assembling a DMG after the App passes notarization.
+
+### Changed
+
+- Keep desktop upgrades user initiated through the browser and Finder; preserve
+  local workspaces and credentials and leave existing HTTPS services unchanged.
+  Automatic binary updates remain deferred. The signed preview's installation
+  acceptance uses an isolated profile on the release owner's Mac; untouched-OS
+  and minimum-OS native UI coverage are not claimed.
+
+### Fixed
+
+- Build desktop Python dependencies from hash-verified macOS 13-compatible wheels
+  instead of inheriting the build Mac's newer OS. Reject incompatible native
+  components and external absolute library dependencies before signing and when
+  verifying the final DMG.
+
 ## [1.10.0] - 2026-10-04
 
 ### Added

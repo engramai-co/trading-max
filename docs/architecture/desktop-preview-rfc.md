@@ -1,7 +1,10 @@
 # Desktop runtime preview
 
-Status: internal packaging experiment; no public release or production migration.
-Base product: 1.9.0. Target: Apple Silicon macOS.
+Historical design record: the initial internal packaging experiment used product
+1.9.0 on Apple Silicon macOS. Current signed-preview status and the 1.11.0
+installation acceptance scope are maintained in
+[desktop onboarding](../installation/desktop-onboarding.md) and
+[desktop updates](../installation/desktop-updates.md).
 
 ## Purpose and scope
 

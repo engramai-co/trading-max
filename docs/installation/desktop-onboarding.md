@@ -1,8 +1,10 @@
 # Desktop onboarding
 
-Status: **internal desktop preview** on the current **1.10.0** application base.
-The entry flow is being integrated in small, independently accepted steps.
-There is no signed public desktop installer yet.
+Status: **signed Apple Silicon desktop preview**, application base **1.11.0**.
+Obtain the DMG and matching manifest from the
+[official release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0).
+The installer uses Developer ID signing and Apple notarization. See the
+[installation guide and acceptance scope](desktop-updates.md) before upgrading.
 
 Trading Max's desktop entry has three destinations:
 
@@ -106,10 +108,13 @@ refresh must be checked in Data status and retried; no missing record is fabrica
 
 Native Settings explains where collection runs and offers **Open data folder** for
 the selected local workspace. **Version & updates** makes an explicit, read-only
-request to the canonical repository's stable release endpoint, sending no account
-or workspace details. A repository version is not a signed desktop update. This
-preview neither downloads nor installs releases, changes the workspace, nor
-updates an existing HTTPS service. Signed installation and binary-update acceptance remain part of the public
+request to the canonical repository's releases endpoint, sending no account
+or workspace details. A repository version is not a signed desktop update. An
+official desktop DMG is offered only with matching verified release metadata;
+Download rechecks it and opens the browser for manual installation. App replacement
+does not change the workspace or update an existing HTTPS service. Offline Help
+& recovery covers installation, failed upgrades and data retention. See
+[desktop updates](desktop-updates.md). Signed installation and upgrade acceptance remain part of the public
 distribution gate. Local workspace startup recovery is described below.
 
 ## Development and current source installations
@@ -125,10 +130,12 @@ remains available for source/configuration diagnostics. The former agent skill
 and runbook are [archived](../archive/onboarding/README.md) and no longer selected
 automatically.
 
-Before a public desktop release, complete real-account installation acceptance, Developer ID
-signing/notarization, signed updates and installation acceptance on a Mac without
-development tools. A virtual machine is not required for the current local
-preview acceptance.
+Release acceptance covers Developer ID signing/notarization, the actual DMG,
+first launch, upgrades, recovery and window lifecycle. For 1.11.0 the release
+owner selected same-Mac acceptance with isolated App preferences and workspaces,
+plus packaged-runtime tests with a system-only PATH. No freshly installed macOS
+test is claimed. Real-account enrollment still requires the account owner's
+balance confirmation; a successful installer test does not complete that step.
 
 ## First-sync recovery
 
@@ -147,7 +154,7 @@ the owner must still compare the real account totals before completing setup.
 
 ## Upgrade recovery
 
-Before a newer internal App opens an initialized local workspace, it creates a
+Before a newer App opens an initialized local workspace, it creates a
 verified recovery snapshot under the App data directory's `workspace-recovery`
 folder. These compressed copies share unchanged content; a same-version reopen
 does not make another backup. The folder is outside the workspace, so an upgrade
@@ -166,6 +173,6 @@ corrupt backup or conflicting files stop restoration without overwriting them.
 Recovery points and failed-start files are currently retained for inspection;
 there is no automatic deletion or unbounded daily full-copy schedule.
 
-This is local data recovery when installing an internal build, not a public
-signed binary updater. Public distribution remains deferred. See the
+This is local data recovery during a manual App upgrade. Automatic binary
+replacement remains deferred. See the
 [transaction design](../architecture/desktop-upgrade-recovery.md).

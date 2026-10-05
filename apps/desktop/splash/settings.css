@@ -57,6 +57,14 @@
 .quiet-note { margin-top:32px; padding-top:22px; border-top:1px solid var(--line); }
 .quiet-note strong { font-size:12px; font-weight:550; }
 .quiet-note p { color:var(--muted); font-size:11px; line-height:1.85; margin:8px 0 0; }
+.update-actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+.support-intro { margin:0 0 24px; padding:0; border:0; }
+.support-details { border:1px solid var(--line); border-radius:8px; padding:16px 18px; margin:12px 0; font-size:12px; line-height:1.85; }
+.support-details summary { cursor:pointer; font-weight:550; }
+.support-details p,.support-details li { color:var(--muted); }
+.support-details ol { padding-left:20px; }
+.support-details li + li { margin-top:10px; }
+.checksum { white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; font-size:11px; }
 @media(hover:hover) and (pointer:fine) {
   .destination-row:hover:not(:disabled),.nav-item:hover:not([aria-current]) { background:var(--rail); filter:none; }
 }

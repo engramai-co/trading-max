@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An internal Apple Silicon macOS packaging experiment for product **1.10.0**.
+An Apple Silicon macOS desktop preview for product **1.11.0**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -18,12 +18,13 @@ progress and an explicit balance check. Read the [current onboarding guide](../.
 A saved HTTPS service and up to eight local workspaces appear as recent entries.
 **File → Switch workspace…** (`Cmd-Shift-O`) opens a compact picker; first launch
 retains the full welcome screen. **Trading Max → Settings…** (`Cmd-,`) opens a
-separate App settings window with General, Current workspace, and About & updates.
+separate App settings window with General, Current workspace, About & updates,
+and Help & recovery.
 Closing either auxiliary window keeps the main workspace open. The separate local demo is a
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.10.0 application base. Remote mode
+The native shell and packaged web/API use the 1.11.0 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
@@ -136,6 +137,11 @@ Payloads and build output are ignored by Git. The bundle is written to
 `src-tauri/target/release/bundle/macos/Trading Max Preview.app` under this directory.
 Record the runtime provenance and hashes with the final artifact; the package's
 `runtime/build-info.json` records the base application revision and Node checksum.
+Python dependencies use hash-verified wheels for Apple Silicon macOS 13.0,
+regardless of the build Mac's OS. Source builds are disabled so they cannot
+silently introduce a newer deployment target. Before signing and again inside
+the final DMG, every native component is checked for arm64 code, a compatible
+minimum macOS version and external non-system absolute library paths.
 
 ## Verification
 
@@ -148,7 +154,7 @@ cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-ta
 cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check
 node --check apps/desktop/splash/app.js
 node --check apps/desktop/splash/settings.mjs
-node --test apps/desktop/tests/presentation.test.mjs
+node --test apps/desktop/tests/*.test.mjs
 python3 apps/desktop/scripts/validate_runtime.py \
   apps/desktop/payload /absolute/path/outside/checkout/runtime-checks.json
 ```
@@ -165,8 +171,10 @@ responses, history data, occupied ports, duplicate ownership, rejected mutations
 normal shutdown, killed children and a killed supervisor. HTTP response timing is
 not a measurement of a rendered WebView screen. The harness also checks every
 runtime file before and after use, including a company-logo request that exercises
-Next's fetch cache. Inspect the actual .app separately. The current acceptance is
-on the owner's Mac; clean-machine installation remains a public-release gate.
+Next's fetch cache. Inspect the actual .app separately. The 1.11.0 release owner
+selected same-Mac isolated-profile installation acceptance; this does not claim
+an untouched macOS installation or a UI test on the minimum supported OS.
+See the [recorded scope](../../docs/installation/desktop-updates.md#verified-scope-for-1110).
 
 The original existing-server follow-up was accepted on the owner's Mac on 2026-09-21:
 eight native unit tests and five supervisor tests passed, as did Clippy and the
@@ -203,21 +211,37 @@ browser actions target only the active workspace/service rather than a saved
 but inactive server profile. Technical startup details are collapsed by default.
 
 Native Settings explains local versus remote collection and can reveal the
-selected local folder. **Version & updates** checks the canonical GitHub stable
-release only when clicked. The request has TLS verification, no redirects,
-bounded time/body, strict version parsing and a fixed release-notes origin. No
-account, workspace or remote-service address is sent. It reports the repository
-release separately from this internal App, and has no download/install action.
-The check cannot update Mac mini or migrate local data. There is no automatic
-updater or new native permission for web pages.
+selected local folder. **About & updates** separately checks the newest repository
+release and available desktop packages among the latest 30 releases, only when
+clicked. API responses have bounded time/body and no redirects; distribution
+manifests allow only HTTPS redirects to GitHub's release-asset host. Package
+metadata must match the exact official asset names, version, architecture,
+publisher, bundle ID and digests. The download action rechecks the release, then
+opens the official DMG in the browser for manual installation. It cannot install
+silently, downgrade, update Mac mini or migrate local data. No account, workspace
+or saved-service address is sent, and remote pages receive no native permission.
+
+**Help & recovery** is bundled and works offline. It explains installation,
+workspace recovery, uninstall/data retention and local collection limits; a
+selected local workspace can reveal its existing recovery folder without writing
+or deleting files. See [desktop updates and recovery](../../docs/installation/desktop-updates.md)
+for the user procedure and the maintainer DMG verification gate.
+
+The same guide documents `scripts/package_macos.py` for signing each native
+runtime component and assembling the DMG. It works on a separate copy, keeps keys
+in Keychain and refuses to overwrite earlier candidates. The explicit internal
+rehearsal mode can exercise Hardened Runtime with a development certificate; it
+does not produce a public distribution.
 
 ## Distribution gate
 
-The current configuration uses ad-hoc signing for an internal local experiment.
-Do not describe it as a public installer. Developer ID signing, notarization,
-update signing, clean-machine verification and real-account acceptance must be
-accepted before a public desktop release. No production deployment or data
-migration is part of this experiment. The former source/agent onboarding
+The default source build uses ad-hoc signing. Public preview artifacts go through
+the separate Developer ID signing, App/DMG notarization, distribution verification
+and actual installation acceptance workflow. Do not treat a local source build
+as the verified public installer. The initial update method uses a signed and
+notarized DMG with explicit browser/Finder actions; automatic binary updates
+remain deferred. Record installation and window-lifecycle acceptance separately
+from each account's first-sync balance confirmation. The former source/agent onboarding
 documentation is [archived](../../docs/archive/onboarding/README.md); the current
 entry and capability status are in [desktop onboarding](../../docs/installation/desktop-onboarding.md).
 
