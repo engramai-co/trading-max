@@ -137,6 +137,11 @@ Payloads and build output are ignored by Git. The bundle is written to
 `src-tauri/target/release/bundle/macos/Trading Max Preview.app` under this directory.
 Record the runtime provenance and hashes with the final artifact; the package's
 `runtime/build-info.json` records the base application revision and Node checksum.
+Python dependencies use hash-verified wheels for Apple Silicon macOS 13.0,
+regardless of the build Mac's OS. Source builds are disabled so they cannot
+silently introduce a newer deployment target. Before signing and again inside
+the final DMG, every native component is checked for arm64 code, a compatible
+minimum macOS version and external non-system absolute library paths.
 
 ## Verification
 

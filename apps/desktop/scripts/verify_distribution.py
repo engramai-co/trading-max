@@ -18,8 +18,22 @@ from pathlib import Path
 
 TEAM = "H757XFW8A9"
 BUNDLE = "com.engram.trading-max.desktop-preview"
+MINIMUM_MACOS = "13.0"
 ROOT = Path(__file__).resolve().parents[3]
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
+MACHO_MAGIC = {
+    bytes.fromhex(value)
+    for value in (
+        "feedface",
+        "feedfacf",
+        "cefaedfe",
+        "cffaedfe",
+        "cafebabe",
+        "bebafeca",
+        "cafebabf",
+        "bfbafeca",
+    )
+}
 
 
 def run(*args: str | Path) -> str:
@@ -27,6 +41,73 @@ def run(*args: str | Path) -> str:
         [str(arg) for arg in args], capture_output=True, text=True, timeout=60, check=True
     )
     return result.stdout + result.stderr
+
+
+def check_load_commands(output: str, minimum: str = MINIMUM_MACOS) -> None:
+    """Check deployment/load commands, not the linker version or a dylib's own ID."""
+
+    def version(value: str) -> tuple[int, ...]:
+        if not re.fullmatch(r"\d+(?:\.\d+){0,2}", value):
+            raise ValueError("Missing or invalid native deployment version")
+        parts = tuple(int(part) for part in value.split("."))
+        return parts + (0,) * (3 - len(parts))
+
+    minimums = []
+    for block in re.split(r"^Load command \d+\s*$", output, flags=re.MULTILINE):
+        command = re.search(r"^\s*cmd (LC_\w+)\s*$", block, re.MULTILINE)
+        if not command:
+            continue
+        command = command.group(1)
+        if command in {"LC_BUILD_VERSION", "LC_VERSION_MIN_MACOSX"}:
+            if command == "LC_BUILD_VERSION":
+                platform = re.search(r"^\s*platform (\S+)\s*$", block, re.MULTILINE)
+                if not platform or platform.group(1).upper() not in {"1", "MACOS"}:
+                    raise ValueError("Native component must target macOS")
+            key = "minos" if command == "LC_BUILD_VERSION" else "version"
+            target = re.search(rf"^\s*{key} (\S+)\s*$", block, re.MULTILINE)
+            minimums.append(version(target.group(1) if target else ""))
+        elif command in {
+            "LC_LOAD_DYLIB",
+            "LC_LOAD_WEAK_DYLIB",
+            "LC_REEXPORT_DYLIB",
+            "LC_LOAD_UPWARD_DYLIB",
+            "LC_RPATH",
+        }:
+            key = "path" if command == "LC_RPATH" else "name"
+            target = re.search(rf"^\s*{key} (.+) \(offset \d+\)\s*$", block, re.MULTILINE)
+            if not target:
+                raise ValueError("Invalid native library load path")
+            dependency = target.group(1)
+            if dependency.startswith("/") and not dependency.startswith(
+                ("/System/Library/", "/usr/lib/")
+            ):
+                raise ValueError("Native component depends on a non-system absolute path")
+    if not minimums or any(target > version(minimum) for target in minimums):
+        raise ValueError(f"Native component requires a newer macOS than {minimum}")
+
+
+def check_native_compatibility(app: Path) -> int:
+    count = 0
+    for path in app.rglob("*"):
+        if path.is_symlink():
+            if not path.resolve().is_relative_to(app.resolve()) or not path.resolve().exists():
+                raise ValueError("App contains an escaping or broken symlink")
+            continue
+        if not path.is_file():
+            continue
+        with path.open("rb") as stream:
+            if stream.read(4) not in MACHO_MAGIC:
+                continue
+        if "arm64" not in run("/usr/bin/lipo", "-archs", path).split():
+            raise ValueError(f"Missing arm64 code: {path.relative_to(app)}")
+        try:
+            check_load_commands(run("/usr/bin/otool", "-arch", "arm64", "-l", path))
+        except ValueError as error:
+            raise ValueError(f"{path.relative_to(app)}: {error}") from error
+        count += 1
+    if not count:
+        raise ValueError("App contains no native code")
+    return count
 
 
 def check_signature(path: Path, *, app: bool) -> None:
@@ -64,7 +145,7 @@ def check_contents(mount: Path, version: str) -> None:
     if (
         info.get("CFBundleIdentifier") != BUNDLE
         or info.get("CFBundleShortVersionString") != version
-        or info.get("LSMinimumSystemVersion") != "13.0"
+        or info.get("LSMinimumSystemVersion") != MINIMUM_MACOS
     ):
         raise ValueError("App identity, version or minimum macOS does not match the release")
     executable = info.get("CFBundleExecutable", "")
@@ -76,6 +157,7 @@ def check_contents(mount: Path, version: str) -> None:
     build = json.loads((app / "Contents/Resources/runtime/build-info.json").read_text())
     if build.get("product_version") != version:
         raise ValueError("Bundled runtime version does not match the shell")
+    check_native_compatibility(app)
 
 
 def verify(dmg: Path, version: str) -> dict:
@@ -125,7 +207,7 @@ def verify(dmg: Path, version: str) -> dict:
         "team_id": TEAM,
         "signing": "Developer ID Application",
         "notarized": True,
-        "minimum_macos": "13.0",
+        "minimum_macos": MINIMUM_MACOS,
         "asset": {"name": name, "size": before.st_size, "sha256": sha256},
     }
 

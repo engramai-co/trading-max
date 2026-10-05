@@ -7,18 +7,44 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from verify_distribution import MINIMUM_MACOS
+
 ROOT = Path(__file__).resolve().parents[3]
 DESKTOP = ROOT / "apps/desktop"
 
 
-def run(*args, cwd=ROOT):
-    subprocess.run([str(arg) for arg in args], cwd=cwd, check=True)
+def run(*args, cwd=ROOT, env=None):
+    subprocess.run([str(arg) for arg in args], cwd=cwd, env=env, check=True)
+
+
+def install_python_dependencies(python: Path, site: Path, requirements: Path) -> None:
+    # Select wheels for the supported destination, never the build Mac's newer OS.
+    # Source builds could silently reintroduce host-only dependencies.
+    run(
+        "uv",
+        "pip",
+        "install",
+        "--python",
+        python,
+        "--target",
+        site,
+        "--python-platform",
+        "aarch64-apple-darwin",
+        "--only-binary",
+        ":all:",
+        "--require-hashes",
+        "--no-compile-bytecode",
+        "-r",
+        requirements,
+        env={**os.environ, "MACOSX_DEPLOYMENT_TARGET": MINIMUM_MACOS},
+    )
 
 
 def configure_desktop_web(web: Path) -> None:
@@ -95,24 +121,12 @@ def main():
         "--all-packages",
         "--no-dev",
         "--no-emit-workspace",
-        "--no-hashes",
         "--frozen",
         "--output-file",
         requirements,
     )
     site = payload / "python/lib/python3.12/site-packages"
-    run(
-        "uv",
-        "pip",
-        "install",
-        "--python",
-        payload / "python/bin/python3.12",
-        "--target",
-        site,
-        "--no-compile-bytecode",
-        "-r",
-        requirements,
-    )
+    install_python_dependencies(payload / "python/bin/python3.12", site, requirements)
     for source, target in [
         (ROOT / "backend/src/trading_max", payload / "code/backend/src/trading_max"),
         (ROOT / "backend/migrations", payload / "code/backend/migrations"),
@@ -168,6 +182,7 @@ def main():
         "python_version": subprocess.check_output(
             [str(payload / "python/bin/python3.12"), "--version"], text=True
         ).strip(),
+        "minimum_macos": MINIMUM_MACOS,
     }
     (payload / "build-info.json").write_text(json.dumps(info, indent=2) + "\n")
 

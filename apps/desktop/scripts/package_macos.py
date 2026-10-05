@@ -15,21 +15,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-from verify_distribution import BUNDLE, ROOT, TEAM, check_signature
+from verify_distribution import (
+    BUNDLE,
+    MACHO_MAGIC,
+    MINIMUM_MACOS,
+    ROOT,
+    TEAM,
+    check_native_compatibility,
+    check_signature,
+)
 
-MAGIC = {
-    bytes.fromhex(value)
-    for value in (
-        "feedface",
-        "feedfacf",
-        "cefaedfe",
-        "cffaedfe",
-        "cafebabe",
-        "bebafeca",
-        "cafebabf",
-        "bfbafeca",
-    )
-}
 NODE = Path("Contents/Resources/runtime/node")
 JIT = {"com.apple.security.cs.allow-jit": True}
 
@@ -50,7 +45,7 @@ def inspect_app(app: Path, version: str) -> list[Path]:
     if (
         info.get("CFBundleIdentifier") != BUNDLE
         or info.get("CFBundleShortVersionString") != version
-        or info.get("LSMinimumSystemVersion") != "13.0"
+        or info.get("LSMinimumSystemVersion") != MINIMUM_MACOS
         or build.get("product_version") != version
     ):
         raise ValueError("App identity/version/platform and bundled runtime must match VERSION")
@@ -62,7 +57,7 @@ def inspect_app(app: Path, version: str) -> list[Path]:
         elif path.is_file():
             with path.open("rb") as stream:
                 magic = stream.read(4)
-            if magic in MAGIC:
+            if magic in MACHO_MAGIC:
                 code.append(path.relative_to(app))
     executable = info.get("CFBundleExecutable", "")
     if not isinstance(executable, str) or not executable or Path(executable).name != executable:
@@ -116,7 +111,6 @@ def prepare(
 ) -> dict:
     # Inspect everything before allocating output or invoking a private signing key.
     code = inspect_app(app, version)
-    identity_name(identity, rehearsal=rehearsal)
     if (
         output.exists()
         or output.is_symlink()
@@ -126,6 +120,8 @@ def prepare(
         raise ValueError(
             "Use a new output directory outside the checkout; existing output is preserved"
         )
+    check_native_compatibility(app)
+    identity_name(identity, rehearsal=rehearsal)
     output.mkdir(mode=0o700, parents=True)
     copied = output / app.name
     run("/usr/bin/ditto", app, copied, timeout=300)
@@ -186,6 +182,7 @@ def make_dmg(app: Path, output: Path, identity: str, version: str) -> dict:
     identity_name(identity)
     # Do not package a development-signed or unstapled application as a release.
     check_signature(app, app=True)
+    check_native_compatibility(app)
     expected = f"trading-max-v{version}-macos-arm64.dmg"
     if output.name != expected or output.exists() or output.is_symlink():
         raise ValueError(f"Use a new file named {expected}; existing files are preserved")

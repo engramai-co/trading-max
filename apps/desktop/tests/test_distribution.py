@@ -42,7 +42,7 @@ class DistributionTests(unittest.TestCase):
             distribution.check_signature(Path("synthetic.app"), app=True)
 
     def test_dmg_contents_are_checked_and_detached_on_failure(self):
-        for fail in [None, "version", "runtime", "arch", "extra-app"]:
+        for fail in [None, "version", "runtime", "arch", "extra-app", "native-os"]:
             with self.subTest(fail=fail), tempfile.TemporaryDirectory() as temporary:
                 dmg = Path(temporary) / "trading-max-v1.11.0-macos-arm64.dmg"
                 dmg.write_bytes(b"synthetic-dmg")
@@ -77,7 +77,16 @@ class DistributionTests(unittest.TestCase):
                         return "x86_64" if fail == "arch" else "arm64"
                     return f"Authority=Developer ID Application: Synthetic\nTeamIdentifier={distribution.TEAM}\nCodeDirectory flags=0x10000(runtime)"
 
-                with patch.object(distribution, "run", side_effect=fake):
+                with (
+                    patch.object(distribution, "run", side_effect=fake),
+                    patch.object(
+                        distribution,
+                        "check_native_compatibility",
+                        side_effect=ValueError("requires macOS 14")
+                        if fail == "native-os"
+                        else None,
+                    ),
+                ):
                     if fail:
                         with self.assertRaises(ValueError):
                             distribution.verify(dmg, "1.11.0")

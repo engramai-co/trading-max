@@ -87,7 +87,11 @@ class PackagingTests(unittest.TestCase):
             self.assertFalse((app / "recursive").exists())
 
     def test_every_native_component_is_signed_but_only_node_gets_jit(self):
-        with tempfile.TemporaryDirectory() as temporary, patch.object(packaging, "identity_name"):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(packaging, "identity_name"),
+            patch.object(packaging, "check_native_compatibility"),
+        ):
             root = Path(temporary)
             app = fixture(root)
             output = root / "out"
@@ -122,6 +126,22 @@ class PackagingTests(unittest.TestCase):
             self.assertIsNone(result["archive"])
             self.assertTrue(result["internal_rehearsal"])
             self.assertFalse(list(output.glob("*.zip")))
+
+    def test_newer_os_dependency_stops_before_signing_or_copying(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(packaging, "identity_name") as identity,
+            patch.object(packaging, "run") as run,
+            patch.object(
+                packaging, "check_native_compatibility", side_effect=ValueError("requires macOS 14")
+            ),
+        ):
+            root = Path(temporary)
+            with self.assertRaisesRegex(ValueError, "requires macOS 14"):
+                packaging.prepare(fixture(root), root / "out", IDENTITY, "1.11.0")
+            identity.assert_not_called()
+            run.assert_not_called()
+            self.assertFalse((root / "out").exists())
 
     def test_unsafe_entitlements_and_missing_timestamp_are_rejected(self):
         for unsafe in [
@@ -160,6 +180,7 @@ class PackagingTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as temporary,
             patch.object(packaging, "identity_name"),
             patch.object(packaging, "check_signature") as signature,
+            patch.object(packaging, "check_native_compatibility"),
         ):
             root = Path(temporary)
             app = fixture(root)

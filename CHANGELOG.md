@@ -30,6 +30,13 @@ All notable public Trading Max releases are recorded here.
   local workspaces and credentials and leave existing HTTPS services unchanged.
   Automatic binary updates and final clean-Mac acceptance remain separate gates.
 
+### Fixed
+
+- Build desktop Python dependencies from hash-verified macOS 13-compatible wheels
+  instead of inheriting the build Mac's newer OS. Reject incompatible native
+  components and external absolute library dependencies before signing and when
+  verifying the final DMG.
+
 ## [1.10.0] - 2026-10-04
 
 ### Added

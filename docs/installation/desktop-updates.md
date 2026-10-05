@@ -154,6 +154,13 @@ Runtime locally using an existing **Apple Development** identity, add
 DMG or a verified release manifest. Test the copied runtime using the packaged
 harness before moving to a real Developer ID candidate.
 
+The payload builder selects hash-verified macOS 13-compatible Python wheels,
+with source builds disabled. Signing and final DMG verification also inspect
+every native component's arm64 deployment/load commands. A dependency requiring
+newer macOS, or loading an absolute library outside Apple's system directories,
+stops the release even when the outer App declares macOS 13. A successful launch
+on a newer development Mac alone does not establish minimum-OS compatibility.
+
 Create a named `notarytool` profile in Keychain using its secure interactive
 prompt. The account holder enters the credential locally; do not put a password
 in command arguments, shell history, source, screenshots or chat. If an appropriate
