@@ -184,6 +184,12 @@ Save the submission UUID with the private release evidence. Check an existing
 submission until its status is `Accepted`; a timeout or `In Progress` is not a
 rejection and must not trigger duplicate uploads. If a submission command ends
 without a usable UUID, inspect `notarytool history` before submitting again.
+An explicit `abortedUpload` error is different: Apple can create a history entry
+before the archive finishes uploading. An `In Progress` entry alone does not
+prove that upload completed. Preserve the failure and use a bounded retry with
+`--no-s3-acceleration` when the accelerated multipart transfer timed out. Track
+the new successful upload receipt separately; do not wait indefinitely on the
+incomplete upload's UUID or keep resubmitting a successfully uploaded archive.
 An `Invalid` result stops the release; inspect Apple's log, fix the candidate and
 start a fresh output directory. Do not bypass notarization or Gatekeeper.
 
