@@ -17,6 +17,24 @@ SPEC.loader.exec_module(distribution)
 
 
 class DistributionTests(unittest.TestCase):
+    def test_missing_updater_or_relaxed_verification_stops_distribution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            app = Path(temporary) / "Synthetic.app"
+            info = plistlib.loads(
+                (distribution.ROOT / "apps/desktop/src-tauri/Info.plist").read_bytes()
+            )
+            for key, value in [
+                ("SURequireSignedFeed", False),
+                ("SUVerifyUpdateBeforeExtraction", False),
+                ("SUSignedFeedFailureExpirationInterval", 86400),
+                ("SUEnableAutomaticChecks", True),
+                ("SUPublicEDKey", "wrong"),
+            ]:
+                with self.assertRaises(ValueError):
+                    distribution.check_updater(app, {**info, key: value})
+            with self.assertRaisesRegex(ValueError, "missing"):
+                distribution.check_updater(app, info)
+
     def test_ad_hoc_and_another_developer_are_not_publishable(self):
         for identity in [
             "Signature=adhoc",

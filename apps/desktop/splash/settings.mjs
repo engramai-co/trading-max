@@ -86,6 +86,7 @@ $("check-updates").addEventListener("click", async () => {
   checkedRelease = null; checkedDesktop = null;
   $("release-notes").hidden = true;
   $("download-desktop").hidden = true;
+  $("install-update").hidden = true;
   $("package-details").hidden = true;
   $("update-result").hidden = false;
   text("update-result", "正在检查官方版本…");
@@ -96,6 +97,7 @@ $("check-updates").addEventListener("click", async () => {
     const view = releasePresentation(result);
     text("update-result", view.message);
     $("download-desktop").hidden = !view.download;
+    $("install-update").hidden = !view.inApp;
     text("download-desktop", view.label);
     $("package-details").hidden = !view.details;
     text("package-checksum", view.details);
@@ -113,6 +115,16 @@ $("download-desktop").addEventListener("click", async () => {
     checkedDesktop = null; $("download-desktop").hidden = true;
     feedback(String(error), true);
   } finally { $("download-desktop").disabled = false; $("check-updates").disabled = false; }
+});
+$("install-update").addEventListener("click", async () => {
+  if (!checkedDesktop?.in_app) return;
+  $("install-update").disabled = true;
+  $("check-updates").disabled = true;
+  try {
+    await invoke("install_desktop_update", { version: checkedDesktop.version });
+    feedback("更新窗口已打开。下载和验证完成后，可以安装并重启；你的资料与连接会保留。");
+  } catch (error) { feedback(String(error), true); }
+  finally { $("install-update").disabled = false; $("check-updates").disabled = false; }
 });
 $("release-notes").addEventListener("click", () => action(() => invoke("open_release_notes", { version: checkedRelease })));
 refresh();

@@ -115,6 +115,24 @@ jobs:
       - name: Python bytecode compile
         run: uv run python -m compileall -q backend/src services/api tools
 
+  desktop-native:
+    name: Desktop native (macOS)
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - name: Verify pinned updater SDK
+        run: uv run --python 3.12 --no-project python apps/desktop/scripts/prepare_sparkle.py
+      - name: Install native test toolchain
+        run: rustup toolchain install 1.94.1 --profile minimal --component clippy,rustfmt
+      - name: Native bridge and permission tests
+        run: |
+          mkdir -p apps/desktop/payload
+          cargo +1.94.1 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --check
+          cargo +1.94.1 test --manifest-path apps/desktop/src-tauri/Cargo.toml --locked
+          cargo +1.94.1 clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+
   frontend:
     name: Frontend (lint, types, tests, build)
     runs-on: ubuntu-latest

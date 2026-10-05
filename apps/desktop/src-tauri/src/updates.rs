@@ -1,4 +1,4 @@
-//! User-initiated official downloads; no binary replacement or workspace writes.
+//! Official release checks. Only validated metadata can select an in-app update feed.
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{io::Read, time::Duration};
@@ -53,6 +53,13 @@ pub struct DesktopRelease {
     pub relation: &'static str,
     pub size: u64,
     pub sha256: String,
+    pub in_app: bool,
+}
+pub struct UpdateFeed {
+    pub url: String,
+    pub version: String,
+    pub archive: String,
+    pub size: u64,
 }
 #[derive(Serialize)]
 pub struct UpdateCheck {
@@ -125,7 +132,7 @@ fn asset(release: &Release, value: &str, extension: &str) -> Result<Option<Asset
         return Err("安装包发布信息重复，请稍后重试。".into());
     }
     let item = matches[0];
-    let limit = if extension == "json" {
+    let limit = if matches!(extension, "json" | "xml") {
         MAX_MANIFEST
     } else {
         2_147_483_648
@@ -183,6 +190,7 @@ fn validate_manifest(
         version: value.into(),
         size: dmg.size,
         sha256: m.asset.sha256,
+        in_app: false,
         relation: match version(value)?.cmp(&version(installed)?) {
             std::cmp::Ordering::Greater => "newer",
             std::cmp::Ordering::Equal => "same",
@@ -252,7 +260,9 @@ fn checked_package(release: &Release, installed: &str) -> Result<Option<DesktopR
         return Ok(None);
     };
     let bytes = request(&metadata.browser_download_url, MAX_MANIFEST, true)?;
-    validate_manifest(&bytes, &value, &dmg, &metadata, installed).map(Some)
+    let mut checked = validate_manifest(&bytes, &value, &dmg, &metadata, installed)?;
+    checked.in_app = checked.relation == "newer" && asset(release, &value, "xml")?.is_some();
+    Ok(Some(checked))
 }
 fn stable_releases(bytes: &[u8]) -> Result<Vec<Release>, String> {
     let mut releases: Vec<Release> =
@@ -301,6 +311,26 @@ pub fn download_url(value: &str) -> Result<tauri::Url, String> {
     asset_url(&value, "dmg")
         .parse()
         .map_err(|_| "无法打开安装包下载。".into())
+}
+
+pub fn update_feed(value: &str) -> Result<UpdateFeed, String> {
+    let value = normalized(value)?;
+    if !cfg!(all(target_os = "macos", target_arch = "aarch64"))
+        || version(&value)? <= version(env!("CARGO_PKG_VERSION"))?
+    {
+        return Err("App 内更新只支持更新的 Apple Silicon 版本。".into());
+    }
+    let bytes = request(&format!("{API}/tags/v{value}"), MAX_BODY, false)?;
+    let release: Release = serde_json::from_slice(&bytes).map_err(|_| "更新发布信息无法读取。")?;
+    let checked = checked_package(&release, env!("CARGO_PKG_VERSION"))?
+        .filter(|p| p.in_app && p.version == value)
+        .ok_or("这个版本尚未提供可验证的 App 内更新，请使用官方安装包。")?;
+    Ok(UpdateFeed {
+        url: asset_url(&value, "xml"),
+        archive: asset_url(&value, "dmg"),
+        version: value,
+        size: checked.size,
+    })
 }
 
 #[cfg(test)]
@@ -430,5 +460,27 @@ mod tests {
                 .parse()
                 .unwrap()
         ));
+    }
+    #[test]
+    fn appcast_asset_must_be_unique_bounded_and_official() {
+        let (mut release, _) = fixture();
+        assert!(asset(&release, "1.11.0", "xml").unwrap().is_none());
+        release.assets.push(Asset {
+            name: asset_name("1.11.0", "xml"),
+            browser_download_url: asset_url("1.11.0", "xml"),
+            size: 1024,
+            state: "uploaded".into(),
+            digest: Some(format!("sha256:{}", "a".repeat(64))),
+        });
+        assert!(asset(&release, "1.11.0", "xml").unwrap().is_some());
+        release.assets.last_mut().unwrap().size = MAX_MANIFEST + 1;
+        assert!(asset(&release, "1.11.0", "xml").is_err());
+        release.assets.last_mut().unwrap().size = 1024;
+        release.assets.last_mut().unwrap().browser_download_url =
+            "https://example.com/feed.xml".into();
+        assert!(asset(&release, "1.11.0", "xml").is_err());
+        release.assets.last_mut().unwrap().browser_download_url = asset_url("1.11.0", "xml");
+        release.assets.push(release.assets.last().unwrap().clone());
+        assert!(asset(&release, "1.11.0", "xml").is_err());
     }
 }

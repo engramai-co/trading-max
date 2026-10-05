@@ -18,3 +18,11 @@ test("desktop and repository versions stay distinct; reinstall is explicit and d
     assert.match(view.details,/100.0 MB/);
   }
 });
+test("in-app installation needs a newer signed-feed release; old DMGs remain manual", () => {
+  for (const relation of ["newer", "same", "older"]) {
+    for (const in_app of [true, false, undefined]) {
+      const view = releasePresentation({version:"1.12.0", desktop:{version:"1.12.0",relation,size:100,sha256:"a".repeat(64),in_app}});
+      assert.equal(view.inApp, relation === "newer" && in_app === true);
+    }
+  }
+});

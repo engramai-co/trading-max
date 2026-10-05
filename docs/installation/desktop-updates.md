@@ -34,16 +34,25 @@ readiness/worker status and the owner's balance confirmation.
    macOS and agreement with GitHub's DMG size/digest. It rechecks the exact release
    when Download is clicked. Source-only releases, incomplete uploads, mismatched
    metadata and older-than-installed packages do not offer a download.
-3. Download in the browser, quit Trading Max with **Cmd-Q**, and open the DMG.
+3. On 1.12.0 or newer, **Update in App** appears when the newer release also has
+   a signed appcast. Sparkle shows the available update, verifies the download and
+   asks to install/restart. Keep the App open while downloading; cancelling or an
+   interrupted download leaves the installed version available. There are no
+   automatic checks or silent installations.
+4. For 1.11.0, or when using the manual fallback, download in the browser, quit Trading Max with **Cmd-Q**, and open the DMG.
    Drag the application to its existing installation location and choose Replace.
    Usually this is `/Applications`; preserve a custom location if used. Eject
    the DMG, then open the installed application rather than running from the image.
-4. Open the same workspace or saved HTTPS service. The bundle identifier stays
+5. Open the same workspace or saved HTTPS service. An in-app restart reopens
+   the active source without changing your saved startup preference. The bundle identifier stays
    unchanged, so App preferences and recent workspaces remain available. Local
    data and Keychain credentials live outside the application bundle.
 
-This is an explicit **manual signed-package update**, not an automatic updater.
-The App validates official release metadata, not the browser's downloaded bytes.
+The first upgrade from 1.11.0 is an explicit **manual signed-package update**;
+it installs the updater needed for subsequent releases. The browser fallback
+validates release metadata but does not inspect the browser’s downloaded bytes.
+The in-app path verifies both the signed feed and the downloaded archive before
+extraction and installation.
 macOS checks the downloaded application through Gatekeeper; do not bypass a
 signature, damaged-app or unverified-developer warning. Re-download from the
 official release and report the exact warning instead. Advanced users can compare
@@ -57,8 +66,9 @@ offered an older package. Failed checks do not disable portfolio use. The offlin
 
 ## If the upgraded application fails
 
-- **Before replacing the App:** an interrupted browser download has not changed
-  the installed application or its data. Retry the download.
+- **Before replacing the App:** an interrupted download, cancelled update or
+  signature failure leaves the installed application in place. Retry from App
+  Settings or use the official DMG. Do not bypass verification warnings.
 - **First local startup of a newer version:** the existing upgrade guard creates
   a verified recovery point before starting the services against an existing
   database. Startup/migration failure stops owned processes and restores the
@@ -144,15 +154,14 @@ stay in Keychain or the release system's secret manager, never this repository.
    coverage. For 1.11.0 use the release owner's accepted same-Mac scope above;
    future untouched-host or minimum-OS tests must be recorded separately.
    **Generating a manifest alone is not installation acceptance.**
-5. Attach the verified DMG and JSON to the same stable `vX.Y.Z` GitHub release;
-   publish the DMG first and the manifest last. Do not overwrite published assets.
+5. Attach the verified DMG, JSON and signed appcast to the same stable `vX.Y.Z`
+   GitHub release; publish DMG first, JSON second, and XML last. Do not overwrite published assets.
    A partially published pair is not offered as an update. Check both GitHub asset
    digests and exercise the App's download action against the published release.
 
-The JSON is release evidence authenticated by the canonical GitHub HTTPS origin;
-it is not a detached cryptographic updater signature. A future automatic binary
-updater must add its own signed-artifact verification and replacement/recovery
-acceptance. The manual signed-package path does not imply that work is complete.
+The JSON is release evidence authenticated by the canonical GitHub HTTPS origin.
+The in-app path additionally requires the Ed25519-signed XML feed and archive.
+See the [trust and recovery design](../architecture/desktop-in-app-updates.md).
 
 ### Reproducible signing and notarization
 
@@ -198,7 +207,7 @@ than a release script. Submission commands use only the non-secret profile name:
 
 ```sh
 xcrun notarytool submit /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64-app.zip \
-  --keychain-profile TradingMax --no-wait --output-format json
+  --keychain-profile TradingMax --no-s3-acceleration --no-wait --output-format json
 xcrun notarytool info APP_SUBMISSION_UUID --keychain-profile TradingMax --output-format json
 ```
 
@@ -224,7 +233,7 @@ uv run --frozen python apps/desktop/scripts/package_macos.py dmg \
   --output /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
   --identity DEVELOPER_ID_CERTIFICATE_SHA1
 xcrun notarytool submit /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
-  --keychain-profile TradingMax --no-wait --output-format json
+  --keychain-profile TradingMax --no-s3-acceleration --no-wait --output-format json
 xcrun notarytool info DMG_SUBMISSION_UUID --keychain-profile TradingMax --output-format json
 ```
 
@@ -237,3 +246,53 @@ public release. The packager never installs, auto-publishes or changes a server.
 References: [Apple Developer ID certificates](https://developer.apple.com/help/account/certificates/create-developer-id-certificates/),
 [Apple notarization](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution),
 and [Tauri macOS signing](https://v2.tauri.app/distribute/sign/macos/).
+
+## Resumable release driver
+
+Use the maintainer Mac’s existing Developer ID, notarization profile and Sparkle
+Keychain identity. The SDK is pinned in `apps/desktop/sparkle.lock.json`; its
+`generate_keys --account ACCOUNT -p` command prints only the public key. Preserve
+the existing signing identity: do not regenerate it for each release or export
+its private key to CI. No runner, background service or new network port is needed.
+
+From a clean source commit after the contribution checks:
+
+```sh
+uv run --frozen python apps/desktop/scripts/release_macos.py prepare \
+  --work-dir /absolute/private/release-candidate \
+  --identity DEVELOPER_ID_CERTIFICATE_SHA1 --notary-profile TradingMax \
+  --python-home /absolute/standalone/python --node /absolute/node-22/bin/node
+uv run --frozen python apps/desktop/scripts/release_macos.py status \
+  --work-dir /absolute/private/release-candidate
+uv run --frozen python apps/desktop/scripts/release_macos.py resume \
+  --work-dir /absolute/private/release-candidate
+```
+
+Pending notarization is a saved stage, not a failed build. Resume follows the
+same UUID and never reuploads a confirmed submission. `--wait-seconds` optionally
+waits for a bounded period; the default returns immediately when Apple is pending.
+Ambiguous uploads retain their receipt and require reconciliation with Apple’s
+history; Invalid submissions retain their rejection log. Start a new candidate
+after changing source. Interrupted completed stages are retained and verified.
+
+The final automatic stage produces a signed appcast and stops before publication.
+Record native acceptance in a private JSON file containing `version`, the exact
+DMG `sha256`, `host`, a path/description in `evidence`, and boolean `checks` for
+`native_install`, `update_success`, `download_interrupt`, `signature_rejection`,
+`install_cancel_or_failure`, `runtime_shutdown` and `relaunch_preferences`. These
+are recorded test results, never assumed defaults. Preserve screenshots and
+state/file comparisons, and distinguish a synthetic predecessor from a released
+App. Do not mark an untested item true.
+
+After the normal main workflow creates the matching source tag/release:
+
+```sh
+uv run --frozen python apps/desktop/scripts/release_macos.py publish \
+  --work-dir /absolute/private/release-candidate \
+  --acceptance /absolute/private/native-acceptance.json
+```
+
+Publication checks the source tag tree, all local hashes, signatures and exact-DMG
+acceptance. It verifies GitHub’s asset digests after uploading. Rerunning reuses
+matching assets and refuses conflicting names. Final public-download/native
+checks remain separate from that API-level verification.
