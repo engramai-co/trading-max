@@ -52,15 +52,19 @@ test.describe("portfolio workspace", () => {
   }) => {
     await page.goto("/settings");
     await expect(
-      page.getByRole("tab", { name: /AI 分析|AI analysis/ }),
+      page.getByRole("tab", { name: /模型连接|Model connections/ }),
     ).toBeVisible();
-    await page.getByRole("tab", { name: /AI 分析|AI analysis/ }).click();
+    await page.getByRole("tab", { name: /模型连接|Model connections/ }).click();
     await expect(page).toHaveURL(/tab=models/);
     await expect(
       page.getByRole("heading", {
-        name: /分析模型|Analysis models/,
+        name: /模型连接（可选）|Model connections \(optional\)/,
       }),
     ).toBeVisible();
+    // Synthetic workspaces have no model connection. Dismiss the optional
+    // first-connection offer before checking the next settings tab.
+    await page.getByRole("dialog").getByRole("button", { name: /稍后设置|Set up later/ }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("tab", { name: /个人偏好|Preferences/ }).click();
     await expect(
       page.getByRole("textbox", { name: /显示名称|Display name/ }),
@@ -95,14 +99,14 @@ test.describe("portfolio workspace", () => {
   });
 
   test("failed data requests offer a retry and recover", async ({ page }) => {
-    await page.route("**/api/backend/dashboard/lens/overview", (route) =>
+    await page.route("**/api/backend/dashboard/lens/overview?**", (route) =>
       route.fulfill({ status: 503, body: "{}" }),
     );
     await page.goto("/");
     await expect(
       page.getByRole("button", { name: /重新加载|Try again/ }),
     ).toBeVisible();
-    await page.unroute("**/api/backend/dashboard/lens/overview");
+    await page.unroute("**/api/backend/dashboard/lens/overview?**");
     await page.getByRole("button", { name: /重新加载|Try again/ }).click();
     await expect(
       page.getByRole("button", { name: /重新加载|Try again/ }),
@@ -117,7 +121,7 @@ test.describe("portfolio workspace", () => {
       .getByRole("button", { name: /搜索页面或证券|Search pages or securities/ })
       .click();
     await page
-      .getByRole("textbox", {
+      .getByRole("combobox", {
         name: /搜索页面或证券|Search pages or securities/,
       })
       .fill("research");

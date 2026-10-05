@@ -10,6 +10,28 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.12.1] - 2026-10-05
+
+### Changed
+
+- Refine workspace search with direct links to existing security research lenses,
+  ETF look-through, return comparison and risk analysis, plus literal match highlights
+  and a clearable, session-only recent list. Reuse the research directory cache;
+  searching never adds a security or starts a data refresh. Keep search in the
+  top bar beside language and appearance controls on both desktop and mobile.
+- Consolidate the five primary destinations into an icon-only desktop rail, with
+  names on hover or focus, an outline-to-filled selection transition and a short,
+  interruptible active-row transition. Keep management destinations at the bottom
+  and a matching mobile dock with persistent labels, larger touch controls and
+  a bottom-opening navigation menu. Keyboard navigation, history navigation and
+  reduced-motion preferences remain immediate.
+
+### Fixed
+
+- Expose keyboard search selection to assistive technology and open search without
+  a modal animation. Preserve Chinese composition and focus restoration.
+- Distinguish data sync status from desktop application update checks.
+
 ## [1.12.0] - 2026-10-05
 
 ### Added
