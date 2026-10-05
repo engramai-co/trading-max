@@ -8,12 +8,14 @@ import {
   Menu,
   Modal,
   TextInput,
+  Tooltip,
   VisuallyHidden,
   useMantineColorScheme,
 } from "@mantine/core";
 import { useOs } from "@mantine/hooks";
 import {
   ArrowRight,
+  ChartBar,
   ChartLine,
   ChartPieSlice,
   Check,
@@ -32,8 +34,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "./link";
-import { usePathname, useRouter } from "next/navigation";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
 import { api } from "@/workspace/data";
@@ -42,10 +44,25 @@ import { useCopy } from "./foundation";
 
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
+import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
+import { highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace, type SearchResult } from "./command-search";
+
+function SearchHighlight({ text, query }: { text: string; query: string }) {
+  return highlightParts(text, query).map((part, index) => part.match ? <mark key={index}>{part.text}</mark> : <Fragment key={index}>{part.text}</Fragment>);
+}
+
+function SearchRouteObserver({ onChange }: { onChange: (search: string) => void }) {
+  const params = useSearchParams();
+  const search = params.toString();
+  useEffect(() => onChange(search), [onChange, search]);
+  return null;
+}
 
 export function WorkspaceShell({ children, desktop = false, localWorkspace = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean }) {
   const t = useCopy();
   const actualPathname = usePathname();
+  const [routeSearch, setRouteSearch] = useState("");
+  const params = new URLSearchParams(routeSearch);
   const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
   const profile = useWorkspaceProfile();
   const router = useRouter();
@@ -57,56 +74,60 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
+  const [history, setHistory] = useState<{ scope: string | null; visit: string; items: SearchResult[] }>({ scope: null, visit: "", items: [] });
+  const searchId = useId();
   const resultsRef = useRef<HTMLDivElement>(null);
+  const searchOpener = useRef<HTMLElement | null>(null);
+  const restoreSearchFocus = useRef(false);
   const navigation = [
     {
       href: "/",
       label: t("组合总览", "Overview"),
+      mobileLabel: t("总览", "Overview"),
       icon: SquaresFour,
       group: 0,
-      hint: t("组合资产", "portfolio overview "),
     },
     {
       href: "/holdings",
       label: t("持仓与穿透", "Holdings"),
+      mobileLabel: t("持仓", "Holdings"),
       icon: ChartPieSlice,
       group: 0,
-      hint: t("持仓配置", "positions allocation "),
     },
     {
       href: "/analytics",
       label: t("收益与风险", "Performance"),
+      mobileLabel: t("收益", "Returns"),
       icon: ChartLine,
       group: 0,
-      hint: t("收益风险", "performance returns "),
     },
     {
       href: "/research",
       label: t("证券研究", "Research"),
-      icon: MagnifyingGlass,
+      mobileLabel: t("研究", "Research"),
+      icon: ChartBar,
       group: 1,
-      hint: t("证券研究", "research securities "),
     },
     {
       href: "/review",
       label: t("投资复盘", "Review"),
+      mobileLabel: t("复盘", "Review"),
       icon: ClockCounterClockwise,
       group: 1,
-      hint: t("交易复盘", "history trades "),
     },
     {
       href: "/health",
       label: t("数据状态", "Data status"),
+      mobileLabel: t("状态", "Data status"),
       icon: StackSimple,
       group: 2,
-      hint: t("数据状态更新", "health sync "),
     },
     {
       href: "/settings",
       label: t("设置与连接", "Connections"),
+      mobileLabel: t("设置", "Settings"),
       icon: GearSix,
       group: 2,
-      hint: t("设置连接", "settings integrations "),
     },
   ];
   const active = navigation.find((n) =>
@@ -121,67 +142,81 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         event.preventDefault();
         if (!event.repeat) {
           setMobileOpen(false);
-          setSearchOpen((open) => !open);
+          if (!searchOpen) searchOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          restoreSearchFocus.current = searchOpen;
+          setSearchOpen(!searchOpen);
         }
       }
     }
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
-  }, []);
+  }, [searchOpen]);
   useEffect(() => {
-    if (searchOpen) {
-      resultsRef.current
-        ?.querySelector('[data-active="true"]')
-        ?.scrollIntoView({ block: "nearest" });
-    }
-  }, [index, query, searchOpen]);
+    if (searchOpen || !restoreSearchFocus.current) return;
+    // Touch does not necessarily focus the trigger. Restore its focus only
+    // after the background is no longer inert, never after a search navigation.
+    const frame = requestAnimationFrame(() => {
+      restoreSearchFocus.current = false;
+      const opener = searchOpener.current;
+      const target = opener && opener !== document.body && opener.isConnected && opener.getClientRects().length
+        ? opener
+        : Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]")).find((element) => element.getClientRects().length);
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [searchOpen]);
+  function closeSearch() {
+    restoreSearchFocus.current = true;
+    setSearchOpen(false);
+  }
   const directory = useQuery({
-    queryKey: ["workspace-search"],
-    queryFn: () => api<ResearchShell>("/research/shell"),
+    queryKey: ["workspace-research-shell"],
+    queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
     enabled: searchOpen,
     staleTime: 60_000,
     retry: 0,
   });
   const match = query.trim().toLowerCase();
+  const pages = navigation.map((item) => ({ href: item.href, label: item.label, aliases: pageAliases[item.href] }));
+  const profileId = profile.data?.profileId ?? null;
+  const visit = recentVisit(pathname, new URLSearchParams(routeSearch), pages, locale);
+  const visitHref = visit?.href;
+  const visitLabel = visit?.label;
+  const visitKey = JSON.stringify([visitHref, visitLabel]);
+  // Adjust route-derived history before children render, not in an effect that
+  // would add another render after every navigation. Nothing leaves this shell.
+  if (history.scope !== profileId || history.visit !== visitKey) {
+    const items = history.scope === profileId ? history.items : [];
+    setHistory({ scope: profileId, visit: visitKey, items: visit ? rememberVisit(items, visit) : items });
+  }
+  const recent = history.scope === profileId ? history.items.map((item) => {
+    const url = new URL(item.href, "https://workspace.invalid");
+    return recentVisit(url.pathname, url.searchParams, pages, locale) ?? item;
+  }) : [];
+  const currentTicker = pathname === "/research" ? params.get("ticker") : null;
   const results = [
-    ...navigation
-      .filter(
-        (n) =>
-          !match || (n.label + n.hint + n.href).toLowerCase().includes(match),
-      )
-      .map((n) => ({
-        href: n.href,
-        label: n.label,
-        detail: null,
-        group: t("页面", "Pages"),
-        Icon: n.icon,
-      })),
-    ...(directory.data?.instruments ?? [])
-      .filter(
-        (i) => !match || (i.ticker + i.name).toLowerCase().includes(match),
-      )
-      .slice(0, 8)
-      .map((i) => ({
-        href: "/research?ticker=" + encodeURIComponent(i.ticker),
-        label: i.ticker,
-        detail: i.name,
-        group: t("研究清单", "Research list"),
-        Icon: MagnifyingGlass,
-      })),
+    ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], recent, currentTicker, locale })
+      .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? MagnifyingGlass })),
     ...(match
       ? [
           {
             href: "/holdings?q=" + encodeURIComponent(query.trim()),
             label:
               t("在持仓中搜索", "Search holdings") + " “" + query.trim() + "”",
-            detail: null,
-            group: null,
+            detail: undefined,
+            group: "holdings" as const,
             Icon: ChartPieSlice,
           },
         ]
       : []),
   ];
+  const selectedIndex = Math.min(index, Math.max(0, results.length - 1));
+  const groups = { recent: t("最近访问", "Recent"), pages: t("页面", "Pages"), research: t("研究清单", "Research list"), holdings: t("持仓搜索", "Search holdings") };
+  useEffect(() => {
+    if (searchOpen) resultsRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, query, searchOpen, results.length]);
   function navigate(href: string) {
+    restoreSearchFocus.current = false;
     setSearchOpen(false);
     setMobileOpen(false);
     const route = presentationLink(actualPathname, href);
@@ -238,89 +273,75 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       </Menu.Dropdown>
     </Menu>
   );
-  const links = (group: number) =>
-    navigation
-      .filter((n) => n.group === group)
+  const links = (groups: number[], compact = false) => (
+    <NavigationGroup activeHref={active && groups.includes(active.group) ? active.href : undefined}>
+    {navigation
+      .filter((n) => groups.includes(n.group))
       .map((n) => (
+        <NavigationHint key={n.href} label={n.label} enabled={compact}>
         <Link
-          key={n.href}
           href={n.href}
+          aria-label={n.label}
           aria-current={active?.href === n.href ? "page" : undefined}
           className="mx-nav-link"
           onClick={() => setMobileOpen(false)}
         >
-          <n.icon
+          {compact ? <NavigationIcon icon={n.icon} /> : <><n.icon
             size={20}
             weight={active?.href === n.href ? "fill" : "regular"}
+            aria-hidden="true"
           />
-          <span>{n.label}</span>
-          {active?.href === n.href && <span className="mx-nav-current" />}
+          <span>{n.label}</span></>}
         </Link>
-      ));
+        </NavigationHint>
+      ))}
+    </NavigationGroup>
+  );
   return (
     <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen || mobileOpen}>
+      <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
       <a className="mx-skip" href="#main-content">
         {t("跳到正文", "Skip to content")}
       </a>
       <Drawer.Root
         opened={mobileOpen}
         onClose={() => setMobileOpen(false)}
-        size={300}
-        position="left"
+        size="100%"
+        position="bottom"
+        transitionProps={{ duration: 0 }}
       >
         <Drawer.Overlay />
-        <Drawer.Content>
-          <Drawer.Header>
+        <Drawer.Content classNames={{ content: "mx-mobile-menu" }}>
+          <Drawer.Header className="mx-mobile-menu-header">
             <VisuallyHidden component={Drawer.Title}>
               {t("工作台导航", "Workspace navigation")}
             </VisuallyHidden>
             <div className="mx-drawer-brand">{brand}</div>
             <Drawer.CloseButton aria-label={t("关闭导航", "Close navigation")} />
           </Drawer.Header>
-          <Drawer.Body>
+          <Drawer.Body className="mx-mobile-menu-body">
             <nav
               className="mx-drawer-nav"
               aria-label={t("移动端导航", "Mobile navigation")}
             >
-              {links(0)}
-              {links(1)}
-              {links(2)}
+              {links([0, 1])}
+              {links([2])}
             </nav>
           </Drawer.Body>
         </Drawer.Content>
       </Drawer.Root>
       <aside className="mx-sidebar">
+        <Tooltip.Group openDelay={250} closeDelay={100}>
         {brand}
-        <button
-          className="mx-search-trigger"
-          aria-label={t("搜索页面或证券", "Search pages or securities")}
-          aria-haspopup="dialog"
-          aria-expanded={searchOpen}
-          aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
-          onClick={() => {
-            setSearchOpen(true);
-            setMobileOpen(false);
-          }}
-        >
-          <MagnifyingGlass size={17} />
-          <span>{t("搜索", "Search")}</span>
-          {os !== "undetermined" && (
-            <kbd aria-hidden="true">{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>
-          )}
-        </button>
         <nav aria-label={t("主导航", "Primary navigation")}>
-          <div className="mx-nav-label">{t("我的组合", "MY PORTFOLIO")}</div>
-          {links(0)}
-          <div className="mx-nav-label">
-            {t("研究与复盘", "RESEARCH & REVIEW")}
-          </div>
-          {links(1)}
+          {links([0, 1], true)}
         </nav>
         <div className="mx-sidebar-bottom">
           {desktop ? <DesktopStatus localWorkspace={localWorkspace} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
-            {links(2)}
+            {links([2], true)}
           </nav>}
         </div>
+        </Tooltip.Group>
       </aside>
       <div className="mx-content">
         <header className="mx-topbar">
@@ -345,16 +366,34 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             <strong>{active?.label}</strong>
           </div>
           <Group gap={4} wrap="nowrap">
+            <Tooltip
+              label={<span className="mx-nav-search-hint">{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</span>}
+              position="bottom-end"
+              offset={8}
+              openDelay={250}
+              classNames={{ tooltip: "mx-nav-tooltip" }}
+              transitionProps={{ duration: 0 }}
+              events={{ hover: true, focus: true, touch: false }}
+              interactive
+            >
             <ActionIcon
-              className="mx-mobile-search"
+              className="mx-topbar-search"
+              variant="subtle"
+              data-search-trigger
               aria-label={t("搜索页面或证券", "Search pages or securities")}
               aria-haspopup="dialog"
               aria-expanded={searchOpen}
               aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
-              onClick={() => setSearchOpen(true)}
+              onClick={(event) => {
+                searchOpener.current = event.currentTarget;
+                restoreSearchFocus.current = false;
+                setSearchOpen(true);
+                setMobileOpen(false);
+              }}
             >
-              <MagnifyingGlass size={19} />
+              <MagnifyingGlass size={19} aria-hidden="true" />
             </ActionIcon>
+            </Tooltip>
             <ActionIcon
               aria-label={locale === "zh" ? "Switch to English" : "切换到中文"}
               onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
@@ -372,26 +411,29 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         className="mx-mobile-dock"
         aria-label={t("快捷导航", "Quick navigation")}
       >
+        <NavigationGroup activeHref={active && active.group < 2 ? active.href : undefined}>
         {navigation
           .filter((n) => n.group < 2)
           .map((n) => (
             <Link
               key={n.href}
               href={n.href}
+              className="mx-mobile-dock-link"
               aria-current={active?.href === n.href ? "page" : undefined}
             >
-              <n.icon
-                size={21}
-                weight={active?.href === n.href ? "fill" : "regular"}
-              />
-              <span>{n.label}</span>
+              <NavigationIcon icon={n.icon} />
+              <span>{n.mobileLabel}</span>
             </Link>
           ))}
+        </NavigationGroup>
       </nav>
       <Modal
+        classNames={{ content: "mx-command-dialog" }}
         opened={searchOpen}
-        onClose={() => setSearchOpen(false)}
+        onClose={closeSearch}
+        returnFocus={false}
         zIndex={1100}
+        transitionProps={{ duration: 0 }}
         closeOnEscape={false}
         // Mantine drawers listen during window capture. Mark the focused target
         // before Escape reaches them; this dialog alone handles its close.
@@ -400,7 +442,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           if (event.key === "Escape" && !event.nativeEvent.isComposing) {
             event.preventDefault();
             event.stopPropagation();
-            setSearchOpen(false);
+            closeSearch();
           }
         }}
         onExitTransitionEnd={() => {
@@ -412,6 +454,11 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       >
         <TextInput
           data-autofocus
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={true}
+          aria-controls={searchId + "-results"}
+          aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
           aria-label={t("搜索页面或证券", "Search pages or securities")}
           placeholder={t(
             "输入页面名称、代码或公司名…",
@@ -419,6 +466,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           )}
           leftSection={<MagnifyingGlass size={20} />}
           value={query}
+          maxLength={160}
           onChange={(event) => {
             setQuery(event.currentTarget.value);
             setIndex(0);
@@ -432,42 +480,51 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
                   0,
                   Math.min(
                     results.length - 1,
-                    i + (event.key === "ArrowDown" ? 1 : -1),
+                    Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
                   ),
                 ),
               );
             }
-            if (event.key === "Enter" && results[index]) {
+            if (event.key === "Enter" && results[selectedIndex]) {
               event.preventDefault();
-              navigate(results[index].href);
+              navigate(results[selectedIndex].href);
             }
           }}
         />
-        <div className="mx-command-results" ref={resultsRef}>
+        <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>
           {results.map((item, i) => (
             <Fragment key={item.href}>
-              {item.group && item.group !== results[i - 1]?.group && (
-                <h3 className="mx-command-group">{item.group}</h3>
-              )}
-              {!item.group && i > 0 && (
-                <div className="mx-command-divider" aria-hidden="true" />
+              {item.group !== results[i - 1]?.group && (
+                <div className="mx-command-group" role="presentation"><span>{groups[item.group]}</span></div>
               )}
               <button
+                type="button"
+                role="option"
+                id={searchId + "-" + i}
+                aria-selected={i === selectedIndex}
+                tabIndex={-1}
                 className="mx-command-result"
-                data-active={i === index || undefined}
+                data-active={i === selectedIndex || undefined}
+                onMouseDown={(event) => event.preventDefault()}
                 onClick={() => navigate(item.href)}
                 onFocus={() => setIndex(i)}
               >
-                <item.Icon size={20} />
+                <item.Icon size={20} aria-hidden="true" />
                 <span>
-                  <strong>{item.label}</strong>
-                  {item.detail && <small>{item.detail}</small>}
+                  <strong><SearchHighlight text={item.label} query={query} /></strong>
+                  {item.detail && <small><SearchHighlight text={item.detail} query={query} /></small>}
                 </span>
-                <ArrowRight size={16} />
+                <ArrowRight size={16} aria-hidden="true" />
               </button>
             </Fragment>
           ))}
         </div>
+        {needsSecurity(query, currentTicker) && (
+          <p className="mx-command-status" role="status">{t("加上证券代码，例如 ARM 技术面。", "Include a ticker, such as ARM technical.")}</p>
+        )}
+        {match && results.every((item) => item.group === "holdings") && !directory.isFetching && !needsSecurity(query, currentTicker) && (
+          <p className="mx-command-status" role="status">{t("没有匹配的页面或证券。", "No matching pages or securities.")}</p>
+        )}
         {directory.isPending && (
           <p className="mx-command-status" role="status">
             {t("正在加载研究清单…", "Loading research list…")}
@@ -490,6 +547,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             </Button>
           </div>
         )}
+        {!match && recent.length > 0 && <div className="mx-command-recent-actions"><button type="button" className="mx-command-clear" onClick={() => setHistory((previous) => ({ ...previous, items: [] }))}>{t("清除最近访问", "Clear recent")}</button></div>}
         <div className="mx-command-footer">
           <span>{t("↑ ↓ 选择 · Enter 打开", "↑ ↓ navigate · Enter open")}</span>
           <span>Esc {t("关闭", "close")}</span>

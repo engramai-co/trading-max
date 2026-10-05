@@ -16,6 +16,7 @@ test.describe("desktop surfaces", () => {
     await page.goto("/desktop");
     await expect(page.locator(".mx-desktop-app")).toBeVisible();
     await expect(page.locator(".mx-desktop-tools")).toBeVisible();
+    expect((await page.locator(".mx-sidebar").boundingBox())!.width).toBeLessThanOrEqual(80);
     await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
     await capture(page, "workspace");
     await expect(page.locator('.mx-desktop-tools a[href="/desktop/settings"]')).toHaveAttribute("target", "_blank");
@@ -59,7 +60,7 @@ test.describe("desktop surfaces", () => {
     await expect(page.getByRole("button", { name: /CFD 活动 CSV 文件|CFD activity CSV file/ })).toBeDisabled();
     await expect(page.getByRole("button", { name: /导入账本|Import ledger/ })).toBeDisabled();
     await page.goto("/desktop/activity");
-    await page.getByRole("button", { name: /更新数据|Update data/, exact: true }).click();
+    await page.getByRole("button", { name: /查看服务详情|Service details/, exact: true }).click();
     await expect(page.getByRole("button", { name: /开始更新|Start update/ })).toBeDisabled();
   });
 
