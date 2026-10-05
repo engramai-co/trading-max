@@ -3,6 +3,7 @@
 mod connection;
 mod recovery;
 mod runtime;
+mod sparkle;
 mod surfaces;
 mod updates;
 
@@ -729,6 +730,28 @@ async fn open_desktop_download(window: WebviewWindow, version: String) -> Result
 }
 
 #[tauri::command]
+async fn install_desktop_update(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    version: String,
+) -> Result<(), String> {
+    local_command(&window)?;
+    let feed = tauri::async_runtime::spawn_blocking(move || updates::update_feed(&version))
+        .await
+        .map_err(|_| "更新检查没有完成。".to_string())??;
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    app.run_on_main_thread(move || {
+        let result = local_command(&window).and_then(|_| sparkle::start(feed));
+        let _ = send.send(result);
+    })
+    .map_err(|_| "无法打开原生更新窗口。".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || receive.recv())
+        .await
+        .map_err(|_| "更新窗口已关闭。".to_string())?
+        .map_err(|_| "更新窗口已关闭。".to_string())?
+}
+
+#[tauri::command]
 fn show_recovery_folder(
     window: WebviewWindow,
     desktop: tauri::State<'_, Arc<Desktop>>,
@@ -1089,6 +1112,7 @@ fn main() {
             show_recovery_folder,
             check_updates,
             open_desktop_download,
+            install_desktop_update,
             open_issue_tracker,
             open_release_notes
         ])
@@ -1100,9 +1124,15 @@ fn main() {
                 Ok(None) => (Profile::default(), None),
                 Err(error) => (Profile::default(), Some(error)),
             };
-            let autostart = profile.auto_connect
-                && profile.clone().validated().is_ok()
-                && config_error.is_none();
+            let reopen = sparkle::take_reopen(&root);
+            let autostart = if config_error.is_none() {
+                reopen.or_else(|| {
+                    (profile.auto_connect && profile.clone().validated().is_ok())
+                        .then(|| profile.clone())
+                })
+            } else {
+                None
+            };
             let desktop = Arc::new(Desktop {
                 runtime: Runtime::new(root.clone(), app.path().resource_dir()?.join("runtime")),
                 root: root.clone(),
@@ -1130,6 +1160,7 @@ fn main() {
                 exiting: AtomicBool::new(false),
             });
             app.manage(desktop.clone());
+            sparkle::initialize(app.handle().clone());
             install_menu(app.handle())?;
             // The native entry never navigates to HTTP. It remains a working
             // recovery surface even if the portfolio WebView loses its service.
@@ -1151,7 +1182,7 @@ fn main() {
                     exit.exit(0);
                 }
             });
-            if autostart {
+            if let Some(profile) = autostart {
                 let _ = desktop.request(Some(profile), false, false);
             }
             let app = app.handle().clone();

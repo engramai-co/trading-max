@@ -7,6 +7,7 @@ read/exported and nothing is uploaded. Run after signing, notarizing and staplin
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import plistlib
@@ -157,7 +158,30 @@ def check_contents(mount: Path, version: str) -> None:
     build = json.loads((app / "Contents/Resources/runtime/build-info.json").read_text())
     if build.get("product_version") != version:
         raise ValueError("Bundled runtime version does not match the shell")
+    if tuple(map(int, version.split("."))) >= (1, 12, 0):
+        check_updater(app, info)
     check_native_compatibility(app)
+
+
+def check_updater(app: Path, info: dict) -> None:
+    expected = plistlib.loads((ROOT / "apps/desktop/src-tauri/Info.plist").read_bytes())
+    keys = [key for key in expected if key.startswith("SU")]
+    if any(info.get(key) != expected[key] for key in keys):
+        raise ValueError("Bundled updater trust or user-consent configuration differs from source")
+    if len(base64.b64decode(info.get("SUPublicEDKey", ""), validate=True)) != 32:
+        raise ValueError("Updater is missing its pinned Ed25519 public key")
+    framework = app / "Contents/Frameworks/Sparkle.framework"
+    if not (framework / "Sparkle").is_file():
+        raise ValueError("Bundled updater framework is missing")
+    lock = json.loads((ROOT / "apps/desktop/sparkle.lock.json").read_text())
+    framework_info = plistlib.loads((framework / "Resources/Info.plist").read_bytes())
+    if framework_info.get("CFBundleShortVersionString") != lock["version"]:
+        raise ValueError("Bundled updater framework differs from the pinned SDK")
+    # Nested helpers must also carry our team's signature, not the upstream SDK's.
+    for bundle in [framework, *framework.rglob("*.app"), *framework.rglob("*.xpc")]:
+        details = run("/usr/bin/codesign", "--display", "--verbose=4", bundle)
+        if f"TeamIdentifier={TEAM}" not in details.splitlines():
+            raise ValueError("Updater helper has a different signing team")
 
 
 def verify(dmg: Path, version: str) -> dict:

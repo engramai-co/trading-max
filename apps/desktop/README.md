@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An Apple Silicon macOS desktop preview for product **1.11.0**.
+An Apple Silicon macOS desktop preview for product **1.12.0**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -24,7 +24,7 @@ Closing either auxiliary window keeps the main workspace open. The separate loca
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.11.0 application base. Remote mode
+The native shell and packaged web/API use the 1.12.0 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
@@ -125,6 +125,7 @@ uv sync --all-packages --group dev --frozen
 npm ci --prefix apps/web
 npm run build --prefix apps/web
 npm ci --prefix apps/desktop
+uv run --frozen python apps/desktop/scripts/prepare_sparkle.py
 uv run --frozen python apps/desktop/scripts/prepare_payload.py \
   --python-home /absolute/path/to/standalone/cpython-3.12-macos-aarch64 \
   --node /absolute/path/to/node-22/bin/node
@@ -216,9 +217,11 @@ release and available desktop packages among the latest 30 releases, only when
 clicked. API responses have bounded time/body and no redirects; distribution
 manifests allow only HTTPS redirects to GitHub's release-asset host. Package
 metadata must match the exact official asset names, version, architecture,
-publisher, bundle ID and digests. The download action rechecks the release, then
-opens the official DMG in the browser for manual installation. It cannot install
-silently, downgrade, update Mac mini or migrate local data. No account, workspace
+publisher, bundle ID and digests. The download action rechecks the release and retains manual DMG installation.
+For newer releases with a signed appcast, **Update in App** opens Sparkle’s native
+consent, download, verified installation and restart window. It cannot install
+silently, downgrade or update Mac mini. Workspace migration retains its separate
+startup recovery guard. No account, workspace
 or saved-service address is sent, and remote pages receive no native permission.
 
 **Help & recovery** is bundled and works offline. It explains installation,
@@ -238,9 +241,9 @@ does not produce a public distribution.
 The default source build uses ad-hoc signing. Public preview artifacts go through
 the separate Developer ID signing, App/DMG notarization, distribution verification
 and actual installation acceptance workflow. Do not treat a local source build
-as the verified public installer. The initial update method uses a signed and
-notarized DMG with explicit browser/Finder actions; automatic binary updates
-remain deferred. Record installation and window-lifecycle acceptance separately
+as the verified public installer. 1.11.0 uses manual DMG installation. Install the first updater-enabled release
+once from its DMG; later versions support explicit in-app updates with signed
+feeds and packages. Background checks and silent installation remain disabled. Record installation and window-lifecycle acceptance separately
 from each account's first-sync balance confirmation. The former source/agent onboarding
 documentation is [archived](../../docs/archive/onboarding/README.md); the current
 entry and capability status are in [desktop onboarding](../../docs/installation/desktop-onboarding.md).
@@ -258,5 +261,8 @@ Same-version reopens do not create additional copies. Recovery remains available
 through the existing retry screen; no desktop navigation changes are included.
 
 See [upgrade recovery](../../docs/architecture/desktop-upgrade-recovery.md) for
-failure, storage and compatibility boundaries. Signed binary downloads,
-automatic binary rollback and public distribution are still deferred.
+failure, storage and compatibility boundaries. Signed public DMGs were added
+in 1.11.0. The [in-app update design](../../docs/architecture/desktop-in-app-updates.md)
+separates binary replacement from this workspace transaction. See the
+[release driver](../../docs/installation/desktop-updates.md#resumable-release-driver)
+for local signing, resumable notarization and gated publication.

@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **signed Apple Silicon desktop preview**, application base **1.11.0**.
+Status: **signed Apple Silicon desktop preview**, source application base **1.12.0**.
 Obtain the DMG and matching manifest from the
 [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0).
 The installer uses Developer ID signing and Apple notarization. See the
@@ -111,7 +111,9 @@ the selected local workspace. **Version & updates** makes an explicit, read-only
 request to the canonical repository's releases endpoint, sending no account
 or workspace details. A repository version is not a signed desktop update. An
 official desktop DMG is offered only with matching verified release metadata;
-Download rechecks it and opens the browser for manual installation. App replacement
+Download rechecks it and opens the browser for manual installation. Since 1.12.0,
+a newer release with a signed appcast also offers a native in-app update.
+1.11.0 needs one manual DMG upgrade to gain that capability. App replacement
 does not change the workspace or update an existing HTTPS service. Offline Help
 & recovery covers installation, failed upgrades and data retention. See
 [desktop updates](desktop-updates.md). Signed installation and upgrade acceptance remain part of the public
@@ -173,6 +175,6 @@ corrupt backup or conflicting files stop restoration without overwriting them.
 Recovery points and failed-start files are currently retained for inspection;
 there is no automatic deletion or unbounded daily full-copy schedule.
 
-This is local data recovery during a manual App upgrade. Automatic binary
-replacement remains deferred. See the
+This is local data recovery during an App upgrade. The in-app updater added in
+1.12.0 separately handles signed package verification and binary replacement. See the
 [transaction design](../architecture/desktop-upgrade-recovery.md).

@@ -150,6 +150,16 @@ def prepare(
             sign(copied / relative, node=relative == NODE)
             sys.stdout.write(f"Signed native component {index}/{len(code)}: {relative}\n")
             sys.stdout.flush()
+        # Seal nested Sparkle helpers before their containing framework and the outer App.
+        bundles = [
+            path
+            for path in copied.rglob("*")
+            if not path.is_symlink()
+            and path.is_dir()
+            and path.suffix in {".app", ".xpc", ".framework"}
+        ]
+        for bundle in sorted(bundles, key=lambda path: (-len(path.parts), str(path))):
+            sign(bundle)
         sign(copied)
     run("/usr/bin/codesign", "--verify", "--deep", "--strict", copied)
     archive = None

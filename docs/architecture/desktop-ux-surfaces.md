@@ -82,8 +82,9 @@ remain visible while the last published investment snapshot stays readable.
 Reusing the welcome wizard as Settings leaves daily actions ambiguous. Splitting
 every investment report into a window complicates context and lifetime. Native
 copies of connection forms would duplicate validation and financial ownership.
-These alternatives are avoided. Public signing/notarization, binary auto-updates,
-mobile access, background collection and optional security pop-outs remain separate.
+These alternatives are avoided. Public signing/notarization arrived in 1.11.0;
+[in-app updates](desktop-in-app-updates.md) are a separate 1.12.0 capability. Mobile
+access, background collection and optional security pop-outs remain deferred.
 
 ## Validation and rollback
 

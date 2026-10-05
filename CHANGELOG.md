@@ -10,6 +10,28 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.12.0] - 2026-10-05
+
+### Added
+
+- Add explicit in-app macOS updates using Sparkle, with signed feeds and archive
+  verification, a native installation/restart window and the manual DMG fallback.
+  The first upgrade from 1.11.0 still requires that fallback to install the updater.
+- Reopen the active source after an update without changing startup preferences;
+  stop only App-owned local services before relaunch.
+- Add a resumable maintainer release driver with retained Apple submission IDs,
+  artifact/source verification, private command evidence and native acceptance
+  gates before publication. Signing credentials remain in Keychain.
+- Compile and test the native updater bridge in macOS CI alongside desktop
+  packaging, interrupted-release and permission-boundary tests.
+
+### Changed
+
+- Refresh desktop distribution, onboarding and recovery documentation to separate
+  signed installers, binary updates and local workspace startup recovery.
+- Keep updates user initiated and preserve browser UX, remote services, account
+  credentials and existing data ownership.
+
 ## [1.11.0] - 2026-10-04
 
 ### Added

@@ -46,6 +46,41 @@ def fixture(root):
 
 
 class PackagingTests(unittest.TestCase):
+    def test_nested_updater_bundles_are_sealed_inside_out(self):
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            patch.object(packaging, "identity_name"),
+            patch.object(packaging, "check_native_compatibility"),
+            patch.object(packaging, "verify_code"),
+        ):
+            root = Path(temporary)
+            app = fixture(root)
+            nested = Path("Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app")
+            (app / nested / "Contents/MacOS").mkdir(parents=True)
+            (app / nested / "Contents/MacOS/Updater").write_bytes(bytes.fromhex("cffaedfe"))
+            signed = []
+
+            def run(*args, **kwargs):
+                if args[0] == "/usr/bin/ditto":
+                    shutil.copytree(args[1], args[2])
+                if "--sign" in args:
+                    signed.append(args[-1])
+                return ""
+
+            output = root / "out"
+            with patch.object(packaging, "run", side_effect=run):
+                packaging.prepare(app, output, IDENTITY, "1.11.0", rehearsal=True)
+            copied = output / app.name
+            self.assertLess(
+                signed.index(copied / nested / "Contents/MacOS/Updater"),
+                signed.index(copied / nested),
+            )
+            self.assertLess(
+                signed.index(copied / nested),
+                signed.index(copied / "Contents/Frameworks/Sparkle.framework"),
+            )
+            self.assertEqual(signed[-1], copied)
+
     def test_wrong_version_and_escaping_links_stop_before_key_access(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(packaging, "run") as run:
             root = Path(temporary)

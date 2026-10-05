@@ -7,8 +7,9 @@ Status: implementation of the existing local-workspace upgrade safety gap.
 Before a newer bundled App opens an existing local workspace database, create a
 verified, deduplicated recovery snapshot outside the workspace. Reuse the
 existing backup repository and its database, digest and snapshot verification.
-Keep the native settings/navigation unchanged. Public installers, signed update
-feeds and automatic binary downloads remain deferred.
+This transaction does not change native settings/navigation. Public signed
+installers arrived in 1.11.0; [in-app updates](desktop-in-app-updates.md) are a
+separate 1.12.0 capability.
 
 ## Transaction
 
@@ -43,8 +44,8 @@ locked inode and allow another process to race startup. Restoring only SQLite
 was rejected because snapshot pointers, imports and settings must agree.
 
 A previous binary is not silently launched or downloaded. This protects data
-when a user installs a new internal build; verified binary updates belong to
-the deferred distribution work. After a failed upgrade, the existing recovery
+when a user installs a newer App; verified binary replacement belongs to
+the separate in-app updater. After a failed upgrade, the existing recovery
 screen reports the restored state and supports retry with a fixed/previous App.
 
 ## Acceptance
