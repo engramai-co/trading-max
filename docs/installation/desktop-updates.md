@@ -1,8 +1,27 @@
 # Desktop installation, updates and recovery
 
-The desktop remains an internal Apple Silicon preview until the signed package
-and final clean-Mac acceptance gates pass. A GitHub source release alone is not a
-desktop installer. The App's **Settings → About & updates** distinguishes the two.
+Trading Max 1.11.0 provides an Apple Silicon macOS preview as a Developer ID
+signed and Apple-notarized DMG. Get the package and verification manifest from
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0).
+A GitHub source archive alone is not a desktop installer. The App's
+**Settings → About & updates** distinguishes the two.
+
+## Verified scope for 1.11.0
+
+The release owner selected acceptance on the existing Mac. The actual notarized
+DMG was installed with isolated App preferences, a new empty workspace and a
+workspace created by the previous 1.10.0 App. Native first launch, upgrading,
+recovery-point access, auxiliary/main window closure, Cmd-Q, reopening and
+restoration of the original connection preferences passed. The installed package
+also passed all 19 runtime checks, including failed-upgrade rollback, using
+bundled Python/Node and a system-only PATH.
+
+Native acceptance ran on Apple Silicon macOS 26.5.2. The package declares macOS
+13.0 and every native component's deployment target and library paths were
+verified; this is not a claim of a native UI test on macOS 13 or a freshly
+installed macOS system. This installation run did not repeat real-broker first
+sync. Each newly connected account still requires a successful refresh, healthy
+readiness/worker status and the owner's balance confirmation.
 
 ## Obtain and install an update
 
@@ -120,8 +139,11 @@ stay in Keychain or the release system's secret manager, never this repository.
    Hardened Runtime, stapled notarization, Gatekeeper assessment, architecture,
    identity and runtime version. It mounts read-only, detaches on failure and
    writes a manifest only after all checks pass. Existing output is not overwritten.
-4. Finish the final clean-Mac install/onboarding and upgrade/window-lifecycle
-   acceptance. **This remains the last gate; generating a manifest is not acceptance.**
+4. Finish installation/onboarding and upgrade/window-lifecycle acceptance on the
+   actual package. Record the host, isolation, real-account checks and untested
+   coverage. For 1.11.0 use the release owner's accepted same-Mac scope above;
+   future untouched-host or minimum-OS tests must be recorded separately.
+   **Generating a manifest alone is not installation acceptance.**
 5. Attach the verified DMG and JSON to the same stable `vX.Y.Z` GitHub release;
    publish the DMG first and the manifest last. Do not overwrite published assets.
    A partially published pair is not offered as an update. Check both GitHub asset

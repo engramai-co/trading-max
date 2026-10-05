@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An internal Apple Silicon macOS packaging experiment for product **1.11.0**.
+An Apple Silicon macOS desktop preview for product **1.11.0**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -171,8 +171,10 @@ responses, history data, occupied ports, duplicate ownership, rejected mutations
 normal shutdown, killed children and a killed supervisor. HTTP response timing is
 not a measurement of a rendered WebView screen. The harness also checks every
 runtime file before and after use, including a company-logo request that exercises
-Next's fetch cache. Inspect the actual .app separately. The current acceptance is
-on the owner's Mac; clean-machine installation remains a public-release gate.
+Next's fetch cache. Inspect the actual .app separately. The 1.11.0 release owner
+selected same-Mac isolated-profile installation acceptance; this does not claim
+an untouched macOS installation or a UI test on the minimum supported OS.
+See the [recorded scope](../../docs/installation/desktop-updates.md#verified-scope-for-1110).
 
 The original existing-server follow-up was accepted on the owner's Mac on 2026-09-21:
 eight native unit tests and five supervisor tests passed, as did Clippy and the
@@ -233,13 +235,13 @@ does not produce a public distribution.
 
 ## Distribution gate
 
-The current configuration uses ad-hoc signing for an internal local experiment.
-Do not describe it as a public installer. Developer ID signing, notarization,
-signed-package update verification, clean-machine verification and real-account
-acceptance must pass before a public desktop release. The initial update method
-uses a signed/notarized DMG and explicit browser/Finder actions; automatic binary
-updates remain deferred. Clean-Mac and window-lifecycle acceptance is the final
-stage, after the distribution and support path is ready. The former source/agent onboarding
+The default source build uses ad-hoc signing. Public preview artifacts go through
+the separate Developer ID signing, App/DMG notarization, distribution verification
+and actual installation acceptance workflow. Do not treat a local source build
+as the verified public installer. The initial update method uses a signed and
+notarized DMG with explicit browser/Finder actions; automatic binary updates
+remain deferred. Record installation and window-lifecycle acceptance separately
+from each account's first-sync balance confirmation. The former source/agent onboarding
 documentation is [archived](../../docs/archive/onboarding/README.md); the current
 entry and capability status are in [desktop onboarding](../../docs/installation/desktop-onboarding.md).
 

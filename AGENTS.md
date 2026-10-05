@@ -7,10 +7,13 @@ The current onboarding direction is the native desktop entry described in
 source/agent workflow is [archived](docs/archive/onboarding/README.md); do not
 activate its skill or treat it as the default onboarding experience.
 
-The internal desktop preview supports existing HTTPS services, explicitly selected
+The desktop preview supports existing HTTPS services, explicitly selected
 local workspaces, and an isolated synthetic demo. New workspaces start empty;
-first-sync acceptance remains incomplete until the user checks real broker totals. Do not describe the preview as a signed public installer or silently
-substitute demo data when a real connection fails.
+first-sync acceptance remains incomplete until the user checks real broker totals.
+Only verified Developer ID signed and notarized release assets qualify as public
+installers; a source build alone does not. Never silently substitute demo data
+when a real connection fails. See the distribution and acceptance scope in
+[desktop updates](docs/installation/desktop-updates.md).
 
 For an explicit request to maintain an existing source installation, use the
 archived runbook as a compatibility reference. The CLI and `deploy/local`

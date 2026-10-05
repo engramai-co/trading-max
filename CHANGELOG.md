@@ -28,7 +28,9 @@ All notable public Trading Max releases are recorded here.
 
 - Keep desktop upgrades user initiated through the browser and Finder; preserve
   local workspaces and credentials and leave existing HTTPS services unchanged.
-  Automatic binary updates and final clean-Mac acceptance remain separate gates.
+  Automatic binary updates remain deferred. The signed preview's installation
+  acceptance uses an isolated profile on the release owner's Mac; untouched-OS
+  and minimum-OS native UI coverage are not claimed.
 
 ### Fixed
 
