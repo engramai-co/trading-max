@@ -22,6 +22,11 @@ All notable public Trading Max releases are recorded here.
   assets separately. Keep chart rendering bounded, with keyboard, touch and
   reduced-motion support on desktop and mobile.
 
+### Security
+
+- Update the locked sharp image-processing and source-map-js dependencies to
+  their compatible upstream security patches, retaining the dependency audit gate.
+
 ## [1.12.1] - 2026-10-05
 
 ### Changed
