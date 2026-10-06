@@ -4574,6 +4574,7 @@ export interface components {
             /** Runid */
             runId: string;
             technical?: components["schemas"]["TechnicalRow"] | null;
+            technicalSummary?: components["schemas"]["TechnicalScoreSummary"] | null;
             /** Ticker */
             ticker: string;
             /** Timeline */
@@ -5699,7 +5700,14 @@ export interface components {
             /** Rsi */
             rsi: number | null;
             /** Score */
-            score: number;
+            score: number | null;
+            scoreBreakdown?: components["schemas"]["TechnicalScoreBreakdown"] | null;
+            /**
+             * Scoreexplanationstate
+             * @default unavailable
+             * @enum {string}
+             */
+            scoreExplanationState: "verified" | "mismatch" | "unavailable";
             /** Seasonality */
             seasonality?: {
                 [key: string]: unknown;
@@ -5742,6 +5750,70 @@ export interface components {
                     [key: string]: unknown;
                 }[];
             };
+        };
+        /** TechnicalScoreBreakdown */
+        TechnicalScoreBreakdown: {
+            /** Availablesignals */
+            availableSignals: number;
+            /** Basescore */
+            baseScore: number;
+            /** Clampadjustment */
+            clampAdjustment: number;
+            /** Groups */
+            groups: components["schemas"]["TechnicalScoreGroup"][];
+            /** Rawscore */
+            rawScore: number;
+            /** Score */
+            score: number;
+            /** State */
+            state: string;
+            /** Totalsignals */
+            totalSignals: number;
+        };
+        /** TechnicalScoreFactor */
+        TechnicalScoreFactor: {
+            /** Contribution */
+            contribution: number | null;
+            /** Key */
+            key: string;
+            /** Reference */
+            reference: number | null;
+            /** Value */
+            value: number | null;
+        };
+        /** TechnicalScoreGroup */
+        TechnicalScoreGroup: {
+            /** Contribution */
+            contribution: number | null;
+            /** Factors */
+            factors: components["schemas"]["TechnicalScoreFactor"][];
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "trend" | "momentum" | "relative" | "volume";
+        };
+        /** TechnicalScoreSummary */
+        TechnicalScoreSummary: {
+            /** Asof */
+            asOf: string;
+            /** Atrpct */
+            atrPct?: number | null;
+            /** Bollingerwidth */
+            bollingerWidth?: number | null;
+            /** Score */
+            score: number | null;
+            scoreBreakdown?: components["schemas"]["TechnicalScoreBreakdown"] | null;
+            /**
+             * Scoreexplanationstate
+             * @default unavailable
+             * @enum {string}
+             */
+            scoreExplanationState: "verified" | "mismatch" | "unavailable";
+            /** State */
+            state: string;
+            /** Ticker */
+            ticker: string;
         };
         /** TerminalCheck */
         TerminalCheck: {

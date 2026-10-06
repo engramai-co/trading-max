@@ -1193,6 +1193,25 @@ class ResearchLedger:
             ):
                 payload.fundamentals.pop(key, None)
         if view == "overview" and detail == "summary":
+            # A shared score entry, not another full-lens request or price history.
+            summary_row = _find(
+                self._cached_rows(manifest, "research/technical.json", project_technical_rows),
+                ticker,
+            )
+            if summary_row:
+                payload.technical_summary = {
+                    key: summary_row.get(key)
+                    for key in (
+                        "ticker",
+                        "asOf",
+                        "score",
+                        "state",
+                        "scoreBreakdown",
+                        "scoreExplanationState",
+                        "atrPct",
+                        "bollingerWidth",
+                    )
+                }
             payload.technical = None
             payload.valuation = None
             payload.fundamentals = dict(fundamental)

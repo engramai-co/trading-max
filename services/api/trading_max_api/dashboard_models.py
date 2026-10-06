@@ -811,15 +811,52 @@ class ResearchPriceSeries(ApiModel):
     coverage_end: str | None = None
 
 
-class TechnicalRow(ApiModel):
+class TechnicalScoreFactor(ApiModel):
+    key: str
+    contribution: int | None
+    value: float | None
+    reference: float | None
+
+
+class TechnicalScoreGroup(ApiModel):
+    key: Literal["trend", "momentum", "relative", "volume"]
+    contribution: int | None
+    factors: list[TechnicalScoreFactor]
+
+
+class TechnicalScoreBreakdown(ApiModel):
+    base_score: int
+    raw_score: int
+    score: int
+    state: str
+    clamp_adjustment: int
+    available_signals: int
+    total_signals: int
+    groups: list[TechnicalScoreGroup]
+
+
+class TechnicalScoreSummary(ApiModel):
+    ticker: str
+    as_of: str
+    score: float | None
+    state: str
+    score_breakdown: TechnicalScoreBreakdown | None = None
+    score_explanation_state: Literal["verified", "mismatch", "unavailable"] = "unavailable"
+    atr_pct: float | None = None
+    bollinger_width: float | None = None
+
+
+class TechnicalRow(TechnicalScoreSummary):
     ticker: str
     as_of: str
     currency: str
     history_coverage: HistoryCoverage
     adr_research: AdrResearch | None
     price: float
-    score: float
+    score: float | None
     state: str
+    score_breakdown: TechnicalScoreBreakdown | None = None
+    score_explanation_state: Literal["verified", "mismatch", "unavailable"] = "unavailable"
     rsi: float | None
     macd: float | None
     macd_signal: float | None
@@ -1056,6 +1093,7 @@ class ResearchLensSnapshot(ApiModel):
     research_evidence: dict[str, Any] = Field(default_factory=dict)
     market: dict[str, Any] | None = None
     technical: TechnicalRow | None = None
+    technical_summary: TechnicalScoreSummary | None = None
     valuation: ValuationRow | None = None
     options: OptionSnapshot | None = None
     fundamentals: dict[str, Any] | None = None

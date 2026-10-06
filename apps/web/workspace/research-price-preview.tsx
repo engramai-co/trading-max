@@ -5,12 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Plot } from "./charts";
 import { inRange } from "@/lib/portfolio/nav";
 import { number } from "@/workspace/data";
+import type { TechnicalScoreSummary } from "@/lib/types";
+import { TechnicalScoreCard } from "./research-technical";
 import {
   Empty,
   Panel,
   Pending,
   QueryError,
-  TextLink,
   useCopy,
 } from "./foundation";
 
@@ -18,9 +19,13 @@ import {
 export function PricePreview({
   ticker,
   runId,
+  summary,
+  pending = false,
 }: {
   ticker: string;
   runId: string;
+  summary?: TechnicalScoreSummary | null;
+  pending?: boolean;
 }) {
   const t = useCopy();
   const query = useQuery(researchPriceQuery(ticker, runId, "1d", "3M"));
@@ -29,14 +34,9 @@ export function PricePreview({
   return (
     <Panel
       title={`${t("价格走势", "Price history")} · 3M`}
-      action={
-        <TextLink
-          href={`/research?ticker=${encodeURIComponent(ticker)}&view=technical&priceRange=3M&interval=1d&priceStyle=candles`}
-        >
-          {t("价格与技术", "Price & technicals")}
-        </TextLink>
-      }
+      className="mx-price-diagnosis-preview"
     >
+      <div className="mx-tech-preview-grid"><div>
       {query.isPending ? (
         <Pending />
       ) : query.isError ? (
@@ -100,6 +100,7 @@ export function PricePreview({
           })}
         />
       )}
+      </div><TechnicalScoreCard data={summary} ticker={ticker} pending={pending} compact /></div>
     </Panel>
   );
 }

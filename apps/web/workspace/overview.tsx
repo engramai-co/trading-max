@@ -107,8 +107,8 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const day =
     scope === "total" ? data.latestModelDayReturn : selected?.dailyReturn;
   const signals = (data.technical ?? [])
-    .filter((s) => holdings.some((h) => h.ticker === s.ticker))
-    .sort((a, b) => a.score - b.score)
+    .filter((s) => s.score != null && holdings.some((h) => h.ticker === s.ticker))
+    .sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity))
     .slice(0, 3);
   return (
     <>
