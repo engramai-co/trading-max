@@ -45,6 +45,9 @@ export type NavPoint = ApiSchemas["NavPoint"];
 export type RiskMetrics = ApiSchemas["RiskMetrics"];
 
 export type TechnicalRow = ApiSchemas["TechnicalRow"];
+export type TechnicalScoreSummary = ApiSchemas["TechnicalScoreSummary"];
+export type TechnicalScoreFactor = ApiSchemas["TechnicalScoreFactor"];
+export type TechnicalScoreGroup = ApiSchemas["TechnicalScoreGroup"];
 
 export type PriceSeriesPoint = ApiSchemas["PriceSeriesPoint"];
 

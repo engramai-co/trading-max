@@ -20,7 +20,7 @@ import { useRouteState } from "./route-state";
 
 export { AnalystView } from "./research-analyst";
 export { CompanyOverview } from "./research-overview";
-export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
+export function TechnicalView({ data, embedded = false }: { data: ResearchLensSnapshot; embedded?: boolean }) {
   const { params, update } = useRouteState("push");
   const t = useCopy(),
     tech = data.technical;
@@ -58,6 +58,7 @@ export function TechnicalView({ data }: { data: ResearchLensSnapshot }) {
     });
   return (
     <Panel
+      className={embedded ? "mx-tech-raw" : undefined}
       title={t("技术数据", "Technical data")}
       action={
         <span className="mx-unit">

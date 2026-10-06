@@ -33,11 +33,13 @@ export function PriceHistory({
   ticker,
   runId,
   context,
+  compactChart = false,
 }: {
   ticker: string;
   runId: string;
   technical?: boolean;
   context?: ResearchLensSnapshot;
+  compactChart?: boolean;
 }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
@@ -176,8 +178,7 @@ export function PriceHistory({
         : {}),
     });
   };
-  const content = (
-    <>
+  const tools = (
       <div className="mx-price-tools">
         <Segments
           label={t("价格区间", "Price range")}
@@ -277,6 +278,10 @@ export function PriceHistory({
           </Button>
         </Group>
       </div>
+  );
+  const content = (
+    <>
+      {(!compactChart || full) && tools}
       <div className="mx-price-layers">
         <Group gap="lg">
           <Checkbox
@@ -449,7 +454,7 @@ export function PriceHistory({
                       ? 650
                       : window.innerHeight - 280,
                   )
-                : 410 + (rsi ? 125 : 0) + (macd ? 125 : 0)
+                : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0)
             }
             option={(c) => {
               const panes = [
@@ -849,7 +854,9 @@ export function PriceHistory({
   return (
     <>
       <Panel
+        className={compactChart ? "mx-tech-chart" : undefined}
         title={t("价格走势", "Price chart")}
+        action={compactChart && !full ? tools : undefined}
         help={t(
           "行情为拆股及分红调整后价格。均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。比较按同币种和共同起点归一化。",
           "Prices are split and dividend adjusted. Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. Comparisons share currency and starting time.",

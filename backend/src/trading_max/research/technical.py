@@ -20,6 +20,7 @@ from pydantic import Field
 from trading_max.domain import DomainModel
 from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
+from trading_max.research.technical_scoring import technical_score
 
 
 class MarketDataError(RuntimeError):
@@ -419,65 +420,6 @@ def _relative_stats(
         "beta": _finite(beta, 4),
         "correlation": _finite(daily["asset"].corr(daily["benchmark"]), 4),
     }
-
-
-def technical_score(metrics: Mapping[str, Any]) -> tuple[int, str]:
-    """Transparent state score; never a trade instruction."""
-
-    score = 50
-    price = metrics["price"]
-    moving = metrics["moving_averages"]
-    for key, weight in (("sma20", 4), ("sma50", 10), ("sma200", 12)):
-        level = moving.get(key)
-        if price is not None and level is not None:
-            score += weight if price > level else -weight
-    sma50, sma200 = moving.get("sma50"), moving.get("sma200")
-    if sma50 is not None and sma200 is not None:
-        score += 10 if sma50 > sma200 else -10
-    slope = moving.get("sma50_slope_20d")
-    if slope is not None:
-        score += 6 if slope > 0 else -6
-    macd = metrics["momentum"]["macd"]
-    if macd["line"] is not None and macd["signal"] is not None:
-        score += 5 if macd["line"] > macd["signal"] else -5
-    if macd["histogram"] is not None:
-        score += 4 if macd["histogram"] > 0 else -4
-    rsi_now = metrics["momentum"]["rsi14"]
-    if rsi_now is not None:
-        if 50 <= rsi_now <= 70:
-            score += 5
-        elif rsi_now < 40:
-            score -= 5
-        elif rsi_now > 80:
-            score -= 2
-    for benchmark, weight in (("spy_63d", 6), ("soxx_63d", 3)):
-        excess = metrics["relative_strength"][benchmark]["excess_return"]
-        if excess is not None:
-            score += weight if excess > 0 else -weight
-    volume_ratio = metrics["volume"]["up_down_volume_ratio_20d"]
-    if volume_ratio is not None:
-        score += 3 if volume_ratio > 1 else -3
-    trend = metrics["trend_strength"]
-    if (
-        trend["adx14"] is not None
-        and trend["adx14"] >= 25
-        and trend["plus_di14"] is not None
-        and trend["minus_di14"] is not None
-    ):
-        score += 5 if trend["plus_di14"] > trend["minus_di14"] else -5
-    score = max(0, min(100, score))
-    state = (
-        "强势趋势"
-        if score >= 70
-        else "偏强"
-        if score >= 56
-        else "中性/分歧"
-        if score >= 45
-        else "偏弱"
-        if score >= 31
-        else "弱势/趋势破坏"
-    )
-    return score, state
 
 
 def signals(metrics: Mapping[str, Any]) -> list[str]:

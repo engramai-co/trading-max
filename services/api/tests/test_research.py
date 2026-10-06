@@ -30,6 +30,11 @@ def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
     assert summary.market == full.market
     assert summary.context == full.context
     assert summary.technical is None and summary.valuation is None
+    assert summary.technical_summary.score == full.technical.score
+    assert summary.technical_summary.as_of == full.technical.as_of
+    assert summary.technical_summary.score_explanation_state == "mismatch"
+    assert summary.technical_summary.score_breakdown is None
+    assert not hasattr(summary.technical_summary, "seasonality")
     assert summary.portfolio_impact == full.portfolio_impact
     assert (
         summary.research_evidence.get("filings")
@@ -43,6 +48,7 @@ def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
     compact = ledger.lens_snapshot("BE", "technical", manifest, detail="summary")
     assert compact.technical.price == technical.technical.price
     assert compact.technical.rsi == technical.technical.rsi
+    assert compact.technical.score == summary.technical_summary.score
     financials = ledger.lens_snapshot("BE", "fundamentals", manifest)
     display = ledger.lens_snapshot("BE", "fundamentals", manifest, detail="summary")
     assert display.financial_facts == financials.financial_facts
@@ -53,6 +59,34 @@ def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
     assert documents.research_evidence.get("filings") == financials.research_evidence.get("filings")
     notebook = ledger.lens_snapshot("BE", "ledger", manifest, detail="summary")
     assert not notebook.timeline and not notebook.financial_facts
+
+
+def test_technical_score_projection_preserves_published_values_and_missingness():
+    from trading_max.research.technical_scoring import technical_score
+
+    from services.api.trading_max_api.projections.research import technical_rows
+
+    raw = {
+        "ticker": "SYNTHETIC",
+        "as_of": "2026-10-05",
+        "price": 100,
+        "moving_averages": {"sma20": 90, "sma50": 110},
+        "momentum": {"rsi14": 45},
+    }
+    score, state = technical_score(raw)
+    row = technical_rows({"rows": [{**raw, "technical_score": score, "technical_state": state}]})[0]
+    assert row["score"] == score
+    assert row["scoreExplanationState"] == "verified"
+    assert row["scoreBreakdown"]["availableSignals"] == 3
+    assert row["scoreBreakdown"]["score"] == score
+    assert row["scoreBreakdown"]["groups"][2]["contribution"] is None
+    assert technical_rows({"rows": [raw]})[0]["score"] is None
+    mismatch = technical_rows({"rows": [{**raw, "technical_score": 99}]})[0]
+    assert mismatch["score"] == 99
+    assert mismatch["scoreExplanationState"] == "mismatch"
+    assert mismatch["scoreBreakdown"] is None
+    for invalid in (float("nan"), float("inf"), -1, 101):
+        assert technical_rows({"rows": [{**raw, "technical_score": invalid}]})[0]["score"] is None
 
 
 def test_another_issuer_does_not_change_financial_input_version(

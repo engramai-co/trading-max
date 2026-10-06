@@ -10562,6 +10562,16 @@
               }
             ]
           },
+          "technicalSummary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TechnicalScoreSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
@@ -13905,8 +13915,35 @@
             "title": "Rsi"
           },
           "score": {
-            "title": "Score",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "scoreBreakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TechnicalScoreBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scoreExplanationState": {
+            "default": "unavailable",
+            "enum": [
+              "verified",
+              "mismatch",
+              "unavailable"
+            ],
+            "title": "Scoreexplanationstate",
+            "type": "string"
           },
           "seasonality": {
             "items": {
@@ -14041,12 +14078,13 @@
         "required": [
           "ticker",
           "asOf",
+          "score",
+          "state",
+          "atrPct",
           "currency",
           "historyCoverage",
           "adrResearch",
           "price",
-          "score",
-          "state",
           "rsi",
           "macd",
           "macdSignal",
@@ -14059,10 +14097,225 @@
           "drawdown52w",
           "return20d",
           "return63d",
-          "atrPct",
           "signals"
         ],
         "title": "TechnicalRow",
+        "type": "object"
+      },
+      "TechnicalScoreBreakdown": {
+        "properties": {
+          "availableSignals": {
+            "title": "Availablesignals",
+            "type": "integer"
+          },
+          "baseScore": {
+            "title": "Basescore",
+            "type": "integer"
+          },
+          "clampAdjustment": {
+            "title": "Clampadjustment",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/TechnicalScoreGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "rawScore": {
+            "title": "Rawscore",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "totalSignals": {
+            "title": "Totalsignals",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "baseScore",
+          "rawScore",
+          "score",
+          "state",
+          "clampAdjustment",
+          "availableSignals",
+          "totalSignals",
+          "groups"
+        ],
+        "title": "TechnicalScoreBreakdown",
+        "type": "object"
+      },
+      "TechnicalScoreFactor": {
+        "properties": {
+          "contribution": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "contribution",
+          "value",
+          "reference"
+        ],
+        "title": "TechnicalScoreFactor",
+        "type": "object"
+      },
+      "TechnicalScoreGroup": {
+        "properties": {
+          "contribution": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/TechnicalScoreFactor"
+            },
+            "title": "Factors",
+            "type": "array"
+          },
+          "key": {
+            "enum": [
+              "trend",
+              "momentum",
+              "relative",
+              "volume"
+            ],
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "contribution",
+          "factors"
+        ],
+        "title": "TechnicalScoreGroup",
+        "type": "object"
+      },
+      "TechnicalScoreSummary": {
+        "properties": {
+          "asOf": {
+            "title": "Asof",
+            "type": "string"
+          },
+          "atrPct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atrpct"
+          },
+          "bollingerWidth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bollingerwidth"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "scoreBreakdown": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TechnicalScoreBreakdown"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scoreExplanationState": {
+            "default": "unavailable",
+            "enum": [
+              "verified",
+              "mismatch",
+              "unavailable"
+            ],
+            "title": "Scoreexplanationstate",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "asOf",
+          "score",
+          "state"
+        ],
+        "title": "TechnicalScoreSummary",
         "type": "object"
       },
       "TerminalCheck": {
@@ -15579,7 +15832,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.12.2"
+    "version": "1.12.3"
   },
   "openapi": "3.1.0",
   "paths": {

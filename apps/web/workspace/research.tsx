@@ -50,7 +50,6 @@ import {
 import {
   AnalystView,
   CompanyOverview,
-  TechnicalView,
 } from "./research-company";
 import { ResearchComparison } from "./research-compare";
 import { FinancialWorkbench } from "./research-financials";
@@ -58,8 +57,8 @@ import { FundWorkbench } from "./research-funds";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
-import { PriceHistory } from "./research-price";
 import { PricePreview } from "./research-price-preview";
+import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
 import { ValuationWorkbench } from "./research-valuation-workbench";
 import { researchLensQuery } from "./research-queries";
@@ -680,7 +679,7 @@ export function ResearchWorkspace() {
                   </Notice>
                 )}
                 {tab === "overview" && (
-                  <PricePreview ticker={ticker} runId={revision ?? ""} />
+                  <PricePreview ticker={ticker} runId={revision ?? ""} summary={lens.data?.technicalSummary} pending={lens.isPending} />
                 )}
                 {tab === "technical" && <>
                           <Tabs
@@ -689,11 +688,7 @@ export function ResearchWorkspace() {
                               "Price & technical sections",
                             )}
                             value={
-                              ["price", "data", "seasonality"].includes(
-                                params.get("technicalView") ?? "",
-                              )
-                                ? params.get("technicalView")!
-                                : "price"
+                              params.get("technicalView") === "seasonality" ? "seasonality" : "price"
                             }
                             onChange={(v) =>
                               update({
@@ -701,30 +696,26 @@ export function ResearchWorkspace() {
                               })
                             }
                             options={[
-                              { value: "price", label: t("走势", "Chart") },
-                              {
-                                value: "data",
-                                label: t("技术数据", "Technical data"),
-                              },
+                              { value: "price", label: t("走势与诊断", "Chart & diagnosis") },
                               {
                                 value: "seasonality",
                                 label: t("季节性", "Seasonality"),
                               },
                             ]}
                           />
-                          {!["data", "seasonality"].includes(
-                            params.get("technicalView") ?? "",
-                          ) && (
-                            <PriceHistory
+                          {params.get("technicalView") !== "seasonality" && (
+                            <TechnicalWorkspace
                               key={ticker}
                               ticker={ticker}
                               runId={revision ?? ""}
-                              technical
-                              context={lens.data}
+                              data={lens.data}
+                              pending={lens.isPending}
+                              error={lens.isError}
+                              retry={() => { void lens.refetch(); }}
                             />
                           )}
                 </>}
-                {tab === "technical" && !["data", "seasonality"].includes(params.get("technicalView") ?? "") ? null : fetching && !lens.data ? (
+                {tab === "technical" && params.get("technicalView") !== "seasonality" ? null : fetching && !lens.data ? (
                   <Panel>
                     <Pending />
                   </Panel>
@@ -773,7 +764,6 @@ export function ResearchWorkspace() {
                           )}
                         </>
                       )}
-                      {tab === "technical" && params.get("technicalView") === "data" && <TechnicalView data={lens.data} />}
                       {tab === "technical" && params.get("technicalView") === "seasonality" && <Seasonality data={lens.data} revision={revision} />}
                       {tab === "valuation" && (
                         <ValuationWorkbench data={lens.data} revision={revision} />

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
+from trading_max.research.technical_scoring import score_breakdown
+
 from .values import JsonObject, nullable_number, number_value
 
 
@@ -16,6 +20,17 @@ def technical_rows(raw: JsonObject) -> list[JsonObject]:
         strength = row.get("trend_strength") or {}
         coverage = row.get("history_coverage") or {}
         adr = row.get("adr_research")
+        score = nullable_number(row.get("technical_score"))
+        if score is not None and (not math.isfinite(score) or not 0 <= score <= 100):
+            score = None
+        breakdown = score_breakdown(row)
+        explanation_state = (
+            "unavailable"
+            if score is None or not breakdown["availableSignals"]
+            else "verified"
+            if breakdown["score"] == score
+            else "mismatch"
+        )
         result.append(
             {
                 "ticker": str(row.get("ticker")),
@@ -57,8 +72,10 @@ def technical_rows(raw: JsonObject) -> list[JsonObject]:
                     else None
                 ),
                 "price": number_value(row.get("price")),
-                "score": number_value(row.get("technical_score")),
+                "score": score,
                 "state": str(row.get("technical_state") or "—"),
+                "scoreBreakdown": breakdown if explanation_state == "verified" else None,
+                "scoreExplanationState": explanation_state,
                 "rsi": nullable_number(momentum.get("rsi14")),
                 "macd": nullable_number(macd.get("line")),
                 "macdSignal": nullable_number(macd.get("signal")),

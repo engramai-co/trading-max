@@ -10,6 +10,20 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.12.3] - 2026-10-06
+
+### Changed
+
+- Present technical research as a shared daily-state score with auditable
+  contributions. Add a compact score and diagnosis entry to the research
+  overview, and combine price charts with expandable trend, momentum,
+  relative-performance and volume evidence. Keep seasonality independent.
+- Preserve the existing scoring weights, chart controls and historical
+  navigation. Keep the score's daily date separate from chart navigation,
+  disclose missing or unreconciled inputs, and retain original readings.
+- Tighten desktop and mobile layouts without removing factor evidence or
+  adding market-data requests to the overview.
+
 ## [1.12.2] - 2026-10-06
 
 ### Changed
