@@ -24,6 +24,7 @@ import { compareHoldings, holdingSortDirection } from "./holdings-data";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
 import { AllocationComposition } from "./allocation-composition";
 import { AllocationRanking } from "./allocation-ranking";
+import { companyAllocation } from "./company-allocation";
 import { currency, number, objects, percent, safeUrl, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import {
@@ -526,6 +527,7 @@ function Exposure({
   const [ownership, setOwnership] = useState("all");
   const [sort, setSort] = useState("total");
   const [chart, setChart] = useState("rank");
+  const companyComposition = useMemo(() => companyAllocation(data), [data]);
   const sectors = [
     ...new Set(
       data.positions
@@ -762,6 +764,23 @@ function Exposure({
           />
           {view === "companies" ? (
             <>
+              <Group justify="flex-end" mt="lg">
+                <Segments
+                  label={t("公司视图", "Company view")}
+                  value={chart}
+                  onChange={setChart}
+                  options={[
+                    { value: "rank", label: t("排名", "Rank") },
+                    { value: "pie", label: t("组成", "Composition") },
+                  ]}
+                />
+              </Group>
+              {chart === "pie" && <AllocationComposition
+                key={`companies-${snapshot}`}
+                companies
+                rows={companyComposition.rows}
+                remainder={companyComposition.remainder}
+              />}
               <div className="mx-toolbar" style={{ margin: "20px 0" }}>
                 <TextInput
                   className="mx-search-input"
