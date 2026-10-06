@@ -1,6 +1,6 @@
 "use client";
 
-import { useComputedColorScheme } from "@mantine/core";
+import { useComputedColorScheme, VisuallyHidden } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
 import { useId, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
@@ -13,9 +13,16 @@ export type AllocationSlice = {
   name: string;
   value: number | null;
   weight: number | null;
+  fullName?: string;
+  directValue?: number;
+  indirectValue?: number;
 };
 
-export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
+export function AllocationComposition({ rows, companies = false, remainder }: {
+  rows: AllocationSlice[];
+  companies?: boolean;
+  remainder?: { value: number; weight: number };
+}) {
   const t = useCopy();
   const colours = useChartColours();
   const scheme = useComputedColorScheme("light");
@@ -27,14 +34,24 @@ export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
   const slices = useMemo(() => {
     const visible = rows.slice(0, 12);
     const rest = rows.slice(12);
-    return rest.length ? [...visible, {
-      name: t("其余分类", "Other categories"),
+    const grouped = rest.length ? [...visible, {
+      name: companies ? t("其余公司", "Other companies") : t("其余分类", "Other categories"),
       value: rest.every((row) => row.value !== null)
         ? rest.reduce((sum, row) => sum + row.value!, 0) : null,
       weight: rest.every((row) => row.weight !== null)
         ? rest.reduce((sum, row) => sum + row.weight!, 0) : null,
+      ...(companies ? {
+        directValue: rest.reduce((sum, row) => sum + (row.directValue ?? 0), 0),
+        indirectValue: rest.reduce((sum, row) => sum + (row.indirectValue ?? 0), 0),
+      } : {}),
     }] : visible;
-  }, [rows, t]);
+    return remainder ? [...grouped, {
+      name: t("未穿透及非证券资产", "Unresolved & non-security assets"),
+      ...remainder,
+    }] : grouped;
+  }, [rows, t, companies, remainder]);
+  const colour = (index: number) => remainder && index === slices.length - 1
+    ? colours.axis : palette[index];
   const activeIndex = Math.min(selected, Math.max(0, slices.length - 1));
   const active = slices[activeIndex];
   const option = useMemo<EChartsOption>(() => ({
@@ -60,7 +77,7 @@ export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
       data: slices.map((row, index) => ({
         name: row.name, value: Math.max(0, row.weight ?? 0),
         itemStyle: {
-          color: palette[index],
+          color: remainder && index === slices.length - 1 ? colours.axis : palette[index],
           opacity: index === activeIndex ? 1 : 0.65,
           borderWidth: index === activeIndex ? 3 : 1,
           borderColor: colours.text,
@@ -68,7 +85,7 @@ export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
         },
       })),
     }],
-  }), [activeIndex, colours, palette, reduced, slices]);
+  }), [activeIndex, colours, palette, reduced, slices, remainder]);
   const canvas = useECharts(option, "core", undefined, undefined, (event) => {
     if (event.componentType === "series" && event.seriesType === "pie")
       setSelected(event.dataIndex);
@@ -101,19 +118,23 @@ export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
           <strong>{percent(active.weight)}</strong>
           <small>{t("配置占比", "Allocation weight")}</small>
         </div>
-        <p id={description} className="mx-form-help">
+        {companies ? <VisuallyHidden id={description}>
+          {t("点击扇区或公司查看详情，也可用左右方向键切换。", "Select a slice or company for details. Arrow keys also switch companies.")}
+        </VisuallyHidden> : <p id={description} className="mx-form-help">
           {t("点击扇区或分类查看详情，也可用左右方向键切换。", "Select a slice or category for details. Arrow keys also switch categories.")}
-        </p>
+        </p>}
       </div>
       <div className="mx-allocation-details">
         <section id={detailId} aria-label={t("所选分类详情", "Selected category details")} aria-live="polite" aria-atomic="true">
           <p className="mx-form-help">{t("所选分类", "Selected category")}</p>
-          <h3>{active.name}</h3>
+          <h3>{active.fullName || active.name}</h3>
           <dl className="mx-allocation-facts">
             <div><dt>{t("金额 · GBP", "Value · GBP")}</dt><dd>{currency(active.value, "GBP", 2)}</dd></div>
             <div><dt>{t("配置占比", "Allocation weight")}</dt><dd>{percent(active.weight)}</dd></div>
+            {companies && active.directValue !== undefined && <div><dt>{t("直接持有", "Direct")}</dt><dd>{currency(active.directValue, "GBP", 2)}</dd></div>}
+            {companies && active.indirectValue !== undefined && <div><dt>{t("基金内持有", "Via funds")}</dt><dd>{currency(active.indirectValue, "GBP", 2)}</dd></div>}
           </dl>
-          {activeIndex === 12 && (
+          {!companies && activeIndex === 12 && rows.length > 12 && (
             <details key={activeIndex} open>
               <summary>{t("包含分类", "Included categories")} · {rows.length - 12}</summary>
               <ul className="mx-allocation-other">
@@ -128,7 +149,7 @@ export function AllocationComposition({ rows }: { rows: AllocationSlice[] }) {
           {slices.map((row, index) => (
             <button key={index} type="button" aria-pressed={index === activeIndex}
               aria-controls={detailId} onClick={() => setSelected(index)}>
-              <i aria-hidden="true" style={{ backgroundColor: palette[index] }} />
+              <i aria-hidden="true" style={{ backgroundColor: colour(index) }} />
               <span>{row.name}</span><strong>{percent(row.weight)}</strong>
             </button>
           ))}

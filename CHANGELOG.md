@@ -10,6 +10,18 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.12.2] - 2026-10-06
+
+### Changed
+
+- Add a company composition view to ETF look-through, matching the existing
+  country allocation doughnut. Show the twelve largest company exposures,
+  group the remaining companies, and retain the complete searchable table.
+  Selected companies show both direct holdings and exposure through funds.
+- Preserve backend allocation weights and show unresolved or non-security
+  assets separately. Keep chart rendering bounded, with keyboard, touch and
+  reduced-motion support on desktop and mobile.
+
 ## [1.12.1] - 2026-10-05
 
 ### Changed
