@@ -10,7 +10,7 @@ if (picker) {
   document.title = "Trading Max · 工作区";
 }
 const labels = {
-  welcome: picker ? ["工作区", "选择要打开的投资记录。"] : ["打开你的投资工作台。", "从这台 Mac 开始，或连接已经在运行的服务。"],
+  welcome: picker ? ["工作区", ""] : ["打开你的投资工作台。", "从这台 Mac 开始，或连接已经在运行的服务。"],
   remote: ["连接你的服务。", "用熟悉的地址，打开已经在运行的投资工作台。"],
   create: ["创建本地工作区。", "让账户与投资记录保存在这台 Mac。"],
   open: ["继续你的本地记录。", "选择你已经保存的 Trading Max 工作区。"],
@@ -25,6 +25,7 @@ function showView(next, focus = true) {
   $("back").hidden = view === "welcome";
   text("heading", labels[view][0]);
   text("subtitle", labels[view][1]);
+  $("subtitle").hidden = !labels[view][1];
   $("feedback").hidden = true;
   if (view === "create" || view === "open") {
     selectedWorkspace = null;
@@ -122,10 +123,9 @@ async function refresh() {
       container.hidden = !state.workspaces?.length;
       container.replaceChildren();
       for (const workspace of state.workspaces ?? []) {
-        const row = document.createElement("div"); row.className = "recent-body local-recent";
+        const row = document.createElement("div"); row.className = "recent-body local-recent"; row.title = workspace.path;
         const labels = document.createElement("div"); labels.className = "recent-name";
         const title = document.createElement("strong"); title.textContent = workspace.name;
-        const path = document.createElement("span"); path.textContent = workspace.path; path.title = workspace.path;
         const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; const active = state.stage === "ready" && state.workspace?.path === workspace.path;
         button.textContent = active ? "回到工作台" : "打开";
         button.addEventListener("click", () => action(async () => {
@@ -133,7 +133,15 @@ async function refresh() {
           else await invoke("open_local_workspace", { workspace });
           await refresh();
         }));
-        labels.append(title, path); row.append(labels, button); container.append(row);
+        // Forgetting only shortens the list; the workspace folder stays intact.
+        const forget = document.createElement("button"); forget.type = "button"; forget.className = "icon-button";
+        forget.textContent = "×"; forget.disabled = active;
+        forget.setAttribute("aria-label", "从最近列表移除 " + workspace.name);
+        forget.addEventListener("click", () => action(async () => {
+          await invoke("forget_workspace", { path: workspace.path });
+          await refresh();
+        }));
+        labels.append(title); row.append(labels, button, forget); container.append(row);
       }
     }
     if (!initialized || view !== "remote") applyProfile(state.profile);

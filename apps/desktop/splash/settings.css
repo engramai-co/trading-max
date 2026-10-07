@@ -8,9 +8,7 @@
 .nav-item svg { width:18px; height:18px; fill:var(--rail); stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; }
 .nav-item[aria-current=page] { background:var(--soft); color:var(--blue); border-color:var(--line); }
 .nav-item[aria-current=page] svg { fill:var(--soft); }
-.sidebar-bottom { margin-top:auto; padding:28px 12px 0; }
 .scope-label { display:inline-flex; align-items:center; font-size:11px; color:var(--muted); }
-.sidebar-bottom p { font-size:11px; line-height:1.8; color:var(--muted); margin:8px 0 0; }
 .preferences-main { min-width:0; max-width:none; height:100%; overflow-y:auto; margin:0; padding:34px 34px 30px; }
 .preferences-header { margin-bottom:30px; }
 .preferences-header h1 { font-size:24px; letter-spacing:-.45px; margin:0 0 8px; }
