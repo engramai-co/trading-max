@@ -27,7 +27,7 @@ for (const button of document.querySelectorAll("[data-page]")) {
       if (item === button) item.setAttribute("aria-current", "page");
       else item.removeAttribute("aria-current");
     }
-    text("page-title", pages[page][0]); text("page-description", pages[page][1]);
+    text("page-title", pages[page][0]);
     $("feedback").hidden = true;
     document.querySelector(".preferences-main").scrollTop = 0;
   });
@@ -44,13 +44,15 @@ async function refresh() {
     }
     text("startup-name", available ? state.profile.name : "尚未保存服务连接");
     text("startup-address", available ? state.profile.url : "可以先创建本地工作区，或保存一个服务地址。");
-    text("startup-hint", available && state.profile.auto_connect ? "启动 App 时打开上面的服务。本地工作区与演示不会替换这个选择。" : "启动 App 时显示工作区选择器，由你选择要打开的资料。");
     text("installed-version", "v" + state.app_version);
     const workspace = workspacePresentation(state);
     text("source-kind", workspace.kind); text("active-name", workspace.name);
     text("active-address", workspace.address); text("connection-state", workspace.status);
     $("connection-state").className = "connection-state " + (state.stage === "error" ? "error" : workspace.ready ? "connected" : "");
-    text("connection-detail", workspace.detail); text("ownership-hint", workspace.ownership);
+    text("connection-detail", workspace.detail);
+    // Only local collection has a caveat the user can act on.
+    text("ownership-hint", state.mode === "local" ? workspace.ownership : "");
+    $("ownership-hint").hidden = state.mode !== "local";
     text("workspace-settings-label", workspace.settingsLabel);
     for (const id of ["return-workspace", "workspace-settings", "workspace-health"]) $(id).disabled = !workspace.ready;
     $("data-folder").hidden = !workspace.canRevealFolder;

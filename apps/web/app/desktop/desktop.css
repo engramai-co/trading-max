@@ -1,4 +1,22 @@
 /* Desktop presentation only. Financial views share the browser's icon rail. */
+.mx-sidebar-search.mantine-ActionIcon-root { display: none; }
+
+/* Set by the App's native shell under a transparent title bar. Native code owns
+   the top 28px for dragging, so nothing interactive may sit there. */
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar { padding-top: 36px; }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar .mx-brand { display: none; }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar-search.mantine-ActionIcon-root { display: flex; width: 100%; height: 48px; min-height: 48px; margin: 4px 0 8px; border-radius: 10px; color: var(--mx-side-ink); }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar { position: sticky; top: 0; z-index: 120; height: 28px; border-bottom-color: transparent; transition: border-color 150ms var(--mx-ease); }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root,
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-workspace,
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-breadcrumb-divider { display: none; }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong { font-size: 13px; font-weight: 600; opacity: 0; transform: translateY(4px); transition: opacity 160ms var(--mx-ease), transform 160ms var(--mx-ease); }
+html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar { border-bottom-color: var(--mx-border); }
+html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar-title strong { opacity: 1; transform: none; }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main { padding-top: 20px; min-height: calc(100dvh - 28px); }
+@media (prefers-reduced-motion: reduce) {
+  html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong { transform: none; }
+}
 .mx-desktop-tools { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--mx-side-border); padding-top: 12px; }
 .mx-desktop-tools a { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px; text-decoration: none; border-radius: 10px; }
 @media (hover: hover) and (pointer: fine) {
@@ -6,10 +24,10 @@
 }
 .mx-desktop-warning > svg:first-child { color: var(--mx-warning); }
 .mx-desktop-surface { min-height: 100dvh; background: var(--mx-canvas); }
-.mx-desktop-source { position: sticky; top: 0; z-index: 100; min-height: 68px; padding: 16px 30px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--mx-surface); border-bottom: 1px solid var(--mx-border); }
+.mx-desktop-source { position: sticky; top: 0; z-index: 100; min-height: 66px; padding: 14px 34px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--mx-canvas); border-bottom: 1px solid var(--mx-border); }
 .mx-desktop-source > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.mx-desktop-source strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-desktop-source span { color: var(--mx-muted); font-size: 11px; flex-shrink: 0; }
+.mx-desktop-source strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-desktop-source span { color: var(--mx-muted); font-size: 12px; flex-shrink: 0; }
 .mx-desktop-source a { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; }
 .mx-desktop-surface main { max-width: 1060px; margin: 0 auto; padding: 30px 32px 48px; }
 .mx-desktop-surface .mx-page-heading { align-items: flex-start; }

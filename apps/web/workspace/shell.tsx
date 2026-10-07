@@ -151,6 +151,29 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [searchOpen]);
+  // The App has one appearance: macOS. Its native settings already follow it.
+  useEffect(() => {
+    if (desktop && colorScheme !== "auto") setColorScheme("auto");
+  }, [desktop, colorScheme, setColorScheme]);
+  // Under the App's transparent title bar, the page title moves into the
+  // native band once the large heading scrolls away.
+  useEffect(() => {
+    if (!desktop) return;
+    const root = document.documentElement;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      root.toggleAttribute("data-scrolled", window.scrollY > 56);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    window.addEventListener("scroll", schedule, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", schedule);
+      cancelAnimationFrame(frame);
+      root.removeAttribute("data-scrolled");
+    };
+  }, [desktop]);
   useEffect(() => {
     if (searchOpen || !restoreSearchFocus.current) return;
     // Touch does not necessarily focus the trigger. Restore its focus only
@@ -297,6 +320,36 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       ))}
     </NavigationGroup>
   );
+  const searchTrigger = (className: string, position: "bottom-end" | "right") => (
+    <Tooltip
+      label={<span className="mx-nav-search-hint">{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</span>}
+      position={position}
+      offset={position === "right" ? 12 : 8}
+      openDelay={250}
+      classNames={{ tooltip: "mx-nav-tooltip" }}
+      transitionProps={{ duration: 0 }}
+      events={{ hover: true, focus: true, touch: false }}
+      interactive
+    >
+      <ActionIcon
+        className={className}
+        variant="subtle"
+        data-search-trigger
+        aria-label={t("搜索页面或证券", "Search pages or securities")}
+        aria-haspopup="dialog"
+        aria-expanded={searchOpen}
+        aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
+        onClick={(event) => {
+          searchOpener.current = event.currentTarget;
+          restoreSearchFocus.current = false;
+          setSearchOpen(true);
+          setMobileOpen(false);
+        }}
+      >
+        <MagnifyingGlass size={desktop && position === "right" ? 22 : 19} aria-hidden="true" />
+      </ActionIcon>
+    </Tooltip>
+  );
   return (
     <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen || mobileOpen}>
       <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
@@ -333,6 +386,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       <aside className="mx-sidebar">
         <Tooltip.Group openDelay={250} closeDelay={100}>
         {brand}
+        {desktop && searchTrigger("mx-sidebar-search", "right")}
         <nav aria-label={t("主导航", "Primary navigation")}>
           {links([0, 1], true)}
         </nav>
@@ -366,41 +420,15 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             <strong>{active?.label}</strong>
           </div>
           <Group gap={4} wrap="nowrap">
-            <Tooltip
-              label={<span className="mx-nav-search-hint">{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</span>}
-              position="bottom-end"
-              offset={8}
-              openDelay={250}
-              classNames={{ tooltip: "mx-nav-tooltip" }}
-              transitionProps={{ duration: 0 }}
-              events={{ hover: true, focus: true, touch: false }}
-              interactive
-            >
-            <ActionIcon
-              className="mx-topbar-search"
-              variant="subtle"
-              data-search-trigger
-              aria-label={t("搜索页面或证券", "Search pages or securities")}
-              aria-haspopup="dialog"
-              aria-expanded={searchOpen}
-              aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
-              onClick={(event) => {
-                searchOpener.current = event.currentTarget;
-                restoreSearchFocus.current = false;
-                setSearchOpen(true);
-                setMobileOpen(false);
-              }}
-            >
-              <MagnifyingGlass size={19} aria-hidden="true" />
-            </ActionIcon>
-            </Tooltip>
-            <ActionIcon
+            {searchTrigger("mx-topbar-search", "bottom-end")}
+            {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
+            {!desktop && <ActionIcon
               aria-label={locale === "zh" ? "Switch to English" : "切换到中文"}
               onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
             >
               <Globe size={19} />
-            </ActionIcon>
-            {theme}
+            </ActionIcon>}
+            {!desktop && theme}
           </Group>
         </header>
         <main id="main-content" tabIndex={-1}>

@@ -631,6 +631,10 @@ body.picker .choice {
 .folder-field { display:flex; gap:10px; margin-top:9px; }
 .folder-field input { min-width:0; flex:1; background:var(--rail); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:11px; font-size:12px; }
 .local-recent + .local-recent { margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+.local-recent { gap:8px; }
+.icon-button { flex:none; width:32px; height:32px; min-height:32px !important; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:18px; line-height:1; }
+.icon-button:disabled { visibility:hidden; }
+@media (hover:hover) { .icon-button:hover:not(:disabled) { background:var(--bg); color:var(--ink); } }
 
 /* Daily workspace selection is compact; first-run entry keeps its full layout. */
 body.picker main { padding:24px 36px; max-width:760px; }
@@ -649,4 +653,5 @@ body.picker .local-recent + .local-recent { margin-top:13px; padding-top:13px; }
 body.picker .local-recent .recent-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 body.picker .demo-row { padding-top:20px; }
 body.picker footer { margin-top:24px; padding-top:16px; }
+footer { justify-content:flex-end; }
 button:not(.text-button) { min-height:40px; }

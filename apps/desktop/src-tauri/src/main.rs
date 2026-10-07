@@ -26,6 +26,23 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
+// The workspace page sits under a transparent title bar. Native code owns the
+// top band for dragging; the page only learns that it should leave it empty.
+const WORKSPACE_CHROME_BAND: f64 = 28.0;
+const WORKSPACE_CHROME_SCRIPT: &str = r#"(function () {
+  var mark = function () {
+    var root = document.documentElement;
+    if (root) root.dataset.desktopChrome = "overlay";
+    return Boolean(root);
+  };
+  if (!mark()) new MutationObserver(function (_, observer) { if (mark()) observer.disconnect(); })
+    .observe(document, { childList: true });
+})();"#;
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn trading_max_install_drag_strip(window: *mut std::ffi::c_void, height: f64);
+}
+
 #[derive(Clone, Serialize)]
 struct Session {
     app_version: &'static str,
@@ -269,13 +286,19 @@ fn create_workspace_window(
     let pages = desktop.clone();
     let links = desktop.clone();
     let handle = app.clone();
-    let window = WebviewWindowBuilder::new(app, "workspace", WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(app, "workspace", WebviewUrl::External(url))
         .title("Trading Max")
         .inner_size(1280.0, 840.0)
         .min_inner_size(900.0, 640.0)
         .center()
         .visible(true)
         .focused(focus)
+        .initialization_script(WORKSPACE_CHROME_SCRIPT);
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    let window = builder
         // Keep progress and recovery responsive across native window switches;
         // WKWebView's default suspend policy can freeze a newly opened page.
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
@@ -310,6 +333,11 @@ fn create_workspace_window(
             }
         })
         .build()?;
+    #[cfg(target_os = "macos")]
+    if let Ok(ns_window) = window.ns_window() {
+        // Called on the main thread by the connection driver.
+        unsafe { trading_max_install_drag_strip(ns_window, WORKSPACE_CHROME_BAND) };
+    }
     let exit = app.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
@@ -863,6 +891,21 @@ fn open_workspaces(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), S
     local_command(&window)?;
     show_workspaces(&app).map_err(|e| e.to_string())
 }
+/// Removes a workspace from the recent list only; its folder is untouched.
+#[tauri::command]
+fn forget_workspace(
+    window: WebviewWindow,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    path: PathBuf,
+) -> Result<(), String> {
+    local_command(&window)?;
+    let mut session = desktop.session.lock().unwrap();
+    let mut recent = session.workspaces.clone();
+    recent.retain(|item| item.path != path);
+    connection::write_private_json(&desktop.root, "workspaces.json", &recent)?;
+    session.workspaces = recent;
+    Ok(())
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1101,6 +1144,7 @@ fn main() {
             disconnect,
             open_settings,
             open_workspaces,
+            forget_workspace,
             open_workspace_page,
             set_auto_connect,
             open_demo,

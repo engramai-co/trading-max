@@ -10,6 +10,24 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.13.0] - 2026-10-07
+
+### Changed
+
+- Give the desktop workspace window a transparent title bar. The sidebar
+  reaches the top of the window, search moves into the sidebar, and the page
+  title appears in the title bar once the large heading scrolls away. Native
+  code keeps the band draggable, including double-click to zoom; the page
+  still receives no native capabilities. Takes effect with the next desktop
+  release; earlier Apps keep their current layout.
+- Follow the macOS appearance in the desktop workspace, matching App
+  Settings. Language stays in workspace preferences; the browser keeps its
+  language and appearance controls.
+- Show recent local workspaces by name, with a button to remove an entry from
+  the list without touching its folder.
+- Remove explanatory notes from App Settings and the workspace picker, and
+  match the activity, import and settings window header to the workspace.
+
 ## [1.12.4] - 2026-10-07
 
 ### Fixed
