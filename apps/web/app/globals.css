@@ -138,6 +138,8 @@ h1, h2, h3, p { margin: 0; }
 .mx-overview-totals > .mx-metric .mx-number { font-size: clamp(40px, 4vw, 54px); letter-spacing: -1.8px; }
 .mx-overview-statistics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding-left: 28px; border-left: 1px solid var(--mx-border); }
 .mx-overview-statistics .mx-number { font-size: clamp(20px, 1.8vw, 27px); white-space: nowrap; }
+.mx-attention { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; } .mx-attention-label { margin-right: 4px; color: var(--mx-muted); font-size: 12px; } .mx-attention a { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 6px 12px; border: 1px solid var(--mx-border); border-radius: 999px; color: var(--mx-ink); font-size: 13px; text-decoration: none; transition: border-color 150ms var(--mx-ease), background-color 150ms var(--mx-ease); }
+.mx-attention a::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--mx-down); } .mx-attention a[data-tone="warning"]::before { background: var(--mx-warning); } .mx-attention strong { font-weight: 650; } .mx-attention a > span { color: var(--mx-muted); } @media (hover: hover) { .mx-attention a:hover { border-color: var(--mx-brand); background: var(--mx-brand-soft); } }
 .mx-overview-split { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr); }
 .mx-overview-portfolio > .mx-overview-split { border-top: 1px solid var(--mx-border); }
 .mx-overview-split > .mx-panel { display: flex; flex-direction: column; min-width: 0; padding: 24px; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
