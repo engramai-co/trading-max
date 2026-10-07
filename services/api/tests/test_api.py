@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -540,6 +541,7 @@ def test_immutable_snapshot_views_are_cached_per_run(
             data_root=tmp_path / "runtime",
             api_token="secret",
             embedded_worker=True,
+            dashboard_prewarm_seconds=0,
         )
     )
 
@@ -551,6 +553,79 @@ def test_immutable_snapshot_views_are_cached_per_run(
 
     assert dashboard_calls == 1
     assert research_calls == 1
+
+
+def test_dashboard_projections_share_a_run_without_evicting_each_other(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+    monkeypatch,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    builds: list[bool] = []
+    real_dashboard = app_module.build_dashboard_data
+
+    def counted_dashboard(*args, **kwargs):
+        builds.append(kwargs["include_history"])
+        return real_dashboard(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "build_dashboard_data", counted_dashboard)
+    app = create_app(
+        Settings(
+            data_root=tmp_path / "runtime",
+            api_token="secret",
+            embedded_worker=True,
+            dashboard_prewarm_seconds=0,
+        )
+    )
+
+    with TestClient(app) as client:
+        for path in (
+            "/v1/dashboard/lens/overview?detail=summary",
+            "/v1/dashboard/lens/holdings-positions",
+            "/v1/dashboard/lens/analytics?detail=summary",
+            "/v1/dashboard/lens/review",
+        ):
+            assert client.get(path).status_code == 200
+
+    assert sorted(builds) == [False, True]
+
+
+def test_new_runs_prewarm_both_dashboard_projections(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+    monkeypatch,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    warmed = threading.Event()
+    builds: list[bool] = []
+    real_dashboard = app_module.build_dashboard_data
+
+    def counted_dashboard(*args, **kwargs):
+        builds.append(kwargs["include_history"])
+        if len(builds) == 2:
+            warmed.set()
+        return real_dashboard(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "build_dashboard_data", counted_dashboard)
+    app = create_app(
+        Settings(
+            data_root=tmp_path / "runtime",
+            api_token="secret",
+            embedded_worker=True,
+            dashboard_prewarm_seconds=0.05,
+        )
+    )
+
+    with TestClient(app) as client:
+        assert warmed.wait(10)
+        assert client.get("/v1/dashboard/lens/review").status_code == 200
+        assert client.get("/v1/dashboard/lens/overview?detail=summary").status_code == 200
+
+    assert sorted(builds) == [False, True]
 
 
 def test_watchlist_mutations_require_auth_and_preserve_pending_state(

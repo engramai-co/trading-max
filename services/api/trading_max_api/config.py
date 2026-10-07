@@ -84,6 +84,8 @@ class Settings:
     alert_monitor_enabled: bool = False
     alert_held_interval_seconds: int = 300
     alert_watchlist_interval_seconds: int = 900
+    # Running services enable this through from_env; embedded/test apps opt in.
+    dashboard_prewarm_seconds: float = 0.0
     embedded_worker: bool = False
     worker_lease_seconds: int = 300
     worker_poll_seconds: float = 1.0
@@ -172,6 +174,9 @@ class Settings:
                     "TRADING_MAX_ALERT_WATCHLIST_INTERVAL_SECONDS",
                     "900",
                 )
+            ),
+            dashboard_prewarm_seconds=float(
+                os.environ.get("TRADING_MAX_DASHBOARD_PREWARM_SECONDS", "15")
             ),
             embedded_worker=_bool_from_env("TRADING_MAX_EMBEDDED_WORKER", False),
             worker_lease_seconds=int(os.environ.get("TRADING_MAX_WORKER_LEASE_SECONDS", "300")),
