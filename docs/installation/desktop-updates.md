@@ -1,10 +1,33 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.11.0 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.12.3 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.12.3).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
+
+## Verified scope for 1.12.3
+
+The signed App and final DMG passed Apple notarization, stapling, signature and
+Gatekeeper checks. All 19 packaged runtime checks passed, including process
+cleanup, isolated empty/demo workspaces and failed-upgrade recovery.
+
+Native acceptance on Apple Silicon macOS 26.5.2 used synthetic data and a private
+older-version fixture with the released updater implementation. Invalid signed
+feeds, modified archives, interrupted downloads and cancellation left the
+installed application unchanged. The exact final DMG then installed and relaunched
+as 1.12.3, reopened the active demo, stopped the previous runtime and preserved
+saved connection preferences. Normal quit also stopped the new owned services.
+
+After publication, anonymous downloads of the DMG, manifest and appcast matched
+the accepted local bytes and both update signatures verified. An unmodified
+installed 1.12.0 App discovered 1.12.3 through the public release, completed the
+in-app update and reopened its saved HTTPS service with startup preferences
+unchanged. The installed App again passed signature, staple and Gatekeeper checks.
+
+This is not fresh-OS or macOS 13 native UI acceptance, nor a new real-broker
+first-sync test. New accounts still need a successful refresh, healthy worker
+and readiness status, and the owner's confirmation of broker totals.
 
 ## Verified scope for 1.11.0
 

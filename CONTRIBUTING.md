@@ -162,3 +162,11 @@ For desktop changes, also run Python lint/tests for `apps/desktop/scripts` and
 runtime check. Match desktop npm, Cargo and Tauri versions to `VERSION` before
 building. Runtime binaries and generated payloads remain ignored by Git.
 A local preview build is not a signed public desktop release.
+
+The source Release workflow and a web deployment do not publish or update the
+desktop package. Before announcing a desktop release, finish the resumable
+`apps/desktop/scripts/release_macos.py` workflow on the signing Mac, including
+native acceptance and publication of its verified DMG, JSON manifest and signed
+XML appcast to the matching existing release. Verify the published update from
+an installed App, then update the README and desktop download guides. These
+documentation corrections do not need another version bump or web deployment.
