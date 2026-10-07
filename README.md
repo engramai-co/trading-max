@@ -65,10 +65,10 @@ targets remain a separate reference.
 
 ![Valuation scenarios compared with the current price and editable assumptions](docs/assets/research-valuation.png)
 
-Price & technicals keeps the everyday chart simple, with a full chart for
-deeper analysis. Separate technical-data and seasonality views keep readings
-easy to find. Estimates, event history, supported option chains, and a research
-journal complete the workspace.
+Price & technicals brings the everyday chart and technical diagnosis together,
+with a full chart for deeper analysis. Exact indicator readings and seasonality
+remain available. Estimates, event history, supported option chains, and a
+research journal complete the workspace.
 
 *Screenshots use hypothetical Trading 212 accounts and transactions. Market
 and company research come from real providers; pictured values are dated
@@ -81,9 +81,10 @@ one App. The Apple Silicon Mac preview can connect to your own HTTPS
 service, remember it and recover when it is unavailable. A separate local demo
 uses synthetic data.
 
-The [1.11.0 release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0)
+The [1.12.3 release](https://github.com/engramai-co/trading-max/releases/tag/v1.12.3)
 provides the Developer ID signed and Apple-notarized macOS preview DMG and its
-verification manifest. It bundles its Python and Node runtimes; local workspaces
+verification manifest. Existing Apps on 1.12.0 or newer can update from
+**App Settings → About & updates**. It bundles its Python and Node runtimes; local workspaces
 start empty and guide you through connecting and checking your accounts.
 See [desktop onboarding and acceptance scope](docs/installation/desktop-onboarding.md)
 and [installation, upgrades and recovery](docs/installation/desktop-updates.md).

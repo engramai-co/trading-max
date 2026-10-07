@@ -1,8 +1,8 @@
 # Desktop onboarding
 
-Status: **signed Apple Silicon desktop preview**, source application base **1.12.0**.
+Status: **signed Apple Silicon desktop preview**, bundled application **1.12.3**.
 Obtain the DMG and matching manifest from the
-[official release](https://github.com/engramai-co/trading-max/releases/tag/v1.11.0).
+[official release](https://github.com/engramai-co/trading-max/releases/tag/v1.12.3).
 The installer uses Developer ID signing and Apple notarization. See the
 [installation guide and acceptance scope](desktop-updates.md) before upgrading.
 
