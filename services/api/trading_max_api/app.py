@@ -104,8 +104,10 @@ def create_app(
         entity_resolver=web_entity_resolver.resolve,
     )
 
-    dashboard_cache_lock = threading.Lock()
-    dashboard_cache: tuple[tuple[str, bool], DashboardResponse] | None = None
+    # Summary and full dashboard projections are separate immutable views of
+    # the same run. Keep both, plus the previous run while a new one warms, so
+    # moving between pages never rebuilds the projection the last page evicted.
+    dashboard_cache: SingleFlightCache[tuple[str, bool], DashboardResponse] = SingleFlightCache(4)
     research_cache_lock = threading.Lock()
     research_cache_run_id: str | None = None
     research_cache: dict[
@@ -118,16 +120,33 @@ def create_app(
     def cached_dashboard(
         manifest: SnapshotManifest, *, include_history: bool = True
     ) -> DashboardResponse:
-        nonlocal dashboard_cache
-        with dashboard_cache_lock:
-            key = (manifest.run_id, include_history)
-            if dashboard_cache is not None and dashboard_cache[0] == key:
-                return dashboard_cache[1]
-            payload = DashboardResponse.model_validate(
+        return dashboard_cache.get_or_compute(
+            (manifest.run_id, include_history),
+            lambda: DashboardResponse.model_validate(
                 build_dashboard_data(store, manifest, include_history=include_history),
-            )
-            dashboard_cache = (key, payload)
-            return payload
+            ),
+        )
+
+    dashboard_prewarm_stop = threading.Event()
+
+    def prewarm_dashboard() -> None:
+        """Build both dashboard projections as soon as a new run is published."""
+
+        warmed: str | None = None
+        while True:
+            manifest = store.latest_manifest()
+            if manifest is not None and manifest.run_id != warmed:
+                try:
+                    for include_history in (False, True):
+                        cached_dashboard(manifest, include_history=include_history)
+                except Exception:
+                    # A partial run is retried on the next poll; requests still
+                    # build on demand and report their own errors.
+                    logger.debug("dashboard prewarm deferred", exc_info=True)
+                else:
+                    warmed = manifest.run_id
+            if dashboard_prewarm_stop.wait(settings.dashboard_prewarm_seconds):
+                return
 
     def cached_research(
         manifest: SnapshotManifest,
@@ -333,6 +352,12 @@ def create_app(
                 name="trading-max-research-prewarm",
                 daemon=True,
             ).start()
+            if settings.dashboard_prewarm_seconds > 0:
+                threading.Thread(
+                    target=prewarm_dashboard,
+                    name="trading-max-dashboard-prewarm",
+                    daemon=True,
+                ).start()
             logger.info(
                 "service started",
                 extra={
@@ -359,6 +384,7 @@ def create_app(
         alert_monitor.start()
         yield
         logger.info("service stopping")
+        dashboard_prewarm_stop.set()
         scheduler.close()
         intraday_scheduler.close()
         performance_scheduler.close()

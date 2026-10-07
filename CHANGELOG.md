@@ -10,6 +10,17 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.12.4] - 2026-10-07
+
+### Fixed
+
+- Keep the summary and full portfolio projections of a snapshot cached side by
+  side. Moving between Overview, Holdings, Performance and Review no longer
+  rebuilds the projection the previous page replaced.
+- Build both projections in the background as soon as a new snapshot is
+  published, so the first visit after a scheduled refresh does not wait for
+  them. Set `TRADING_MAX_DASHBOARD_PREWARM_SECONDS=0` to disable the check.
+
 ## [1.12.3] - 2026-10-06
 
 ### Changed
