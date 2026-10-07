@@ -271,7 +271,7 @@ export function AnalystExpectations({ data, revision }: { data: ResearchLensSnap
                     boundaryGap: false,
                     axisLabel: {
                       color: c.axis,
-                      fontSize: 10,
+                      fontSize: 11,
                       showMinLabel: true,
                       showMaxLabel: true,
                       hideOverlap: true,
@@ -289,7 +289,7 @@ export function AnalystExpectations({ data, revision }: { data: ResearchLensSnap
                     splitNumber: 3,
                     axisLabel: {
                       color: c.axis,
-                      fontSize: 10,
+                      fontSize: 11,
                       formatter: (v: number) => number(v, v < 10 ? 1 : 0),
                     },
                     splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
@@ -353,7 +353,7 @@ export function AnalystExpectations({ data, revision }: { data: ResearchLensSnap
                         position: "right" as const,
                         distance: 9,
                         color: c.text,
-                        fontSize: 10,
+                        fontSize: 11,
                         lineHeight: 15,
                         formatter:
                           targetLabels[row.key] + "\n" + number(row.value, 2),

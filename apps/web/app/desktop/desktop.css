@@ -39,7 +39,7 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main { padding-t
 .mx-desktop-settings .mx-tabs { gap: 10px; padding-bottom: 14px; }
 .mx-desktop-settings .mx-tabs button { padding: 10px 14px; border-radius: 8px; min-height: 40px; }
 .mx-desktop-settings .mx-tabs button[aria-selected="true"] { background: var(--mx-brand-soft); }
-.mx-desktop-settings .mx-tabs button[aria-selected="true"]::after { display: none; }
+.mx-desktop-settings .mx-tabs > .mx-indicator { display: none; }
 .mx-desktop-surface .mx-health-hero { padding: 20px 22px; gap: 16px; }
 .mx-desktop-surface .mx-health-hero h2 { font-size: 19px; }
 .mx-desktop-surface .mx-health-hero p { margin-bottom: 6px; }

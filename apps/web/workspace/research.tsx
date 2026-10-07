@@ -403,10 +403,7 @@ export function ResearchWorkspace() {
                 <Empty
                   title={
                     ticker
-                      ? t(
-                          "把这个标的加入研究",
-                          "Add this security to your research",
-                        )
+                      ? ticker + t(" 还不在研究清单里", " is not in your research list")
                       : t(
                           "从一家你感兴趣的公司开始",
                           "Start with a company you are curious about",
@@ -414,20 +411,21 @@ export function ResearchWorkspace() {
                   }
                   description={
                     ticker
-                      ? ticker +
-                        " · " +
-                        t(
-                          "当前不在研究清单中。搜索并添加后即可加载完整研究。",
-                          "This security is not in your research list. Find and add it to load research.",
-                        )
+                      ? undefined
                       : t(
                           "搜索证券代码或公司名，逐步建立自己的研究范围。",
                           "Find a ticker or company and build a research universe of your own.",
                         )
                   }
                   action={
-                    <Button onClick={() => setFinder(true)}>
-                      {t("查找证券", "Find a security")}
+                    <Button
+                      onClick={() => {
+                        // Open the finder already searching for this ticker.
+                        if (ticker) setFinderQuery(ticker);
+                        setFinder(true);
+                      }}
+                    >
+                      {ticker ? t("加入研究清单", "Add to research list") : t("查找证券", "Find a security")}
                     </Button>
                   }
                 />
@@ -884,7 +882,7 @@ function SecurityFinder({
 }) {
   const t = useCopy();
   const [text, setText] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => (initial.trim().length >= 2 ? initial.trim() : ""));
   const currentText = (text || initial).trim();
   const showingCurrentSearch = search === currentText;
   const query = useQuery({

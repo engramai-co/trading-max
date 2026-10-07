@@ -37,6 +37,7 @@ import {
 } from "./foundation";
 
 import { activityState } from "./desktop-status";
+import { collapseRoutineRuns } from "./job-history";
 
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
@@ -51,6 +52,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const [everyRun, setEveryRun] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(initialScope !== "all");
   const start = useMutation({
     mutationFn: () =>
@@ -263,10 +265,6 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     </Tag>,
                   ],
                   [
-                    t("最新快照", "Latest snapshot"),
-                    shortRunId(data.health?.latestRunId),
-                  ],
-                  [
                     t("快照生成距今", "Snapshot age"),
                     formatAge(data.health?.artifactAgeSeconds, locale),
                   ],
@@ -397,11 +395,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               />
             </div>}
             {data.jobs.filter((j) => filter === "all" || j.status === filter)
-              .length ? (
+              .length ? (<>
               <div className="mx-job-list">
-                {data.jobs
-                  .filter((j) => filter === "all" || j.status === filter)
-                  .map((j) => (
+                {(filter === "all" && !everyRun
+                  ? collapseRoutineRuns(data.jobs)
+                  : data.jobs.filter((j) => filter === "all" || j.status === filter).map((job) => ({ job, repeats: 0 }))
+                ).map(({ job: j, repeats }) => (
                     <button
                       className="mx-job-row"
                       key={j.jobId}
@@ -428,7 +427,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                           {scopes.find((s) => s.value === j.scope)?.label ??
                             j.scope}
                         </strong>
-                        <Freshness date={j.createdAt} label="" />
+                        <span className="mx-job-meta">
+                          <Freshness date={j.createdAt} label="" />
+                          {repeats > 0 && <small>{locale === "zh" ? `更早 ${repeats} 次成功` : `${repeats} earlier successes`}</small>}
+                        </span>
                       </span>
                       <span className="mx-job-duration">
                         {durationBetween(j.startedAt, j.finishedAt, locale)}
@@ -440,7 +442,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     </button>
                   ))}
               </div>
-            ) : (
+              {filter === "all" && data.jobs.some((j) => j.status === "succeeded") && (
+                <Button variant="subtle" size="compact-sm" mt="sm" onClick={() => setEveryRun((value) => !value)}>
+                  {everyRun ? t("合并重复的成功记录", "Combine repeated successes") : t("显示每一次更新", "Show every update")}
+                </Button>
+              )}
+            </>) : (
               <Empty
                 title={
                   data.jobs.length

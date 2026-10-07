@@ -10,6 +10,29 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.14.0] - 2026-10-07
+
+### Changed
+
+- Move dark mode to a neutral charcoal palette. Blue is now reserved for the
+  brand, selection and charts, in the workspace, charts and desktop splash.
+- Slide one shared indicator between tabs and segmented controls. Tab rows
+  that scroll sideways fade at the edge that has more to show.
+- Draw every disclosure with the same chevron, and reveal its content with a
+  short slide.
+- Raise the smallest text, chart labels and table headers to 12px.
+- Keep the top bar in place while scrolling; the page title appears in it
+  once the heading scrolls away. Page headings are smaller.
+- Let the first figure lead in the summary strips on Holdings, Performance
+  and Review; drawdown figures sit in a compact row.
+- Shade monthly returns by size, scale holding weight bars to the largest
+  position, and space timeline date labels evenly along the axis.
+- Keep the strike column of the options chain in view on narrow screens.
+- Offer to add an unlisted ticker to the research list from its empty page.
+- Group repeated successful refreshes in the update history, with a toggle to
+  show every run.
+- Show option snapshot and notebook revision times in the chosen time zone.
+
 ## [1.13.0] - 2026-10-07
 
 ### Changed

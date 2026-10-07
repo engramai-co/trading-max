@@ -17,13 +17,38 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 
 export function useCopy() {
   const { locale } = useLocale();
   return (zh: string, en: string) => (locale === "zh" ? zh : en);
+}
+// One sliding indicator for tabs and segments. The first placement is
+// instant; later moves transition from wherever the indicator currently is.
+function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: unknown) {
+  useLayoutEffect(() => {
+    const list = host.current;
+    const indicator = list?.querySelector<HTMLElement>(":scope > .mx-indicator");
+    if (!list || !indicator) return;
+    const place = () => {
+      const active = list.querySelector<HTMLElement>(selector);
+      indicator.style.opacity = active ? "1" : "0";
+      if (!active) return;
+      indicator.style.width = active.offsetWidth + "px";
+      indicator.style.height = list.classList.contains("mx-segments") ? active.offsetHeight + "px" : "";
+      indicator.style.transform = "translate(" + active.offsetLeft + "px, " + (list.classList.contains("mx-segments") ? active.offsetTop : 0) + "px)";
+    };
+    place();
+    const frame = requestAnimationFrame(() => { list.dataset.indicator = "ready"; });
+    const observer = new ResizeObserver(place);
+    observer.observe(list);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [host, selector, selection]);
 }
 export function Help({
   label,
@@ -322,8 +347,10 @@ export function Segments<T extends string>({
   options: Array<{ value: T; label: string }>;
   label: string;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useSelectionIndicator(listRef, '[aria-pressed="true"]', value + options.map((option) => option.label).join("\u0000"));
   return (
-    <div className="mx-segments" role="group" aria-label={label}>
+    <div ref={listRef} className="mx-segments" role="group" aria-label={label}>
       {options.map((option) => (
         <button
           type="button"
@@ -334,6 +361,7 @@ export function Segments<T extends string>({
           {option.label}
         </button>
       ))}
+      <span className="mx-indicator" aria-hidden="true" />
     </div>
   );
 }
@@ -350,6 +378,7 @@ export function Tabs<T extends string>({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const labelsKey = options.map((option) => option.label).join("\u0000");
+  useSelectionIndicator(listRef, '[aria-selected="true"]', value + labelsKey);
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -362,10 +391,25 @@ export function Tabs<T extends string>({
       else if (tab.right > bounds.right)
         list.scrollLeft += tab.right - bounds.right;
     };
+    const markEdges = () => {
+      const start = list.scrollLeft > 1;
+      const end = list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+      const edge = start && end ? "both" : start ? "start" : end ? "end" : "";
+      if (edge) list.dataset.edge = edge;
+      else delete list.dataset.edge;
+    };
     revealSelection();
-    const observer = new ResizeObserver(revealSelection);
+    markEdges();
+    const observer = new ResizeObserver(() => {
+      revealSelection();
+      markEdges();
+    });
     observer.observe(list);
-    return () => observer.disconnect();
+    list.addEventListener("scroll", markEdges, { passive: true });
+    return () => {
+      observer.disconnect();
+      list.removeEventListener("scroll", markEdges);
+    };
   }, [value, labelsKey]);
   return (
     <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label}>
@@ -404,6 +448,7 @@ export function Tabs<T extends string>({
           {option.label}
         </button>
       ))}
+      <span className="mx-indicator" aria-hidden="true" />
     </div>
   );
 }

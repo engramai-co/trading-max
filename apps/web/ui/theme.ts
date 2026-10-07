@@ -12,7 +12,7 @@ export const brandColours = [
   "#1254bc",
   "#113f8f",
 ] as const;
-export const darkCanvas = "#0b1220";
+export const darkCanvas = "#0f1012";
 export const tradingMaxTheme = createTheme({
   primaryColor: "brand",
   autoContrast: true,

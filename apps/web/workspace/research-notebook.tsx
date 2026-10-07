@@ -12,6 +12,8 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatDateTime } from "@/ui/formatters";
 import { api, compact, currency, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -40,6 +42,7 @@ const blank: NoteInput = {
 
 export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale, timeZone } = useLocale();
   const client = useQueryClient();
   const { params, update } = useRouteState("push");
   const section = params.get("notebook") ?? "notes";
@@ -343,7 +346,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
             .map((r) => (
               <article key={r.revision}>
                 <time>
-                  {r.savedAt.slice(0, 19).replace("T", " ")} UTC · #{r.revision}
+                  {formatDateTime(r.savedAt, locale, timeZone)} · #{r.revision}
                 </time>
                 <h3>{r.content.title}</h3>
                 <p className="mx-preserve-lines">{r.content.thesis}</p>

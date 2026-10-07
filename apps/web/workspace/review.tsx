@@ -226,7 +226,7 @@ function AccountJournal({
         </Notice>
       )}
       <Panel>
-        <div className="mx-metric-grid">
+        <div className="mx-metric-grid mx-metric-lead">
           <Metric
             label={t("期末价值", "Ending value")}
             value={currency(

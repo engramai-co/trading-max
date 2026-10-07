@@ -35,8 +35,17 @@ export function timelineOption(
   const ticksForWidth = (count: number) => {
     if (shortRange && calendar) return shortTimelineTicks(calendar.categories, count);
     const ticks = calendarAxis?.axisLabel.customValues;
-    return ticks && (ticks.length <= count ? ticks
-      : Array.from({ length: count }, (_, index) => ticks[Math.round(index * (ticks.length - 1) / (count - 1))]));
+    if (!ticks || ticks.length <= count) return ticks;
+    // Space labels evenly along the axis, then snap each to the nearest new
+    // date. Days with many intraday points would otherwise crowd neighbours.
+    const first = ticks[0];
+    const span = ticks[ticks.length - 1] - first;
+    const picked = new Set<number>();
+    for (let index = 0; index < count; index++) {
+      const target = first + Math.round((index * span) / (count - 1));
+      picked.add(ticks.reduce((best, tick) => (Math.abs(tick - target) < Math.abs(best - target) ? tick : best), ticks[0]));
+    }
+    return [...picked].sort((a, b) => a - b);
   };
   const horizontalAxis = calendarAxis ? {
     ...calendarAxis,
@@ -109,8 +118,10 @@ export function timelineOption(
           return year ? `{date|${date}}\n{year|${year}}` : `{date|${date}}`;
         },
         rich: {
-          date: { color: colours.axis, fontSize: 12, lineHeight: 22 },
-          year: { color: colours.axis, fontSize: 10, lineHeight: 18 },
+          // Side padding makes touching labels count as overlapping, so the
+          // month-start tick next to a weekly tick is hidden instead of fused.
+          date: { color: colours.axis, fontSize: 12, lineHeight: 22, padding: [0, 8] },
+          year: { color: colours.axis, fontSize: 11, lineHeight: 18 },
         },
       },
       splitNumber: 7,
