@@ -7,11 +7,13 @@ import {
   ChartLine,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
 import { currency, percent, tone } from "@/workspace/data";
+import { useLocale } from "@/components/locale-provider";
+import { attentionItems, type AttentionFact, type AttentionItem } from "./attention";
 import { type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
@@ -69,6 +71,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
+  const [now] = useState(() => Date.now());
   const scope: Scope =
     params.get("scope") === "invest"
       ? "invest"
@@ -110,6 +113,13 @@ function OverviewContent({ data }: { data: DashboardLens }) {
     .filter((s) => s.score != null && holdings.some((h) => h.ticker === s.ticker))
     .sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity))
     .slice(0, 3);
+  const attention = attentionItems({
+    holdings,
+    technical: data.technical,
+    valuations: data.valuations,
+    brokerAsOf: data.brokerAsOf,
+    now,
+  });
   return (
     <>
       <div className="mx-panel mx-overview-portfolio">
@@ -159,6 +169,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
               />
             </div>
           </div>
+          <Attention items={attention} />
         </section>
         {scope !== "total" && !selected && (
           <div className="mx-overview-notice">
@@ -281,6 +292,43 @@ function OverviewContent({ data }: { data: DashboardLens }) {
       </div>
       <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />
     </>
+  );
+}
+function Attention({ items }: { items: AttentionItem[] }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const zh = locale === "zh";
+  if (!items.length) return null;
+  const age = (hours: number) => {
+    const days = Math.floor(hours / 24);
+    if (days >= 2) return zh ? `账户数据 ${days} 天未更新` : `No account update for ${days} days`;
+    return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} hours`;
+  };
+  const fact = (f: AttentionFact) => {
+    if (f.kind === "score") return zh ? `技术分 ${f.value}` : `Technical ${f.value}`;
+    if (f.kind === "rsi") {
+      const stretched = f.value >= 75 ? (zh ? "超买" : "overbought") : zh ? "超卖" : "oversold";
+      return `RSI ${f.value} ${stretched}`;
+    }
+    if (f.kind === "upside") return zh ? `模型空间 ${percent(f.value, true, 0)}` : `Model upside ${percent(f.value, true, 0)}`;
+    return zh ? `浮亏 ${percent(f.value, true, 0)}` : `${percent(f.value, true, 0)} vs cost`;
+  };
+  return (
+    <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
+      <span className="mx-attention-label">{t("需要关注", "Needs attention")}</span>
+      {items.map((item) =>
+        item.kind === "stale" ? (
+          <Link key="stale" href="/health" data-tone="warning">
+            {age(item.hours)}
+          </Link>
+        ) : (
+          <Link key={item.ticker} href={item.href} data-tone={item.facts[0].kind === "rsi" ? "warning" : "down"}>
+            <strong>{item.ticker}</strong>
+            <span>{item.facts.map(fact).join(" · ")}</span>
+          </Link>
+        ),
+      )}
+    </nav>
   );
 }
 function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {

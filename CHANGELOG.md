@@ -10,6 +10,17 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.15.0] - 2026-10-07
+
+### Added
+
+- Show what needs a look today under the Overview totals: account data that
+  stopped updating, and held securities with a technical score of 30 or
+  lower, an RSI past 75 or below 25, model upside of −20% or worse, or a loss
+  of 20% or more against cost. Each security appears once with its two
+  strongest readings and opens the matching page. The row only appears when
+  something crosses a threshold, and uses data the Overview already loads.
+
 ## [1.14.0] - 2026-10-07
 
 ### Changed
