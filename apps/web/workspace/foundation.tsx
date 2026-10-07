@@ -50,6 +50,16 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
     };
   }, [host, selector, selection]);
 }
+/** Counts changes to a text value after the first render, so only real updates animate. */
+function useChangeCount(value: string | null) {
+  const [seen, setSeen] = useState({ value, count: 0 });
+  if (seen.value !== value) {
+    const next = { value, count: value == null ? seen.count : seen.count + 1 };
+    setSeen(next);
+    return next.count;
+  }
+  return seen.count;
+}
 export function Help({
   label,
   children,
@@ -192,13 +202,16 @@ export function Metric({
   large?: boolean;
   help?: string;
 }) {
+  const changes = useChangeCount(typeof value === "string" || typeof value === "number" ? String(value) : null);
   return (
     <div className={"mx-metric" + (large ? " mx-metric-large" : "")}>
       <div className="mx-metric-label">
         {label}
         {help && <Help label={label}>{help}</Help>}
       </div>
-      <div className={"mx-number" + (tone ? " mx-" + tone : "")}>{value}</div>
+      <div className={"mx-number" + (tone ? " mx-" + tone : "")}>
+        <span key={changes} className="mx-number-value" data-changed={changes ? "" : undefined}>{value}</span>
+      </div>
       {note && <div className="mx-metric-note">{note}</div>}
     </div>
   );
@@ -305,9 +318,10 @@ export function Freshness({
 }) {
   const { locale, timeZone } = useLocale();
   const t = useCopy();
+  const changes = useChangeCount(date ?? null);
   return (
     <span className="mx-freshness">
-      <span className="mx-status-dot" />
+      <span key={changes} className="mx-status-dot" data-changed={changes ? "" : undefined} />
       {label ?? t("数据截至", "Data as of")}{" "}
       {date
         ? /^\d{4}-\d{2}-\d{2}$/.test(date)

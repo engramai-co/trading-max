@@ -360,7 +360,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         onClose={() => setMobileOpen(false)}
         size="100%"
         position="bottom"
-        transitionProps={{ duration: 0 }}
+        transitionProps={{ duration: 240, timingFunction: "cubic-bezier(.32, .72, 0, 1)" }}
       >
         <Drawer.Overlay />
         <Drawer.Content classNames={{ content: "mx-mobile-menu" }}>
