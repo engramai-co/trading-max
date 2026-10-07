@@ -1,37 +1,11 @@
 :root {
-  --mx-canvas: #f7f9fc;
-  --mx-surface: #ffffff;
-  --mx-soft: #f1f5fb;
-  --mx-ink: #17191c;
-  --mx-muted: #536176;
-  --mx-border: #dbe4ef;
-  --mx-brand: #1768e5;
-  --mx-brand-soft: #edf5ff;
-  --mx-sidebar: #edf4ff;
-  --mx-sidebar-end: #eaf1fa;
-  --mx-side-ink: #2a3f5f;
-  --mx-side-muted: #536176;
-  --mx-side-border: #cbd9ec;
-  --mx-side-hover: #ffffff;
-  --mx-nav-active: #1768e5;
-  --mx-nav-active-ink: #ffffff;
-  --mx-selection: #d9e8ff;
-  --mx-selection-ink: #113f8f;
-  --mx-up: #2f7a49;
-  --mx-down: #b4473a;
-  --mx-warning: #80530c;
-  --mx-shadow: 0 3px 14px rgb(17 24 39 / 3%);
-  --mx-chart-0: #1768e5;
-  --mx-chart-1: #d97706;
-  --mx-chart-2: #347985;
-  --mx-chart-3: #b4473a;
-  --mx-chart-4: #7a6599;
-  --mx-chart-5: #6b7280;
+  --mx-canvas: #f7f9fc; --mx-surface: #ffffff; --mx-soft: #f1f5fb; --mx-ink: #17191c; --mx-muted: #536176; --mx-border: #dbe4ef; --mx-shadow: 0 3px 14px rgb(17 24 39 / 3%);
+  --mx-brand: #1768e5; --mx-brand-soft: #edf5ff; --mx-selection: #d9e8ff; --mx-selection-ink: #113f8f;
+  --mx-sidebar: #edf4ff; --mx-sidebar-end: #eaf1fa; --mx-side-ink: #2a3f5f; --mx-side-muted: #536176; --mx-side-border: #cbd9ec; --mx-side-hover: #ffffff; --mx-nav-active: #1768e5; --mx-nav-active-ink: #ffffff;
+  --mx-up: #2f7a49; --mx-down: #b4473a; --mx-warning: #80530c;
+  --mx-chart-0: #1768e5; --mx-chart-1: #d97706; --mx-chart-2: #347985; --mx-chart-3: #b4473a; --mx-chart-4: #7a6599; --mx-chart-5: #6b7280;
   --mx-ease: cubic-bezier(.22, 1, .36, 1);
-  --mantine-color-body: var(--mx-surface);
-  --mantine-color-text: var(--mx-ink);
-  --mantine-color-dimmed: var(--mx-muted);
-  --mantine-color-default-border: var(--mx-border);
+  --mantine-color-body: var(--mx-surface); --mantine-color-text: var(--mx-ink); --mantine-color-dimmed: var(--mx-muted); --mantine-color-default-border: var(--mx-border);
 }
 :root[data-mantine-color-scheme="dark"] {
   /* Neutral charcoal: blue is reserved for the brand and selection. */
@@ -163,6 +137,9 @@ h1, h2, h3, p { margin: 0; }
 .mx-history-coverage { margin-bottom: 18px; min-width: 0; }
 .mx-freshness { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12px; color: var(--mx-muted); line-height: 1.7; }
 .mx-status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* Motion for real changes only: a new value slides in, a new snapshot pings, switched tab content fades from half opacity so it is never hidden. */
+@keyframes mx-fade { from { opacity: .5; } } @keyframes mx-number-in { from { opacity: .3; transform: translateY(.22em); } } @keyframes mx-dot-ping { from { transform: scale(2.4); color: var(--mx-brand); } }
+.mx-number-value[data-changed] { display: inline-block; animation: mx-number-in 180ms var(--mx-ease); } .mx-status-dot[data-changed] { animation: mx-dot-ping 700ms var(--mx-ease); } .mx-tabs ~ *, .mx-toolbar:has(> .mx-tabs) ~ * { animation: mx-fade 120ms ease-out; }
 .mx-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 4px; background: var(--mx-soft); color: var(--mx-muted); font-size: 12px; line-height: 1.4; font-weight: 500; white-space: nowrap; }
 .mx-tag-good { color: var(--mx-up); background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface)); }
 .mx-tag-bad { color: var(--mx-down); background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface)); }
@@ -549,7 +526,9 @@ details[open]:not(.mx-job-row) > :not(summary) { animation: mx-reveal 200ms var(
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  /* Movement stops; opacity and colour still ease. */
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-property: opacity, color, background-color, border-color, outline-color, box-shadow, fill, stroke !important; }
+  .mx-tabs ~ *, .mx-toolbar:has(> .mx-tabs) ~ *, .mx-number-value[data-changed], .mx-status-dot[data-changed] { animation-name: mx-fade !important; animation-duration: 160ms !important; }
   .mantine-Button-root:not(:disabled):active, .mantine-ActionIcon-root:not(:disabled):active { transform: none; }
 }
 

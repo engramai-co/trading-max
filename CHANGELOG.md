@@ -10,6 +10,18 @@ All notable public Trading Max releases are recorded here.
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
 
+## [1.15.1] - 2026-10-07
+
+### Changed
+
+- Slide figures into their new value when the account, range or data changes.
+  First loads stay still.
+- Fade new content in when switching tabs.
+- Ping the status dot next to "Data as of" when a new snapshot arrives.
+- Slide the mobile menu up instead of cutting to it.
+- With reduced motion turned on, stop movement only; fades and colour changes
+  remain.
+
 ## [1.15.0] - 2026-10-07
 
 ### Added
