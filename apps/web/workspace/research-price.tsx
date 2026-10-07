@@ -709,7 +709,7 @@ export function PriceHistory({
                       : pane === "volume"
                         ? t("量", "Vol")
                         : pane.toUpperCase(),
-                  nameTextStyle: { color: c.axis, fontSize: 10 },
+                  nameTextStyle: { color: c.axis, fontSize: 11 },
                   axisLabel: {
                     color: c.axis,
                     formatter: (v: number) =>

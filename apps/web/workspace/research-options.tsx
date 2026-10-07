@@ -15,6 +15,8 @@ import {
 import { useLocalStorage } from "@mantine/hooks";
 import type { EChartsOption } from "echarts";
 import { useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatDateTime } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { compact, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
@@ -77,6 +79,7 @@ function cell(c: Contract | undefined, key: string) {
 export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy(),
     { params, update } = useRouteState();
+  const { locale, timeZone } = useLocale();
   const [columns, setColumns] = useLocalStorage<string[]>({
     key: "mx-option-columns-v2",
     defaultValue: baseColumns,
@@ -134,7 +137,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                 : t("最新可用链", "Latest available chain")}
             </Tag>
             <span className="mx-muted">
-              {options.capturedAt.slice(0, 16).replace("T", " ")} UTC
+              {formatDateTime(options.capturedAt, locale, timeZone)}
             </span>
           </Group>
         }

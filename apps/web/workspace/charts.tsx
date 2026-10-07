@@ -77,7 +77,7 @@ export function Plot({
     const custom = option(colours);
     return {
       backgroundColor: "transparent",
-      textStyle: { fontFamily: "inherit", color: colours.text, fontSize: 11 },
+      textStyle: { fontFamily: "inherit", color: colours.text, fontSize: 12 },
       color: [
         colours.brand,
         colours.accent,

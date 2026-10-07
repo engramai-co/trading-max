@@ -594,13 +594,13 @@ body.picker .choice {
 }
 @media(prefers-color-scheme:dark) {
   :root {
-    --bg:#111b2b;
-    --rail:#1a2a41;
-    --ink:#f1f5f9;
-    --muted:#aab8cb;
-    --line:#2a3a51;
+    --bg:#17181b;
+    --rail:#212328;
+    --ink:#f2f3f5;
+    --muted:#a3a8b2;
+    --line:#2b2e34;
     --blue:#7eb3ff;
-    --soft:#172b49;
+    --soft:#1a2638;
     --green:#78cf91;
     --danger:#ff958a
   }

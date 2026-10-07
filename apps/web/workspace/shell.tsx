@@ -155,10 +155,9 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   useEffect(() => {
     if (desktop && colorScheme !== "auto") setColorScheme("auto");
   }, [desktop, colorScheme, setColorScheme]);
-  // Under the App's transparent title bar, the page title moves into the
-  // native band once the large heading scrolls away.
+  // The page title moves into the top bar (or the App's title band) once the
+  // large heading scrolls away.
   useEffect(() => {
-    if (!desktop) return;
     const root = document.documentElement;
     let frame = 0;
     const update = () => {
@@ -173,7 +172,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       cancelAnimationFrame(frame);
       root.removeAttribute("data-scrolled");
     };
-  }, [desktop]);
+  }, []);
   useEffect(() => {
     if (searchOpen || !restoreSearchFocus.current) return;
     // Touch does not necessarily focus the trigger. Restore its focus only

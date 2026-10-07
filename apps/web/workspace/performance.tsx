@@ -332,7 +332,7 @@ export function PerformanceContent({
               />
             }
           >
-            <div className="mx-metric-grid" style={{ marginBottom: 27 }}>
+            <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
               <Metric
                 label={t("期末价值", "Ending value")}
                 value={currency(navNumber(last, scope), "GBP", 2)}
@@ -397,6 +397,8 @@ export function PerformanceContent({
               </Group>
             )}
             {view === "money" && <HistoryCoverage history={history} />}
+              {/* Series names sit above the chart they explain. */}
+              <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />
               <TimelineChart
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
@@ -424,11 +426,10 @@ export function PerformanceContent({
                       )
                 }
               />
-            <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />
             {view === "returns" && (
               <>
                 <div
-                  className="mx-metric-grid"
+                  className="mx-metric-grid mx-metric-compact"
                   style={{ marginTop: 24, marginBottom: 20 }}
                 >
                   {(view === "returns"
@@ -672,7 +673,12 @@ function MonthlyReturns({
                     const key = year + "-" + String(i + 1).padStart(2, "0");
                     const value = map.get(key);
                     return (
-                      <td key={key} style={{ padding: "17px 9px" }}>
+                      <td
+                        key={key}
+                        className={value == null ? undefined : "mx-month-return mx-" + tone(value)}
+                        // Fill strength follows the size of the move, capped at 10%.
+                        style={{ padding: "17px 9px", ...(value == null ? {} : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }) }}
+                      >
                         <Tooltip label={key}>
                           <span
                             className={value == null ? "" : "mx-" + tone(value)}

@@ -109,6 +109,8 @@ function Positions() {
   );
   const invested = scoped.reduce((sum, h) => sum + h.currentValueGbp, 0);
   const pnl = scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
+  // Weight bars compare positions with each other: the largest fills the track.
+  const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
   const sortButton = (label: string, key: string) => (
     <button
       className="mx-sort"
@@ -157,7 +159,7 @@ function Positions() {
               />
               <Freshness date={query.data?.brokerAsOf} />
             </div>
-            <div className="mx-metric-grid">
+            <div className="mx-metric-grid mx-metric-lead">
               <Metric
                 label={t("已投资市值", "Invested value")}
                 value={currency(invested, "GBP", 2)}
@@ -327,7 +329,9 @@ function Positions() {
                                 <i
                                   style={{
                                     width: percent(
-                                      Math.min(1, Math.max(0, h.allocationPct)),
+                                      largestAllocation > 0
+                                        ? Math.min(1, Math.max(0, h.allocationPct / largestAllocation))
+                                        : 0,
                                     ),
                                   }}
                                 />

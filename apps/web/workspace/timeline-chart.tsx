@@ -79,8 +79,13 @@ export function TimelineChart({
             if (intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)) {
               return formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
             }
-            return formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone })
-              + "\n" + formatDate(time, locale, { year: "numeric", timeZone: zone });
+            // One line per date; the year appears only on dates outside the
+            // latest year shown, so it marks the boundary instead of repeating.
+            const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
+            const year = formatDate(time, locale, { year: "numeric", timeZone: zone });
+            return year === formatDate(Date.parse(dates.at(-1)!), locale, { year: "numeric", timeZone: zone })
+              ? day
+              : day + "\n" + year;
           },
             timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
               ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }

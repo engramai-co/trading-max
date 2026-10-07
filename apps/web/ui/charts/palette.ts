@@ -5,15 +5,15 @@ export { chartColours } from "@/ui/theme";
 export type ChartColours = { [Key in keyof typeof chartColours]: string };
 export const darkChartColours: ChartColours = {
   accent: "#f6ad55",
-  axis: "#b8c5d6",
-  border: "#46566d",
+  axis: "#b4b9c2",
+  border: "#454950",
   brand: "#5b9dff",
   brandDark: "#86b6ff",
   canvas: "#ffffff",
-  grid: "#3a485b",
+  grid: "#30333a",
   heatmapHigh: "#28543a",
   heatmapLow: "#633330",
-  heatmapMid: "#2a384b",
+  heatmapMid: "#2a2c31",
   heatmapText: "#f3f7fb",
   negative: "#ff958a",
   positive: "#78cf91",
@@ -44,5 +44,5 @@ export const categoricalChartColours = [
 
 export const allocationChartColours = {
   light: ["#1768e5", "#b06000", "#347985", "#b4473a", "#7a6599", "#2f7a49", "#a24477", "#637a29", "#5469a9", "#8b6747", "#357c73", "#8b579c", "#6b7280"],
-  dark: ["#5b9dff", "#f6ad55", "#69bfcd", "#ff958a", "#b9a0e0", "#78cf91", "#e78db8", "#bed274", "#92abe7", "#d9b68c", "#86d4bf", "#dba0e1", "#aab8cb"],
+  dark: ["#5b9dff", "#f6ad55", "#69bfcd", "#ff958a", "#b9a0e0", "#78cf91", "#e78db8", "#bed274", "#92abe7", "#d9b68c", "#86d4bf", "#dba0e1", "#a3a8b2"],
 } as const;
