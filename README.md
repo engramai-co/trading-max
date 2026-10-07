@@ -81,7 +81,7 @@ one App. The Apple Silicon Mac preview can connect to your own HTTPS
 service, remember it and recover when it is unavailable. A separate local demo
 uses synthetic data.
 
-The [1.12.3 release](https://github.com/engramai-co/trading-max/releases/tag/v1.12.3)
+The [1.15.1 release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.1)
 provides the Developer ID signed and Apple-notarized macOS preview DMG and its
 verification manifest. Existing Apps on 1.12.0 or newer can update from
 **App Settings → About & updates**. It bundles its Python and Node runtimes; local workspaces
