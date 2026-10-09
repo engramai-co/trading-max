@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.15.1 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.15.2 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.1).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.2).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.15.1
+## Verified scope for 1.15.2
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks. All 19 packaged runtime checks passed, including process
@@ -15,13 +15,17 @@ cleanup, isolated empty/demo workspaces and failed-upgrade recovery.
 Native acceptance on Apple Silicon macOS 26.5.2 used synthetic data and a private
 older-version fixture with the released updater implementation. Invalid signed
 feeds, modified archives, interrupted downloads and cancellation left the
-installed application unchanged. The exact final DMG then installed and relaunched
-as 1.15.1, reopened the active demo, stopped the previous runtime and preserved
-saved connection preferences. Normal quit also stopped the new owned services.
+installed application unchanged. After an accepted native update download,
+the exact final DMG installed as 1.15.2 when the App quit normally, stopping
+the previous runtime. A controlled launch preserved the saved connection and
+its disabled auto-open preference; the isolated demo then opened successfully.
+Normal quit also stopped the new owned services. The final installation dialog
+could not be read reliably by automation: this run verifies installation on
+quit and subsequent launch, not the separate Install and Relaunch button path.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes and both update signatures verified. An unmodified
-installed 1.12.3 App discovered and downloaded 1.15.1 through the public release.
+installed 1.15.1 App discovered and downloaded 1.15.2 through the public release.
 Its native updater installed the verified package when the App quit. The installed
 bundle matched the accepted package, including all file contents, modes and
 symlinks; signature, staple and Gatekeeper checks passed again.

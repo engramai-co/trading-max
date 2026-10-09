@@ -46,6 +46,8 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
 - Resolve the exact App path and process before launching native QA: release,
   build and fixture copies share a bundle identifier. A failed UI lookup may
   itself have launched the App; inspect processes before retrying it.
+  After Cmd-Q, verify exit through process and runtime evidence first; a UI
+  lookup can relaunch the target and invalidate shutdown or isolation checks.
 - If an App crashes or macOS shows **Reopen**, stop repeated launches and UI
   retries. Capture the first error, inspect the setup failure and repair its
   cause before one controlled retry. A restore prompt is not proof of a new
@@ -67,6 +69,8 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   relaunch, preference retention and owned-process shutdown against the final
   signed DMG. Record observed results, distinguish private predecessor fixtures
   from released Apps, and verify the public update from an installed App.
+  Distinguish installation on normal quit followed by an explicit launch from
+  the Install and Relaunch button path; passing one does not verify the other.
 - After publishing the desktop assets, update the README and download guides.
   Documentation and agent-instruction corrections alone keep the product version
   and do not require another application release or web deployment.
