@@ -11,7 +11,7 @@ import logging
 import secrets
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -46,6 +46,8 @@ from .models import (
     JobStageRecord,
     JobStatus,
     JobTrigger,
+    RefreshAttention,
+    RefreshFailure,
     SecuritySearchResult,
 )
 from .watchlist import WatchlistStore, magnificent_seven_securities
@@ -702,6 +704,27 @@ class TypedJobManager:
         return (
             _api_record(full) if full is not None else None,
             _api_record(intraday) if intraday is not None else None,
+        )
+
+    def refresh_attention(self, *, now: datetime | None = None) -> RefreshAttention:
+        checked_at = now or datetime.now(UTC)
+        # Ignore an isolated failure. Repeated failures become actionable after
+        # three attempts, or two attempts with the outage lasting half an hour.
+        return RefreshAttention(
+            checked_at=checked_at,
+            issues=[
+                RefreshFailure(
+                    scope=streak.scope,
+                    consecutive_failures=streak.consecutive_failures,
+                    failing_since=streak.failing_since,
+                )
+                for streak in self.queue.refresh_failure_streaks()
+                if streak.consecutive_failures >= 3
+                or (
+                    streak.consecutive_failures >= 2
+                    and checked_at - streak.failing_since >= timedelta(minutes=30)
+                )
+            ],
         )
 
     def latest_for_triggers(self, triggers: tuple[str, ...]) -> JobRecord | None:

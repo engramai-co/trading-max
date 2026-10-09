@@ -221,6 +221,17 @@ class JobList(ApiModel):
     jobs: list[JobRecord] = Field(default_factory=list)
 
 
+class RefreshFailure(ApiModel):
+    scope: Literal["accounts", "performance"]
+    consecutive_failures: int = Field(ge=2)
+    failing_since: datetime
+
+
+class RefreshAttention(ApiModel):
+    checked_at: datetime
+    issues: list[RefreshFailure] = Field(default_factory=list)
+
+
 class NightlySchedule(ApiModel):
     enabled: bool
     timezone: str

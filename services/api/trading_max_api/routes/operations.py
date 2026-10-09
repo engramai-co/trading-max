@@ -12,6 +12,7 @@ from ..models import (
     AlertMonitorState,
     JobList,
     JobRecord,
+    RefreshAttention,
     RefreshRequest,
     RefreshState,
 )
@@ -104,6 +105,12 @@ def refresh_state(request: Request) -> RefreshState:
             app_service(request, "alert_monitor").status(),
         ),
     )
+
+
+@router.get("/v1/refresh-attention", response_model=RefreshAttention)
+def refresh_attention(request: Request) -> RefreshAttention:
+    """Small, live overview signal independent of snapshot freshness."""
+    return app_service(request, "jobs").refresh_attention()
 
 
 @router.post(

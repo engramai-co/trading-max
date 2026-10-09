@@ -1,9 +1,10 @@
-import type { DashboardLens, Holding } from "@/lib/types";
+import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
 
 /** One reading that crossed an attention threshold for a held security. */
 export type AttentionFact = { kind: "score" | "rsi" | "upside" | "loss"; value: number; severity: number };
 
 export type AttentionItem =
+  | { kind: "refresh"; scope: "accounts" | "performance"; minutes: number; failures: number; severity: number }
   | { kind: "stale"; hours: number; severity: number }
   | { kind: "holding"; ticker: string; facts: AttentionFact[]; href: string; severity: number };
 
@@ -42,8 +43,8 @@ function hrefFor(ticker: string, lead: AttentionFact) {
 }
 
 /**
- * Rank what deserves a look today from data the overview already holds:
- * stale account data first, then held securities with weak technicals,
+ * Rank what deserves a look today: failed updates and stale account data
+ * first, then held securities with weak technicals,
  * stretched RSI, negative model upside or a deep loss against cost.
  */
 export function attentionItems({
@@ -51,15 +52,26 @@ export function attentionItems({
   technical,
   valuations,
   brokerAsOf,
+  refresh,
   now,
 }: {
   holdings: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
   brokerAsOf?: string | null;
+  refresh?: RefreshAttention;
   now: number;
 }): AttentionItem[] {
   const items: AttentionItem[] = [];
+  // One actionable link for a full-sync outage, even if it also broke the
+  // downstream performance job. A performance success cannot hide that outage.
+  const issue = refresh?.issues?.find((item) => item.scope === "accounts") ?? refresh?.issues?.[0];
+  if (issue) {
+    const elapsed = Date.parse(refresh!.checkedAt) - Date.parse(issue.failingSince);
+    items.push({ kind: "refresh", scope: issue.scope, failures: issue.consecutiveFailures,
+      minutes: Number.isFinite(elapsed) ? Math.max(0, Math.floor(elapsed / 60_000)) : 0,
+      severity: Number.POSITIVE_INFINITY });
+  }
   const asOf = brokerAsOf ? Date.parse(brokerAsOf) : NaN;
   if (brokerAsOf && Number.isFinite(asOf) && now - asOf > STALE_AFTER_MS)
     items.push({ kind: "stale", hours: Math.floor((now - asOf) / 3_600_000), severity: Number.POSITIVE_INFINITY });
