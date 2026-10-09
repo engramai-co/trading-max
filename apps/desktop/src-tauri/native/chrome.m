@@ -3,6 +3,14 @@
 #import <Cocoa/Cocoa.h>
 
 @interface TMDragStrip : NSView
+@property(nonatomic, strong) NSTextField *connectionNotice;
+@end
+
+@interface TMConnectionNotice : NSTextField
+@end
+@implementation TMConnectionNotice
+// Keep the whole title band draggable, including the non-interactive notice.
+- (NSView *)hitTest:(NSPoint)point { return nil; }
 @end
 
 @implementation TMDragStrip
@@ -45,5 +53,33 @@ void trading_max_install_drag_strip(void *window_pointer, double height) {
     CGFloat y = content.isFlipped ? 0 : NSMaxY(bounds) - height;
     TMDragStrip *strip = [[TMDragStrip alloc] initWithFrame:NSMakeRect(0, y, NSWidth(bounds), height)];
     strip.autoresizingMask = NSViewWidthSizable | (content.isFlipped ? NSViewMaxYMargin : NSViewMinYMargin);
+    NSTextField *notice = [TMConnectionNotice labelWithString:@""];
+    notice.frame = NSMakeRect(96, (height - 20) / 2, MAX(0, NSWidth(bounds) - 192), 20);
+    notice.autoresizingMask = NSViewWidthSizable;
+    notice.alignment = NSTextAlignmentCenter;
+    notice.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+    notice.textColor = NSColor.labelColor;
+    notice.backgroundColor = NSColor.windowBackgroundColor;
+    notice.drawsBackground = YES;
+    notice.lineBreakMode = NSLineBreakByTruncatingTail;
+    notice.hidden = YES;
+    strip.connectionNotice = notice;
+    [strip addSubview:notice];
     [content addSubview:strip positioned:NSWindowAbove relativeTo:nil];
+}
+
+void trading_max_set_connection_notice(void *window_pointer, const char *message) {
+    NSWindow *window = (__bridge NSWindow *)window_pointer;
+    for (NSView *view in window.contentView.subviews) {
+        if (![view isKindOfClass:[TMDragStrip class]]) continue;
+        NSTextField *notice = ((TMDragStrip *)view).connectionNotice;
+        NSString *text = message ? [NSString stringWithUTF8String:message] : @"";
+        if ([notice.stringValue isEqualToString:text]) return;
+        notice.stringValue = text;
+        notice.hidden = text.length == 0;
+        if (!notice.hidden) {
+            NSAccessibilityPostNotificationWithUserInfo(notice, NSAccessibilityAnnouncementRequestedNotification,
+                @{NSAccessibilityAnnouncementKey: text, NSAccessibilityPriorityKey: @(NSAccessibilityPriorityMedium)});
+        }
+    }
 }

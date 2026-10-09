@@ -74,6 +74,12 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
 - After publishing the desktop assets, update the README and download guides.
   Documentation and agent-instruction corrections alone keep the product version
   and do not require another application release or web deployment.
+- Remote connectivity, a loaded WebView and fresh account data are separate
+  states. A failed health check must not close an already loaded workspace or
+  its unsaved service forms; recovery must not navigate or steal focus. Retained
+  pages must visibly disclose the interrupted connection, never imply live data.
+  Keep automatic retries bounded per request and rate-capped; cancel/source
+  changes must invalidate late results. Do not relax TLS or remote capabilities.
 
 ## Development changes
 

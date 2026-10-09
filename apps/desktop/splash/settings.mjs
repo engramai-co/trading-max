@@ -48,13 +48,13 @@ async function refresh() {
     const workspace = workspacePresentation(state);
     text("source-kind", workspace.kind); text("active-name", workspace.name);
     text("active-address", workspace.address); text("connection-state", workspace.status);
-    $("connection-state").className = "connection-state " + (state.stage === "error" ? "error" : workspace.ready ? "connected" : "");
+    $("connection-state").className = "connection-state " + (["error", "reconnecting", "offline"].includes(state.stage) ? "error" : workspace.ready ? "connected" : "");
     text("connection-detail", workspace.detail);
     // Only local collection has a caveat the user can act on.
     text("ownership-hint", state.mode === "local" ? workspace.ownership : "");
     $("ownership-hint").hidden = state.mode !== "local";
     text("workspace-settings-label", workspace.settingsLabel);
-    for (const id of ["return-workspace", "workspace-settings", "workspace-health"]) $(id).disabled = !workspace.ready;
+    for (const id of ["return-workspace", "workspace-settings", "workspace-health"]) $(id).disabled = !workspace.available;
     $("data-folder").hidden = !workspace.canRevealFolder;
     $("data-folder").disabled = false;
     $("recovery-folder").disabled = !workspace.canRevealFolder;

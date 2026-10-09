@@ -41,6 +41,10 @@ const WORKSPACE_CHROME_SCRIPT: &str = r#"(function () {
 #[cfg(target_os = "macos")]
 extern "C" {
     fn trading_max_install_drag_strip(window: *mut std::ffi::c_void, height: f64);
+    fn trading_max_set_connection_notice(
+        window: *mut std::ffi::c_void,
+        message: *const std::ffi::c_char,
+    );
 }
 
 #[derive(Clone, Serialize)]
@@ -61,6 +65,52 @@ struct Session {
     desired: Option<Profile>,
     #[serde(skip)]
     dismiss_settings: bool,
+}
+impl Session {
+    fn workspace_available(&self) -> bool {
+        self.active_url.is_some()
+            && matches!(self.stage.as_str(), "ready" | "reconnecting" | "offline")
+    }
+
+    fn remote_failed(&mut self, error: connection::ProbeError, after: Option<Duration>) {
+        let retained = self.workspace_available();
+        self.stage = if retained {
+            if after.is_some() {
+                "reconnecting"
+            } else {
+                "offline"
+            }
+        } else {
+            "error"
+        }
+        .into();
+        self.message = if retained {
+            "连接中断，当前页面已保留。"
+        } else {
+            "暂时无法连接这份资料。"
+        }
+        .into();
+        self.detail = error.message;
+        self.probe = None; // A previous healthy check is not current availability.
+        self.retry_at_ms = after.map(|delay| connection::now_ms() + delay.as_millis() as u64);
+        if !retained {
+            self.active_url = None;
+            self.active_name = None;
+        }
+    }
+
+    /// True only when there is no retained/in-flight page to return to.
+    fn remote_recovered(&mut self, probe: Probe) -> bool {
+        let enter = self.active_url.is_none();
+        if self.workspace_available() {
+            self.stage = "ready".into();
+            self.message = format!("已连接{}", self.active_name.as_deref().unwrap_or("资料库"));
+        }
+        self.probe = Some(probe);
+        self.detail.clear();
+        self.retry_at_ms = None;
+        enter
+    }
 }
 struct Desktop {
     root: PathBuf,
@@ -205,6 +255,30 @@ fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
         }
     });
 }
+fn connection_notice(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
+    let handle = app.clone();
+    let desktop = desktop.clone();
+    let _ = app.run_on_main_thread(move || {
+        let snapshot = desktop.snapshot();
+        if snapshot.generation != generation {
+            return;
+        }
+        if let Some(window) = handle.get_webview_window("workspace") {
+            #[cfg(target_os = "macos")]
+            if let Ok(native) = window.ns_window() {
+                let message = match snapshot.stage.as_str() {
+                    "reconnecting" => "连接中断 · 正在重连，数据可能未更新",
+                    "offline" => "连接中断 · 数据可能未更新，请在「连接」菜单重试",
+                    _ => "",
+                };
+                let message = std::ffi::CString::new(message).unwrap();
+                // AppKit-only status in the existing title band, no remote IPC
+                // or injected account data, and no overlay on the portfolio.
+                unsafe { trading_max_set_connection_notice(native, message.as_ptr()) };
+            }
+        }
+    });
+}
 fn enter(
     app: &tauri::AppHandle,
     desktop: &Arc<Desktop>,
@@ -253,6 +327,7 @@ fn enter(
         match result {
             Err(error) => failed(&app, &desktop, generation, error.to_string()),
             Ok(window) => {
+                connection_notice(&app, &desktop, generation);
                 let _ = window.set_title(&format!("Trading Max · {name}"));
                 if dismiss_settings {
                     for label in ["settings", "workspaces"] {
@@ -321,11 +396,14 @@ fn create_workspace_window(
             if workspace_url(payload.url(), snapshot.active_url.as_deref()) {
                 let _ = fit_webview(&window);
                 pages.update(snapshot.generation, |session| {
-                    session.stage = "ready".into();
-                    session.message = format!(
-                        "已连接{}",
-                        session.active_name.as_deref().unwrap_or("资料库")
-                    );
+                    // A page finish cannot erase a failed health check.
+                    if !matches!(session.stage.as_str(), "reconnecting" | "offline") {
+                        session.stage = "ready".into();
+                        session.message = format!(
+                            "已连接{}",
+                            session.active_name.as_deref().unwrap_or("资料库")
+                        );
+                    }
                 });
                 if let Some(name) = snapshot.active_name {
                     let _ = window.set_title(&format!("Trading Max · {name}"));
@@ -372,6 +450,54 @@ fn failed(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64, detai
         home(app, desktop, generation);
     }
 }
+fn check_remote(
+    app: &tauri::AppHandle,
+    desktop: &Arc<Desktop>,
+    generation: u64,
+    profile: &Profile,
+    recovery: &mut recovery::RemoteRecovery,
+    loading_since: &mut Instant,
+) -> Option<Duration> {
+    match connection::probe(profile) {
+        Ok(probe) => {
+            recovery.recovered();
+            let mut open_page = false;
+            if desktop.update(generation, |session| {
+                open_page = session.remote_recovered(probe)
+            }) {
+                if open_page {
+                    enter(
+                        app,
+                        desktop,
+                        generation,
+                        profile.url.clone(),
+                        profile.name.clone(),
+                    );
+                    *loading_since = Instant::now();
+                } else {
+                    // Recovery does not navigate, reload, steal focus or lose
+                    // the selected lens, scroll position or unfinished form.
+                    connection_notice(app, desktop, generation);
+                }
+            }
+            Some(Duration::from_secs(45))
+        }
+        Err(error) => {
+            let after = recovery.failed(error.retryable);
+            let mut show_entry = false;
+            if desktop.update(generation, |session| {
+                show_entry = !session.workspace_available() && session.stage != "error";
+                session.remote_failed(error, after);
+            }) {
+                if show_entry {
+                    home(app, desktop, generation);
+                }
+                connection_notice(app, desktop, generation);
+            }
+            after
+        }
+    }
+}
 fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
     let mut seen = u64::MAX;
     let mut next_probe = Instant::now();
@@ -392,35 +518,19 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
             monitor_remote = false;
             match &snapshot.desired {
                 None => {}
-                Some(profile) if profile.mode == Mode::Remote => match connection::probe(profile) {
-                    Ok(probe) => {
-                        recovery.recovered();
-                        if desktop.update(generation, |s| s.probe = Some(probe)) {
-                            enter(
-                                &app,
-                                &desktop,
-                                generation,
-                                profile.url.clone(),
-                                profile.name.clone(),
-                            );
-                            monitor_remote = true;
-                            next_probe = Instant::now() + Duration::from_secs(45);
-                            loading_since = Instant::now();
-                        }
+                Some(profile) if profile.mode == Mode::Remote => {
+                    if let Some(delay) = check_remote(
+                        &app,
+                        &desktop,
+                        generation,
+                        profile,
+                        &mut recovery,
+                        &mut loading_since,
+                    ) {
+                        monitor_remote = true;
+                        next_probe = Instant::now() + delay;
                     }
-                    Err(error) => {
-                        failed(&app, &desktop, generation, error);
-                        let retry = recovery.failed();
-                        if let Some(delay) = retry.after {
-                            monitor_remote = true;
-                            next_probe = Instant::now() + delay;
-                            desktop.update(generation, |s| {
-                                s.retry_at_ms =
-                                    Some(connection::now_ms() + delay.as_millis() as u64)
-                            });
-                        }
-                    }
-                },
+                }
                 Some(profile) => {
                     if let Err(error) = desktop.runtime.start(
                         profile
@@ -459,48 +569,25 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                     desktop.update(generation, |s| s.message = runtime.message);
                 }
             } else if monitor_remote && Instant::now() >= next_probe {
-                match connection::probe(profile) {
-                    Ok(probe) => {
-                        recovery.recovered();
-                        next_probe = Instant::now() + Duration::from_secs(45);
-                        if desktop.update(generation, |s| {
-                            s.probe = Some(probe);
-                            s.detail.clear();
-                            s.retry_at_ms = None;
-                        }) && snapshot.stage == "error"
-                        {
-                            enter(
-                                &app,
-                                &desktop,
-                                generation,
-                                profile.url.clone(),
-                                profile.name.clone(),
-                            );
-                            loading_since = Instant::now();
-                        }
-                    }
-                    Err(error) => {
-                        let retry = recovery.failed();
-                        if retry.show_recovery {
-                            failed(&app, &desktop, generation, error);
-                        } else {
-                            desktop.update(generation, |s| {
-                                s.detail = "连接检查暂时未成功，正在重试。".into()
-                            });
-                        }
-                        monitor_remote = retry.after.is_some();
-                        if let Some(delay) = retry.after {
-                            next_probe = Instant::now() + delay;
-                        }
-                        desktop.update(generation, |s| {
-                            s.retry_at_ms = retry
-                                .after
-                                .map(|delay| connection::now_ms() + delay.as_millis() as u64)
-                        });
-                    }
+                let after = check_remote(
+                    &app,
+                    &desktop,
+                    generation,
+                    profile,
+                    &mut recovery,
+                    &mut loading_since,
+                );
+                monitor_remote = after.is_some();
+                if let Some(delay) = after {
+                    next_probe = Instant::now() + delay;
                 }
             }
-            if snapshot.stage == "loading" && loading_since.elapsed() > Duration::from_secs(35) {
+            let current = desktop.snapshot();
+            let load_timeout = if profile.mode == Mode::Remote { 90 } else { 35 };
+            if current.generation == generation
+                && current.stage == "loading"
+                && loading_since.elapsed() > Duration::from_secs(load_timeout)
+            {
                 monitor_remote = false;
                 failed(
                     &app,
@@ -508,6 +595,15 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                     generation,
                     "服务已响应，但页面加载超时。可以重试，或在浏览器中打开。".into(),
                 );
+                if profile.mode == Mode::Remote {
+                    if let Some(delay) = recovery.failed(true) {
+                        monitor_remote = true;
+                        next_probe = Instant::now() + delay;
+                        desktop.update(generation, |s| {
+                            s.retry_at_ms = Some(connection::now_ms() + delay.as_millis() as u64)
+                        });
+                    }
+                }
             }
         }
         thread::sleep(Duration::from_millis(250));
@@ -860,6 +956,7 @@ async fn test_connection(window: WebviewWindow, profile: Profile) -> Result<Prob
     tauri::async_runtime::spawn_blocking(move || connection::probe(&profile))
         .await
         .map_err(|_| "连接测试没有完成。".to_string())?
+        .map_err(|error| error.message)
 }
 #[tauri::command]
 fn retry_connection(
@@ -954,7 +1051,7 @@ fn open_service_page(
     page: WorkspacePage,
 ) -> Result<(), String> {
     let snapshot = desktop.snapshot();
-    if snapshot.stage != "ready" {
+    if !snapshot.workspace_available() {
         return Err("请先连接工作区。断线时仍可使用 App 设置。".into());
     }
     let address = snapshot.active_url.as_deref().ok_or("请先连接工作区。")?;
@@ -1129,7 +1226,7 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            let ready = app.state::<Arc<Desktop>>().snapshot().stage == "ready";
+            let ready = app.state::<Arc<Desktop>>().snapshot().workspace_available();
             let label = if ready { "workspace" } else { "main" };
             if let Some(window) = app.get_webview_window(label) {
                 let _ = reveal_window(&window);
@@ -1249,6 +1346,102 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn remote_session(stage: &str) -> Session {
+        let profile = Profile {
+            url: "https://synthetic.example.test/".into(),
+            ..Profile::default()
+        };
+        Session {
+            app_version: env!("CARGO_PKG_VERSION"),
+            profile: profile.clone(),
+            workspaces: vec![],
+            generation: 1,
+            stage: stage.into(),
+            message: String::new(),
+            detail: String::new(),
+            active_url: (stage != "connecting").then(|| profile.url.clone()),
+            active_name: (stage != "connecting").then(|| profile.name.clone()),
+            probe: None,
+            desktop_presentation: true,
+            retry_at_ms: None,
+            desired: Some(profile),
+            dismiss_settings: false,
+        }
+    }
+    fn healthy_probe() -> Probe {
+        Probe {
+            checked_at_ms: connection::now_ms(),
+            healthy: true,
+            worker_healthy: Some(true),
+            artifact_age_seconds: Some(10.0),
+        }
+    }
+    #[test]
+    fn a_long_outage_preserves_the_live_page_and_recovers_without_navigation() {
+        let mut session = remote_session("ready");
+        session.probe = Some(healthy_probe());
+        let original_url = session.active_url.clone();
+        let original_name = session.active_name.clone();
+        let mut policy = recovery::RemoteRecovery::default();
+        policy.recovered();
+        for _ in 0..100 {
+            session.remote_failed(
+                connection::ProbeError {
+                    message: "synthetic timeout".into(),
+                    retryable: true,
+                },
+                policy.failed(true),
+            );
+            assert_eq!(session.stage, "reconnecting");
+            assert!(session.workspace_available());
+            assert!(session.retry_at_ms.is_some());
+            assert!(session.probe.is_none());
+            assert_eq!(session.active_url, original_url);
+            assert_eq!(session.active_name, original_name);
+            assert!(session.desktop_presentation);
+        }
+        assert!(!session.remote_recovered(healthy_probe()));
+        assert_eq!(session.stage, "ready");
+        assert_eq!(session.active_url, original_url);
+        assert!(session.retry_at_ms.is_none());
+        assert!(session.detail.is_empty());
+    }
+    #[test]
+    fn first_load_and_permanent_errors_do_not_claim_an_available_workspace() {
+        for stage in ["connecting", "loading"] {
+            let mut session = remote_session(stage);
+            session.remote_failed(
+                connection::ProbeError {
+                    message: "synthetic timeout".into(),
+                    retryable: true,
+                },
+                Some(Duration::from_secs(5)),
+            );
+            assert_eq!(session.stage, "error");
+            assert!(!session.workspace_available());
+            assert!(session.active_url.is_none());
+            assert!(session.remote_recovered(healthy_probe()));
+        }
+        let mut session = remote_session("ready");
+        session.remote_failed(
+            connection::ProbeError {
+                message: "HTTP 403".into(),
+                retryable: false,
+            },
+            None,
+        );
+        assert_eq!(session.stage, "offline");
+        assert!(session.workspace_available());
+        assert!(session.retry_at_ms.is_none());
+        assert!(session.probe.is_none());
+    }
+    #[test]
+    fn a_health_check_is_not_a_finished_page() {
+        let mut session = remote_session("loading");
+        assert!(!session.remote_recovered(healthy_probe()));
+        assert_eq!(session.stage, "loading");
+        assert!(!session.workspace_available());
+    }
     #[test]
     fn native_commands_stay_local() {
         let native = "tauri://localhost/index.html".parse().unwrap();

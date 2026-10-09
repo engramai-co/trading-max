@@ -75,14 +75,14 @@ function age(probe) {
 }
 function savedServiceActive(state) {
   try {
-    return state?.stage === "ready" && state.mode === "remote" &&
+    return ["ready", "reconnecting", "offline"].includes(state?.stage) && state.mode === "remote" &&
       new URL(state.active_url).origin === new URL(savedProfile.url).origin;
   } catch { return false; }
 }
 let refreshing = false;
 function renderStatus(state) {
   const working = ["connecting", "loading"].includes(state.stage);
-  const error = state.stage === "error";
+  const error = ["error", "reconnecting", "offline"].includes(state.stage);
   const connected = state.stage === "ready";
   const warning = connected && state.probe && (!state.probe.healthy || state.probe.worker_healthy === false);
   const localError = error && state.mode && state.mode !== "remote";

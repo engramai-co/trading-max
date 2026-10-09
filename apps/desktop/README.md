@@ -1,6 +1,6 @@
 # Trading Max desktop preview
 
-An Apple Silicon macOS desktop preview for product **1.15.2**.
+An Apple Silicon macOS desktop preview for product **1.15.3**.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -24,7 +24,7 @@ Closing either auxiliary window keeps the main workspace open. The separate loca
 temporary action: opening it does not overwrite the persisted server profile or
 its auto-connect preference. Quit/reopen restores the saved service choice.
 
-The native shell and packaged web/API use the 1.15.2 application base. Remote mode
+The native shell and packaged web/API use the 1.15.3 application base. Remote mode
 still renders the selected service's own web release. Both modes retain their
 existing permission and process boundaries.
 
@@ -53,13 +53,20 @@ an explicit choice; failed remote connections never fall back to mock balances.
 The native client verifies normal system TLS trust and identifies the backend
 through the existing read-only `/api/backend/health` route. Redirects, credential
 URLs, non-HTTPS endpoints and oversized responses are rejected. Availability is
-checked every 45 seconds while connected. One failed check keeps the page available;
-persistent failure shows recovery, with retries after 15, 30 and 60 seconds before
-manual retry is required. Initial connection gets two retries after 5 and 15
-seconds. Cancelling invalidates pending attempts; a recovered service opens again. Degraded worker state is visible
-in App Settings without hiding readable data. Initial connection and page-load
-failures offer retry, settings and browser actions. There is no offline portfolio
-copy in this iteration.
+checked every 45 seconds while connected. From 1.15.3, checks share an HTTP
+connection pool with a 15-second connect timeout and a 30-second request limit;
+remote page loading gets up to 90 seconds. Initial transient failures retry after
+5, 15, 30 and then 60 seconds; established connections use 15, 30 and then 60
+seconds. Further attempts remain 60 seconds apart until cancelled or switched.
+Permission, invalid-service and non-transient TLS errors require manual attention.
+An already opened workspace and its auxiliary windows stay available with a native
+connection notice; recovery does not navigate, reload or steal focus. Previous
+probe results are cleared on failure. App Settings distinguishes the retained page
+from a currently connected service. Cancelling invalidates pending attempts.
+Degraded worker state remains separate from connectivity. Initial connection and
+page-load failures retain retry, settings and browser actions. Only already loaded
+content is retained: this is not an offline portfolio copy or a guarantee that
+data has refreshed.
 
 The selected profile is stored as mode-0600 `connection.json` in the App data
 directory. It contains mode, name, URL and auto-connect preference. A separate

@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.3] - 2026-10-09
+
+### Fixed
+
+- Keep an open desktop workspace and its current page in place during remote
+  connection outages. Show a quiet native connection notice without hiding the
+  portfolio, closing service windows or reloading the page after recovery.
+- Allow slower HTTPS connections and reuse connections for service checks.
+  Retry temporary network/server failures with capped backoff until cancelled;
+  permission, invalid service and TLS validation errors remain explicit errors.
+  Connection recovery does not imply that account data has refreshed.
+
 ## [1.15.2] - 2026-10-09
 
 ### Fixed
