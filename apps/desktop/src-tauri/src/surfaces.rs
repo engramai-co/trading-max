@@ -54,7 +54,7 @@ pub fn close(app: &tauri::AppHandle) {
 
 pub fn open(app: &tauri::AppHandle, desktop: &Arc<Desktop>, url: Url) -> Result<(), String> {
     let snapshot = desktop.snapshot();
-    if snapshot.stage != "ready" || !workspace_url(&url, snapshot.active_url.as_deref()) {
+    if !snapshot.workspace_available() || !workspace_url(&url, snapshot.active_url.as_deref()) {
         return Err("请先连接工作区。".into());
     }
     let Some((label, title)) = panel(url.path()) else {
@@ -108,7 +108,7 @@ pub fn open(app: &tauri::AppHandle, desktop: &Arc<Desktop>, url: Url) -> Result<
 
 pub fn follow_link(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64, url: Url) {
     let snapshot = desktop.snapshot();
-    if snapshot.generation != generation || snapshot.stage != "ready" {
+    if snapshot.generation != generation || !snapshot.workspace_available() {
         return;
     }
     if snapshot.desktop_presentation

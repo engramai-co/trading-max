@@ -49,3 +49,18 @@ test("demo and idle sessions do not offer a real data folder or saved-server ide
   assert.equal(savedRemote({ mode: "remote", url: "" }), false);
   assert.equal(savedRemote({ mode: "remote", url: "https://saved.example.test/" }), true);
 });
+
+test("a retained offline page is accessible without claiming current connectivity", () => {
+  for (const stage of ["reconnecting", "offline"]) {
+    const view = workspacePresentation({
+      mode: "remote", stage, active_url: "https://selected.example.test/", active_name: "Selected server",
+      probe: { healthy: true, worker_healthy: true },
+    });
+    assert.equal(view.available, true);
+    assert.equal(view.ready, false);
+    assert.match(view.status, /连接中断/);
+    assert.match(view.detail, /数据可能未更新/);
+    assert.equal(view.name, "Selected server");
+  }
+  assert.equal(workspacePresentation({ mode: "remote", stage: "error" }).available, false);
+});

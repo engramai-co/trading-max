@@ -21,16 +21,21 @@ tasks focused windows without duplicating financial calculations or forms.
 
 Closing auxiliary windows leaves the investment workspace and its owned runtime
 running. Reopening an existing service window preserves unsaved fields; deliberate
-links to a section carry query parameters. Source changes and persistent connection
-failure close service windows so a previous workspace cannot remain editable.
+links to a section carry query parameters. Source changes close service windows
+so a previous workspace cannot remain editable. From 1.15.3, remote outages retain
+already opened windows and their fields, with a native connection notice in the
+workspace title band. Reconnection never navigates or steals focus; the notice
+reports connectivity, not data freshness. Local runtime failure still returns to
+its recovery entry.
 Main-window close/quit still stops owned local services, never a remote collector.
 
 ## Presentation contract and browser compatibility
 
 The web service exposes a read-only `/api/desktop` response with
 `service: trading-max-web` and `desktopPresentation: 1`. The native driver checks
-this once per connection, with a bounded response, a three-second timeout and
-redirects disabled. Unsupported or unreachable capability endpoints fall back to
+this once per connection, with a bounded response and redirects disabled. From
+1.15.3 it shares the health-check connection pool and its 15-second connect /
+30-second request deadlines. Unsupported or unreachable capability endpoints fall back to
 the existing website without preventing a valid service connection.
 
 `/desktop` and its explicit report/settings/activity/import routes compose the

@@ -92,11 +92,14 @@ filesystem or credential-manager capabilities. Switching sources closes them.
 
 ## Recovery and version checks
 
-The native entry remains available even when its selected service fails. A first
-remote connection gets two automatic retries (after 5 and 15 seconds). An
-established connection tolerates one failed check; persistent failures show a
-recovery screen with bounded retries and an explicit cancel/retry action. It
-never switches to demo data. Closing the client leaves a remote collector running.
+The native entry remains available even when its selected service fails. From
+App 1.15.3, temporary failures retry with increasing delays capped at 60 seconds,
+until cancelled or switched. Initial connections stay in the entry; an already
+opened workspace stays in place with a connection notice. Recovery does not
+reload the page or close auxiliary windows. Retained content may be out of date;
+connection recovery does not itself confirm a data refresh. Permission, invalid
+service and non-transient TLS errors require manual attention. It never switches
+to demo data. Closing the client leaves a remote collector running.
 
 Local workspaces check both process exit and HTTP responsiveness. Four consecutive
 failed liveness checks, 15 seconds apart, stop only the owned runtime and offer
