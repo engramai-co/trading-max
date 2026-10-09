@@ -4,8 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.2] - 2026-10-09
+
 ### Fixed
 
+- Show repeated account or performance update failures in Overview's "Needs
+  attention" row, even when live valuations are fresh. The warning links to
+  update history, survives restarts and clears after the affected update recovers.
+  Check a small read-only status endpoint without delaying portfolio loading.
 - Keep account history updating when Trading 212 relabels the merchant
   category or merchant name of an existing card transaction. The newest label
   is kept; any change to amount, time, quantity or action still stops the sync.

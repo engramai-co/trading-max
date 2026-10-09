@@ -8,10 +8,11 @@ import {
 } from "@phosphor-icons/react";
 import Link from "./link";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import type { DashboardLens, Holding } from "@/lib/types";
+import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
-import { currency, percent, tone } from "@/workspace/data";
+import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
 import { attentionItems, type AttentionFact, type AttentionItem } from "./attention";
 import { type Scope } from "@/lib/portfolio/nav";
@@ -72,6 +73,13 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const [now] = useState(() => Date.now());
+  const refresh = useQuery({
+    queryKey: ["refresh-attention"],
+    queryFn: ({ signal }) => api<RefreshAttention>("/refresh/attention", { signal }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
   const scope: Scope =
     params.get("scope") === "invest"
       ? "invest"
@@ -118,6 +126,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
     technical: data.technical,
     valuations: data.valuations,
     brokerAsOf: data.brokerAsOf,
+    refresh: refresh.data,
     now,
   });
   return (
@@ -317,7 +326,17 @@ function Attention({ items }: { items: AttentionItem[] }) {
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
       <span className="mx-attention-label">{t("需要关注", "Needs attention")}</span>
       {items.map((item) =>
-        item.kind === "stale" ? (
+        item.kind === "refresh" ? (
+          <Link key="refresh" href="/health" data-tone="warning">
+            <strong>{item.scope === "accounts"
+              ? t("账户更新连续失败", "Account updates failing")
+              : t("收益更新连续失败", "Performance updates failing")}</strong>
+            <span>{item.minutes >= 60
+              ? Math.floor(item.minutes / 60) + t(" 小时", "h")
+              : item.minutes > 0 ? item.minutes + t(" 分钟", "m")
+                : item.failures + t(" 次", " attempts")}</span>
+          </Link>
+        ) : item.kind === "stale" ? (
           <Link key="stale" href="/health" data-tone="warning">
             {age(item.hours)}
           </Link>

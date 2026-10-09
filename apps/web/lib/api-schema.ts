@@ -398,6 +398,26 @@ export interface paths {
         patch: operations["update_profile_v1_profile_patch"];
         trace?: never;
     };
+    "/v1/refresh-attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Refresh Attention
+         * @description Small, live overview signal independent of snapshot freshness.
+         */
+        get: operations["refresh_attention_v1_refresh_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/refresh-state": {
         parameters: {
             query?: never;
@@ -4173,6 +4193,31 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** RefreshAttention */
+        RefreshAttention: {
+            /**
+             * Checkedat
+             * Format: date-time
+             */
+            checkedAt: string;
+            /** Issues */
+            issues?: components["schemas"]["RefreshFailure"][];
+        };
+        /** RefreshFailure */
+        RefreshFailure: {
+            /** Consecutivefailures */
+            consecutiveFailures: number;
+            /**
+             * Failingsince
+             * Format: date-time
+             */
+            failingSince: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "accounts" | "performance";
+        };
         /** RefreshRequest */
         RefreshRequest: {
             /**
@@ -7099,6 +7144,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_attention_v1_refresh_attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshAttention"];
                 };
             };
         };

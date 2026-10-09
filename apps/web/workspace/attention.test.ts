@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Holding } from "@/lib/types";
+import type { Holding, RefreshAttention } from "@/lib/types";
 import { attentionItems, STALE_AFTER_MS } from "./attention";
 
 const now = Date.parse("2026-10-07T12:00:00Z");
@@ -11,6 +11,29 @@ const technical = (ticker: string, score: number | null, rsi: number | null = 50
 const valuation = (ticker: string, ev5Upside: number) => ({ ticker, ev5Upside }) as never;
 
 describe("overview attention", () => {
+  const refresh: RefreshAttention = {
+    checkedAt: new Date(now).toISOString(),
+    issues: [{ scope: "accounts", consecutiveFailures: 3, failingSince: "2026-10-06T21:00:00Z" }],
+  };
+
+  it("prioritizes repeated sync failures even when the live snapshot is fresh", () => {
+    const tickers = ["A", "B", "C", "D"];
+    const items = attentionItems({ holdings: tickers.map((ticker) => holding(ticker, 100, -70)),
+      brokerAsOf: new Date(now).toISOString(), now, refresh });
+    expect(items).toHaveLength(4);
+    expect(items[0]).toMatchObject({ kind: "refresh", scope: "accounts", minutes: 900, failures: 3 });
+  });
+
+  it("shows one update warning and removes it on confirmed recovery", () => {
+    const issues: RefreshAttention["issues"] = [...refresh.issues!,
+      { scope: "performance", consecutiveFailures: 4, failingSince: "2026-10-07T11:10:00Z" }];
+    expect(attentionItems({ holdings: [], now, refresh: { ...refresh, issues } }))
+      .toMatchObject([{ kind: "refresh", scope: "accounts" }]);
+    expect(attentionItems({ holdings: [], now, refresh: { ...refresh, issues: issues.slice(1) } }))
+      .toMatchObject([{ kind: "refresh", scope: "performance", minutes: 50 }]);
+    expect(attentionItems({ holdings: [], now, refresh: { ...refresh, issues: [] } })).toEqual([]);
+  });
+
   it("stays empty when nothing crosses a threshold", () => {
     expect(attentionItems({ holdings: [holding("AAA", 100, 5)], technical: [technical("AAA", 62)], brokerAsOf: "2026-10-07T11:50:00Z", now })).toEqual([]);
   });

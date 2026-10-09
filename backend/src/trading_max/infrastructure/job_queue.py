@@ -44,6 +44,13 @@ class ClaimedJob:
     worker_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class RefreshFailureStreak:
+    scope: Literal["accounts", "performance"]
+    consecutive_failures: int
+    failing_since: datetime
+
+
 class SqliteJobQueue:
     """A lease-based queue safe for separate API and worker processes."""
 
@@ -162,6 +169,51 @@ class SqliteJobQueue:
                 self._record(full_row, connection) if full_row is not None else None,
                 self._record(intraday_row, connection) if intraday_row is not None else None,
             )
+
+    def refresh_failure_streaks(self) -> list[RefreshFailureStreak]:
+        """Read persisted failures without loading logs, stages or live-job history.
+
+        Live valuations and performance calculations cannot repair a failed full
+        account sync. A successful full refresh does also repair performance.
+        Pending retries and operator cancellations neither clear nor add failures.
+        """
+
+        scopes: tuple[Literal["accounts", "performance"], ...] = ("accounts", "performance")
+        counts = dict.fromkeys(scopes, 0)
+        since: dict[str, datetime] = {}
+        resolved: set[str] = set()
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT scope, skip_sync, status, "
+                "COALESCE(finished_at, started_at, created_at) AS observed_at "
+                "FROM jobs WHERE scope IN ('all', 'accounts', 'performance') "
+                "AND status IN ('succeeded', 'failed', 'interrupted') "
+                "AND trigger != 'system' AND cancel_requested = 0 "
+                "ORDER BY created_at DESC, rowid DESC"
+            )
+            for row in rows:
+                succeeded = row["status"] == "succeeded"
+                full = row["scope"] in {"all", "accounts"}
+                for scope in scopes:
+                    relevant = (
+                        full and not row["skip_sync"]
+                        if scope == "accounts"
+                        else row["scope"] == "performance" or (full and succeeded)
+                    )
+                    if scope in resolved or not relevant:
+                        continue
+                    if succeeded:
+                        resolved.add(scope)
+                    else:
+                        counts[scope] += 1
+                        since[scope] = datetime.fromisoformat(row["observed_at"])
+                if len(resolved) == len(scopes):
+                    break
+        return [
+            RefreshFailureStreak(scope, counts[scope], since[scope])
+            for scope in scopes
+            if counts[scope]
+        ]
 
     def active_records(self) -> list[JobRecord]:
         """Read admission candidates without loading completed job history."""

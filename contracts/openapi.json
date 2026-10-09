@@ -9572,6 +9572,56 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RefreshAttention": {
+        "properties": {
+          "checkedAt": {
+            "format": "date-time",
+            "title": "Checkedat",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/RefreshFailure"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkedAt"
+        ],
+        "title": "RefreshAttention",
+        "type": "object"
+      },
+      "RefreshFailure": {
+        "properties": {
+          "consecutiveFailures": {
+            "minimum": 2.0,
+            "title": "Consecutivefailures",
+            "type": "integer"
+          },
+          "failingSince": {
+            "format": "date-time",
+            "title": "Failingsince",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "accounts",
+              "performance"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "consecutiveFailures",
+          "failingSince"
+        ],
+        "title": "RefreshFailure",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "scope": {
@@ -15832,7 +15882,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.15.1"
+    "version": "1.15.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17076,6 +17126,28 @@
         "summary": "Update Profile",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/v1/refresh-attention": {
+      "get": {
+        "description": "Small, live overview signal independent of snapshot freshness.",
+        "operationId": "refresh_attention_v1_refresh_attention_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAttention"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Attention",
+        "tags": [
+          "operations"
         ]
       }
     },

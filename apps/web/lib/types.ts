@@ -130,6 +130,8 @@ export type DashboardLensName =
 
 export type DashboardLens = ApiSchemas["DashboardLensSnapshot"];
 
+export type RefreshAttention = ApiSchemas["RefreshAttention"];
+
 type RefreshJobStage = Omit<
   Concrete<ApiSchemas["JobStageRecord"]>,
   "idempotencyKey"
