@@ -753,15 +753,21 @@ def _nonempty_export_values(row: Mapping[str, object]) -> dict[str, object]:
     return {key: value for key, value in row.items() if value not in (None, "")}
 
 
+# Labels the broker can revise on an existing transaction without changing it:
+# instrument display names and card-processor merchant metadata.
+DESCRIPTIVE_EXPORT_COLUMNS = ("Name", "Merchant name", "Merchant category")
+
+
 def _transaction_export_values(row: Mapping[str, object]) -> dict[str, object]:
-    """A broker display-name edit does not change an identified transaction.
+    """A broker label revision does not change an identified transaction.
 
     Preserve every economic/identity field, including unknown columns and notes.
     Unidentified rows still require the complete source row to agree.
     """
     values = _nonempty_export_values(row)
     if str(row.get("ID") or "").strip():
-        values.pop("Name", None)
+        for column in DESCRIPTIVE_EXPORT_COLUMNS:
+            values.pop(column, None)
     return values
 
 

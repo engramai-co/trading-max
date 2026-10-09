@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep account history updating when Trading 212 relabels the merchant
+  category or merchant name of an existing card transaction. The newest label
+  is kept; any change to amount, time, quantity or action still stops the sync.
+
 ### Security
 
 - Repair the pending 1.9.10 release's lint dependency audit with the pinned
