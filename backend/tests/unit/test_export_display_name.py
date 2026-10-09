@@ -84,3 +84,50 @@ def test_name_revision_does_not_hide_any_other_transaction_conflict(
         reconcile_csv_files(paths, [])
     with pytest.raises(Trading212ExportSchemaError, match="conflicting transaction"):
         merge_export_csv_files(paths, tmp_path / "merged.csv")
+
+
+CARD_DEBIT = {
+    "Action": "Card debit",
+    "Time (UTC)": "2025-10-09 12:02:43+00:00",
+    "ID": "synthetic-card-1",
+    "Merchant name": "SAMPLE MERCHANT",
+    "Merchant category": "MEMBERSHIPS",
+    "Total": "-8.55",
+    "Currency (Total)": "GBP",
+}
+
+
+def _write_cash(path: Path, row: dict[str, str]) -> Path:
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(CARD_DEBIT))
+        writer.writeheader()
+        writer.writerow(row)
+    return path
+
+
+def test_card_merchant_reclassification_keeps_newest_label(tmp_path):
+    paths = [
+        _write_cash(tmp_path / "old.csv", CARD_DEBIT),
+        _write_cash(tmp_path / "new.csv", {**CARD_DEBIT, "Merchant category": "SERVICE_PROVIDERS"}),
+    ]
+    assert reconcile_csv_files(paths, []).status == "verified"
+    with merge_export_csv_files(paths, tmp_path / "merged.csv").open() as handle:
+        rows = list(csv.DictReader(handle))
+    assert [(row["Merchant category"], row["Total"]) for row in rows] == [
+        ("SERVICE_PROVIDERS", "-8.55")
+    ]
+
+
+@pytest.mark.parametrize(
+    "column,value", [("Total", "-9.55"), ("Time (UTC)", "2025-10-10 12:02:43+00:00")]
+)
+def test_card_reclassification_does_not_hide_economic_change(tmp_path, column, value):
+    paths = [
+        _write_cash(tmp_path / "old.csv", CARD_DEBIT),
+        _write_cash(
+            tmp_path / "new.csv",
+            {**CARD_DEBIT, "Merchant category": "SERVICE_PROVIDERS", column: value},
+        ),
+    ]
+    with pytest.raises(Trading212ExportSchemaError, match="conflicting transaction"):
+        merge_export_csv_files(paths, tmp_path / "merged.csv")

@@ -4,8 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep account history updating when Trading 212 relabels the merchant
+  category or merchant name of an existing card transaction. The newest label
+  is kept; any change to amount, time, quantity or action still stops the sync.
+
 ### Security
 
+- Update Next.js from 16.3.6 to 16.3.8 for GHSA-cjq9-62q9-8jv4 (image
+  optimisation SSRF) and the related cache and disclosure advisories fixed in
+  the same patch release.
 - Repair the pending 1.9.10 release's lint dependency audit with the pinned
   upstream braces depth-limit patch for GHSA-vfj7-8cjw-p6xm. This same-version
   release correction does not change the running application or backup format.
