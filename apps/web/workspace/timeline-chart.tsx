@@ -7,8 +7,9 @@ import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
 import { timelineOption, type TimelineLayer } from "./timeline-option";
+import { timelineContext } from "./timeline-labels";
 import type { TimelineTooltip } from "./timeline-tooltip";
-import { historyDay, valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
+import { valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
 import type { NavPoint } from "@/lib/types";
 import type { HistorySelection } from "@/lib/portfolio/prepared";
 import { HistoryRecords } from "./history-records";
@@ -41,7 +42,9 @@ export function TimelineChart({
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const shortRange = intraday && (range === "1D" || range === "1W");
+  const shortRange = range === "1D" || range === "1W";
+  const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
+  const context = display && timeline ? timelineContext(timeline.categories, display) : "";
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
   if (
     !dates.length ||
@@ -68,17 +71,10 @@ export function TimelineChart({
     <>
       <Plot
         label={label}
-        height={layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510}
+        height={(layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510) - (shortRange ? 24 : 0)}
         option={(colours) =>
           timelineOption(dates, layers, colours, (time) => {
             const zone = intraday ? timeZone : "UTC";
-            if (shortRange && range === "1W") {
-              return formatDate(time, locale, { year: "numeric", month: "numeric", day: "numeric", timeZone: zone })
-                + "\n" + formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
-            }
-            if (intraday && historyDay(dates[0]) === historyDay(dates.at(-1)!)) {
-              return formatDate(time, locale, { hour: "2-digit", minute: "2-digit", timeZone: zone });
-            }
             // One line per date; the year appears only on dates outside the
             // latest year shown, so it marks the boundary instead of repeating.
             const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
@@ -91,10 +87,11 @@ export function TimelineChart({
               ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
               : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
             tooltip,
-            shortRange,
+            display,
           )
         }
       />
+      {context && <p className="mx-timeline-context">{context}</p>}
       {recordSource ? <HistoryRecords key={JSON.stringify(recordSource)} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable

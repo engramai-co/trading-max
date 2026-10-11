@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.4] - 2026-10-11
+
+### Changed
+
+- Simplify the Overview and Performance short-range time axes: show compact
+  calendar dates in 5D and rounded local hours in 1D, with shared date and
+  timezone context. Adapt label density to narrow screens and keep exact
+  observation timestamps in tooltips. Sampling, gaps, weekend folding and
+  financial calculations are unchanged.
+
 ## [1.15.3] - 2026-10-09
 
 ### Fixed

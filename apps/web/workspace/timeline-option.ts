@@ -6,7 +6,8 @@ import { percent } from "@/workspace/data";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import type { CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
-import { shortTimelineTicks, timelineAxis } from "./timeline-axis";
+import { timelineAxis } from "./timeline-axis";
+import { timelineLabels, type TimelineDisplay } from "./timeline-labels";
 
 export type TimelineLayer = {
   label: string;
@@ -25,15 +26,23 @@ export function timelineOption(
   details: Array<{ label: string; values: Array<number | null>; percentage?: boolean }> = [],
   formatTimestamp = formatDay,
   tooltip?: TimelineTooltip,
-  shortRange = false,
+  display?: TimelineDisplay,
 ): EChartsOption {
   const times = dates.map(Date.parse);
+  const labels = calendar && display ? timelineLabels(calendar.categories, display) : undefined;
   // Keep every date candidate: resampling an eight-label subset to five
   // produces uneven 2/2/1/2 strides at the compact breakpoint.
-  const calendarAxis = calendar ? timelineAxis(calendar, formatDay, Infinity) : undefined;
-  const shortDateLabels = shortRange && calendarAxis?.axisLabel.formatter(0).includes("\n");
+  const calendarAxis = calendar ? labels ? {
+    type: "value" as const,
+    min: 0,
+    max: Math.max(1, calendar.categories.length - 1),
+    minInterval: 1,
+    boundaryGap: [0, 0] as [number, number],
+    splitLine: { show: false },
+    axisLabel: { customValues: labels.ticks(8), formatter: labels.label },
+  } : timelineAxis(calendar, formatDay, Infinity) : undefined;
   const ticksForWidth = (count: number) => {
-    if (shortRange && calendar) return shortTimelineTicks(calendar.categories, count);
+    if (labels) return labels.ticks(count);
     const ticks = calendarAxis?.axisLabel.customValues;
     if (!ticks || ticks.length <= count) return ticks;
     // Space labels evenly along the axis, then snap each to the nearest new
@@ -64,7 +73,7 @@ export function timelineOption(
     return {
       xAxis: layers.map(() => ({
         splitNumber: count - 1,
-        ...(ticks ? { axisLabel: { customValues: ticks } } : {}),
+        ...(ticks ? { axisLabel: { customValues: ticks }, axisTick: { customValues: ticks } } : {}),
       })),
     };
   };
@@ -74,8 +83,8 @@ export function timelineOption(
     // on resize. The default restores up to eight labels when the panel widens.
     media: [
       { query: { maxWidth: 820 }, option: axisDensity(5) },
-      { query: { maxWidth: 540 }, option: axisDensity(shortDateLabels ? 3 : 4) },
-      ...(shortRange ? [{ query: { maxWidth: 300 }, option: axisDensity(shortDateLabels ? 2 : 3) }] : []),
+      { query: { maxWidth: 540 }, option: axisDensity(4) },
+      { query: { maxWidth: 360 }, option: axisDensity(3) },
       { option: axisDensity(8) },
     ],
     grid: layers.map((_, index) => ({
@@ -100,8 +109,8 @@ export function timelineOption(
     xAxis: layers.map((_, index) => ({
       ...horizontalAxis,
       gridIndex: index,
-      axisLine: { show: false },
-      axisTick: { show: false },
+      axisLine: { show: index === layers.length - 1, onZero: false, lineStyle: { color: colours.grid } },
+      axisTick: { show: index === layers.length - 1, customValues: ticksForWidth(8), length: 4, lineStyle: { color: colours.grid } },
       axisPointer: { show: true, snap: true },
       axisLabel: {
         ...horizontalAxis.axisLabel,
@@ -112,7 +121,7 @@ export function timelineOption(
         alignMaxLabel: "right",
         hideOverlap: true,
         color: colours.axis,
-        margin: 16,
+        margin: 10,
         formatter: (value: number) => {
           const [date, year] = horizontalAxis.axisLabel.formatter(value).split("\n");
           return year ? `{date|${date}}\n{year|${year}}` : `{date|${date}}`;
@@ -120,7 +129,7 @@ export function timelineOption(
         rich: {
           // Side padding makes touching labels count as overlapping, so the
           // month-start tick next to a weekly tick is hidden instead of fused.
-          date: { color: colours.axis, fontSize: 12, lineHeight: 22, padding: [0, 8] },
+          date: { color: colours.axis, fontSize: 12, lineHeight: 18, padding: [0, 6] },
           year: { color: colours.axis, fontSize: 11, lineHeight: 18 },
         },
       },

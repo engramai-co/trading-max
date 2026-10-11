@@ -33,14 +33,18 @@ describe("shared performance timeline", () => {
     const calendar = { categories, rowIndexes: categories.map((_, i) => i), displayIntervalMinutes: 10 };
     const format = (time: number) => new Date(time).toISOString().slice(11, 16);
     const before = timelineOption(categories, layers, colours, format, calendar);
-    const after = timelineOption(categories, layers, colours, format, calendar, [], format, undefined, true);
+    const after = timelineOption(categories, layers, colours, format, calendar, [], format, undefined,
+      { locale: "en", timeZone: "UTC", intraday: true, clock: true });
     expect(after.series).toEqual(before.series);
     expect(after.grid).toEqual(before.grid);
     expect(JSON.stringify(after.yAxis)).toBe(JSON.stringify(before.yAxis));
     const axes = after.xAxis as Array<{ min: number; max: number; axisLabel: { customValues: number[] } }>;
     expect(axes.every((axis) => axis.min === 0 && axis.max === 61)).toBe(true);
     expect(axes.every((axis) => JSON.stringify(axis.axisLabel.customValues) === JSON.stringify(axes[0].axisLabel.customValues))).toBe(true);
-    expect(axes[0].axisLabel.customValues.at(-1)).toBe(61);
+    expect(axes[0].axisLabel.customValues.at(-1)).toBe(60);
+    const tooltip = after.tooltip as { formatter: (input: unknown) => string };
+    const beforeTooltip = before.tooltip as { formatter: (input: unknown) => string };
+    expect(tooltip.formatter([{ value: [61, 110] }])).toBe(beforeTooltip.formatter([{ value: [61, 110] }]));
   });
   it("spaces each responsive date density evenly across the full timeline", () => {
     const categories = Array.from({ length: 70 * 12 }, (_, i) =>
@@ -49,7 +53,7 @@ describe("shared performance timeline", () => {
       (time) => new Date(time).toISOString().slice(0, 10),
       { categories, rowIndexes: categories.map((_, i) => i) });
     const variants = option.media as Array<{ option: { xAxis: Array<{ axisLabel: { customValues: number[] } }> } }>;
-    for (const [index, count] of [5, 4, 8].entries()) {
+    for (const [index, count] of [5, 4, 3, 8].entries()) {
       const axes = variants[index].option.xAxis;
       const ticks = axes[0].axisLabel.customValues;
       expect(ticks).toHaveLength(count);
@@ -62,7 +66,7 @@ describe("shared performance timeline", () => {
       expect(axes.every((axis) => JSON.stringify(axis.axisLabel.customValues) === JSON.stringify(ticks))).toBe(true);
     }
     expect(option.xAxis).toEqual(expect.arrayContaining([
-      expect.objectContaining({ axisLabel: expect.objectContaining({ customValues: variants[2].option.xAxis[0].axisLabel.customValues }) }),
+      expect.objectContaining({ axisLabel: expect.objectContaining({ customValues: variants[3].option.xAxis[0].axisLabel.customValues }) }),
     ]));
   });
   it("keeps each unit on its own axis while aligning every layer to the same dates", () => {
