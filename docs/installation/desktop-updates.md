@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.15.3 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.15.4 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.3).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.4).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.15.3
+## Verified scope for 1.15.4
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks. All 19 packaged runtime checks passed, including process
@@ -16,7 +16,7 @@ Native acceptance on Apple Silicon macOS 26.5.2 used synthetic data and a privat
 older-version fixture with the released updater implementation. Invalid signed
 feeds, modified archives, interrupted downloads and cancellation left the
 installed application and its running services unchanged. **Install and Relaunch**
-installed the exact final 1.15.3 DMG, stopped the previous runtime and automatically
+installed the exact final 1.15.4 DMG, stopped the previous runtime and automatically
 reopened the isolated demo. The saved connection and disabled auto-open preference
 were unchanged. Normal quit also stopped the new owned services. All installed
 file contents, modes and symlinks matched the accepted package; signature,
@@ -24,8 +24,16 @@ staple and Gatekeeper checks passed again.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
+An installed 1.15.3 App discovered and downloaded the public 1.15.4 update through
+App Settings. **Install and Relaunch** restored its saved HTTPS connection;
+connection/startup preferences and recent workspace records were unchanged.
+The installed bundle matched the accepted package exactly.
 
-Version 1.15.3 keeps an already loaded workspace visible during connection
+Version 1.15.4 simplifies short-range portfolio time axes, with compact date or
+local-hour labels and a separate date/timezone context. Sampling, missing-data
+connectors, weekend folding and financial calculations are unchanged.
+
+Since 1.15.3, the App keeps an already loaded workspace visible during connection
 failures, marks it as reconnecting/offline and retries temporary network failures
 with bounded backoff. A recovered health check does not reload the page or prove
 that account data is fresh. HTTPS and service-identity checks remain enforced.
