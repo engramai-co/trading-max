@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.7] - 2026-10-28
+
+### Fixed
+
+- Data status no longer reports a ready service as all clear when no update
+  has completed for over a day; it states how long ago the last update
+  finished and points to updating or checking the schedule.
+- Keep the research update button labelled while it runs, and show disabled
+  schedules in muted text.
+- Holding colours in allocation charts and lists no longer reuse the gain
+  green or loss red. Review account cards colour TWR and drawdown like the
+  rest of the workspace.
+- On touch screens, information buttons and text links get a 44 px tap area,
+  and disclosure summaries and their links clear the 24 px minimum.
+
 ## [1.15.6] - 2026-10-28
 
 ### Changed

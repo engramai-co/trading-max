@@ -80,6 +80,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   }, [client, latestRunId]);
   const activity = activityState(data ?? null, localWorkspace);
   const tone = desktop ? activity.tone : deriveHealthTone(data ?? null, localWorkspace);
+  // A reachable service is not fresh data: snapshots publish several times a
+  // day, so a day without one means updates stopped.
+  const snapshotAge = data?.health?.artifactAgeSeconds;
+  const staleHours = tone === "ready" && snapshotAge != null && snapshotAge > 86_400
+    ? Math.floor(snapshotAge / 3600) : null;
+  const staleAge = staleHours == null ? "" : formatAge(snapshotAge, locale);
   const job =
     data?.jobs.find((j) => j.jobId === selected) ?? activity.failures.find((j) => j.jobId === selected) ??
     (start.data?.jobId === selected ? start.data : null);
@@ -96,7 +102,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     { value: "cfd", label: t("CFD 复盘", "CFD review") },
   ];
   const title =
-    tone === "setup"
+    staleHours != null
+      ? locale === "zh" ? `服务在线，但已 ${staleAge}没有完成更新` : `Service online · no completed update for ${staleAge}`
+      : tone === "setup"
       ? t("等待首次同步", "Ready for your first sync")
       : tone === "ready"
       ? t("数据服务运行正常", "Your data service is ready")
@@ -106,7 +114,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           ? t("需要启动本地服务", "Start your local service")
           : t("数据服务需要检查", "The data service needs attention");
   const subtitle =
-    tone === "setup"
+    staleHours != null
+      ? t("各页面显示的是上一次成功更新的数据。开始更新，或检查自动更新是否已关闭。", "Pages show the last successful update. Start an update, or check whether scheduled updates are off.")
+      : tone === "setup"
       ? t("本机服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
       : tone === "ready"
       ? null
@@ -146,11 +156,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         <>
           <section
             className={
-              "mx-health-hero" + (tone === "ready" ? " mx-health-ready" : "")
+              "mx-health-hero" + (tone === "ready" && staleHours == null ? " mx-health-ready" : "")
             }
           >
             <div className="mx-health-symbol">
-              {tone === "ready" ? (
+              {staleHours != null ? (
+                <Clock size={35} />
+              ) : tone === "ready" ? (
                 <CheckCircle size={35} />
               ) : tone === "setup" ? (
                 <Clock size={35} />
@@ -168,8 +180,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 label={t("检查时间", "Checked")}
               />
             </div>
-            <Tag tone={tone === "setup" ? "neutral" : tone === "ready" ? "good" : "warn"}>
-              {tone === "setup"
+            <Tag tone={tone === "setup" ? "neutral" : tone === "ready" && staleHours == null ? "good" : "warn"}>
+              {staleHours != null
+                ? t("数据未更新", "Not updated")
+                : tone === "setup"
                 ? t("待设置", "Setup needed")
                 : tone === "ready"
                 ? t("就绪", "Ready")
@@ -309,7 +323,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 !schedule ? (
                   "—"
                 ) : !schedule.enabled ? (
-                  t("已关闭", "Disabled")
+                  <span key={label} className="mx-muted">{t("已关闭", "Disabled")}</span>
                 ) : (
                   <Freshness key={label} date={schedule.nextRunAt} label="" />
                 ),
