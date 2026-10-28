@@ -1,6 +1,6 @@
 :root {
   --mx-canvas: #f7f9fc; --mx-surface: #ffffff; --mx-soft: #f1f5fb; --mx-ink: #17191c; --mx-muted: #536176; --mx-border: #dbe4ef; --mx-shadow: 0 3px 14px rgb(17 24 39 / 3%);
-  --mx-brand: #1768e5; --mx-brand-soft: #edf5ff; --mx-selection: #d9e8ff; --mx-selection-ink: #113f8f;
+  --mx-brand: #1768e5; --mx-brand-soft: #edf5ff; --mx-selection: #d9e8ff; --mx-selection-ink: #113f8f; --mx-mark-accent: #1768e5;
   --mx-sidebar: #edf4ff; --mx-sidebar-end: #eaf1fa; --mx-side-ink: #2a3f5f; --mx-side-muted: #536176; --mx-side-border: #cbd9ec; --mx-side-hover: #ffffff; --mx-nav-active: #1768e5; --mx-nav-active-ink: #ffffff;
   --mx-up: #2f7a49; --mx-down: #b4473a; --mx-warning: #80530c;
   --mx-chart-0: #1768e5; --mx-chart-1: #d97706; --mx-chart-2: #347985; --mx-chart-3: #b4473a; --mx-chart-4: #7a6599; --mx-chart-5: #6b7280;
@@ -10,7 +10,7 @@
 :root[data-mantine-color-scheme="dark"] {
   /* Neutral charcoal: blue is reserved for the brand and selection. */
   --mx-canvas: #0f1012; --mx-surface: #17181b; --mx-soft: #212328; --mx-ink: #f2f3f5; --mx-muted: #a3a8b2; --mx-border: #2b2e34; --mx-shadow: none;
-  --mx-brand: #7eb3ff; --mx-brand-soft: #1a2638; --mx-selection: #195dbd; --mx-selection-ink: #f7fbff;
+  --mx-brand: #7eb3ff; --mx-brand-soft: #1a2638; --mx-selection: #195dbd; --mx-selection-ink: #f7fbff; --mx-mark-accent: #5b9dff;
   --mx-sidebar: #131416; --mx-sidebar-end: #131416; --mx-side-ink: #cdd1d8; --mx-side-muted: #a3a8b2; --mx-side-border: #26292e; --mx-side-hover: #212328;
   --mx-up: #78cf91; --mx-down: #ff958a; --mx-warning: #f4c35f;
   --mx-chart-0: #5b9dff; --mx-chart-1: #f6ad55; --mx-chart-2: #69bfcd; --mx-chart-3: #ff958a; --mx-chart-4: #b9a0e0; --mx-chart-5: #a3a8b2;
@@ -32,7 +32,7 @@ h1, h2, h3, p { margin: 0; }
 .mx-skip:focus { transform: none; }
 .mx-sidebar { overflow-y: auto; position: fixed; inset: 0 auto 0 0; width: 76px; padding: 24px 12px 16px; background: linear-gradient(180deg, var(--mx-sidebar), var(--mx-sidebar-end)); border-right: 1px solid var(--mx-side-border); color: var(--mx-side-ink); display: flex; flex-direction: column; z-index: 150; }
 .mx-brand { display: flex; align-items: center; gap: 10px; color: var(--mx-side-ink); text-decoration: none; margin: 0 8px 32px; }
-.mx-brand-symbol { display: block; flex-shrink: 0; }
+.mx-brand-symbol { display: block; flex-shrink: 0; } .mx-mark-ink { fill: var(--mx-ink); } .mx-mark-accent { fill: var(--mx-mark-accent); }
 .mx-brand > span { font-size: 20px; font-weight: 500; letter-spacing: -.65px; line-height: 1.15; white-space: nowrap; }
 .mx-brand-max { font-weight: 750; margin-left: 4px; }
 .mx-sidebar .mx-brand { justify-content: center; margin: 0 0 24px; min-height: 40px; }

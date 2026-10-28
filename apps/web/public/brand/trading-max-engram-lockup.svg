@@ -1,12 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1160" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
   <title id="title">Trading Max — an Engram project</title>
   <desc id="desc">Trading Max brand lockup with Engram endorsement.</desc>
-  <g transform="translate(200 50) scale(.6)">
-    <path fill="#2563EB" d="M176 276h116l208 142 208-142h116v116L594 528v112l-94 70-94-70V528L176 392z"/>
-    <path fill="#2563EB" d="M176 276h116v444H176zm532 0h116v444H708z"/>
-    <path fill="#171A21" d="M176 150h648v126H574v296l-74 56-74-56V276H176z"/>
-    <path fill="#22D3EE" d="M466 640l34 26 34-26v94l-34 26-34-26z"/>
+  <g transform="translate(400 -40) scale(.6)">
+    <path fill="#17191c" d="M180 250H820V348H558V750H442V348H180ZM180 366H280V750H180ZM720 366H820V750H720Z"/>
+    <path fill="#1768e5" d="M280 366L424 528V684L280 522ZM720 366L576 528V684L720 522Z"/>
   </g>
-  <text x="700" y="1000" text-anchor="middle" fill="#171A21" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="94" letter-spacing="-3">Trading <tspan font-weight="800">Max</tspan></text>
-  <text x="700" y="1070" text-anchor="middle" fill="#53606F" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="24" letter-spacing="4">AN ENGRAM PROJECT</text>
+  <text x="700" y="640" text-anchor="middle" fill="#17191c" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="120" letter-spacing="-3">Trading <tspan font-weight="700">Max</tspan></text>
+  <text x="700" y="730" text-anchor="middle" fill="#536176" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="28" letter-spacing="5">AN ENGRAM PROJECT</text>
 </svg>

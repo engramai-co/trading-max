@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/engramai-co/trading-max?style=flat-square&color=2563EB"></a>
-  <a href="LICENSE"><img alt="Apache 2.0 licence" src="https://img.shields.io/github/license/engramai-co/trading-max?style=flat-square&color=171A21"></a>
+  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/engramai-co/trading-max?style=flat-square&color=1768E5"></a>
+  <a href="LICENSE"><img alt="Apache 2.0 licence" src="https://img.shields.io/github/license/engramai-co/trading-max?style=flat-square&color=17191C"></a>
   <img alt="Read-only broker access" src="https://img.shields.io/badge/broker%20access-read--only-2F7D4C?style=flat-square">
 </p>
 
