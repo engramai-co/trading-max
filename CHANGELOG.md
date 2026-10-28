@@ -15,6 +15,12 @@ All notable public Trading Max releases are recorded here.
   in chart strokes and hover details. Disclose when money P&L and drawdown
   include estimates; time-weighted return calculations are unchanged.
 
+### Security
+
+- Update Next.js and its ESLint configuration to 16.4.3, refresh the Certifi
+  certificate bundle, and update affected Vite, Vitest and Zod dependencies
+  to resolve the release dependency audit findings.
+
 ## [1.15.4] - 2026-10-11
 
 ### Changed
