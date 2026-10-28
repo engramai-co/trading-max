@@ -109,15 +109,15 @@ export function selectPortfolioHistory({
     ? [] : sorted(projected.filter((p) => p.intraday));
   const usable = (rows: NavPoint[]) => rows.filter((p) => navNumber(p, scope) != null);
   const availableIntraday = usable(intradayRows);
-  // A reconstruction can use different marks from the broker (particularly
-  // overnight). Inserting those estimates into missed collection slots creates
-  // fictitious returns and drawdowns. Keep one source once collection starts;
-  // the immutable input and paired model values remain available as evidence.
-  // Determine this boundary before applying the requested date window.
-  const firstObserved = availableIntraday.find((p) => p.valuationSource !== "reconstructed");
-  const observedFrom = firstObserved ? Date.parse(firstObserved.date) : Infinity;
-  const primaryIntraday = availableIntraday.filter((p) =>
-    p.valuationSource !== "reconstructed" || Date.parse(p.date) < observedFrom);
+  // Persisted reconstructions also cover collection outages. Keep their source
+  // intact so charts and money statistics can disclose estimates. At an exact
+  // timestamp a broker observation always wins; never replace it with a model.
+  const byTime = new Map<number, NavPoint>();
+  for (const point of availableIntraday) {
+    const time = Date.parse(point.date);
+    if (!byTime.has(time) || point.valuationSource !== "reconstructed") byTime.set(time, point);
+  }
+  const primaryIntraday = [...byTime.values()];
   const references = [...usable(dailyRows), ...usable(intradayRows)].map((p) => p.date);
   if (asOf && Number.isFinite(Date.parse(asOf))) references.push(asOf);
   const latestDay = references.map(historyDay).sort().at(-1);
@@ -198,6 +198,7 @@ export function selectPortfolioHistory({
   });
   return {
     points, source, fallback, timeline, coverage, pendingCashFlows, cashFlowCutoffAt, latestObservationAt, ...window,
+    reconstructedCount: points.filter((point) => point.valuationSource === "reconstructed").length,
     carriedCfdValue: source === "intraday" && scope === "household" ? cfdValue : null,
   };
 }
@@ -206,7 +207,7 @@ export type PortfolioHistory = Omit<ReturnType<typeof selectPortfolioHistory>, "
 export function valuationNote(point: NavPoint, t: (zh: string, en: string) => string) {
   if (!point.intraday) return t("日终估值", "End-of-day valuation");
   const minutes = Math.round((point.cadenceSeconds ?? 600) / 60);
-  return (point.valuationSource === "reconstructed" ? t("账本重建", "Ledger reconstruction") : t("券商记录", "Broker observation"))
+  return (point.valuationSource === "reconstructed" ? t("重建估算", "Reconstructed estimate") : t("券商记录", "Broker observation"))
     + " · " + minutes + t(" 分钟估值", " min valuation")
     + (point.includesExtendedHours ? t(" · 含盘前盘后", " · extended hours") : "")
     + ((point.priceCadenceSeconds ?? 0) > 600 ? t(" · 小时行情", " · hourly market prices") : "");

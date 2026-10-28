@@ -88,3 +88,35 @@ export function historyGapSeries(series: ReturnType<typeof historySeries>) {
   }
   return gaps;
 }
+
+/** Split strokes at source boundaries, retaining only original coordinates.
+ * An edge touching an estimate is estimated, including its broker endpoint.
+ * Missing slots still break both strokes and never acquire a hover value.
+ */
+export function historySourceSeries(
+  series: ReturnType<typeof historySeries>, isEstimated: (position: number) => boolean,
+) {
+  const result: { observed: typeof series; reconstructed: typeof series } = { observed: [], reconstructed: [] };
+  let previous: typeof series[number] | null = null;
+  let active: keyof typeof result | undefined;
+  for (const point of series) {
+    const [position, value] = point.value;
+    if (value == null) {
+      result.observed.push(point);
+      result.reconstructed.push(point);
+      previous = null;
+      active = undefined;
+      continue;
+    }
+    const source = isEstimated(position!) || (previous && isEstimated(previous.value[0]!))
+      ? "reconstructed" : "observed";
+    if (previous && active !== source) {
+      result[active!].push({ ...point, value: [position, null] });
+      result[source].push(previous);
+    }
+    result[source].push(point);
+    previous = point;
+    active = source;
+  }
+  return result;
+}

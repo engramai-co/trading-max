@@ -3,7 +3,7 @@ import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
 import { numeric } from "@/lib/numeric";
 import { percent } from "@/workspace/data";
-import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
 import type { CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
 import { timelineAxis } from "./timeline-axis";
@@ -27,8 +27,11 @@ export function timelineOption(
   formatTimestamp = formatDay,
   tooltip?: TimelineTooltip,
   display?: TimelineDisplay,
+  provenance?: Array<{ estimated: boolean; note: string }>,
 ): EChartsOption {
   const times = dates.map(Date.parse);
+  const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : times.indexOf(position);
+  const hasEstimates = provenance?.some((point) => point.estimated) ?? false;
   const labels = calendar && display ? timelineLabels(calendar.categories, display) : undefined;
   // Keep every date candidate: resampling an eight-label subset to five
   // produces uneven 2/2/1/2 strides at the compact breakpoint.
@@ -192,11 +195,11 @@ export function timelineOption(
       formatter: (input) => {
         // Only actual plotted values can anchor the card, never a missing slot.
         const entries = Array.isArray(input) ? input : [input];
-        const point = entries.find((entry) => !/^history-(gap|area):/.test(String(entry.seriesId ?? "")) && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
+        const point = entries.find((entry) => !/^history-(gap|area|observed|estimate):/.test(String(entry.seriesId ?? "")) && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
         const time = numeric(
           Array.isArray(point?.value) ? point.value[0] : null,
         );
-        const index = time == null ? -1 : calendar ? calendar.rowIndexes[time] ?? -1 : times.indexOf(time);
+        const index = time == null ? -1 : rowAt(time);
         if (index < 0) return "";
         return timelineTooltipCard(tooltip ?? {
           primary: layers[0]?.lines.map((line) => ({ ...line, label: line.name, percentage: layers[0].percentage })) ?? [],
@@ -204,7 +207,7 @@ export function timelineOption(
             ...layers.slice(1).flatMap((layer) => layer.lines.map((line) => ({ ...line, label: line.name, percentage: layer.percentage, signed: true }))),
             ...details,
           ],
-        }, index, formatTimestamp(times[index]));
+        }, index, formatTimestamp(times[index]), provenance?.[index]?.note);
       },
     },
     series: layers.flatMap((layer, axis) =>
@@ -216,12 +219,17 @@ export function timelineOption(
           ];
         const data = historySeries(dates, line.values, false, calendar);
         const gaps = historyGapSeries(data);
+        const strokes = hasEstimates
+          ? historySourceSeries(data, (position) => provenance?.[rowAt(position)]?.estimated ?? false)
+          : { observed: data, reconstructed: [] };
         const single = line.values.filter((value) => value != null).length === 1;
         const primary = {
           type: "line",
           name: `${layer.label} · ${line.name}`,
           xAxisIndex: axis,
           yAxisIndex: axis,
+          // Keep a complete semantic series for keyboard, touch and hover.
+          // Source-specific strokes below are visual only.
           data,
           z: 3,
           connectNulls: false,
@@ -232,7 +240,7 @@ export function timelineOption(
           step: line.step,
           lineStyle: {
             color: colour,
-            width: line.dashed ? 1.5 : 2.5,
+            width: hasEstimates ? 0 : line.dashed ? 1.5 : 2.5,
             type: line.dashed ? "dashed" : "solid",
           },
           itemStyle: { color: colour },
@@ -263,7 +271,28 @@ export function timelineOption(
           areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
           emphasis: { disabled: true },
         } satisfies SeriesOption] : [];
-        return [primary, ...area, ...(gaps.length ? [{
+        const sourceStroke = {
+          ...primary,
+          silent: true,
+          tooltip: { show: false },
+          symbol: "none",
+          showSymbol: false,
+          markLine: undefined,
+          emphasis: { disabled: true },
+        } satisfies SeriesOption;
+        const observed = hasEstimates ? [{
+          ...sourceStroke,
+          id: `history-observed:${axis}:${index}`,
+          data: strokes.observed,
+          lineStyle: { color: colour, width: line.dashed ? 1.5 : 2.5, type: line.dashed ? "dashed" as const : "solid" as const },
+        } satisfies SeriesOption] : [];
+        const reconstructed = strokes.reconstructed.some((point) => point.value[1] != null) ? [{
+          ...sourceStroke,
+          id: `history-estimate:${axis}:${index}`,
+          data: strokes.reconstructed,
+          lineStyle: { color: colour, width: line.dashed ? 1.5 : 2.5, type: "dashed" as const, opacity: 0.85 },
+        } satisfies SeriesOption] : [];
+        return [primary, ...observed, ...reconstructed, ...area, ...(gaps.length ? [{
           id: `history-gap:${axis}:${index}`,
           type: "line" as const,
           xAxisIndex: axis,
@@ -276,7 +305,7 @@ export function timelineOption(
           showSymbol: false,
           connectNulls: false,
           step: line.step,
-          lineStyle: { color: colour, width: 2, type: "dashed" as const, opacity: 0.75 },
+          lineStyle: { color: colour, width: 2, type: "dotted" as const, opacity: 0.65 },
           emphasis: { disabled: true },
         } satisfies SeriesOption] : [])];
       }),

@@ -76,9 +76,11 @@ and are not smoothed to fit the model.
 Display buckets are 10 minutes (1D), 30 minutes (5D), one hour (1M), two hours
 (3M), and four hours (6M). YTD follows its elapsed span and becomes daily beyond
 six months; 1Y and All use daily values. Calculations use all stored observations
-before display sampling. Earlier daily-only history stays daily. A dashed
-connector indicates a display bucket with no usable observation, not invented
-intermediate records. See the [range table](portfolio.md#read-money-and-pl).
+before display sampling. Earlier daily-only history stays daily. Dashed sections
+show persisted reconstruction estimates, including collection outages; money P&L
+and drawdown then explicitly include estimates. Dotted connectors indicate
+display buckets with no usable value, not invented intermediate records.
+Sources appear on hover and in exact records. See the [range table](portfolio.md#read-money-and-pl).
 Full overnight coverage is not guaranteed by pre/post-market bars.
 
 Reconstruction selects the newest completed price across the available minute

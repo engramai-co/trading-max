@@ -332,6 +332,7 @@ export function PerformanceContent({
               />
             }
           >
+            {view === "money" && <HistoryCoverage history={history} />}
             <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
               <Metric
                 label={t("期末价值", "Ending value")}
@@ -396,7 +397,6 @@ export function PerformanceContent({
                 />
               </Group>
             )}
-            {view === "money" && <HistoryCoverage history={history} />}
               {/* Series names sit above the chart they explain. */}
               <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />
               <TimelineChart

@@ -27,6 +27,26 @@ const options = () =>
   );
 
 describe("shared performance timeline", () => {
+  it("plots outage estimates with dashed fluctuations and exposes their source in hover cards", () => {
+    const dates = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(2026, 9, 14, 12, i * 10)).toISOString());
+    const values = [100, 102, 95, 108, 103, 101];
+    const calendar = { categories: dates, rowIndexes: [0, 1, 2, 3, null, 5] };
+    const provenance = dates.map((_, i) => ({ estimated: i > 0 && i < 4,
+      note: i > 0 && i < 4 ? "Reconstructed estimate · hourly market prices" : "Broker observation" }));
+    const option = timelineOption(dates, [{ label: "Value", lines: [{ name: "NAV", values, area: true }] }], colours,
+      String, calendar, [], String, undefined, undefined, provenance);
+    const series = option.series as Array<{ id?: string; data: unknown[]; lineStyle: { type?: string } }>;
+    const estimate = series.find((s) => s.id === "history-estimate:0:0")!;
+    expect(estimate.lineStyle.type).toBe("dashed");
+    expect(estimate.data.slice(0, 4)).toEqual([0, 1, 2, 3].map((i) => ({ value: [i, values[i]], symbolSize: 0 })));
+    expect(series[0].data).toEqual([0, 1, 2, 3, 4, 5].map((i) => ({ value: [i, i === 4 ? null : values[i]], symbolSize: 0 })));
+    expect(estimate).toMatchObject({ silent: true, tooltip: { show: false } });
+    expect(series.find((s) => s.id === "history-gap:0:0")?.lineStyle.type).toBe("dotted");
+    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
+    expect(tooltip.formatter([{ seriesId: estimate.id, value: [2, 95] }, { value: [2, 95] }])).toContain("Reconstructed estimate");
+    expect(tooltip.formatter([{ value: [0, 100] }])).toContain("Broker observation");
+    expect(tooltip.formatter([{ seriesId: "history-gap:0:0", value: [5, 101] }])).toBe("");
+  });
   it("changes only short-view labels, keeping every series and panel aligned", () => {
     const categories = Array.from({ length: 62 }, (_, i) =>
       new Date(Date.UTC(2026, 8, 21, 6, i * 10)).toISOString());

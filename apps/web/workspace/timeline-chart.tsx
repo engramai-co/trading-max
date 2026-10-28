@@ -88,10 +88,15 @@ export function TimelineChart({
               : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
             tooltip,
             display,
+            observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
           )
         }
       />
       {context && <p className="mx-timeline-context">{context}</p>}
+      {observations && <p className="mx-timeline-context">{t(
+        "账户曲线：实线为记录值，虚线为重建估算，点线连接仍缺失的时段。悬停查看来源。",
+        "Account curves: solid for recorded values, dashed for reconstructed estimates, dotted across remaining gaps. Hover for the source.",
+      )}</p>}
       {recordSource ? <HistoryRecords key={JSON.stringify(recordSource)} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable

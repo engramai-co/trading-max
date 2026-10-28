@@ -108,7 +108,7 @@ describe("observable gaps and one accounting cutoff", () => {
     const series = option.series as Array<{ id?: string; silent?: boolean; symbol?: string; showSymbol?: boolean; areaStyle?: unknown; tooltip?: unknown; lineStyle?: { type?: string } }>;
     expect(series[0]).toMatchObject({ symbol: "none", showSymbol: false });
     const gap = series.find((line) => line.silent);
-    expect(gap).toMatchObject({ symbol: "none", tooltip: { show: false }, lineStyle: { type: "dashed" } });
+    expect(gap).toMatchObject({ symbol: "none", tooltip: { show: false }, lineStyle: { type: "dotted" } });
     expect(gap?.areaStyle).toBeUndefined();
     const tooltip = option.tooltip as { formatter: (input: unknown) => string };
     expect(tooltip.formatter([{ seriesId: gap?.id, value: [4, 104] }])).toBe("");

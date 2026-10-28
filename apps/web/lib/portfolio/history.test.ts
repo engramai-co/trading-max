@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
 import { historyDisplayInterval, selectPortfolioHistory } from "@/lib/portfolio/history";
-import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
+import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
 import { portfolioMoney } from "@/lib/portfolio/money";
 
 function point(date: string, intraday = false, value: number | null = 100): NavPoint {
@@ -86,13 +86,16 @@ describe("unified portfolio history", () => {
   ] as const)("adapts YTD to its elapsed span on %s", (end, minutes) => {
     expect(historyDisplayInterval("YTD", end)).toBe(minutes);
   });
-  it("does not refill missed broker dates from the daily or reconstructed series in longer ranges", () => {
+  it("retains persisted outage estimates without inventing intraday points from daily rows", () => {
     const history = selectPortfolioHistory({ ...input, range: "6M", intraday: [
       { ...point("2026-08-10T12:00Z", true, 101), valuationSource: "broker" },
       { ...point("2026-09-01T12:00Z", true, 999), valuationSource: "reconstructed" },
       ...intraday,
     ] });
-    expect(history.points.some((p) => p.date.startsWith("2026-09-01"))).toBe(false);
+    expect(history.points.filter((p) => p.date.startsWith("2026-09-01"))).toEqual([
+      expect.objectContaining({ date: "2026-09-01T12:00Z", total: 999, valuationSource: "reconstructed" }),
+    ]);
+    expect(history.reconstructedCount).toBe(1);
     expect(history.points.at(-1)).toEqual(intraday.at(-1));
   });
   it.each(["3M", "6M", "YTD", "1Y"] as const)("keeps %s at the same verified cash-flow cutoff", (range) => {
@@ -129,22 +132,23 @@ describe("unified portfolio history", () => {
     expect(result.points).toHaveLength(1);
     expect(result.points[0].total).toBe(0);
   });
-  it.each(["1D", "1W", "1M", "3M"] as const)("uses reconstruction only before broker collection begins in %s", (range) => {
+  it.each(["1D", "1W", "1M", "3M"] as const)("preserves reconstruction before and after broker collection in %s", (range) => {
     const records = Array.from({ length: 144 }, (_, index) => ({
       ...point(new Date(Date.parse("2026-09-03T23:00Z") + index * 600_000).toISOString(), true, 100 + index),
       valuationSource: index === 91 || index >= 94 ? "broker" as const : "reconstructed" as const,
     }));
     const result = selectPortfolioHistory({ ...input, range, intraday: records, asOf: records.at(-1)!.date });
-    expect(result.points).toEqual(records.filter((_, i) => i !== 92 && i !== 93));
+    expect(result.points).toEqual(records);
     expect(result.points[90].valuationSource).toBe("reconstructed");
-    expect(result.points.slice(91).every((p) => p.valuationSource === "broker")).toBe(true);
+    expect(result.reconstructedCount).toBe(93);
     const series = historySeries(result.points.map((p) => p.date), result.points.map((p) => p.total), true, result.timeline);
     expect(series.some((p) => p.value[1] === records[90].total)).toBe(true);
     expect(series.some((p) => p.value[1] === records[91].total)).toBe(true);
-    expect(series.some((p) => p.value[1] === records[92].total || p.value[1] === records[93].total)).toBe(false);
-    expect(result.coverage.status).toBe("partial");
+    expect(series.some((p) => p.value[1] === records[92].total)).toBe(true);
+    expect(series.some((p) => p.value[1] === records[93].total)).toBe(true);
+    expect(result.coverage.status).toBe(range === "1D" ? "complete" : "partial");
   });
-  it("does not turn intermittent model residuals into profit or drawdown", () => {
+  it("discloses model values in estimated money statistics without altering broker observations or TWR", () => {
     const records = [100, 100, 130, 101, 131, 99, 102].map((value, i) => ({
       ...point(new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString(), true, value),
       valuationSource: i === 2 || i === 4 ? "reconstructed" as const : "broker" as const,
@@ -152,8 +156,10 @@ describe("unified portfolio history", () => {
     }));
     const untouched = structuredClone(records);
     const result = selectPortfolioHistory({ ...input, range: "1D", intraday: records, asOf: records.at(-1)!.date });
-    expect(result.points.map((p) => p.total)).toEqual([100, 100, 101, 99, 102]);
-    expect(portfolioMoney(result.points, "total")).toMatchObject({ opening: 100, ending: 102, pnl: 2, maxDrawdown: -2 });
+    expect(result.points).toEqual(records);
+    expect(result.reconstructedCount).toBe(2);
+    expect(portfolioMoney(result.points, "total")).toMatchObject({ opening: 100, ending: 102, pnl: 2, maxDrawdown: -32 });
+    expect(result.points.every((p) => p.totalTwr === null)).toBe(true);
     expect(records).toEqual(untouched);
   });
   it("preserves real broker spikes, paired model evidence and cumulative cash flows across a missed sample", () => {
@@ -164,14 +170,24 @@ describe("unified portfolio history", () => {
       investModelValueGbp: i === 2 ? 105 : undefined,
     }));
     const result = selectPortfolioHistory({ ...input, range: "1D", intraday: records, asOf: records.at(-1)!.date });
-    expect(result.points).toEqual([records[0], records[2], records[3]]);
+    expect(result.points).toEqual(records);
     expect(portfolioMoney(result.points, "total")).toMatchObject({ contributions: 10, pnl: 2, maxDrawdown: -38 });
   });
-  it("keeps all-model history when collection has not started, but never resumes it after collection", () => {
+  it("shows an estimated-only window even if earlier broker observations exist outside it", () => {
     const records = intraday.map((p) => ({ ...p, valuationSource: "reconstructed" as const }));
     expect(selectPortfolioHistory({ ...input, range: "1D", intraday: records }).points).toEqual(records);
     const broker = { ...point("2026-09-01T12:00Z", true), valuationSource: "broker" as const };
-    expect(selectPortfolioHistory({ ...input, range: "1D", intraday: [broker, ...records] }).points).toEqual([]);
+    const result = selectPortfolioHistory({ ...input, range: "1D", intraday: [broker, ...records] });
+    expect(result.points).toEqual(records);
+    expect(result.reconstructedCount).toBe(2);
+  });
+  it.each([true, false])("prefers a broker value at the same instant regardless of input order (%s)", (reverse) => {
+    const broker = { ...intraday[0], valuationSource: "broker" as const };
+    const model = { ...broker, date: "2026-09-04T14:30:00+01:00", total: 999, valuationSource: "reconstructed" as const };
+    const records = reverse ? [model, broker] : [broker, model];
+    const result = selectPortfolioHistory({ ...input, range: "1D", intraday: records });
+    expect(result.points).toEqual([broker]);
+    expect(result.reconstructedCount).toBe(0);
   });
   it("reports a missing ten-minute slot and stale trailing coverage", () => {
     const records = Array.from({ length: 144 }, (_, index) => point(new Date(Date.parse("2026-09-03T23:00Z") + index * 600_000).toISOString(), true));
@@ -202,6 +218,20 @@ describe("unified portfolio history", () => {
 });
 
 describe("visible observation gaps", () => {
+  it("draws estimated edges separately, preserving zero values, real spans and unresolved gaps", () => {
+    const dates = Array.from({ length: 10 }, (_, i) => new Date(Date.UTC(2026, 8, 4, 9, i * 10)).toISOString());
+    const calendar = { categories: dates, rowIndexes: dates.map((_, i) => i) };
+    const series = historySeries(dates, [100, 101, 0, 103, 104, 105, 106, null, 108, 109], true, calendar);
+    const strokes = historySourceSeries(series, (i) => i === 2 || i === 5 || i === 9);
+    const edges = (data: typeof series) => data.slice(1).flatMap((p, i) =>
+      data[i].value[1] != null && p.value[1] != null ? [[data[i].value[0], p.value[0]]] : []);
+    expect(edges(strokes.observed)).toEqual([[0, 1], [3, 4]]);
+    expect(edges(strokes.reconstructed)).toEqual([[1, 2], [2, 3], [4, 5], [5, 6], [8, 9]]);
+    expect(strokes.reconstructed.some((p) => p.value[1] === 0)).toBe(true);
+    expect(historyGapSeries(series)).toEqual([[6, 106], [8, 108], [8, null]]);
+    expect([...strokes.observed, ...strokes.reconstructed].filter((p) => p.value[1] != null)
+      .every((p) => series.some((original) => JSON.stringify(p) === JSON.stringify(original)))).toBe(true);
+  });
   it.each([["1D", 10], ["1W", 30], ["1M", 60], ["3M", 120], ["6M", 240]] as const)("uses fixed %s display buckets without changing ten-minute records", (range, minutes) => {
     const records = Array.from({ length: 144 }, (_, index) => point(new Date(Date.parse("2026-09-03T23:00Z") + index * 600_000).toISOString(), true, index === 31 ? 500 : index === 32 ? 5 : 100));
     const history = selectPortfolioHistory({ ...input, daily: [], range, asOf: records.at(-1)!.date, intraday: records });

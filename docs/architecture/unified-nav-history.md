@@ -14,15 +14,15 @@ collection bucket; the modeled comparison value is retained for reconciliation.
 Neither a missing quote nor a broker/model difference is classified as a return.
 The existing daily CSV contract remains available to performance consumers.
 
-The main valuation and cash-flow-adjusted P&L projection uses reconstructed
-history only before the first usable broker observation. Once broker collection
-starts, it uses broker observations exclusively, even when a collection slot is
-missing. Determine that boundary over the full retained history before applying
-the selected date range. This prevents differences between the provider's marks
-and the broker's overnight marks from appearing as alternating profits and
-drawdowns. All input observations and paired model comparisons remain unchanged
-in the immutable artifact; this is source selection, not an outlier filter or a
-price correction. A real spike in broker observations remains a real spike.
+The money projection retains persisted reconstructions both before collection
+begins and during later collection outages. Broker observations take precedence
+at the same instant. Source labels and paired model comparisons remain intact;
+this does not overwrite broker marks, smooth residuals or generate new values
+in the frontend. Provider and broker marks can differ, particularly overnight.
+Charts therefore use separate estimated strokes, disclose each point's source
+on hover, and explicitly label period P&L and drawdown as including estimates
+when reconstruction contributes to the selected interval. These money estimates
+do not change the independent daily TWR and risk contracts.
 
 ## Reconstruction
 
@@ -60,12 +60,13 @@ daily views expose missing displayed days. YTD follows its selected cadence.
 Do not select extra local extrema or change the interval to meet a point budget.
 Coverage and all calculations, including drawdown extrema, use the full selected
 history before display sampling. Display density never changes the stored
-observations or their cadence. The transition from early reconstructed history
-to broker collection and changes in contributions retain adjacent readings as
-display anchors. Every bounded run of empty display buckets is connected by a separate dashed line using
+observations or their cadence. Every transition between reconstructed history
+and broker collection, and changes in contributions, retain adjacent readings as
+display anchors. Estimated segments use dashed strokes, including their edges
+with broker observations. Every bounded run of empty display buckets is connected by a separate dotted line using
 only its two real endpoints. A separate, silent area layer connects the same
 observations with a continuous faint fill, avoiding empty vertical strips under
-each missed slot. Only the outline switches to dashes; helper layers supply no
+each missed slot. Helper layers supply no
 tooltip readings, extra records or financial calculations. The observed solid
 line keeps nulls for empty display buckets; original fine-grained gaps remain in
 the retained history and coverage evidence. Leading and trailing gaps are not extrapolated. Only a history with
@@ -117,10 +118,12 @@ and semantics at every range; missing spans are separate from observed steps.
 
 The overview chart shows period net P&L from zero, using the same cash-flow basis
 and cutoff as the performance page. Valuation and contribution curves remain in
-the detailed performance view. Missing observations are indicated by the dashed
-outline, without a coverage badge, track or gap-count row. Individual sources, valuation cadence,
-market-price resolution and extended-hours flags remain in the expandable records,
-not the hover card. The title help defines valuations and the range calendar; the
+the detailed performance view. Remaining missing observations use dotted
+connectors. Reconstructed estimates use dashed outlines and an explicit notice
+that money statistics include estimates. Individual sources, valuation cadence,
+market-price resolution and extended-hours flags appear in the hover card and
+expandable records. A complete semantic series retains keyboard and touch
+access to both broker and reconstructed values. The title help defines valuations and the range calendar; the
 sampling and reconstruction implementation belongs in this document.
 
 The live collector stays lightweight. Full account refreshes backfill market
