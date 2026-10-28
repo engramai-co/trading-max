@@ -13,6 +13,7 @@ import {
   Checkbox,
   Drawer,
   Group,
+  Loader,
   Menu,
   Modal,
   Select,
@@ -585,15 +586,16 @@ export function ResearchWorkspace() {
                         aria-label={t("更新研究", "Update research")}
                         variant="default"
                         size="xs"
-                        leftSection={<ArrowClockwise size={14} />}
-                        loading={operation.isPending || fetching}
+                        leftSection={operation.isPending || fetching ? <Loader size={12} /> : <ArrowClockwise size={14} />}
+                        disabled={operation.isPending || fetching}
+                        aria-busy={operation.isPending || fetching}
                         onClick={() => operation.mutate({ action: "refresh" })}
                       >
                         <span className="mx-action-long">
-                          {t("更新研究", "Update research")}
+                          {operation.isPending || fetching ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
                         </span>
                         <span className="mx-action-short">
-                          {t("更新", "Update")}
+                          {operation.isPending || fetching ? t("更新中", "Updating") : t("更新", "Update")}
                         </span>
                       </Button>
                       <Menu shadow="md">

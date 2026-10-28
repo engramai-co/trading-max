@@ -113,10 +113,10 @@ export function ReviewWorkspace() {
                                 ],
                               ]
                             : [
-                                ["TWR", percent(risk?.twr, true)],
+                                ["TWR", <span key="twr" className={risk?.twr == null ? undefined : risk.twr < 0 ? "mx-down" : "mx-up"}>{percent(risk?.twr, true)}</span>],
                                 [
                                   t("当前回撤", "Current drawdown"),
-                                  percent(risk?.currentDrawdown),
+                                  <span key="drawdown" className={risk?.currentDrawdown ? "mx-down" : undefined}>{percent(risk?.currentDrawdown)}</span>,
                                 ],
                               ]
                         }

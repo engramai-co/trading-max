@@ -43,6 +43,7 @@ export const categoricalChartColours = [
 ] as const;
 
 export const allocationChartColours = {
-  light: ["#1768e5", "#b06000", "#347985", "#b4473a", "#7a6599", "#2f7a49", "#a24477", "#637a29", "#5469a9", "#8b6747", "#357c73", "#8b579c", "#6b7280"],
-  dark: ["#5b9dff", "#f6ad55", "#69bfcd", "#ff958a", "#b9a0e0", "#78cf91", "#e78db8", "#bed274", "#92abe7", "#d9b68c", "#86d4bf", "#dba0e1", "#a3a8b2"],
+  // Gain green and loss red are reserved for performance; holdings never borrow them.
+  light: ["#1768e5", "#b06000", "#347985", "#a24477", "#7a6599", "#637a29", "#5469a9", "#8b6747", "#357c73", "#8b579c", "#3f6e9e", "#9c6b1f", "#6b7280"],
+  dark: ["#5b9dff", "#f6ad55", "#69bfcd", "#e78db8", "#b9a0e0", "#bed274", "#92abe7", "#d9b68c", "#86d4bf", "#dba0e1", "#8fb5dd", "#e0b46a", "#a3a8b2"],
 } as const;
