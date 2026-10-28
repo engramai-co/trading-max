@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.6] - 2026-10-28
+
+### Changed
+
+- Replace the Trading Max symbol with a solid T and M monogram in the
+  workspace's own near-black and cobalt. The stem now stands flat on the
+  baseline and the letters stay legible at 16 px and in one colour. Update the
+  browser, touch and desktop App icons, the sidebar, the desktop connection
+  screen, lockups and social preview. The sidebar and browser icon follow the
+  dark appearance.
+
 ## [1.15.5] - 2026-10-28
 
 ### Fixed

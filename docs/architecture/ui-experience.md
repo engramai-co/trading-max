@@ -34,7 +34,7 @@ settings, stored artifacts and the analysis API remain available.
 ## Visual and interaction system
 
 The workspace restores the original blue brand palette, cool neutral surfaces
-and pale blue navigation, alongside the approved T + M mark. Blue identifies
+and pale blue navigation, alongside the solid T + M mark. Blue identifies
 actions and selected views; green, red and amber retain their financial and
 status meanings. Dark appearance uses navy surfaces with brighter chart and
 text colors. Tabular numbers and explicit labels preserve the same hierarchy

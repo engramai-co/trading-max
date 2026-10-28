@@ -32,12 +32,12 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "./link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
+import { BrandMark } from "@/ui/brand-mark";
 import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
 import { useCopy } from "./foundation";
@@ -252,14 +252,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       aria-label={t("Trading Max · 组合总览", "Trading Max · Overview")}
       onClick={() => setMobileOpen(false)}
     >
-      <Image
-        src="/brand/trading-max-app-icon.svg"
-        alt=""
-        width={36}
-        height={36}
-        className="mx-brand-symbol"
-        priority
-      />
+      <BrandMark size={32} className="mx-brand-symbol" />
       <span>
         Trading<span className="mx-brand-max">Max</span>
       </span>
