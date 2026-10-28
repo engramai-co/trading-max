@@ -57,6 +57,28 @@ describe("indexed history display preserves full-source accounting", () => {
     expect(pages.every((p) => p.runId === input.runId && p.points.length <= 20)).toBe(true);
     expect(historyPage(result, 1000000).points).toEqual([]);
   });
+  it("renders a two-week outage as persisted estimated fluctuations after payload reduction", () => {
+    const records = Array.from({ length: 31 * 144 }, (_, i) => {
+      const date = new Date(Date.parse("2026-09-28T00:00Z") + i * 600_000).toISOString();
+      return { ...row(date, i), valuationSource: date >= "2026-10-15" && date < "2026-10-28"
+        ? "reconstructed" as const : "broker" as const };
+    });
+    const untouched = structuredClone(records);
+    const result = prepareHistory({ runId: "recovery", dataRevision: "recovery", nav: [], intradayNav: records,
+      brokerAsOf: records.at(-1)!.date }, { range: "1M", scope: "total" });
+    const { chart } = result;
+    const timeline = decodeTimeline(chart.history.timeline);
+    const data = historySeries(chart.history.points.map((p) => p.date), chart.history.points.map((p) => p.total), true, timeline);
+    const outage = data.filter((p) => p.value[1] != null && chart.history.points[timeline.rowIndexes[p.value[0]!]!].valuationSource === "reconstructed");
+    expect(chart.history.reconstructedCount).toBe(13 * 144);
+    expect(outage.length).toBeGreaterThan(150);
+    expect(new Set(outage.map((p) => p.value[1])).size).toBeGreaterThan(150);
+    expect(historyGapSeries(data)).toEqual([]);
+    expect(chart.money).toMatchObject({ pnl: result.money.pnl, maxDrawdown: result.money.maxDrawdown });
+    const originals = new Map(records.map((p) => [p.date, p]));
+    expect(chart.history.points.every((p) => JSON.stringify(p) === JSON.stringify(originals.get(p.date)))).toBe(true);
+    expect(records).toEqual(untouched);
+  });
   it("keeps an intraday loss in full-source maximum drawdown even in a daily chart", () => {
     const small = { ...input, nav: [], intradayNav: [100, 70, 110].map((v, i) => ({ ...row(`2026-09-18T1${i}:00Z`, i), total: v, totalNetContributionsGbp: 100 })) };
     const { chart } = prepareHistory(small, { range: "1Y", scope: "total" });

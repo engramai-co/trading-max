@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.5] - 2026-10-28
+
+### Fixed
+
+- Show persisted account-history reconstructions during collection outages in
+  Overview and Performance, including after broker observations have begun.
+  Preserve broker observations and existing display sampling.
+- Distinguish reconstructed estimates from recorded values and unresolved gaps
+  in chart strokes and hover details. Disclose when money P&L and drawdown
+  include estimates; time-weighted return calculations are unchanged.
+
+### Security
+
+- Update Next.js and its ESLint configuration to 16.4.3, refresh the Certifi
+  certificate bundle, and update affected Vite, Vitest and Zod dependencies
+  to resolve the release dependency audit findings.
+
 ## [1.15.4] - 2026-10-11
 
 ### Changed

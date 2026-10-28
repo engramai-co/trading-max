@@ -71,9 +71,11 @@ cumulative net contributions, and P&L drawdown.
 5D means five London weekdays; monthly ranges retain calendar-month boundaries.
 Weekends are folded in the display. Display sampling does not reduce the
 precision of P&L and drawdown calculations. Earlier daily-only data stays daily.
-A dashed connector spans a display interval without any usable observations;
-it does not invent intermediate values. Exact records retain their source and
-original gaps.
+Dashed sections show estimated values reconstructed from transactions, holdings
+and historical prices, including during collection outages. A notice identifies
+periods whose money P&L and drawdown include these estimates. Dotted connectors
+span intervals still without usable values; they do not invent intermediate
+readings. Hover or expand exact records to inspect each value's source.
 
 ## Compare return and risk
 
