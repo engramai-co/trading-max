@@ -81,6 +81,10 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   Keep automatic retries bounded per request and rate-capped; cancel/source
   changes must invalidate late results. Do not relax TLS or remote capabilities.
 
+## Interface design
+
+Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+
 ## Development changes
 
 - Keep runtime state, credentials, logs, broker exports, snapshots, generated
