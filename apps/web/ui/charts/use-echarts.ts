@@ -3,6 +3,7 @@
 import { useComputedColorScheme } from "@mantine/core";
 import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
 import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { FONT_STACK } from "@/ui/theme";
 
 type EChartsRuntime = typeof import("@/ui/charts/echarts-runtime");
 export type EChartsRuntimeProfile = "core" | "research";
@@ -43,7 +44,15 @@ export function useECharts(
   }, [onZoom, onClick]);
   const colourScheme = useComputedColorScheme("light");
   const themedOption = useMemo(
-    () => (option ? { ...option, darkMode: colourScheme === "dark" } : null),
+    () =>
+      option
+        ? {
+            ...option,
+            // "inherit" is not a canvas font; without a family the labels fall back to 10px.
+            textStyle: { fontSize: 12, ...(option.textStyle as object | undefined), fontFamily: FONT_STACK },
+            darkMode: colourScheme === "dark",
+          }
+        : null,
     [colourScheme, option],
   );
   const canvasRef = useRef<HTMLDivElement>(null);

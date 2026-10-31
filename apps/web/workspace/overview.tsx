@@ -27,14 +27,13 @@ import {
   Pending,
   QueryError,
   Segments,
-  Tag,
   TextLink,
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
-import { HistoryCoverage, HistoryHelp } from "./history-coverage";
+import { EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
@@ -156,7 +155,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           <div className="mx-overview-totals">
             <Metric
               large
-              label={t("总资产 · GBP", "PORTFOLIO VALUE · GBP")}
+              label={t("总资产", "Portfolio value")}
               value={currency(value, "GBP", 2)}
             />
             <div className="mx-overview-statistics">
@@ -207,17 +206,9 @@ function OverviewContent({ data }: { data: DashboardLens }) {
               key={account.code}
             >
               <div className="mx-account-title">
-                <span className="mx-account-letter">{account.code}</span>
-                <div>
-                  <strong style={{ fontSize: 13 }}>
-                    {accountName(profile, account.code)}
-                  </strong>
-                  <div className="mx-metric-note">
-                    {account.code === "A"
-                      ? t("普通投资账户", "General investment")
-                      : t("免税投资账户", "Stocks & shares ISA")}
-                  </div>
-                </div>
+                <strong style={{ fontSize: 13 }}>
+                  {accountName(profile, account.code)}
+                </strong>
               </div>
               <div className="mx-row-value">
                 {currency(account.totalValueGbp, "GBP", 2)}
@@ -270,14 +261,14 @@ function OverviewContent({ data }: { data: DashboardLens }) {
                 >
                   <Instrument ticker={signal.ticker} name={name} small />
                   <div className="mx-row-value">
-                    {signal.score}
-                    <span className="mx-metric-note"> / 100</span>
-                    <small>
-                      {valuation?.ev5Upside != null
-                        ? t("模型空间 ", "Model upside ") +
-                          percent(valuation.ev5Upside, true)
-                        : t("技术评分", "Technical score")}
-                    </small>
+                    {t("技术 ", "Technical ")}{signal.score}
+                    <span className="mx-metric-note">/100</span>
+                    {valuation?.ev5Upside != null && (
+                      <small>
+                        {t("模型空间 ", "Model upside ") +
+                          percent(valuation.ev5Upside, true)}
+                      </small>
+                    )}
                   </div>
                   <ArrowUpRight size={16} />
                 </Link>
@@ -314,17 +305,16 @@ function Attention({ items }: { items: AttentionItem[] }) {
     return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} hours`;
   };
   const fact = (f: AttentionFact) => {
-    if (f.kind === "score") return zh ? `技术分 ${f.value}` : `Technical ${f.value}`;
+    if (f.kind === "score") return zh ? `技术 ${f.value}/100` : `Technical ${f.value}/100`;
     if (f.kind === "rsi") {
       const stretched = f.value >= 75 ? (zh ? "超买" : "overbought") : zh ? "超卖" : "oversold";
       return `RSI ${f.value} ${stretched}`;
     }
     if (f.kind === "upside") return zh ? `模型空间 ${percent(f.value, true, 0)}` : `Model upside ${percent(f.value, true, 0)}`;
-    return zh ? `浮亏 ${percent(f.value, true, 0)}` : `${percent(f.value, true, 0)} vs cost`;
+    return zh ? `浮亏 ${percent(Math.abs(f.value), false, 0)}` : `${percent(f.value, true, 0)} vs cost`;
   };
   return (
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
-      <span className="mx-attention-label">{t("需要关注", "Needs attention")}</span>
       {items.map((item) =>
         item.kind === "refresh" ? (
           <Link key="refresh" href="/health" data-tone="warning">
@@ -367,17 +357,20 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
       title={t("区间净盈亏", "Period P&L")}
       help={<HistoryHelp />}
       action={
-        <Segments
-          label={t("图表区间", "Chart range")}
-          value={range}
-          onChange={(value) => update({ range: value })}
-          options={PORTFOLIO_RANGES.map(
-            (v) => ({
-              value: v,
-              label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
-            }),
-          )}
-        />
+        <div className="mx-period-control">
+          <PeriodSpan points={points} />
+          <Segments
+            label={t("图表区间", "Chart range")}
+            value={range}
+            onChange={(value) => update({ range: value })}
+            options={PORTFOLIO_RANGES.map(
+              (v) => ({
+                value: v,
+                label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
+              }),
+            )}
+          />
+        </div>
       }
     >
       {query.isPending ? (
@@ -386,6 +379,22 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
         <QueryError retry={query.refetch} />
       ) : (
         <>
+          <div className="mx-period-figure">
+            <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
+              {currency(money.pnl, "GBP", 2)}
+            </strong>
+            {money.pnl != null && (
+              <span title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}>
+                {t("相对期初 ", "From opening ")}
+                {percent(money.pnlPercents.at(-1), true, 2)}
+              </span>
+            )}
+            <EstimateTag points={points} />
+            <TextLink href={portfolioPerformanceHref(scope, range)}>
+              <ChartLine size={14} />
+              {t("收益分析", "View performance")}
+            </TextLink>
+          </div>
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}
@@ -404,16 +413,6 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
               secondary: [],
             }}
           />
-          <div className="mx-chart-footer">
-            <span title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}>
-              {t("区间净盈亏", "Period P&L")}{" "}
-              <strong>{percent(money.pnl == null ? null : money.pnlPercents.at(-1), true, 2)}</strong>
-            </span>
-            <TextLink href={portfolioPerformanceHref(scope, range)}>
-              <ChartLine size={14} />
-              {t("收益分析", "View performance")}
-            </TextLink>
-          </div>
         </>
       )}
     </Panel>
@@ -441,12 +440,9 @@ function Allocation({ holdings }: { holdings: Holding[] }) {
     <Panel
       className="mx-overview-allocation"
       title={t("持仓分布", "Holdings allocation")}
-      action={
-        <Tag>{rows.length}{t(" 个标的", " securities")}</Tag>
-      }
-      description={t(
-        "按已投资市值 · 不含现金",
-        "Share of invested assets · cash excluded",
+      help={t(
+        "按已投资市值计算占比，不含现金。",
+        "Shares of invested value; cash is excluded.",
       )}
     >
       <div className="mx-stack-bar" aria-hidden="true">

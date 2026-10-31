@@ -13,6 +13,9 @@ export const brandColours = [
   "#113f8f",
 ] as const;
 export const darkCanvas = "#0f1012";
+// Canvas text cannot inherit CSS fonts, so charts receive the same stack explicitly.
+export const FONT_STACK =
+  '"Avenir Next", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif';
 export const tradingMaxTheme = createTheme({
   primaryColor: "brand",
   autoContrast: true,
@@ -23,8 +26,7 @@ export const tradingMaxTheme = createTheme({
   defaultRadius: "md",
   cursorType: "pointer",
   respectReducedMotion: true,
-  fontFamily:
-    '"Avenir Next", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif',
+  fontFamily: FONT_STACK,
   fontFamilyMonospace: '"SFMono-Regular", Consolas, monospace',
   fontSizes: {
     xs: "0.75rem",

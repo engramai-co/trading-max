@@ -31,6 +31,7 @@ import {
   useCopy,
 } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
+import { evidenceGroups, metricNames } from "./research-facts";
 import {
   FilingMultiples,
   ModelAlternatives,
@@ -895,15 +896,17 @@ function ModelEditor({
                   )}
                 </li>
               ))}
-              {result.basis.evidence?.map((e, i) => (
-                <li key={i}>
-                  <strong>{e.field}</strong>
-                  <span>{e.source}</span>
-                  {e.url && (
-                    <a href={e.url} rel="noreferrer" target="_blank">
-                      {t("原始披露", "Original filing")} ↗
+              {evidenceGroups(result.basis.evidence ?? []).map((g) => (
+                <li key={g.metric}>
+                  <strong>
+                    {metricNames[g.metric] ? t(...metricNames[g.metric]) : g.metric}
+                  </strong>
+                  {g.source && <span>{g.source}</span>}
+                  {g.links.map((l) => (
+                    <a key={l.url} href={l.url} rel="noreferrer" target="_blank">
+                      {l.date ?? t("原始披露", "Original filing")} ↗
                     </a>
-                  )}
+                  ))}
                 </li>
               ))}
             </ul>

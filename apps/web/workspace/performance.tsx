@@ -30,7 +30,7 @@ import {
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
-import { HistoryCoverage } from "./history-coverage";
+import { EstimateTag, HistoryCoverage, PeriodSpan } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
@@ -321,38 +321,52 @@ export function PerformanceContent({
               )}</p>
             )}
             action={
-              <Segments
-                value={actualRange}
-                onChange={(value) => update({ range: value })}
-                label={t("绩效区间", "Performance range")}
-                options={PORTFOLIO_RANGES.filter((v) => view === "money" || v !== "1D").map((v) => ({
-                  value: v as Range,
-                  label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
-                }))}
-              />
+              <div className="mx-period-control">
+                <PeriodSpan points={points} />
+                <Segments
+                  value={actualRange}
+                  onChange={(value) => update({ range: value })}
+                  label={t("绩效区间", "Performance range")}
+                  options={PORTFOLIO_RANGES.filter((v) => view === "money" || v !== "1D").map((v) => ({
+                    value: v as Range,
+                    label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
+                  }))}
+                />
+              </div>
             }
           >
             {view === "money" && <HistoryCoverage history={history} />}
-            <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
-              <Metric
-                label={t("期末价值", "Ending value")}
-                value={currency(navNumber(last, scope), "GBP", 2)}
-              />
-              <Metric
-                label={t("区间净入金", "Net contributions in period")}
-                value={currency(contributions, "GBP", 2)}
-              />
-              <Metric
-                label={t("区间净盈亏", "P&L in period")}
-                value={currency(pnl, "GBP", 2)}
-                tone={tone(pnl)}
-              />
-              <Metric
-                label={view === "returns" ? t("区间 TWR", "Time-weighted return") : t("最大盈亏回撤", "Maximum P&L drawdown")}
-                value={view === "returns" ? percent(twr, true, 2) : currency(money.maxDrawdown, "GBP", 2)}
-                tone={view === "returns" ? tone(twr) : "down"}
-              />
-            </div>
+            {view === "money" ? (
+              <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
+                <Metric
+                  label={t("期末价值", "Ending value")}
+                  value={currency(navNumber(last, scope), "GBP", 2)}
+                />
+                <Metric
+                  label={t("区间净入金", "Net contributions in period")}
+                  value={currency(contributions, "GBP", 2)}
+                />
+                <Metric
+                  label={<>{t("区间净盈亏", "P&L in period")}<EstimateTag points={points} /></>}
+                  value={currency(pnl, "GBP", 2)}
+                  tone={tone(pnl)}
+                />
+                <Metric
+                  label={t("最大盈亏回撤", "Maximum P&L drawdown")}
+                  value={currency(money.maxDrawdown, "GBP", 2)}
+                  tone="down"
+                />
+              </div>
+            ) : (
+              <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
+                <Metric
+                  large
+                  label={t("组合 TWR", "Portfolio TWR")}
+                  value={percent(twr, true, 2)}
+                  tone={tone(twr)}
+                />
+              </div>
+            )}
             {view === "money" && (
               <Group justify="flex-end" mb="sm">
                 <Segments
@@ -382,8 +396,8 @@ export function PerformanceContent({
                     {
                       value: "ALL",
                       label: t(
-                        "全部基准 · VOO / QQQ / VT",
-                        "All benchmarks · VOO / QQQ / VT",
+                        "VOO · QQQ · VT",
+                        "VOO · QQQ · VT",
                       ),
                     },
                     { value: "VOO", label: "S&P 500 · VOO" },
@@ -427,39 +441,32 @@ export function PerformanceContent({
                 }
               />
             {view === "returns" && (
-              <>
-                <div
-                  className="mx-metric-grid mx-metric-compact"
-                  style={{ marginTop: 24, marginBottom: 20 }}
-                >
-                  {(view === "returns"
-                    ? returnDrawdowns
-                    : [{ name: t("组合", "Portfolio"), values: moneyDrawdown }]
-                  ).map((line) => (
-                    <Metric
-                      key={line.name}
-                      label={
-                        line.name + " · " + t("最大回撤", "Maximum drawdown")
-                      }
-                      value={
-                        view === "returns"
-                          ? percent(minimumObserved(line.values), false, 2)
-                          : currency(minimumObserved(line.values), "GBP", 2)
-                      }
-                      tone="down"
-                    />
-                  ))}
-                  <Metric
-                    label={t("期末回撤", "Ending drawdown")}
-                    value={
-                      view === "returns"
-                        ? percent(returnDrawdowns[0]?.values.at(-1), false, 2)
-                        : currency(moneyDrawdown.at(-1), "GBP", 2)
-                    }
-                    tone="down"
-                  />
-                </div>
-              </>
+              <div className="mx-table-wrap mx-return-table" tabIndex={0} role="region" aria-label={t("收益与回撤对比", "Return and drawdown comparison")}>
+                <table className="mx-table">
+                  <thead>
+                    <tr>
+                      <th />
+                      <th className="mx-align-right">{t("区间收益", "Period return")}</th>
+                      <th className="mx-align-right">{t("最大回撤", "Maximum drawdown")}</th>
+                      <th className="mx-align-right">{t("期末回撤", "Ending drawdown")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {returnLines.map((line, index) => {
+                      const end = [...line.values].reverse().find((value) => value != null);
+                      const drawdown = returnDrawdowns[index]?.values ?? [];
+                      return (
+                        <tr key={line.name}>
+                          <th>{line.name}</th>
+                          <td className={"mx-align-right mx-" + tone(end)}>{percent(end, true, 2)}</td>
+                          <td className="mx-align-right mx-down">{percent(minimumObserved(drawdown), false, 2)}</td>
+                          <td className="mx-align-right">{percent([...drawdown].reverse().find((value) => value != null), false, 2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
             {view === "returns" &&
               (common.length < 2 ||
@@ -556,12 +563,8 @@ function RiskCard({
     <Panel
       title={accountName(profile, code)}
       help={t(
-        "Sharpe 同时考虑上下波动；Sortino 侧重下行风险。缺失指标表示数据不足，不等于零风险。",
-        "Sharpe accounts for all volatility; Sortino focuses on downside risk. Missing metrics indicate insufficient data, not zero risk.",
-      )}
-      description={t(
-        "指标基于完整可用历史",
-        "Metrics use the full available history",
+        "指标基于完整可用历史。Sharpe 同时考虑上下波动；Sortino 侧重下行风险。缺失指标表示数据不足，不等于零风险。",
+        "Metrics use the full available history. Sharpe accounts for all volatility; Sortino focuses on downside risk. Missing metrics indicate insufficient data, not zero risk.",
       )}
       action={
         <TextLink href={"/account-analysis?account=" + code}>
@@ -603,10 +606,9 @@ function RiskCard({
               ["Sortino", number(metrics.sortino)],
               ["Calmar", number(metrics.calmar)],
               [
-                t("信息比率", "Information ratio"),
+                t("信息比率", "Information ratio") + (metrics.benchmark ? " · " + metrics.benchmark : ""),
                 number(metrics.informationRatio),
               ],
-              [t("比较基准", "Benchmark"), metrics.benchmark],
             ]}
           />
         </>

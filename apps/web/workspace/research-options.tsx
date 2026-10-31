@@ -123,6 +123,9 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const nearest = nearMoneyStrikes(all, options.spot, 1)[0];
   const activeSummary = options.expiries.find((e) => e.expiry === active);
   const activeCols = columns.length ? columns : baseColumns;
+  const when = (v?: string | null) => (v ? formatDateTime(v, locale, timeZone) : "—");
+  const listedExpiries = options.availableExpiries?.length ?? 0;
+  const partialExpiries = listedExpiries > 0 && available.length < listedExpiries;
   const models = object(options.modelInputs),
     rate = object(models.rate);
   return (
@@ -131,13 +134,11 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
         title={t("期权链", "Option chain")}
         action={
           <Group gap="sm">
-            <Tag tone={historical || !current.length ? "warn" : "neutral"}>
-              {historical || !current.length
-                ? t("历史快照", "Historical snapshot")
-                : t("最新可用链", "Latest available chain")}
-            </Tag>
+            {(historical || !current.length) && (
+              <Tag tone="warn">{t("历史快照", "Historical snapshot")}</Tag>
+            )}
             <span className="mx-muted">
-              {formatDateTime(options.capturedAt, locale, timeZone)}
+              {when(options.capturedAt)}
             </span>
           </Group>
         }
@@ -175,11 +176,9 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
               w={320}
             />
           )}
-          <span className="mx-muted">
+          <span className={partialExpiries ? "mx-warning-text" : "mx-muted"}>
             {t("已采集", "Captured")} {available.length}
-            {options.availableExpiries?.length
-              ? ` / ${options.availableExpiries.length}`
-              : ""}{" "}
+            {listedExpiries ? ` / ${listedExpiries}` : ""}{" "}
             {t("个到期日", "expirations")}
           </span>
         </div>
@@ -290,9 +289,11 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     checked={allStrikes}
                     onChange={(e) => setAllStrikes(e.currentTarget.checked)}
                   />
-                  <span>
-                    {active} · {cc} · {strikes.length} {t("档", "strikes")}
-                  </span>
+                  {strikes.length < all.length && (
+                    <span className="mx-muted">
+                      {strikes.length} / {all.length} {t("档", "strikes")}
+                    </span>
+                  )}
                 </div>
                 <div
                   className="mx-table-wrap mx-option-chain"
@@ -563,16 +564,9 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   rows={[
                     [
                       t("到期日定价截止", "Expiry pricing cutoff"),
-                      activeSummary.expiryInstant,
+                      when(activeSummary.expiryInstant),
                     ],
-                    [t("采集时间", "Captured at"), options.capturedAt],
-                    [
-                      t("报价时间", "Quote timestamp"),
-                      t(
-                        "按合约查看；源未给出时留空",
-                        "Per contract; unavailable timestamps remain missing",
-                      ),
-                    ],
+                    [t("采集时间", "Captured at"), when(options.capturedAt)],
                     [
                       t("持仓量覆盖", "OI coverage"),
                       `${scoped.filter((c) => c.openInterest != null).length} / ${scoped.length}`,
@@ -596,13 +590,13 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
             rows={[
               ["Bid / Ask", `${number(detail.bid)} / ${number(detail.ask)}`],
               ["Last", number(detail.lastPrice)],
-              [t("最后成交", "Last trade"), detail.lastTradeAt || "—"],
-              [t("报价时间", "Quote time"), detail.quoteAsOf || "—"],
-              [t("OI 时间", "OI timestamp"), detail.openInterestAsOf || "—"],
+              [t("最后成交", "Last trade"), when(detail.lastTradeAt)],
+              [t("报价时间", "Quote time"), when(detail.quoteAsOf)],
+              [t("OI 时间", "OI timestamp"), when(detail.openInterestAsOf)],
               [t("乘数", "Multiplier"), number(detail.multiplier, 0)],
               [t("行权方式", "Exercise"), detail.exerciseStyle || "—"],
               [t("结算方式", "Settlement"), detail.settlement || "—"],
-              [t("到期截止", "Expiry cutoff"), detail.expiryInstant || "—"],
+              [t("到期截止", "Expiry cutoff"), when(detail.expiryInstant)],
               [
                 "Delta / Gamma",
                 `${number(detail.delta, 4)} / ${number(detail.gamma, 6)}`,

@@ -97,12 +97,13 @@ export function timelineOption(
       top: top(index),
       height: index === 0 ? 210 : 150,
     })),
-    graphic: layers.map((layer, index) => ({
+    // A single plot is named by its panel; stacked plots name themselves. Units live on the ticks.
+    graphic: (layers.length > 1 ? layers : []).map((layer, index) => ({
       type: "text",
       left: 0,
       top: top(index) - 28,
       style: {
-        text: `${layer.label} · ${layer.percentage ? "%" : "GBP"}`,
+        text: layer.label,
         fill: colours.text,
         fontSize: 12,
         fontWeight: 500,
@@ -160,8 +161,8 @@ export function timelineOption(
           color: colours.axis,
           formatter: (v: number) =>
             layer.percentage
-              ? percent(v, false, 2)
-              : v.toLocaleString("en-GB", {
+              ? percent(v, false, Number.isInteger(Math.round(v * 1000) / 10) ? 0 : 1)
+              : (v < 0 ? "−£" : "£") + Math.abs(v).toLocaleString("en-GB", {
                   notation: "compact",
                   maximumSignificantDigits: 5,
                 }),

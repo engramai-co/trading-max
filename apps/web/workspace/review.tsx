@@ -57,9 +57,6 @@ export function ReviewWorkspace() {
       ) : (
         query.data && (
           <>
-            <Panel
-              title={t("选择复盘账户", "Choose an account")}
-            >
               <div className="mx-grid mx-grid-three">
                 {(["A", "B", "C"] as const).map((code) => {
                   const account = query.data?.accounts?.find(
@@ -74,21 +71,19 @@ export function ReviewWorkspace() {
                       key={code}
                       href={"/account-analysis?account=" + code}
                     >
-                      <Group justify="space-between">
-                        <span className="mx-account-letter">{code}</span>
-                        {(!available || code === "C") && <Tag>
-                          {available ? t("导入历史", "Imported history") : t("等待数据", "Awaiting data")}
-                        </Tag>}
+                      <Group justify="space-between" wrap="nowrap" gap="sm">
+                        <h2>{accountName(profile, code)}</h2>
+                        {!available ? (
+                          <Tag>{t("等待数据", "Awaiting data")}</Tag>
+                        ) : (
+                          <ArrowUpRight className="mx-account-go" size={18} aria-hidden />
+                        )}
                       </Group>
-                      <h2>{accountName(profile, code)}</h2>
-                      <p className="mx-form-help">
-                        {code === "C"
-                          ? t(
-                              "已实现现金权益代理",
-                              "Realized cash equity proxy",
-                            )
-                          : t("账户当前价值", "Current account value")}
-                      </p>
+                      {code === "C" && cfd && (
+                        <p className="mx-form-help">
+                          {t("导入历史 · 已实现现金权益代理", "Imported history · realized cash equity proxy")}
+                        </p>
+                      )}
                       <div className="mx-number">
                         {currency(
                           account?.totalValueGbp ?? cfd?.endingValueGbp,
@@ -121,15 +116,10 @@ export function ReviewWorkspace() {
                               ]
                         }
                       />
-                      <div className="mx-text-link">
-                        {t("开始复盘", "Explore account")}
-                        <ArrowUpRight size={16} />
-                      </div>
                     </Link>
                   );
                 })}
               </div>
-            </Panel>
           </>
         )
       )}

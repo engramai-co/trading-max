@@ -53,7 +53,7 @@ test.describe("overview to performance", () => {
       await expect(overview.getByRole("heading", { name: "Period P&L", exact: true })).toBeVisible();
       await expect(overview).not.toContainText("Cumulative net contributions");
       await expect(overview).not.toContainText("Some periods have no observations");
-      await expect(overview.locator(".mx-chart-footer")).toContainText("£10.00");
+      await expect(overview.locator(".mx-period-figure")).toContainText("£10.00");
       await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
       await overview.locator(".mx-chart-data summary").click();
       const original = await values(overview.locator("table"), [0, 1, 2]);

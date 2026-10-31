@@ -46,6 +46,14 @@ export function TimelineChart({
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const context = display && timeline ? timelineContext(timeline.categories, display) : "";
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
+  // Line styles explain themselves through a key, shown only when they occur.
+  const rows = timeline?.rowIndexes ?? [];
+  const firstRow = rows.findIndex((row) => row != null);
+  const lastRow = rows.length - 1 - [...rows].reverse().findIndex((row) => row != null);
+  const sourceKeys = observations ? [
+    observations.some((point) => point.valuationSource === "reconstructed") && { dash: "4 3", label: t("重建估算", "Estimate") },
+    firstRow >= 0 && rows.slice(firstRow, lastRow + 1).some((row) => row == null) && { dash: "1 4", label: t("缺失", "Missing") },
+  ].filter((key): key is { dash: string; label: string } => Boolean(key)) : [];
   if (
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
@@ -93,10 +101,18 @@ export function TimelineChart({
         }
       />
       {context && <p className="mx-timeline-context">{context}</p>}
-      {observations && <p className="mx-timeline-context">{t(
-        "账户曲线：实线为记录值，虚线为重建估算，点线连接仍缺失的时段。悬停查看来源。",
-        "Account curves: solid for recorded values, dashed for reconstructed estimates, dotted across remaining gaps. Hover for the source.",
-      )}</p>}
+      {sourceKeys.length > 0 && (
+        <div className="mx-chart-legend mx-source-legend">
+          {[{ dash: "", label: t("记录", "Recorded") }, ...sourceKeys].map((key) => (
+            <span key={key.label}>
+              <svg width="18" height="4" aria-hidden="true">
+                <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={key.dash || undefined} />
+              </svg>
+              {key.label}
+            </span>
+          ))}
+        </div>
+      )}
       {recordSource ? <HistoryRecords key={JSON.stringify(recordSource)} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable

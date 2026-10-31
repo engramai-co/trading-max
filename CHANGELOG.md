@@ -4,6 +4,46 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.8] - 2026-10-31
+
+### Changed
+
+- Let the layout carry the explanation across the workspace: drop repeated
+  captions, currency suffixes, default-state tags, letter tiles and helper
+  sentences that restated what the page already shows.
+- Timestamps read as "今天 22:00" or "10月28日 22:00", with the year only when
+  it differs; the display time zone is no longer repeated on every value.
+- Research opens on the security itself: a switcher with the ticker and name,
+  previous/next, comparison and add sit in one toolbar, and the quote line
+  names the exchange time zone in words.
+- Period P&L on the overview and performance pages shows the dates it
+  covers, and the percentage is labelled "相对期初". Returns show one
+  portfolio TWR figure and a compact return and drawdown table per series.
+- Estimated history speaks up only when it matters: an estimated opening or
+  latest value, or at least a quarter of the period. Minor estimates appear
+  as a quiet tag, and the chart key for recorded, estimated and missing
+  segments appears only when such segments exist.
+- Holdings merge the position count into "盈利持仓 n / total", show the
+  result count only when filtered, and give mobile rows a weight bar.
+  Look-through ranking titles open their detail table directly.
+- Review account cards are the link themselves; option chains hide the
+  default "latest chain" tag, format contract times and flag partially
+  captured expirations; the valuation basis lists readable inputs with
+  dated filing links instead of provider field paths.
+
+### Fixed
+
+- Holdings totals for invested capital and unrealised P&L now use the
+  account totals shared with the overview, so both pages show the same
+  figure.
+- Chart labels use the workspace font at 12 px. Canvas text could not
+  inherit the page font, so some charts fell back to the browser's 10 px
+  default.
+- Volume bars start at zero with one label at the period high, and stacked
+  chart panes no longer print colliding axis labels.
+- A queued research update no longer marks the whole research page as
+  loading; the update button alone shows its progress.
+
 ## [1.15.7] - 2026-10-28
 
 ### Fixed
