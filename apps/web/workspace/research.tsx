@@ -19,14 +19,15 @@ import {
   Select,
   Stack,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import {
   ArrowClockwise,
+  CaretDown,
   CaretLeft,
   CaretRight,
   DotsThree,
-  List,
   MagnifyingGlass,
   Plus,
   PushPin,
@@ -333,12 +334,14 @@ export function ResearchWorkspace() {
     <Page
       className="mx-research-page"
       title={t("证券研究", "Security research")}
+      titleHidden
       actions={
-        <Group gap="sm">
+        <>
           <Button
-            className="mx-universe-toggle"
+            className="mx-universe-toggle mx-research-switcher"
             variant="default"
-            leftSection={<List size={17} />}
+            rightSection={<CaretDown size={14} />}
+            aria-label={t("切换证券", "Switch security")}
             aria-expanded={universeOpen || (wide && pinned)}
             onClick={() => {
               if (wide && pinned)
@@ -350,15 +353,60 @@ export function ResearchWorkspace() {
               else setUniverseOpen(true);
             }}
           >
-            {t("研究清单", "Research list")}
+            {selected ? (
+              <>
+                <strong>{ticker}</strong>
+                <span>{selected.name}</span>
+              </>
+            ) : (
+              t("研究清单", "Research list")
+            )}
           </Button>
-          <Button
-            leftSection={<Plus size={16} />}
-            onClick={() => setFinder(true)}
-          >
-            {t("添加证券", "Add security")}
-          </Button>
-        </Group>
+          {selected && (
+            <>
+              <ActionIcon
+                variant="default"
+                aria-label={t("上一只证券", "Previous security")}
+                disabled={displayed.findIndex((i) => i.ticker === ticker) <= 0}
+                onClick={() =>
+                  selectTicker(
+                    displayed[displayed.findIndex((i) => i.ticker === ticker) - 1]
+                      .ticker,
+                  )
+                }
+              >
+                <CaretLeft size={18} />
+              </ActionIcon>
+              <ActionIcon
+                variant="default"
+                aria-label={t("下一只证券", "Next security")}
+                disabled={
+                  displayed.findIndex((i) => i.ticker === ticker) < 0 ||
+                  displayed.findIndex((i) => i.ticker === ticker) >=
+                    displayed.length - 1
+                }
+                onClick={() =>
+                  selectTicker(
+                    displayed[displayed.findIndex((i) => i.ticker === ticker) + 1]
+                      .ticker,
+                  )
+                }
+              >
+                <CaretRight size={18} />
+              </ActionIcon>
+              <ResearchComparison ticker={ticker} instruments={instruments} />
+            </>
+          )}
+          <Tooltip label={t("添加证券", "Add security")}>
+            <ActionIcon
+              variant="default"
+              aria-label={t("添加证券", "Add security")}
+              onClick={() => setFinder(true)}
+            >
+              <Plus size={17} />
+            </ActionIcon>
+          </Tooltip>
+        </>
       }
     >
       {shell.isPending ? (
@@ -504,7 +552,7 @@ export function ResearchWorkspace() {
                       {quote?.context?.quote.changePct != null && (
                         <small
                           className={
-                            "mx-" + tone(quote.context.quote.changePct)
+                            "mx-security-change mx-" + tone(quote.context.quote.changePct)
                           }
                         >
                           {percent(quote.context.quote.changePct, true, 2)} ·{" "}
@@ -517,78 +565,40 @@ export function ResearchWorkspace() {
                       )}
                       {quote?.context?.quote.asOf && (
                         <small>
-                          {new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            timeZone: quote.context.quote.timezone ?? "UTC",
-                            timeZoneName: "short",
-                          }).format(new Date(quote.context.quote.asOf))}{" "}
-                          ·{" "}
-                          {(
-                            {
-                              regular: t("常规交易", "Regular session"),
-                              closed: t("收盘", "Closed"),
-                              post: t("盘后", "Post-market"),
-                              pre: t("盘前", "Pre-market"),
-                            } as Record<string, string>
-                          )[quote.context.quote.session] ??
-                            t("最近报价", "Latest quote")}
-                          {quote.context.quote.delayMinutes
-                            ? ` · ${quote.context.quote.delayMinutes} min`
-                            : ""}
+                          {/* Regular session is the normal state; only exceptions are named. */}
+                          {[
+                            new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              timeZone: quote.context.quote.timezone ?? "UTC",
+                            }).format(new Date(quote.context.quote.asOf)) +
+                              " " +
+                              exchangeZone(quote.context.quote.timezone, t),
+                            (
+                              {
+                                closed: t("收盘", "Closed"),
+                                post: t("盘后", "Post-market"),
+                                pre: t("盘前", "Pre-market"),
+                              } as Record<string, string>
+                            )[quote.context.quote.session],
+                            quote.context.quote.delayMinutes
+                              ? t("延迟 ", "Delayed ") + quote.context.quote.delayMinutes + t(" 分钟", " min")
+                              : null,
+                          ].filter(Boolean).join(" · ")}
                         </small>
                       )}
                     </div>
                   </div>
                   <div className="mx-research-controls">
                     <Group gap="xs">
-                      <ResearchComparison
-                        ticker={ticker}
-                        instruments={instruments}
-                      />
-                      <ActionIcon
-                        aria-label={t("上一只证券", "Previous security")}
-                        disabled={
-                          displayed.findIndex((i) => i.ticker === ticker) <= 0
-                        }
-                        onClick={() =>
-                          selectTicker(
-                            displayed[
-                              displayed.findIndex((i) => i.ticker === ticker) -
-                                1
-                            ].ticker,
-                          )
-                        }
-                      >
-                        <CaretLeft size={18} />
-                      </ActionIcon>
-                      <ActionIcon
-                        aria-label={t("下一只证券", "Next security")}
-                        disabled={
-                          displayed.findIndex((i) => i.ticker === ticker) < 0 ||
-                          displayed.findIndex((i) => i.ticker === ticker) >=
-                            displayed.length - 1
-                        }
-                        onClick={() =>
-                          selectTicker(
-                            displayed[
-                              displayed.findIndex((i) => i.ticker === ticker) +
-                                1
-                            ].ticker,
-                          )
-                        }
-                      >
-                        <CaretRight size={18} />
-                      </ActionIcon>
                       <Button
                         aria-label={t("更新研究", "Update research")}
                         variant="default"
                         size="xs"
                         leftSection={operation.isPending || fetching ? <Loader size={12} /> : <ArrowClockwise size={14} />}
                         disabled={operation.isPending || fetching}
-                        aria-busy={operation.isPending || fetching}
                         onClick={() => operation.mutate({ action: "refresh" })}
                       >
                         <span className="mx-action-long">
@@ -989,4 +999,19 @@ function SecurityFinder({
       )}
     </Modal>
   );
+}
+
+/** Exchange-local time names the market, not an offset. */
+function exchangeZone(zone: string | null | undefined, t: (zh: string, en: string) => string) {
+  if (!zone) return "UTC";
+  if (zone === "America/New_York") return t("美东", "ET");
+  if (zone === "Europe/London") return t("伦敦", "London");
+  if (zone === "Asia/Hong_Kong") return t("香港", "Hong Kong");
+  if (zone === "Asia/Tokyo") return t("东京", "Tokyo");
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "short" })
+      .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value ?? zone;
+  } catch {
+    return zone;
+  }
 }

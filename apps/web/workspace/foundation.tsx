@@ -124,6 +124,7 @@ export function Help({
 export function Page({
   eyebrow,
   title,
+  titleHidden = false,
   description,
   actions,
   children,
@@ -131,6 +132,8 @@ export function Page({
 }: {
   eyebrow?: string;
   title: ReactNode;
+  /** Keep the heading for assistive technology when the layout names the page. */
+  titleHidden?: boolean;
   description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
@@ -138,10 +141,10 @@ export function Page({
 }) {
   return (
     <div className={"mx-page " + className}>
-      <header className="mx-page-heading">
+      <header className={"mx-page-heading" + (titleHidden ? " mx-page-tools" : "")}>
         <div>
           {eyebrow && <div className="mx-eyebrow">{eyebrow}</div>}
-          <h1>{title}</h1>
+          <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>
           {description && <p>{description}</p>}
         </div>
         {actions && <div className="mx-page-actions">{actions}</div>}

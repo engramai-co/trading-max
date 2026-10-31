@@ -465,6 +465,8 @@ export function PriceHistory({
               ];
               const extra = panes.length - 2,
                 mainHeight = 67 - extra * 12;
+              // One volume tick at the period high keeps the 10% pane readable.
+              const volumeTop = Math.max(0, ...points.map((p) => p.volume ?? 0)) || undefined;
               const positions = [
                 { top: 3, height: mainHeight },
                 { top: 6 + mainHeight, height: 10 },
@@ -699,21 +701,25 @@ export function PriceHistory({
                       ? "log"
                       : "value",
                   gridIndex: i,
-                  scale: true,
-                  min: pane === "rsi" ? 0 : undefined,
-                  max: pane === "rsi" ? 100 : undefined,
-                  splitNumber: pane === "price" ? 4 : 2,
+                  // Volume bars start at zero; a scaled axis exaggerates small changes.
+                  scale: pane !== "volume",
+                  min: pane === "rsi" || pane === "volume" ? 0 : undefined,
+                  max: pane === "rsi" ? 100 : pane === "volume" ? volumeTop : undefined,
+                  interval: pane === "volume" ? volumeTop : undefined,
+                  splitNumber: pane === "price" ? 4 : pane === "volume" ? 1 : 2,
                   name:
-                    pane === "price"
+                    pane === "price" || pane === "volume"
                       ? ""
-                      : pane === "volume"
-                        ? t("量", "Vol")
-                        : pane.toUpperCase(),
+                      : pane.toUpperCase(),
                   nameTextStyle: { color: c.axis, fontSize: 11 },
                   axisLabel: {
                     color: c.axis,
+                    // Stacked panes sit close together: the lower pane's top label would collide.
+                    showMinLabel: pane !== "volume" && i === panes.length - 1 ? undefined : false,
                     formatter: (v: number) =>
-                      pane === "price" && normalized ? percent(v) : compact(v),
+                      pane === "volume"
+                        ? t("量 ", "Vol ") + compact(v)
+                        : pane === "price" && normalized ? percent(v) : compact(v),
                   },
                   splitLine: {
                     show: pane !== "volume",

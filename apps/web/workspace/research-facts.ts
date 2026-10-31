@@ -41,6 +41,38 @@ export const metricNames: Record<string, [string, string]> = {
   roa: ["总资产收益率", "Return on assets"],
 };
 
+export type EvidenceRef = components["schemas"]["EvidenceRef"];
+
+// Provider statement rows the backend reads, keyed back to the metric they feed.
+const evidenceRows: Record<string, string> = {
+  "Total Revenue": "revenue",
+  "Operating Revenue": "revenue",
+  "Operating Cash Flow": "operatingCashflow",
+  "Cash Flow From Continuing Operating Activities": "operatingCashflow",
+  "Capital Expenditure": "capex",
+  "Capital Expenditure Reported": "capex",
+  "Ordinary Shares Number": "shareCount",
+  "Share Issued": "shareCount",
+  "Diluted Average Shares": "dilutedShares",
+};
+const evidenceSources: Record<string, string> = {
+  "yahoo-finance-financials": "Yahoo Finance",
+};
+
+/** One readable row per input instead of one raw provider path per quarter. */
+export function evidenceGroups(evidence: EvidenceRef[]) {
+  const groups = new Map<string, { metric: string; source: string; links: { url: string; date: string | null }[] }>();
+  for (const ref of evidence) {
+    const row = ref.field.slice(ref.field.indexOf(".") + 1);
+    const metric = evidenceRows[row] ?? row;
+    const group = groups.get(metric) ?? { metric, source: evidenceSources[ref.source] ?? "", links: [] };
+    if (ref.url && !group.links.some((l) => l.url === ref.url))
+      group.links.push({ url: ref.url, date: ref.publishedAt ?? null });
+    groups.set(metric, group);
+  }
+  return [...groups.values()];
+}
+
 export function factIndex(facts: FinancialFacts) {
   const index = new Map<string, Observation>();
   for (const value of facts.observations ?? [])

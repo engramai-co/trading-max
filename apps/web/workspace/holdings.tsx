@@ -107,8 +107,12 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const invested = scoped.reduce((sum, h) => sum + h.currentValueGbp, 0);
-  const pnl = scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
+  // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
+  const summary = account === "all" ? null : query.data?.accounts?.find((item) => item.code === account);
+  const invested = (account === "all" ? query.data?.totalInvestedGbp : summary?.investedGbp)
+    ?? scoped.reduce((sum, h) => sum + h.currentValueGbp, 0);
+  const pnl = (account === "all" ? query.data?.totalUnrealizedPnlGbp : summary?.unrealizedPnlGbp)
+    ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
   const sortButton = (label: string, key: string) => (
@@ -170,12 +174,8 @@ function Positions() {
                 tone={tone(pnl)}
               />
               <Metric
-                label={t("持仓数量", "Open positions")}
-                value={scoped.length}
-              />
-              <Metric
                 label={t("盈利持仓", "Profitable positions")}
-                value={scoped.filter((h) => h.pnlGbp > 0).length}
+                value={`${scoped.filter((h) => h.pnlGbp > 0).length} / ${scoped.length}`}
               />
             </div>
           </div>
@@ -212,9 +212,11 @@ function Positions() {
                   checked={detailed}
                   onChange={(e) => setDetailed(e.currentTarget.checked)}
                 />
-                <span className="mx-metric-note">
-                  {rows.length} {t("个结果", "results")}
-                </span>
+                {search && (
+                  <span className="mx-metric-note">
+                    {rows.length} / {scoped.length}
+                  </span>
+                )}
                 <Select
                   aria-label={t("持仓排序", "Sort holdings")}
                   w={155}
@@ -243,6 +245,7 @@ function Positions() {
                           <>
                             <th className="mx-align-right">
                               {t("买入成本", "Purchase cost")}
+                              <small>{t("摊薄成本 / 股", "Diluted cost / share")}</small>
                             </th>
                             <th className="mx-align-right">
                               {t("当前价格", "Current price")}
@@ -290,8 +293,7 @@ function Positions() {
                                     h.dilutedCostPerShareNative,
                                     h.dilutedCostCurrency,
                                     2,
-                                  )}{" "}
-                                  / {t("股 · 摊薄", "share · diluted")}
+                                  )}
                                 </small>
                               </td>
                               <td className="mx-align-right">
@@ -365,8 +367,10 @@ function Positions() {
                           {accountName(profile, h.account)} ·{" "}
                           {number(h.quantity, 4)} {t("股", "shares")}
                         </span>
-                        <span>
-                          {t("组合权重 ", "Weight ")}
+                        <span className="mx-weight" aria-label={t("组合权重 ", "Weight ") + percent(h.allocationPct)}>
+                          <span className="mx-mini-bar" aria-hidden="true">
+                            <i style={{ width: `${largestAllocation > 0 ? (h.allocationPct / largestAllocation) * 100 : 0}%` }} />
+                          </span>
                           {percent(h.allocationPct)}
                         </span>
                       </footer>
@@ -679,7 +683,32 @@ function Exposure({
                 className="mx-exposure-ranking"
                 aria-label={ranking.title}
               >
-                <h3>{ranking.title}</h3>
+                <h3>
+                  <button
+                    type="button"
+                    className="mx-ranking-link"
+                    aria-label={`${t("查看明细", "View details")} · ${ranking.title}`}
+                    onClick={() => {
+                    setView(ranking.view);
+                    setSearch("");
+                    setCountry("all");
+                    setSector("all");
+                    setOwnership("all");
+                    setPage(1);
+                    setSort("total");
+                    requestAnimationFrame(() => {
+                      detail.current?.focus({ preventScroll: true });
+                      detail.current?.scrollIntoView({
+                        behavior: "instant",
+                        block: "start",
+                      });
+                    });
+                  }}
+                  >
+                    {ranking.title}
+                    <ArrowRight size={14} />
+                  </button>
+                </h3>
                 <ol>
                   {top.map((row, index) => (
                     <li key={`${label(row)}-${index}`}>
@@ -710,29 +739,6 @@ function Exposure({
                     {t("暂无分类记录", "No classified observations")}
                   </p>
                 )}
-                <button
-                  className="mx-text-link"
-                  aria-label={`${t("查看明细", "View details")} · ${ranking.title}`}
-                  onClick={() => {
-                    setView(ranking.view);
-                    setSearch("");
-                    setCountry("all");
-                    setSector("all");
-                    setOwnership("all");
-                    setPage(1);
-                    setSort("total");
-                    requestAnimationFrame(() => {
-                      detail.current?.focus({ preventScroll: true });
-                      detail.current?.scrollIntoView({
-                        behavior: "instant",
-                        block: "start",
-                      });
-                    });
-                  }}
-                >
-                  {t("查看明细", "View details")}
-                  <ArrowRight size={15} />
-                </button>
               </section>
             );
           })}
@@ -881,9 +887,11 @@ function Exposure({
                 >
                   {t("清除筛选", "Clear filters")}
                 </Button>
-                <span>
-                  {rows.length} {t("个结果", "results")}
-                </span>
+                {(search || country !== "all" || sector !== "all" || ownership !== "all") && (
+                  <span>
+                    {rows.length} / {data.positions.length}
+                  </span>
+                )}
               </Group>
               <div className="mx-mobile-holdings">
                 {pageRows.map((p, i) => (

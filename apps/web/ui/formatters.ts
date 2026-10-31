@@ -38,16 +38,26 @@ export function formatDateTime(
   value: Date | number | string,
   locale: Locale,
   timeZone = DEFAULT_DISPLAY_TIME_ZONE,
+  now: Date | number = Date.now(),
 ) {
-  return formatDate(value, locale, {
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  // The display time zone is the reader's own setting, so it is not repeated
+  // on every timestamp. Today reads as "今天 22:00"; the year appears only
+  // when it differs from the current one.
+  const zone = isValidTimeZone(timeZone) ? timeZone : DEFAULT_DISPLAY_TIME_ZONE;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return "—";
+  const key = (input: Date | number, options: Intl.DateTimeFormatOptions) =>
+    formatDate(input, "en", { ...options, timeZone: zone });
+  const time = formatDate(date, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone });
+  const dayOptions: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
+  if (key(date, dayOptions) === key(now, dayOptions)) return (locale === "zh" ? "今天 " : "Today ") + time;
+  const sameYear = key(date, { year: "numeric" }) === key(now, { year: "numeric" });
+  return formatDate(date, locale, {
+    ...(sameYear ? {} : { year: "numeric" }),
     month: "short",
-    timeZone: isValidTimeZone(timeZone) ? timeZone : DEFAULT_DISPLAY_TIME_ZONE,
-    timeZoneName: "short",
-    year: "numeric",
-  });
+    day: "numeric",
+    timeZone: zone,
+  }) + " " + time;
 }
 
 export function formatDateTimeInTimeZone(

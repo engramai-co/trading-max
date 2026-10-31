@@ -62,8 +62,16 @@ describe("shared financial formatters", () => {
       "2026-08-28T02:40:00Z",
       "en",
       "Asia/Hong_Kong",
+      Date.parse("2026-10-28T12:00:00Z"),
     );
-    expect(formatted).toContain("10:40");
-    expect(formatted).toMatch(/GMT\+8|HKT/);
+    expect(formatted).toBe("28 Aug 10:40");
+  });
+
+  it("names today and earlier years without repeating the reader's own time zone", () => {
+    const now = Date.parse("2026-10-28T23:30:00Z");
+    expect(formatDateTime("2026-10-28T22:00:00Z", "zh", "Europe/London", now)).toBe("今天 22:00");
+    // It is already the next morning in Hong Kong, so 20:00 there is not "today".
+    expect(formatDateTime("2026-10-28T12:00:00Z", "zh", "Asia/Hong_Kong", now)).toBe("10月28日 20:00");
+    expect(formatDateTime("2025-03-04T09:05:00Z", "en", "Europe/London", now)).toBe("4 Mar 2025 09:05");
   });
 });

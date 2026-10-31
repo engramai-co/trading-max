@@ -9,6 +9,8 @@
 import type { ResearchLensSnapshot, TechnicalScoreSummary } from "@/lib/types";
 import { CaretDown, CaretRight, Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatDate } from "@/ui/formatters";
 import { number, percent } from "./data";
 import { Empty, Help, Panel, Pending, QueryError, TextLink, useCopy } from "./foundation";
 import { PriceHistory } from "./research-price";
@@ -20,6 +22,7 @@ export function TechnicalScoreCard({ data, ticker, compact = false, pending = fa
   data?: TechnicalScoreSummary | null; ticker: string; compact?: boolean; pending?: boolean;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const score = data?.score;
   const valid = score != null && Number.isFinite(score) && score >= 0 && score <= 100;
   const scoreTone = valid ? score < 45 ? "mx-down" : score >= 56 ? "mx-up" : "" : "";
@@ -33,7 +36,7 @@ export function TechnicalScoreCard({ data, ticker, compact = false, pending = fa
         {breakdown && <p>{t("可用评分依据", "Available scoring inputs")} {breakdown.availableSignals}/{breakdown.totalSignals} · {t("缺失项不计分", "Missing inputs add no points")}</p>}
       </Help>
     </div>
-    {data?.asOf && <time className="mx-tech-asof" dateTime={data.asOf}>{data.asOf} · {t("日线", "Daily")}</time>}
+    {data?.asOf && <time className="mx-tech-asof" dateTime={data.asOf}>{formatDate(data.asOf, locale, { ...(data.asOf.slice(0, 4) === String(new Date().getUTCFullYear()) ? {} : { year: "numeric" }), month: "short", day: "numeric", timeZone: "UTC" })} · {t("日线", "Daily")}</time>}
     {pending && !data ? <Pending /> : <>
       <div className={`mx-tech-number ${scoreTone}`}><strong>{valid ? number(score, 0) : "—"}</strong>{valid && <span>/ 100</span>}</div>
       <p className={`mx-tech-state ${scoreTone}`}>{data && valid ? stateName(data, t) : t("暂无技术评分", "Technical score unavailable")}</p>

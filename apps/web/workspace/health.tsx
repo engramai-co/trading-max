@@ -180,17 +180,20 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 label={t("检查时间", "Checked")}
               />
             </div>
-            <Tag tone={tone === "setup" ? "neutral" : tone === "ready" && staleHours == null ? "good" : "warn"}>
-              {staleHours != null
-                ? t("数据未更新", "Not updated")
-                : tone === "setup"
-                ? t("待设置", "Setup needed")
-                : tone === "ready"
-                ? t("就绪", "Ready")
-                : tone === "running"
-                  ? t("更新中", "Updating")
-                  : t("待检查", "Needs attention")}
-            </Tag>
+            {/* Ready and fresh is the normal state: the heading says it, no tag repeats it. */}
+            {!(tone === "ready" && staleHours == null) && (
+              <Tag tone={tone === "setup" ? "neutral" : tone === "ready" && staleHours == null ? "good" : "warn"}>
+                {staleHours != null
+                  ? t("数据未更新", "Not updated")
+                  : tone === "setup"
+                  ? t("待设置", "Setup needed")
+                  : tone === "ready"
+                  ? t("就绪", "Ready")
+                  : tone === "running"
+                    ? t("更新中", "Updating")
+                    : t("待检查", "Needs attention")}
+              </Tag>
+            )}
           </section>
           {desktop && activity.failures.length > 0 && <Notice tone="warn">
             <div className="mx-toolbar"><span>{t("服务在线不代表所有更新都已完成。以下范围最近一次更新需要检查：", "An online service does not mean every update succeeded. Check the latest update for: ")}{activity.failures.map((job) => scopes.find((item) => item.value === job.scope)?.label ?? job.scope).join(" · ")}</span><Button size="compact-sm" variant="subtle" onClick={() => setSelected(activity.failures[0].jobId)}>{t("查看原因", "View issue")}</Button></div>
@@ -277,10 +280,6 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         ? t("在线", "Online")
                         : t("未就绪", "Not ready")}
                     </Tag>,
-                  ],
-                  [
-                    t("快照生成距今", "Snapshot age"),
-                    formatAge(data.health?.artifactAgeSeconds, locale),
                   ],
                   [
                     t("最近成功更新", "Last successful update"),
@@ -394,7 +393,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               />
             }
           >
-            {!desktop && <div className="mx-metric-grid mx-metric-grid-three">
+            {!desktop && (queued > 0 || running > 0) && <div className="mx-metric-grid mx-metric-grid-three">
               <Metric
                 label={t("等待执行", "In queue")}
                 value={number(queued, 0)}
@@ -402,10 +401,6 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               <Metric
                 label={t("正在执行", "Running")}
                 value={number(running, 0)}
-              />
-              <Metric
-                label={t("已成功完成", "Succeeded")}
-                value={number(data.health?.queue.succeeded, 0)}
               />
             </div>}
             {data.jobs.filter((j) => filter === "all" || j.status === filter)
@@ -449,9 +444,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                       <span className="mx-job-duration">
                         {durationBetween(j.startedAt, j.finishedAt, locale)}
                       </span>
-                      <Tag tone={statusTone(j.status)}>
-                        {statusText(j.status, t)}
-                      </Tag>
+                      {j.status === "succeeded" ? (
+                        <span className="sr-only">{statusText(j.status, t)}</span>
+                      ) : (
+                        <Tag tone={statusTone(j.status)}>
+                          {statusText(j.status, t)}
+                        </Tag>
+                      )}
                       <ArrowRight size={17} />
                     </button>
                   ))}
