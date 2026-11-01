@@ -555,12 +555,15 @@ export function ResearchWorkspace() {
                             "mx-security-change mx-" + tone(quote.context.quote.changePct)
                           }
                         >
-                          {percent(quote.context.quote.changePct, true, 2)} ·{" "}
-                          {quoteValue(
-                            quote.context.quote.change,
-                            quote.context.quote.currency,
-                            "—",
-                          )}
+                          {percent(quote.context.quote.changePct, true, 2)}
+                          {quote.context.quote.change != null &&
+                            " (" +
+                              quoteValue(
+                                quote.context.quote.change,
+                                quote.context.quote.currency,
+                                "—",
+                              ) +
+                              ")"}
                         </small>
                       )}
                       {quote?.context?.quote.asOf && (

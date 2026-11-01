@@ -16,6 +16,9 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
   // Symmetric percentage bounds keep spot at the same physical position even
   // when a different scenario or horizon requires a larger comparison range.
   const extent = Math.max(0.25, Math.ceil(Math.max(...keys.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  // Unlevered equity cannot lose more than 100%, so the downside scale never extends below -100%.
+  const minBound = -Math.min(1, extent);
+  const maxBound = extent;
   return (
     <div className="mx-scenario-comparison">
       <div className="mx-scenario-spot">
@@ -40,7 +43,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
           animation: false,
           grid: { left: 54, right: 38, top: 32, bottom: 28 },
           xAxis: {
-            type: "value", min: -extent, max: extent, interval: extent / 2,
+            type: "value", min: minBound, max: maxBound, splitNumber: 4,
             axisLabel: { formatter: (v: number) => percent(v, true, 0) },
             axisLine: { show: false }, axisTick: { show: false },
             splitLine: { show: false },

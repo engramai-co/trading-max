@@ -264,22 +264,27 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 rows={[
                   [
                     t("账户数据服务", "Account data service"),
-                    <Tag
-                      key="api"
-                      tone={data.health?.status === "ok" || tone === "setup" ? "good" : "warn"}
-                    >
-                      {data.health
-                        ? t("可访问", "Reachable")
-                        : t("无法访问", "Unreachable")}
-                    </Tag>,
+                    data.health?.status === "ok" || tone === "setup" ? (
+                      <span key="api" className="mx-muted">
+                        {t("可访问", "Reachable")}
+                      </span>
+                    ) : (
+                      <Tag key="api" tone="warn">
+                        {t("无法访问", "Unreachable")}
+                      </Tag>
+                    ),
                   ],
                   [
                     t("任务执行服务", "Task worker"),
-                    <Tag key="worker" tone={worker?.healthy ? "good" : "warn"}>
-                      {worker?.healthy
-                        ? t("在线", "Online")
-                        : t("未就绪", "Not ready")}
-                    </Tag>,
+                    worker?.healthy ? (
+                      <span key="worker" className="mx-muted">
+                        {t("在线", "Online")}
+                      </span>
+                    ) : (
+                      <Tag key="worker" tone="warn">
+                        {t("未就绪", "Not ready")}
+                      </Tag>
+                    ),
                   ],
                   [
                     t("最近成功更新", "Last successful update"),

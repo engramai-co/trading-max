@@ -481,6 +481,26 @@ export function Facts({ rows }: { rows: Array<[ReactNode, ReactNode]> }) {
     </dl>
   );
 }
+function SecurityMark({ ticker }: { ticker: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="mx-monogram mx-company-logo" aria-hidden="true">
+      {!failed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={"/api/company-logo/" + encodeURIComponent(ticker)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        ticker.slice(0, 2)
+      )}
+    </span>
+  );
+}
+
 export function Instrument({
   ticker,
   name,
@@ -492,9 +512,7 @@ export function Instrument({
 }) {
   return (
     <div className={"mx-instrument" + (small ? " mx-instrument-small" : "")}>
-      <span className="mx-monogram" aria-hidden="true">
-        {ticker.slice(0, 2)}
-      </span>
+      <SecurityMark key={ticker} ticker={ticker} />
       <span>
         <strong>{ticker}</strong>
         {name && <span className="mx-instrument-name">{name}</span>}

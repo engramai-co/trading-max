@@ -2,6 +2,8 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button } from "@mantine/core";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
@@ -13,13 +15,14 @@ export function forecastPeriodLabel(
   value: unknown,
   t: ReturnType<typeof useCopy>,
 ) {
+  const locale = t("zh", "en") as "zh" | "en";
   const fiscal = objects(analyst.fiscalPeriods).find((p) => p.period === value);
   const end = str(fiscal?.endDate);
   if (end)
     return (
       (str(value).endsWith("y")
         ? t("财年截至 ", "FY ending ")
-        : t("季度截至 ", "Quarter ending ")) + end
+        : t("季度截至 ", "Quarter ending ")) + formatCalendarDate(end, locale)
     );
   const relative =
     {
@@ -29,11 +32,12 @@ export function forecastPeriodLabel(
       "+1y": t("下财年", "Next year"),
     }[str(value)] ?? str(value);
   const asOf = str(analyst.asOf).slice(0, 10);
-  return relative + (asOf ? " · " + asOf : "");
+  return relative + (asOf ? " · " + formatCalendarDate(asOf, locale) : "");
 }
 
 export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const period =
     params.get("estimateFrequency") === "year" ? "year" : "quarter";
@@ -59,8 +63,8 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
     const end = str(fiscal?.endDate);
     if (end)
       return str(value).endsWith("y")
-        ? t("财年截至 ", "FY ending ") + end
-        : t("季度截至 ", "Quarter ending ") + end;
+        ? t("财年截至 ", "FY ending ") + formatCalendarDate(end, locale)
+        : t("季度截至 ", "Quarter ending ") + formatCalendarDate(end, locale);
     const relative =
       {
         "0q": t("本季度", "Current quarter"),
@@ -69,7 +73,7 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
         "+1y": t("下财年", "Next year"),
       }[str(value)] ?? str(value);
     const asOf = str(analyst.asOf).slice(0, 10);
-    return relative + (asOf ? " · " + asOf : "");
+    return relative + (asOf ? " · " + formatCalendarDate(asOf, locale) : "");
   };
   return (
     <Panel

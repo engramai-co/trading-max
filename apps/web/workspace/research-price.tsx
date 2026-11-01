@@ -6,6 +6,8 @@ import { Button, Checkbox, Drawer, Group, Modal, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { Legend, Plot } from "./charts";
 import { compact, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
@@ -42,6 +44,7 @@ export function PriceHistory({
   compactChart?: boolean;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const ranges = priceRanges;
   const full = params.get("chart") === "full";
@@ -115,7 +118,7 @@ export function PriceHistory({
   const formatDate = (date: string) =>
     isIntraday
       ? intradayDateFormatter.format(new Date(date))
-      : date.slice(0, 10);
+      : formatCalendarDate(date, locale);
   const benchmarkPoints = new Map(
     benchmark.data?.points.map((p) => [p.date, p]) ?? [],
   );
@@ -760,7 +763,9 @@ export function PriceHistory({
           />
           <div className="mx-chart-footer">
             <span>
-              {formatDate(points[0].date)} → {formatDate(points.at(-1)!.date)}
+              {isIntraday
+                ? formatDate(points[0].date) + " → " + formatDate(points.at(-1)!.date)
+                : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
             </span>
             <span>
               {query.data.currency} · {query.data.actualInterval}

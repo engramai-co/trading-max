@@ -170,7 +170,8 @@ h1, h2, h3, p { margin: 0; }
 .mx-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mx-toolbar .mx-tabs { width: auto; }
 .mx-instrument { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.mx-monogram { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; background: var(--mx-soft); border: 1px solid var(--mx-border); border-radius: 9px; font-size: 12px; font-weight: 650; letter-spacing: -.5px; color: var(--mx-brand); }
+.mx-monogram { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; overflow: hidden; background: var(--mx-soft); border: 1px solid var(--mx-border); border-radius: 9px; font-size: 12px; font-weight: 650; letter-spacing: -.5px; color: var(--mx-ink); }
+.mx-monogram img { width: 100%; height: 100%; object-fit: contain; padding: 5px; background: var(--mx-surface); }
 .mx-instrument > span:last-child { min-width: 0; }
 .mx-instrument strong { display: block; font-size: 12px; line-height: 1.6; font-weight: 650; }
 .mx-instrument-name { display: block; font-size: 12px; line-height: 1.6; color: var(--mx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 230px; }

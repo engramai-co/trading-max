@@ -2,6 +2,8 @@
 import { researchPriceQuery } from "./research-queries";
 
 import { useQuery } from "@tanstack/react-query";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { inRange } from "@/lib/portfolio/nav";
 import { number } from "@/workspace/data";
@@ -28,6 +30,7 @@ export function PricePreview({
   pending?: boolean;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const query = useQuery(researchPriceQuery(ticker, runId, "1d", "3M"));
   const points = inRange(query.data?.points ?? [], "3M");
   const hasPrices = points.some((p) => Number.isFinite(p.close));
@@ -60,7 +63,7 @@ export function PricePreview({
                 color: c.axis,
                 hideOverlap: true,
                 interval: Math.max(0, Math.ceil(points.length / 7) - 1),
-                formatter: (date: string) => date.slice(0, 10),
+                formatter: (date: string) => formatCalendarDate(date, locale),
               },
             },
             yAxis: {
@@ -79,7 +82,7 @@ export function PricePreview({
                 const p = points[entry?.dataIndex];
                 if (!p) return "";
                 return [
-                  p.date.slice(0, 10) + " · " + query.data.currency,
+                  formatCalendarDate(p.date, locale) + " · " + query.data.currency,
                   `${t("收盘", "Close")}  ${number(p.close, 2)}`,
                 ].join("\n");
               },

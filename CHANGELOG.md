@@ -4,6 +4,27 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.15.9] - 2026-11-01
+
+### Changed
+
+- Show real company and ETF logos across the overview, direct holdings,
+  look-through rankings and research universe, falling back to a neutral
+  monogram tile only when no logo is available.
+- Format research price spans, earnings windows, filing dates, analyst
+  period headers, consensus dates and account review spans in the reader's
+  locale instead of raw YYYY-MM-DD strings.
+- Render research price changes in parentheses (`-4.22% (-US$9.02)`),
+  format the account review P&L timeline axis in compact pounds (`£3k`),
+  and keep healthy service rows in muted text without green status tags.
+
+### Fixed
+
+- Option chain open-interest totals and the Put/Call OI ratio now sum
+  available contracts when individual strikes omit open interest.
+- Clamp the valuation scenario comparison axis at -100% so high-upside
+  securities never display an impossible downside below zero.
+
 ## [1.15.8] - 2026-10-31
 
 ### Changed

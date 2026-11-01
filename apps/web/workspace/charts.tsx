@@ -354,6 +354,7 @@ export function HistoryChart({
   lines,
   label,
   percentage = false,
+  currencyTick = false,
   height = 300,
   intraday = false,
   timeline,
@@ -364,6 +365,7 @@ export function HistoryChart({
   lines: ChartLine[];
   label: string;
   percentage?: boolean;
+  currencyTick?: boolean;
   height?: number;
   intraday?: boolean;
   timeline?: CalendarTimeline;
@@ -438,6 +440,12 @@ export function HistoryChart({
               formatter: (v: number) =>
                 percentage
                   ? percent(v, false, 2)
+                  : currencyTick
+                    ? (v < 0 ? "−£" : "£") +
+                      Math.abs(v).toLocaleString("en-GB", {
+                        notation: "compact",
+                        maximumSignificantDigits: 5,
+                      })
                   : Math.abs(v) < 10000
                     ? number(v, 2)
                     : compact(v),
