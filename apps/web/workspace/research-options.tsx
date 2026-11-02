@@ -75,6 +75,29 @@ function cell(c: Contract | undefined, key: string) {
   );
 }
 
+/**
+ * Opens the chain at the money: when the table is wider or taller than its region,
+ * the strike column is centred between calls and puts and the row nearest spot is
+ * centred vertically. It runs once per mount; the region is keyed by expiry and columns.
+ */
+function centreChain(region: HTMLDivElement | null) {
+  if (!region) return;
+  const calls = region.querySelector<HTMLTableCellElement>("thead tr:first-child th");
+  const headings = [...region.querySelectorAll<HTMLElement>("thead tr:nth-child(2) th")];
+  const strike = calls ? headings[calls.colSpan] : undefined;
+  if (calls && strike && region.scrollWidth > region.clientWidth) {
+    const before = headings
+      .slice(0, calls.colSpan)
+      .reduce((width, cell) => width + cell.getBoundingClientRect().width, 0);
+    region.scrollLeft = before + strike.getBoundingClientRect().width / 2 - region.clientWidth / 2;
+  }
+  const row = region.querySelector<HTMLElement>("tbody .mx-near-spot");
+  if (row && region.scrollHeight > region.clientHeight) {
+    const top = row.getBoundingClientRect().top - region.getBoundingClientRect().top + region.scrollTop;
+    region.scrollTop = top - (region.clientHeight - row.offsetHeight) / 2;
+  }
+}
+
 export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy(),
     { params, update } = useRouteState();
@@ -295,6 +318,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   )}
                 </div>
                 <div
+                  key={active + "|" + activeCols.join(",") + "|" + allStrikes}
+                  ref={centreChain}
                   className="mx-table-wrap mx-option-chain"
                   role="region"
                   tabIndex={0}

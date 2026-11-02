@@ -411,9 +411,12 @@ export function Tabs<T extends string>({
       if (!selected) return;
       const bounds = list.getBoundingClientRect();
       const tab = selected.getBoundingClientRect();
-      if (tab.left < bounds.left) list.scrollLeft -= bounds.left - tab.left;
-      else if (tab.right > bounds.right)
-        list.scrollLeft += tab.right - bounds.right;
+      // Clear the 40px edge fade as well, so the selected tab is never half faded.
+      const fade = Math.min(40, bounds.width / 4);
+      if (tab.left < bounds.left + fade)
+        list.scrollLeft -= bounds.left + fade - tab.left;
+      else if (tab.right > bounds.right - fade)
+        list.scrollLeft += tab.right - (bounds.right - fade);
     };
     const markEdges = () => {
       const start = list.scrollLeft > 1;

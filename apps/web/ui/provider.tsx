@@ -10,6 +10,7 @@ import {
 import { useState } from "react";
 
 import { tradingMaxTheme } from "@/ui/theme";
+import { FinePointerProvider } from "@/ui/pointer";
 
 export function TradingMaxProvider({
   children,
@@ -44,7 +45,7 @@ export function TradingMaxProvider({
     >
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
-        {children}
+        <FinePointerProvider>{children}</FinePointerProvider>
       </QueryClientProvider>
     </MantineProvider>
   );
