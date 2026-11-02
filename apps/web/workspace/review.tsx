@@ -27,6 +27,7 @@ import { currency, number, object, objects, percent, str, tone, type Json } from
 import { navNumber, observedNav, type Scope } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
 import {
+  Bento,
   Empty,
   Facts,
   Freshness,
@@ -45,6 +46,7 @@ import {
 import { accountName, useWorkspaceProfile } from "./profile";
 import { useRouteState } from "./route-state";
 import { reviewHighlights } from "./review-highlights";
+import { SecurityPeek } from "./security-peek";
 
 export function ReviewWorkspace() {
   const t = useCopy();
@@ -217,7 +219,8 @@ function AccountJournal({
           )}
         </Notice>
       )}
-      <Panel>
+      <Bento className="mx-review-bento">
+      <Panel bare className="mx-bento-wide">
         <div className="mx-metric-grid mx-metric-lead">
           <Metric
             label={t("期末价值", "Ending value")}
@@ -260,6 +263,7 @@ function AccountJournal({
       {!unavailable && (
         <ReviewHighlights review={review} cfd={cfd} onEvidence={openEvidence} />
       )}
+      </Bento>
       <div
         ref={evidence}
         tabIndex={-1}
@@ -443,6 +447,8 @@ function ReviewHighlights({
   ];
   return (
     <Panel
+      bare
+      className="mx-bento-wide"
       title={t("本次结论", "Review highlights")}
     >
       <div className="mx-review-highlights">
@@ -819,7 +825,9 @@ function TradeQuality({
                   className="mx-row-link"
                   href={"/research?ticker=" + encodeURIComponent(str(r.ticker))}
                 >
-                  <Instrument ticker={str(r.ticker)} name={str(r.name)} small />
+                  <SecurityPeek ticker={str(r.ticker)}>
+                    <Instrument ticker={str(r.ticker)} name={str(r.name)} small />
+                  </SecurityPeek>
                   <span className={"mx-row-value mx-" + tone(r.netResultGbp)}>
                     {currency(r.netResultGbp, "GBP", 2)}
                     <small>

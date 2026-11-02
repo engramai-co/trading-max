@@ -4,6 +4,8 @@ import { Group, Select, Tooltip } from "@mantine/core";
 import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
+import { useLocale } from "@/components/locale-provider";
+import { formatDate } from "@/ui/formatters";
 import type { DashboardLens, NavPoint, RiskMetrics } from "@/lib/types";
 import { HistoryChart, Legend, type ChartLine } from "./charts";
 import { TimelineChart } from "./timeline-chart";
@@ -626,6 +628,7 @@ function MonthlyReturns({
   scope: Scope;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const map = new Map<string, number | null>();
   const sorted = inRange(points, "ALL").filter(
     (p) => navNumber(p, scope, "Twr") != null,
@@ -658,7 +661,7 @@ function MonthlyReturns({
           role="region"
           aria-label={t("数据表格", "Data table")}
         >
-          <table className="mx-table">
+          <table className="mx-table mx-month-table">
             <thead>
               <tr>
                 <th>{t("年份", "Year")}</th>
@@ -677,13 +680,13 @@ function MonthlyReturns({
                     return (
                       <td
                         key={key}
-                        className={value == null ? undefined : "mx-month-return mx-" + tone(value)}
-                        // Fill strength follows the size of the move, capped at 10%.
-                        style={{ padding: "17px 9px", ...(value == null ? {} : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }) }}
+                        className="mx-month-return"
                       >
-                        <Tooltip label={key}>
+                        <Tooltip label={formatDate(key + "-01T00:00:00Z", locale, { year: "numeric", month: "long", timeZone: "UTC" })}>
                           <span
-                            className={value == null ? "" : "mx-" + tone(value)}
+                            className={value == null ? "mx-heat-empty" : "mx-heat-pill mx-" + tone(value)}
+                            // Fill strength follows the size of the move, capped at 10%.
+                            style={value == null ? undefined : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }}
                           >
                             {percent(value, true)}
                           </span>

@@ -161,6 +161,7 @@ export function Panel({
   children,
   className = "",
   id,
+  bare = false,
 }: {
   title?: ReactNode;
   description?: ReactNode;
@@ -169,9 +170,11 @@ export function Panel({
   children: ReactNode;
   className?: string;
   id?: string;
+  /** A cell inside a Bento surface: same heading, no box of its own. */
+  bare?: boolean;
 }) {
   return (
-    <section className={"mx-panel " + className} id={id}>
+    <section className={(bare ? "mx-bento-cell " : "mx-panel ") + className} id={id}>
       {(title || action) && (
         <div className="mx-panel-heading">
           <div>
@@ -189,6 +192,10 @@ export function Panel({
       {children}
     </section>
   );
+}
+/** One surface whose sections are separated by hairlines instead of separate boxes. */
+export function Bento({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={"mx-panel mx-bento " + className}>{children}</div>;
 }
 export function Metric({
   label,
