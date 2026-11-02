@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-11-02
+
+### Fixed
+
+- Live and full account updates now run the day attribution stage, so the
+  overview's 1D line appears. The stage was registered in 1.17.0 but left
+  out of the job plans.
+
 ## [1.17.0] - 2026-11-02
 
 ### Added

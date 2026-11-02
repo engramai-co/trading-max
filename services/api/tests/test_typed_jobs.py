@@ -265,11 +265,13 @@ def test_typed_account_job_declares_nav_before_performance() -> None:
     assert names.index("accounts.nav") < names.index("accounts.performance")
     assert names.index("accounts.snapshot") < names.index("accounts.intraday_nav")
     assert names.index("accounts.intraday_nav") < names.index("snapshot.publish")
+    assert names.index("accounts.snapshot") < names.index("accounts.day_attribution")
 
 
 def test_full_refresh_reconstructs_intraday_and_uses_current_market_benchmark() -> None:
     names = [name for name, _ in stage_plan("all", skip_sync=True)]
     assert names.index("accounts.snapshot") < names.index("accounts.intraday_nav")
+    assert names.index("accounts.snapshot") < names.index("accounts.day_attribution")
     assert names.index("research.technical") < names.index("accounts.performance")
     assert names.index("accounts.performance") < names.index("accounts.review")
 
@@ -280,6 +282,7 @@ def test_intraday_job_is_account_only_and_cannot_skip_broker_sync() -> None:
         "broker.sync",
         "accounts.snapshot",
         "accounts.intraday_nav",
+        "accounts.day_attribution",
         "snapshot.publish",
     ]
     with pytest.raises(ValueError, match="cannot skip broker sync"):
@@ -387,6 +390,24 @@ def test_job_specs_bind_versions_from_the_executable_registry(tmp_path: Path) ->
         specs = manager._stage_specs("accounts", skip_sync=True)
         assert specs
         assert all(version == manager.registry.get(name).version for name, version, _label in specs)
+    finally:
+        manager.close()
+
+
+def test_every_registered_account_stage_is_planned_for_its_scopes(tmp_path: Path) -> None:
+    """A stage registered for a scope must run there; registration alone runs nothing."""
+
+    manager = TypedJobManager(ArtifactStore(tmp_path), WatchlistStore(tmp_path))
+    try:
+        registry = manager.registry
+        for scope in ("intraday", "accounts", "all"):
+            planned = {name for name, _label in stage_plan(scope, skip_sync=False)}
+            missing = [
+                name
+                for name in registry.names()
+                if scope in registry.get(name).required_for and name not in planned
+            ]
+            assert missing == [], f"{scope} plan omits {missing}"
     finally:
         manager.close()
 
