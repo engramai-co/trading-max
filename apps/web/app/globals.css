@@ -144,6 +144,7 @@ h1, h2, h3, p { margin: 0; }
 .mx-tag-good { color: var(--mx-up); background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface)); }
 .mx-tag-bad { color: var(--mx-down); background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface)); }
 .mx-tag-warn { color: var(--mx-warning); background: color-mix(in srgb, var(--mx-warning) 10%, var(--mx-surface)); }
+.mx-estimate-tag { display: inline-flex; } .mx-metric-label .mx-tag { padding-block: 1px; } .mx-tag svg { flex: none; }
 .mx-notice { display: flex; align-items: flex-start; gap: 10px; border-radius: 7px; padding: 13px 15px; font-size: 12px; line-height: 1.8; color: var(--mx-muted); background: var(--mx-soft); }
 .mx-notice svg { flex-shrink: 0; margin-top: 1px; }
 .mx-notice-bad { color: var(--mx-down); background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface)); }

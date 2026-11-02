@@ -4,7 +4,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { NavPoint } from "@/lib/types";
 import type { Locale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
-import { Freshness, Notice, Tag, useCopy } from "./foundation";
+import { Freshness, Tag, useCopy } from "./foundation";
 import type { PortfolioHistory } from "@/lib/portfolio/history";
 
 /** Estimates change the conclusion when they set an endpoint or dominate the period. */
@@ -38,41 +38,46 @@ export function PeriodSpan({ points }: { points: Array<Pick<NavPoint, "date">> }
   return span ? <span className="mx-period-span">{span}</span> : null;
 }
 
-/** Quiet marker for minor estimates; HistoryCoverage speaks up when they are material. */
+/**
+ * Estimates are marked beside the period figure, with the chart's dashed stroke.
+ * Minor estimates stay neutral; endpoints or a large share turn the tag amber.
+ */
 export function EstimateTag({ points }: { points: Array<Pick<NavPoint, "valuationSource">> }) {
   const t = useCopy();
   const coverage = estimateCoverage(points);
-  if (!coverage.estimated || coverage.material) return null;
+  if (!coverage.estimated) return null;
+  const share = Math.max(1, Math.round(coverage.share * 100));
+  const label = coverage.opening
+    ? t("期初为估算", "Estimated opening")
+    : coverage.closing
+      ? t("最新为估算", "Estimated latest")
+      : t("含估算 ", "Includes estimates ") + share + "%";
+  const detail = coverage.opening
+    ? t("期初价值是重建估算，区间盈亏与回撤包含估算。", "The opening value is a reconstructed estimate; period P&L and drawdown include estimates.")
+    : coverage.closing
+      ? t("最新价值是重建估算，区间盈亏与回撤包含估算。", "The latest value is a reconstructed estimate; period P&L and drawdown include estimates.")
+      : t("部分价值依据交易、持仓与历史行情补算，区间盈亏与回撤包含估算。", "Some values are reconstructed from transactions, holdings and historical prices; period P&L and drawdown include them.");
   return (
-    <span title={t("依据交易、持仓与历史行情补算", "Reconstructed from transactions, holdings and historical prices")}>
-      <Tag tone="warn">{t("含估算 ", "Includes estimates ") + Math.max(1, Math.round(coverage.share * 100)) + "%"}</Tag>
+    <span className="mx-estimate-tag" title={detail} data-material={coverage.material ? "" : undefined}>
+      <Tag tone={coverage.material ? "warn" : "neutral"}>
+        <svg width="14" height="4" aria-hidden="true">
+          <line x1="1" y1="2" x2="13" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" />
+        </svg>
+        {label}
+      </Tag>
     </span>
   );
 }
 
-/** Only exceptions are written out: estimated endpoints, mostly estimated periods, pending cash flows. */
+/** Pending cash flows are the one coverage exception written out; estimates are tagged beside the figure. */
 export function HistoryCoverage({ history }: { history: PortfolioHistory }) {
   const t = useCopy();
-  const { locale } = useLocale();
-  const coverage = estimateCoverage(history.points);
-  if (!history.pendingCashFlows && !coverage.material) return null;
-  const share = Math.round(coverage.share * 100);
+  if (!history.pendingCashFlows) return null;
   return (
     <div className="mx-history-coverage" data-history-source={history.source}>
-      {coverage.material && (
-        <Notice tone="warn">
-          {coverage.opening
-            ? t("期初价值是重建估算，区间盈亏与回撤包含估算。", "The opening value is a reconstructed estimate; period P&L and drawdown include estimates.")
-            : coverage.closing
-              ? t("最新价值是重建估算，区间盈亏与回撤包含估算。", "The latest value is a reconstructed estimate; period P&L and drawdown include estimates.")
-              : locale === "zh"
-                ? `本区间 ${share}% 的价值是重建估算，区间盈亏与回撤包含估算。`
-                : `${share}% of values in this period are reconstructed estimates; period P&L and drawdown include them.`}
-        </Notice>
-      )}
-      {history.pendingCashFlows && (history.cashFlowCutoffAt
+      {history.cashFlowCutoffAt
         ? <Freshness date={history.cashFlowCutoffAt} label={t("现金流待核对 · 统计截至", "Cash flows pending · Calculated through")} />
-        : t("已有估值记录，资金流水待核对。", "Valuations are recorded; cash flows await reconciliation."))}
+        : t("已有估值记录，资金流水待核对。", "Valuations are recorded; cash flows await reconciliation.")}
     </div>
   );
 }
@@ -87,8 +92,8 @@ export function HistoryHelp() {
       )}</p>
       <p>{t("虚线显示重建估算，点线连接仍未补齐的时段；悬停或轻点可查看每个值的来源。", "Dashed sections show reconstructed estimates; dotted sections bridge remaining gaps. Hover or tap to inspect each value's source.")}</p>
       <p>{t(
-        "早期历史及离线期间可由交易、持仓与行情重建，区间盈亏和回撤也会包含估算。估算决定期初或最新价值，或占区间四分之一以上时，图上方会单独提示。现金流待核对时，本图与收益分析统一截至最后可核对时刻。",
-        "Early history and collection outages can be reconstructed from transactions, holdings and prices; period P&L and drawdown then include estimates. A notice appears when an estimate sets the opening or latest value, or covers more than a quarter of the period. While cash flows await reconciliation, this chart and performance share the last verified cutoff.",
+        "早期历史及离线期间可由交易、持仓与行情重建，区间盈亏和回撤也会包含估算，并在区间盈亏旁标注。估算决定期初或最新价值，或占区间四分之一以上时，标注转为提醒色。现金流待核对时，本图与收益分析统一截至最后可核对时刻。",
+        "Early history and collection outages can be reconstructed from transactions, holdings and prices; period P&L and drawdown then include estimates, marked beside the period P&L. The mark turns amber when an estimate sets the opening or latest value, or covers more than a quarter of the period. While cash flows await reconciliation, this chart and performance share the last verified cutoff.",
       )}</p>
       <p>{t(
         "5D 为最近 5 个工作日；月度区间按自然月，图中省略周末。完整记录及来源可在图下展开查看。",

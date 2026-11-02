@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.16.2] - 2026-11-02
+
+### Changed
+
+- Reconstructed estimates in the overview's period P&L and in performance
+  are marked by a small tag beside the figure, drawn with the chart's dashed
+  estimate stroke, in place of the full-width banner above the chart. The
+  tag names what is estimated (opening value, latest value or share of the
+  period), turns amber only when the estimate sets an endpoint or covers
+  more than a quarter of the period, and keeps the full explanation on
+  hover.
+
 ## [1.16.1] - 2026-11-02
 
 ### Fixed
