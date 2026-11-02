@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from trading_max.analytics.cash_flow_history import AccountCashFlowHistory, account_state_digest
+from trading_max.analytics.day_attribution import update_day_attribution
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
     HistoryLoader,
@@ -592,4 +593,82 @@ class AccountIntradayNavStage:
         )
 
 
-__all__ = ["AccountIntradayNavStage", "AccountNavStage"]
+DAY_BASELINE_KEY = "account/attribution/day_baseline.json"
+DAY_ATTRIBUTION_KEY = "account/attribution/day.json"
+
+
+class AccountDayAttributionStage:
+    """Attribute each position's change since the trading day's first observation."""
+
+    name = "accounts.day_attribution"
+    version = "day-attribution-v1"
+    required_for = frozenset({"intraday", "accounts", "all"})
+    dependencies = ("accounts.snapshot",)
+
+    def __init__(
+        self,
+        artifacts: ContentAddressedArtifactStore,
+        snapshots: SnapshotStore,
+    ) -> None:
+        self.artifacts = artifacts
+        self.snapshots = snapshots
+
+    def run(self, context: StageContext) -> StageResult:
+        accounts: dict[str, dict] = {}
+        dependencies: list[str] = []
+        for code, profile in selected_accounts(self.artifacts, context):
+            account = _upstream_json(
+                self.artifacts, context, f"account/intraday/{profile}.json"
+            ) or _upstream_json(self.artifacts, context, f"account/{profile}.json")
+            if account is None:
+                raise StageExecutionError(
+                    "account.snapshot_dependency_missing",
+                    f"missing current account artifact for {profile}",
+                )
+            accounts[code] = account.payload
+            dependencies.append(account.ref.artifact_id)
+        if not accounts:
+            return StageResult()
+        previous = _previous_json(self.artifacts, self.snapshots, DAY_BASELINE_KEY)
+        try:
+            baseline, attribution = update_day_attribution(
+                previous.payload if previous is not None else None,
+                accounts,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise StageExecutionError("account.day_attribution_invalid", str(exc)) from exc
+        missing = sorted(set(accounts) - set(attribution.accounts))
+        warnings = (
+            [f"day attribution unavailable without reconciled positions: {', '.join(missing)}"]
+            if missing
+            else []
+        )
+        stored_baseline = self.artifacts.put_json(
+            key=DAY_BASELINE_KEY,
+            payload=baseline.model_dump(mode="json", by_alias=False),
+            kind="account_day_baseline",
+            as_of=baseline.day.isoformat(),
+            producer_version=self.version,
+            dependency_artifact_ids=dependencies,
+            quality=ArtifactQuality(status="verified"),
+        )
+        stored = self.artifacts.put_json(
+            key=DAY_ATTRIBUTION_KEY,
+            payload=attribution.model_dump(mode="json", by_alias=False),
+            kind="account_day_attribution",
+            as_of=attribution.day.isoformat(),
+            producer_version=self.version,
+            dependency_artifact_ids=[*dependencies, stored_baseline.ref.artifact_id],
+            quality=ArtifactQuality(
+                status="warning" if warnings else "verified",
+                coverage=f"{len(attribution.accounts)}/{len(accounts)}",
+                warnings=warnings,
+            ),
+        )
+        return StageResult(
+            artifacts=(stored_baseline.ref, stored.ref),
+            warnings=tuple(warnings),
+        )
+
+
+__all__ = ["AccountDayAttributionStage", "AccountIntradayNavStage", "AccountNavStage"]

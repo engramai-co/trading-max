@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-02
+
+### Added
+
+- On the overview's 1D view, a line under the period P&L shows what moved
+  the account today. It lists the three largest position contributors since
+  the trading day's first observation, then "Other" for the rest, and the
+  parts add up to the account change. Each ticker links to its research
+  page. When cash, FX on cash, trades during the day or valuation timing
+  explain a large share of the move, an amber "Unattributed" tag says so.
+  The trading day follows London time; weekends stay on Friday, as on the
+  1D chart.
+- Live account collection keeps the day's opening position values, so
+  attribution needs no extra market data. Accounts whose position detail
+  does not reconcile with the broker summary are left out instead of
+  estimated.
+
 ## [1.16.4] - 2026-11-02
 
 ### Fixed

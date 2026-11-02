@@ -15,6 +15,7 @@ from ..dashboard_models import (
     DashboardLensName,
     DashboardLensSnapshot,
     DashboardResponse,
+    DayAttribution,
     NavPoint,
     OverviewReviewSummary,
 )
@@ -37,6 +38,16 @@ def _portfolio_day(value: str) -> date | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(_PORTFOLIO_TIME_ZONE).date()
+
+
+def _day_attribution(request: Request, run_id: str) -> DayAttribution | None:
+    """Optional: older snapshots and unreconciled days have no attribution."""
+
+    try:
+        payload = request.app.state.store.read_json(run_id, "account/attribution/day.json")
+        return DayAttribution.model_validate(payload)
+    except (FileNotFoundError, TypeError, ValueError):
+        return None
 
 
 def _latest_intraday_points(points: list[NavPoint]) -> list[NavPoint]:
@@ -216,6 +227,7 @@ def dashboard_lens(
             total_invested_gbp=dashboard_data.total_invested_gbp,
             total_unrealized_pnl_gbp=dashboard_data.total_unrealized_pnl_gbp,
             latest_model_day_return=dashboard_data.latest_model_day_return,
+            day_attribution=_day_attribution(request, manifest.run_id),
             household_total_value_gbp=dashboard_data.household_total_value_gbp,
             accounts=[item for item in dashboard_data.accounts if item.is_investable],
             cfd=dashboard_data.cfd,

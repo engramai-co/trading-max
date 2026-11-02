@@ -34,6 +34,7 @@ import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
+import { DayDrivers } from "./day-drivers";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
@@ -191,7 +192,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           </div>
         )}
         <div className="mx-overview-split">
-          <OverviewHistory scope={scope} runId={data.runId} />
+          <OverviewHistory scope={scope} runId={data.runId} attribution={data.dayAttribution} />
           <Allocation holdings={holdings} />
         </div>
       </div>
@@ -350,7 +351,15 @@ function Attention({ items }: { items: AttentionItem[] }) {
     </nav>
   );
 }
-function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
+function OverviewHistory({
+  scope,
+  runId,
+  attribution,
+}: {
+  scope: Scope;
+  runId: string;
+  attribution?: DashboardLens["dayAttribution"];
+}) {
   const t = useCopy();
   const { params, update } = useRouteState();
   const range = portfolioRange(params.get("range"));
@@ -405,6 +414,14 @@ function OverviewHistory({ scope, runId }: { scope: Scope; runId: string }) {
               {t("收益分析", "View performance")}
             </TextLink>
           </div>
+          {range === "1D" && attribution && attribution.day === history.endDay && (
+            <DayDrivers
+              attribution={attribution}
+              scope={scope}
+              dates={points.map((p) => p.date)}
+              pnls={money.pnls}
+            />
+          )}
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}

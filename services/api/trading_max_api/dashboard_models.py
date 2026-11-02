@@ -1242,6 +1242,27 @@ class PolicySummary(ApiModel):
     isa_buckets: list[IsaBucket]
 
 
+class PositionDayContribution(ApiModel):
+    ticker: str
+    name: str
+    contribution_gbp: float
+
+
+class AccountDayAttribution(ApiModel):
+    """Change of each position held since the trading day's first observation."""
+
+    since: str
+    as_of: str
+    contributions: list[PositionDayContribution] = Field(default_factory=list)
+
+
+class DayAttribution(ApiModel):
+    """Accounts appear only when their position detail reconciled at both ends."""
+
+    day: str
+    accounts: dict[InvestableAccountCode, AccountDayAttribution] = Field(default_factory=dict)
+
+
 class DashboardLensSnapshot(ApiModel):
     """A page-scoped dashboard payload.
 
@@ -1262,6 +1283,7 @@ class DashboardLensSnapshot(ApiModel):
     total_invested_gbp: float | None = None
     total_unrealized_pnl_gbp: float | None = None
     latest_model_day_return: float | None = None
+    day_attribution: DayAttribution | None = None
     accounts: list[AccountSummary] = Field(default_factory=list)
     selected_account: AccountSummary | None = None
     selected_account_analysis: AccountAnalysisMetrics | None = None
