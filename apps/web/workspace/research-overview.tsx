@@ -5,7 +5,7 @@ import { formatCalendarDate } from "@/ui/formatters";
 import { Button } from "@mantine/core";
 import { useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
-import { Facts, Metric, Panel, TextLink, useCopy } from "./foundation";
+import { Bento, Facts, Metric, Panel, TextLink, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
 import { useRouteState } from "./route-state";
 export function CompanyOverview({
@@ -40,9 +40,11 @@ export function CompanyOverview({
       10,
     );
   return (
-    <>
+    <Bento className="mx-overview-bento">
       {period && (
         <Panel
+          bare
+          className="mx-bento-wide"
           title={t("经营要点", "Operating facts")}
           action={
             <span>
@@ -90,8 +92,8 @@ export function CompanyOverview({
           </div>
         </Panel>
       )}
-      <div className="mx-grid mx-overview-context">
         <Panel
+          bare
           title={t("业务", "Business")}
           action={
             safeUrl(str(info.website)) ? (
@@ -149,7 +151,7 @@ export function CompanyOverview({
             </TextLink>
           </div>
         </Panel>
-        <Panel title={t("近期披露与预期", "Disclosures & expectations")}>
+        <Panel bare title={t("近期披露与预期", "Disclosures & expectations")}>
           {date && (
             <button
               className="mx-event-link"
@@ -178,9 +180,10 @@ export function CompanyOverview({
             </TextLink>
           </div>
         </Panel>
-      </div>
       {impact && impact.exposureValueGbp > 0 && (
         <Panel
+          bare
+          className="mx-bento-wide"
           title={t("我的敞口", "My exposure")}
           action={
             <TextLink href={`/holdings?q=${data.ticker}`}>
@@ -217,7 +220,7 @@ export function CompanyOverview({
                 rows={impact.etfContributors.map((raw) => {
                   const r = object(raw);
                   return [
-                    `${str(r.ticker ?? r.fundTicker ?? r.etf)}${r.asOf ? " · " + str(r.asOf) : ""}`,
+                    `${str(r.ticker ?? r.fundTicker ?? r.etf)}${r.asOf ? " · " + formatCalendarDate(str(r.asOf), locale) : ""}`,
                     currency(r.valueGbp ?? r.exposureValueGbp),
                   ];
                 })}
@@ -226,6 +229,6 @@ export function CompanyOverview({
           )}
         </Panel>
       )}
-    </>
+    </Bento>
   );
 }

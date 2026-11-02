@@ -20,6 +20,7 @@ import {
   type Observation,
 } from "./research-facts";
 import { useRouteState } from "./route-state";
+import { Sparkbars } from "./sparks";
 import { chartName, chartNumber } from "./research-chart-format";
 
 export function FinancialWorkbench({
@@ -521,6 +522,9 @@ export function FinancialWorkbench({
                   <thead>
                     <tr>
                       <th>{facts.currency}</th>
+                      <th className="mx-spark-cell">
+                        <span className="sr-only">{t("趋势", "Trend")}</span>
+                      </th>
                       {[...periods].reverse().map((p) => (
                         <th key={p.id}>
                           {p.label}
@@ -542,6 +546,9 @@ export function FinancialWorkbench({
                           }
                         >
                           <th>{label(key)}</th>
+                          <td className="mx-spark-cell">
+                            <Sparkbars values={periods.map((p) => get(p.id, key)?.value)} />
+                          </td>
                           {[...periods].reverse().map((p) => (
                             <td key={p.id}>
                               <button

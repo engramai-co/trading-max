@@ -44,6 +44,7 @@ import {
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
+import { SecurityPeek } from "./security-peek";
 import { Narrative } from "./narrative";
 import { accountName, useWorkspaceProfile } from "./profile";
 
@@ -281,7 +282,9 @@ function Positions() {
                                 t("查看持仓 ", "View position ") + h.ticker
                               }
                             >
-                              <Instrument ticker={h.ticker} name={h.name} />
+                              <SecurityPeek ticker={h.ticker} position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
+                                <Instrument ticker={h.ticker} name={h.name} />
+                              </SecurityPeek>
                             </button>
                           </td>
                           {detailed && (
@@ -952,11 +955,16 @@ function Exposure({
                               className="mx-table-button"
                               onClick={() => setSelected(p)}
                             >
-                              <Instrument
-                                ticker={p.ticker ?? "—"}
-                                name={p.name}
-                                small
-                              />
+                              <SecurityPeek
+                                ticker={p.ticker}
+                                position={{ valueGbp: p.valueGbp, weightPct: p.allocationPct, label: t("敞口", "Exposure") }}
+                              >
+                                <Instrument
+                                  ticker={p.ticker ?? "—"}
+                                  name={p.name}
+                                  small
+                                />
+                              </SecurityPeek>
                             </button>
                           </td>
                           <td>{p.country ?? "—"}</td>

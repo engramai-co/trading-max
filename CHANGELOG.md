@@ -4,6 +4,27 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-02
+
+### Added
+
+- Resting the pointer on a security in holdings, look-through, the
+  overview's holdings research and review trade lists opens a small preview
+  with its latest price, a three-month sparkline and change, and your
+  position or exposure. Prices load only when the preview opens; touch
+  screens keep the plain tap target.
+- Financial statement rows show a small trend bar beside each line item,
+  oldest to newest, with the latest period solid and losses below the
+  baseline.
+
+### Changed
+
+- The research overview and the account review summary are each one
+  surface divided by hairlines, so related sections read together instead
+  of as separate boxes.
+- Monthly returns use rounded pills whose tint follows the size of the
+  move, and month tooltips name the month in words.
+
 ## [1.15.9] - 2026-11-02
 
 ### Changed

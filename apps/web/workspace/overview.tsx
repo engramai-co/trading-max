@@ -38,6 +38,7 @@ import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortf
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { LocalOnboarding } from "./local-onboarding";
+import { SecurityPeek } from "./security-peek";
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
@@ -253,13 +254,22 @@ function OverviewContent({ data }: { data: DashboardLens }) {
               const name = holdings.find(
                 (h) => h.ticker === signal.ticker,
               )?.name;
+              const held = holdings.filter((h) => h.ticker === signal.ticker);
               return (
                 <Link
                   className="mx-row-link"
                   key={signal.ticker}
                   href={"/research?ticker=" + encodeURIComponent(signal.ticker)}
                 >
-                  <Instrument ticker={signal.ticker} name={name} small />
+                  <SecurityPeek
+                    ticker={signal.ticker}
+                    position={{
+                      valueGbp: held.reduce((sum, h) => sum + h.currentValueGbp, 0),
+                      weightPct: held.reduce((sum, h) => sum + h.allocationPct, 0),
+                    }}
+                  >
+                    <Instrument ticker={signal.ticker} name={name} small />
+                  </SecurityPeek>
                   <div className="mx-row-value">
                     {t("技术 ", "Technical ")}{signal.score}
                     <span className="mx-metric-note">/100</span>
