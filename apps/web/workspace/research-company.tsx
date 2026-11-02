@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Checkbox, Group, Select, TextInput } from "@mantine/core";
@@ -403,6 +405,7 @@ export function FinancialStatements({
   controlledFrequency?: string;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const [statement, setStatement] = useState("incomeStatement");
   const [unit, setUnit] = useState("millions");
   const [growth, setGrowth] = useState(false);
@@ -545,7 +548,7 @@ export function FinancialStatements({
                   <th>{t("会计科目", "Line item")}</th>
                   {dates.map((date) => (
                     <th className="mx-align-right" key={date}>
-                      {periodFor(date)?.label ?? date.slice(0, 10)}
+                      {periodFor(date)?.label ?? formatCalendarDate(date, locale)}
                     </th>
                   ))}
                 </tr>

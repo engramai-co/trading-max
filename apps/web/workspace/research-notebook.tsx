@@ -137,7 +137,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
                   <article key={note.id}>
                     <div className="mx-note-heading">
                       <h3>{content.title}</h3>
-                      <time>{revision.savedAt.slice(0, 10)}</time>
+                      <time dateTime={revision.savedAt}>{formatDateTime(revision.savedAt, locale, timeZone)}</time>
                     </div>
                     {content.thesis && (
                       <p className="mx-preserve-lines">{content.thesis}</p>

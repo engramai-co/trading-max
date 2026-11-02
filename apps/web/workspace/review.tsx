@@ -7,7 +7,7 @@ import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
 import Link from "./link";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { formatDateSpan } from "@/ui/formatters";
+import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { PerformanceContent } from "./performance";
@@ -901,6 +901,7 @@ function TradeQuality({
 }
 function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const rows = objects(data.items);
   const [phaseLimit, setPhaseLimit] = useState(() =>
     Math.max(8, rows.findIndex((row) => row.phaseId === focusPhase) + 1),
@@ -942,7 +943,7 @@ function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }) {
               style={{ scrollMarginTop: 24 }}
             >
               <time>
-                {str(row.startDate)} → {str(row.endDate)}
+                {formatDateSpan(str(row.startDate), str(row.endDate), locale)}
               </time>
               <Group justify="space-between">
                 <h3>
@@ -1023,7 +1024,7 @@ function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }) {
               </details>
               {objects(row.evidenceEvents).map((event, i) => (
                 <p key={i}>
-                  {str(event.date ?? event.occurredAt)} ·{" "}
+                  {formatCalendarDate(str(event.date ?? event.occurredAt), locale)} ·{" "}
                   {events[str(event.type)] ?? t("阶段事件", "Phase event")} ·{" "}
                   {currency(event.amountGbp, "GBP", 2)}
                 </p>

@@ -903,7 +903,7 @@ export function PriceHistory({
               {markers.map((m, i) => (
                 <article key={i}>
                   <h3>
-                    {m.date.slice(0, 10)} · {m.kind}
+                    {formatCalendarDate(m.date, locale)} · {m.kind}
                   </h3>
                   <Facts
                     rows={[
@@ -925,7 +925,7 @@ export function PriceHistory({
               {corporate.map((e, i) => (
                 <article key={"event" + i}>
                   <h3>
-                    {String(e.date).slice(0, 10)} ·{" "}
+                    {formatCalendarDate(String(e.date), locale)} ·{" "}
                     {e.kind === "split"
                       ? t("拆股", "Split")
                       : t("分红", "Dividend")}

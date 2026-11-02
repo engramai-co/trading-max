@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-11-02
+
+### Fixed
+
+- The remaining raw YYYY-MM-DD dates in research and review now read like the
+  rest of the workspace: statement period headers, comparison periods, event
+  and filing dates, trade and corporate-event headings, short-interest and
+  ex-dividend dates, filing-multiple sample windows, research note save times
+  and review phase spans and events.
+
 ## [1.16.0] - 2026-11-02
 
 ### Added
