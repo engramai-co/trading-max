@@ -214,6 +214,7 @@ def stage_plan(
             ("broker.sync", "Sync broker values"),
             ("accounts.snapshot", "Normalize accounts"),
             ("accounts.intraday_nav", "Append intraday NAV anchor"),
+            ("accounts.day_attribution", "Attribute today's position changes"),
             ("snapshot.publish", "Publish immutable snapshot"),
         ]
     if scope == "performance":
@@ -242,6 +243,7 @@ def stage_plan(
                 ("accounts.capital_recovery", "Audit capital recovery"),
                 ("accounts.nav", "Update account NAV"),
                 ("accounts.intraday_nav", "Reconstruct intraday valuation history"),
+                ("accounts.day_attribution", "Attribute today's position changes"),
                 ("accounts.cfd", "Build imported CFD ledger and analysis"),
             ]
         )
