@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Drawer, Group, Select } from "@mantine/core";
@@ -31,6 +33,7 @@ export function FinancialWorkbench({
   initialMode?: string;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const [detail, setDetail] = useState<Observation | null>(null);
   const facts = data.financialFacts;
@@ -528,7 +531,7 @@ export function FinancialWorkbench({
                       {[...periods].reverse().map((p) => (
                         <th key={p.id}>
                           {p.label}
-                          {p.actualEnd && <small>{p.actualEnd}</small>}
+                          {p.actualEnd && <small>{formatCalendarDate(p.actualEnd, locale)}</small>}
                         </th>
                       ))}
                     </tr>

@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
@@ -404,6 +406,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
 
 export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const info = object(object(data.fundamentals).metrics);
   return (
     <div className="mx-grid">
@@ -435,9 +438,7 @@ export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
         action={
           numeric(info.dateShortInterest) != null ? (
             <time className="mx-unit">
-              {new Date(Number(info.dateShortInterest) * 1000)
-                .toISOString()
-                .slice(0, 10)}
+              {formatCalendarDate(new Date(Number(info.dateShortInterest) * 1000).toISOString(), locale)}
             </time>
           ) : undefined
         }
@@ -463,6 +464,7 @@ export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
 
 export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const rows = objects(object(data.researchEvidence).dividends).sort((a, b) =>
     str(b.date).localeCompare(str(a.date)),
   );
@@ -575,7 +577,7 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
               <tbody>
                 {rows.map((r, i) => (
                   <tr key={i}>
-                    <th>{str(r.date)}</th>
+                    <th>{formatCalendarDate(str(r.date), locale)}</th>
                     <td>
                       {number(r.amount, 4)} {code}
                     </td>
@@ -597,6 +599,7 @@ export function ResearchDocuments({
   data: ResearchLensSnapshot;
   news?: boolean;
 }) {
+  const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const [limit, setLimit] = useState(20);
@@ -694,7 +697,7 @@ export function ResearchDocuments({
         <div className="mx-document-feed">
           {rows.slice(0, limit).map((row, i) => (
             <article key={str(row.id) || i}>
-              <time>{str(row.publishedAt ?? row.date).slice(0, 10)}</time>
+              <time>{formatCalendarDate(str(row.publishedAt ?? row.date), locale)}</time>
               <div>
                 <a
                   href={safeUrl(str(row.url))}
@@ -738,7 +741,7 @@ export function ResearchDocuments({
                             target="_blank"
                             rel="noreferrer"
                           >
-                            {t("修订版", "Amendment")} · {str(amendment.date)}{" "}
+                            {t("修订版", "Amendment")} · {formatCalendarDate(str(amendment.date), locale)}{" "}
                             ↗
                           </a>
                         ) : null,

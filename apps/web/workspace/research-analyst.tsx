@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Group, Select, TextInput } from "@mantine/core";
@@ -219,6 +221,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
 }
 
 function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
+  const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const a = object(data.analyst),
@@ -342,7 +345,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
         <summary>{t("预期口径与日期", "Estimate basis & date")}</summary>
         <p>
           {forecastPeriodLabel(a, key(selected), t)} ·{" "}
-          {str(a.asOf).slice(0, 10)} · Yahoo Finance
+          {formatCalendarDate(str(a.asOf), locale)} · Yahoo Finance
         </p>
       </details>
     </Panel>
@@ -505,6 +508,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
 }
 
 export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
+  const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const a = object(data.analyst),
@@ -542,7 +546,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
                   className="mx-text-link"
                   onClick={() => update({ eventId: str(r.id) })}
                 >
-                  {str(r.date)}
+                  {formatCalendarDate(str(r.date), locale)}
                 </button>
               ),
             },
@@ -608,7 +612,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
           <div className="mx-document-feed">
             {filings.map((f, i) => (
               <article key={i}>
-                <time>{str(f.date)}</time>
+                <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
                   {str(f.form)} · {str(f.title)} ↗
                 </a>

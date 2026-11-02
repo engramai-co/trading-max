@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { Button, Modal, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import { Plot } from "./charts";
@@ -15,6 +17,7 @@ export function ResearchComparison({
   ticker: string;
   instruments: { ticker: string; name: string; lastRunId?: string | null }[];
 }) {
+  const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const opened = params.get("compare") === "on",
@@ -225,7 +228,7 @@ export function ResearchComparison({
                             t("无匹配财报", "No matching financials"))}
                       </small>
                       <small>
-                        {col.period?.actualEnd ?? col.period?.providerEnd ?? ""}
+                        {col.period ? formatCalendarDate(col.period.actualEnd ?? col.period.providerEnd, locale) : ""}
                       </small>
                     </th>
                   ))}

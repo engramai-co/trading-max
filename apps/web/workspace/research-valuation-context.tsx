@@ -1,4 +1,6 @@
 "use client";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useState, type ReactNode } from "react";
@@ -102,6 +104,7 @@ export function ModelAlternatives({
 
 export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const [requested, setRequested] = useState("ps");
   const evidence = object(data.researchEvidence);
   const sales = objects(evidence.releaseSalesMultiples);
@@ -187,7 +190,7 @@ export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
             rows={[
               [
                 t("样本窗口", "Sample window"),
-                `${str(rows[0]?.priceDate)} → ${str(rows.at(-1)?.priceDate)}`,
+                formatDateSpan(str(rows[0]?.priceDate), str(rows.at(-1)?.priceDate), locale),
               ],
               [t("披露样本", "Filing observations"), String(samples.length)],
               [t("样本中位数", "Sample median"), `${number(median, 2)}×`],
@@ -336,7 +339,7 @@ export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
                           <summary>{t("查看", "Open")}</summary>
                           <p>
                             {t("普通股股数", "Common shares")}:{" "}
-                            {compact(r.shares)} · {str(r.shareDate)}
+                            {compact(r.shares)} · {formatCalendarDate(str(r.shareDate), locale)}
                           </p>
                           {objects(r.components).map((o, i) => (
                             <p key={i}>
