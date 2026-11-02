@@ -4,7 +4,7 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
-## [1.15.9] - 2026-11-01
+## [1.15.9] - 2026-11-02
 
 ### Changed
 
@@ -17,6 +17,8 @@ All notable public Trading Max releases are recorded here.
 - Render research price changes in parentheses (`-4.22% (-US$9.02)`),
   format the account review P&L timeline axis in compact pounds (`£3k`),
   and keep healthy service rows in muted text without green status tags.
+- Account review shows money reconciliation and record coverage in one
+  two-column panel, with the record span on a single row.
 
 ### Fixed
 

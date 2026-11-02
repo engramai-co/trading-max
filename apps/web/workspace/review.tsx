@@ -7,7 +7,7 @@ import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
 import Link from "./link";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { formatDateSpan } from "@/ui/formatters";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { PerformanceContent } from "./performance";
@@ -316,8 +316,8 @@ function AccountJournal({
               />
             </Panel>
             {cfd && <CfdCashEvidence review={review} />}
-            <div className="mx-grid">
-              <Panel title={t("资金核对", "Reconcile the money")}>
+            <Panel title={t("资金与记录", "Money and records")}>
+              <div className="mx-grid-two mx-reconcile">
                 <Facts
                   rows={[
                     [
@@ -348,11 +348,9 @@ function AccountJournal({
                     ],
                   ]}
                 />
-              </Panel>
-              <Panel title={t("记录覆盖", "Observation coverage")}>
                 <Coverage data={object(review.coverage)} />
-              </Panel>
-            </div>
+              </div>
+            </Panel>
           </>
         ) : tab === "attribution" ? (
           <Attribution data={object(review.attribution)} cfd={cfd} />
@@ -486,12 +484,12 @@ function Coverage({ data }: { data: Json }) {
     <Facts
       rows={[
         [
-          t("开始日期", "First record"),
-          formatCalendarDate(str(data.start_date ?? data.startDate), locale),
-        ],
-        [
-          t("截止日期", "Last record"),
-          formatCalendarDate(str(data.end_date ?? data.endDate), locale),
+          t("记录区间", "Records"),
+          formatDateSpan(
+            str(data.start_date ?? data.startDate),
+            str(data.end_date ?? data.endDate),
+            locale,
+          ),
         ],
         [
           t("资金观测点", "Value observations"),
