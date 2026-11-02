@@ -394,19 +394,19 @@ export function HistoryChart({
   const categories = timeline?.categories ?? dates;
   const multipleDays =
     intraday && historyDay(categories[0]) !== historyDay(categories.at(-1)!);
-  const formatAxisDate = (date: string | number) =>
-    formatDate(
-      date,
-      locale,
-      intraday && !multipleDays
-        ? { hour: "2-digit", minute: "2-digit", timeZone }
-        : {
-            year: "numeric",
-            day: "numeric",
-            month: "short",
-            timeZone: intraday ? timeZone : "UTC",
-          },
-    );
+  const axisZone = intraday ? timeZone : "UTC";
+  const yearOf = (date: string | number) =>
+    formatDate(date, locale, { year: "numeric", timeZone: axisZone });
+  const latestYear = yearOf(categories.at(-1)!);
+  // The year appears only on dates outside the latest year shown, so it marks
+  // the boundary instead of repeating on every label.
+  const formatAxisDate = (date: string | number) => {
+    if (intraday && !multipleDays)
+      return formatDate(date, locale, { hour: "2-digit", minute: "2-digit", timeZone });
+    const day = formatDate(date, locale, { day: "numeric", month: "short", timeZone: axisZone });
+    const year = yearOf(date);
+    return year === latestYear ? day : day + "\n" + year;
+  };
   const horizontalAxis = timeline
     ? timelineAxis(timeline, formatAxisDate)
     : {

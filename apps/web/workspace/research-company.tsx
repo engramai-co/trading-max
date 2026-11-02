@@ -13,6 +13,7 @@ import {
   trailingStatement,
 } from "./financial-values";
 import { Empty, Facts, Notice, Panel, Segments, useCopy } from "./foundation";
+import { Sparkbars } from "./sparks";
 import {
   orderedStatement,
   relativeToPrice,
@@ -546,6 +547,9 @@ export function FinancialStatements({
               <thead>
                 <tr>
                   <th>{t("会计科目", "Line item")}</th>
+                  <th className="mx-spark-cell">
+                    <span className="sr-only">{t("趋势", "Trend")}</span>
+                  </th>
                   {dates.map((date) => (
                     <th className="mx-align-right" key={date}>
                       {periodFor(date)?.label ?? formatCalendarDate(date, locale)}
@@ -556,7 +560,7 @@ export function FinancialStatements({
               <tbody>
                 {!visibleRows.length && (
                   <tr>
-                    <td colSpan={dates.length + 1}>
+                    <td colSpan={dates.length + 2}>
                       {t("没有匹配的科目", "No matching line items")}
                     </td>
                   </tr>
@@ -566,6 +570,9 @@ export function FinancialStatements({
                     <th scope="row" title={str(row.index ?? row.name)}>
                       {label(row)}
                     </th>
+                    <td className="mx-spark-cell">
+                      <Sparkbars values={[...dates].reverse().map((date) => numeric(row[date]))} />
+                    </td>
                     {dates.map((date) => {
                       const currentPeriod = periodFor(date);
                       const priorPeriod = currentPeriod

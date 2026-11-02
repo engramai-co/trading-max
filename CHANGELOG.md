@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.16.3] - 2026-11-02
+
+### Changed
+
+- The full financial statements view shows the same small trend bars
+  beside each line item as the summary table, oldest to newest.
+- Performance and review history charts print the year only on dates
+  outside the latest year shown, instead of on every axis label.
+
 ## [1.16.2] - 2026-11-02
 
 ### Changed
