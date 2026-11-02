@@ -53,9 +53,8 @@ function validQuote(c: Contract) {
   );
 }
 function sum(values: (number | null | undefined)[]) {
-  return values.length && values.every((v) => v != null && Number.isFinite(v))
-    ? values.reduce<number>((n, v) => n + v!, 0)
-    : null;
+  const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
+  return valid.length ? valid.reduce((n, v) => n + v, 0) : null;
 }
 function cell(c: Contract | undefined, key: string) {
   if (!c) return "—";

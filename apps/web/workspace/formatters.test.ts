@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatCalendarDate,
   formatCompactCurrency,
   formatCurrency,
+  formatDateSpan,
   formatNumber,
   formatDateTime,
   formatDeltaPercent,
@@ -73,5 +75,13 @@ describe("shared financial formatters", () => {
     // It is already the next morning in Hong Kong, so 20:00 there is not "today".
     expect(formatDateTime("2026-10-28T12:00:00Z", "zh", "Asia/Hong_Kong", now)).toBe("10月28日 20:00");
     expect(formatDateTime("2025-03-04T09:05:00Z", "en", "Europe/London", now)).toBe("4 Mar 2025 09:05");
+  });
+
+  it("formats calendar dates and spans without raw ISO strings", () => {
+    const now = Date.parse("2026-10-31T12:00:00Z");
+    expect(formatCalendarDate("2026-10-30", "zh", now)).toBe("10月30日");
+    expect(formatCalendarDate("2028-01-31", "zh", now)).toBe("2028年1月31日");
+    expect(formatDateSpan("2026-08-03", "2026-10-30", "zh", now)).toBe("8月3日 – 10月30日");
+    expect(formatDateSpan("2025-08-29", "2026-11-01", "zh", now)).toBe("2025年8月29日 – 11月1日");
   });
 });

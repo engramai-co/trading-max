@@ -60,6 +60,55 @@ export function formatDateTime(
   }) + " " + time;
 }
 
+/** Formats a YYYY-MM-DD calendar date in the reader's locale, omitting the year when it matches the current year. */
+export function formatCalendarDate(
+  value: string | null | undefined,
+  locale: Locale,
+  now: Date | number = Date.now(),
+) {
+  const iso = value?.trim().slice(0, 10) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return value?.trim() || "—";
+  const date = new Date(iso + "T00:00:00Z");
+  if (Number.isNaN(date.valueOf())) return value?.trim() || "—";
+  const currentYear = formatDate(now, "en", { year: "numeric", timeZone: "UTC" });
+  const sameYear = iso.slice(0, 4) === currentYear;
+  return formatDate(date, locale, {
+    ...(sameYear ? {} : { year: "numeric" }),
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Formats a start–end calendar span such as "8月3日 – 10月30日" or "2025年8月29日 – 2026年11月1日". */
+export function formatDateSpan(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  locale: Locale,
+  now: Date | number = Date.now(),
+) {
+  const s = start?.trim().slice(0, 10) ?? "";
+  const e = end?.trim().slice(0, 10) ?? "";
+  if (!s && !e) return "—";
+  if (!e || s === e) return formatCalendarDate(s || e, locale, now);
+  if (!s) return formatCalendarDate(e, locale, now);
+  const crossYear = s.slice(0, 4) !== e.slice(0, 4);
+  const formatEndpoint = (iso: string, forceYear: boolean) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+    const date = new Date(iso + "T00:00:00Z");
+    if (Number.isNaN(date.valueOf())) return iso;
+    const currentYear = formatDate(now, "en", { year: "numeric", timeZone: "UTC" });
+    const withYear = forceYear || iso.slice(0, 4) !== currentYear;
+    return formatDate(date, locale, {
+      ...(withYear ? { year: "numeric" } : {}),
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  };
+  return formatEndpoint(s, crossYear) + " – " + formatEndpoint(e, false);
+}
+
 export function formatDateTimeInTimeZone(
   value: Date | number | string,
   locale: Locale,

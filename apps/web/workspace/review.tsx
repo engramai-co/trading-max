@@ -6,6 +6,8 @@ import { Button, Group, Select, Stack } from "@mantine/core";
 import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
 import Link from "./link";
 import { useRef, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatDateSpan } from "@/ui/formatters";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { PerformanceContent } from "./performance";
@@ -302,6 +304,7 @@ function AccountJournal({
             >
               <HistoryChart
                 dates={nav.map((p) => p.date)}
+                currencyTick
                 lines={[
                   {
                     name: t("累计净盈亏", "Cumulative net P&L"),
@@ -313,8 +316,8 @@ function AccountJournal({
               />
             </Panel>
             {cfd && <CfdCashEvidence review={review} />}
-            <div className="mx-grid">
-              <Panel title={t("资金核对", "Reconcile the money")}>
+            <Panel title={t("资金与记录", "Money and records")}>
+              <div className="mx-grid-two mx-reconcile">
                 <Facts
                   rows={[
                     [
@@ -345,11 +348,9 @@ function AccountJournal({
                     ],
                   ]}
                 />
-              </Panel>
-              <Panel title={t("记录覆盖", "Observation coverage")}>
                 <Coverage data={object(review.coverage)} />
-              </Panel>
-            </div>
+              </div>
+            </Panel>
           </>
         ) : tab === "attribution" ? (
           <Attribution data={object(review.attribution)} cfd={cfd} />
@@ -401,6 +402,7 @@ function ReviewHighlights({
   onEvidence: (view: string, phaseId?: string) => void;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const summary = reviewHighlights(review, cfd);
   const missing = t("记录不足", "Insufficient records");
   const cards = [
@@ -431,9 +433,7 @@ function ReviewHighlights({
     {
       title: cfd ? t("已实现盈亏变动最大阶段", "Largest realized P&L phase") : t("盈亏变动最大阶段", "Largest P&L phase"),
       label: summary.phase
-        ? summary.phase.start === summary.phase.end
-          ? summary.phase.start || "—"
-          : `${summary.phase.start || "—"} → ${summary.phase.end || "—"}`
+        ? formatDateSpan(summary.phase.start, summary.phase.end, locale)
         : missing,
       value: summary.phase?.value,
       partial: summary.phasesPartial,
@@ -479,16 +479,17 @@ function ReviewHighlights({
 }
 function Coverage({ data }: { data: Json }) {
   const t = useCopy();
+  const { locale } = useLocale();
   return (
     <Facts
       rows={[
         [
-          t("开始日期", "First record"),
-          str(data.start_date ?? data.startDate) || "—",
-        ],
-        [
-          t("截止日期", "Last record"),
-          str(data.end_date ?? data.endDate) || "—",
+          t("记录区间", "Records"),
+          formatDateSpan(
+            str(data.start_date ?? data.startDate),
+            str(data.end_date ?? data.endDate),
+            locale,
+          ),
         ],
         [
           t("资金观测点", "Value observations"),

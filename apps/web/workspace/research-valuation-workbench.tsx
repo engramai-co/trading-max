@@ -17,6 +17,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -968,6 +970,7 @@ function GrowthContext({
   analyst: Record<string, unknown>;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const facts = data.financialFacts;
   const annual = (facts?.periods ?? [])
     .filter((p) => p.kind === "annual")
@@ -1039,7 +1042,7 @@ function GrowthContext({
             t("下一财年共识", "Next fiscal-year consensus"),
             <span key="estimate">
               {percent(next?.growth, true, 2)}
-              {next?.endDate ? ` · ${str(next.endDate)}` : ""}
+              {next?.endDate ? " · " + formatCalendarDate(str(next.endDate), locale) : ""}
             </span>,
           ],
         ]}

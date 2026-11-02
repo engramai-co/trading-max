@@ -1,5 +1,7 @@
 "use client";
 import type { ResearchLensSnapshot } from "@/lib/types";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { Button } from "@mantine/core";
 import { useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
@@ -15,6 +17,7 @@ export function CompanyOverview({
 }) {
   const t = useCopy(),
     { update } = useRouteState("push");
+  const { locale } = useLocale();
   const [expanded, setExpanded] = useState(false);
   const facts = context?.financialFacts ?? data.financialFacts;
   const period =
@@ -153,13 +156,13 @@ export function CompanyOverview({
               onClick={() => update({ view: "analyst", analystView: "events" })}
             >
               <span>{t("下一财报窗口", "Next earnings window")}</span>
-              <strong>{date}</strong>
+              <strong>{formatCalendarDate(date, locale)}</strong>
             </button>
           )}
           <div className="mx-document-feed">
             {filings.map((f, i) => (
               <article key={i}>
-                <time>{str(f.date).slice(0, 10)}</time>
+                <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
                   {str(f.form)} · {str(f.title)} ↗
                 </a>
