@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.15.8 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.16.1 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.15.8).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.16.1).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.15.8
+## Verified scope for 1.16.1
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks. All 19 packaged runtime checks passed, including process
@@ -16,19 +16,22 @@ Native acceptance on Apple Silicon macOS 26.5.2 used synthetic data and a privat
 older-version fixture with the released updater implementation. Invalid signed
 feeds, modified archives, interrupted downloads and cancellation left the
 installed application and its running services unchanged. **Install and Relaunch**
-installed the exact final 1.15.8 DMG, stopped the previous runtime and automatically
+installed the exact final 1.16.1 DMG, stopped the previous runtime and automatically
 reopened the isolated demo. The saved connection and disabled auto-open preference
-were unchanged. Normal quit also stopped the new owned services. All installed
+were unchanged. Quitting the relaunched App also stopped its owned services. All installed
 file contents, modes and symlinks matched the accepted package; signature,
 staple and Gatekeeper checks passed again.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-An installed 1.15.6 App discovered and downloaded the public 1.15.8 update through
+An installed 1.15.8 App discovered and downloaded the public 1.16.1 update through
 App Settings. **Install and Relaunch** restored its saved HTTPS connection;
 connection/startup preferences and recent workspace records were unchanged.
 The installed bundle matched the accepted package exactly.
 
+Version 1.16.1 shows real company and ETF logos, readable dates throughout
+research and review, security previews on hover, trend bars in financial
+statements and one-surface research and review summaries.
 Version 1.15.8 lets the layout carry the explanation across the workspace, names
 the dates covered by period P&L, aligns holdings totals with the overview, and
 includes 1.15.7's honest data-status warnings and touch targets.

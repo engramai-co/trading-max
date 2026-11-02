@@ -39,6 +39,13 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   Web deployment and a source release do not publish the desktop installer.
   Keep signing, notarization and native acceptance evidence outside Git; publish
   only the exact accepted DMG, manifest and signed appcast, in that order.
+- Before signing, confirm the login keychain is unlocked with a throwaway
+  `codesign` probe; `errSecInternalComponent` means it is locked. A lock or
+  reboot during signing is recoverable with `resume`: signing works on a copy
+  and nothing reaches Apple until notarization starts.
+- Bump versions only in our own package entries. Never replace the version
+  string globally: a dependency can share it (`smallvec 1.16.1` broke a
+  1.16.1 → 1.14.99 fixture build).
 - After an interrupted notarization upload, inspect its saved receipt and Apple
   history before retrying. An `In Progress` history entry does not confirm upload
   completion. Preserve ambiguous attempts; a confirmed successful upload resumes
@@ -48,6 +55,12 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   itself have launched the App; inspect processes before retrying it.
   After Cmd-Q, verify exit through process and runtime evidence first; a UI
   lookup can relaunch the target and invalidate shutdown or isolation checks.
+  When UI lookups time out on a running App, activate that exact path with
+  `open` (without `-n`) before retrying.
+- The Mac may be in use during native QA. Record runtime status immediately
+  after each relaunch. Explain an unexpected exit from logs (physical
+  Multitouch events and `windowShouldClose` versus synthetic input) and record
+  the observed sequence; never rewrite evidence to fit a script.
 - If an App crashes or macOS shows **Reopen**, stop repeated launches and UI
   retries. Capture the first error, inspect the setup failure and repair its
   cause before one controlled retry. A restore prompt is not proof of a new
