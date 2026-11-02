@@ -26,7 +26,7 @@ from .account_stages import (
 from .broker_stages import BrokerSyncStage
 from .cfd_stages import CfdAccountStage
 from .lookthrough_stages import PortfolioLookthroughStage
-from .nav_stages import AccountIntradayNavStage, AccountNavStage
+from .nav_stages import AccountDayAttributionStage, AccountIntradayNavStage, AccountNavStage
 from .performance_stages import AccountPerformanceStage
 from .reference_stages import SecurityMasterEnrichmentStage
 from .research_stages import (
@@ -100,6 +100,7 @@ class TypedWorkerRuntime:
                     state_root=self.state_root,
                     history_loader_factory=self.intraday_history_loader_factory,
                 ),
+                AccountDayAttributionStage(self.artifacts, self.snapshots),
                 SecurityMasterEnrichmentStage(self.state_root, self.artifacts),
                 PortfolioLookthroughStage(
                     self.state_root,

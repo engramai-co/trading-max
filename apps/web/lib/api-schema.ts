@@ -1303,6 +1303,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * AccountDayAttribution
+         * @description Change of each position held since the trading day's first observation.
+         */
+        AccountDayAttribution: {
+            /** Asof */
+            asOf: string;
+            /** Contributions */
+            contributions?: components["schemas"]["PositionDayContribution"][];
+            /** Since */
+            since: string;
+        };
         /** AccountReportData */
         AccountReportData: {
             /** Analysis */
@@ -2470,6 +2482,7 @@ export interface components {
             brokerAsOf: string;
             cfd?: components["schemas"]["CfdSummary"] | null;
             cfdReview?: components["schemas"]["CfdAccountReview"] | null;
+            dayAttribution?: components["schemas"]["DayAttribution"] | null;
             /** Generatedat */
             generatedAt: string;
             /** Holdings */
@@ -2599,6 +2612,18 @@ export interface components {
             state: "available" | "missing" | "notApplicable" | "unsupported" | "stale" | "invalid";
             /** Version */
             version?: string | null;
+        };
+        /**
+         * DayAttribution
+         * @description Accounts appear only when their position detail reconciled at both ends.
+         */
+        DayAttribution: {
+            /** Accounts */
+            accounts?: {
+                [key: string]: components["schemas"]["AccountDayAttribution"];
+            };
+            /** Day */
+            day: string;
         };
         /** DeepSeekIntegrationCandidate */
         DeepSeekIntegrationCandidate: {
@@ -4074,6 +4099,15 @@ export interface components {
             ticker: string;
             /** Totalvaluegbp */
             totalValueGbp: number;
+        };
+        /** PositionDayContribution */
+        PositionDayContribution: {
+            /** Contributiongbp */
+            contributionGbp: number;
+            /** Name */
+            name: string;
+            /** Ticker */
+            ticker: string;
         };
         /** PriceSeriesPoint */
         PriceSeriesPoint: {

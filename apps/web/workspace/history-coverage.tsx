@@ -99,6 +99,10 @@ export function HistoryHelp() {
         "5D 为最近 5 个工作日；月度区间按自然月，图中省略周末。完整记录及来源可在图下展开查看。",
         "5D covers five weekdays. Monthly ranges use calendar months with weekends omitted from the chart. Expand the records below for individual observations and sources.",
       )}</p>
+      <p>{t(
+        "1D 的数字下方列出今天变动最大的持仓，按全天持有的股数计算；“其他”是其余部分，各项相加等于账户变化。持仓价格解释不了的较大变化（现金、汇率、当日买卖或估值时点）单独标为“未归因”。",
+        "On 1D, the largest position moves today appear under the figure, counting shares held all day; \"Other\" is the rest, and the parts add up to the account change. A large change positions do not explain (cash, FX, trades during the day or valuation timing) is shown separately as \"Unattributed\".",
+      )}</p>
     </>
   );
 }
