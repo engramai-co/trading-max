@@ -1,10 +1,10 @@
 "use client";
 
 import { HoverCard } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { inRange } from "@/lib/portfolio/nav";
+import { useFinePointer } from "@/ui/pointer";
 import { currency, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import { Facts, useCopy } from "./foundation";
@@ -26,7 +26,7 @@ export function SecurityPeek({
   position?: PeekPosition;
   children: ReactNode;
 }) {
-  const pointer = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const pointer = useFinePointer();
   if (!pointer || !ticker || ticker === "—") return <>{children}</>;
   return (
     <HoverCard openDelay={400} closeDelay={80} position="right-start" offset={14} shadow="md" withinPortal>

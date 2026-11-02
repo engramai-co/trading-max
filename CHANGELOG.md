@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.16.4] - 2026-11-02
+
+### Fixed
+
+- The look-through page no longer hits a render loop when the device's
+  pointer changes while it is open, for example when a trackpad is
+  attached to a tablet. Security previews share one pointer check for the
+  whole workspace instead of one per row.
+- A selected tab near the edge of a scrolling tab row is scrolled clear of
+  the edge fade instead of stopping half faded.
+
+### Changed
+
+- The option chain opens at the money: on narrow screens the strike column
+  is centred between calls and puts, and the strike nearest the spot price
+  is centred vertically. The Calls and Puts headings sit beside the strike
+  column so they stay in view.
+- Statement values and look-through ranking headings have larger touch
+  targets without changing the layout.
+
 ## [1.16.3] - 2026-11-02
 
 ### Changed
