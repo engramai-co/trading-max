@@ -25,10 +25,12 @@ connection screen showed the dark monogram.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-For the previous release, an installed 1.16.1 App discovered and downloaded the
-public 1.18.3 update through App Settings; **Install and Relaunch** reconnected
-to its saved HTTPS service, connection and startup preferences were unchanged,
-and the installed bundle matched the accepted package exactly.
+An installed 1.18.3 App discovered and downloaded the public 1.18.4 update
+through App Settings and installed it on a normal quit; the next launch
+reconnected to its saved HTTPS service. For the previous release, an installed
+1.16.1 App took the public 1.18.3 update through **Install and Relaunch**. In
+both cases connection and startup preferences were unchanged and the installed
+bundle matched the accepted package exactly.
 
 Version 1.18.4 keeps the desktop connection screen to headings and choices,
 switches its monogram correctly in dark mode, and stops App Settings from
