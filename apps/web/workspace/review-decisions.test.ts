@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventLabel, notableDecisions, roundTripVerdict, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
+import { effectTone, eventLabel, notableDecisions, roundTripVerdict, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
 
 const row = (side: "buy" | "sell", ticker: string, horizon: number | null, toDate: number): TradeDecision => ({
   date: "2026-06-01",
@@ -39,6 +39,14 @@ describe("decision verdicts", () => {
     expect(signedMoney(-42)).toBe("-£42");
     expect(signedMoney(0.2)).toBe("£0");
     expect(signedMoney(null)).toBe("—");
+  });
+
+  it("colours only effects that round away from £0", () => {
+    expect(effectTone(42)).toBe("up");
+    expect(effectTone(-42)).toBe("down");
+    expect(effectTone(0)).toBe("flat");
+    expect(effectTone(-0.3)).toBe("flat");
+    expect(effectTone(null)).toBe("flat");
   });
 
   it("measures round trips against the range only where the range is known", () => {
