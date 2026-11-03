@@ -149,6 +149,15 @@ def test_unknown_job_log_returns_not_found(boundary_client):
     assert json.loads(response.text)["detail"]
 
 
+def test_job_outcomes_route_is_not_read_as_a_job_id(boundary_client):
+    response = boundary_client.get("/v1/jobs/outcomes?days=7")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["totals"] == {"succeeded": 0, "failed": 0, "interrupted": 0, "cancelled": 0}
+    assert payload["causes"] == []
+    assert boundary_client.get("/v1/jobs/outcomes?days=0").status_code == 422
+
+
 def test_empty_installation_can_enable_live_schedule_without_restart(boundary_client, monkeypatch):
     import threading
 

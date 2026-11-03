@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.17.3] - 2026-11-03
+
+### Added
+
+- The data page's update history opens with the last seven days: one
+  quiet line when every update succeeded, otherwise the failure count and
+  rate, and each cause with its update type, count, latest time and latest
+  message. Operator cancellations are not counted as failures.
+
 ## [1.17.2] - 2026-11-03
 
 ### Fixed

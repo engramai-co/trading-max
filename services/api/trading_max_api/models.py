@@ -232,6 +232,30 @@ class RefreshAttention(ApiModel):
     issues: list[RefreshFailure] = Field(default_factory=list)
 
 
+class JobOutcomeCounts(ApiModel):
+    succeeded: int = 0
+    failed: int = 0
+    interrupted: int = 0
+    cancelled: int = 0
+
+
+class JobFailureCause(ApiModel):
+    error_code: str | None = None
+    scope: JobScope
+    count: int
+    last_at: datetime | None = None
+    last_message: str | None = None
+
+
+class JobOutcomes(ApiModel):
+    """Finished updates since a moment; operator cancellations are not failures."""
+
+    since: datetime
+    totals: JobOutcomeCounts
+    scopes: dict[str, JobOutcomeCounts] = Field(default_factory=dict)
+    causes: list[JobFailureCause] = Field(default_factory=list)
+
+
 class NightlySchedule(ApiModel):
     enabled: bool
     timezone: str

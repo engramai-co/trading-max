@@ -241,12 +241,16 @@ export type JobListResponse = {
   jobs: RefreshJob[];
 };
 
+export type JobOutcomes = ApiSchemas["JobOutcomes"];
+
 export type HealthDetails = {
   checkedAt: string;
   health: HealthResponse | null;
   readiness: ReadinessResponse | null;
   refresh: RefreshState | null;
   jobs: RefreshJob[];
+  /** Seven days of finished updates; null when the service does not report them. */
+  outcomes?: JobOutcomes | null;
   errors: HealthProbeError[];
 };
 

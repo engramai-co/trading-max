@@ -491,6 +491,9 @@ class TypedJobManager:
     def queue_health(self) -> dict[str, object]:
         return self.queue.queue_health()
 
+    def outcomes(self, since: datetime) -> dict[str, object]:
+        return self.queue.outcomes(since)
+
     def performance_refresh_needed(self) -> bool:
         """Return whether verified position-dependent analytics are structurally stale."""
         return performance_refresh_needed(self.store)

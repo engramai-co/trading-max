@@ -38,6 +38,7 @@ import {
 
 import { activityState } from "./desktop-status";
 import { collapseRoutineRuns } from "./job-history";
+import { JobOutcomeSummary } from "./job-outcomes";
 
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
@@ -408,6 +409,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 value={number(running, 0)}
               />
             </div>}
+            <JobOutcomeSummary
+              outcomes={data.outcomes}
+              scopeLabel={(value) => scopes.find((s) => s.value === value)?.label ?? value}
+            />
             {data.jobs.filter((j) => filter === "all" || j.status === filter)
               .length ? (<>
               <div className="mx-job-list">

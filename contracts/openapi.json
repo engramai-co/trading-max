@@ -6397,6 +6397,67 @@
         "title": "IsaBucket",
         "type": "object"
       },
+      "JobFailureCause": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "lastAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastat"
+          },
+          "lastMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastmessage"
+          },
+          "scope": {
+            "enum": [
+              "all",
+              "accounts",
+              "research",
+              "intraday",
+              "cfd",
+              "live",
+              "performance"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "count"
+        ],
+        "title": "JobFailureCause",
+        "type": "object"
+      },
       "JobList": {
         "properties": {
           "jobs": {
@@ -6408,6 +6469,65 @@
           }
         },
         "title": "JobList",
+        "type": "object"
+      },
+      "JobOutcomeCounts": {
+        "properties": {
+          "cancelled": {
+            "default": 0,
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "interrupted": {
+            "default": 0,
+            "title": "Interrupted",
+            "type": "integer"
+          },
+          "succeeded": {
+            "default": 0,
+            "title": "Succeeded",
+            "type": "integer"
+          }
+        },
+        "title": "JobOutcomeCounts",
+        "type": "object"
+      },
+      "JobOutcomes": {
+        "description": "Finished updates since a moment; operator cancellations are not failures.",
+        "properties": {
+          "causes": {
+            "items": {
+              "$ref": "#/components/schemas/JobFailureCause"
+            },
+            "title": "Causes",
+            "type": "array"
+          },
+          "scopes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JobOutcomeCounts"
+            },
+            "title": "Scopes",
+            "type": "object"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/JobOutcomeCounts"
+          }
+        },
+        "required": [
+          "since",
+          "totals"
+        ],
+        "title": "JobOutcomes",
         "type": "object"
       },
       "JobRecord": {
@@ -15968,7 +16088,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.17.2"
+    "version": "1.17.3"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16802,6 +16922,51 @@
           }
         },
         "summary": "List Jobs",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/v1/jobs/outcomes": {
+      "get": {
+        "operationId": "job_outcomes_v1_jobs_outcomes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOutcomes"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Job Outcomes",
         "tags": [
           "operations"
         ]
