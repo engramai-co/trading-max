@@ -602,15 +602,22 @@ def test_new_runs_prewarm_both_dashboard_projections(
     typed_fixture(research_root, store)
     warmed = threading.Event()
     builds: list[bool] = []
+    history_reads: list[tuple[str, str]] = []
     real_dashboard = app_module.build_dashboard_data
+    real_read = app_module.HistoryReader.read
 
     def counted_dashboard(*args, **kwargs):
         builds.append(kwargs["include_history"])
-        if len(builds) == 2:
-            warmed.set()
         return real_dashboard(*args, **kwargs)
 
+    def counted_read(self, manifest, range_name, scope):
+        result = real_read(self, manifest, range_name, scope)
+        history_reads.append((range_name, scope))
+        warmed.set()
+        return result
+
     monkeypatch.setattr(app_module, "build_dashboard_data", counted_dashboard)
+    monkeypatch.setattr(app_module.HistoryReader, "read", counted_read)
     app = create_app(
         Settings(
             data_root=tmp_path / "runtime",
@@ -626,6 +633,8 @@ def test_new_runs_prewarm_both_dashboard_projections(
         assert client.get("/v1/dashboard/lens/overview?detail=summary").status_code == 200
 
     assert sorted(builds) == [False, True]
+    # The new run's history index is built before anyone opens the overview.
+    assert history_reads[0] == ("3M", "total")
 
 
 def test_watchlist_mutations_require_auth_and_preserve_pending_state(

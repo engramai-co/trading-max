@@ -176,7 +176,7 @@ class Settings:
                 )
             ),
             dashboard_prewarm_seconds=float(
-                os.environ.get("TRADING_MAX_DASHBOARD_PREWARM_SECONDS", "15")
+                os.environ.get("TRADING_MAX_DASHBOARD_PREWARM_SECONDS", "3")
             ),
             embedded_worker=_bool_from_env("TRADING_MAX_EMBEDDED_WORKER", False),
             worker_lease_seconds=int(os.environ.get("TRADING_MAX_WORKER_LEASE_SECONDS", "300")),
