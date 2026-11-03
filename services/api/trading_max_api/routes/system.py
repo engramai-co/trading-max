@@ -19,6 +19,7 @@ from ..dashboard_models import (
     DayAttribution,
     NavPoint,
     OverviewReviewSummary,
+    WindowAttribution,
 )
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
 from ..history_reader import HistorySnapshot
@@ -47,6 +48,16 @@ def _day_attribution(request: Request, run_id: str) -> DayAttribution | None:
     try:
         payload = request.app.state.store.read_json(run_id, "account/attribution/day.json")
         return DayAttribution.model_validate(payload)
+    except (FileNotFoundError, TypeError, ValueError):
+        return None
+
+
+def _window_attribution(request: Request, run_id: str) -> WindowAttribution | None:
+    """Optional like the day attribution; snapshots before 5D attribution have none."""
+
+    try:
+        payload = request.app.state.store.read_json(run_id, "account/attribution/window.json")
+        return WindowAttribution.model_validate(payload)
     except (FileNotFoundError, TypeError, ValueError):
         return None
 
@@ -243,6 +254,7 @@ def dashboard_lens(
             total_unrealized_pnl_gbp=dashboard_data.total_unrealized_pnl_gbp,
             latest_model_day_return=dashboard_data.latest_model_day_return,
             day_attribution=_day_attribution(request, manifest.run_id),
+            window_attribution=_window_attribution(request, manifest.run_id),
             household_total_value_gbp=dashboard_data.household_total_value_gbp,
             accounts=[item for item in dashboard_data.accounts if item.is_investable],
             cfd=dashboard_data.cfd,

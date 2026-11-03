@@ -2601,6 +2601,7 @@ export interface components {
              * @enum {string}
              */
             view: "overview" | "holdings-positions" | "holdings-lookthrough" | "analytics" | "review" | "account-analysis";
+            windowAttribution?: components["schemas"]["WindowAttribution"] | null;
         };
         /** DashboardResponse */
         DashboardResponse: {
@@ -6588,6 +6589,20 @@ export interface components {
              * Format: date-time
              */
             updatedAt?: string;
+        };
+        /**
+         * WindowAttribution
+         * @description The 5D window: daily openings chained from the first available one in the window.
+         */
+        WindowAttribution: {
+            /** Accounts */
+            accounts?: {
+                [key: string]: components["schemas"]["AccountDayAttribution"];
+            };
+            /** Day */
+            day: string;
+            /** Startday */
+            startDay: string;
         };
         /** WorkspaceConfirmation */
         WorkspaceConfirmation: {

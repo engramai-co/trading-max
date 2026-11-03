@@ -192,7 +192,12 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           </div>
         )}
         <div className="mx-overview-split">
-          <OverviewHistory scope={scope} runId={data.runId} attribution={data.dayAttribution} />
+          <OverviewHistory
+            scope={scope}
+            runId={data.runId}
+            attribution={data.dayAttribution}
+            windowAttribution={data.windowAttribution}
+          />
           <Allocation holdings={holdings} />
         </div>
       </div>
@@ -355,10 +360,12 @@ function OverviewHistory({
   scope,
   runId,
   attribution,
+  windowAttribution,
 }: {
   scope: Scope;
   runId: string;
   attribution?: DashboardLens["dayAttribution"];
+  windowAttribution?: DashboardLens["windowAttribution"];
 }) {
   const t = useCopy();
   const { params, update } = useRouteState();
@@ -417,6 +424,15 @@ function OverviewHistory({
           {range === "1D" && attribution && attribution.day === history.endDay && (
             <DayDrivers
               attribution={attribution}
+              scope={scope}
+              dates={points.map((p) => p.date)}
+              pnls={money.pnls}
+            />
+          )}
+          {range === "1W" && windowAttribution && windowAttribution.day === history.endDay && (
+            <DayDrivers
+              span="5D"
+              attribution={windowAttribution}
               scope={scope}
               dates={points.map((p) => p.date)}
               pnls={money.pnls}

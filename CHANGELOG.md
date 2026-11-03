@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-03
+
+### Added
+
+- The overview's 5D range now shows what moved the account, like 1D: the
+  largest position contributors, the rest, and an unattributed share when it
+  is material. The five trading days' openings are chained, so trades between
+  days are attributed from the next opening and only trades within a day stay
+  unattributed. Openings missing from earlier snapshots are rebuilt from the
+  broker's own observations of that day.
+
 ## [1.18.4] - 2026-11-03
 
 ### Changed

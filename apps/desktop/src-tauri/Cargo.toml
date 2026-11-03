@@ -1,6 +1,6 @@
 [package]
 name = "trading-max-desktop-preview"
-version = "1.18.4"
+version = "1.19.0"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.85.0"
