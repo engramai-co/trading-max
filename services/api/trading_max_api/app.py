@@ -116,6 +116,7 @@ def create_app(
     ] = {}
     research_shell_cache: SingleFlightCache[tuple, ResearchShell] = SingleFlightCache(32)
     research_lens_cache: SingleFlightCache[tuple, ResearchLensSnapshot] = SingleFlightCache(256)
+    history_reader = HistoryReader(store)
 
     def cached_dashboard(
         manifest: SnapshotManifest, *, include_history: bool = True
@@ -130,7 +131,12 @@ def create_app(
     dashboard_prewarm_stop = threading.Event()
 
     def prewarm_dashboard() -> None:
-        """Build both dashboard projections as soon as a new run is published."""
+        """Build both dashboard projections and the history index for each new run.
+
+        Live collection publishes every few minutes. Without this, whoever opens
+        the overview first after each run waits for the projection and for the
+        history index of the new revision to be rebuilt.
+        """
 
         warmed: str | None = None
         while True:
@@ -139,6 +145,9 @@ def create_app(
                 try:
                     for include_history in (False, True):
                         cached_dashboard(manifest, include_history=include_history)
+                    # Indexes the run's history revision; later ranges and scopes
+                    # only query it. The overview opens on three months.
+                    history_reader.read(manifest, "3M", "total")
                 except Exception:
                     # A partial run is retried on the next poll; requests still
                     # build on demand and report their own errors.
@@ -422,7 +431,7 @@ def create_app(
 
     app.state.settings = settings
     app.state.store = store
-    app.state.history_reader = HistoryReader(store)
+    app.state.history_reader = history_reader
     app.state.settings_repository = preferences
     app.state.credential_store = credentials
     app.state.oauth_login = oauth_login

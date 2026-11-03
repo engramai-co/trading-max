@@ -6,6 +6,8 @@ type Prepared = ReturnType<typeof prepareHistory>;
 const cache = new Map<string, { value: Prepared; bytes: number; expires: number }>();
 const pending = new Map<string, Promise<Prepared>>();
 const BUDGET = 32 * 1024 * 1024;
+/** Enough for a reader moving between ranges and accounts, plus the prewarmed defaults. */
+const ENTRIES = 8;
 
 export class HistoryRequestError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -30,7 +32,7 @@ export async function readPreparedHistory(selection: HistorySelection): Promise<
     const bytes = Buffer.byteLength(JSON.stringify(result));
     if (bytes <= BUDGET) {
       const used = () => [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
-      while (cache.size && (cache.size >= 2 || used() + bytes > BUDGET)) cache.delete(cache.keys().next().value!);
+      while (cache.size && (cache.size >= ENTRIES || used() + bytes > BUDGET)) cache.delete(cache.keys().next().value!);
       cache.set(key, { value: result, bytes, expires: Date.now() + 10 * 60_000 });
     }
     return result;

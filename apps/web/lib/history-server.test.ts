@@ -24,9 +24,10 @@ describe("snapshot-pinned history queries", () => {
   });
   it("rebuilds evicted views from the requested version without substituting latest", async () => {
     fetchMock.mockImplementation(async (path) => response(new URL(`http://backend${path}`).searchParams.get("run_id")!));
-    for (const run of ["eviction-a", "eviction-b", "eviction-c", "eviction-a"]) await readPreparedHistory(selection(run));
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls.at(-1)![0]).toContain("run_id=eviction-a");
+    const runs = Array.from({ length: 9 }, (_, index) => "eviction-" + index);
+    for (const run of [...runs, "eviction-0"]) await readPreparedHistory(selection(run));
+    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(fetchMock.mock.calls.at(-1)![0]).toContain("run_id=eviction-0");
   });
   it("rejects invalid input before reading any private data", async () => {
     for (const query of ["", "runId=..%2Fsecret", "runId=abc&scope=unknown", "runId=abc&range=2Y", "runId=abc&page=0", "runId=abc&page=1.5"]) {

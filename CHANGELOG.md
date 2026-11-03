@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.17.2] - 2026-11-03
+
+### Fixed
+
+- Opening the overview right after a live update no longer waits two to
+  three seconds. When a new snapshot is published, the service now builds
+  its history index as well as the dashboard, checks for new snapshots
+  every three seconds instead of fifteen, and the web server prepares the
+  three-month and one-day views of the period chart ahead of time.
+- Moving between chart ranges and accounts keeps up to eight prepared
+  history views instead of two, so returning to a range is instant.
+
 ## [1.17.1] - 2026-11-02
 
 ### Fixed
