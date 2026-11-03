@@ -655,8 +655,9 @@ function MonthlyReturns({
       help={t("剔除出入金影响的月度收益。首月从最早记录起算，最近一月截至最新记录。", "Monthly returns excluding cash-flow effects. The first month starts at the first observation; the latest month ends at the last available observation.")}
     >
       {years.length ? (
+        <>
         <div
-          className="mx-table-wrap"
+          className="mx-table-wrap mx-month-table-wrap"
           tabIndex={0}
           role="region"
           aria-label={t("数据表格", "Data table")}
@@ -699,6 +700,32 @@ function MonthlyReturns({
             </tbody>
           </table>
         </div>
+        {/* Phones read a year as four rows of three months instead of scrolling sideways. */}
+        <div className="mx-month-cards">
+          {years.map((year) => (
+            <section key={year} aria-label={year}>
+              <h3>{year}</h3>
+              <div>
+                {Array.from({ length: 12 }, (_, i) => {
+                  const key = year + "-" + String(i + 1).padStart(2, "0");
+                  const value = map.get(key);
+                  return (
+                    <span key={key}>
+                      <small>{formatDate(key + "-01T00:00:00Z", locale, { month: "short", timeZone: "UTC" })}</small>
+                      <span
+                        className={value == null ? "mx-heat-empty" : "mx-heat-pill mx-" + tone(value)}
+                        style={value == null ? undefined : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }}
+                      >
+                        {percent(value, true)}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+        </>
       ) : (
         <Empty
           title={t(
