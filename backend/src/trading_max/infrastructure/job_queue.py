@@ -297,6 +297,53 @@ class SqliteJobQueue:
             ).fetchone()
             return row["job_id"] if row is not None else None
 
+    def outcomes(self, since: datetime) -> dict[str, Any]:
+        """Summarize finished visible jobs since a moment, grouped by failure cause.
+
+        Cancellations requested by the operator are counted separately; they are
+        not failures of the service. Messages are the latest of each cause only.
+        """
+
+        start = _iso(since)
+        totals = {"succeeded": 0, "failed": 0, "interrupted": 0, "cancelled": 0}
+        by_scope: dict[str, dict[str, int]] = {}
+        causes: dict[tuple[str, str], dict[str, Any]] = {}
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT scope, status, cancel_requested, error_code, error_message, "
+                "COALESCE(finished_at, started_at, created_at) AS observed_at "
+                "FROM jobs WHERE trigger != 'system' "
+                "AND status IN ('succeeded', 'failed', 'interrupted') "
+                "AND created_at >= ? ORDER BY created_at",
+                (start,),
+            ).fetchall()
+        for row in rows:
+            cancelled = bool(row["cancel_requested"]) or row["error_code"] == "job.cancelled"
+            outcome = "cancelled" if cancelled else row["status"]
+            totals[outcome] += 1
+            scope_totals = by_scope.setdefault(
+                row["scope"], {"succeeded": 0, "failed": 0, "interrupted": 0, "cancelled": 0}
+            )
+            scope_totals[outcome] += 1
+            if outcome not in {"failed", "interrupted"}:
+                continue
+            code = row["error_code"] or ("job.interrupted" if outcome == "interrupted" else "")
+            cause = causes.setdefault(
+                (code, row["scope"]),
+                {"error_code": code or None, "scope": row["scope"], "count": 0},
+            )
+            cause["count"] += 1
+            cause["last_at"] = _parse(row["observed_at"])
+            cause["last_message"] = (row["error_message"] or "")[:240] or None
+        return {
+            "since": since,
+            "totals": totals,
+            "scopes": by_scope,
+            "causes": sorted(
+                causes.values(), key=lambda item: (-item["count"], item["error_code"] or "")
+            ),
+        }
+
     def queue_health(self) -> dict[str, Any]:
         """Return small, read-only queue metrics for readiness probes."""
 

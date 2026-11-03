@@ -261,6 +261,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/jobs/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Job Outcomes */
+        get: operations["job_outcomes_v1_jobs_outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/refresh": {
         parameters: {
             query?: never;
@@ -3227,10 +3244,67 @@ export interface components {
             /** Turnover */
             turnover: number | null;
         };
+        /** JobFailureCause */
+        JobFailureCause: {
+            /** Count */
+            count: number;
+            /** Errorcode */
+            errorCode?: string | null;
+            /** Lastat */
+            lastAt?: string | null;
+            /** Lastmessage */
+            lastMessage?: string | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "all" | "accounts" | "research" | "intraday" | "cfd" | "live" | "performance";
+        };
         /** JobList */
         JobList: {
             /** Jobs */
             jobs?: components["schemas"]["JobRecord"][];
+        };
+        /** JobOutcomeCounts */
+        JobOutcomeCounts: {
+            /**
+             * Cancelled
+             * @default 0
+             */
+            cancelled: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Interrupted
+             * @default 0
+             */
+            interrupted: number;
+            /**
+             * Succeeded
+             * @default 0
+             */
+            succeeded: number;
+        };
+        /**
+         * JobOutcomes
+         * @description Finished updates since a moment; operator cancellations are not failures.
+         */
+        JobOutcomes: {
+            /** Causes */
+            causes?: components["schemas"]["JobFailureCause"][];
+            /** Scopes */
+            scopes?: {
+                [key: string]: components["schemas"]["JobOutcomeCounts"];
+            };
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            totals: components["schemas"]["JobOutcomeCounts"];
         };
         /** JobRecord */
         JobRecord: {
@@ -6898,6 +6972,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    job_outcomes_v1_jobs_outcomes_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOutcomes"];
                 };
             };
             /** @description Validation Error */

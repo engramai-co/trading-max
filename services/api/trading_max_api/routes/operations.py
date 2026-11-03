@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -11,6 +12,7 @@ from ..job_errors import JobConflict
 from ..models import (
     AlertMonitorState,
     JobList,
+    JobOutcomes,
     JobRecord,
     RefreshAttention,
     RefreshRequest,
@@ -46,6 +48,15 @@ def list_jobs(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobList:
     return JobList(jobs=app_service(request, "jobs").list(limit=limit))
+
+
+@router.get("/v1/jobs/outcomes", response_model=JobOutcomes)
+def job_outcomes(
+    request: Request,
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
+) -> JobOutcomes:
+    since = datetime.now(UTC) - timedelta(days=days)
+    return JobOutcomes.model_validate(app_service(request, "jobs").outcomes(since))
 
 
 @router.get("/v1/jobs/{job_id}", response_model=JobRecord)
