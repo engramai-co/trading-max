@@ -7,8 +7,16 @@ import io
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from trading_max.analytics.accounts import metrics_from_snapshot_file
 from trading_max.analytics.cash_flow_history import AccountCashFlowHistory, account_state_digest
-from trading_max.analytics.day_attribution import update_day_attribution
+from trading_max.analytics.day_attribution import (
+    LONDON,
+    DayBaseline,
+    baseline_from_accounts,
+    update_day_attribution,
+    update_window_attribution,
+    window_days,
+)
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
     HistoryLoader,
@@ -595,13 +603,17 @@ class AccountIntradayNavStage:
 
 DAY_BASELINE_KEY = "account/attribution/day_baseline.json"
 DAY_ATTRIBUTION_KEY = "account/attribution/day.json"
+WINDOW_BASELINES_KEY = "account/attribution/window_baselines.json"
+WINDOW_ATTRIBUTION_KEY = "account/attribution/window.json"
+#: Openings rebuilt from raw broker snapshots try this many observations per day.
+OPENING_CANDIDATES = 12
 
 
 class AccountDayAttributionStage:
-    """Attribute each position's change since the trading day's first observation."""
+    """Attribute each position's change over the trading day and the 5D window."""
 
     name = "accounts.day_attribution"
-    version = "day-attribution-v1"
+    version = "day-attribution-v2"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -609,14 +621,62 @@ class AccountDayAttributionStage:
         self,
         artifacts: ContentAddressedArtifactStore,
         snapshots: SnapshotStore,
+        *,
+        state_root: Path | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.snapshots = snapshots
+        self.state_root = state_root.expanduser().resolve() if state_root else None
+
+    def _day_snapshots(self, profile: str, day: date) -> list[Path]:
+        """Raw broker snapshots taken on a London day, oldest first."""
+
+        if self.state_root is None:
+            return []
+        prefixes = (
+            (day - timedelta(days=1)).strftime("snapshot_%Y%m%d"),
+            day.strftime("snapshot_%Y%m%d"),
+        )
+        found: list[tuple[datetime, Path]] = []
+        for root in (
+            self.state_root / "trading212",
+            self.state_root / "raw" / "trading212",
+            self.state_root,
+        ):
+            folder = root / profile / "snapshots"
+            if not folder.is_dir():
+                continue
+            for prefix in prefixes:
+                for path in folder.glob(prefix + "*.json"):
+                    try:
+                        # Names carry the UTC fetch time: snapshot_YYYYMMDDTHHMMSSZ.json
+                        moment = datetime.strptime(path.name[9:24] + "+0000", "%Y%m%dT%H%M%S%z")
+                    except ValueError:
+                        continue
+                    if moment.astimezone(LONDON).date() == day:
+                        found.append((moment, path))
+        return [path for _, path in sorted(found)]
+
+    def _raw_opening(self, profiles: dict[str, str], day: date) -> DayBaseline | None:
+        """The day's first reconciled broker observation for each account."""
+
+        accounts: dict[str, dict] = {}
+        for code, profile in profiles.items():
+            for path in self._day_snapshots(profile, day)[:OPENING_CANDIDATES]:
+                try:
+                    metrics = metrics_from_snapshot_file(profile, path)
+                except Exception:  # noqa: S112 - an unreconciled observation cannot open a day
+                    continue
+                accounts[code] = metrics.model_dump(mode="json", by_alias=False)
+                break
+        return baseline_from_accounts(day, accounts)
 
     def run(self, context: StageContext) -> StageResult:
         accounts: dict[str, dict] = {}
         dependencies: list[str] = []
+        profiles: dict[str, str] = {}
         for code, profile in selected_accounts(self.artifacts, context):
+            profiles[code] = profile
             account = _upstream_json(
                 self.artifacts, context, f"account/intraday/{profile}.json"
             ) or _upstream_json(self.artifacts, context, f"account/{profile}.json")
@@ -630,10 +690,17 @@ class AccountDayAttributionStage:
         if not accounts:
             return StageResult()
         previous = _previous_json(self.artifacts, self.snapshots, DAY_BASELINE_KEY)
+        previous_window = _previous_json(self.artifacts, self.snapshots, WINDOW_BASELINES_KEY)
         try:
             baseline, attribution = update_day_attribution(
                 previous.payload if previous is not None else None,
                 accounts,
+            )
+            window_baselines, window = update_window_attribution(
+                previous_window.payload if previous_window is not None else None,
+                baseline,
+                accounts,
+                history=lambda day: self._raw_opening(profiles, day),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError("account.day_attribution_invalid", str(exc)) from exc
@@ -665,8 +732,34 @@ class AccountDayAttributionStage:
                 warnings=warnings,
             ),
         )
+        stored_window_baselines = self.artifacts.put_json(
+            key=WINDOW_BASELINES_KEY,
+            payload=window_baselines.model_dump(mode="json", by_alias=False),
+            kind="account_window_baselines",
+            as_of=window.day.isoformat(),
+            producer_version=self.version,
+            dependency_artifact_ids=[*dependencies, stored_baseline.ref.artifact_id],
+            quality=ArtifactQuality(status="verified"),
+        )
+        stored_window = self.artifacts.put_json(
+            key=WINDOW_ATTRIBUTION_KEY,
+            payload=window.model_dump(mode="json", by_alias=False),
+            kind="account_window_attribution",
+            as_of=window.day.isoformat(),
+            producer_version=self.version,
+            dependency_artifact_ids=[*dependencies, stored_window_baselines.ref.artifact_id],
+            quality=ArtifactQuality(
+                status="verified",
+                coverage=f"{len(window_baselines.days)}/{len(window_days(window.day))} days",
+            ),
+        )
         return StageResult(
-            artifacts=(stored_baseline.ref, stored.ref),
+            artifacts=(
+                stored_baseline.ref,
+                stored.ref,
+                stored_window_baselines.ref,
+                stored_window.ref,
+            ),
             warnings=tuple(warnings),
         )
 

@@ -59,6 +59,22 @@ describe("dayDrivers", () => {
     const late = ["2026-11-02T00:00:00Z", ...dates.slice(1)];
     expect(dayDrivers({ attribution, scope: "total", dates: late, pnls: [0, 5, -40] })!.lateOpening).toBe("2026-11-02T07:10:00Z");
   });
+
+  it("matches a 5D opening to its thirty-minute chart bucket", () => {
+    const week = {
+      startDay: "2026-10-28",
+      day: "2026-11-03",
+      accounts: {
+        A: { since: "2026-10-28T00:10:00Z", asOf: "2026-11-03T15:00:00Z", contributions: [{ ticker: "NVDA", name: "Nvidia", contributionGbp: 30 }] },
+      },
+    };
+    const buckets = ["2026-10-28T00:00:00Z", "2026-10-28T00:30:00Z", "2026-11-03T15:00:00Z"];
+    // The 00:00 bucket holds the 00:10 opening; one-day matching would skip to 00:30.
+    const drivers = dayDrivers({ attribution: week, scope: "invest", dates: buckets, pnls: [0, 4, 30], span: "5D" })!;
+    expect(drivers.accountChange).toBe(30);
+    expect(drivers.lateOpening).toBeNull();
+    expect(dayDrivers({ attribution: week, scope: "invest", dates: buckets, pnls: [0, 4, 30] })!.accountChange).toBe(26);
+  });
 });
 
 describe("signedPounds", () => {

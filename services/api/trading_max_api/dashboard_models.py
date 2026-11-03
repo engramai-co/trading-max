@@ -1263,6 +1263,14 @@ class DayAttribution(ApiModel):
     accounts: dict[InvestableAccountCode, AccountDayAttribution] = Field(default_factory=dict)
 
 
+class WindowAttribution(ApiModel):
+    """The 5D window: daily openings chained from the first available one in the window."""
+
+    start_day: str
+    day: str
+    accounts: dict[InvestableAccountCode, AccountDayAttribution] = Field(default_factory=dict)
+
+
 class DecisionSide(ApiModel):
     count: int = 0
     evaluated: int = 0
@@ -1341,6 +1349,7 @@ class DashboardLensSnapshot(ApiModel):
     total_unrealized_pnl_gbp: float | None = None
     latest_model_day_return: float | None = None
     day_attribution: DayAttribution | None = None
+    window_attribution: WindowAttribution | None = None
     accounts: list[AccountSummary] = Field(default_factory=list)
     selected_account: AccountSummary | None = None
     selected_account_analysis: AccountAnalysisMetrics | None = None

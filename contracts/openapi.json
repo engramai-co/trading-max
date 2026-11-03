@@ -4639,6 +4639,16 @@
             ],
             "title": "View",
             "type": "string"
+          },
+          "windowAttribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WindowAttribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -16311,6 +16321,38 @@
         "title": "WatchlistState",
         "type": "object"
       },
+      "WindowAttribution": {
+        "description": "The 5D window: daily openings chained from the first available one in the window.",
+        "properties": {
+          "accounts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountDayAttribution"
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Accounts",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "startDay": {
+            "title": "Startday",
+            "type": "string"
+          }
+        },
+        "required": [
+          "startDay",
+          "day"
+        ],
+        "title": "WindowAttribution",
+        "type": "object"
+      },
       "WorkspaceConfirmation": {
         "properties": {
           "runId": {
@@ -16485,7 +16527,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.18.4"
+    "version": "1.19.0"
   },
   "openapi": "3.1.0",
   "paths": {

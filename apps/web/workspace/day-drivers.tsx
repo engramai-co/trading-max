@@ -8,13 +8,19 @@ import { formatDate } from "@/ui/formatters";
 import { currency, tone } from "@/workspace/data";
 import { Tag, useCopy } from "./foundation";
 
-type DayAttribution = NonNullable<DashboardLens["dayAttribution"]>;
+type DayAttribution =
+  | NonNullable<DashboardLens["dayAttribution"]>
+  | NonNullable<DashboardLens["windowAttribution"]>;
 type Driver = { ticker: string; name: string; amount: number };
+/** 1D measures from today's opening; 5D chains the five trading days' openings. */
+export type DriverSpan = "1D" | "5D";
 
 /** Below this, the strip would describe rounding noise rather than a move. */
 const MIN_EXPLAINED_GBP = 0.01;
 /** A later opening than the chart's first point is stated, since the parts then cover less. */
 const LATE_OPENING_MS = 15 * 60_000;
+/** One display bucket of slack when matching the opening to a chart point. */
+const BUCKET_MS: Record<DriverSpan, number> = { "1D": 5 * 60_000, "5D": 30 * 60_000 };
 
 /** Same precision as the period figure above, so the parts visibly add up to it. */
 export function signedPounds(value: number) {
@@ -34,6 +40,7 @@ export function dayDrivers({
   dates,
   pnls,
   limit = 3,
+  span = "1D",
 }: {
   attribution: DayAttribution;
   scope: Scope;
@@ -41,6 +48,7 @@ export function dayDrivers({
   dates: string[];
   pnls: Array<number | null>;
   limit?: number;
+  span?: DriverSpan;
 }) {
   const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
   const accounts = codes.map((code) => attribution.accounts?.[code as "A" | "B"]);
@@ -48,7 +56,7 @@ export function dayDrivers({
   const since = accounts.map((account) => account!.since).sort()[0];
   // Measure the account over the attribution's own window: from the first chart
   // point at its opening observation (one bucket of slack) to the latest point.
-  const start = dates.findIndex((date) => Date.parse(date) >= Date.parse(since) - 5 * 60_000);
+  const start = dates.findIndex((date) => Date.parse(date) >= Date.parse(since) - BUCKET_MS[span]);
   const opening = start >= 0 ? pnls[start] : null;
   const closing = pnls.at(-1);
   if (opening == null || closing == null) return null;
@@ -87,22 +95,29 @@ export function DayDrivers({
   scope,
   dates,
   pnls,
+  span = "1D",
 }: {
   attribution: DayAttribution;
   scope: Scope;
   dates: string[];
   pnls: Array<number | null>;
+  span?: DriverSpan;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const drivers = dayDrivers({ attribution, scope, dates, pnls });
+  const drivers = dayDrivers({ attribution, scope, dates, pnls, span });
   if (!drivers || (!drivers.named.length && Math.abs(drivers.accountChange) < MIN_EXPLAINED_GBP)) return null;
   return (
-    <ul className="mx-day-drivers" aria-label={t("今日变动来源", "What moved today")}>
+    <ul
+      className="mx-day-drivers"
+      aria-label={span === "5D" ? t("近 5 日变动来源", "What moved over five days") : t("今日变动来源", "What moved today")}
+    >
       {drivers.lateOpening && (
         <li>
           <span>
-            {formatDate(drivers.lateOpening, locale, { hour: "2-digit", minute: "2-digit", timeZone })}
+            {formatDate(drivers.lateOpening, locale, span === "5D"
+              ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone }
+              : { hour: "2-digit", minute: "2-digit", timeZone })}
             {t(" 起", " onwards")}
           </span>
         </li>
@@ -124,8 +139,8 @@ export function DayDrivers({
       {drivers.material && (
         <li
           title={t(
-            "持仓价格变动之外的部分：现金、现金汇率、当日买卖或估值时点差异。",
-            "Change outside position prices: cash, FX on cash, trades during the day or valuation timing.",
+            "持仓价格变动之外的部分：现金、现金汇率、日内买卖或估值时点差异。",
+            "Change outside position prices: cash, FX on cash, trades within a day or valuation timing.",
           )}
         >
           <Tag tone="warn">{t("未归因 ", "Unattributed ") + signedPounds(drivers.unexplained)}</Tag>

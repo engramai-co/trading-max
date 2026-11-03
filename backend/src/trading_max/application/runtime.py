@@ -101,7 +101,9 @@ class TypedWorkerRuntime:
                     state_root=self.state_root,
                     history_loader_factory=self.intraday_history_loader_factory,
                 ),
-                AccountDayAttributionStage(self.artifacts, self.snapshots),
+                AccountDayAttributionStage(
+                    self.artifacts, self.snapshots, state_root=self.state_root
+                ),
                 SecurityMasterEnrichmentStage(self.state_root, self.artifacts),
                 PortfolioLookthroughStage(
                     self.state_root,

@@ -4,8 +4,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from trading_max.analytics.day_attribution import (
+    baseline_from_accounts,
     trading_day,
     update_day_attribution,
+    update_window_attribution,
+    window_days,
 )
 
 
@@ -120,3 +123,67 @@ def test_unreconciled_positions_neither_open_nor_attribute_an_account():
     )
     assert attribution.accounts["A"].since.isoformat().startswith("2026-11-02T09:00")
     assert _contributions(attribution, "B") == {"EQGB": Decimal("36.00")}
+
+
+def _window(previous, current, *, history=None):
+    """Open or carry the day, then chain the 5D window up to the current observation."""
+
+    baseline, _ = update_day_attribution(previous and previous["day"], current)
+    window_baselines, window = update_window_attribution(
+        previous and previous["window"], baseline, current, history=history
+    )
+    state = {
+        "day": baseline.model_dump(mode="json", by_alias=False),
+        "window": window_baselines.model_dump(mode="json", by_alias=False),
+    }
+    return state, window
+
+
+def test_window_days_are_the_five_weekdays_ending_on_the_trading_day():
+    days = [
+        day.isoformat() for day in window_days(trading_day(datetime(2026, 11, 3, 12, tzinfo=UTC)))
+    ]
+    assert days == ["2026-10-28", "2026-10-29", "2026-10-30", "2026-11-02", "2026-11-03"]
+
+
+def test_window_chains_daily_openings_across_days():
+    state, _ = _window(None, {"A": _account("2026-11-02T07:10:00Z", ("NVDA", "10", "1500.00"))})
+    # Bought 10 more NVDA on Monday; Tuesday opens with 20 shares at 145.
+    state, _ = _window(state, {"A": _account("2026-11-03T00:10:00Z", ("NVDA", "20", "2900.00"))})
+    state, window = _window(
+        state, {"A": _account("2026-11-03T15:00:00Z", ("NVDA", "20", "3000.00"))}
+    )
+    # Monday segment: 10 shares x (145 - 150) = -50; Tuesday: 20 x (150 - 145) = +100.
+    assert _contributions(window) == {"NVDA": Decimal("50.00")}
+    assert window.start_day.isoformat() == "2026-10-28"
+    assert window.accounts["A"].since.isoformat().startswith("2026-11-02T07:10")
+
+
+def test_window_drops_openings_older_than_five_trading_days():
+    state, _ = _window(None, {"A": _account("2026-10-27T07:10:00Z", ("NVDA", "10", "1000.00"))})
+    state, window = _window(
+        state, {"A": _account("2026-11-03T07:10:00Z", ("NVDA", "10", "1500.00"))}
+    )
+    # 27 October is outside 28 October to 3 November; only today's opening remains.
+    assert [day["day"] for day in state["window"]["days"]] == ["2026-11-03"]
+    assert _contributions(window) == {"NVDA": Decimal("0.00")}
+
+
+def test_window_backfills_missing_openings_from_history():
+    earlier = {
+        "2026-10-28": _account("2026-10-28T00:10:00Z", ("NVDA", "10", "1400.00")),
+        "2026-10-30": _account("2026-10-30T00:10:00Z", ("NVDA", "10", "1450.00")),
+    }
+
+    def history(day):
+        account = earlier.get(day.isoformat())
+        return baseline_from_accounts(day, {"A": account}) if account else None
+
+    _, window = _window(
+        None,
+        {"A": _account("2026-11-03T15:00:00Z", ("NVDA", "10", "1500.00"))},
+        history=history,
+    )
+    # 28 Oct -> 30 Oct -> 3 Nov opening -> now: 10 x (150 - 140) in total.
+    assert _contributions(window) == {"NVDA": Decimal("100.00")}
+    assert window.accounts["A"].since.isoformat().startswith("2026-10-28T00:10")

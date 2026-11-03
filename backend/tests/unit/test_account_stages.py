@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from trading_max.application import AccountIntradayNavStage, AccountSnapshotStage, StageContext
 from trading_max.application.errors import StageExecutionError
+from trading_max.application.nav_stages import AccountDayAttributionStage
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 
 
@@ -202,3 +203,37 @@ def test_full_refresh_never_falls_back_to_an_older_snapshot(tmp_path: Path) -> N
         AccountSnapshotStage(tmp_path, artifacts).run(
             StageContext(job_id="full", scope="accounts", trigger="nightly")
         )
+
+
+def test_window_attribution_rebuilds_missing_openings_from_raw_snapshots(
+    tmp_path: Path,
+) -> None:
+    # The opening on 28 October exists only as a raw broker snapshot.
+    _write_snapshot(tmp_path, "invest", "100", fetched_at="2026-10-28T00:10:00Z")
+    _write_snapshot(tmp_path, "isa", "200", fetched_at="2026-10-28T00:10:00Z")
+    _write_snapshot(tmp_path, "invest", "110", fetched_at="2026-11-03T15:00:00Z")
+    _write_snapshot(tmp_path, "isa", "190", fetched_at="2026-11-03T15:00:00Z")
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    accounts = AccountSnapshotStage(tmp_path, artifacts).run(
+        StageContext(job_id="live", scope="intraday", trigger="intraday")
+    )
+
+    result = AccountDayAttributionStage(
+        artifacts, SnapshotStore(tmp_path), state_root=tmp_path
+    ).run(
+        StageContext(
+            job_id="attribution",
+            scope="intraday",
+            trigger="intraday",
+            upstream_artifact_ids=tuple(ref.artifact_id for ref in accounts.artifacts),
+        )
+    )
+
+    refs = {ref.key: ref for ref in result.artifacts}
+    window = artifacts.get_json(refs["account/attribution/window.json"].artifact_id).payload
+    assert window["start_day"] == "2026-10-28" and window["day"] == "2026-11-03"
+    assert window["accounts"]["A"]["since"].startswith("2026-10-28T00:10")
+    assert window["accounts"]["A"]["contributions"][0]["contribution_gbp"] == "10.00"
+    assert window["accounts"]["B"]["contributions"][0]["contribution_gbp"] == "-10.00"
+    day = artifacts.get_json(refs["account/attribution/day.json"].artifact_id).payload
+    assert day["accounts"]["A"]["contributions"][0]["contribution_gbp"] == "0.00"
