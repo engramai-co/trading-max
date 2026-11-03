@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-11-03
+
+### Changed
+
+- On phones, monthly returns read as one block per year with three months
+  to a row instead of a thirteen-column table that scrolls sideways.
+- On phones, the overview's attention chips stay on one scrolling line
+  with a fading edge instead of stacking one per line above the chart.
+- On phones, the full statements table gives line items a narrower,
+  wrapping column so more periods fit beside it.
+
 ## [1.18.1] - 2026-11-03
 
 ### Changed
