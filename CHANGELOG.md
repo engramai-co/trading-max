@@ -4,6 +4,24 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.18.4] - 2026-11-03
+
+### Changed
+
+- The desktop connection screen keeps headings and choices only: the
+  duplicate top label, the subtitle, the sidebar tagline and the one-line
+  descriptions under each choice are gone. A remote connection no longer
+  shows a note about server-side collection while it is failing.
+- App Settings no longer leaves "update window opened" on screen after the
+  native update window reports an error; that window reports progress and
+  errors itself.
+
+### Fixed
+
+- The T and M monogram on the desktop connection and settings screens now
+  switches to its dark colours in dark mode instead of relying on the SVG's
+  own colour-scheme query.
+
 ## [1.18.3] - 2026-11-03
 
 ### Fixed

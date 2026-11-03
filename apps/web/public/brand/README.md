@@ -20,9 +20,12 @@ files are the source assets for product surfaces:
 - `trading-max-engram-lockup.svg` — optional `an Engram project` endorsement.
 
 `trading-max-mark.png` is a 1024 px raster of the symbol. The browser icon
-(`apps/web/app/icon.svg`) and the desktop connection screen
-(`apps/desktop/splash/icon.svg`) switch to the dark colours with the system
-appearance; the workspace sidebar draws the same paths from `ui/brand-mark.tsx`.
+(`apps/web/app/icon.svg`) switches to the dark colours with the system
+appearance. The desktop connection and settings screens pick
+`apps/desktop/splash/icon.svg` or `icon-dark.svg` with a `<picture>` source,
+because an SVG loaded as an image does not reliably follow the page's colour
+scheme in WebKit. The workspace sidebar draws the same paths from
+`ui/brand-mark.tsx`.
 
 Keep the stem flat-ended and the gaps between the bar, legs and stem open; they
 keep the `T` legible in one colour. Do not add K-lines, arrows, coins,

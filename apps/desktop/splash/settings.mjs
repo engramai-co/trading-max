@@ -124,7 +124,8 @@ $("install-update").addEventListener("click", async () => {
   $("check-updates").disabled = true;
   try {
     await invoke("install_desktop_update", { version: checkedDesktop.version });
-    feedback("更新窗口已打开。下载和验证完成后，可以安装并重启；你的资料与连接会保留。");
+    // The native update window reports progress and errors itself.
+    $("feedback").hidden = true;
   } catch (error) { feedback(String(error), true); }
   finally { $("install-update").disabled = false; $("check-updates").disabled = false; }
 });

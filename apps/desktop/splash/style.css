@@ -48,10 +48,17 @@ body {
 .brand strong {
   font-weight:750
 }
+/* The image inside chooses the light or dark monogram; it lays out as the image itself. */
+picture {
+  display:contents
+}
+picture>source {
+  display:none
+}
 .sidebar-copy {
   padding-top:65px
 }
-.eyebrow,.tiny-label {
+.tiny-label {
   font-size:11px;
   letter-spacing:.025em;
   color:var(--muted);
@@ -63,11 +70,6 @@ body {
   font-weight:600;
   letter-spacing:-.6px;
   margin:15px 0
-}
-.sidebar-copy>p:last-child {
-  color:var(--muted);
-  font-size:13px;
-  line-height:1.9
 }
 .ownership {
   display:flex;
@@ -85,11 +87,6 @@ body {
 .ownership strong {
   font-weight:550;
   font-size:12px
-}
-.ownership p {
-  font-size:11px;
-  color:var(--muted);
-  margin:4px 0 0
 }
 .build {
   color:var(--muted);
@@ -227,13 +224,6 @@ h1:focus {
   font-weight:600;
   line-height:1.5
 }
-.choice-copy>span {
-  font-size:12px;
-  color:var(--muted);
-  display:block;
-  margin-top:5px;
-  font-weight:400
-}
 .later-tag {
   font-size:9px;
   font-weight:450;
@@ -261,12 +251,6 @@ h1:focus {
   font-size:12px;
   font-weight:550;
   display:block
-}
-.demo-row div>span {
-  color:var(--muted);
-  font-size:11px;
-  display:block;
-  margin-top:5px
 }
 button,input {
   font:inherit
@@ -643,11 +627,9 @@ body.picker.welcome-view .topline { display:none; }
 body.picker.welcome-view .intro { margin-top:0; }
 body.picker .intro { margin:12px 0 24px; }
 body.picker h1 { font-size:25px; margin-bottom:8px; }
-body.picker #context { visibility:hidden; }
 body.picker .recent { padding:16px 18px; margin-bottom:16px; background:var(--bg); border-radius:10px; }
 body.picker .recent-top { margin-bottom:12px; }
 body.picker .choice { min-height:66px; padding:14px 18px; }
-body.picker .choice-copy>span { margin-top:2px; font-size:11px; }
 body.picker .choice-copy>strong { font-size:13px; }
 body.picker .local-recent + .local-recent { margin-top:13px; padding-top:13px; }
 body.picker .local-recent .recent-name span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
