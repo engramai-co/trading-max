@@ -209,5 +209,16 @@ class AnalysisRunRepository:
                 ).fetchone()
         return row["artifact_id"] if row is not None else None
 
+    def recent_id(self, *, lens: AnalysisLens, ticker: str | None) -> str | None:
+        """The most recent analysis of a lens across snapshots."""
+
+        with self.database.read() as connection:
+            row = connection.execute(
+                "SELECT artifact_id FROM analysis_latest_lens "
+                "WHERE lens = ? AND ticker = ? ORDER BY updated_at DESC LIMIT 1",
+                (lens, (ticker or "PORTFOLIO").upper()),
+            ).fetchone()
+        return row["artifact_id"] if row is not None else None
+
 
 __all__ = ["MIGRATIONS", "AnalysisRunRepository"]

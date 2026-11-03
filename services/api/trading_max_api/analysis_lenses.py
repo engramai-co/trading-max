@@ -18,6 +18,7 @@ ANALYSIS_LENS_BY_PAGE: dict[AnalysisPage, AnalysisLens] = {
     "financials": "financial_statements",
     "options": "options_positioning",
     "ledger": "thesis_change",
+    "review": "decision_review",
 }
 
 ANALYSIS_PAGE_BY_LENS: dict[AnalysisLens, AnalysisPage] = {

@@ -1280,6 +1280,23 @@ class DecisionSide(ApiModel):
     amount_gbp: float | None = None
 
 
+class DecisionEvent(ApiModel):
+    """A dated company event near a decision: results, ratings, filings or news."""
+
+    date: str
+    kind: Literal["earnings", "upgrade", "downgrade", "initiate", "filing", "news"]
+    estimate: float | None = None
+    reported: float | None = None
+    surprise_pct: float | None = None
+    firm: str | None = None
+    from_grade: str | None = None
+    to_grade: str | None = None
+    form: str | None = None
+    title: str | None = None
+    source: str | None = None
+    url: str | None = None
+
+
 class TradeDecision(ApiModel):
     """One security, one side, one trading day; effects are GBP against not trading.
 
@@ -1301,6 +1318,11 @@ class TradeDecision(ApiModel):
     effect_to_date_gbp: float | None = None
     dividend_horizon_gbp: float | None = None
     dividend_to_date_gbp: float | None = None
+    #: The benchmark's change over the same window, in GBP.
+    market_return_horizon: float | None = None
+    market_return_to_date: float | None = None
+    #: Present on the decisions the review lists: events from a week before to the horizon.
+    events: list[DecisionEvent] | None = None
 
 
 class RoundTripReview(ApiModel):

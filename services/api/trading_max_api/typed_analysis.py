@@ -104,7 +104,17 @@ DEFINITIONS: dict[AnalysisLens, AnalysisDefinition] = {
         title="Thesis memory, contradiction, and change detector",
         prompt_version="v5",
     ),
+    "decision_review": AnalysisDefinition(
+        analysis_id="decision_review",
+        title="Decision review: buys, sells and round trips against what followed, "
+        "the market and the company events around them",
+        prompt_version="v1",
+    ),
 }
+
+#: Lenses the owner generates explicitly from their page. They run whenever a real
+#: model route is configured, independently of the automatic analysis switch.
+ON_DEMAND_LENSES: frozenset[AnalysisLens] = frozenset({"decision_review"})
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
@@ -235,7 +245,7 @@ class TypedAnalysisManager:
     def _workload_for_lens(lens: AnalysisLens) -> str:
         if lens == "watchlist_opportunity_map":
             return "taxonomy"
-        return "portfolio" if lens in PORTFOLIO_LENSES else "ticker"
+        return "portfolio" if lens in PORTFOLIO_LENSES or lens in ON_DEMAND_LENSES else "ticker"
 
     def _provider_route(self) -> str:
         return getattr(
@@ -299,7 +309,7 @@ class TypedAnalysisManager:
         trigger: AnalysisTrigger = "on_demand",
         force: bool = False,
     ) -> AnalysisRunRecord:
-        if not self.enabled:
+        if not self.enabled and not (lenses and set(lenses) <= ON_DEMAND_LENSES):
             raise ProviderRuntimeError("analysis_disabled", "LLM analysis is disabled")
         manifest = (
             self.store.load_manifest(snapshot_run_id)
@@ -402,7 +412,7 @@ class TypedAnalysisManager:
         self.repository.save(run)
         cache_hits = 0
         try:
-            if not self.enabled:
+            if not self.enabled and not set(run.lenses) <= ON_DEMAND_LENSES:
                 raise ProviderRuntimeError("analysis_disabled", "LLM analysis is disabled")
             manifest = self.store.load_manifest(run.snapshot_run_id)
             source_ids = [self.store.artifact_id(artifact) for artifact in manifest.artifacts]
@@ -544,6 +554,10 @@ class TypedAnalysisManager:
         if manifest is None:
             raise FileNotFoundError("no snapshot has been published")
         artifact_id = self._latest_id(manifest.run_id, lens, ticker)
+        if artifact_id is None and lens in ON_DEMAND_LENSES and snapshot_run_id is None:
+            # A generated review stays readable after newer snapshots; its
+            # artifact carries the snapshot and time it was written for.
+            artifact_id = self.repository.recent_id(lens=lens, ticker=ticker)
         if artifact_id is None:
             raise FileNotFoundError(f"no {lens} analysis for snapshot {manifest.run_id}")
         return self.get_artifact(artifact_id)

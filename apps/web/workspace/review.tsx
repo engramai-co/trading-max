@@ -349,7 +349,7 @@ function AccountJournal({
         {tab === "imports" && cfd ? (
           <CfdImports />
         ) : tab === "decisions" && !cfd ? (
-          <DecisionReview data={data.selectedAccountDecisions} />
+          <DecisionReview data={data.selectedAccountDecisions} account={code} />
         ) : tab === "outcome" ? (
           <>
             <Panel

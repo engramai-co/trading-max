@@ -4,6 +4,22 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-11-03
+
+### Added
+
+- Smart decision review. Each decision the review lists now shows the S&P
+  500's change over the same window, to separate the market from the
+  security, and the company events around it: results with their EPS
+  surprise, analyst upgrades, downgrades and initiations, filings and recent
+  headlines. Events are cached per listing and limited to a few telling ones.
+- AI review on the decision review page: on request, a configured model
+  reads this account's decisions, outcomes, market moves and linked events
+  and writes the recurring pattern, the evidence, caveats and what to check
+  before the next decision. It runs only when the owner asks, independently
+  of the automatic analysis switch, and stays readable after later
+  snapshots.
+
 ## [1.20.0] - 2026-11-03
 
 ### Added

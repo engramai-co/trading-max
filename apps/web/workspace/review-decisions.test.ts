@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { notableDecisions, roundTripVerdict, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
+import { eventLabel, notableDecisions, roundTripVerdict, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
 
 const row = (side: "buy" | "sell", ticker: string, horizon: number | null, toDate: number): TradeDecision => ({
   date: "2026-06-01",
@@ -47,6 +47,17 @@ describe("decision verdicts", () => {
     expect(roundTripVerdict({ count: 1, favourable: 0, resultGbp: -5, ranged: 0, rangedResultGbp: 0, rangeGbp: 0 }))
       .toEqual({ count: 1, favourable: 0, result: -5, range: null, captured: null });
     expect(roundTripVerdict(undefined).count).toBe(0);
+  });
+
+  it("names company events in a few words", () => {
+    const en = (_zh: string, english: string) => english;
+    const zh = (chinese: string) => chinese;
+    expect(eventLabel({ date: "2026-11-02", kind: "earnings", surprisePct: 8.19 }, zh)).toBe("财报超预期 +8.2%");
+    expect(eventLabel({ date: "2026-11-02", kind: "earnings", surprisePct: -3 }, en)).toBe("Results missed -3.0%");
+    expect(eventLabel({ date: "2026-11-03", kind: "downgrade", firm: "B. Riley", toGrade: "Neutral" }, zh)).toBe("B. Riley 下调至 Neutral");
+    expect(eventLabel({ date: "2026-11-03", kind: "initiate", firm: "Citi", toGrade: "Buy" }, en)).toBe("Citi initiates Buy");
+    expect(eventLabel({ date: "2026-10-09", kind: "filing", form: "10-K" }, en)).toBe("10-K");
+    expect(eventLabel({ date: "2026-10-09", kind: "news", title: "x".repeat(80) }, en)).toHaveLength(60);
   });
 });
 

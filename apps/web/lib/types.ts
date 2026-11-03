@@ -438,7 +438,8 @@ export type AnalysisPage =
   | "analyst"
   | "financials"
   | "options"
-  | "ledger";
+  | "ledger"
+  | "review";
 
 export type AnalysisLens =
   | "daily_cio_brief"
@@ -451,7 +452,8 @@ export type AnalysisLens =
   | "analyst_consensus"
   | "financial_statements"
   | "options_positioning"
-  | "thesis_change";
+  | "thesis_change"
+  | "decision_review";
 
 export type LocalizedAnalysisText = {
   zh: string;

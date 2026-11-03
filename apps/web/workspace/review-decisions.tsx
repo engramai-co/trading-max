@@ -3,19 +3,21 @@
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import type { DashboardLens } from "@/lib/types";
+import type { AccountCode, DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Instrument, Metric, Panel, Segments, useCopy } from "./foundation";
 import Link from "./link";
+import { DecisionNarrative } from "./review-narrative";
 import { SecurityPeek } from "./security-peek";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
 export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number];
 type ClosedTrade = NonNullable<AccountDecisions["closedTrades"]>[number];
 type RoundTrip = NonNullable<AccountDecisions["roundTrips"]>[number];
+type DecisionEvent = NonNullable<TradeDecision["events"]>[number];
 export type Horizon = "horizon" | "date";
 
 export function signedMoney(value: number | null | undefined, digits = 0) {
@@ -26,6 +28,42 @@ export function signedMoney(value: number | null | undefined, digits = 0) {
 
 export function decisionEffect(row: TradeDecision, horizon: Horizon) {
   return horizon === "horizon" ? row.effectHorizonGbp ?? null : row.effectToDateGbp ?? null;
+}
+
+/** One dated company event in a few words, beside the decision it may explain. */
+export function eventLabel(event: DecisionEvent, t: (zh: string, en: string) => string) {
+  const firm = event.firm ?? "";
+  const to = event.toGrade ?? "";
+  if (event.kind === "earnings") {
+    if (event.surprisePct == null) return t("财报", "Results");
+    const surprise = (event.surprisePct >= 0 ? "+" : "") + event.surprisePct.toFixed(1) + "%";
+    return event.surprisePct >= 0 ? t("财报超预期 ", "Results beat ") + surprise : t("财报不及预期 ", "Results missed ") + surprise;
+  }
+  if (event.kind === "downgrade") return firm + t(" 下调", " downgrade") + (to ? t("至 ", " to ") + to : "");
+  if (event.kind === "upgrade") return firm + t(" 上调", " upgrade") + (to ? t("至 ", " to ") + to : "");
+  if (event.kind === "initiate") return firm + t(" 首次覆盖", " initiates") + (to ? " " + to : "");
+  if (event.kind === "filing") return event.form ?? t("监管披露", "Filing");
+  const title = event.title ?? "";
+  return title.length > 60 ? title.slice(0, 59) + "…" : title;
+}
+
+/** What the market did over the same window, and the company events within it. */
+function DecisionContext({ row, horizon }: { row: TradeDecision; horizon: Horizon }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const market = horizon === "horizon" ? row.marketReturnHorizon : row.marketReturnToDate;
+  const events = row.events ?? [];
+  if (market == null && !events.length) return null;
+  return (
+    <span className="mx-decision-context">
+      {market != null && <span>{t("标普 500 同期 ", "S&P 500 over the same days ") + percent(market, true, 1)}</span>}
+      {events.map((event) => (
+        <span key={event.date + event.kind + (event.firm ?? event.form ?? event.title ?? "")}>
+          {formatCalendarDate(event.date, locale)} {eventLabel(event, t)}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /** Totals for one side at a horizon; a decision counts once its horizon has passed. */
@@ -62,7 +100,7 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
         return (
           <Link
             key={row.date + row.ticker + row.side}
-            className="mx-row-link"
+            className="mx-row-link mx-decision-row"
             href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}
           >
             <SecurityPeek ticker={row.ticker}>
@@ -78,6 +116,7 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
               </small>
             </span>
             <ArrowUpRight size={15} />
+            <DecisionContext row={row} horizon={horizon} />
           </Link>
         );
       })}
@@ -119,6 +158,7 @@ function DecisionTimeline({ rows, horizon }: { rows: TradeDecision[]; horizon: H
               effect == null
                 ? t("尚未满 20 个交易日", "Twenty trading days have not passed")
                 : t("之后 ", "Then ") + percent(change, true, 1) + " · " + signedMoney(effect),
+              ...(row.events ?? []).map((event) => formatCalendarDate(event.date, locale) + " " + eventLabel(event, t)),
             ].join("\n");
           },
         },
@@ -207,7 +247,7 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
   );
 }
 
-export function DecisionReview({ data }: { data: AccountDecisions | null | undefined }) {
+export function DecisionReview({ data, account }: { data: AccountDecisions | null | undefined; account?: AccountCode }) {
   const t = useCopy();
   const { locale } = useLocale();
   const [horizon, setHorizon] = useState<Horizon>("horizon");
@@ -237,6 +277,7 @@ export function DecisionReview({ data }: { data: AccountDecisions | null | undef
   const unpriced = data.coverage?.unpricedTickers ?? [];
   return (
     <>
+      {account && <DecisionNarrative account={account} />}
       <Panel
         title={t("买卖决定", "Buy and sell decisions")}
         help={t(
