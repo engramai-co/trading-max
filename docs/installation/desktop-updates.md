@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.18.3 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.18.4 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.18.3).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.18.4).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.18.3
+## Verified scope for 1.18.4
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks. All 19 packaged runtime checks passed, including process
@@ -16,15 +16,26 @@ Native acceptance on Apple Silicon macOS 26.5.2 used synthetic data and a privat
 older-version fixture with the released updater implementation. Invalid signed
 feeds, modified archives, interrupted downloads and cancellation left the
 installed application and its running services unchanged. **Install and Relaunch**
-installed the exact final 1.18.3 DMG, stopped the previous runtime and automatically
+installed the exact final 1.18.4 DMG, stopped the previous runtime and automatically
 reopened the isolated demo. The saved connection and disabled auto-open preference
 were unchanged. Quitting the relaunched App also stopped its owned services. All installed
 file contents, modes and symlinks matched the accepted package; signature,
-staple and Gatekeeper checks passed again.
+staple and Gatekeeper checks passed again. With the system in dark mode, the
+connection screen showed the dark monogram.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
+An installed 1.18.3 App discovered and downloaded the public 1.18.4 update
+through App Settings and installed it on a normal quit; the next launch
+reconnected to its saved HTTPS service. For the previous release, an installed
+1.16.1 App took the public 1.18.3 update through **Install and Relaunch**. In
+both cases connection and startup preferences were unchanged and the installed
+bundle matched the accepted package exactly.
 
+Version 1.18.4 keeps the desktop connection screen to headings and choices,
+switches its monogram correctly in dark mode, and stops App Settings from
+leaving an "update window opened" note behind after the update window reports
+an error.
 Version 1.18.3 brings the workspace's recent changes to the App: a decision
 review for each buy and sell, what moved the account today under the 1D figure,
 conclusions first on the estimates and financial lenses, seven-day update
