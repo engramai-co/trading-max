@@ -52,3 +52,51 @@ def test_outcomes_group_recent_failures_by_cause_and_ignore_cancellations(tmp_pa
         assert summary["causes"][0]["last_message"] == "b"
     finally:
         queue.database.close()
+
+
+def test_outcomes_separate_causes_that_share_an_error_code(tmp_path: Path) -> None:
+    queue = make_queue(tmp_path)
+    now = datetime(2026, 11, 3, 12, tzinfo=UTC)
+    stamps = [
+        (now - timedelta(hours=hours)).isoformat(timespec="microseconds") for hours in range(5)
+    ]
+    network = "invest: Trading 212 request failed: GET /equity/account/summary (ConnectError)"
+    limited = "isa: Trading 212 returned HTTP 429: too many requests"
+    mismatch = (
+        "invest: broker snapshot reconciliation failed: {...}; position_tolerance_gbp=1.429285"
+    )
+    code = "broker.intraday_snapshot_failed"
+    rows = [
+        ("n-1", "live", "live", "failed", stamps[4], code, network),
+        ("n-2", "live", "live", "failed", stamps[3], code, network),
+        ("r-1", "live", "live", "failed", stamps[2], code, limited),
+        (
+            "m-1",
+            "performance",
+            "performance",
+            "failed",
+            stamps[1],
+            "account.snapshot_invalid",
+            mismatch,
+        ),
+        ("o-1", "research", "research", "failed", stamps[0], "market.snapshot_failed", "no OHLCV"),
+    ]
+    with queue.database.transaction() as connection:
+        connection.executemany(
+            "INSERT INTO jobs(job_id, scope, trigger, status, created_at, finished_at, "
+            "error_code, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [(*row[:5], row[4], *row[5:]) for row in rows],
+        )
+    try:
+        causes = {
+            (c["error_code"], c["kind"]): (c["count"], c["last_message"])
+            for c in queue.outcomes(now - timedelta(days=7))["causes"]
+        }
+        assert causes == {
+            (code, "network"): (2, network),
+            (code, "rate_limit"): (1, limited),
+            ("account.snapshot_invalid", "reconciliation"): (1, mismatch),
+            ("market.snapshot_failed", None): (1, "no OHLCV"),
+        }
+    finally:
+        queue.database.close()

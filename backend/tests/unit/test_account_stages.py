@@ -13,16 +13,19 @@ def _write_snapshot(
     total: str,
     *,
     position_total: str | None = None,
+    fetched_at: str = "2026-08-07T20:00:00Z",
+    cash_total: str | None = None,
 ) -> None:
-    path = root / "trading212" / profile / "snapshots" / "snapshot_20260807.json"
-    path.parent.mkdir(parents=True)
+    stamp = fetched_at.replace(":", "").replace("-", "")
+    path = root / "trading212" / profile / "snapshots" / f"snapshot_{stamp}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
-                "fetched_at_utc": "2026-08-07T20:00:00Z",
+                "fetched_at_utc": fetched_at,
                 "account_summary": {
                     "currency": "GBP",
-                    "totalValue": total,
+                    "totalValue": cash_total or total,
                     "cash": {"availableToTrade": "0"},
                     "investments": {
                         "currentValue": total,
@@ -130,4 +133,72 @@ def test_full_snapshot_remains_strict_when_positions_are_unreconciled(
     with pytest.raises(StageExecutionError, match=r"positions_match_investments.*False"):
         AccountSnapshotStage(tmp_path, artifacts).run(
             StageContext(job_id="full", scope="accounts", trigger="scheduled")
+        )
+
+
+def _performance_run(tmp_path: Path):
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    result = AccountSnapshotStage(tmp_path, artifacts).run(
+        StageContext(job_id="perf", scope="performance", trigger="performance", skip_sync=True)
+    )
+    refs = {ref.key: ref for ref in result.artifacts}
+    return artifacts, result, refs
+
+
+def test_reused_live_snapshot_falls_back_to_recent_reconciled_positions(
+    tmp_path: Path,
+) -> None:
+    _write_snapshot(tmp_path, "invest", "100")
+    _write_snapshot(tmp_path, "isa", "100", fetched_at="2026-08-07T13:20:00Z")
+    _write_snapshot(tmp_path, "isa", "101", position_total="104", fetched_at="2026-08-07T13:30:00Z")
+
+    artifacts, result, refs = _performance_run(tmp_path)
+
+    isa = artifacts.get_json(refs["account/isa.json"].artifact_id)
+    assert isa.payload["total_value_gbp"] == "100"
+    assert isa.payload["fetched_at"].startswith("2026-08-07T13:20:00")
+    assert isa.ref.quality.status == "verified"
+    aggregate = refs["account/broker_snapshot_metrics.json"]
+    assert aggregate.quality.status == "verified"
+    assert any("13:20 UTC" in warning for warning in result.warnings)
+
+
+def test_reused_live_snapshot_stays_strict_beyond_the_fallback_window(
+    tmp_path: Path,
+) -> None:
+    _write_snapshot(tmp_path, "invest", "100")
+    _write_snapshot(tmp_path, "isa", "100", fetched_at="2026-08-07T12:50:00Z")
+    _write_snapshot(tmp_path, "isa", "101", position_total="104", fetched_at="2026-08-07T13:30:00Z")
+
+    with pytest.raises(StageExecutionError, match=r"positions_match_investments.*False"):
+        _performance_run(tmp_path)
+
+
+def test_reused_live_snapshot_does_not_fall_back_from_an_invalid_summary(
+    tmp_path: Path,
+) -> None:
+    _write_snapshot(tmp_path, "invest", "100")
+    _write_snapshot(tmp_path, "isa", "100", fetched_at="2026-08-07T13:20:00Z")
+    _write_snapshot(
+        tmp_path,
+        "isa",
+        "101",
+        position_total="104",
+        cash_total="150",
+        fetched_at="2026-08-07T13:30:00Z",
+    )
+
+    with pytest.raises(StageExecutionError, match="cash_plus_investments_matches_total"):
+        _performance_run(tmp_path)
+
+
+def test_full_refresh_never_falls_back_to_an_older_snapshot(tmp_path: Path) -> None:
+    _write_snapshot(tmp_path, "invest", "100")
+    _write_snapshot(tmp_path, "isa", "100", fetched_at="2026-08-07T13:20:00Z")
+    _write_snapshot(tmp_path, "isa", "101", position_total="104", fetched_at="2026-08-07T13:30:00Z")
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+
+    with pytest.raises(StageExecutionError, match=r"positions_match_investments.*False"):
+        AccountSnapshotStage(tmp_path, artifacts).run(
+            StageContext(job_id="full", scope="accounts", trigger="nightly")
         )

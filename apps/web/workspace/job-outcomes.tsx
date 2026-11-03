@@ -19,6 +19,14 @@ export function causeArea(code: string | null | undefined, t: (zh: string, en: s
   return code || t("未知原因", "Unknown cause");
 }
 
+/** Names the cause behind an error code when the backend could identify it. */
+export function causeKind(kind: string | null | undefined, t: (zh: string, en: string) => string) {
+  if (kind === "network") return t("连接失败", "Connection failed");
+  if (kind === "rate_limit") return t("券商限流", "Rate limited");
+  if (kind === "reconciliation") return t("持仓与汇总不一致", "Positions differ from summary");
+  return null;
+}
+
 export function outcomeSummary(outcomes: JobOutcomes) {
   const { succeeded = 0, failed = 0, interrupted = 0 } = outcomes.totals;
   const finished = succeeded + failed + interrupted;
@@ -55,8 +63,12 @@ export function JobOutcomeSummary({
       </p>
       <ul>
         {(outcomes.causes ?? []).slice(0, 4).map((cause: Cause) => (
-          <li key={(cause.errorCode ?? "") + cause.scope} title={cause.lastMessage ?? cause.errorCode ?? undefined}>
+          <li
+            key={[cause.errorCode, cause.scope, cause.kind].join("|")}
+            title={cause.lastMessage ?? cause.errorCode ?? undefined}
+          >
             <strong>{causeArea(cause.errorCode, t)}</strong>
+            {causeKind(cause.kind, t) && <span>{causeKind(cause.kind, t)}</span>}
             <span>{scopeLabel(cause.scope)}</span>
             <span className="mx-down">{locale === "zh" ? `${count(cause.count)} 次` : `${count(cause.count)}×`}</span>
             {cause.lastAt && (
