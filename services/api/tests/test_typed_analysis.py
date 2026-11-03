@@ -327,4 +327,6 @@ def test_decision_review_context_keeps_the_listed_decisions_and_summaries() -> N
     assert "quantity" not in compact["notableDecisions"][0]
     assert compact["notableDecisions"][0]["events"][0]["kind"] == "earnings"
     assert [row["result_gbp"] for row in compact["largestRoundTrips"]] == [9.0, -1.0]
+    # A sale's positive effect is a fall it avoided; the model must be told so.
+    assert "a sale whose security then fell" in compact["effectSign"]
     assert _compact_decision_review({"status": "unavailable"}) == {"status": "unavailable"}

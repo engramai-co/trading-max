@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.21.1] - 2026-11-03
+
+### Fixed
+
+- AI review read a sale's positive effect as a rise the owner missed. The
+  review now states how every effect is signed (positive means the decision
+  helped, whichever the side), names accounts instead of letter codes and
+  calls same-day round trips 日内做 T in Chinese.
+- A decision whose effect rounds to £0, such as one made today, is no longer
+  shown in green as if it had helped.
+
 ## [1.21.0] - 2026-11-03
 
 ### Added

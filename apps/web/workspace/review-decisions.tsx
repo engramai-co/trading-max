@@ -26,6 +26,11 @@ export function signedMoney(value: number | null | undefined, digits = 0) {
   return value > 0 && text !== currency(0, "GBP", digits) ? "+" + text : text;
 }
 
+/** An effect that rounds to £0, such as a decision made today, has no direction to colour. */
+export function effectTone(value: number | null | undefined) {
+  return value == null || Math.round(value) === 0 ? "flat" : tone(value);
+}
+
 export function decisionEffect(row: TradeDecision, horizon: Horizon) {
   return horizon === "horizon" ? row.effectHorizonGbp ?? null : row.effectToDateGbp ?? null;
 }
@@ -106,7 +111,7 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
             <SecurityPeek ticker={row.ticker}>
               <Instrument ticker={row.ticker} name={row.name} small />
             </SecurityPeek>
-            <span className={"mx-row-value mx-" + tone(effect)}>
+            <span className={"mx-row-value mx-" + effectTone(effect)}>
               {signedMoney(effect)}
               <small>
                 {formatCalendarDate(row.date, locale)} · {row.kind === "T" ? t("T 净额 ", "T net ") : ""}

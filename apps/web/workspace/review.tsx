@@ -47,7 +47,7 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { useRouteState } from "./route-state";
 import { reviewHighlights } from "./review-highlights";
 import { SecurityPeek } from "./security-peek";
-import { DecisionReview, signedMoney, type TradeDecision } from "./review-decisions";
+import { DecisionReview, effectTone, signedMoney, type TradeDecision } from "./review-decisions";
 
 export function ReviewWorkspace() {
   const t = useCopy();
@@ -156,7 +156,7 @@ export function ReviewWorkspace() {
                       href={"/account-analysis?account=" + row.account + "&reviewView=decisions"}
                     >
                       <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
-                      <span className={"mx-row-value mx-" + tone(row.effectToDateGbp)}>
+                      <span className={"mx-row-value mx-" + effectTone(row.effectToDateGbp)}>
                         {signedMoney(row.effectToDateGbp)}
                         <small>
                           {formatCalendarDate(row.date, locale)} ·{" "}

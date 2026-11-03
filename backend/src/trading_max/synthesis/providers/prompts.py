@@ -65,8 +65,10 @@ def _instructions(definition: AnalysisDefinition) -> str:
         ),
         "decision_review": (
             "Review the owner's own buy and sell decisions in decisionReview against "
-            "what followed. Effects are GBP against not trading: a buy earns the later "
-            "change and dividends, a sale gives them up. Separate the market from the "
+            "what followed. Read every effect by effectSign: effects are GBP against "
+            "not trading, and a positive effect always means the decision helped (a "
+            "buy that then rose, a sale that then avoided a fall), whichever the side; "
+            "a negative sale effect is a rise the owner gave up. Separate the market from the "
             "security: compare return_horizon or return_to_date with the S&P 500 change "
             "over the same window (market_return_*). Link a decision to a company event "
             "only when that event is in the decision's events list (results with EPS "
@@ -81,6 +83,8 @@ def _instructions(definition: AnalysisDefinition) -> str:
             "such as small samples or outcomes driven by the market; next_observations "
             "are concrete checks for the owner's next decisions, not trade instructions; "
             "risks and invalidation_conditions may stay empty."
+            " Name each account by its accountNames entry, never by its letter code. "
+            "In Chinese, call same-day round trips 日内做 T, buys 买入 and sales 卖出."
         ),
     }.get(definition.analysis_id, "Stay within the requested analysis lens.")
     return (
