@@ -280,6 +280,7 @@ def stage_plan(
             [
                 ("accounts.performance", "Calculate account performance"),
                 ("accounts.review", "Build deterministic account reviews"),
+                ("accounts.decisions", "Score buys and sells against what followed"),
             ]
         )
     stages.append(("snapshot.publish", "Publish immutable snapshot"))

@@ -47,11 +47,19 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { useRouteState } from "./route-state";
 import { reviewHighlights } from "./review-highlights";
 import { SecurityPeek } from "./security-peek";
+import { DecisionReview, signedMoney, type TradeDecision } from "./review-decisions";
 
 export function ReviewWorkspace() {
   const t = useCopy();
+  const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const query = useDashboardLens("review");
+  const recent = (["A", "B"] as const)
+    .flatMap((code) =>
+      (query.data?.decisionReviews?.[code]?.decisions ?? []).map((row: TradeDecision) => ({ ...row, account: code })),
+    )
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp)
+    .slice(0, 8);
   return (
     <Page title={t("投资复盘", "Investment review")}>
       {query.isPending ? (
@@ -68,6 +76,17 @@ export function ReviewWorkspace() {
                   );
                   const cfd = code === "C" ? query.data?.cfd : null;
                   const risk = code !== "C" ? query.data?.risk?.[code] : null;
+                  const decisions = code !== "C" ? query.data?.decisionReviews?.[code] : null;
+                  const days = decisions?.horizonDays ?? 20;
+                  const verdict = (side: "buys" | "sells") => {
+                    const summary = decisions?.status === "available" ? decisions[side] : null;
+                    if (!summary?.evaluated) return "—";
+                    return (
+                      <span key={side} className={"mx-" + tone(summary.effectHorizonGbp)}>
+                        {signedMoney(summary.effectHorizonGbp)}
+                      </span>
+                    );
+                  };
                   const available = Boolean(account || cfd);
                   return (
                     <Link
@@ -114,8 +133,12 @@ export function ReviewWorkspace() {
                             : [
                                 ["TWR", <span key="twr" className={risk?.twr == null ? undefined : risk.twr < 0 ? "mx-down" : "mx-up"}>{percent(risk?.twr, true)}</span>],
                                 [
-                                  t("当前回撤", "Current drawdown"),
-                                  <span key="drawdown" className={risk?.currentDrawdown ? "mx-down" : undefined}>{percent(risk?.currentDrawdown)}</span>,
+                                  locale === "zh" ? `卖出后 ${days} 个交易日` : `Sells after ${days} trading days`,
+                                  verdict("sells"),
+                                ],
+                                [
+                                  locale === "zh" ? `买入后 ${days} 个交易日` : `Buys after ${days} trading days`,
+                                  verdict("buys"),
                                 ],
                               ]
                         }
@@ -124,6 +147,29 @@ export function ReviewWorkspace() {
                   );
                 })}
               </div>
+              {recent.length > 0 && (
+                <Panel title={t("最近的买卖决定", "Recent decisions")}>
+                  {recent.map((row) => (
+                    <Link
+                      key={row.account + row.date + row.ticker + row.side}
+                      className="mx-row-link"
+                      href={"/account-analysis?account=" + row.account + "&reviewView=decisions"}
+                    >
+                      <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
+                      <span className={"mx-row-value mx-" + tone(row.effectToDateGbp)}>
+                        {signedMoney(row.effectToDateGbp)}
+                        <small>
+                          {formatCalendarDate(row.date, locale)} ·{" "}
+                          {row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ")}
+                          {currency(row.amountGbp)} · {t("之后 ", "then ")}
+                          {percent(row.returnToDate, true, 1)}
+                        </small>
+                      </span>
+                      <ArrowUpRight size={15} />
+                    </Link>
+                  ))}
+                </Panel>
+              )}
           </>
         )
       )}
@@ -185,7 +231,11 @@ function AccountJournal({
   code: AccountCode;
 }) {
   const t = useCopy();
-  const [tab, setTab] = useState("outcome");
+  const { params } = useRouteState();
+  const decisionsAvailable = data.selectedAccountDecisions?.status === "available";
+  const [tab, setTab] = useState(
+    params.get("reviewView") ?? (decisionsAvailable ? "decisions" : "outcome"),
+  );
   const [focusPhase, setFocusPhase] = useState("");
   const evidence = useRef<HTMLDivElement>(null);
   const openEvidence = (view: string, phaseId = "") => {
@@ -275,6 +325,7 @@ function AccountJournal({
           onChange={setTab}
           label={t("复盘角度", "Review perspective")}
           options={[
+            ...(cfd ? [] : [{ value: "decisions", label: t("买卖决定", "Decisions") }]),
             { value: "outcome", label: t("投资结果", "Outcomes") },
             { value: "attribution", label: t("盈亏归因", "Attribution") },
             { value: "quality", label: t("交易质量", "Trade quality") },
@@ -287,7 +338,7 @@ function AccountJournal({
               : []),
           ]}
         />
-        {unavailable && (
+        {unavailable && tab !== "decisions" && (
           <Notice>
             {t(
               "这份快照没有完整的历史复盘记录。已知的账户数据仍会显示；完成完整更新后可获得更丰富的分析。",
@@ -297,6 +348,8 @@ function AccountJournal({
         )}
         {tab === "imports" && cfd ? (
           <CfdImports />
+        ) : tab === "decisions" && !cfd ? (
+          <DecisionReview data={data.selectedAccountDecisions} />
         ) : tab === "outcome" ? (
           <>
             <Panel
@@ -724,7 +777,7 @@ function TradeQuality({
                 cfd
                   ? t("平均持有小时", "Average holding hours")
                   : t("平均持有天数", "Average holding days"),
-                number(data.average_holding_days ?? data.averageDurationHours),
+                number(data.average_holding_days ?? data.averageDurationHours, cfd ? 1 : 0),
               ],
               [
                 t("最长连胜", "Longest winning streak"),
@@ -742,7 +795,8 @@ function TradeQuality({
               ],
               [
                 t("中位持有周期", "Median holding duration"),
-                number(data.median_holding_days ?? data.medianDurationHours),
+                number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) +
+                  (cfd ? t(" 小时", " hours") : t(" 天", " days")),
               ],
             ]}
           />
@@ -754,12 +808,12 @@ function TradeQuality({
           fields={
             cfd
               ? [
-                  ["盈亏持平", "Breakeven trades", "breakeven", "number"],
+                  ["盈亏持平", "Breakeven trades", "breakeven", "count"],
                   [
                     "一小时内结束",
                     "Closed within one hour",
                     "under_one_hour_count",
-                    "number",
+                    "count",
                   ],
                   ["最佳单笔", "Best trade", "best_trade", "money"],
                   ["最差单笔", "Worst trade", "worst_trade", "money"],
@@ -789,12 +843,12 @@ function TradeQuality({
                     "net_result_gbp",
                     "money",
                   ],
-                  ["同日结束", "Same-day trades", "same_day_count", "number"],
+                  ["同日结束", "Same-day trades", "same_day_count", "count"],
                   [
                     "长期持有交易",
                     "Long holding periods",
                     "long_holding_count",
-                    "number",
+                    "count",
                   ],
                   [
                     "亏损尾部 P10",
@@ -831,9 +885,9 @@ function TradeQuality({
                   <span className={"mx-row-value mx-" + tone(r.netResultGbp)}>
                     {currency(r.netResultGbp, "GBP", 2)}
                     <small>
-                      {number(r.durationDays)} {t("天", "days")} ·{" "}
-                      {str(r.direction)} · {t("费用", "Fees")}{" "}
-                      {currency(r.feesGbp, "GBP", 2)}
+                      {number(r.durationDays, 0)} {t("天", "days")}
+                      {cfd && str(r.direction) ? " · " + str(r.direction) : ""}
+                      {numeric(r.feesGbp) ? " · " + t("费用 ", "Fees ") + currency(r.feesGbp, "GBP", 2) : ""}
                     </small>
                   </span>
                   <ArrowUpRight size={15} />
@@ -884,15 +938,6 @@ function TradeQuality({
                       : "—",
               },
             ]}
-          />
-          <Bars
-            label={t("剔除后的净盈亏", "Remaining net P&L")}
-            labels={objects(data.top_n_counterfactuals).map(
-              (r) => t("移除前 ", "Remove top ") + number(r.removeTopN, 0),
-            )}
-            values={objects(data.top_n_counterfactuals).map((r) =>
-              numeric(r.remainingNetResultGbp),
-            )}
           />
         </Panel>
       )}

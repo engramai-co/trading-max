@@ -12,7 +12,7 @@ import { Facts, Notice, Panel, useCopy } from "./foundation";
 export const field = (data: Json, key: string): unknown =>
   data[key] ??
   data[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())];
-type Field = [string, string, string, "money" | "percent" | "number" | "text"];
+type Field = [string, string, string, "money" | "percent" | "number" | "count" | "average" | "days" | "text"];
 export function DetailFacts({ data, fields }: { data: Json; fields: Field[] }) {
   const t = useCopy();
   return (
@@ -25,9 +25,15 @@ export function DetailFacts({ data, fields }: { data: Json; fields: Field[] }) {
             ? currency(value, "GBP", 2)
             : format === "percent"
               ? percent(value, false, 2)
-              : format === "number"
-                ? number(value)
-                : reviewLabel(str(value), t) || "—",
+              : format === "count"
+                ? number(value, 0)
+                : format === "average"
+                  ? number(value, 1)
+                  : format === "days"
+                    ? (value == null ? "—" : number(value, 0) + t(" 天", " days"))
+                    : format === "number"
+                      ? number(value)
+                      : reviewLabel(str(value), t) || "—",
         ];
       })}
     />
@@ -127,19 +133,19 @@ export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
                   "gross_traded_notional_gbp",
                   "money",
                 ],
-                ["买单数", "Buy orders", "buy_orders", "number"],
-                ["卖单数", "Sell orders", "sell_orders", "number"],
+                ["买单数", "Buy orders", "buy_orders", "count"],
+                ["卖单数", "Sell orders", "sell_orders", "count"],
                 [
                   "交易时平均持仓数",
                   "Average active positions",
                   "average_active_positions_at_trade_events",
-                  "number",
+                  "average",
                 ],
                 [
                   "交易时最多持仓数",
                   "Peak active positions",
                   "peak_active_positions_at_trade_events",
-                  "number",
+                  "count",
                 ],
                 [
                   "回撤期间买入",
@@ -171,13 +177,13 @@ export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
                     "赢家中位天数",
                     "Winner median days",
                     "winner_median_days",
-                    "number",
+                    "days",
                   ],
                   [
                     "输家中位天数",
                     "Loser median days",
                     "loser_median_days",
-                    "number",
+                    "days",
                   ],
                 ]}
               />

@@ -53,7 +53,8 @@ export function EvidenceTable<T>({
         aria-label={label}
       >
         <table className="mx-table">
-          <caption className="mx-table-caption">
+          {/* A single page shows its rows; the count only helps when paging. */}
+          <caption className={"mx-table-caption" + (rows.length > pageSize ? "" : " sr-only")}>
             {label} · {totalRows ?? rows.length} {t("条记录", "records")}
           </caption>
           <thead>

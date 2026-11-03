@@ -1332,6 +1332,27 @@ export interface components {
             /** Since */
             since: string;
         };
+        /** AccountDecisions */
+        AccountDecisions: {
+            /** Asof */
+            asOf?: string | null;
+            buys?: components["schemas"]["DecisionSide"];
+            /** Closedtrades */
+            closedTrades?: components["schemas"]["ClosedTradeReview"][];
+            coverage?: components["schemas"]["DecisionCoverage"];
+            /** Decisions */
+            decisions?: components["schemas"]["TradeDecision"][];
+            /** Horizondays */
+            horizonDays?: number | null;
+            /** Reason */
+            reason?: string | null;
+            sells?: components["schemas"]["DecisionSide"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "unavailable";
+        };
         /** AccountReportData */
         AccountReportData: {
             /** Analysis */
@@ -2479,6 +2500,31 @@ export interface components {
             /** Symbol */
             symbol?: string | null;
         };
+        /** ClosedTradeReview */
+        ClosedTradeReview: {
+            /** Actualgbp */
+            actualGbp?: number | null;
+            /** Bestexitdate */
+            bestExitDate?: string | null;
+            /** Bestexitgbp */
+            bestExitGbp?: number | null;
+            /** End */
+            end: string;
+            /** Givenbackgbp */
+            givenBackGbp?: number | null;
+            /** Investedgbp */
+            investedGbp?: number | null;
+            /** Name */
+            name: string;
+            /** Start */
+            start: string;
+            /** Ticker */
+            ticker: string;
+            /** Worstclosedate */
+            worstCloseDate?: string | null;
+            /** Worstclosegbp */
+            worstCloseGbp?: number | null;
+        };
         /**
          * DashboardLensSnapshot
          * @description A page-scoped dashboard payload.
@@ -2500,6 +2546,10 @@ export interface components {
             cfd?: components["schemas"]["CfdSummary"] | null;
             cfdReview?: components["schemas"]["CfdAccountReview"] | null;
             dayAttribution?: components["schemas"]["DayAttribution"] | null;
+            /** Decisionreviews */
+            decisionReviews?: {
+                [key: string]: components["schemas"]["AccountDecisions"];
+            };
             /** Generatedat */
             generatedAt: string;
             /** Holdings */
@@ -2526,6 +2576,7 @@ export interface components {
             runId: string;
             selectedAccount?: components["schemas"]["AccountSummary"] | null;
             selectedAccountAnalysis?: components["schemas"]["AccountAnalysisMetrics"] | null;
+            selectedAccountDecisions?: components["schemas"]["AccountDecisions"] | null;
             /** Selectedaccountreport */
             selectedAccountReport?: {
                 [key: string]: unknown;
@@ -2641,6 +2692,45 @@ export interface components {
             };
             /** Day */
             day: string;
+        };
+        /** DecisionCoverage */
+        DecisionCoverage: {
+            /**
+             * Decisions
+             * @default 0
+             */
+            decisions: number;
+            /**
+             * Scored
+             * @default 0
+             */
+            scored: number;
+            /** Unpricedtickers */
+            unpricedTickers?: string[];
+        };
+        /** DecisionSide */
+        DecisionSide: {
+            /** Amountgbp */
+            amountGbp?: number | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /** Effecthorizongbp */
+            effectHorizonGbp?: number | null;
+            /** Effecttodategbp */
+            effectToDateGbp?: number | null;
+            /**
+             * Evaluated
+             * @default 0
+             */
+            evaluated: number;
+            /**
+             * Favourable
+             * @default 0
+             */
+            favourable: number;
         };
         /** DeepSeekIntegrationCandidate */
         DeepSeekIntegrationCandidate: {
@@ -5979,6 +6069,40 @@ export interface components {
             exitMultiple?: number | null;
             /** Gordonmultiple */
             gordonMultiple?: number | null;
+        };
+        /**
+         * TradeDecision
+         * @description One security, one side, one trading day; effects are GBP against not trading.
+         */
+        TradeDecision: {
+            /** Amountgbp */
+            amountGbp: number;
+            /** Date */
+            date: string;
+            /** Effecthorizongbp */
+            effectHorizonGbp?: number | null;
+            /** Effecttodategbp */
+            effectToDateGbp?: number | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "B" | "S" | "T";
+            /** Name */
+            name: string;
+            /** Quantity */
+            quantity?: number | null;
+            /** Returnhorizon */
+            returnHorizon?: number | null;
+            /** Returntodate */
+            returnToDate?: number | null;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+            /** Ticker */
+            ticker: string;
         };
         /** Trading212IntegrationCandidate */
         Trading212IntegrationCandidate: {

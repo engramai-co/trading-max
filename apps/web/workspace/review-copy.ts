@@ -15,7 +15,7 @@ export function behaviorObservation(diagnostic: string, value: unknown, t: Copy)
     label: entry ? t(entry[0], entry[1]) : t("其他行为观测", "Other observation"),
     value: entry?.[2] === "money" ? currency(value, "GBP", 2)
       : entry?.[2] === "ratio" ? percent(value)
-      : entry?.[2] === "days" ? number(value) + (value == null ? "" : t(" 天", " days"))
+      : entry?.[2] === "days" ? number(value, 1) + (value == null ? "" : t(" 天", " days"))
       : number(value),
     known: !!entry,
   };
