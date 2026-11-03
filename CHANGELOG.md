@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-11-03
+
+### Changed
+
+- The estimates and events lens opens with its conclusions: analyst
+  consensus and coverage, the median target against the price, the
+  quarter's EPS estimate change over 90 days with recent revisions, and the
+  next report date with last quarter's surprise.
+- Estimate revisions keep their chart and move the exact readings and
+  revision counts under one disclosure; quarterly EPS axes and readings
+  show month and year instead of raw dates.
+- The financial workbench's headline figures carry their comparison:
+  prior-period revenue and growth, the margin change in percentage points
+  and free cash flow as a share of revenue. The operating history table
+  sits under a disclosure beneath its chart, and the revenue-to-net-income
+  bridge labels each step on the chart instead of repeating it below.
+
 ## [1.18.0] - 2026-11-03
 
 ### Added
