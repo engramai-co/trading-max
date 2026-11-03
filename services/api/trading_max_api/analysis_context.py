@@ -59,6 +59,18 @@ _DECISION_FIELDS = (
     "events",
 )
 
+#: How every effect and round-trip result is signed. Stated in the context so the
+#: model never reads a sale's positive effect as a missed rise.
+_EFFECT_SIGN = (
+    "effect_*_gbp, dividend_*_gbp and result_gbp are GBP against not trading. "
+    "Positive means the decision helped the account: a buy whose security then "
+    "rose, or a sale whose security then fell. Negative means it hurt: a buy "
+    "that then fell, or a sale followed by a rise that the account gave up. "
+    "'favourable' counts positive effects. return_* and market_return_* are "
+    "the security's and the S&P 500's own change after the decision, whatever "
+    "the side."
+)
+
 
 def _compact_decision_review(review: Any) -> Any:
     """The decisions the review page lists, with their events, and the summaries."""
@@ -78,6 +90,7 @@ def _compact_decision_review(review: Any) -> Any:
     return {
         "asOf": review.get("as_of"),
         "horizonTradingDays": review.get("horizon_days"),
+        "effectSign": _EFFECT_SIGN,
         "coverage": review.get("coverage"),
         "buys": review.get("buys"),
         "sells": review.get("sells"),
@@ -260,6 +273,12 @@ class AnalysisContextBuilder:
             accounts = decisions.get("accounts") if isinstance(decisions, dict) else {}
             codes = [ticker.upper()] if ticker else sorted(accounts or {})
             payload["accountFocus"] = ticker.upper() if ticker else None
+            names = {
+                str(account.get("code")): account.get("name")
+                for account in dashboard.get("accounts", [])
+                if isinstance(account, dict) and account.get("name")
+            }
+            payload["accountNames"] = {code: names.get(code, code) for code in codes}
             payload["decisionReview"] = {
                 code: _compact_decision_review((accounts or {}).get(code)) for code in codes
             }
