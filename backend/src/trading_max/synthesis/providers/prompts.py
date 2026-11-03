@@ -63,6 +63,25 @@ def _instructions(definition: AnalysisDefinition) -> str:
             "Describe thesis changes and contradictions from the supplied timeline; "
             "do not invent prior beliefs or events."
         ),
+        "decision_review": (
+            "Review the owner's own buy and sell decisions in decisionReview against "
+            "what followed. Effects are GBP against not trading: a buy earns the later "
+            "change and dividends, a sale gives them up. Separate the market from the "
+            "security: compare return_horizon or return_to_date with the S&P 500 change "
+            "over the same window (market_return_*). Link a decision to a company event "
+            "only when that event is in the decision's events list (results with EPS "
+            "surprise, analyst rating changes, filings, news); when no listed event or "
+            "market move explains an outcome, say so instead of inventing a cause. Look "
+            "for recurring patterns across decisions, such as selling before results, "
+            "buying after downgrades, adding during market-wide falls, or same-day round "
+            "trips that give up their range. Never judge a decision from hindsight alone. "
+            "Use the fields this way: headline and summary state the main pattern; "
+            "evidence names specific decisions with date, ticker, effect and the linked "
+            "event or market move; counterpoints are what argues against the pattern, "
+            "such as small samples or outcomes driven by the market; next_observations "
+            "are concrete checks for the owner's next decisions, not trade instructions; "
+            "risks and invalidation_conditions may stay empty."
+        ),
     }.get(definition.analysis_id, "Stay within the requested analysis lens.")
     return (
         "You are Trading Max's evidence-bound portfolio analyst. Use only the "

@@ -41,6 +41,54 @@ def _bounded_buckets(section: Any, limit: int = 12) -> Any:
     return result
 
 
+#: Decision fields the review model reads; amounts are GBP, returns are fractions.
+_DECISION_FIELDS = (
+    "date",
+    "ticker",
+    "name",
+    "side",
+    "kind",
+    "amount_gbp",
+    "return_horizon",
+    "effect_horizon_gbp",
+    "return_to_date",
+    "effect_to_date_gbp",
+    "dividend_to_date_gbp",
+    "market_return_horizon",
+    "market_return_to_date",
+    "events",
+)
+
+
+def _compact_decision_review(review: Any) -> Any:
+    """The decisions the review page lists, with their events, and the summaries."""
+
+    if not isinstance(review, dict) or review.get("status") != "available":
+        return review
+    decisions = review.get("decisions") or []
+    shown = [
+        {field: row.get(field) for field in _DECISION_FIELDS}
+        for row in decisions
+        if isinstance(row, dict) and "events" in row
+    ]
+    round_trips = sorted(
+        review.get("round_trips") or [],
+        key=lambda row: -abs(float(row.get("result_gbp") or 0.0)),
+    )
+    return {
+        "asOf": review.get("as_of"),
+        "horizonTradingDays": review.get("horizon_days"),
+        "coverage": review.get("coverage"),
+        "buys": review.get("buys"),
+        "sells": review.get("sells"),
+        "roundTripSummary": review.get("round_trip_summary"),
+        "notableDecisions": shown[-60:],
+        "largestRoundTrips": round_trips[:10],
+        "closedTradesBelowBestClose": (review.get("closed_trades") or [])[:8],
+        "benchmark": "S&P 500 (SPY) in GBP",
+    }
+
+
 def _compact_account_review(review: Any) -> Any:
     """Keep the model lens factual and bounded without losing warnings."""
 
@@ -204,6 +252,17 @@ class AnalysisContextBuilder:
                 payload["accountFocusPolicy"] = account_report.get("policy", {})
             if account_code == "C":
                 payload["accountFocusCfd"] = dashboard.get("cfd")
+        if lens == "decision_review":
+            try:
+                decisions = self.store.read_json(manifest.run_id, "account/decisions.json")
+            except FileNotFoundError:
+                decisions = {}
+            accounts = decisions.get("accounts") if isinstance(decisions, dict) else {}
+            codes = [ticker.upper()] if ticker else sorted(accounts or {})
+            payload["accountFocus"] = ticker.upper() if ticker else None
+            payload["decisionReview"] = {
+                code: _compact_decision_review((accounts or {}).get(code)) for code in codes
+            }
         if lens == "watchlist_opportunity_map":
             overview = self.research.overview(manifest, limit=100)
             try:

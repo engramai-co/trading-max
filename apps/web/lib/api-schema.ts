@@ -1562,7 +1562,7 @@ export interface components {
              * Analysisid
              * @enum {string}
              */
-            analysisId: "daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change";
+            analysisId: "daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change" | "decision_review";
             /** Artifactid */
             artifactId: string;
             /** Confidence */
@@ -1591,7 +1591,7 @@ export interface components {
              * Page
              * @enum {string}
              */
-            page: "overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger";
+            page: "overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger" | "review";
             /** Promptversion */
             promptVersion: string;
             /** Provider */
@@ -1681,7 +1681,7 @@ export interface components {
              */
             force: boolean;
             /** Lenses */
-            lenses: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change")[];
+            lenses: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change" | "decision_review")[];
             /** Model */
             model: string;
             /** Provider */
@@ -1724,9 +1724,9 @@ export interface components {
              */
             force: boolean;
             /** Lenses */
-            lenses?: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change")[];
+            lenses?: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change" | "decision_review")[];
             /** Pages */
-            pages?: ("overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger")[];
+            pages?: ("overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger" | "review")[];
             /** Ticker */
             ticker?: string | null;
         };
@@ -2711,6 +2711,39 @@ export interface components {
             scored: number;
             /** Unpricedtickers */
             unpricedTickers?: string[];
+        };
+        /**
+         * DecisionEvent
+         * @description A dated company event near a decision: results, ratings, filings or news.
+         */
+        DecisionEvent: {
+            /** Date */
+            date: string;
+            /** Estimate */
+            estimate?: number | null;
+            /** Firm */
+            firm?: string | null;
+            /** Form */
+            form?: string | null;
+            /** Fromgrade */
+            fromGrade?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "upgrade" | "downgrade" | "initiate" | "filing" | "news";
+            /** Reported */
+            reported?: number | null;
+            /** Source */
+            source?: string | null;
+            /** Surprisepct */
+            surprisePct?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Tograde */
+            toGrade?: string | null;
+            /** Url */
+            url?: string | null;
         };
         /** DecisionSide */
         DecisionSide: {
@@ -6143,11 +6176,17 @@ export interface components {
             effectHorizonGbp?: number | null;
             /** Effecttodategbp */
             effectToDateGbp?: number | null;
+            /** Events */
+            events?: components["schemas"]["DecisionEvent"][] | null;
             /**
              * Kind
              * @enum {string}
              */
             kind: "B" | "S" | "T";
+            /** Marketreturnhorizon */
+            marketReturnHorizon?: number | null;
+            /** Marketreturntodate */
+            marketReturnToDate?: number | null;
             /** Name */
             name: string;
             /** Quantity */
@@ -6832,8 +6871,8 @@ export interface operations {
     latest_analysis_v1_analysis_latest_get: {
         parameters: {
             query?: {
-                lens?: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change") | null;
-                page?: ("overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger") | null;
+                lens?: ("daily_cio_brief" | "hidden_exposure" | "return_attribution" | "watchlist_opportunity_map" | "technical_regime" | "valuation_scenario" | "fundamental_health" | "analyst_consensus" | "financial_statements" | "options_positioning" | "thesis_change" | "decision_review") | null;
+                page?: ("overview" | "holdings" | "analytics" | "research" | "technical" | "valuation" | "fundamentals" | "analyst" | "financials" | "options" | "ledger" | "review") | null;
                 ticker?: string | null;
                 snapshot_run_id?: string | null;
             };

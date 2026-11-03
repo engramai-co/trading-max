@@ -1175,7 +1175,8 @@
               "analyst_consensus",
               "financial_statements",
               "options_positioning",
-              "thesis_change"
+              "thesis_change",
+              "decision_review"
             ],
             "title": "Analysisid",
             "type": "string"
@@ -1228,7 +1229,8 @@
               "analyst",
               "financials",
               "options",
-              "ledger"
+              "ledger",
+              "review"
             ],
             "title": "Page",
             "type": "string"
@@ -1487,7 +1489,8 @@
                 "analyst_consensus",
                 "financial_statements",
                 "options_positioning",
-                "thesis_change"
+                "thesis_change",
+                "decision_review"
               ],
               "type": "string"
             },
@@ -1613,7 +1616,8 @@
                 "analyst_consensus",
                 "financial_statements",
                 "options_positioning",
-                "thesis_change"
+                "thesis_change",
+                "decision_review"
               ],
               "type": "string"
             },
@@ -1633,7 +1637,8 @@
                 "analyst",
                 "financials",
                 "options",
-                "ledger"
+                "ledger",
+                "review"
               ],
               "type": "string"
             },
@@ -5020,6 +5025,143 @@
           }
         },
         "title": "DecisionCoverage",
+        "type": "object"
+      },
+      "DecisionEvent": {
+        "description": "A dated company event near a decision: results, ratings, filings or news.",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "firm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm"
+          },
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "fromGrade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fromgrade"
+          },
+          "kind": {
+            "enum": [
+              "earnings",
+              "upgrade",
+              "downgrade",
+              "initiate",
+              "filing",
+              "news"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reported": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "surprisePct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surprisepct"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "toGrade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tograde"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "date",
+          "kind"
+        ],
+        "title": "DecisionEvent",
         "type": "object"
       },
       "DecisionSide": {
@@ -15085,6 +15227,20 @@
             ],
             "title": "Effecttodategbp"
           },
+          "events": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/DecisionEvent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Events"
+          },
           "kind": {
             "enum": [
               "B",
@@ -15093,6 +15249,28 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "marketReturnHorizon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketreturnhorizon"
+          },
+          "marketReturnToDate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marketreturntodate"
           },
           "name": {
             "title": "Name",
@@ -16668,7 +16846,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.20.0"
+    "version": "1.21.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16842,7 +17020,8 @@
                     "analyst_consensus",
                     "financial_statements",
                     "options_positioning",
-                    "thesis_change"
+                    "thesis_change",
+                    "decision_review"
                   ],
                   "type": "string"
                 },
@@ -16871,7 +17050,8 @@
                     "analyst",
                     "financials",
                     "options",
-                    "ledger"
+                    "ledger",
+                    "review"
                   ],
                   "type": "string"
                 },

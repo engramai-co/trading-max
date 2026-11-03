@@ -56,6 +56,7 @@ AnalysisPage = Literal[
     "financials",
     "options",
     "ledger",
+    "review",
 ]
 AnalysisLens = Literal[
     "daily_cio_brief",
@@ -69,6 +70,7 @@ AnalysisLens = Literal[
     "financial_statements",
     "options_positioning",
     "thesis_change",
+    "decision_review",
 ]
 AnalysisTrigger = Literal["on_demand", "nightly", "snapshot"]
 

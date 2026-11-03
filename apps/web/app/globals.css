@@ -185,6 +185,7 @@ h1, h2, h3, p { margin: 0; }
 .mx-row-link:last-child { border-bottom: 0; }
 .mx-row-value { text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .mx-row-value small { display: block; font-size: 12px; font-weight: 500; color: var(--mx-muted); margin-top: 4px; }
+/* Decision rows: market move and company events of the window on their own line. */ .mx-decision-row { flex-wrap: wrap; row-gap: 6px; } .mx-decision-context { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; color: var(--mx-muted); }
 .mx-stack-bar { display: flex; gap: 3px; height: 9px; border-radius: 3px; overflow: hidden; margin-bottom: 23px; }
 .mx-stack-bar > span { min-width: 1px; }
 .mx-allocation-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--mx-border); }

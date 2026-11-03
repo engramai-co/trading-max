@@ -135,8 +135,14 @@ def build_decision_review(
     campaigns: Sequence[Mapping[str, Any]] = (),
     unpriced: Sequence[str] = (),
     as_of: pd.Timestamp,
+    market: pd.Series | None = None,
 ) -> dict[str, Any]:
-    """``trades`` carries NAV trade columns plus ``TotalGBP`` settlement amounts."""
+    """``trades`` carries NAV trade columns plus ``TotalGBP`` settlement amounts.
+
+    ``market`` is an optional benchmark close series in GBP; each decision then
+    records the benchmark's change over the same window, to separate the
+    market's move from the security's own.
+    """
 
     fills = trades[
         trades["Action"].astype(str).str.contains(r"buy|sell", case=False, regex=True)
@@ -216,6 +222,15 @@ def build_decision_review(
         paid_to_date = _dividends(security, position, len(security.closes) - 1)
         horizon_return = None if later is None else (later + paid_horizon) / close - 1.0
         latest_return = (latest + paid_to_date) / close - 1.0
+        market_horizon = market_to_date = None
+        if market is not None and not market.empty:
+            opening = _close_on(market, security.closes.index[position])
+            if opening is not None and opening[1] > 0:
+                closing = _close_on(market, security.closes.index[-1])
+                market_to_date = None if closing is None else closing[1] / opening[1] - 1.0
+                if later is not None:
+                    ending = _close_on(market, security.closes.index[horizon])
+                    market_horizon = None if ending is None else ending[1] / opening[1] - 1.0
         for side, (amount, shares) in legs.items():
             if not amount:
                 unscored += 1
@@ -241,6 +256,9 @@ def build_decision_review(
                     if paid_horizon is None
                     else _round(sign * amount * paid_horizon / close),
                     "dividend_to_date_gbp": _round(sign * amount * paid_to_date / close),
+                    # The benchmark's change over the same window, in GBP.
+                    "market_return_horizon": _round(market_horizon, 6),
+                    "market_return_to_date": _round(market_to_date, 6),
                 }
             )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))

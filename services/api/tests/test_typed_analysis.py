@@ -11,6 +11,7 @@ from trading_max.infrastructure import (
 from trading_max.synthesis.providers import FakeProvider
 from trading_max.worker import DurableWorker
 
+from services.api.trading_max_api.analysis_context import _compact_decision_review
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.models import SecuritySearchResult
 from services.api.trading_max_api.provider_runtime import ProviderRuntimeError
@@ -267,3 +268,63 @@ def test_taxonomy_route_loss_records_unclassified_instead_of_staying_classifying
         assert classified.taxonomy_decision_id
     finally:
         manager.close()
+
+
+def test_decision_review_runs_on_demand_and_stays_readable_after_new_snapshots(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    _seed_snapshot(state)
+    manager = _manager(state)
+    manager.enabled = False  # automatic analysis off, as in a default installation
+    worker = DurableWorker(
+        manager.queue,
+        StageRegistry([manager.stage()]),
+        worker_id="decision-review-worker",
+    )
+    try:
+        with pytest.raises(ProviderRuntimeError, match="analysis_disabled"):
+            manager.submit(lenses=["daily_cio_brief"])
+        run = manager.submit(lenses=["decision_review"], ticker="A", force=True)
+        assert worker.run_once() is True
+        assert manager.get(run.run_id).status.value == "succeeded"
+        _seed_snapshot(state)  # a newer snapshot has no review of its own
+        artifact = manager.latest(lens="decision_review", ticker="A")
+        assert artifact.analysis_id == "decision_review"
+        assert artifact.snapshot_run_id == run.snapshot_run_id
+        with pytest.raises(FileNotFoundError):
+            manager.latest(lens="decision_review", ticker="B")
+    finally:
+        worker.close()
+        manager.close()
+
+
+def test_decision_review_context_keeps_the_listed_decisions_and_summaries() -> None:
+    review = {
+        "status": "available",
+        "as_of": "2026-11-03",
+        "horizon_days": 20,
+        "buys": {"count": 2},
+        "sells": {"count": 1},
+        "round_trip_summary": {"count": 2},
+        "decisions": [
+            {"date": "2026-10-01", "ticker": "AAA", "side": "buy", "amount_gbp": 10.0},
+            {
+                "date": "2026-10-12",
+                "ticker": "LITE",
+                "side": "sell",
+                "amount_gbp": 500.0,
+                "effect_horizon_gbp": -50.0,
+                "quantity": 2.0,
+                "events": [{"date": "2026-10-21", "kind": "earnings", "surprise_pct": 8.2}],
+            },
+        ],
+        "round_trips": [{"result_gbp": -1.0}, {"result_gbp": 9.0}],
+        "closed_trades": [],
+    }
+    compact = _compact_decision_review(review)
+    assert [row["ticker"] for row in compact["notableDecisions"]] == ["LITE"]
+    assert "quantity" not in compact["notableDecisions"][0]
+    assert compact["notableDecisions"][0]["events"][0]["kind"] == "earnings"
+    assert [row["result_gbp"] for row in compact["largestRoundTrips"]] == [9.0, -1.0]
+    assert _compact_decision_review({"status": "unavailable"}) == {"status": "unavailable"}
