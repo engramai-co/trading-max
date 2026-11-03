@@ -1346,6 +1346,9 @@ export interface components {
             horizonDays?: number | null;
             /** Reason */
             reason?: string | null;
+            roundTripSummary?: components["schemas"]["RoundTripSummary"];
+            /** Roundtrips */
+            roundTrips?: components["schemas"]["RoundTripReview"][];
             sells?: components["schemas"]["DecisionSide"];
             /**
              * Status
@@ -5697,6 +5700,52 @@ export interface components {
             /** Volatility */
             volatility: number | null;
         };
+        /**
+         * RoundTripReview
+         * @description Shares bought and sold on the same day: realised result against the day's range.
+         */
+        RoundTripReview: {
+            /** Buyaveragegbp */
+            buyAverageGbp: number;
+            /** Date */
+            date: string;
+            /** Matchedquantity */
+            matchedQuantity: number;
+            /** Name */
+            name: string;
+            /** Rangegbp */
+            rangeGbp?: number | null;
+            /** Resultgbp */
+            resultGbp: number;
+            /** Sellaveragegbp */
+            sellAverageGbp: number;
+            /** Ticker */
+            ticker: string;
+        };
+        /** RoundTripSummary */
+        RoundTripSummary: {
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Favourable
+             * @default 0
+             */
+            favourable: number;
+            /** Rangegbp */
+            rangeGbp?: number | null;
+            /**
+             * Ranged
+             * @default 0
+             */
+            ranged: number;
+            /** Rangedresultgbp */
+            rangedResultGbp?: number | null;
+            /** Resultgbp */
+            resultGbp?: number | null;
+        };
         /** SavedResearchModel */
         SavedResearchModel: {
             /** Id */
@@ -6076,12 +6125,20 @@ export interface components {
         /**
          * TradeDecision
          * @description One security, one side, one trading day; effects are GBP against not trading.
+         *
+         *     Effects include dividends with an ex-date after the decision; the dividend
+         *     fields show that part. On a T day only the shares beyond the round trip are
+         *     a decision.
          */
         TradeDecision: {
             /** Amountgbp */
             amountGbp: number;
             /** Date */
             date: string;
+            /** Dividendhorizongbp */
+            dividendHorizonGbp?: number | null;
+            /** Dividendtodategbp */
+            dividendToDateGbp?: number | null;
             /** Effecthorizongbp */
             effectHorizonGbp?: number | null;
             /** Effecttodategbp */

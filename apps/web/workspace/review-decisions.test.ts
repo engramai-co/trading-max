@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { notableDecisions, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
+import { notableDecisions, roundTripVerdict, sideVerdict, signedMoney, type TradeDecision } from "./review-decisions";
 
 const row = (side: "buy" | "sell", ticker: string, horizon: number | null, toDate: number): TradeDecision => ({
   date: "2026-06-01",
@@ -39,6 +39,14 @@ describe("decision verdicts", () => {
     expect(signedMoney(-42)).toBe("-£42");
     expect(signedMoney(0.2)).toBe("£0");
     expect(signedMoney(null)).toBe("—");
+  });
+
+  it("measures round trips against the range only where the range is known", () => {
+    expect(roundTripVerdict({ count: 3, favourable: 2, resultGbp: 55, ranged: 2, rangedResultGbp: 40, rangeGbp: 160 }))
+      .toEqual({ count: 3, favourable: 2, result: 55, range: 160, captured: 0.25 });
+    expect(roundTripVerdict({ count: 1, favourable: 0, resultGbp: -5, ranged: 0, rangedResultGbp: 0, rangeGbp: 0 }))
+      .toEqual({ count: 1, favourable: 0, result: -5, range: null, captured: null });
+    expect(roundTripVerdict(undefined).count).toBe(0);
   });
 });
 

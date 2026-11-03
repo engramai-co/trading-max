@@ -14,7 +14,7 @@ import json
 import math
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +35,14 @@ TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
 #: away from the broker's fills is the wrong instrument or the wrong unit.
 MAX_LOG_DISTANCE = math.log(1.35)
+#: Cache rows carry date, close, split, dividend, high and low. Older caches held
+#: only the first three and are fetched again once.
+CACHE_FORMAT = 2
+CACHE_COLUMNS = ["Close", "Stock Splits", "Dividends", "High", "Low"]
+
+
+def _empty() -> pd.Series:
+    return pd.Series(dtype=float)
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,12 @@ class SecurityPrices:
     name: str
     symbol: str
     closes: pd.Series
+    #: GBP per share on each ex-date, on the same split basis as the closes.
+    dividends: pd.Series = field(default_factory=_empty)
+    #: GBP daily high and low as quoted that day (before later splits), comparable
+    #: with the broker's fills; used for the most a same-day round trip could take.
+    highs: pd.Series = field(default_factory=_empty)
+    lows: pd.Series = field(default_factory=_empty)
 
 
 class CachedDailyHistory:
@@ -73,24 +87,41 @@ class CachedDailyHistory:
     @staticmethod
     def _frame(rows: list[list]) -> pd.DataFrame:
         if not rows:
-            return pd.DataFrame(columns=["Close", "Stock Splits"], dtype=float)
-        frame = pd.DataFrame(rows, columns=["Date", "Close", "Stock Splits"])
+            return pd.DataFrame(columns=CACHE_COLUMNS, dtype=float)
+        frame = pd.DataFrame(rows, columns=["Date", *CACHE_COLUMNS])
         frame.index = pd.DatetimeIndex(pd.to_datetime(frame.pop("Date")))
         return frame.astype(float)
 
     @staticmethod
     def _rows(frame: pd.DataFrame) -> list[list]:
         close = pd.to_numeric(frame.get("Close"), errors="coerce")
-        splits = pd.to_numeric(
-            frame.get("Stock Splits", pd.Series(0.0, index=frame.index)), errors="coerce"
-        ).fillna(0.0)
+
+        def column(name: str, missing: float) -> pd.Series:
+            values = frame.get(name, pd.Series(missing, index=frame.index))
+            return pd.to_numeric(values, errors="coerce")
+
+        splits = column("Stock Splits", 0.0).fillna(0.0)
+        dividends = column("Dividends", 0.0).fillna(0.0)
+        highs = column("High", math.nan)
+        lows = column("Low", math.nan)
         index = pd.to_datetime(frame.index)
         if getattr(index, "tz", None) is not None:
             index = index.tz_localize(None)
         rows = []
-        for stamp, value, split in zip(index.normalize(), close, splits, strict=True):
+        for stamp, value, split, dividend, high, low in zip(
+            index.normalize(), close, splits, dividends, highs, lows, strict=True
+        ):
             if pd.notna(value) and math.isfinite(float(value)):
-                rows.append([stamp.date().isoformat(), float(value), float(split)])
+                rows.append(
+                    [
+                        stamp.date().isoformat(),
+                        float(value),
+                        float(split),
+                        float(dividend),
+                        float(high) if pd.notna(high) else None,
+                        float(low) if pd.notna(low) else None,
+                    ]
+                )
         return rows
 
     def __call__(self, symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -98,6 +129,8 @@ class CachedDailyHistory:
         cached: dict = {}
         with suppress(FileNotFoundError, ValueError):
             cached = json.loads(path.read_text(encoding="utf-8"))
+        if cached.get("format") != CACHE_FORMAT:
+            cached = {}
         rows: list[list] = cached.get("rows", [])
         covered_start = date.fromisoformat(cached["start"]) if cached.get("start") else None
         covered_end = date.fromisoformat(cached["end"]) if cached.get("end") else None
@@ -133,6 +166,7 @@ class CachedDailyHistory:
                 rows = self._rows(self.fetch(symbol, first, end))
                 covered_start = first
             payload = {
+                "format": CACHE_FORMAT,
                 "symbol": symbol,
                 "start": (covered_start or start).isoformat(),
                 "end": max(end, covered_end or end).isoformat(),
@@ -229,7 +263,7 @@ def resolve_decision_prices(
         currency_values = rows["TradeCurrency"].replace("", pd.NA).dropna()
         currency = str(currency_values.iloc[-1] if not currency_values.empty else "USD").upper()
         observed = _observed_trade_gbp(rows, cash_fx)
-        best: tuple[float, str, pd.Series] | None = None
+        best: tuple[float, str, pd.Series, pd.DataFrame, str] | None = None
         candidates = _candidate_symbols_from_ledger(
             ticker,
             currency,
@@ -261,7 +295,13 @@ def resolve_decision_prices(
                     continue
                 score = float(np.median(np.abs(np.log(left[valid] / fills_at[valid]))))
                 if best is None or score < best[0]:
-                    best = (score, symbol, _converted(adjusted, mode, cash_fx, gbpusd))
+                    best = (
+                        score,
+                        symbol,
+                        _converted(adjusted, mode, cash_fx, gbpusd),
+                        frame,
+                        mode,
+                    )
         if best is None or best[0] > MAX_LOG_DISTANCE:
             unpriced.append(ticker)
             continue
@@ -271,10 +311,45 @@ def resolve_decision_prices(
         if closes.empty:
             unpriced.append(ticker)
             continue
-        resolved[identity] = SecurityPrices(identity, ticker, name, best[1], closes)
+        extras = {
+            column: _gbp_column(best[3], column, best[4], cash_fx, gbpusd)
+            for column in ("Dividends", "High", "Low")
+        }
+        dividends = extras["Dividends"]
+        resolved[identity] = SecurityPrices(
+            identity,
+            ticker,
+            name,
+            best[1],
+            closes,
+            dividends=dividends[dividends > 0],
+            highs=extras["High"],
+            lows=extras["Low"],
+        )
         if memo is not None:
             memo[identity] = best[1]
     return resolved, sorted(set(unpriced))
+
+
+def _gbp_column(
+    frame: pd.DataFrame, column: str, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.Series
+) -> pd.Series:
+    """A provider column in GBP, converted like the closes; empty when absent.
+
+    Dividends stay on the split-adjusted basis of the return closes. Highs and lows
+    are restored to the prices quoted that day, the basis of the broker's fills.
+    """
+
+    if column not in frame:
+        return _empty()
+    if column == "Dividends":
+        values = pd.to_numeric(frame[column], errors="coerce").dropna()
+        values.index = pd.to_datetime(values.index).tz_localize(None).normalize()
+    else:
+        values = _nominal_close(frame.assign(Close=frame[column]))
+    if values.empty:
+        return _empty()
+    return _converted(values, mode, cash_fx, gbpusd)
 
 
 __all__ = ["CachedDailyHistory", "SecurityPrices", "resolve_decision_prices"]

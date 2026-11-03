@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-11-03
+
+### Added
+
+- Decision review scores same-day round trips (T): the shares bought and
+  sold on one day are one round trip, worth (average sell − average buy) ×
+  shares after costs, shown against the day's high-low range on the same
+  shares. Only shares bought or sold beyond the round trip still count as a
+  buy or sell decision.
+- Buy and sell effects include the dividends paid after the decision: a buy
+  earns them, a sale gives them up.
+
+### Changed
+
+- The decision price cache also keeps each day's dividend, high and low;
+  older caches are fetched again once.
+
 ## [1.19.0] - 2026-11-03
 
 ### Added
