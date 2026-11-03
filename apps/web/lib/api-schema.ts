@@ -3340,6 +3340,8 @@ export interface components {
             count: number;
             /** Errorcode */
             errorCode?: string | null;
+            /** Kind */
+            kind?: ("rate_limit" | "network" | "reconciliation") | null;
             /** Lastat */
             lastAt?: string | null;
             /** Lastmessage */

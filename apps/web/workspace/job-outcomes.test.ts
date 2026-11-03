@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { causeArea, outcomeSummary } from "./job-outcomes";
+import { causeArea, causeKind, outcomeSummary } from "./job-outcomes";
 
 const t = (_zh: string, en: string) => en;
 
@@ -19,6 +19,13 @@ describe("job outcomes", () => {
     expect(causeArea("job.interrupted", t)).toBe("Interrupted");
     expect(causeArea("custom.code", t)).toBe("custom.code");
     expect(causeArea(null, t)).toBe("Unknown cause");
+  });
+
+  it("names a known cause and stays silent otherwise", () => {
+    expect(causeKind("network", t)).toBe("Connection failed");
+    expect(causeKind("rate_limit", t)).toBe("Rate limited");
+    expect(causeKind("reconciliation", t)).toBe("Positions differ from summary");
+    expect(causeKind(null, t)).toBeNull();
   });
 });
 

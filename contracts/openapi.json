@@ -6692,6 +6692,22 @@
             ],
             "title": "Errorcode"
           },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rate_limit",
+                  "network",
+                  "reconciliation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
           "lastAt": {
             "anyOf": [
               {
@@ -16469,7 +16485,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.18.2"
+    "version": "1.18.3"
   },
   "openapi": "3.1.0",
   "paths": {

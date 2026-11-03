@@ -38,6 +38,34 @@ def _parse(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
+FailureKind = Literal["rate_limit", "network", "reconciliation"]
+_NETWORK_MARKERS = (
+    "connecterror",
+    "connecttimeout",
+    "readtimeout",
+    "connection reset",
+    "server disconnected",
+    "timed out",
+)
+
+
+def failure_kind(message: str | None) -> FailureKind | None:
+    """Classify a stage failure message into a cause the reader can act on.
+
+    One error code covers several causes: a broker snapshot fails the same way
+    whether the network is down or the broker is rate limiting.
+    """
+
+    text = (message or "").lower()
+    if "http 429" in text or "toomanyrequests" in text or "rate limit" in text:
+        return "rate_limit"
+    if any(marker in text for marker in _NETWORK_MARKERS):
+        return "network"
+    if "reconciliation failed" in text:
+        return "reconciliation"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class ClaimedJob:
     record: JobRecord
@@ -307,7 +335,7 @@ class SqliteJobQueue:
         start = _iso(since)
         totals = {"succeeded": 0, "failed": 0, "interrupted": 0, "cancelled": 0}
         by_scope: dict[str, dict[str, int]] = {}
-        causes: dict[tuple[str, str], dict[str, Any]] = {}
+        causes: dict[tuple[str, str, str | None], dict[str, Any]] = {}
         with self.database.read() as connection:
             rows = connection.execute(
                 "SELECT scope, status, cancel_requested, error_code, error_message, "
@@ -328,9 +356,10 @@ class SqliteJobQueue:
             if outcome not in {"failed", "interrupted"}:
                 continue
             code = row["error_code"] or ("job.interrupted" if outcome == "interrupted" else "")
+            kind = failure_kind(row["error_message"])
             cause = causes.setdefault(
-                (code, row["scope"]),
-                {"error_code": code or None, "scope": row["scope"], "count": 0},
+                (code, row["scope"], kind),
+                {"error_code": code or None, "scope": row["scope"], "kind": kind, "count": 0},
             )
             cause["count"] += 1
             cause["last_at"] = _parse(row["observed_at"])

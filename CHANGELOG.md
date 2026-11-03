@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.18.3] - 2026-11-03
+
+### Fixed
+
+- Performance updates no longer fail at US session boundaries. When prices
+  move between the broker's account summary and its position detail, the
+  update uses the latest reconciled snapshot from the previous 30 minutes; a
+  longer or summary-level mismatch still fails.
+- The data page's seven-day failure summary separates causes that share an
+  error code: connection failures, broker rate limiting, and positions that
+  differ from the account summary.
+
 ## [1.18.2] - 2026-11-03
 
 ### Changed

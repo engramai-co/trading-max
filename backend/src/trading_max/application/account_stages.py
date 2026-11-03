@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import timedelta
 from pathlib import Path
 
 from trading_max.analytics.accounts import (
+    AccountSnapshotMetrics,
     intraday_account_value,
     metrics_from_snapshot_file,
 )
@@ -21,6 +24,16 @@ from trading_max.ingestion.brokers.trading212 import latest_export_path
 from .account_selection import SELECTION_KEY, accounts_for_profiles, selected_accounts
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
+
+LOGGER = logging.getLogger(__name__)
+
+# Trading 212 values the account summary and the position detail in separate
+# requests. Around US session boundaries prices move between the two reads, so
+# the newest live snapshot can be unreconciled for a few minutes. Jobs that
+# reuse live snapshots may fall back to a reconciled one this recent; anything
+# older still fails, so a persistent mismatch remains visible.
+RECONCILED_FALLBACK_WINDOW = timedelta(minutes=30)
+RECONCILED_FALLBACK_CANDIDATES = 12
 
 
 class AccountSnapshotStage:
@@ -44,7 +57,7 @@ class AccountSnapshotStage:
         self.profiles = profiles
         self.profiles_loader = profiles_loader
 
-    def _latest_snapshot(self, profile: str) -> Path:
+    def _snapshots(self, profile: str) -> list[Path]:
         roots = (
             self.state_root / "trading212",
             self.state_root / "raw" / "trading212",
@@ -62,13 +75,47 @@ class AccountSnapshotStage:
                 f"no private Trading 212 snapshot for profile {profile}",
             )
         candidates.sort(key=lambda path: path.name)
-        return candidates[-1]
+        return candidates
+
+    def _latest_snapshot(self, profile: str) -> Path:
+        return self._snapshots(profile)[-1]
+
+    def _recent_reconciled(
+        self, profile: str, newest: Path
+    ) -> tuple[AccountSnapshotMetrics, str] | None:
+        """Return the latest reconciled snapshot when only position timing differs."""
+
+        try:
+            latest = metrics_from_snapshot_file(profile, newest, require_positions_match=False)
+        except Exception:
+            # The summary itself is invalid; that is not a timing difference.
+            return None
+        older = [path for path in self._snapshots(profile) if path.name < newest.name]
+        for path in reversed(older[-RECONCILED_FALLBACK_CANDIDATES:]):
+            try:
+                candidate = metrics_from_snapshot_file(profile, path, require_positions_match=False)
+            except Exception:
+                LOGGER.debug("skipping unreadable snapshot %s", path.name, exc_info=True)
+                continue
+            if latest.fetched_at - candidate.fetched_at > RECONCILED_FALLBACK_WINDOW:
+                return None
+            if candidate.checks.get("positions_match_investments") is True:
+                delta = latest.position_value_gbp - latest.investments_value_gbp
+                return candidate, (
+                    f"{profile}: position detail at {latest.fetched_at:%H:%M} UTC differs from "
+                    f"the account summary by GBP {delta}; using the reconciled snapshot from "
+                    f"{candidate.fetched_at:%H:%M} UTC"
+                )
+        return None
 
     def run(self, context: StageContext) -> StageResult:
         intraday = context.scope == "intraday" or context.trigger == "intraday"
         accounts: dict[str, dict] = {}
         artifact_refs = []
         warnings: list[str] = []
+        # A reconciled fallback is verified data, so it is logged on the job
+        # without downgrading the published account quality.
+        fallback_notes: list[str] = []
         selection = selected_accounts(self.artifacts, context, ())
         if not selection:
             selection = (
@@ -95,10 +142,20 @@ class AccountSnapshotStage:
                     require_positions_match=not intraday,
                 )
             except Exception as exc:
-                raise StageExecutionError(
-                    "account.snapshot_invalid",
-                    f"{profile}: {exc}",
-                ) from exc
+                # Only jobs that reuse the live snapshot may fall back. A full
+                # refresh has just synced and must reconcile its own snapshot.
+                fallback = (
+                    self._recent_reconciled(profile, path)
+                    if not intraday and context.skip_sync
+                    else None
+                )
+                if fallback is None:
+                    raise StageExecutionError(
+                        "account.snapshot_invalid",
+                        f"{profile}: {exc}",
+                    ) from exc
+                metrics, fallback_warning = fallback
+                fallback_notes.append(fallback_warning)
             account_warnings: list[str] = []
             if intraday:
                 observation = intraday_account_value(metrics)
@@ -166,7 +223,7 @@ class AccountSnapshotStage:
         )
         return StageResult(
             artifacts=(*artifact_refs, aggregate.ref),
-            warnings=tuple(warnings),
+            warnings=(*warnings, *fallback_notes),
         )
 
 

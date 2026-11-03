@@ -242,6 +242,8 @@ class JobOutcomeCounts(ApiModel):
 class JobFailureCause(ApiModel):
     error_code: str | None = None
     scope: JobScope
+    # The cause behind the code when its message identifies one.
+    kind: Literal["rate_limit", "network", "reconciliation"] | None = None
     count: int
     last_at: datetime | None = None
     last_message: str | None = None
