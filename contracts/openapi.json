@@ -576,6 +576,16 @@
             ],
             "title": "Reason"
           },
+          "roundTripSummary": {
+            "$ref": "#/components/schemas/RoundTripSummary"
+          },
+          "roundTrips": {
+            "items": {
+              "$ref": "#/components/schemas/RoundTripReview"
+            },
+            "title": "Roundtrips",
+            "type": "array"
+          },
           "sells": {
             "$ref": "#/components/schemas/DecisionSide"
           },
@@ -13741,6 +13751,115 @@
         "title": "RiskMetrics",
         "type": "object"
       },
+      "RoundTripReview": {
+        "description": "Shares bought and sold on the same day: realised result against the day's range.",
+        "properties": {
+          "buyAverageGbp": {
+            "title": "Buyaveragegbp",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "matchedQuantity": {
+            "title": "Matchedquantity",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rangeGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rangegbp"
+          },
+          "resultGbp": {
+            "title": "Resultgbp",
+            "type": "number"
+          },
+          "sellAverageGbp": {
+            "title": "Sellaveragegbp",
+            "type": "number"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "ticker",
+          "name",
+          "matchedQuantity",
+          "buyAverageGbp",
+          "sellAverageGbp",
+          "resultGbp"
+        ],
+        "title": "RoundTripReview",
+        "type": "object"
+      },
+      "RoundTripSummary": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "favourable": {
+            "default": 0,
+            "title": "Favourable",
+            "type": "integer"
+          },
+          "rangeGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rangegbp"
+          },
+          "ranged": {
+            "default": 0,
+            "title": "Ranged",
+            "type": "integer"
+          },
+          "rangedResultGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rangedresultgbp"
+          },
+          "resultGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultgbp"
+          }
+        },
+        "title": "RoundTripSummary",
+        "type": "object"
+      },
       "SavedResearchModel": {
         "additionalProperties": false,
         "properties": {
@@ -14912,7 +15031,7 @@
         "type": "object"
       },
       "TradeDecision": {
-        "description": "One security, one side, one trading day; effects are GBP against not trading.",
+        "description": "One security, one side, one trading day; effects are GBP against not trading.\n\nEffects include dividends with an ex-date after the decision; the dividend\nfields show that part. On a T day only the shares beyond the round trip are\na decision.",
         "properties": {
           "amountGbp": {
             "title": "Amountgbp",
@@ -14921,6 +15040,28 @@
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "dividendHorizonGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividendhorizongbp"
+          },
+          "dividendToDateGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividendtodategbp"
           },
           "effectHorizonGbp": {
             "anyOf": [
@@ -16527,7 +16668,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.19.0"
+    "version": "1.20.0"
   },
   "openapi": "3.1.0",
   "paths": {

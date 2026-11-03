@@ -1,16 +1,23 @@
 """Score each buy and sell against what the price did afterwards.
 
 A decision is one security, one side, one trading day. Its effect is measured in
-GBP on split-adjusted closes:
+GBP on split-adjusted closes plus the dividends paid in between:
 
-* a buy is worth ``amount x (later close / close on the day - 1)``: the
-  outcome of the shares bought against keeping the cash;
+* a buy is worth amount x ((later close + dividends) / close on the day - 1):
+  the outcome of the shares bought against keeping the cash;
 * a sell is worth the opposite: positive when the price fell afterwards (the
-  sale avoided that loss), negative when it rose (the sale gave that gain up).
+  sale avoided that loss), negative when it rose or paid dividends (the sale
+  gave that up).
+
+A day with both a buy and a sell of the same security (T) is a round trip for
+the shares it bought and sold: its result is matched shares x (average sell -
+average buy), net of costs, compared with the day's high-low range on the same
+shares. Only the difference between the two sides, if any, is scored as a buy or
+sell decision.
 
 Decisions are scored after ``HORIZON_DAYS`` trading days and up to the latest
 close. Closed trades are also compared with selling at the best and worst close
-while the position was held. Dividends are not included.
+while the position was held.
 """
 
 from __future__ import annotations
@@ -18,13 +25,18 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
 
-CALCULATION_VERSION = "decisions-v1"
+CALCULATION_VERSION = "decisions-v2"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
+MAX_ROUND_TRIPS = 500
+#: Fills must sit inside the day's range, give or take costs and FX spread, for
+#: that range to describe the same quotes; otherwise the range is not shown.
+RANGE_TOLERANCE = 0.1
 
 
 def _round(value: float | None, digits: int = 2) -> float | None:
@@ -36,6 +48,27 @@ def _close_on(closes: pd.Series, day: pd.Timestamp) -> tuple[int, float] | None:
     if position < 0:
         return None
     return position, float(closes.iloc[position])
+
+
+def _dividends(security: SecurityPrices, start: int, end: int) -> float:
+    """Dividends per share with an ex-date after close index start, up to end."""
+
+    if security.dividends.empty:
+        return 0.0
+    after = security.closes.index[start]
+    until = security.closes.index[end]
+    paid = security.dividends[
+        (security.dividends.index > after) & (security.dividends.index <= until)
+    ]
+    return float(paid.sum())
+
+
+def _on_day(series: pd.Series, day: pd.Timestamp) -> float | None:
+    if series.empty or day not in series.index:
+        return None
+    value = series.loc[day]
+    value = float(value.iloc[-1] if isinstance(value, pd.Series) else value)
+    return value if np.isfinite(value) else None
 
 
 def _side_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -117,47 +150,103 @@ def build_decision_review(
     )
     fills["AmountGBP"] = pd.to_numeric(fills.get("TotalGBP"), errors="coerce").abs()
     fills["SharesN"] = pd.to_numeric(fills.get("Shares"), errors="coerce").abs()
-    both_sides = fills.groupby(["SecurityIdentity", "BusinessDate"])["Side"].nunique()
     decisions: list[dict[str, Any]] = []
+    round_trips: list[dict[str, Any]] = []
     unscored = 0
-    for (identity, day, side), rows in fills.groupby(
-        ["SecurityIdentity", "BusinessDate", "Side"], sort=True
-    ):
+    for (identity, day), day_rows in fills.groupby(["SecurityIdentity", "BusinessDate"], sort=True):
         security = prices.get(identity)
-        amount = float(rows["AmountGBP"].sum(skipna=True))
-        if security is None or not amount:
-            unscored += 1
+        legs = {
+            side: (
+                float(rows["AmountGBP"].sum(skipna=True)),
+                float(rows["SharesN"].sum(skipna=True)),
+            )
+            for side, rows in day_rows.groupby("Side", sort=True)
+        }
+        if security is None:
+            unscored += len(legs)
             continue
         start = _close_on(security.closes, pd.Timestamp(day))
         if start is None or start[1] <= 0:
-            unscored += 1
+            unscored += len(legs)
             continue
+        stamp = pd.Timestamp(day)
+        stamp = (stamp.tz_convert("UTC").tz_localize(None) if stamp.tz else stamp).normalize()
+        traded_both = len(legs) > 1
+        if traded_both:
+            (buy_amount, buy_shares), (sell_amount, sell_shares) = legs["buy"], legs["sell"]
+            if min(buy_amount, buy_shares, sell_amount, sell_shares) > 0:
+                matched = min(buy_shares, sell_shares)
+                buy_price = buy_amount / buy_shares
+                sell_price = sell_amount / sell_shares
+                high = _on_day(security.highs, stamp)
+                low = _on_day(security.lows, stamp)
+                plausible = (
+                    high is not None
+                    and low is not None
+                    and 0 < low <= high
+                    and min(buy_price, sell_price) >= low * (1 - RANGE_TOLERANCE)
+                    and max(buy_price, sell_price) <= high * (1 + RANGE_TOLERANCE)
+                )
+                round_trips.append(
+                    {
+                        "date": stamp.date().isoformat(),
+                        "ticker": security.ticker,
+                        "name": security.name,
+                        "matched_quantity": _round(matched, 6),
+                        "buy_average_gbp": _round(buy_price, 4),
+                        "sell_average_gbp": _round(sell_price, 4),
+                        "result_gbp": _round(matched * (sell_price - buy_price)),
+                        # The most the same shares could take within the day's range.
+                        "range_gbp": _round(matched * (high - low)) if plausible else None,
+                    }
+                )
+                # Only the shares bought or sold beyond the round trip are a decision.
+                legs = (
+                    {"buy": ((buy_shares - matched) * buy_price, buy_shares - matched)}
+                    if buy_shares > matched
+                    else {"sell": ((sell_shares - matched) * sell_price, sell_shares - matched)}
+                    if sell_shares > matched
+                    else {}
+                )
         position, close = start
         horizon = position + HORIZON_DAYS
         later = float(security.closes.iloc[horizon]) if horizon < len(security.closes) else None
         latest = float(security.closes.iloc[-1])
-        sign = 1.0 if side == "buy" else -1.0
-        horizon_return = None if later is None else later / close - 1.0
-        latest_return = latest / close - 1.0
-        decisions.append(
-            {
-                "date": pd.Timestamp(day).date().isoformat(),
-                "ticker": security.ticker,
-                "name": security.name,
-                "side": side,
-                "kind": "T" if both_sides.get((identity, day), 1) > 1 else side[0].upper(),
-                "quantity": _round(float(rows["SharesN"].sum(skipna=True)), 6),
-                "amount_gbp": _round(amount),
-                "return_horizon": _round(horizon_return, 6),
-                "effect_horizon_gbp": None
-                if horizon_return is None
-                else _round(sign * amount * horizon_return),
-                "return_to_date": _round(latest_return, 6),
-                "effect_to_date_gbp": _round(sign * amount * latest_return),
-            }
-        )
+        paid_horizon = None if later is None else _dividends(security, position, horizon)
+        paid_to_date = _dividends(security, position, len(security.closes) - 1)
+        horizon_return = None if later is None else (later + paid_horizon) / close - 1.0
+        latest_return = (latest + paid_to_date) / close - 1.0
+        for side, (amount, shares) in legs.items():
+            if not amount:
+                unscored += 1
+                continue
+            sign = 1.0 if side == "buy" else -1.0
+            decisions.append(
+                {
+                    "date": stamp.date().isoformat(),
+                    "ticker": security.ticker,
+                    "name": security.name,
+                    "side": side,
+                    "kind": "T" if traded_both else side[0].upper(),
+                    "quantity": _round(shares, 6),
+                    "amount_gbp": _round(amount),
+                    "return_horizon": _round(horizon_return, 6),
+                    "effect_horizon_gbp": None
+                    if horizon_return is None
+                    else _round(sign * amount * horizon_return),
+                    "return_to_date": _round(latest_return, 6),
+                    "effect_to_date_gbp": _round(sign * amount * latest_return),
+                    # The dividend part of each effect, already included above.
+                    "dividend_horizon_gbp": None
+                    if paid_horizon is None
+                    else _round(sign * amount * paid_horizon / close),
+                    "dividend_to_date_gbp": _round(sign * amount * paid_to_date / close),
+                }
+            )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))
+    round_trips.sort(key=lambda row: (row["date"], row["ticker"]))
     prices_by_ticker = {security.ticker: security for security in prices.values()}
+    ranged = [row for row in round_trips if row["range_gbp"] is not None]
     return {
         "calculation_version": CALCULATION_VERSION,
         "as_of": pd.Timestamp(as_of).date().isoformat(),
@@ -170,6 +259,15 @@ def build_decision_review(
         "buys": _side_summary([row for row in decisions if row["side"] == "buy"]),
         "sells": _side_summary([row for row in decisions if row["side"] == "sell"]),
         "decisions": decisions[-MAX_DECISIONS:],
+        "round_trips": round_trips[-MAX_ROUND_TRIPS:],
+        "round_trip_summary": {
+            "count": len(round_trips),
+            "favourable": sum(1 for row in round_trips if (row["result_gbp"] or 0) > 0),
+            "result_gbp": _round(sum(row["result_gbp"] or 0.0 for row in round_trips)),
+            "ranged": len(ranged),
+            "ranged_result_gbp": _round(sum(row["result_gbp"] or 0.0 for row in ranged)),
+            "range_gbp": _round(sum(row["range_gbp"] for row in ranged)),
+        },
         "closed_trades": _campaigns(campaigns, prices_by_ticker),
     }
 

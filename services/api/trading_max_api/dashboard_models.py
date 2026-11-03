@@ -1281,7 +1281,12 @@ class DecisionSide(ApiModel):
 
 
 class TradeDecision(ApiModel):
-    """One security, one side, one trading day; effects are GBP against not trading."""
+    """One security, one side, one trading day; effects are GBP against not trading.
+
+    Effects include dividends with an ex-date after the decision; the dividend
+    fields show that part. On a T day only the shares beyond the round trip are
+    a decision.
+    """
 
     date: str
     ticker: str
@@ -1294,6 +1299,31 @@ class TradeDecision(ApiModel):
     effect_horizon_gbp: float | None = None
     return_to_date: float | None = None
     effect_to_date_gbp: float | None = None
+    dividend_horizon_gbp: float | None = None
+    dividend_to_date_gbp: float | None = None
+
+
+class RoundTripReview(ApiModel):
+    """Shares bought and sold on the same day: realised result against the day's range."""
+
+    date: str
+    ticker: str
+    name: str
+    matched_quantity: float
+    buy_average_gbp: float
+    sell_average_gbp: float
+    result_gbp: float
+    range_gbp: float | None = None
+
+
+class RoundTripSummary(ApiModel):
+    count: int = 0
+    favourable: int = 0
+    result_gbp: float | None = None
+    #: Round trips with a known daily range, their result and the range total.
+    ranged: int = 0
+    ranged_result_gbp: float | None = None
+    range_gbp: float | None = None
 
 
 class ClosedTradeReview(ApiModel):
@@ -1325,6 +1355,8 @@ class AccountDecisions(ApiModel):
     buys: DecisionSide = Field(default_factory=DecisionSide)
     sells: DecisionSide = Field(default_factory=DecisionSide)
     decisions: list[TradeDecision] = Field(default_factory=list)
+    round_trips: list[RoundTripReview] = Field(default_factory=list)
+    round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
 
 

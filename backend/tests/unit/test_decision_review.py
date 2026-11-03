@@ -72,7 +72,7 @@ def test_sells_and_buys_are_scored_against_the_price_that_followed() -> None:
     assert review["horizon_days"] == HORIZON_DAYS
 
 
-def test_recent_decisions_wait_for_their_horizon_and_same_day_trades_are_t() -> None:
+def test_recent_decisions_wait_for_their_horizon_and_a_t_day_scores_only_its_remainder() -> None:
     closes = _closes("2026-03-02", [100.0, 101.0, 102.0, 103.0])
     trades = _trade_columns(
         pd.DataFrame(
@@ -88,10 +88,101 @@ def test_recent_decisions_wait_for_their_horizon_and_same_day_trades_are_t() -> 
         {identity: SecurityPrices(identity, "NVDA", "NVDA Inc", "NVDA", closes)},
         as_of=closes.index[-1],
     )
-    assert {row["kind"] for row in review["decisions"]} == {"T"}
-    assert all(row["effect_horizon_gbp"] is None for row in review["decisions"])
+    # One share went round trip at 101/101; the second share bought is the decision.
+    (remainder,) = review["decisions"]
+    assert (remainder["side"], remainder["kind"], remainder["quantity"]) == ("buy", "T", 1.0)
+    assert remainder["amount_gbp"] == pytest.approx(101.0)
+    assert remainder["effect_horizon_gbp"] is None
     assert review["buys"]["evaluated"] == 0
-    assert review["buys"]["effect_to_date_gbp"] == pytest.approx(202 * (103 / 101 - 1), abs=0.01)
+    assert review["buys"]["effect_to_date_gbp"] == pytest.approx(101 * (103 / 101 - 1), abs=0.01)
+    (trip,) = review["round_trips"]
+    assert (trip["matched_quantity"], trip["result_gbp"]) == (1.0, 0.0)
+    assert trip["range_gbp"] is None  # no daily high and low for this security
+
+
+def test_round_trip_result_is_compared_with_the_days_range() -> None:
+    closes = _closes("2026-03-02", [100.0, 103.0, 104.0])
+    highs = pd.Series([101.0, 106.0, 105.0], index=closes.index)
+    lows = pd.Series([99.0, 99.0, 102.0], index=closes.index)
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-03-03T14:00:00Z", "Market buy", 10, 1_000),
+                _fill("2026-03-03T19:00:00Z", "Market sell", 10, 1_040),
+            ]
+        )
+    )
+    identity = trades["SecurityIdentity"].iloc[0]
+    review = build_decision_review(
+        trades,
+        {
+            identity: SecurityPrices(
+                identity, "NVDA", "NVDA Inc", "NVDA", closes, highs=highs, lows=lows
+            )
+        },
+        as_of=closes.index[-1],
+    )
+    # A full round trip leaves no directional decision.
+    assert review["decisions"] == []
+    (trip,) = review["round_trips"]
+    assert trip["result_gbp"] == pytest.approx(40.0)
+    assert trip["range_gbp"] == pytest.approx(70.0)  # 10 shares x (106 - 99)
+    assert review["round_trip_summary"] == {
+        "count": 1,
+        "favourable": 1,
+        "result_gbp": 40.0,
+        "ranged": 1,
+        "ranged_result_gbp": 40.0,
+        "range_gbp": 70.0,
+    }
+
+
+def test_dividends_after_a_decision_count_in_its_effect() -> None:
+    closes = _closes("2026-01-05", [100.0] * 30)
+    dividends = pd.Series([2.0], index=[closes.index[3]])
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-01-05T15:00:00Z", "Market buy", 10, 1_000),
+                _fill("2026-01-05T15:00:00Z", "Market buy", 5, 500, "AMD"),
+            ]
+        )
+    )
+    nvda, amd = trades["SecurityIdentity"].iloc[0], trades["SecurityIdentity"].iloc[1]
+    review = build_decision_review(
+        trades,
+        {
+            nvda: SecurityPrices(nvda, "NVDA", "NVDA Inc", "NVDA", closes, dividends=dividends),
+            amd: SecurityPrices(amd, "AMD", "AMD Inc", "AMD", closes),
+        },
+        as_of=closes.index[-1],
+    )
+    rows = {row["ticker"]: row for row in review["decisions"]}
+    # A flat price plus a 2.00 dividend: +2% on £1,000, all of it from the dividend.
+    assert rows["NVDA"]["effect_horizon_gbp"] == pytest.approx(20.0)
+    assert rows["NVDA"]["dividend_horizon_gbp"] == pytest.approx(20.0)
+    assert rows["NVDA"]["effect_to_date_gbp"] == pytest.approx(20.0)
+    assert rows["AMD"]["effect_horizon_gbp"] == pytest.approx(0.0)
+    assert rows["AMD"]["dividend_to_date_gbp"] == pytest.approx(0.0)
+
+
+def test_a_sale_gives_up_the_dividends_that_followed() -> None:
+    closes = _closes("2026-01-05", [100.0] * 30)
+    dividends = pd.Series([1.5], index=[closes.index[10]])
+    trades = _trade_columns(pd.DataFrame([_fill("2026-01-05T15:00:00Z", "Market sell", 10, 1_000)]))
+    identity = trades["SecurityIdentity"].iloc[0]
+    review = build_decision_review(
+        trades,
+        {
+            identity: SecurityPrices(
+                identity, "NVDA", "NVDA Inc", "NVDA", closes, dividends=dividends
+            )
+        },
+        as_of=closes.index[-1],
+    )
+    (sale,) = review["decisions"]
+    assert sale["effect_horizon_gbp"] == pytest.approx(-15.0)
+    assert sale["dividend_horizon_gbp"] == pytest.approx(-15.0)
 
 
 def test_unpriced_securities_are_counted_not_guessed() -> None:
@@ -193,3 +284,115 @@ def test_cache_reuses_history_and_refetches_when_an_overlap_disagrees(tmp_path) 
     refreshed = cache("AAA", date(2026, 1, 1), date(2026, 3, 4))
     assert calls[-1][0] == date(2026, 1, 1)
     assert math.isclose(float(refreshed["Close"].iloc[0]), 5.0)
+
+
+def test_cache_keeps_dividends_and_ranges_and_refetches_an_older_format(tmp_path) -> None:
+    calls: list[date] = []
+
+    def fetch(symbol: str, start: date, end: date) -> pd.DataFrame:
+        calls.append(start)
+        index = pd.bdate_range(start, end)
+        dividends = pd.Series(0.0, index=index)
+        dividends.iloc[2] = 0.25
+        return pd.DataFrame(
+            {"Close": 10.0, "Stock Splits": 0.0, "Dividends": dividends, "High": 11.0, "Low": 9.5},
+            index=index,
+        )
+
+    now = pd.Timestamp("2026-03-02T12:00:00Z").to_pydatetime()
+    cache = CachedDailyHistory(tmp_path, fetch=fetch, now=lambda: now)
+    # A cache written before dividends and ranges were kept.
+    old = tmp_path / (cache._path("AAA").name)
+    old.write_text(
+        '{"symbol": "AAA", "start": "2026-01-01", "end": "2026-02-27", '
+        '"fetched_at": "2026-03-02T11:00:00+00:00", "rows": [["2026-01-02", 10.0, 0.0]]}'
+    )
+    frame = cache("AAA", date(2026, 1, 1), date(2026, 2, 27))
+    assert calls == [date(2026, 1, 1)]
+    assert float(frame["Dividends"].iloc[2]) == 0.25
+    assert (float(frame["High"].iloc[0]), float(frame["Low"].iloc[0])) == (11.0, 9.5)
+    cache("AAA", date(2026, 1, 1), date(2026, 2, 27))
+    assert len(calls) == 1
+
+
+def test_resolution_converts_dividends_and_ranges_like_the_closes() -> None:
+    days = pd.bdate_range("2026-01-01", "2026-02-27")
+
+    def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
+        if symbol == "GBPUSD=X":
+            return pd.DataFrame({"Close": 1.25}, index=days)
+        if symbol == "NVDA.L":
+            dividends = pd.Series(0.0, index=days)
+            dividends[pd.Timestamp("2026-02-02")] = 150.0  # pence
+            return pd.DataFrame(
+                {
+                    "Close": 20_000.0,
+                    "Stock Splits": 0.0,
+                    "Dividends": dividends,
+                    "High": 20_500.0,
+                    "Low": 19_800.0,
+                },
+                index=days,
+            )
+        raise ValueError("unknown listing")
+
+    trades = _trade_columns(pd.DataFrame([_fill("2026-01-20T12:00:00Z", "Market buy", 5, 1_000)]))
+    prices, _ = resolve_decision_prices(
+        trades, end_day=pd.Timestamp("2026-02-27"), history_loader=loader
+    )
+    security = next(iter(prices.values()))
+    assert security.dividends.to_dict() == {pd.Timestamp("2026-02-02"): pytest.approx(1.5)}
+    assert security.highs.loc["2026-01-20"] == pytest.approx(205.0)
+    assert security.lows.loc["2026-01-20"] == pytest.approx(198.0)
+
+
+def test_highs_and_lows_are_restored_to_the_quotes_of_the_day_after_a_split() -> None:
+    days = pd.bdate_range("2026-01-01", "2026-02-27")
+    splits = pd.Series(0.0, index=days)
+    splits[pd.Timestamp("2026-02-02")] = 2.0
+
+    def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
+        if symbol == "GBPUSD=X":
+            return pd.DataFrame({"Close": 1.25}, index=days)
+        if symbol == "NVDA.L":
+            # Split-adjusted pence; quotes before the 2:1 split were twice as high.
+            return pd.DataFrame(
+                {"Close": 10_000.0, "Stock Splits": splits, "High": 10_250.0, "Low": 9_900.0},
+                index=days,
+            )
+        raise ValueError("unknown listing")
+
+    trades = _trade_columns(pd.DataFrame([_fill("2026-01-20T12:00:00Z", "Market buy", 5, 1_000)]))
+    prices, _ = resolve_decision_prices(
+        trades, end_day=pd.Timestamp("2026-02-27"), history_loader=loader
+    )
+    security = next(iter(prices.values()))
+    # £200 fills sit inside the restored £198-£205 range of that day.
+    assert security.highs.loc["2026-01-20"] == pytest.approx(205.0)
+    assert security.lows.loc["2026-01-20"] == pytest.approx(198.0)
+    assert security.highs.loc["2026-02-10"] == pytest.approx(102.5)
+
+
+def test_a_range_that_does_not_contain_the_fills_is_not_shown() -> None:
+    closes = _closes("2026-03-02", [100.0, 103.0, 104.0])
+    wrong = pd.Series(60.0, index=closes.index)
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-03-03T14:00:00Z", "Market buy", 10, 1_000),
+                _fill("2026-03-03T19:00:00Z", "Market sell", 10, 1_040),
+            ]
+        )
+    )
+    identity = trades["SecurityIdentity"].iloc[0]
+    review = build_decision_review(
+        trades,
+        {
+            identity: SecurityPrices(
+                identity, "NVDA", "NVDA Inc", "NVDA", closes, highs=wrong, lows=wrong * 0.9
+            )
+        },
+        as_of=closes.index[-1],
+    )
+    assert review["round_trips"][0]["range_gbp"] is None
+    assert review["round_trip_summary"]["ranged"] == 0

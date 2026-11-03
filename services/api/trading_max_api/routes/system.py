@@ -316,6 +316,7 @@ def dashboard_lens(
             code: review.model_copy(
                 update={
                     "decisions": review.decisions[-8:],
+                    "round_trips": review.round_trips[-8:],
                     "closed_trades": review.closed_trades[:3],
                 }
             )

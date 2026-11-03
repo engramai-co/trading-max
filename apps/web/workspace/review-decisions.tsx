@@ -15,6 +15,7 @@ import { SecurityPeek } from "./security-peek";
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
 export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number];
 type ClosedTrade = NonNullable<AccountDecisions["closedTrades"]>[number];
+type RoundTrip = NonNullable<AccountDecisions["roundTrips"]>[number];
 export type Horizon = "horizon" | "date";
 
 export function signedMoney(value: number | null | undefined, digits = 0) {
@@ -70,7 +71,8 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
             <span className={"mx-row-value mx-" + tone(effect)}>
               {signedMoney(effect)}
               <small>
-                {formatCalendarDate(row.date, locale)} · {currency(row.amountGbp)} ·{" "}
+                {formatCalendarDate(row.date, locale)} · {row.kind === "T" ? t("T 净额 ", "T net ") : ""}
+                {currency(row.amountGbp)} ·{" "}
                 {t("之后 ", "then ")}
                 {percent(change, true, 1)}
               </small>
@@ -111,7 +113,9 @@ function DecisionTimeline({ rows, horizon }: { rows: TradeDecision[]; horizon: H
             const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
             return [
               formatCalendarDate(row.date, locale) + " · " + row.ticker,
-              (row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ")) + currency(row.amountGbp),
+              (row.kind === "T"
+                ? row.side === "buy" ? t("做 T 后净买入 ", "Net bought after a T ") : t("做 T 后净卖出 ", "Net sold after a T ")
+                : row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ")) + currency(row.amountGbp),
               effect == null
                 ? t("尚未满 20 个交易日", "Twenty trading days have not passed")
                 : t("之后 ", "Then ") + percent(change, true, 1) + " · " + signedMoney(effect),
@@ -141,6 +145,66 @@ function DecisionTimeline({ rows, horizon }: { rows: TradeDecision[]; horizon: H
     [rows, horizon, largest, locale, t],
   );
   return <Plot research label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />;
+}
+
+/** How the same-day round trips did, and how much of each day's range they took. */
+export function roundTripVerdict(summary: AccountDecisions["roundTripSummary"] | undefined) {
+  const ranged = summary?.ranged ?? 0;
+  const range = summary?.rangeGbp ?? 0;
+  return {
+    count: summary?.count ?? 0,
+    favourable: summary?.favourable ?? 0,
+    result: summary?.resultGbp ?? 0,
+    range: ranged ? range : null,
+    captured: ranged && range > 0 ? (summary?.rangedResultGbp ?? 0) / range : null,
+  };
+}
+
+function RoundTrips({ data }: { data: AccountDecisions }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const verdict = roundTripVerdict(data.roundTripSummary);
+  if (!verdict.count) return null;
+  const rows = [...(data.roundTrips ?? [])].reverse();
+  return (
+    <Panel
+      title={t("日内做 T", "Same-day round trips")}
+      help={t(
+        "同一天买入又卖出同一证券时，配对的股数算一次往返：结果是（卖出均价 − 买入均价）× 股数，已扣除费用。当日价差上限是同样股数在当天最高价与最低价之间能赚到的最多金额，用来对照，不是事先可以做到的策略。多买或多卖的部分仍作为买卖决定计算。",
+        "When one security is bought and sold on the same day, the matched shares are a round trip: (average sell − average buy) × shares, after costs. The day's range is the most the same shares could have taken between that day's high and low; it is a yardstick, not a strategy available in advance. Shares bought or sold beyond the round trip still count as buy or sell decisions.",
+      )}
+    >
+      <div className="mx-metric-grid mx-metric-grid-three">
+        <Metric
+          label={t("往返结果", "Round-trip result")}
+          value={signedMoney(verdict.result)}
+          tone={verdict.result < 0 ? "down" : verdict.result > 0 ? "up" : undefined}
+          note={locale === "zh" ? `${verdict.favourable} / ${verdict.count} 次盈利` : `${verdict.favourable} of ${verdict.count} gained`}
+        />
+        <Metric label={t("当日价差上限", "Day's range on those shares")} value={verdict.range == null ? "—" : currency(verdict.range)} />
+        <Metric label={t("抓住的价差", "Share of the range taken")} value={verdict.captured == null ? "—" : percent(verdict.captured, false, 0)} />
+      </div>
+      <EvidenceTable
+        label={t("日内做 T 记录", "Same-day round trips")}
+        rows={rows}
+        pageSize={10}
+        columns={[
+          { label: t("日期", "Date"), value: (row: RoundTrip) => formatCalendarDate(row.date, locale) },
+          {
+            label: t("证券", "Security"),
+            value: (row: RoundTrip) => (
+              <Link href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}>{row.ticker}</Link>
+            ),
+          },
+          { label: t("股数", "Shares"), value: (row: RoundTrip) => row.matchedQuantity.toLocaleString(locale === "zh" ? "zh-CN" : "en-GB", { maximumFractionDigits: 4 }), numeric: true },
+          { label: t("买入均价", "Average buy"), value: (row: RoundTrip) => currency(row.buyAverageGbp, "GBP", 2), numeric: true },
+          { label: t("卖出均价", "Average sell"), value: (row: RoundTrip) => currency(row.sellAverageGbp, "GBP", 2), numeric: true },
+          { label: t("结果", "Result"), value: (row: RoundTrip) => <span className={"mx-" + tone(row.resultGbp)}>{signedMoney(row.resultGbp, 2)}</span>, numeric: true },
+          { label: t("当日价差上限", "Day's range"), value: (row: RoundTrip) => (row.rangeGbp == null ? "—" : currency(row.rangeGbp, "GBP", 2)), numeric: true },
+        ]}
+      />
+    </Panel>
+  );
 }
 
 export function DecisionReview({ data }: { data: AccountDecisions | null | undefined }) {
@@ -176,8 +240,8 @@ export function DecisionReview({ data }: { data: AccountDecisions | null | undef
       <Panel
         title={t("买卖决定", "Buy and sell decisions")}
         help={t(
-          "每个交易日的同一证券、同一方向算一次决定，用拆股调整后的收盘价（英镑）计算：买入的结果是买入金额乘以之后的涨跌；卖出相反——之后上涨记为少赚，之后下跌记为避开的亏损。不含分红。",
-          "One security, one side and one trading day make a decision, measured on split-adjusted closes in GBP: a buy earns its amount times the later change; a sell is the opposite — a later rise is gain given up, a later fall is a loss avoided. Dividends are excluded.",
+          "每个交易日的同一证券、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算：买入的结果是买入金额乘以之后的涨跌；卖出相反——之后上涨或派息记为少赚，之后下跌记为避开的亏损。同一天又买又卖时，配对的股数算作日内做 T，单独计算，只有多买或多卖的部分算作决定。",
+          "One security, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed: a buy earns its amount times the later change; a sell is the opposite — a later rise or dividend is gain given up, a later fall is a loss avoided. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
         )}
         action={
           <Segments
@@ -237,6 +301,7 @@ export function DecisionReview({ data }: { data: AccountDecisions | null | undef
           <DecisionRows rows={bought.best} horizon={horizon} empty={t("没有买入后上涨的记录", "No purchase was followed by a rise")} />
         </Panel>
       </div>
+      <RoundTrips data={data} />
       {closed.length > 0 && (
         <Panel
           title={t("持有期间的最佳卖点", "The best close while held")}
