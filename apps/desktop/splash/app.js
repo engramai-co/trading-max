@@ -9,11 +9,12 @@ if (picker) {
   document.body.classList.add("picker");
   document.title = "Trading Max · 工作区";
 }
+// Headings only: the choices and form fields below explain themselves.
 const labels = {
-  welcome: picker ? ["工作区", ""] : ["打开你的投资工作台。", "从这台 Mac 开始，或连接已经在运行的服务。"],
-  remote: ["连接你的服务。", "用熟悉的地址，打开已经在运行的投资工作台。"],
-  create: ["创建本地工作区。", "让账户与投资记录保存在这台 Mac。"],
-  open: ["继续你的本地记录。", "选择你已经保存的 Trading Max 工作区。"],
+  welcome: picker ? ["工作区", ""] : ["打开你的投资工作台。", ""],
+  remote: ["连接你的服务。", ""],
+  create: ["创建本地工作区。", ""],
+  open: ["继续你的本地记录。", ""],
 };
 function text(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
 function showView(next, focus = true) {
@@ -102,8 +103,9 @@ function renderStatus(state) {
   $("retry-countdown").hidden = !state.retry_at_ms;
   const seconds = Math.max(0, Math.ceil((state.retry_at_ms - Date.now()) / 1000));
   text("retry-countdown", seconds ? `${seconds} 秒后自动再试，也可以立即重试。` : "正在重新检查连接…");
-  $("runtime-context").hidden = !state.mode || picker;
-  text("collection-hint", state.mode === "remote" ? "记录由服务端的更新计划负责；退出这个 App 不会停止主机采集。" : state.mode === "local" ? "本地记录仅在 App 运行时更新。退出 App 或 Mac 休眠会暂停采集；重新打开后继续，不会补造缺失记录。" : "当前是独立的模拟资料，不会连接真实账户。");
+  // A remote service collects on its own; only local and demo modes carry a caveat.
+  $("runtime-context").hidden = !state.mode || picker || state.mode === "remote";
+  text("collection-hint", state.mode === "local" ? "本地记录仅在 App 运行时更新。退出 App 或 Mac 休眠会暂停采集；重新打开后继续，不会补造缺失记录。" : "当前是独立的模拟资料，不会连接真实账户。");
   $("reveal-workspace").hidden = !state.workspace;
 }
 async function refresh() {
