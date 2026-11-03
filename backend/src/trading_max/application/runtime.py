@@ -25,6 +25,7 @@ from .account_stages import (
 )
 from .broker_stages import BrokerSyncStage
 from .cfd_stages import CfdAccountStage
+from .decision_stages import AccountDecisionStage
 from .lookthrough_stages import PortfolioLookthroughStage
 from .nav_stages import AccountDayAttributionStage, AccountIntradayNavStage, AccountNavStage
 from .performance_stages import AccountPerformanceStage
@@ -118,6 +119,7 @@ class TypedWorkerRuntime:
                 CfdAccountStage(self.state_root, self.artifacts),
                 AccountPerformanceStage(self.artifacts, self.snapshots),
                 AccountReviewStage(self.state_root, self.artifacts),
+                AccountDecisionStage(self.state_root, self.artifacts),
                 MarketSnapshotStage(self.artifacts, self.market_service),
                 TaxonomyArtifactStage(self.artifacts, self.taxonomy_provider),
                 TechnicalArtifactStage(self.artifacts),

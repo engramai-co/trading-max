@@ -4,6 +4,31 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-11-03
+
+### Added
+
+- Account review opens on **Decisions**: every buy and sell, one security
+  and side per trading day, compared with what the price did next. A sale
+  counts against you when the price rose afterwards and for you when it
+  fell; a purchase counts the change of the shares bought. Totals are shown
+  twenty trading days later or to date, with a timeline of every decision,
+  the sales and purchases that mattered most in each direction, and closed
+  trades against their best and worst close while held.
+- The review index shows each account's sale and purchase results after
+  twenty trading days and the most recent decisions across accounts.
+- A new full-update stage resolves split-adjusted GBP closes for every
+  traded security after reconciling each listing with the broker's own
+  fills, caches them outside Git, and remembers each accepted listing.
+  Securities without reconcilable prices are listed and left out.
+
+### Changed
+
+- Review figures read as whole days and counts instead of raw decimals,
+  trade lists drop the redundant direction and empty fee notes, the
+  without-best-trades view no longer draws its table twice, and single-page
+  tables no longer print their record count.
+
 ## [1.17.3] - 2026-11-03
 
 ### Added

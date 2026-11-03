@@ -1263,6 +1263,63 @@ class DayAttribution(ApiModel):
     accounts: dict[InvestableAccountCode, AccountDayAttribution] = Field(default_factory=dict)
 
 
+class DecisionSide(ApiModel):
+    count: int = 0
+    evaluated: int = 0
+    favourable: int = 0
+    effect_horizon_gbp: float | None = None
+    effect_to_date_gbp: float | None = None
+    amount_gbp: float | None = None
+
+
+class TradeDecision(ApiModel):
+    """One security, one side, one trading day; effects are GBP against not trading."""
+
+    date: str
+    ticker: str
+    name: str
+    side: Literal["buy", "sell"]
+    kind: Literal["B", "S", "T"]
+    quantity: float | None = None
+    amount_gbp: float
+    return_horizon: float | None = None
+    effect_horizon_gbp: float | None = None
+    return_to_date: float | None = None
+    effect_to_date_gbp: float | None = None
+
+
+class ClosedTradeReview(ApiModel):
+    ticker: str
+    name: str
+    start: str
+    end: str
+    invested_gbp: float | None = None
+    actual_gbp: float | None = None
+    best_exit_gbp: float | None = None
+    best_exit_date: str | None = None
+    worst_close_gbp: float | None = None
+    worst_close_date: str | None = None
+    given_back_gbp: float | None = None
+
+
+class DecisionCoverage(ApiModel):
+    decisions: int = 0
+    scored: int = 0
+    unpriced_tickers: list[str] = Field(default_factory=list)
+
+
+class AccountDecisions(ApiModel):
+    status: Literal["available", "unavailable"]
+    reason: str | None = None
+    as_of: str | None = None
+    horizon_days: int | None = None
+    coverage: DecisionCoverage = Field(default_factory=DecisionCoverage)
+    buys: DecisionSide = Field(default_factory=DecisionSide)
+    sells: DecisionSide = Field(default_factory=DecisionSide)
+    decisions: list[TradeDecision] = Field(default_factory=list)
+    closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
+
+
 class DashboardLensSnapshot(ApiModel):
     """A page-scoped dashboard payload.
 
@@ -1290,6 +1347,8 @@ class DashboardLensSnapshot(ApiModel):
     selected_account_review: AccountReview | None = None
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
+    selected_account_decisions: AccountDecisions | None = None
+    decision_reviews: dict[InvestableAccountCode, AccountDecisions] = Field(default_factory=dict)
     selected_risk: RiskMetrics | None = None
     cfd: CfdSummary | None = None
     cfd_review: CfdAccountReview | None = None

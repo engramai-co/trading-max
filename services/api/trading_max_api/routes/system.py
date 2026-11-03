@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 
 from ..dashboard_models import (
     AccountCode,
+    AccountDecisions,
     BenchmarkPricePoint,
     DashboardLensName,
     DashboardLensSnapshot,
@@ -48,6 +49,20 @@ def _day_attribution(request: Request, run_id: str) -> DayAttribution | None:
         return DayAttribution.model_validate(payload)
     except (FileNotFoundError, TypeError, ValueError):
         return None
+
+
+def _decision_reviews(request: Request, run_id: str) -> dict[str, AccountDecisions]:
+    """Optional: snapshots from before decision review publish none."""
+
+    try:
+        payload = request.app.state.store.read_json(run_id, "account/decisions.json")
+        return {
+            code: AccountDecisions.model_validate(review)
+            for code, review in (payload.get("accounts") or {}).items()
+            if code in {"A", "B"}
+        }
+    except (FileNotFoundError, TypeError, ValueError, AttributeError):
+        return {}
 
 
 def _latest_intraday_points(points: list[NavPoint]) -> list[NavPoint]:
@@ -284,11 +299,22 @@ def dashboard_lens(
             policy=dashboard_data.policy,
         )
     if view == "review":
+        # The index needs each account's verdict and its latest few decisions.
+        reviews = {
+            code: review.model_copy(
+                update={
+                    "decisions": review.decisions[-8:],
+                    "closed_trades": review.closed_trades[:3],
+                }
+            )
+            for code, review in _decision_reviews(request, manifest.run_id).items()
+        }
         return DashboardLensSnapshot(
             **base,
             accounts=dashboard_data.accounts,
             cfd=dashboard_data.cfd,
             risk=dashboard_data.risk,
+            decision_reviews=reviews,
         )
 
     selected = account or "A"
@@ -308,6 +334,11 @@ def dashboard_lens(
         ),
         selected_cfd_review=(dashboard_data.cfd_review if selected == "C" else None),
         selected_account_report=dashboard_data.account_report.analysis.get(selected, {}),
+        selected_account_decisions=(
+            _decision_reviews(request, manifest.run_id).get(selected)
+            if selected in {"A", "B"}
+            else None
+        ),
         selected_risk=(dashboard_data.risk.get(selected) if selected in {"A", "B"} else None),
         holdings=[holding for holding in dashboard_data.holdings if holding.account == selected],
         nav=dashboard_data.nav,

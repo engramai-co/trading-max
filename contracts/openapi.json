@@ -521,6 +521,79 @@
         "title": "AccountDayAttribution",
         "type": "object"
       },
+      "AccountDecisions": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "buys": {
+            "$ref": "#/components/schemas/DecisionSide"
+          },
+          "closedTrades": {
+            "items": {
+              "$ref": "#/components/schemas/ClosedTradeReview"
+            },
+            "title": "Closedtrades",
+            "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/DecisionCoverage"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/TradeDecision"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "horizonDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizondays"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sells": {
+            "$ref": "#/components/schemas/DecisionSide"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AccountDecisions",
+        "type": "object"
+      },
       "AccountReportData": {
         "properties": {
           "analysis": {
@@ -4158,6 +4231,111 @@
         "title": "CfdUnmatchedOrder",
         "type": "object"
       },
+      "ClosedTradeReview": {
+        "properties": {
+          "actualGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actualgbp"
+          },
+          "bestExitDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestexitdate"
+          },
+          "bestExitGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestexitgbp"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "givenBackGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Givenbackgbp"
+          },
+          "investedGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Investedgbp"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "worstCloseDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worstclosedate"
+          },
+          "worstCloseGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worstclosegbp"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "start",
+          "end"
+        ],
+        "title": "ClosedTradeReview",
+        "type": "object"
+      },
       "DashboardLensSnapshot": {
         "description": "A page-scoped dashboard payload.\n\nDashboard routes render a stable shell first and request exactly one lens.\nOptional fields are populated only when the selected interface needs them,\npreventing account history, look-through data, and research tables from\nbeing shipped to unrelated pages.",
         "properties": {
@@ -4211,6 +4389,19 @@
                 "type": "null"
               }
             ]
+          },
+          "decisionReviews": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountDecisions"
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Decisionreviews",
+            "type": "object"
           },
           "generatedAt": {
             "title": "Generatedat",
@@ -4321,6 +4512,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/AccountAnalysisMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selectedAccountDecisions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountDecisions"
               },
               {
                 "type": "null"
@@ -4776,6 +4977,83 @@
           "day"
         ],
         "title": "DayAttribution",
+        "type": "object"
+      },
+      "DecisionCoverage": {
+        "properties": {
+          "decisions": {
+            "default": 0,
+            "title": "Decisions",
+            "type": "integer"
+          },
+          "scored": {
+            "default": 0,
+            "title": "Scored",
+            "type": "integer"
+          },
+          "unpricedTickers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unpricedtickers",
+            "type": "array"
+          }
+        },
+        "title": "DecisionCoverage",
+        "type": "object"
+      },
+      "DecisionSide": {
+        "properties": {
+          "amountGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amountgbp"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "effectHorizonGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effecthorizongbp"
+          },
+          "effectToDateGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effecttodategbp"
+          },
+          "evaluated": {
+            "default": 0,
+            "title": "Evaluated",
+            "type": "integer"
+          },
+          "favourable": {
+            "default": 0,
+            "title": "Favourable",
+            "type": "integer"
+          }
+        },
+        "title": "DecisionSide",
         "type": "object"
       },
       "DeepSeekIntegrationCandidate": {
@@ -14607,6 +14885,109 @@
         "title": "TerminalCheck",
         "type": "object"
       },
+      "TradeDecision": {
+        "description": "One security, one side, one trading day; effects are GBP against not trading.",
+        "properties": {
+          "amountGbp": {
+            "title": "Amountgbp",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "effectHorizonGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effecthorizongbp"
+          },
+          "effectToDateGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effecttodategbp"
+          },
+          "kind": {
+            "enum": [
+              "B",
+              "S",
+              "T"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "returnHorizon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnhorizon"
+          },
+          "returnToDate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returntodate"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "ticker",
+          "name",
+          "side",
+          "kind",
+          "amountGbp"
+        ],
+        "title": "TradeDecision",
+        "type": "object"
+      },
       "Trading212IntegrationCandidate": {
         "properties": {
           "apiKeyId": {
@@ -16088,7 +16469,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.17.3"
+    "version": "1.18.0"
   },
   "openapi": "3.1.0",
   "paths": {
