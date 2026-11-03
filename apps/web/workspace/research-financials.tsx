@@ -78,6 +78,8 @@ export function FinancialWorkbench({
           ? number(o.value, 2)
           : compact(o.value);
   const selected = (key: string) => (period ? get(period.id, key) : undefined);
+  const previous = period ? periods[periods.indexOf(period) - 1] : undefined;
+  const prior = (key: string) => (previous ? get(previous.id, key)?.value ?? null : null);
   const groups: Record<string, string[]> = {
     income: ["revenue", "operatingIncome", "netIncome"],
     margins: ["grossMargin", "operatingMargin", "netMargin"],
@@ -194,8 +196,24 @@ export function FinancialWorkbench({
               }
             >
               <div className="mx-metric-grid">
-                {["revenue", "revenueGrowth", "netMargin", "freeCashflow"].map(
-                  (key) => (
+                {["revenue", "revenueGrowth", "netMargin", "freeCashflow"].map((key) => {
+                  const value = selected(key)?.value ?? null;
+                  const revenue = selected("revenue")?.value ?? null;
+                  // Each figure carries the comparison that gives it meaning.
+                  const note =
+                    key === "revenue" && previous && prior(key) != null
+                      ? t("上期 ", "Prior ") + format(get(previous.id, key))
+                      : key === "revenueGrowth" && prior(key) != null
+                      ? t("上期 ", "Prior ") + percent(prior(key), true, 1)
+                      : key === "netMargin" && value != null && prior(key) != null
+                        ? (locale === "zh" ? "较上期 " : "vs prior ") +
+                          (value - prior(key)! >= 0 ? "+" : "") +
+                          number((value - prior(key)!) * 100, 1) +
+                          t(" 个百分点", " pp")
+                        : key === "freeCashflow" && value != null && revenue
+                          ? t("占营收 ", "Of revenue ") + percent(value / revenue, false, 1)
+                          : undefined;
+                  return (
                     <button
                       type="button"
                       className="mx-fact-button"
@@ -204,11 +222,19 @@ export function FinancialWorkbench({
                     >
                       <Metric
                         label={label(key)}
-                        value={format(selected(key))}
+                        value={
+                          key === "revenueGrowth"
+                            ? percent(value, true, 1)
+                            : key === "netMargin"
+                              ? percent(value, false, 1)
+                              : format(selected(key))
+                        }
+                        tone={key === "revenueGrowth" || key === "freeCashflow" ? (value == null ? undefined : value < 0 ? "down" : undefined) : undefined}
+                        note={note}
                       />
                     </button>
-                  ),
-                )}
+                  );
+                })}
               </div>
             </Panel>
           )}
@@ -360,6 +386,8 @@ export function FinancialWorkbench({
                     ][i],
                   }))}
                 />
+                <details className="mx-chart-data">
+                <summary>{t("各期数值", "Values by period")}</summary>
                 <div
                   className="mx-table-scroll"
                   role="region"
@@ -402,6 +430,7 @@ export function FinancialWorkbench({
                     </tbody>
                   </table>
                 </div>
+                </details>
               </Panel>
               {bridge.length > 0 && (
                 <Panel
@@ -465,42 +494,46 @@ export function FinancialWorkbench({
                               ) * 0.55,
                             );
                             const b = bridge[i];
+                            const top = Math.min(from[1], to[1]);
+                            // Each step carries its own amount; no separate row repeats it.
                             return {
-                              type: "rect",
-                              shape: {
-                                x: from[0] - width / 2,
-                                y: Math.min(from[1], to[1]),
-                                width,
-                                height: Math.max(1, Math.abs(to[1] - from[1])),
-                              },
-                              style: {
-                                fill: b.total
-                                  ? c.brand
-                                  : b.to < b.from
-                                    ? c.negative
-                                    : c.positive,
-                              },
+                              type: "group",
+                              children: [
+                                {
+                                  type: "rect",
+                                  shape: {
+                                    x: from[0] - width / 2,
+                                    y: top,
+                                    width,
+                                    height: Math.max(1, Math.abs(to[1] - from[1])),
+                                  },
+                                  style: {
+                                    fill: b.total
+                                      ? c.brand
+                                      : b.to < b.from
+                                        ? c.negative
+                                        : c.positive,
+                                  },
+                                },
+                                {
+                                  type: "text",
+                                  style: {
+                                    x: from[0],
+                                    y: top - 6,
+                                    text: compact(b.to - b.from),
+                                    fill: c.text,
+                                    fontSize: 11,
+                                    align: "center",
+                                    verticalAlign: "bottom",
+                                  },
+                                },
+                              ],
                             };
                           },
                         },
                       ],
                     })}
                   />
-                  <div className="mx-bridge-values">
-                    {bridge.map((b) => (
-                      <button
-                        key={b.metric}
-                        onClick={() =>
-                          setDetail(
-                            selected(b.metric) ?? selected("netIncome") ?? null,
-                          )
-                        }
-                      >
-                        <span>{label(b.metric)}</span>
-                        <strong>{compact(b.to - b.from)}</strong>
-                      </button>
-                    ))}
-                  </div>
                 </Panel>
               )}
             </>

@@ -6,15 +6,16 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Group, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import {
+  analystVerdict,
   normalizeRatingRow,
   ratingKeys,
   recommendationChange,
 } from "./analyst-data";
 import { Plot } from "./charts";
-import { currency, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { currency, number, object, objects, percent, safeUrl, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { Empty, Metric, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
 import { useRouteState } from "./route-state";
@@ -26,6 +27,7 @@ export function AnalystView({ data, revision }: { data: ResearchLensSnapshot; re
   const section = params.get("analystView") ?? "forecast";
   return (
     <>
+      {data.analyst && <AnalystVerdict data={data} />}
       <Segments
         label={t("预期与事件内容", "Estimates & events content")}
         value={section}
@@ -58,9 +60,74 @@ export function AnalystView({ data, revision }: { data: ResearchLensSnapshot; re
   );
 }
 
+const consensusLabels: Record<string, [string, string]> = {
+  strongbuy: ["强烈买入", "Strong buy"],
+  buy: ["买入", "Buy"],
+  hold: ["持有", "Hold"],
+  sell: ["卖出", "Sell"],
+  strongsell: ["强烈卖出", "Strong sell"],
+  underperform: ["跑输", "Underperform"],
+};
+
+/** One line of conclusions before the evidence below it. */
+function AnalystVerdict({ data }: { data: ResearchLensSnapshot }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const code = data.context?.quote.currency ?? "";
+  const verdict = analystVerdict(
+    object(data.analyst),
+    data.context?.quote.price ?? object(data.market).spot,
+    new Date().toISOString().slice(0, 10),
+  );
+  const label = verdict.consensus ? consensusLabels[verdict.consensus] : null;
+  const up = verdict.revisionsUp30;
+  const down = verdict.revisionsDown30;
+  return (
+    <Panel className="mx-analyst-verdict">
+      <div className="mx-metric-grid">
+        <Metric
+          label={t("分析师共识", "Consensus")}
+          value={label ? t(label[0], label[1]) : "—"}
+          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} analysts`) : undefined}
+        />
+        <Metric
+          label={t("中位目标价", "Median target")}
+          value={percent(verdict.targetChange, true, 1)}
+          tone={tone(verdict.targetChange)}
+          note={verdict.targetMedian != null ? currency(verdict.targetMedian, code || "USD", 2) : undefined}
+        />
+        <Metric
+          label={t("本季 EPS 预期 · 90 天", "Quarter EPS estimate · 90 days")}
+          value={percent(verdict.estimateChange90, true, 1)}
+          tone={tone(verdict.estimateChange90)}
+          note={up != null && down != null
+            ? (locale === "zh" ? `近 30 天上修 ${up} · 下修 ${down}` : `30 days: ${up} up · ${down} down`)
+            : undefined}
+        />
+        <Metric
+          label={t("下次财报", "Next report")}
+          value={verdict.nextReport ? formatCalendarDate(verdict.nextReport, locale) : "—"}
+          note={verdict.lastSurprise != null
+            ? (verdict.lastSurprise >= 0 ? t("上季超预期 ", "Last quarter beat by ") : t("上季低于预期 ", "Last quarter missed by "))
+              + percent(Math.abs(verdict.lastSurprise), false, 1)
+            : undefined}
+        />
+      </div>
+    </Panel>
+  );
+}
+
+/** Quarter ends read as month and year; estimates keep their marker. */
+function quarterLabel(date: string, future: boolean, locale: "zh" | "en", estimate: string) {
+  const month = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-GB", { year: "numeric", month: "short", timeZone: "UTC" })
+    .format(new Date(date + "T00:00:00Z"));
+  return future ? month + " " + estimate : month;
+}
+
 function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy(),
     { update } = useRouteState("push");
+  const { locale } = useLocale();
   const a = object(data.analyst);
   const code = str(a.reportingCurrency) || data.financialFacts?.currency || "";
   const actual = objects(a.earningsHistory)
@@ -112,7 +179,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           grid: { top: 20, left: 52, right: 20, bottom: 70 },
           xAxis: {
             type: "category",
-            data: rows.map((r) => r.date + (r.future ? " E" : "")),
+            data: rows.map((r) => quarterLabel(r.date, r.future, locale, t("预期", "est."))),
             axisLabel: { color: c.axis, hideOverlap: true },
           },
           yAxis: {
@@ -161,7 +228,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           columns={[
             {
               label: t("季度截至", "Quarter ending"),
-              value: (r) => r.date + (r.future ? " E" : ""),
+              value: (r) => formatCalendarDate(r.date, locale) + (r.future ? t(" · 预期", " · est.") : ""),
             },
             {
               label: t("实际", "Reported"),
@@ -304,45 +371,24 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
           },
         })}
       />
-      <EvidenceTable
-        label={t("预期修订读数", "Estimate revision readings")}
-        rows={[selected]}
-        columns={days.map((d, i) => ({
-          label: labels[i],
-          value: (r: Record<string, unknown>) => number(r[d], 2),
-          numeric: true,
-        }))}
-      />
-      {r && (
+      <details className="mx-chart-data">
+        <summary>{t("修订读数与口径", "Readings and basis")}</summary>
         <EvidenceTable
-          label={t("上修与下修次数", "Upward and downward revision counts")}
-          rows={[r]}
-          columns={[
-            {
-              label: t("7 天上修", "Up · 7 days"),
-              value: (r) => number(r.upLast7days, 0),
-              numeric: true,
-            },
-            {
-              label: t("7 天下修", "Down · 7 days"),
-              value: (r) => number(r.downLast7Days ?? r.downLast7days, 0),
-              numeric: true,
-            },
-            {
-              label: t("30 天上修", "Up · 30 days"),
-              value: (r) => number(r.upLast30days, 0),
-              numeric: true,
-            },
-            {
-              label: t("30 天下修", "Down · 30 days"),
-              value: (r) => number(r.downLast30days, 0),
-              numeric: true,
-            },
-          ]}
+          label={t("预期修订读数", "Estimate revision readings")}
+          rows={[selected]}
+          columns={days.map((d, i) => ({
+            label: labels[i],
+            value: (row: Record<string, unknown>) => number(row[d], 2),
+            numeric: true,
+          }))}
         />
-      )}
-      <details>
-        <summary>{t("预期口径与日期", "Estimate basis & date")}</summary>
+        {r && (
+          <p>
+            {locale === "zh"
+              ? `近 7 天上修 ${number(r.upLast7days, 0)} · 下修 ${number(r.downLast7Days ?? r.downLast7days, 0)}；近 30 天上修 ${number(r.upLast30days, 0)} · 下修 ${number(r.downLast30days, 0)}`
+              : `7 days: ${number(r.upLast7days, 0)} up · ${number(r.downLast7Days ?? r.downLast7days, 0)} down; 30 days: ${number(r.upLast30days, 0)} up · ${number(r.downLast30days, 0)} down`}
+          </p>
+        )}
         <p>
           {forecastPeriodLabel(a, key(selected), t)} ·{" "}
           {formatCalendarDate(str(a.asOf), locale)} · Yahoo Finance

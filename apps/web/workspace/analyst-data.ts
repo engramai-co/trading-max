@@ -1,5 +1,5 @@
 import { numeric } from "@/lib/numeric";
-import { str, type Json } from "@/workspace/data";
+import { object, objects, str, type Json } from "@/workspace/data";
 
 export const ratingKeys = [
   "strongBuy",
@@ -89,3 +89,33 @@ export function recommendationChange(row: Json) {
     target: numeric(row.currentPriceTarget),
   };
 }
+
+/** The lens's conclusion: consensus, target, estimate direction, and the next report. */
+export function analystVerdict(analyst: Json, price: unknown, today: string) {
+  const summary = ratingSummary(objects(analyst.recommendations));
+  const median = targetSnapshot(object(analyst.priceTargets), price).rows.find((row) => row.key === "median");
+  const trends = objects(analyst.epsTrend);
+  const trend = trends.find((row) => str(row.period) === "0q") ?? trends[0];
+  const now = numeric(trend?.current);
+  const before = numeric(trend?.["90daysAgo"]);
+  const revisions = objects(analyst.epsRevisions).find((row) => str(row.period) === str(trend?.period));
+  const reported = objects(analyst.earningsHistory)
+    .filter((row) => numeric(row.surprisePercent) != null)
+    .sort((a, b) => str(a.quarter ?? a.index).localeCompare(str(b.quarter ?? b.index)));
+  const next = objects(analyst.earningsEvents)
+    .filter((row) => str(row.date) >= today && str(row.status) !== "reported")
+    .sort((a, b) => str(a.date).localeCompare(str(b.date)))[0];
+  const providerCount = numeric(analyst.providerRecommendationCount);
+  return {
+    consensus: str(analyst.providerRecommendationKey).toLowerCase().replaceAll("_", "") || null,
+    analysts: summary.knownTotal || providerCount || null,
+    targetMedian: median?.value ?? null,
+    targetChange: median?.change ?? null,
+    estimateChange90: now != null && before != null && before > 0 ? now / before - 1 : null,
+    revisionsUp30: numeric(revisions?.upLast30days),
+    revisionsDown30: numeric(revisions?.downLast30days),
+    lastSurprise: numeric(reported.at(-1)?.surprisePercent),
+    nextReport: next ? str(next.date) : null,
+  };
+}
+
