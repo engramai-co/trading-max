@@ -570,10 +570,10 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
   const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
-  const a = object(data.analyst),
-    calendar = object(object(data.fundamentals).earningsCalendar);
+  const a = object(data.analyst);
   const rows = objects(a.earningsEvents);
   const selected = rows.find((r) => r.id === params.get("eventId"));
+  const next = nextEarningsDate(data, new Date().toISOString().slice(0, 10));
   const filings = objects(object(data.researchEvidence).filings).filter(
     (f) =>
       !selected ||
@@ -585,11 +585,8 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
       {!rows.length ? (
         <Empty
           title={
-            (calendar.earningsDates as string[] | undefined)?.length
-              ? t("下一财报窗口：", "Next earnings window: ") +
-                (calendar.earningsDates as string[])
-                  .map((d) => d.slice(0, 10))
-                  .join(" – ")
+            next
+              ? t("下次财报 ", "Next report ") + formatCalendarDate(next, locale)
               : t("暂无可用财报日历", "Earnings calendar unavailable")
           }
         />
