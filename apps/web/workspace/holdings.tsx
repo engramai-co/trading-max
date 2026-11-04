@@ -17,8 +17,8 @@ import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { historyDay } from "@/lib/portfolio/history";
 import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
+import { useCurrentDay } from "./current-day";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { signedPounds } from "./day-drivers";
 import {
@@ -78,7 +78,7 @@ function Positions() {
   const [selected, setSelected] = useState<Holding | null>(null);
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
-  const [now] = useState(() => Date.now());
+  const { today, now } = useCurrentDay();
   const scoped = useMemo(
     () =>
       (query.data?.holdings ?? []).filter(
@@ -111,7 +111,6 @@ function Positions() {
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
-  const today = historyDay(new Date(now).toISOString());
   const dayLabel = (date?: string | null) =>
     !date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now);
   // An account still on Friday is never called today beside one already on Monday.

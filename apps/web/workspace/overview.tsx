@@ -3,7 +3,7 @@
 import { Button, Select } from "@mantine/core";
 import { ArrowUpRight, ChartLine } from "@phosphor-icons/react";
 import Link from "./link";
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
@@ -33,9 +33,10 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, signedPounds } from "./day-drivers";
-import { PORTFOLIO_RANGES, historyDay, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
+import { useCurrentDay } from "./current-day";
 import { LocalOnboarding } from "./local-onboarding";
 import { SecurityPeek } from "./security-peek";
 
@@ -83,7 +84,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
-  const [now] = useState(() => Date.now());
+  const { today, now } = useCurrentDay();
   const refresh = useQuery({
     queryKey: ["refresh-attention"],
     queryFn: ({ signal }) => api<RefreshAttention>("/refresh/attention", { signal }),
@@ -190,6 +191,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
                 runId={data.runId}
                 attribution={data.dayAttribution}
                 previousDay={previousDay}
+                today={today}
                 now={now}
               />
             </div>
@@ -372,12 +374,15 @@ function TodayMetric({
   runId,
   attribution,
   previousDay,
+  today,
   now,
 }: {
   scope: Scope;
   runId: string;
   attribution?: DashboardLens["dayAttribution"];
   previousDay?: number | null;
+  /** Today's calendar day in the display time zone. */
+  today: string;
   now: number;
 }) {
   const t = useCopy();
@@ -392,7 +397,7 @@ function TodayMetric({
   const share = money?.pnlPercents.at(-1) ?? null;
   // On a weekend or before the day's first observation the window is an earlier
   // trading day: name it instead of calling it today.
-  const label = !day || day === historyDay(new Date(now).toISOString())
+  const label = !day || day === today
     ? t("今日", "Today")
     : formatCalendarDate(day, locale, now);
   // The drivers explain this figure only, so they wait while it stops at a cutoff.
