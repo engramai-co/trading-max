@@ -34,16 +34,24 @@ export function effectTone(value: number | null | undefined) {
 }
 
 /**
- * A decision whose security has no close after the decision day yet: its
- * to-date change is exactly zero, so it says nothing about the decision.
+ * A decision with no close after its own yet, so nothing to judge it by. An
+ * unchanged price after a few days is an outcome; only the count of later closes
+ * tells them apart. Artifacts from before decisions-v3 do not carry the count and
+ * read as observed unless they have no to-date return at all.
  */
 export function observing(row: TradeDecision) {
-  return row.returnToDate === 0 && !row.effectToDateGbp;
+  return row.observedDays != null ? row.observedDays < 1 : row.returnToDate == null;
+}
+
+/** Whether the chosen window has closes to judge the decision by. */
+export function windowObserved(row: TradeDecision, horizon: Horizon) {
+  if (horizon === "date") return !observing(row);
+  return row.horizonComplete ?? row.effectHorizonGbp != null;
 }
 
 export function decisionEffect(row: TradeDecision, horizon: Horizon) {
-  if (horizon === "horizon") return row.effectHorizonGbp ?? null;
-  return observing(row) ? null : row.effectToDateGbp ?? null;
+  if (!windowObserved(row, horizon)) return null;
+  return horizon === "horizon" ? row.effectHorizonGbp ?? null : row.effectToDateGbp ?? null;
 }
 
 /**
@@ -78,7 +86,9 @@ export function eventLabel(event: DecisionEvent, t: Copy) {
 export function decisionContext(row: TradeDecision, horizon: Horizon, t: Copy, locale: "zh" | "en") {
   const market = horizon === "horizon" ? row.marketReturnHorizon : row.marketReturnToDate;
   return [
-    ...(market == null || observing(row) ? [] : [t("标普 500 同期 ", "S&P 500 over the same days ") + percent(market, true, 1)]),
+    // Only the window being read decides: a complete 20-day benchmark stays even
+    // when the price later came back to where it started.
+    ...(market == null || !windowObserved(row, horizon) ? [] : [t("标普 500 同期 ", "S&P 500 over the same days ") + percent(market, true, 1)]),
     ...(row.events ?? []).map((event) => formatCalendarDate(event.date, locale) + " " + eventLabel(event, t)),
   ];
 }

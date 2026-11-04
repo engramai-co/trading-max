@@ -9,6 +9,7 @@ import {
   sideVerdict,
   signedMoney,
   verdictWord,
+  windowObserved,
   type TradeDecision,
 } from "./review-decisions";
 
@@ -83,12 +84,44 @@ describe("decision verdicts", () => {
   });
 
   it("treats a decision without a later close as observing, not as a £0 outcome", () => {
-    const today = { ...row("buy", "AAPL", null, 0), returnToDate: 0, marketReturnToDate: 0 };
+    const today = { ...row("buy", "AAPL", null, 0), observedDays: 0, horizonComplete: false, marketReturnToDate: 0 };
+    const nvda = { ...row("buy", "NVDA", 200, 450), observedDays: 30, horizonComplete: true };
     expect(observing(today)).toBe(true);
-    expect(observing(row("buy", "NVDA", 200, 450))).toBe(false);
+    expect(observing(nvda)).toBe(false);
     // To date it is not scored at all, so it neither helps nor counts against a side.
-    expect(sideVerdict([today, row("buy", "NVDA", 200, 450)], "buy", "date")).toEqual({ count: 2, evaluated: 1, favourable: 1, effect: 450 });
+    expect(sideVerdict([today, nvda], "buy", "date")).toEqual({ count: 2, evaluated: 1, favourable: 1, effect: 450 });
     expect(decisionContext(today, "date", (zh) => zh, "zh")).toEqual([]);
+  });
+
+  it("scores an unchanged price after later closes as a genuine zero outcome", () => {
+    const flat = { ...row("buy", "FLAT", 0, 0), observedDays: 25, horizonComplete: true };
+    expect(observing(flat)).toBe(false);
+    expect(sideVerdict([flat], "buy", "horizon")).toEqual({ count: 1, evaluated: 1, favourable: 0, effect: 0 });
+    expect(sideVerdict([flat], "buy", "date")).toEqual({ count: 1, evaluated: 1, favourable: 0, effect: 0 });
+  });
+
+  it("reads older artifacts without the close count as observed unless they have no return", () => {
+    expect(observing(row("buy", "OLD", null, 0))).toBe(false);
+    expect(observing({ ...row("buy", "OLD", null, 0), returnToDate: null, effectToDateGbp: null })).toBe(true);
+    // The horizon falls back to whether its effect exists.
+    expect(windowObserved(row("sell", "OLD", null, 80), "horizon")).toBe(false);
+    expect(windowObserved(row("sell", "OLD", 120, 80), "horizon")).toBe(true);
+  });
+
+  it("keeps the benchmark of every window that has closes, even when the price came back", () => {
+    const roundAgain = {
+      ...row("sell", "ANET", -127, 0),
+      observedDays: 25,
+      horizonComplete: true,
+      marketReturnHorizon: 0.03,
+      marketReturnToDate: 0.01,
+    };
+    expect(decisionContext(roundAgain, "horizon", (zh) => zh, "zh")).toEqual(["标普 500 同期 +3.0%"]);
+    expect(decisionContext(roundAgain, "date", (zh) => zh, "zh")).toEqual(["标普 500 同期 +1.0%"]);
+    // A window that has not closed shows no benchmark, while a closed one does.
+    const young = { ...roundAgain, observedDays: 5, horizonComplete: false, marketReturnHorizon: null };
+    expect(decisionContext(young, "horizon", (zh) => zh, "zh")).toEqual([]);
+    expect(decisionContext(young, "date", (zh) => zh, "zh")).toEqual(["标普 500 同期 +1.0%"]);
   });
 
   it("says what an effect means instead of relying on its sign", () => {
