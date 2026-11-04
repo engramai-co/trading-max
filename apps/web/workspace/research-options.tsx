@@ -66,14 +66,15 @@ function sum(values: (number | null | undefined)[]) {
 function quoted(c: Contract) {
   return (c.bid ?? 0) > 0 || (c.ask ?? 0) > 0;
 }
+/** One rule for the table and the volatility charts: a quoted contract with a real IV. */
+function usableIv(c: Contract) {
+  return quoted(c) && c.impliedVolatility != null && c.impliedVolatility > 0.0001;
+}
 function cell(c: Contract | undefined, key: string) {
   if (!c) return "—";
   if (!quoted(c) && ["bid", "ask", "iv", "delta", "gamma"].includes(key)) return "—";
   if (key === "ask" && !(c.ask! > 0)) return "—";
-  if (key === "iv")
-    return c.impliedVolatility != null && c.impliedVolatility > 0.0001
-      ? percent(c.impliedVolatility)
-      : "—";
+  if (key === "iv") return usableIv(c) ? percent(c.impliedVolatility) : "—";
   if (key === "spread") return validQuote(c) ? number(c.ask! - c.bid!, 2) : "—";
   const value = {
     bid: c.bid,
@@ -670,18 +671,14 @@ function Volatility({
   liquid: boolean;
 }) {
   const t = useCopy();
-  const valid = contracts.filter(
-    (c) => quoted(c) && c.impliedVolatility != null && c.impliedVolatility > 0,
-  );
+  const valid = contracts.filter(usableIv);
   const term = options.expiries
     .filter((e) => dates.includes(e.expiry))
     .map((e) => {
       const cs = options.contracts.filter(
         (c) =>
           c.expiry === e.expiry &&
-          quoted(c) &&
-          c.impliedVolatility != null &&
-          c.impliedVolatility > 0 &&
+          usableIv(c) &&
           (!liquid || validQuote(c)),
       );
       const k = nearMoneyStrikes(

@@ -200,7 +200,17 @@ export function ResearchWorkspace() {
   // J and K step through the visible research list, like the arrow buttons.
   useEffect(() => {
     function step(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      // Plain J/K only: no modifiers, no IME composition, nothing already handled.
+      if (
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        event.repeat ||
+        event.isComposing ||
+        event.defaultPrevented
+      )
+        return;
       const key = event.key.toLowerCase();
       const target = key === "j" ? next : key === "k" ? previous : undefined;
       const origin = event.target instanceof Element ? event.target : null;
