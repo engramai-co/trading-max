@@ -1,0 +1,304 @@
+.mx-settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mx-settings-nav button {
+  padding: 13px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--mx-muted);
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12px;
+}
+.mx-settings-nav button[aria-pressed="true"] {
+  background: var(--mx-brand-soft);
+  color: var(--mx-brand);
+  font-weight: 600;
+}
+.mx-settings-content {
+  max-width: 1000px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.mx-setting-row:last-child {
+  border: 0;
+  padding-bottom: 0;
+}
+.mx-setting-row h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.mx-setting-row p {
+  font-size: 12px;
+  color: var(--mx-muted);
+  line-height: 1.8;
+  margin-top: 7px;
+  max-width: 530px;
+}
+.mx-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.mx-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-form-help {
+  font-size: 12px;
+  color: var(--mx-muted);
+  line-height: 1.9;
+}
+.mx-job-row {
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-job-row:last-child {
+  border: 0;
+}
+.mx-job-row summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 0;
+  list-style: none;
+  font-size: 12px;
+}
+.mx-job-row summary::-webkit-details-marker {
+  display: none;
+}
+.mx-job-row summary small {
+  color: var(--mx-muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 5px;
+}
+.mx-job-stages {
+  margin: 0 0 18px 18px;
+  border-left: 1px solid var(--mx-border);
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--mx-muted);
+}
+.mx-command-results {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 16px -5px;
+  max-height: 370px;
+  overflow: auto;
+}
+.mx-command-group {
+  flex-shrink: 0;
+  padding: 12px 12px 5px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--mx-muted);
+}
+.mx-command-group:first-child {
+  padding-top: 0;
+}
+.mx-command-divider {
+  flex-shrink: 0;
+  border-top: 1px solid var(--mx-border);
+  margin: 8px 12px;
+}
+.mx-command-result {
+  display: flex;
+  flex-shrink: 0;
+  gap: 13px;
+  align-items: center;
+  padding: 12px;
+  background: transparent;
+  color: var(--mx-ink);
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  min-height: 48px;
+}
+.mx-command-result > span {
+  flex: 1;
+  min-width: 0;
+}
+.mx-command-result strong {
+  font-size: 12px;
+  display: block;
+  font-weight: 600;
+}
+.mx-command-result small {
+  font-size: 12px;
+  display: block;
+  color: var(--mx-muted);
+  margin-top: 4px;
+}
+.mx-command-result[data-active] {
+  background: var(--mx-brand-soft);
+}
+.mx-command-result mark {
+  background: transparent;
+  color: var(--mx-brand);
+  font-weight: 700;
+}
+.mx-command-result[data-active]:hover {
+  background: var(--mx-brand-soft);
+}
+.mx-command-clear {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mx-brand);
+  font: inherit;
+}
+.mx-command-recent-actions {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+.mx-command-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mx-muted);
+  margin-block: 12px;
+}
+.mx-command-footer {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--mx-border);
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-disclosure {
+  border: 1px solid var(--mx-border);
+  border-radius: 7px;
+  padding: 15px;
+  font-size: 12px;
+}
+.mx-disclosure > summary {
+  color: var(--mx-brand);
+  font-weight: 550;
+}
+.mx-disclosure[open] > summary {
+  margin-bottom: 15px;
+}
+/* One drawn chevron for every disclosure. Reveal is transform-only so a paused WebView never leaves content invisible. */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details:not(.mx-job-row) > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--mx-ink);
+  font-weight: 500;
+  transition: color 150ms var(--mx-ease);
+}
+details:not(.mx-job-row) > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 3px 2px 1px;
+  border-right: 1.5px solid var(--mx-muted);
+  border-bottom: 1.5px solid var(--mx-muted);
+  transform: rotate(-45deg);
+  transition: transform 180ms var(--mx-ease);
+}
+details[open]:not(.mx-job-row) > summary::before {
+  transform: rotate(45deg);
+  margin-bottom: 4px;
+}
+details[open]:not(.mx-job-row) > :not(summary) {
+  animation: mx-reveal 200ms var(--mx-ease) both;
+}
+@keyframes mx-reveal {
+  from {
+    transform: translateY(-4px);
+  }
+  to {
+    transform: none;
+  }
+}
+@media (hover: hover) {
+  details:not(.mx-job-row) > summary:hover {
+    color: var(--mx-brand);
+  }
+}
+.mx-prose {
+  font-size: 12px;
+  line-height: 1.95;
+  color: var(--mx-muted);
+}
+.mx-prose li + li {
+  margin-top: 9px;
+}
+.mx-prose h3 {
+  color: var(--mx-ink);
+  margin: 18px 0 8px;
+  font-size: 13px;
+}
+.mantine-Input-input,
+.mantine-PasswordInput-input {
+  background: var(--mx-surface);
+  border-color: var(--mx-border);
+  color: var(--mx-ink);
+}
+.mantine-Input-input::placeholder,
+.mantine-InputPlaceholder-placeholder {
+  color: var(--mx-muted);
+  opacity: 1;
+}
+.mantine-InputWrapper-label {
+  font-size: 12px;
+  margin-bottom: 6px;
+  font-weight: 550;
+}
+.mantine-InputWrapper-description {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.mantine-Modal-content,
+.mantine-Modal-header,
+.mantine-Drawer-content,
+.mantine-Drawer-header,
+.mantine-Menu-dropdown,
+.mantine-Combobox-dropdown {
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+}
+.mantine-Modal-title,
+.mantine-Drawer-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.mantine-Button-root,
+.mantine-ActionIcon-root {
+  transition:
+    background 130ms,
+    border-color 130ms,
+    transform 100ms var(--mx-ease);
+}
+.mantine-Button-root:not(:disabled):active,
+.mantine-ActionIcon-root:not(:disabled):active {
+  transform: scale(0.98);
+}

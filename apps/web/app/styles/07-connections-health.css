@@ -1,0 +1,306 @@
+/* Connections, preferences, and durable data tasks. */
+.mx-connection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.mx-model-connections {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+}
+.mx-connection-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid var(--mx-border);
+  border-radius: 9px;
+  background: var(--mx-canvas);
+}
+.mx-connection-card h3 {
+  font-size: 20px;
+  font-weight: 550;
+  letter-spacing: -0.4px;
+  margin-top: 8px;
+}
+.mx-connection-card > p {
+  font-size: 12px;
+  color: var(--mx-muted);
+  overflow-wrap: anywhere;
+}
+.mx-connection-card > .mantine-Button-root {
+  align-self: flex-start;
+  margin-top: 10px;
+}
+.mx-connection-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  color: var(--mx-brand);
+  background: var(--mx-brand-soft);
+}
+.mx-setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-setting-row:first-child {
+  padding-top: 0;
+}
+.mx-setting-row:last-child {
+  border-bottom: 0;
+}
+.mx-setting-row > div:first-child {
+  min-width: 0;
+}
+.mx-setting-row h3,
+.mx-danger-zone h3,
+.mx-import-drop h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.mx-setting-row p,
+.mx-danger-zone p,
+.mx-import-drop p {
+  margin: 7px 0;
+  color: var(--mx-muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.mx-setting-row .mantine-Switch-root {
+  flex-shrink: 0;
+}
+.mx-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 16px;
+}
+.mx-section-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.mx-body-copy {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.mx-danger-zone {
+  border-top: 1px solid var(--mx-border);
+  padding-top: 24px;
+  margin-top: 16px;
+}
+.mx-danger-zone .mantine-Button-root {
+  margin-top: 12px;
+}
+.mx-details {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.mx-details > summary {
+  padding: 14px 0;
+  color: var(--mx-brand);
+  font-weight: 600;
+}
+.mx-import-drop {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 12px 18px;
+  border: 1px dashed var(--mx-border);
+  background: var(--mx-canvas);
+  padding: 22px;
+  border-radius: 10px;
+}
+.mx-import-drop > svg {
+  color: var(--mx-brand);
+}
+.mx-import-drop > .mantine-InputWrapper-root {
+  grid-column: 2;
+}
+.mx-import-drop > .mantine-Button-root {
+  grid-column: 2;
+  justify-self: start;
+}
+.mx-health-hero {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 28px;
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  background: var(--mx-soft);
+}
+.mx-health-symbol {
+  flex-shrink: 0;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--mx-surface);
+  color: var(--mx-warning);
+  display: grid;
+  place-items: center;
+}
+.mx-health-ready .mx-health-symbol {
+  color: var(--mx-up);
+}
+.mx-health-hero h2 {
+  font-size: 23px;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+}
+.mx-health-hero p {
+  font-size: 12px;
+  color: var(--mx-muted);
+  line-height: 1.8;
+  margin: 8px 0 12px;
+}
+.mx-health-hero > .mx-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.mx-job-list {
+  margin-top: 22px;
+}
+.mx-job-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--mx-border);
+  padding: 20px 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.mx-job-row:hover {
+  background: var(--mx-soft);
+}
+.mx-job-name {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+.mx-job-name > strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.mx-job-icon {
+  flex-shrink: 0;
+}
+.mx-job-duration {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.mx-job-meta small {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-stage-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.mx-stage-list li {
+  display: flex;
+  gap: 18px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-stage-list li > div {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.mx-stage-list li p {
+  color: var(--mx-muted);
+  margin-top: 8px;
+}
+.mx-stage-number {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  height: 30px;
+  width: 30px;
+  border: 1px solid var(--mx-border);
+  border-radius: 50%;
+  font-size: 12px;
+  color: var(--mx-muted);
+}
+.mx-stage-complete {
+  background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface));
+  color: var(--mx-up);
+  border-color: transparent;
+}
+@media (max-width: 767px) {
+  .mx-connection-grid,
+  .mx-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .mx-connection-card {
+    padding: 18px;
+  }
+  .mx-health-hero {
+    padding: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .mx-health-symbol {
+    width: 48px;
+    height: 48px;
+  }
+  .mx-health-hero > div:nth-child(2) {
+    flex: 1;
+  }
+  .mx-health-hero h2 {
+    font-size: 19px;
+  }
+  .mx-health-hero > .mx-tag {
+    margin-left: 64px;
+  }
+  .mx-job-row {
+    gap: 10px;
+  }
+  .mx-job-duration {
+    display: none;
+  }
+  .mx-import-drop {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+  .mx-import-drop > .mantine-InputWrapper-root,
+  .mx-import-drop > .mantine-Button-root {
+    grid-column: 1;
+  }
+  .mx-setting-row {
+    gap: 16px;
+  }
+}
+.mx-drawer-nav .mx-nav-link {
+  color: var(--mx-ink);
+}
+.mx-drawer-nav .mx-nav-link[aria-current] {
+  color: var(--mx-nav-active-ink);
+}
+.mx-grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+@media (max-width: 959px) {
+  .mx-grid-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

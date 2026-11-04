@@ -16846,7 +16846,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.21.1"
+    "version": "1.21.2"
   },
   "openapi": "3.1.0",
   "paths": {
