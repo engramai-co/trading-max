@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from services.api.trading_max_api.projections.day_change import DayChange, holding_day_changes
+from services.api.trading_max_api.projections.day_change import (
+    DayChange,
+    holding_day_changes,
+    within_trading_days,
+)
 
 OBSERVED = "2026-11-04T15:50:00Z"
 
@@ -18,12 +22,15 @@ def _row(
     return row
 
 
-def _attribution(*rows: dict[str, object], as_of: str = OBSERVED, day: str = "2026-11-04"):
+def _attribution(
+    *rows: dict[str, object],
+    as_of: str = OBSERVED,
+    day: str = "2026-11-04",
+    since: str = "2026-11-04T00:00:00Z",
+):
     return {
         "day": day,
-        "accounts": {
-            "A": {"since": "2026-11-04T00:00:00Z", "as_of": as_of, "contributions": list(rows)}
-        },
+        "accounts": {"A": {"since": since, "as_of": as_of, "contributions": list(rows)}},
     }
 
 
@@ -115,11 +122,69 @@ def test_a_different_known_listing_is_never_joined_by_ticker():
             ),
             {"A": _account(_position("NVDA"), fetched_at="2026-11-06T20:00:00Z")},
         ),
+        # Opened at Friday's observation and measured at Monday's first: the move
+        # between them is not Monday's change.
+        (
+            _attribution(
+                _row("NVDA", "10.00", "100.00"),
+                since="2026-11-06T16:00:00Z",
+                as_of="2026-11-09T08:10:00Z",
+                day="2026-11-09",
+            ),
+            {"A": _account(_position("NVDA"), fetched_at="2026-11-09T08:10:00Z")},
+        ),
+        # An opening after the observation it was measured at.
+        (
+            _attribution(_row("NVDA", "1.00", "10.00"), since="2026-11-04T16:00:00Z"),
+            {"A": _account(_position("NVDA"))},
+        ),
         (_attribution(_row("NVDA", "1.00", "10.00")), {"A": {"positions": [_position("NVDA")]}}),
     ],
 )
 def test_missing_stale_or_unmatched_attribution_gives_no_day_change(attribution, accounts):
     assert holding_day_changes(attribution, accounts) == {}
+
+
+def test_a_weekend_observation_keeps_fridays_opening_and_day():
+    changes = holding_day_changes(
+        _attribution(
+            _row("NVDA", "4.00", "100.00"),
+            since="2026-11-06T08:00:00Z",
+            as_of="2026-11-07T10:00:00Z",
+            day="2026-11-06",
+        ),
+        {"A": _account(_position("NVDA"), fetched_at="2026-11-07T10:00:00Z")},
+    )
+    assert changes["A"] == [DayChange(4.0, pytest.approx(0.04), "2026-11-06")]
+
+
+def test_attributions_keep_only_accounts_measured_within_their_own_trading_days():
+    def entry(since: str, as_of: str) -> dict[str, object]:
+        return {"since": since, "as_of": as_of, "contributions": []}
+
+    # Written before openings were kept per account: A opened at Friday's
+    # observation under Monday, while B opened on Monday.
+    day = {
+        "schema_version": 1,
+        "day": "2026-11-09",
+        "accounts": {
+            "A": entry("2026-11-06T16:00:00Z", "2026-11-09T08:10:00Z"),
+            "B": entry("2026-11-09T08:00:00Z", "2026-11-09T08:10:00Z"),
+        },
+    }
+    assert within_trading_days(day) == {**day, "accounts": {"B": day["accounts"]["B"]}}
+    # A's 5D chain starts before the window; B is still on Friday, inside it.
+    window = {
+        "start_day": "2026-11-03",
+        "day": "2026-11-09",
+        "accounts": {
+            "A": entry("2026-11-02T16:00:00Z", "2026-11-09T08:10:00Z"),
+            "B": entry("2026-11-03T08:00:00Z", "2026-11-06T16:00:00Z"),
+        },
+    }
+    assert set(within_trading_days(window)["accounts"]) == {"B"}
+    assert within_trading_days({"accounts": day["accounts"]})["accounts"] == {}
+    assert within_trading_days(None) is None
 
 
 def test_the_same_observation_matches_across_timestamp_spellings():

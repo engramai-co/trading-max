@@ -24,6 +24,7 @@ from ..dashboard_models import (
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
 from ..history_reader import HistorySnapshot
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
+from ..projections.day_change import within_trading_days
 from .dependencies import app_service, latest_or_503
 
 router = APIRouter()
@@ -43,21 +44,27 @@ def _portfolio_day(value: str) -> date | None:
 
 
 def _day_attribution(request: Request, run_id: str) -> DayAttribution | None:
-    """Optional: older snapshots and unreconciled days have no attribution."""
+    """Optional: older snapshots and unreconciled days have no attribution.
+
+    Accounts measured from an opening on another trading day are left out.
+    """
 
     try:
         payload = request.app.state.store.read_json(run_id, "account/attribution/day.json")
-        return DayAttribution.model_validate(payload)
+        return DayAttribution.model_validate(within_trading_days(payload))
     except (FileNotFoundError, TypeError, ValueError):
         return None
 
 
 def _window_attribution(request: Request, run_id: str) -> WindowAttribution | None:
-    """Optional like the day attribution; snapshots before 5D attribution have none."""
+    """Optional like the day attribution; snapshots before 5D attribution have none.
+
+    Accounts whose chain starts before the window are left out.
+    """
 
     try:
         payload = request.app.state.store.read_json(run_id, "account/attribution/window.json")
-        return WindowAttribution.model_validate(payload)
+        return WindowAttribution.model_validate(within_trading_days(payload))
     except (FileNotFoundError, TypeError, ValueError):
         return None
 

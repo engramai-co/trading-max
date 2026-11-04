@@ -4978,7 +4978,7 @@
         "type": "object"
       },
       "DayAttribution": {
-        "description": "Accounts appear only when their position detail reconciled at both ends.",
+        "description": "Accounts appear only when their position detail reconciled at both ends and\nboth their opening and latest observation fall on this trading day.",
         "properties": {
           "accounts": {
             "additionalProperties": {
@@ -16893,7 +16893,7 @@
         "type": "object"
       },
       "WindowAttribution": {
-        "description": "The 5D window: daily openings chained from the first available one in the window.",
+        "description": "The 5D window: daily openings chained from the first available one in the\nwindow. Accounts appear only when that opening and their latest observation fall\nwithin the window's trading days.",
         "properties": {
           "accounts": {
             "additionalProperties": {
