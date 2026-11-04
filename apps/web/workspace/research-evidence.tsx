@@ -6,7 +6,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
-import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { compact, compactTick, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Facts, Metric, Panel, Segments, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
@@ -18,6 +18,7 @@ import { categoricalChartColours } from "@/ui/charts/palette";
 
 export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const trend = params.get("segmentView") === "trend";
   const shares = params.get("segmentScale") === "share";
@@ -220,7 +221,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               axisLabel: {
                 color: c.axis,
                 formatter: (n: number) =>
-                  indexed ? number(n, 0) : shares ? percent(n) : compact(n),
+                  indexed ? number(n, 0) : shares ? percent(n) : compactTick(n, locale),
               },
               splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
@@ -237,7 +238,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
                         : str(selected[0]?.currency)),
                   ...entries.map(
                     (e) =>
-                      `${chartName(String(e.seriesName))}   ${shares ? percent(e.value, false, 2) : chartNumber(e.value)}`,
+                      `${chartName(String(e.seriesName))}   ${shares ? percent(e.value, false, 2) : chartNumber(e.value, locale)}`,
                   ),
                 ].join("\n");
               },
@@ -332,7 +333,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
                   </th>
                   <td>
                     <span title={number(current, 0) + " " + str(s.currency)}>
-                      {compact(current)}
+                      {compact(current, locale)}
                     </span>
                   </td>
                   <td>{reconciled ? percent(s.share) : "—"}</td>
@@ -422,10 +423,10 @@ export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
               t("机构持股", "Institutional ownership"),
               percent(info.heldPercentInstitutions),
             ],
-            [t("流通股数", "Public float"), compact(info.floatShares)],
+            [t("流通股数", "Public float"), compact(info.floatShares, locale)],
             [
               t("总股数", "Shares outstanding"),
-              compact(info.sharesOutstanding),
+              compact(info.sharesOutstanding, locale),
             ],
           ]}
         />
@@ -451,10 +452,10 @@ export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
               percent(info.shortPercentOfFloat),
             ],
             [t("回补天数", "Days to cover"), number(info.shortRatio, 2)],
-            [t("空头股数", "Shares short"), compact(info.sharesShort)],
+            [t("空头股数", "Shares short"), compact(info.sharesShort, locale)],
             [
               t("上期空头股数", "Prior shares short"),
-              compact(info.sharesShortPriorMonth),
+              compact(info.sharesShortPriorMonth, locale),
             ],
           ]}
         />

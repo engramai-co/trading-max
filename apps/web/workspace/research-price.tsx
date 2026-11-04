@@ -9,7 +9,7 @@ import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { Legend, Plot } from "./charts";
-import { compact, number, object, objects, percent, str } from "@/workspace/data";
+import { compact, compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -202,7 +202,8 @@ export function PriceHistory({
             )
             .map((v) => ({
               value: v,
-              label: v === "ALL" ? t("全部记录", "Available") : v,
+              // Same word as the portfolio periods; it fits a phone row of 44px cells.
+              label: v === "ALL" ? t("全部", "All") : v,
             }))}
         />
         <Group gap="xs">
@@ -660,7 +661,7 @@ export function PriceHistory({
                                 `O ${number(p.open, 2)}   H ${number(p.high, 2)}   L ${number(p.low, 2)}`,
                               ]
                             : []),
-                          `${t("成交量", "Volume")}  ${compact(p.volume)}`,
+                          `${t("成交量", "Volume")}  ${compact(p.volume, locale)}`,
                           ...(averages
                             ? (["sma20", "sma50", "sma200"] as const)
                                 .filter((k) =>
@@ -721,8 +722,8 @@ export function PriceHistory({
                     showMinLabel: pane !== "volume" && i === panes.length - 1 ? undefined : false,
                     formatter: (v: number) =>
                       pane === "volume"
-                        ? t("量 ", "Vol ") + compact(v)
-                        : pane === "price" && normalized ? percent(v) : compact(v),
+                        ? t("量 ", "Vol ") + compactTick(v, locale)
+                        : pane === "price" && normalized ? percent(v) : compactTick(v, locale),
                   },
                   splitLine: {
                     show: pane !== "volume",

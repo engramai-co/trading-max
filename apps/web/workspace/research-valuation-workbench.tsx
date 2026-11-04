@@ -17,6 +17,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -129,6 +130,7 @@ function ModelEditor({
   onRetry?: () => void;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const client = useQueryClient();
   const { params, update } = useRouteState("push");
   const horizon = params.has("horizon")
@@ -300,11 +302,11 @@ function ModelEditor({
         >
           <div className="mx-metric-grid">
             <Metric
-              label={t("TTM 营收", "TTM revenue")}
-              value={compact(result.basis.revenue)}
+              label={t("营收", "Revenue")}
+              value={compact(result.basis.revenue, locale)}
             />
             <Metric
-              label={t("TTM 现金流率", "TTM cash-flow margin")}
+              label={t("现金流率", "Cash-flow margin")}
               value={percent(result.basis.startMargin, false, 2)}
             />
           </div>
@@ -320,13 +322,13 @@ function ModelEditor({
                 ],
                 [
                   t("现金及短期投资", "Cash & short-term investments"),
-                  compact(latestFact("cash")) +
+                  compact(latestFact("cash"), locale) +
                     " " +
                     (data.financialFacts?.currency ?? ""),
                 ],
                 [
                   t("总债务", "Total debt"),
-                  compact(latestFact("debt")) +
+                  compact(latestFact("debt"), locale) +
                     " " +
                     (data.financialFacts?.currency ?? ""),
                 ],

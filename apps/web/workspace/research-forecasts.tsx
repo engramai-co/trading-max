@@ -2,6 +2,7 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Group } from "@mantine/core";
+import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -38,6 +39,7 @@ export function forecastPeriodLabel(
 
 export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const period =
     params.get("estimateFrequency") === "year" ? "year" : "quarter";
@@ -96,7 +98,7 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
             numeric(value) == null
               ? "—"
               : measure.revenue
-                ? compact(value)
+                ? compact(value, locale)
                 : code
                   ? currency(value, code, 2)
                   : number(value, 2);

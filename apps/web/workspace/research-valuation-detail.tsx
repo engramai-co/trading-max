@@ -129,10 +129,10 @@ export function ValuationWorksheet({
                 <tr key={y.year}>
                   <th>{y.year}</th>
                   <td>{percent(y.growth)}</td>
-                  <td>{compact(y.revenue)}</td>
+                  <td>{compact(y.revenue, locale)}</td>
                   <td>{percent(y.fcfMargin)}</td>
-                  <td>{compact(y.freeCashflow)}</td>
-                  <td>{compact(y.shares)}</td>
+                  <td>{compact(y.freeCashflow, locale)}</td>
+                  <td>{compact(y.shares, locale)}</td>
                   <td>{number(y.cashflowPerShare, 2)}</td>
                   <td>{number(y.presentValue, 2)}</td>
                 </tr>

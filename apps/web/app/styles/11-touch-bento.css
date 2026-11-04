@@ -22,6 +22,101 @@
     padding-block: 10px;
   }
 }
+/* Touch: tabs and segments tile their row in cells of at least 44 × 44px, so no tap lands in a gap. */
+@media (pointer: coarse) {
+  .mx-tabs {
+    gap: 0;
+  }
+  /* The pointer layout's 26px gap becomes padding; the outer labels keep their place. */
+  .mx-tabs button {
+    min-width: 44px;
+    padding-inline: 13px;
+  }
+  .mx-tabs button:first-of-type {
+    padding-left: 1px;
+  }
+  .mx-tabs button:last-of-type {
+    padding-right: 1px;
+  }
+  .mx-segments {
+    /* Equal cells as wide as the longest label (measured by Segments); a full row wraps and each row fills. */
+    --mx-segment-cell: max(44px, calc(var(--mx-segment-label, 24px) + 20px));
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 0;
+  }
+  .mx-segments button {
+    flex: 1 0 0;
+    min-width: var(--mx-segment-cell);
+    min-height: 44px;
+    padding: 7px 10px;
+  }
+  /* The pill keeps its inset inside the larger cell. */
+  .mx-segments > .mx-indicator {
+    background: transparent;
+    box-shadow: none;
+  }
+  .mx-segments > .mx-indicator::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 6px;
+    background: var(--mx-surface);
+    box-shadow: 0 1px 3px rgb(17 24 39 / 8%);
+  }
+}
+/* Phones: tabs share the row in equal cells. A row that cannot fit (zh below 360px, most English rows) keeps one
+   scrolling row with the edge fade and the selected tab revealed: wrapped rows would read as two levels of lenses. */
+@media (pointer: coarse) and (max-width: 767px) {
+  .mx-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(max-content, 1fr);
+  }
+  .mx-tabs button,
+  .mx-tabs button:first-of-type,
+  .mx-tabs button:last-of-type {
+    padding-inline: 8px;
+  }
+  /* The eight periods span the panel edge to edge: 44px cells at 390px, no scrolling. */
+  .mx-period-control {
+    width: 100%;
+    container: mx-period / inline-size;
+  }
+  .mx-period-control > .mx-segments {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    width: calc(100% + 36px);
+    max-width: none;
+    margin-inline: -18px;
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .mx-period-control > .mx-segments > button {
+    min-width: 0;
+  }
+}
+/* The band is the control plus its 36px bleed. Narrower than eight 44px cells, the periods take two full rows of four. */
+@container mx-period (width < 316px) {
+  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) > button {
+    flex: 1 0 25%;
+  }
+}
+/* Seven periods (returns has no 1D) keep one row while seven 44px cells fit, then take rows of four and three. */
+@container mx-period (width < 272px) {
+  .mx-period-control > .mx-segments {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-period-control > .mx-segments > button {
+    flex: 1 0 25%;
+  }
+}
 /* Layout names the page: tools take the heading row; the security leads with its price. */
 .mx-page-tools {
   justify-content: flex-start;
@@ -34,17 +129,6 @@
 .mx-page-tools .mx-page-actions {
   justify-content: flex-start;
   gap: 8px;
-}
-.mx-research-switcher .mantine-Button-label {
-  gap: 8px;
-}
-.mx-research-switcher .mantine-Button-label > span {
-  max-width: 26ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--mx-muted);
-  font-weight: 400;
 }
 .mx-security-panel .mx-security-price strong {
   display: inline;
@@ -165,19 +249,6 @@
   }
 }
 @media (max-width: 700px) {
-  .mx-page-tools .mx-research-switcher {
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-  .mx-research-switcher .mantine-Button-inner {
-    justify-content: space-between;
-  }
-  .mx-research-switcher .mantine-Button-label {
-    min-width: 0;
-  }
-  .mx-research-switcher .mantine-Button-label > span {
-    max-width: none;
-  }
   .mx-period-control {
     justify-content: flex-start;
   }
@@ -305,4 +376,30 @@
 }
 .mx-peek .mx-facts > div {
   padding: 8px 0;
+}
+/* Look-through pages: the pager takes the row's free width, so narrow rows switch to « ‹ 2 / 44 › ». */
+.mx-exposure-paging > nav {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mx-exposure-paging-top {
+  margin: 0 0 4px;
+  scroll-margin-top: calc(80px + env(safe-area-inset-top));
+}
+@media (max-width: 767px) {
+  /* Phones: the pager takes its own row and 显示全部 sits below it. */
+  .mx-exposure-paging > nav {
+    flex-basis: 100%;
+  }
+}
+/* The compact « ‹ 2 / 87 › » tightens its gaps, so it keeps one row down to 320px. */
+@container (width <= 400px) {
+  .mx-exposure-paging .mantine-Pagination-root > .mantine-Group-root {
+    gap: 4px;
+  }
+}
+@media (pointer: coarse) {
+  .mx-exposure-paging .mantine-Pagination-root {
+    --pagination-control-size: 44px;
+  }
 }

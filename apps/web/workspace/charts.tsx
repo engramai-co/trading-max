@@ -111,7 +111,8 @@ export function Plot({
         shadowOffsetY: 4,
         padding: 12,
         confine: true,
-        valueFormatter: (value) => chartNumber(value),
+        // Research charts read in the reader's units; portfolio charts keep theirs.
+        valueFormatter: (value) => chartNumber(value, research ? locale : "en"),
         axisPointer: {
           type: "line",
           lineStyle: { color: colours.axis, type: "dashed" },
@@ -125,7 +126,7 @@ export function Plot({
       animationDuration: 350,
       animationDurationUpdate: 180,
     };
-  }, [colours, option, reduced]);
+  }, [colours, option, reduced, research, locale]);
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;

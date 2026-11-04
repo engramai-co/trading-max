@@ -28,6 +28,10 @@
   color: var(--mx-ink);
   font-weight: 600;
 }
+/* Measured by Segments, so touch cells fit the longest label. */
+.mx-segment-label {
+  display: inline-block;
+}
 .mx-segments > .mx-indicator {
   position: absolute;
   z-index: 0;

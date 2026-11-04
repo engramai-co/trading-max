@@ -25,6 +25,7 @@ export { AnalystView } from "./research-analyst";
 export { CompanyOverview } from "./research-overview";
 export function TechnicalView({ data, embedded = false }: { data: ResearchLensSnapshot; embedded?: boolean }) {
   const { params, update } = useRouteState("push");
+  const { locale } = useLocale();
   const t = useCopy(),
     tech = data.technical;
   const benchmark = ["spy", "qqq", "soxx"].includes(
@@ -200,10 +201,10 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
           <h3>{t("量能与相对表现", "Volume & relative performance")}</h3>
           <Facts
             rows={[
-              [t("日成交量", "Session volume"), compact(tech.volume)],
+              [t("日成交量", "Session volume"), compact(tech.volume, locale)],
               [
                 t("20 日均量", "20-session average volume"),
-                compact(tech.averageVolume20d),
+                compact(tech.averageVolume20d, locale),
               ],
               [
                 t("成交量 / 20 日均量", "Volume / 20-session average"),

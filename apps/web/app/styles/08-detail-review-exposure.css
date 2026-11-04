@@ -150,12 +150,6 @@ button.mx-text-link {
     flex-direction: row;
     align-items: flex-start;
   }
-  .mx-segments {
-    flex-wrap: wrap;
-  }
-  .mx-segments button {
-    min-height: 40px;
-  }
 }
 
 /* Consensus and target context share one reading surface. */
