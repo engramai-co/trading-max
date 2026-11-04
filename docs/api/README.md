@@ -15,7 +15,7 @@ schema. CI rejects drift on either side.
 | Group | Prefix | Purpose |
 |---|---|---|
 | Health | `/health`, `/ready` | JSON health and runtime readiness; HTTP 200 alone is not readiness |
-| Dashboard | `/v1/dashboard/lens/` | Small overview, holdings, analytics, and account projections |
+| Dashboard | `/v1/dashboard/lens/` | Overview, holdings, analytics, and account projections; pass `detail=summary` |
 | Portfolio history | `/v1/dashboard/history` | Snapshot-pinned NAV and cash-flow history for the selected range/scope |
 | Research | `/v1/research/` | Directory, ticker shell, lenses, prices, history, events, models, impact, and alerts |
 | Watchlist | `/v1/watchlist` | Local ticker collection and per-ticker refresh |
@@ -28,9 +28,12 @@ schema. CI rejects drift on either side.
 
 The legacy aggregate `/v1/dashboard` remains a typed compatibility surface.
 Interactive pages use interface-lens endpoints so unrelated price histories and
-research payloads are not transferred on every navigation. Overview and
-performance use `detail=summary`; their separate history request must retain
-the returned `runId`. The [history data flow](../architecture/interface-lenses.md#on-demand-portfolio-history)
+research payloads are not transferred on every navigation. Pass `detail=summary`
+unless you need the embedded history: the compatible default, `detail=full`, also
+returns the complete NAV and intraday history, which reaches many megabytes on a
+long-running installation (about 15 MB for the account-analysis lens after a
+year of 10-minute snapshots). Read history from `/v1/dashboard/history` and keep
+the lens's returned `runId`. The [history data flow](../architecture/interface-lenses.md#on-demand-portfolio-history)
 distinguishes the typed API response from the Next.js chart/detail projection.
 
 Both health routes can return HTTP 200 with `degraded` / `not_ready`. Check the

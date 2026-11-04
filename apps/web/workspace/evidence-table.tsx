@@ -99,15 +99,9 @@ export function EvidenceTable<T>({
         </table>
       </div>
       {pages > 1 && (
-        <Pagination
-          total={pages}
-          value={current}
-          onChange={setPage}
-          withEdges
-          mt="md"
-          aria-label={t("记录分页", "Record pages")}
-          getControlProps={paginationLabels}
-        />
+        <nav aria-label={t("记录分页", "Record pages")}>
+          <Pagination total={pages} value={current} onChange={setPage} withEdges mt="md" getControlProps={paginationLabels} />
+        </nav>
       )}
     </>
   );

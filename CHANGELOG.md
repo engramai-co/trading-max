@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.21.3] - 2026-11-04
+
+### Fixed
+
+- A security without a logo no longer produces a failed request in the browser
+  console: the logo route answers 204 and the mark shows the ticker monogram.
+- The pointer-only security preview no longer puts popup roles on a plain
+  wrapper (axe `aria-allowed-attr`), and paginated record tables label a
+  navigation landmark instead of a role-less element.
+
+### Changed
+
+- The dashboard lens `detail` parameter now documents its cost in the
+  OpenAPI contract and API guide: interactive clients and agents should pass
+  `detail=summary`; the compatible `full` default also embeds the complete
+  history.
+- The installed model-bridge test is skipped with a clear reason when the
+  bridge dependencies are not installed locally (`npm run llm:install`); CI
+  always runs it.
+
 ## [1.21.2] - 2026-11-04
 
 ### Changed

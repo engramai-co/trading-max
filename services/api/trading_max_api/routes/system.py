@@ -201,7 +201,16 @@ def dashboard_lens(
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
-    detail: Literal["full", "summary"] = "full",
+    detail: Literal["full", "summary"] = Query(
+        default="full",
+        description=(
+            "summary returns the page projection without NAV and intraday history; "
+            "interactive clients and agents should use it and read history from "
+            "/v1/dashboard/history. full (the compatible default) also embeds the "
+            "complete history, which grows with every snapshot and can reach many "
+            "megabytes on a long-running installation."
+        ),
+    ),
 ) -> DashboardLensSnapshot:
     manifest = latest_or_503(request)
     dashboard_data = request.app.state.cached_dashboard(
