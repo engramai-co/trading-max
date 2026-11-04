@@ -73,6 +73,40 @@ def test_shares_traded_during_the_day_stay_out_of_the_position_contribution():
     assert _contributions(attribution) == {"NVDA": Decimal("-100.00")}
 
 
+def test_contribution_carries_the_opening_value_of_the_shares_it_covers():
+    opening, first = update_day_attribution(
+        None,
+        {
+            "A": _account(
+                "2026-11-02T07:10:00Z", ("NVDA", "10", "1500.00"), ("SOFI", "50", "500.00")
+            )
+        },
+    )
+    assert {row.ticker: row.opening_value_gbp for row in first.accounts["A"].contributions} == {
+        "NVDA": Decimal("1500.00"),
+        "SOFI": Decimal("500.00"),
+    }
+    # Bought 5 more NVDA and sold 20 SOFI: only the shares held all day count,
+    # valued at the opening price, so the change reads as that price move.
+    _, attribution = update_day_attribution(
+        opening.model_dump(mode="json", by_alias=False),
+        {
+            "A": _account(
+                "2026-11-02T15:40:00Z", ("NVDA", "15", "2100.00"), ("SOFI", "30", "330.00")
+            )
+        },
+    )
+    rows = {row.ticker: row for row in attribution.accounts["A"].contributions}
+    assert (rows["NVDA"].contribution_gbp, rows["NVDA"].opening_value_gbp) == (
+        Decimal("-100.00"),
+        Decimal("1500.00"),
+    )
+    assert (rows["SOFI"].contribution_gbp, rows["SOFI"].opening_value_gbp) == (
+        Decimal("30.00"),
+        Decimal("300.00"),
+    )
+
+
 def test_new_trading_day_resets_the_baseline():
     opening, _ = update_day_attribution(
         None, {"A": _account("2026-11-02T07:10:00Z", ("NVDA", "10", "1500.00"))}
@@ -155,6 +189,8 @@ def test_window_chains_daily_openings_across_days():
     )
     # Monday segment: 10 shares x (145 - 150) = -50; Tuesday: 20 x (150 - 145) = +100.
     assert _contributions(window) == {"NVDA": Decimal("50.00")}
+    # A chained total has no single opening to compare it with.
+    assert window.accounts["A"].contributions[0].opening_value_gbp is None
     assert window.start_day.isoformat() == "2026-10-28"
     assert window.accounts["A"].since.isoformat().startswith("2026-11-02T07:10")
 

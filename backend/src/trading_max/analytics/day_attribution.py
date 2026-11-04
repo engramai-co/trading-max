@@ -54,6 +54,10 @@ class PositionContribution(DomainModel):
     ticker: str
     name: str
     contribution_gbp: Decimal
+    # Value of the shares held through the window at its opening, so a consumer
+    # can state the change as a share of it. Only the 1D attribution carries it;
+    # a chained 5D total has no single opening.
+    opening_value_gbp: Decimal | None = None
 
 
 class AccountDayAttribution(DomainModel):
@@ -150,12 +154,14 @@ def _contributions(
         if end is None or start.quantity <= 0 or end.quantity <= 0:
             continue
         held = min(start.quantity, end.quantity)
-        change = held * (end.value_gbp / end.quantity - start.value_gbp / start.quantity)
+        opening_price = start.value_gbp / start.quantity
+        change = held * (end.value_gbp / end.quantity - opening_price)
         rows.append(
             PositionContribution(
                 ticker=end.ticker,
                 name=end.name,
                 contribution_gbp=change.quantize(CENT),
+                opening_value_gbp=(held * opening_price).quantize(CENT),
             )
         )
     rows.sort(key=lambda row: (-abs(row.contribution_gbp), row.ticker))
@@ -238,20 +244,18 @@ def update_window_attribution(
         if not chain:
             continue
         points = [*chain, (_timestamp(account["fetched_at"]), current)]
-        totals: dict[str, PositionContribution] = {}
+        totals: dict[str, tuple[str, Decimal]] = {}
         for (_, start), (_, end) in pairwise(points):
             for row in _contributions(start, end):
-                entry = totals.get(row.ticker)
-                totals[row.ticker] = (
-                    row
-                    if entry is None
-                    else PositionContribution(
-                        ticker=row.ticker,
-                        name=row.name,
-                        contribution_gbp=entry.contribution_gbp + row.contribution_gbp,
-                    )
-                )
-        rows = sorted(totals.values(), key=lambda row: (-abs(row.contribution_gbp), row.ticker))
+                _, total = totals.get(row.ticker, (row.name, Decimal(0)))
+                totals[row.ticker] = (row.name, total + row.contribution_gbp)
+        rows = sorted(
+            (
+                PositionContribution(ticker=ticker, name=name, contribution_gbp=total)
+                for ticker, (name, total) in totals.items()
+            ),
+            key=lambda row: (-abs(row.contribution_gbp), row.ticker),
+        )
         result[code] = AccountDayAttribution(
             since=chain[0][0], as_of=points[-1][0], contributions=rows
         )

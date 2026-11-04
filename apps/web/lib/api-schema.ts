@@ -3195,6 +3195,10 @@ export interface components {
             currentPrice: number;
             /** Currentvaluegbp */
             currentValueGbp: number;
+            /** Daychangegbp */
+            dayChangeGbp?: number | null;
+            /** Daychangepct */
+            dayChangePct?: number | null;
             /** Dilutedcostcurrency */
             dilutedCostCurrency: string;
             /** Dilutedcostgbp */

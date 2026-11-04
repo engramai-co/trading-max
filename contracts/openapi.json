@@ -6334,6 +6334,28 @@
             "title": "Currentvaluegbp",
             "type": "number"
           },
+          "dayChangeGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daychangegbp"
+          },
+          "dayChangePct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daychangepct"
+          },
           "dilutedCostCurrency": {
             "title": "Dilutedcostcurrency",
             "type": "string"

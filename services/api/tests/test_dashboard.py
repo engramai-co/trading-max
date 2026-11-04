@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from trading_max.analytics.day_attribution import update_day_attribution
 
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.dashboard import build_dashboard_data
@@ -250,6 +251,58 @@ def test_dashboard_exposes_intraday_value_anchors_separately_without_fake_twr(
     assert intraday[0]["cadenceSeconds"] == 600
     assert intraday[0]["priceCadenceSeconds"] == 3600
     assert intraday[-1]["valuationSource"] == "broker"
+
+
+def test_holdings_carry_the_day_change_measured_at_their_own_observation(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    previous = store.immutable_snapshots.latest()
+    assert previous is not None
+
+    def account(fetched_at: str, value: str) -> dict[str, object]:
+        return {
+            "fetched_at": fetched_at,
+            "positions": [
+                {
+                    "ticker": "BE",
+                    "broker_ticker": "BE_US_EQ",
+                    "name": "Bloom Energy",
+                    "quantity": "5",
+                    "current_value_gbp": value,
+                }
+            ],
+        }
+
+    opening, _ = update_day_attribution(None, {"A": account("2026-08-01T07:10:00Z", "960.00")})
+    # Measured at the fixture's 19:00 observation; ISA positions did not reconcile.
+    _, day = update_day_attribution(
+        opening.model_dump(mode="json", by_alias=False),
+        {"A": account("2026-08-01T19:00:00Z", "1000.00")},
+    )
+    attribution = store.immutable_artifacts.put_json(
+        key="account/attribution/day.json",
+        payload=day.model_dump(mode="json", by_alias=False),
+        kind="account_day_attribution",
+        producer_version="test",
+    )
+    store.immutable_snapshots.publish(
+        scope="intraday",
+        source="test",
+        artifacts=[*previous.manifest.artifacts, attribution],
+    )
+
+    payload = build_dashboard_data(store)
+    holdings = {holding["ticker"]: holding for holding in payload["holdings"]}
+    assert holdings["BE"]["dayChangeGbp"] == 40.0
+    assert holdings["BE"]["dayChangePct"] == pytest.approx(40 / 960)
+    assert holdings["XUSE"]["dayChangeGbp"] is None
+    assert holdings["XUSE"]["dayChangePct"] is None
+    validated = DashboardResponse.model_validate(payload)
+    assert validated.holdings[0].day_change_gbp == 40.0
 
 
 def test_dashboard_overlays_live_totals_and_only_reconciled_positions(
