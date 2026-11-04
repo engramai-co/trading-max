@@ -250,7 +250,7 @@ function Exposure({
           <>
             {/* Filters on the left, the view switch on the right, one row. */}
             <div className="mx-toolbar" style={{ margin: "20px 0" }}>
-              <Group gap="sm" wrap="wrap">
+              <Group gap="sm" wrap="wrap" className="mx-exposure-filters">
                 <TextInput
                   className="mx-search-input"
                   value={search}
@@ -277,7 +277,6 @@ function Exposure({
                     ...countries,
                   ]}
                   searchable
-                  w={150}
                 />
                 <Select
                   aria-label={t("行业筛选", "Filter sector")}
@@ -291,7 +290,6 @@ function Exposure({
                     ...sectors,
                   ]}
                   searchable
-                  w={170}
                 />
                 <Select
                   aria-label={t("持有方式", "Ownership")}
@@ -312,7 +310,6 @@ function Exposure({
                       label: t("直接与基金内都有", "Direct and funds"),
                     },
                   ]}
-                  w={160}
                 />
                 <Select
                   aria-label={t("敞口排序", "Sort exposure")}
@@ -333,7 +330,6 @@ function Exposure({
                     },
                     { value: "name", label: t("名称 A–Z", "Name A–Z") },
                   ]}
-                  w={150}
                 />
                 {filtered && (
                   <>
