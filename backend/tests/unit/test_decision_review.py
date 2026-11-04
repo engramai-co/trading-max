@@ -392,6 +392,41 @@ def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:
     assert next_day["decisions"][0]["observed_days"] == 1
 
 
+def test_the_benchmark_runs_to_the_securitys_own_latest_close() -> None:
+    # The listing last traded on 3 Nov; the benchmark's 4 Nov rise is not its window.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-03"))
+    market = pd.Series(400.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))
+    market[pd.Timestamp("2026-11-04")] = 420.0
+    review = _review_from_quotes(
+        [_usd_fill("2026-10-30T15:00:00Z", "Market buy", 10, 1_000)],
+        {"NVDA": quotes},
+        viewed="2026-11-04",
+        market=market,
+    )
+    assert review["decisions"][0]["market_return_to_date"] == 0.0
+
+
+def test_the_benchmark_waits_for_its_own_close_on_the_securitys_latest_day() -> None:
+    # Hong Kong has closed on 4 Nov; New York has not, so the benchmark's latest
+    # close is 3 Nov's and the window has no end on its side yet.
+    days = pd.bdate_range("2026-10-26", "2026-11-04")
+    trades = _trade_columns(
+        pd.DataFrame([_fill("2026-10-28T03:00:00Z", "Market buy", 20, 1_000, "0700")])
+    )
+    identity = trades["SecurityIdentity"].iloc[0]
+    prices = {
+        identity: SecurityPrices(
+            identity, "0700", "Tencent", "0700.HK", pd.Series(50.0, index=days)
+        )
+    }
+    market = pd.Series(400.0, index=days[:-1])
+    waiting = build_decision_review(trades, prices, as_of=days[-1], market=market)
+    assert waiting["decisions"][0]["market_return_to_date"] is None
+    market[days[-1]] = 420.0
+    closed = build_decision_review(trades, prices, as_of=days[-1], market=market)
+    assert closed["decisions"][0]["market_return_to_date"] == pytest.approx(0.05)
+
+
 def test_a_flat_price_after_many_closes_is_a_scored_zero() -> None:
     quotes = pd.Series(100.0, index=pd.bdate_range("2026-01-19", "2026-03-13"))  # pence
     review = _review_from_quotes(

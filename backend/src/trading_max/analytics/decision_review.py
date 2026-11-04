@@ -54,6 +54,19 @@ def _close_on(closes: pd.Series, day: pd.Timestamp) -> tuple[int, float] | None:
     return position, float(closes.iloc[position])
 
 
+def _market_close(market: pd.Series, day: pd.Timestamp) -> float | None:
+    """The benchmark's close as of a security's close, once the benchmark has one.
+
+    A day after the benchmark's latest close has none yet: its session, or its
+    value in pounds, is still to come. A day it did not trade takes its close before.
+    """
+
+    if day > market.index.max():
+        return None
+    found = _close_on(market, day)
+    return None if found is None or found[1] <= 0 else found[1]
+
+
 def _dividends(security: SecurityPrices, start: int, end: int) -> float:
     """Dividends per share with an ex-date after close index start, up to end."""
 
@@ -145,7 +158,9 @@ def build_decision_review(
 
     ``market`` is an optional benchmark close series in GBP; each decision then
     records the benchmark's change over the same window, to separate the
-    market's move from the security's own.
+    market's move from the security's own. The window runs between the
+    security's own closes, and its change is withheld until the benchmark has a
+    close for the window's last day.
     """
 
     fills = trades[
@@ -233,13 +248,16 @@ def build_decision_review(
         latest_return = (latest + paid_to_date) / close - 1.0
         market_horizon = market_to_date = None
         if market is not None and not market.empty:
-            opening = _close_on(market, security.closes.index[position])
-            if opening is not None and opening[1] > 0:
-                closing = _close_on(market, security.closes.index[-1])
-                market_to_date = None if closing is None else closing[1] / opening[1] - 1.0
+            # Both windows run between the security's own closes, not the days
+            # its last close is carried across.
+            quoted = security.quoted
+            opening = _market_close(market, quoted[quoted <= security.closes.index[position]][-1])
+            if opening is not None:
+                closing = _market_close(market, quoted[-1])
+                market_to_date = None if closing is None else closing / opening - 1.0
                 if horizon is not None:
-                    ending = _close_on(market, security.closes.index[horizon])
-                    market_horizon = None if ending is None else ending[1] / opening[1] - 1.0
+                    ending = _market_close(market, security.closes.index[horizon])
+                    market_horizon = None if ending is None else ending / opening - 1.0
         for side, (amount, shares) in legs.items():
             if not amount:
                 unscored += 1

@@ -75,11 +75,16 @@ class SecurityPrices:
     #: them. Only these are closes a decision can be judged by.
     quote_days: pd.DatetimeIndex | None = None
 
+    @property
+    def quoted(self) -> pd.DatetimeIndex:
+        """The days in closes with a close the provider quoted."""
+
+        return self.closes.index if self.quote_days is None else self.quote_days
+
     def closes_after(self, day: pd.Timestamp) -> pd.DatetimeIndex:
         """The days after day with a close the provider quoted; a repeated close never counts."""
 
-        quoted = self.closes.index if self.quote_days is None else self.quote_days
-        return quoted[quoted > day]
+        return self.quoted[self.quoted > day]
 
 
 def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
