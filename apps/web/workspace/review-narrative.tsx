@@ -95,6 +95,8 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
       trapFocus
       returnFocus
       transitionProps={{ duration: 0 }}
+      // Shown from its first frame, so the focus trap can move focus to Keep.
+      hideDetached={false}
       shadow="md"
     >
       <Popover.Target>
