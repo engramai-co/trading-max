@@ -43,7 +43,7 @@ import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { SecurityFinder } from "./research-finder";
 import { FundWorkbench } from "./research-funds";
-import { SecurityHeader } from "./research-header";
+import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
@@ -198,6 +198,15 @@ export function ResearchWorkspace() {
     update({ ticker: value });
     setUniverseOpen(false);
   }
+  // A pinned list is already on screen: switching means searching it.
+  const listOpen = universeOpen || (wide && pinned);
+  function openUniverse() {
+    if (wide && pinned)
+      document
+        .querySelector<HTMLInputElement>(".mx-research-universe input")
+        ?.focus();
+    else setUniverseOpen(true);
+  }
   const position = displayed.findIndex((i) => i.ticker === ticker);
   const previous = position > 0 ? displayed[position - 1] : undefined;
   const next = position >= 0 ? displayed[position + 1] : undefined;
@@ -280,31 +289,18 @@ export function ResearchWorkspace() {
       titleHidden
       actions={
         <>
-          <Button
-            className="mx-universe-toggle mx-research-switcher"
-            variant="default"
-            rightSection={<CaretDown size={14} />}
-            aria-label={t("切换证券", "Switch security")}
-            aria-expanded={universeOpen || (wide && pinned)}
-            onClick={() => {
-              if (wide && pinned)
-                document
-                  .querySelector<HTMLInputElement>(
-                    ".mx-research-universe input",
-                  )
-                  ?.focus();
-              else setUniverseOpen(true);
-            }}
-          >
-            {selected ? (
-              <>
-                <strong>{ticker}</strong>
-                <span>{selected.name}</span>
-              </>
-            ) : (
-              t("研究清单", "Research list")
-            )}
-          </Button>
+          {/* With a security open, its name in the header is the switcher. */}
+          {!selected && (
+            <Button
+              className="mx-universe-toggle"
+              variant="default"
+              rightSection={<CaretDown size={14} />}
+              aria-expanded={listOpen}
+              onClick={openUniverse}
+            >
+              {t("研究清单", "Research list")}
+            </Button>
+          )}
           {selected && (
             <>
               <Tooltip label={<>{t("上一只证券", "Previous security")} <kbd>K</kbd></>}>
@@ -341,6 +337,17 @@ export function ResearchWorkspace() {
               <Plus size={17} />
             </ActionIcon>
           </Tooltip>
+          {selected && (
+            <SecurityActions
+              held={selected.held}
+              categoriesAvailable={Boolean(shell.data?.watchlistCategories.length)}
+              busy={operation.isPending || fetching}
+              pending={operation.isPending}
+              onRefresh={() => operation.mutate({ action: "refresh" })}
+              onManage={() => setManage(true)}
+              onRemove={() => setRemoveConfirm(true)}
+            />
+          )}
         </>
       }
     >
@@ -436,12 +443,8 @@ export function ResearchWorkspace() {
                   ticker={ticker}
                   selected={selected}
                   quote={quote}
-                  categoriesAvailable={Boolean(shell.data?.watchlistCategories.length)}
-                  busy={operation.isPending || fetching}
-                  pending={operation.isPending}
-                  onRefresh={() => operation.mutate({ action: "refresh" })}
-                  onManage={() => setManage(true)}
-                  onRemove={() => setRemoveConfirm(true)}
+                  listOpen={listOpen}
+                  onSwitch={openUniverse}
                 />
                 <Tabs
                   label={t("证券研究视角", "Security research perspective")}

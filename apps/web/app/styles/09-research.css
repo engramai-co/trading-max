@@ -11,13 +11,69 @@
 }
 .mx-security-panel {
   padding-block: 18px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
-  align-items: center;
 }
 .mx-security-panel .mx-security-name h2 {
   font-size: 24px;
+}
+/* The name is the switcher: it reads as the heading and opens the research list. */
+.mx-security-switcher {
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms var(--mx-ease);
+}
+.mx-security-switcher svg {
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--mx-muted);
+}
+.mx-security-switcher[aria-expanded="true"] {
+  background: var(--mx-soft);
+}
+.mx-security-switcher:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 0;
+}
+@media (hover: hover) {
+  .mx-security-switcher:hover {
+    background: var(--mx-soft);
+  }
+}
+/* One tool row: stepping, comparing and adding lead; updating and managing close it. */
+.mx-research-page .mx-page-actions {
+  --mx-tool: 40px;
+  flex: 1 1 auto;
+}
+.mx-research-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+@media (pointer: coarse) {
+  .mx-research-page .mx-page-actions {
+    --mx-tool: 44px;
+  }
+  .mx-research-page .mx-page-actions .mantine-ActionIcon-root {
+    width: var(--mx-tool);
+    min-width: var(--mx-tool);
+    height: var(--mx-tool);
+    min-height: var(--mx-tool);
+  }
+  .mx-research-page .mx-page-actions .mantine-Button-root {
+    height: var(--mx-tool);
+  }
+  .mx-security-switcher {
+    margin-block: -8px;
+    padding-block: 8px;
+  }
 }
 .mx-security-panel .mx-security-price strong {
   font-size: 28px;
@@ -55,20 +111,23 @@
   color: var(--mx-ink);
   padding: 6px 10px;
 }
-@media (max-width: 1100px) {
-  .mx-security-panel {
-    display: block;
-  }
-  .mx-security-panel .mx-research-controls {
-    margin-top: 14px;
-  }
-}
 @media (max-width: 767px) {
   .mx-action-long {
     display: none;
   }
   .mx-action-short {
     display: inline;
+  }
+  /* Phones keep the refresh icon; its name stays 更新研究 and a spinner shows it working. */
+  .mx-research-refresh {
+    width: var(--mx-tool);
+    padding-inline: 0;
+  }
+  .mx-research-refresh .mantine-Button-label {
+    display: none;
+  }
+  .mx-research-refresh .mantine-Button-section {
+    margin: 0;
   }
   .mx-security-panel .mx-security-header {
     display: block;
@@ -87,11 +146,11 @@
   .mx-security-panel .mx-security-price small:last-child {
     flex-basis: 100%;
   }
-  .mx-security-panel .mx-research-controls > .mantine-Group-root {
-    gap: 6px;
-  }
   .mx-research-page > .mx-page-heading {
     gap: 12px;
+  }
+  .mx-research-page .mx-page-actions {
+    align-self: stretch;
   }
 }
 .mx-research-page .mx-table tbody th {
@@ -440,13 +499,6 @@
   }
   .mx-research-page > .mx-page-heading h1 {
     font-size: 25px;
-  }
-  .mx-security-panel {
-    display: block;
-  }
-  .mx-security-panel .mx-research-controls {
-    justify-content: flex-end;
-    margin-top: 14px;
   }
   .mx-security-panel .mx-security-header {
     gap: 14px;

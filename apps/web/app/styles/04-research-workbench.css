@@ -408,13 +408,6 @@
   font-size: 12px;
   margin-top: 6px;
 }
-.mx-research-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  flex-wrap: wrap;
-}
 .mx-universe-toggle {
   display: inline-flex;
 }

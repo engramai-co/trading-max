@@ -35,17 +35,6 @@
   justify-content: flex-start;
   gap: 8px;
 }
-.mx-research-switcher .mantine-Button-label {
-  gap: 8px;
-}
-.mx-research-switcher .mantine-Button-label > span {
-  max-width: 26ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--mx-muted);
-  font-weight: 400;
-}
 .mx-security-panel .mx-security-price strong {
   display: inline;
 }
@@ -165,19 +154,6 @@
   }
 }
 @media (max-width: 700px) {
-  .mx-page-tools .mx-research-switcher {
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-  .mx-research-switcher .mantine-Button-inner {
-    justify-content: space-between;
-  }
-  .mx-research-switcher .mantine-Button-label {
-    min-width: 0;
-  }
-  .mx-research-switcher .mantine-Button-label > span {
-    max-width: none;
-  }
   .mx-period-control {
     justify-content: flex-start;
   }
