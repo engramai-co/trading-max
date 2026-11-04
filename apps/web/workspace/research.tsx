@@ -146,7 +146,7 @@ export function ResearchWorkspace() {
   const isFund = ["ETF", "MUTUALFUND"].includes(
     quote?.context?.assetType ?? "",
   );
-  // Held securities are quoted at the broker price everywhere on the page.
+  // A held line on the quote's listing is quoted at its broker price everywhere on the page.
   const price = basisPrice(selected, quote?.context?.quote);
   const context = useQuery({
     ...researchLensQuery(ticker, "fundamentals", revision),

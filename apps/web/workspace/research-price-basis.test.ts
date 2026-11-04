@@ -17,12 +17,14 @@ const close = {
   asOf: "2026-11-03T21:00:03Z",
   timezone: "America/New_York",
   delayMinutes: 20,
+  listing: "US:SYNT",
 };
 const held = {
   held: true,
   brokerPrice: 194.37,
   brokerPriceCurrency: "USD",
   brokerAsOf: "2026-11-04T15:50:01Z",
+  brokerListing: "US:SYNT",
 };
 
 describe("research price basis", () => {
@@ -45,8 +47,34 @@ describe("research price basis", () => {
     expect(late.time).toMatchObject({ kind: "time", stale: true });
   });
 
+  it("uses the broker price only for the research quote's listing", () => {
+    expect(basisPrice(held, close)).toMatchObject({ source: "broker", price: 194.37, currency: "USD" });
+    // A London line in dollars, or a .L alias the API collapses: same currency, another listing.
+    const london = { ...held, brokerPrice: 191.2, brokerListing: "LSE:SYNT" };
+    expect(basisPrice(london, close)).toEqual({
+      source: "quote",
+      price: 214.01,
+      currency: "USD",
+      asOf: close.asOf,
+    });
+    const header = priceBasis(london, close, null, null, new Date("2026-11-04T16:00:00Z"));
+    expect(header).toMatchObject({ source: "quote", price: 214.01, change: 17.76 });
+    // Several lines under one ticker name neither a listing nor a price.
+    const several = {
+      held: true,
+      brokerPrice: null,
+      brokerPriceCurrency: null,
+      brokerAsOf: null,
+      brokerListing: null,
+    };
+    expect(basisPrice(several, close)).toMatchObject({ source: "quote", price: 214.01 });
+    // A line or quote whose market is unknown cannot confirm the listing.
+    expect(basisPrice({ ...held, brokerListing: null }, close)).toMatchObject({ source: "quote" });
+    expect(basisPrice(held, { ...close, listing: null })).toMatchObject({ source: "quote" });
+    expect(basisPrice(held, undefined, 210, "USD")).toMatchObject({ source: "quote", price: 210 });
+  });
+
   it("keeps the research basis when the broker line trades in another currency", () => {
-    // A GBP line of a USD-quoted security: targets and charts stay in USD.
     const other = { ...held, brokerPrice: 152.4, brokerPriceCurrency: "GBP" };
     expect(basisPrice(other, close)).toEqual({
       source: "quote",
@@ -54,11 +82,27 @@ describe("research price basis", () => {
       currency: "USD",
       asOf: close.asOf,
     });
-    const header = priceBasis(other, close, null, null, new Date("2026-11-04T16:00:00Z"));
-    expect(header).toMatchObject({ source: "quote", price: 214.01, currency: "USD", change: 17.76 });
-    // Without a research quote the listing cannot be confirmed.
-    expect(basisPrice(held, undefined, 210, "USD")).toMatchObject({ source: "quote", price: 210 });
-    expect(basisPrice(held, close)).toMatchObject({ source: "broker", price: 194.37, currency: "USD" });
+  });
+
+  it("quotes a London line in pounds, like the research quote", () => {
+    // The API reports a 9,500p broker price as £95.00 on the LSE listing.
+    const quote = { ...close, price: 96.1, currency: "GBP", timezone: "Europe/London", listing: "LSE:SYNT" };
+    const line = {
+      held: true,
+      brokerPrice: 95,
+      brokerPriceCurrency: "GBP",
+      brokerAsOf: "2026-09-01T10:20:00Z",
+      brokerListing: "LSE:SYNT",
+    };
+    expect(basisPrice(line, quote)).toEqual({
+      source: "broker",
+      price: 95,
+      currency: "GBP",
+      asOf: line.brokerAsOf,
+    });
+    // Pence never stand in for pounds.
+    expect(basisPrice({ ...line, brokerPrice: 9500, brokerPriceCurrency: "GBX" }, quote))
+      .toMatchObject({ source: "quote", price: 96.1 });
   });
 
   it("falls back to the research quote and names a close that a newer session has passed", () => {

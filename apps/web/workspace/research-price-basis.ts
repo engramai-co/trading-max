@@ -1,7 +1,8 @@
 /**
  * One price per security. A held security is priced like the holdings page,
- * from the broker snapshot; the research quote is the fallback and names its
- * time only when it is not the obvious current price.
+ * from the broker snapshot, when its broker line is the research quote's
+ * listing; the research quote is the fallback and names its time only when it
+ * is not the obvious current price.
  */
 
 type Quote = {
@@ -12,6 +13,7 @@ type Quote = {
   asOf?: string | null;
   timezone?: string | null;
   delayMinutes?: number | null;
+  listing?: string | null;
 };
 
 type Position = {
@@ -19,6 +21,7 @@ type Position = {
   brokerPrice?: number | null;
   brokerPriceCurrency?: string | null;
   brokerAsOf?: string | null;
+  brokerListing?: string | null;
 };
 
 /** The time beside a price: a session close, or an instant in the display time zone. */
@@ -189,9 +192,10 @@ export function brokerPriceLate(zone: string | null | undefined, asOf: Date, now
 
 /**
  * The price figures on the research page are quoted against. A held security
- * uses the broker price only when it is in the research quote's currency: a
- * different currency means a different listing (or line), and analyst targets,
- * charts and statements stay on the research basis.
+ * uses the broker price only when its one broker line is the research quote's
+ * listing, in the quote's currency. A line on another market, a `.L` alias or
+ * several lines under one ticker keep the research basis, so analyst targets,
+ * charts and statements stay on it.
  */
 export function basisPrice(
   position: Position | undefined,
@@ -201,7 +205,10 @@ export function basisPrice(
 ): ResearchPrice {
   const brokerPrice = position?.held ? position.brokerPrice : null;
   const sameListing =
-    Boolean(quote?.currency) && position?.brokerPriceCurrency === quote?.currency;
+    Boolean(quote?.listing) &&
+    position?.brokerListing === quote?.listing &&
+    Boolean(quote?.currency) &&
+    position?.brokerPriceCurrency === quote?.currency;
   return brokerPrice != null && brokerPrice > 0 && sameListing
     ? {
         source: "broker",
