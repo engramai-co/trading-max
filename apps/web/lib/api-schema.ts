@@ -3195,6 +3195,8 @@ export interface components {
             currentPrice: number;
             /** Currentvaluegbp */
             currentValueGbp: number;
+            /** Daychangedate */
+            dayChangeDate?: string | null;
             /** Daychangegbp */
             dayChangeGbp?: number | null;
             /** Daychangepct */

@@ -263,7 +263,9 @@ def build_dashboard_data(
     )
     holdings: list[JsonObject] = []
     for account in account_codes:
-        for position in broker["accounts"][account].get("positions", []):
+        # Day changes follow the positions' own order, joined by broker instrument.
+        account_day_changes = day_changes.get(account, [])
+        for index, position in enumerate(broker["accounts"][account].get("positions", [])):
             current = number_value(position.get("current_value_gbp"))
             cost = number_value(position.get("total_cost_gbp"))
             quantity = number_value(position.get("quantity"))
@@ -289,9 +291,7 @@ def build_dashboard_data(
                 and snapshot_fx_rate_native_per_gbp is not None
                 else None
             )
-            day_change_gbp, day_change_pct = day_changes.get(
-                (account, str(position.get("ticker"))), (None, None)
-            )
+            day_change = account_day_changes[index] if index < len(account_day_changes) else None
             holdings.append(
                 {
                     "account": account,
@@ -311,8 +311,9 @@ def build_dashboard_data(
                     "pnlGbp": number_value(position.get("unrealized_profit_loss_gbp")),
                     "pnlPct": current / cost - 1.0 if cost else 0.0,
                     "allocationPct": current / total_value if total_value else 0.0,
-                    "dayChangeGbp": day_change_gbp,
-                    "dayChangePct": day_change_pct,
+                    "dayChangeGbp": day_change.gbp if day_change else None,
+                    "dayChangePct": day_change.share if day_change else None,
+                    "dayChangeDate": day_change.date if day_change else None,
                 }
             )
     holdings.sort(key=lambda item: item["currentValueGbp"], reverse=True)

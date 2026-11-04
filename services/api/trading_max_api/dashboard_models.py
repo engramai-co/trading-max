@@ -664,9 +664,11 @@ class Holding(ApiModel):
     # Change since the London trading day's first observation for the shares held
     # through it, and that change as a fraction of their opening value. Null when
     # the day's attribution does not cover the position (opened today, positions
-    # unreconciled, or attribution measured at another observation).
+    # unreconciled, measured at another observation, or an ambiguous listing).
+    # day_change_date is the London trading day the change covers (YYYY-MM-DD).
     day_change_gbp: float | None = None
     day_change_pct: float | None = None
+    day_change_date: str | None = None
 
 
 class NavPoint(ApiModel):

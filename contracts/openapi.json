@@ -6334,6 +6334,17 @@
             "title": "Currentvaluegbp",
             "type": "number"
           },
+          "dayChangeDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daychangedate"
+          },
           "dayChangeGbp": {
             "anyOf": [
               {
