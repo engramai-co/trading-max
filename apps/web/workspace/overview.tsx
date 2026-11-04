@@ -31,8 +31,8 @@ import {
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
-import { EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
-import { DayDrivers, signedPounds } from "./day-drivers";
+import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
+import { DayDrivers, dayDrivers, signedPounds } from "./day-drivers";
 import { PORTFOLIO_RANGES, historyDay, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
@@ -395,9 +395,19 @@ function TodayMetric({
   const label = !day || day === historyDay(new Date(now).toISOString())
     ? t("今日", "Today")
     : formatCalendarDate(day, locale, now);
+  // The drivers explain this figure only, so they wait while it stops at a cutoff.
+  const drivers = attribution && money && history ? dayDrivers({
+    attribution,
+    scope,
+    day,
+    dates: points.map((p) => p.date),
+    pnls: money.pnls,
+    cutOff: history.pendingCashFlows,
+  }) : null;
   return (
     <Metric
-      label={label}
+      label={<>{label}{history && <CutoffTag history={history} />}</>}
+      helpLabel={label}
       value={pnl == null ? "—" : (
         <>
           {signedPounds(pnl)}
@@ -408,6 +418,14 @@ function TodayMetric({
       tone={tone(pnl)}
       help={(
         <>
+          {history?.pendingCashFlows && (
+            <p>
+              {t(
+                "新的现金流待核对：数字统计至最后可核对的记录，核对完成后更新，届时再列出变动最大的持仓。",
+                "New cash flows await reconciliation: the figure stops at the last verified record and catches up once they are reconciled; the largest position moves follow then.",
+              )}
+            </p>
+          )}
           <p>
             {t(
               "本交易日第一条账户记录以来的净盈亏，已扣除当日出入金；下面列出变动最大的持仓。",
@@ -422,14 +440,7 @@ function TodayMetric({
           ]]} />
         </>
       )}
-      note={attribution && money && day && attribution.day === day ? (
-        <DayDrivers
-          attribution={attribution}
-          scope={scope}
-          dates={points.map((p) => p.date)}
-          pnls={money.pnls}
-        />
-      ) : undefined}
+      note={drivers ? <DayDrivers drivers={drivers} /> : undefined}
     />
   );
 }
@@ -453,6 +464,15 @@ function OverviewHistory({
   const isIntraday = history.source === "intraday";
   const money = query.data?.money ?? portfolioMoney([], scope);
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
+  const drivers = range === "1W" && windowAttribution ? dayDrivers({
+    attribution: windowAttribution,
+    scope,
+    day: history.endDay,
+    dates: points.map((p) => p.date),
+    pnls: money.pnls,
+    cutOff: history.pendingCashFlows,
+    span: "5D",
+  }) : null;
   return (
     <Panel
       className="mx-overview-history"
@@ -500,15 +520,7 @@ function OverviewHistory({
               {t("收益分析", "View performance")}
             </TextLink>
           </div>
-          {range === "1W" && windowAttribution && windowAttribution.day === history.endDay && (
-            <DayDrivers
-              span="5D"
-              attribution={windowAttribution}
-              scope={scope}
-              dates={points.map((p) => p.date)}
-              pnls={money.pnls}
-            />
-          )}
+          {drivers && <DayDrivers span="5D" drivers={drivers} />}
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}
