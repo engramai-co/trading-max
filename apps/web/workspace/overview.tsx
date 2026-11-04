@@ -476,7 +476,6 @@ function OverviewHistory({
     dates: points.map((p) => p.date),
     pnls: money.pnls,
     cutOff: history.pendingCashFlows,
-    span: "5D",
   }) : null;
   return (
     <Panel

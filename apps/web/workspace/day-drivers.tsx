@@ -19,8 +19,6 @@ export type Drivers = NonNullable<ReturnType<typeof dayDrivers>>;
 
 /** Below this, the strip would describe rounding noise rather than a move. */
 const MIN_EXPLAINED_GBP = 0.01;
-/** One display bucket of slack when matching the opening to a chart point. */
-const BUCKET_MS: Record<DriverSpan, number> = { "1D": 5 * 60_000, "5D": 30 * 60_000 };
 /** One live sync: observations closer than this are the same one, at either end of the window. */
 const SYNC_MS = 5 * 60_000;
 
@@ -46,6 +44,12 @@ export function signedPounds(value: number) {
  * sync of its first point. An opening after that is stated, so the strip says what
  * it covers; one before it, or scoped accounts that opened at different times,
  * cannot explain the figure and hides the strip.
+ *
+ * The account change is measured over exactly that window: from the figure's first
+ * point, or after a later opening from the chart's own observation of it, at or
+ * within one sync after the opening and never before. When the chart lacks that
+ * observation, as a thinned 5D chart can, the strip stays hidden; so Unattributed
+ * is only ever the residual inside the stated window.
  */
 export function dayDrivers({
   attribution,
@@ -55,7 +59,6 @@ export function dayDrivers({
   pnls,
   cutOff = false,
   limit = 3,
-  span = "1D",
 }: {
   attribution: DayAttribution;
   scope: Scope;
@@ -67,7 +70,6 @@ export function dayDrivers({
   /** The figure stops at the last verified cash flow while newer ones await reconciliation. */
   cutOff?: boolean;
   limit?: number;
-  span?: DriverSpan;
 }) {
   if (cutOff || !day || attribution.day !== day) return null;
   const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
@@ -81,9 +83,10 @@ export function dayDrivers({
   const since = accounts[openings.indexOf(earliest)]!.since;
   const first = Date.parse(dates[0] ?? "");
   if (!(Math.max(...openings) - earliest <= SYNC_MS) || !(earliest >= first - SYNC_MS)) return null;
-  // Measure the account over the attribution's own window: from the first chart
-  // point at its opening observation (one bucket of slack) to the latest point.
-  const start = dates.findIndex((date) => Date.parse(date) >= Date.parse(since) - BUCKET_MS[span]);
+  const late = earliest > first + SYNC_MS;
+  const start = late
+    ? dates.findIndex((date) => Date.parse(date) >= earliest && Date.parse(date) <= earliest + SYNC_MS)
+    : 0;
   const opening = start >= 0 ? pnls[start] : null;
   const closing = pnls.at(-1);
   if (opening == null || closing == null) return null;
@@ -109,7 +112,7 @@ export function dayDrivers({
   const material = Math.abs(unexplained) >= Math.max(5, Math.abs(accountChange) * 0.25);
   return {
     since,
-    lateOpening: earliest > first + SYNC_MS ? since : null,
+    lateOpening: late ? since : null,
     accountChange,
     named,
     other: material ? explained - namedTotal : accountChange - namedTotal,
