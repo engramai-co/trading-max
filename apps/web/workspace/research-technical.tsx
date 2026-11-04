@@ -7,44 +7,46 @@
 // FORM: approved overview entry and merged 分项诊断 comps, 2026-10-06.
 // FINISH: bounded desktop/mobile comparison, fresh finish review, local surface record.
 import type { ResearchLensSnapshot, TechnicalScoreSummary } from "@/lib/types";
-import { CaretDown, CaretRight, Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, CaretDown, CaretRight, Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
 import { number, percent } from "./data";
-import { Empty, Help, Panel, Pending, QueryError, TextLink, useCopy } from "./foundation";
+import { Empty, Help, Panel, Pending, QueryError, useCopy } from "./foundation";
 import { PriceHistory } from "./research-price";
 import { TechnicalView } from "./research-company";
 import { useRouteState } from "./route-state";
-import { factorMeaning, groupState, impactTone, keyImpacts, stateName, technicalGroups } from "./technical-diagnosis";
+import { factorMeaning, impactTone, isLatestSession, stateName, technicalGroups } from "./technical-diagnosis";
 
-export function TechnicalScoreCard({ data, ticker, compact = false, pending = false }: {
-  data?: TechnicalScoreSummary | null; ticker: string; compact?: boolean; pending?: boolean;
+export function TechnicalScoreCard({ data, compact = false, pending = false }: {
+  data?: TechnicalScoreSummary | null; compact?: boolean; pending?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const { update } = useRouteState("push");
+  const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const score = data?.score;
   const valid = score != null && Number.isFinite(score) && score >= 0 && score <= 100;
   const scoreTone = valid ? score < 45 ? "mx-down" : score >= 56 ? "mx-up" : "" : "";
   const breakdown = data?.scoreBreakdown;
-  const impacts = keyImpacts(data);
+  const title = t("技术状态", "Technical state");
   return <div className={`mx-tech-score ${compact ? "mx-tech-score-compact" : ""}`}>
-    <div className="mx-tech-heading"><h2>{t("技术状态", "Technical state")}</h2>
-      <Help label={t("技术状态", "Technical state")}>
+    <div className="mx-tech-heading"><h2>{compact
+      // On the overview the title opens the full diagnosis.
+      ? <button type="button" className="mx-ranking-link" onClick={() => update({ view: "technical", technicalView: "data" })}>{title}<ArrowRight size={14} aria-hidden="true" /></button>
+      : title}</h2>
+      <Help label={title}>
         <p>{t("50 分为中性起点，现有日线规则按趋势、动量、相对表现与量能加减分，最终限制在 0–100。波动风险单独展示；分数不是上涨概率，也不是买卖建议。", "The existing daily-bar rules start at 50, then add trend, momentum, relative-performance and volume contributions, capped at 0–100. Volatility is separate. This is not an upside probability or a trade recommendation.")}</p>
         <p>{t("评分使用其标注日期的日线，不随图表的历史拖动或粒度选择而改变。", "The score uses daily bars as of its own date, independent of chart navigation and interval.")}</p>
         {breakdown && <p>{t("可用评分依据", "Available scoring inputs")} {breakdown.availableSignals}/{breakdown.totalSignals} · {t("缺失项不计分", "Missing inputs add no points")}</p>}
       </Help>
     </div>
-    {data?.asOf && <time className="mx-tech-asof" dateTime={data.asOf}>{formatDate(data.asOf, locale, { ...(data.asOf.slice(0, 4) === String(new Date().getUTCFullYear()) ? {} : { year: "numeric" }), month: "short", day: "numeric", timeZone: "UTC" })} · {t("日线", "Daily")}</time>}
+    {/* The latest session is the normal state; an older score names its date. */}
+    {data?.asOf && !isLatestSession(data.asOf, today) && <time className="mx-tech-asof" dateTime={data.asOf}>{formatDate(data.asOf, locale, { ...(data.asOf.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }), month: "short", day: "numeric", timeZone: "UTC" })}</time>}
     {pending && !data ? <Pending /> : <>
       <div className={`mx-tech-number ${scoreTone}`}><strong>{valid ? number(score, 0) : "—"}</strong>{valid && <span>/ 100</span>}</div>
       <p className={`mx-tech-state ${scoreTone}`}>{data && valid ? stateName(data, t) : t("暂无技术评分", "Technical score unavailable")}</p>
       {!compact && valid && <div className={`mx-tech-scale ${scoreTone}`} aria-hidden="true"><progress max={100} value={score} /><div><span>0</span><span>100</span></div></div>}
-      {impacts.length > 0 && <ul className="mx-tech-impacts">{impacts.map((g) => <li key={g.key}>
-        {g.contribution! > 0 ? <TrendUp className="mx-up" size={18} /> : <TrendDown className="mx-down" size={18} />}
-        <span>{t(...technicalGroups[g.key])} · {groupState(g, t)}</span>
-      </li>)}</ul>}
       {data && valid && !breakdown && <p className="mx-tech-status">{data.scoreExplanationState === "mismatch"
         ? t("评分依据暂不可核对", "Score inputs cannot be reconciled") : t("评分依据尚未就绪", "Score inputs unavailable")}</p>}
       {breakdown && breakdown.availableSignals < breakdown.totalSignals && <span className="mx-tech-coverage">{t("部分依据", "Partial inputs")} · {breakdown.availableSignals}/{breakdown.totalSignals}</span>}
@@ -52,7 +54,6 @@ export function TechnicalScoreCard({ data, ticker, compact = false, pending = fa
         {t("ATR / 价格描述日线波动幅度，布林带宽度描述价格分散程度；两者不参与方向评分。", "ATR / price describes daily volatility and Bollinger bandwidth describes dispersion. Neither contributes to the directional score.")}
       </Help></div><dl><div><dt>ATR / {t("价格", "price")}</dt><dd>{percent(data.atrPct)}</dd></div><div><dt>{t("布林带宽度", "Bollinger bandwidth")}</dt><dd>{percent(data.bollingerWidth)}</dd></div></dl></div>}
     </>}
-    {compact && <div style={{ marginTop: 18 }}><TextLink href={`/research?ticker=${encodeURIComponent(ticker)}&view=technical&technicalView=data`}>{t("查看技术诊断", "View technical diagnosis")}</TextLink></div>}
   </div>;
 }
 
@@ -72,7 +73,7 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
         .sort((a, b) => Math.abs(b.contribution!) - Math.abs(a.contribution!))[0];
       return <section key={g.key} className="mx-tech-group" data-open={open}>
         <button type="button" className="mx-tech-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpened(open ? null : g.key)}>
-          <div><div className="mx-tech-heading"><h3>{t(...technicalGroups[g.key])}</h3><span className={impactTone(g.contribution)}>{groupState(g, t)}</span></div>
+          <div><div className="mx-tech-heading"><h3>{t(...technicalGroups[g.key])}</h3></div>
             {!open && summary && <span className="mx-tech-reason">{factorMeaning(summary, t)}</span>}</div>
           <strong className={impactTone(g.contribution)}>{g.contribution == null ? "—" : `${g.contribution > 0 ? "+" : ""}${g.contribution}`}</strong>
           {open ? <CaretDown size={18} /> : <CaretRight size={18} />}
@@ -108,7 +109,7 @@ export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry 
     if (!focusDiagnosis) focused.current = false;
   }, [data, focusDiagnosis]);
   return <div className="mx-tech-workspace">
-    <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} ticker={ticker} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
+    <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
     <div className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} />
       {data ? <TechnicalDiagnosis data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}
     </div>

@@ -1,4 +1,4 @@
-import type { TechnicalScoreFactor, TechnicalScoreGroup, TechnicalScoreSummary } from "@/lib/types";
+import type { TechnicalScoreFactor, TechnicalScoreSummary } from "@/lib/types";
 
 export const technicalGroups: Record<string, [string, string]> = {
   trend: ["趋势结构", "Trend structure"],
@@ -9,13 +9,6 @@ export const technicalGroups: Record<string, [string, string]> = {
 
 export function impactTone(value: number | null | undefined) {
   return value == null || value === 0 ? "" : value > 0 ? "mx-up" : "mx-down";
-}
-
-export function groupState(group: TechnicalScoreGroup, t: (zh: string, en: string) => string) {
-  const value = group.contribution;
-  return value == null ? t("缺少读数", "Unavailable")
-    : value === 0 ? t("中性 / 分歧", "Neutral / mixed")
-    : value > 0 ? t("偏强", "Positive") : t("偏弱", "Negative");
 }
 
 export function stateName(data: TechnicalScoreSummary, t: (zh: string, en: string) => string) {
@@ -32,13 +25,12 @@ export function stateName(data: TechnicalScoreSummary, t: (zh: string, en: strin
   return state ? t(...state) : data.state;
 }
 
-export function keyImpacts(data?: TechnicalScoreSummary | null) {
-  const groups = data?.scoreBreakdown?.groups ?? [];
-  const adverse = groups.filter((g) => g.contribution != null && g.contribution < 0)
-    .sort((a, b) => a.contribution! - b.contribution!)[0];
-  const favorable = groups.filter((g) => g.contribution != null && g.contribution > 0)
-    .sort((a, b) => b.contribution! - a.contribution!)[0];
-  return [adverse, favorable].filter((g): g is TechnicalScoreGroup => Boolean(g));
+/** Whether a daily score's date is the last completed weekday session before `today` or later. */
+export function isLatestSession(asOf: string, today: string) {
+  const day = new Date(today.slice(0, 10) + "T00:00:00Z");
+  do day.setUTCDate(day.getUTCDate() - 1);
+  while (day.getUTCDay() === 0 || day.getUTCDay() === 6);
+  return asOf.slice(0, 10) >= day.toISOString().slice(0, 10);
 }
 
 export function factorMeaning(f: TechnicalScoreFactor, t: (zh: string, en: string) => string): string {
