@@ -3,7 +3,7 @@ import type { Holding, NavPoint } from "@/lib/types";
 import { observedNav } from "@/lib/portfolio/nav";
 import { statementUnit, statementValue, quoteValue } from "./financial-values";
 import { behaviorObservation, reviewLabel, systemReason } from "./review-copy";
-import { compareHoldings, holdingSortDirection } from "./holdings-data";
+import { compareHoldings, holdingSort, holdingSortDirection } from "./holdings-data";
 
 const zh = (text: string) => text;
 describe("QA financial value regressions", () => {
@@ -51,6 +51,19 @@ describe("QA financial value regressions", () => {
     expect(holdingSortDirection("ticker", null)).toBe("asc");
     expect(holdingSortDirection("value", null)).toBe("desc");
     expect(holdingSortDirection("ticker", "desc")).toBe("desc");
+  });
+  it("sorts by today's change with unattributed positions last in both directions", () => {
+    const rows = [
+      { ticker: "NEW", dayChangeGbp: null },
+      { ticker: "UP", dayChangeGbp: 12.3 },
+      { ticker: "DOWN", dayChangeGbp: -40 },
+      { ticker: "FLAT", dayChangeGbp: 0 },
+    ] as Holding[];
+    const order = (direction: string) => [...rows].sort((a, b) => compareHoldings(a, b, "day", direction)).map((row) => row.ticker);
+    expect(order("desc")).toEqual(["UP", "FLAT", "DOWN", "NEW"]);
+    expect(order("asc")).toEqual(["DOWN", "FLAT", "UP", "NEW"]);
+    expect(holdingSort("day")).toBe("day");
+    expect(holdingSort("bogus")).toBe("value");
   });
   it("uses readable system messages without translating security names", () => {
     expect(reviewLabel("8_to_30_days", zh)).toBe("8–30 天");
