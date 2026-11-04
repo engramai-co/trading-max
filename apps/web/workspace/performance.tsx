@@ -1,6 +1,6 @@
 "use client";
 
-import { Group, Select, Tooltip } from "@mantine/core";
+import { Select, Tooltip } from "@mantine/core";
 import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -307,8 +307,45 @@ export function PerformanceContent({
         <RiskDashboard data={data} scope={scope} />
       ) : (
         <>
-          <Panel
-            action={
+          <Panel>
+            {/* The tab names the view; the chart's controls share one row. */}
+            <div className="mx-toolbar mx-chart-toolbar">
+              {view === "money" ? (
+                <Segments
+                  label={t("金额显示方式", "Value display")}
+                  value={moneyUnit}
+                  onChange={setMoneyUnit}
+                  options={[
+                    { value: "gbp", label: "GBP" },
+                    {
+                      value: "percent",
+                      label: t("相对期初 %", "From opening %"),
+                    },
+                  ]}
+                />
+              ) : (
+                <Select
+                  aria-label={t("比较基准", "Comparison benchmark")}
+                  value={benchmark}
+                  onChange={(v) => setBenchmark(v ?? "ALL")}
+                  data={[
+                    {
+                      value: "ALL",
+                      label: t(
+                        "VOO · QQQ · VT",
+                        "VOO · QQQ · VT",
+                      ),
+                    },
+                    { value: "VOO", label: "S&P 500 · VOO" },
+                    { value: "QQQ", label: "Nasdaq 100 · QQQ" },
+                    {
+                      value: "VT",
+                      label: t("全球股票 · VT", "Global equities · VT"),
+                    },
+                  ]}
+                  w={220}
+                />
+              )}
               <div className="mx-period-control">
                 <PeriodSpan points={points} />
                 <Segments
@@ -322,8 +359,7 @@ export function PerformanceContent({
                   }))}
                 />
               </div>
-            }
-          >
+            </div>
             {view === "money" && <HistoryCoverage history={history} />}
             {view === "money" ? (
               <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
@@ -365,49 +401,8 @@ export function PerformanceContent({
                 />
               </div>
             )}
-            {view === "money" && (
-              <Group justify="flex-end" mb="sm">
-                <Segments
-                  label={t("金额显示方式", "Value display")}
-                  value={moneyUnit}
-                  onChange={setMoneyUnit}
-                  options={[
-                    { value: "gbp", label: "GBP" },
-                    {
-                      value: "percent",
-                      label: t("相对期初 %", "From opening %"),
-                    },
-                  ]}
-                />
-              </Group>
-            )}
             {view === "money" && moneyUnit === "percent" && points.length > 0 && (navNumber(first, scope) ?? 0) <= 0 && (
               <Notice>{t("期初价值不大于零，无法显示百分比。请选择 GBP。", "Opening value is zero or negative. Select GBP to view amounts.")}</Notice>
-            )}
-            {view === "returns" && (
-              <Group justify="flex-end" mb="sm">
-                <Select
-                  aria-label={t("比较基准", "Comparison benchmark")}
-                  value={benchmark}
-                  onChange={(v) => setBenchmark(v ?? "ALL")}
-                  data={[
-                    {
-                      value: "ALL",
-                      label: t(
-                        "VOO · QQQ · VT",
-                        "VOO · QQQ · VT",
-                      ),
-                    },
-                    { value: "VOO", label: "S&P 500 · VOO" },
-                    { value: "QQQ", label: "Nasdaq 100 · QQQ" },
-                    {
-                      value: "VT",
-                      label: t("全球股票 · VT", "Global equities · VT"),
-                    },
-                  ]}
-                  w={260}
-                />
-              </Group>
             )}
               {/* Series names sit above the chart they explain. */}
               <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />

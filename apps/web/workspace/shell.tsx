@@ -269,8 +269,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const nextLocale = locale === "zh"
     ? { value: "en" as const, label: "English", lang: "en", action: "Switch to English" }
     : { value: "zh" as const, label: "中文", lang: "zh-CN", action: "切换到中文" };
+  // Both top-bar menus open inside the banner landmark and focus their first
+  // item: Mantine's focus placeholder is not a valid child of role="menu".
   const theme = (
-    <Menu position="bottom-end" shadow="md" width={190}>
+    <Menu position="bottom-end" shadow="md" width={190} withinPortal={false} withInitialFocusPlaceholder={false}>
       <Menu.Target>
         <ActionIcon
           className="mx-topbar-preference"
@@ -286,7 +288,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   // Phones reach the five main pages from the dock. This one menu holds only
   // what the dock lacks: workspace management and, on the web, preferences.
   const more = (
-    <Menu position="bottom-end" shadow="md" width={220}>
+    <Menu
+      position="bottom-end"
+      shadow="md"
+      width={220}
+      withinPortal={false}
+      withInitialFocusPlaceholder={false}
+      classNames={{ dropdown: "mx-more-menu" }}
+    >
       <Menu.Target>
         <ActionIcon className="mx-topbar-more" variant="subtle" aria-label={t("更多", "More")}>
           <DotsThree size={22} weight="bold" />
@@ -306,7 +315,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         ))}
         {!desktop && (
           <>
-            <Menu.Divider />
+            <Menu.Divider role="separator" />
             <Menu.Item
               leftSection={<Globe size={17} />}
               aria-label={nextLocale.action}
@@ -314,7 +323,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             >
               <span lang={nextLocale.lang}>{nextLocale.label}</span>
             </Menu.Item>
-            <Menu.Divider />
+            <Menu.Divider role="separator" />
             {appearanceItems}
           </>
         )}
