@@ -3,50 +3,35 @@
 import type {
   ResearchLensSnapshot,
   ResearchShell,
-  SecuritySearchResponse,
-  SecuritySearchResult,
 } from "@/lib/types";
 import {
   ActionIcon,
-  Avatar,
   Button,
-  Checkbox,
   Drawer,
   Group,
-  Loader,
-  Menu,
   Modal,
   Select,
   Stack,
-  TextInput,
   Tooltip,
 } from "@mantine/core";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import {
-  ArrowClockwise,
   CaretDown,
   CaretLeft,
   CaretRight,
-  DotsThree,
-  MagnifyingGlass,
   Plus,
-  PushPin,
-  Trash,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, currency, jsonRequest, object, percent, tone } from "@/workspace/data";
-import { quoteValue } from "./financial-values";
+import { api, jsonRequest } from "@/workspace/data";
 import {
   Empty,
-  Instrument,
   Notice,
   Page,
   Panel,
   Pending,
   QueryError,
   Tabs,
-  Tag,
   useCopy,
 } from "./foundation";
 import {
@@ -55,13 +40,16 @@ import {
 } from "./research-company";
 import { ResearchComparison } from "./research-compare";
 import { FinancialWorkbench } from "./research-financials";
+import { SecurityFinder } from "./research-finder";
 import { FundWorkbench } from "./research-funds";
+import { SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
 import { PricePreview } from "./research-price-preview";
 import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
+import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { ValuationWorkbench } from "./research-valuation-workbench";
 import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
@@ -96,10 +84,6 @@ export function ResearchWorkspace() {
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
   const [universeOpen, setUniverseOpen] = useState(false);
-  const [filter, setFilter] = useState("");
-  const [heldOnly, setHeldOnly] = useState(false);
-  const [category, setCategory] = useState("all");
-  const [listSort, setListSort] = useState("held");
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
   const client = useQueryClient();
@@ -114,6 +98,8 @@ export function ResearchWorkspace() {
         : false,
   });
   const instruments = shell.data?.instruments ?? [];
+  const universeState = useResearchUniverse(instruments);
+  const { displayed } = universeState;
   const requestedTicker = params.get("ticker");
   const requested =
     requestedTicker?.trim() ||
@@ -156,7 +142,6 @@ export function ResearchWorkspace() {
       })
       .map(([, data]) => data)
       .find((data) => data?.ticker === ticker);
-  const market = object(quote?.market);
   const isFund = ["ETF", "MUTUALFUND"].includes(
     quote?.context?.assetType ?? "",
   );
@@ -176,18 +161,6 @@ export function ResearchWorkspace() {
       setFinder(true);
     }
   };
-  const displayed = instruments
-    .filter(
-      (i) =>
-        (!heldOnly || i.held) &&
-        (category === "all" || i.categoryId === category) &&
-        (i.ticker + i.name).toLowerCase().includes(filter.trim().toLowerCase()),
-    )
-    .sort((a, b) =>
-      listSort === "az"
-        ? a.ticker.localeCompare(b.ticker)
-        : Number(b.held) - Number(a.held) || a.order - b.order,
-    );
   const operation = useMutation({
     mutationFn: ({
       action,
@@ -219,106 +192,24 @@ export function ResearchWorkspace() {
     setUniverseOpen(false);
   }
   const universeHeading = (
-    <span className="mx-universe-heading">
-      <span>{t("研究清单", "Research list")}</span>
-      <Group component="span" gap={4}>
-        {wide && (
-          <ActionIcon
-            aria-label={
-              pinned
-                ? t("取消固定研究清单", "Unpin research list")
-                : t("固定研究清单", "Pin research list")
-            }
-            aria-pressed={pinned}
-            variant={pinned ? "light" : "subtle"}
-            onClick={() => {
-              setPinned(!pinned);
-              setUniverseOpen(pinned);
-            }}
-          >
-            <PushPin size={17} weight={pinned ? "fill" : "regular"} />
-          </ActionIcon>
-        )}
-        <ActionIcon
-          aria-label={t("添加证券", "Add security")}
-          size={30}
-          onClick={() => setFinder(true)}
-        >
-          <Plus size={16} />
-        </ActionIcon>
-      </Group>
-    </span>
+    <UniverseHeading
+      wide={wide}
+      pinned={pinned}
+      onPin={() => {
+        setPinned(!pinned);
+        setUniverseOpen(pinned);
+      }}
+      onAdd={() => setFinder(true)}
+    />
   );
   const universe = (
-    <>
-      <TextInput
-        size="xs"
-        aria-label={t("筛选研究清单", "Filter research list")}
-        placeholder={t("筛选研究清单…", "Filter research list…")}
-        value={filter}
-        onChange={(e) => setFilter(e.currentTarget.value)}
-        leftSection={<MagnifyingGlass size={15} />}
-      />
-      <Select
-        mt="sm"
-        size="xs"
-        aria-label={t("研究分类", "Research category")}
-        value={category}
-        onChange={(v) => setCategory(v ?? "all")}
-        data={[
-          { value: "all", label: t("全部分类", "All categories") },
-          ...(shell.data?.watchlistCategories ?? []).map((c) => ({
-            value: c.id,
-            label:
-              t(c.labelZh, c.labelEn) +
-              " · " +
-              instruments.filter((i) => i.categoryId === c.id).length,
-          })),
-        ]}
-      />
-      <Select
-        mt="sm"
-        size="xs"
-        aria-label={t("研究清单排序", "Research list order")}
-        value={listSort}
-        onChange={(v) => setListSort(v ?? "held")}
-        data={[
-          { value: "held", label: t("持仓优先", "Held first") },
-          { value: "az", label: t("代码 A–Z", "Ticker A–Z") },
-        ]}
-      />
-      <Checkbox
-        mt="md"
-        size="xs"
-        checked={heldOnly}
-        onChange={(e) => setHeldOnly(e.currentTarget.checked)}
-        label={t("仅看我的持仓", "Held in my portfolio")}
-      />
-      <div className="mx-watchlist">
-        {displayed.map((i) => (
-          <button
-            key={i.ticker}
-            className="mx-watchlist-item"
-            data-selected={ticker === i.ticker || undefined}
-            onClick={() => selectTicker(i.ticker)}
-            aria-label={t("研究 ", "Research ") + i.ticker}
-          >
-            <Instrument ticker={i.ticker} name={i.name} small />
-            {i.held && (
-              <span
-                className="mx-status-dot"
-                aria-label={t("已持有", "Held")}
-              />
-            )}
-          </button>
-        ))}
-      </div>
-      {!displayed.length && (
-        <p className="mx-form-help">
-          {t("没有匹配的标的。", "No securities match this filter.")}
-        </p>
-      )}
-    </>
+    <UniverseList
+      state={universeState}
+      categories={shell.data?.watchlistCategories ?? []}
+      instruments={instruments}
+      ticker={ticker}
+      onSelect={selectTicker}
+    />
   );
   const titles: Record<ResearchTab, string> = {
     overview: t("概览", "Overview"),
@@ -497,161 +388,17 @@ export function ResearchWorkspace() {
                     {params.get("fromFund")}
                   </Button>
                 )}
-                <Panel className="mx-security-panel">
-                  <div className="mx-security-header">
-                    <div className="mx-security-name">
-                      <Avatar
-                        key={ticker}
-                        src={`/api/company-logo/${encodeURIComponent(ticker)}`}
-                        alt=""
-                        aria-hidden="true"
-                        size={48}
-                        radius="md"
-                        className="mx-company-logo"
-                      >
-                        {ticker.slice(0, 2)}
-                      </Avatar>
-                      <div>
-                        <h2>{selected.name || ticker}</h2>
-                        <div className="mx-security-meta">
-                          <strong>{ticker}</strong>
-                          <span>
-                            {quote?.context?.quote.exchange ||
-                              (
-                                {
-                                  NMS: "NASDAQ",
-                                  NGM: "NASDAQ",
-                                  NCM: "NASDAQ",
-                                  NYQ: "NYSE",
-                                  LSE: "London Stock Exchange",
-                                } as Record<string, string>
-                              )[selected.exchange] ||
-                              selected.exchange}
-                          </span>
-                          {selected.held && (
-                            <Tag tone="good">
-                              {t("已持有 ", "Held ") +
-                                currency(selected.exposureGbp)}
-                            </Tag>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mx-security-price">
-                      <strong>
-                        {quoteValue(
-                          quote?.context?.quote.price ??
-                            market.spot ??
-                            quote?.technical?.price ??
-                            quote?.valuation?.spot,
-                          quote?.context?.quote.currency || market.currency,
-
-                          t("币种未提供", "Currency unavailable"),
-                        )}
-                      </strong>
-                      {quote?.context?.quote.changePct != null && (
-                        <small
-                          className={
-                            "mx-security-change mx-" + tone(quote.context.quote.changePct)
-                          }
-                        >
-                          {percent(quote.context.quote.changePct, true, 2)}
-                          {quote.context.quote.change != null &&
-                            " (" +
-                              quoteValue(
-                                quote.context.quote.change,
-                                quote.context.quote.currency,
-                                "—",
-                              ) +
-                              ")"}
-                        </small>
-                      )}
-                      {quote?.context?.quote.asOf && (
-                        <small>
-                          {/* Regular session is the normal state; only exceptions are named. */}
-                          {[
-                            new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              timeZone: quote.context.quote.timezone ?? "UTC",
-                            }).format(new Date(quote.context.quote.asOf)) +
-                              " " +
-                              exchangeZone(quote.context.quote.timezone, t),
-                            (
-                              {
-                                closed: t("收盘", "Closed"),
-                                post: t("盘后", "Post-market"),
-                                pre: t("盘前", "Pre-market"),
-                              } as Record<string, string>
-                            )[quote.context.quote.session],
-                            quote.context.quote.delayMinutes
-                              ? t("延迟 ", "Delayed ") + quote.context.quote.delayMinutes + t(" 分钟", " min")
-                              : null,
-                          ].filter(Boolean).join(" · ")}
-                        </small>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mx-research-controls">
-                    <Group gap="xs">
-                      <Button
-                        aria-label={t("更新研究", "Update research")}
-                        variant="default"
-                        size="xs"
-                        leftSection={operation.isPending || fetching ? <Loader size={12} /> : <ArrowClockwise size={14} />}
-                        disabled={operation.isPending || fetching}
-                        onClick={() => operation.mutate({ action: "refresh" })}
-                      >
-                        <span className="mx-action-long">
-                          {operation.isPending || fetching ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
-                        </span>
-                        <span className="mx-action-short">
-                          {operation.isPending || fetching ? t("更新中", "Updating") : t("更新", "Update")}
-                        </span>
-                      </Button>
-                      <Menu shadow="md">
-                        <Menu.Target>
-                          <ActionIcon
-                            aria-label={t(
-                              "管理当前证券",
-                              "Manage this security",
-                            )}
-                          >
-                            <DotsThree size={23} />
-                          </ActionIcon>
-                        </Menu.Target>
-                        <Menu.Dropdown>
-                          <Menu.Item
-                            disabled={!shell.data?.watchlistCategories.length}
-                            onClick={() => setManage(true)}
-                          >
-                            {shell.data?.watchlistCategories.length
-                              ? t("调整研究分类", "Change research category")
-                              : t(
-                                  "尚未设置研究分类",
-                                  "No research categories configured",
-                                )}
-                          </Menu.Item>
-                          <Menu.Item
-                            color="red"
-                            disabled={selected.held || operation.isPending}
-                            leftSection={<Trash size={15} />}
-                            onClick={() => setRemoveConfirm(true)}
-                          >
-                            {selected.held
-                              ? t(
-                                  "持仓标的保留在研究中",
-                                  "Held securities stay in research",
-                                )
-                              : t("从研究清单移除", "Remove from research")}
-                          </Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    </Group>
-                  </div>
-                </Panel>
+                <SecurityHeader
+                  ticker={ticker}
+                  selected={selected}
+                  quote={quote}
+                  categoriesAvailable={Boolean(shell.data?.watchlistCategories.length)}
+                  busy={operation.isPending || fetching}
+                  pending={operation.isPending}
+                  onRefresh={() => operation.mutate({ action: "refresh" })}
+                  onManage={() => setManage(true)}
+                  onRemove={() => setRemoveConfirm(true)}
+                />
                 <Tabs
                   label={t("证券研究视角", "Security research perspective")}
                   value={tab === "financials" ? "fundamentals" : tab}
@@ -883,138 +630,4 @@ export function ResearchWorkspace() {
       </Modal>
     </Page>
   );
-}
-function SecurityFinder({
-  opened,
-  onClose,
-  initial,
-  onAdded,
-}: {
-  opened: boolean;
-  onClose: () => void;
-  initial: string;
-  onAdded: (ticker: string) => Promise<void>;
-}) {
-  const t = useCopy();
-  const [text, setText] = useState("");
-  const [search, setSearch] = useState(() => (initial.trim().length >= 2 ? initial.trim() : ""));
-  const currentText = (text || initial).trim();
-  const showingCurrentSearch = search === currentText;
-  const query = useQuery({
-    queryKey: ["workspace-security-search", opened ? search : "", 3],
-    enabled: opened && search.length >= 2,
-    queryFn: ({ signal }) =>
-      api<SecuritySearchResponse>(
-        "/securities/search?q=" + encodeURIComponent(search), { signal },
-      ),
-    staleTime: 60_000,
-    retry: 0,
-  });
-  const add = useMutation({
-    mutationFn: (security: SecuritySearchResult) =>
-      api("/watchlist", jsonRequest("POST", { security, refresh: true })),
-    onSuccess: async (_, security) => onAdded(security.ticker),
-  });
-  function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (currentText.length < 2) return;
-    if (showingCurrentSearch) void query.refetch();
-    else setSearch(currentText);
-  }
-  return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={t("添加证券", "Add security")}
-      size={620}
-    >
-      <form onSubmit={submit}>
-        <Group align="flex-end" gap="sm" wrap="nowrap">
-          <TextInput
-            flex={1}
-            data-autofocus
-            aria-label={t("搜索证券", "Search securities")}
-            placeholder={
-              initial || t("证券代码或公司名", "Ticker or company name")
-            }
-            value={text}
-            maxLength={100}
-            onChange={(e) => setText(e.currentTarget.value)}
-            leftSection={<MagnifyingGlass size={18} />}
-          />
-          <Button
-            type="submit"
-            disabled={currentText.length < 2}
-            loading={query.isFetching && showingCurrentSearch}
-          >
-            {t("搜索", "Search")}
-          </Button>
-        </Group>
-      </form>
-      {add.isError && <Notice tone="bad">{add.error.message}</Notice>}
-      {!showingCurrentSearch ? null : query.isError ? (
-        <Notice tone="bad">
-          {t(
-            "搜索暂时不可用，请稍后重试。",
-            "Search is temporarily unavailable. Please retry.",
-          )}
-        </Notice>
-      ) : search.length >= 2 && query.isPending ? (
-        <Pending compact />
-      ) : query.data ? (
-        query.data.results.length ? (
-          <div style={{ marginTop: 20 }}>
-            {query.data.results.slice(0, 3).map((r, i) => (
-              <div className="mx-row-link" key={r.figi || r.ticker + i}>
-                <Instrument ticker={r.ticker} name={r.name} small />
-                <span className="mx-form-help">{r.exchange}</span>
-                <Button
-                  size="xs"
-                  variant={r.alreadyWatched ? "default" : "light"}
-                  loading={add.isPending && add.variables?.ticker === r.ticker}
-                  disabled={add.isPending}
-                  onClick={() =>
-                    r.alreadyWatched ? void onAdded(r.ticker) : add.mutate(r)
-                  }
-                >
-                  {r.alreadyWatched ? t("查看", "Open") : t("添加", "Add")}
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Empty
-            title={t("没有找到匹配证券", "No matching securities")}
-            description={t(
-              "尝试使用交易所代码或公司全名。",
-              "Try an exchange ticker or the full company name.",
-            )}
-          />
-        )
-      ) : (
-        <Empty
-          title={t("搜索证券", "Search for a security")}
-          description={t(
-            "输入至少两个字符，搜索可研究的证券。",
-            "Enter at least two characters to search available securities.",
-          )}
-        />
-      )}
-    </Modal>
-  );
-}
-
-/** Exchange-local time names the market, not an offset. */
-function exchangeZone(zone: string | null | undefined, t: (zh: string, en: string) => string) {
-  if (!zone) return "UTC";
-  if (zone === "America/New_York") return t("美东", "ET");
-  if (zone === "Europe/London") return t("伦敦", "London");
-  if (zone === "Asia/Hong_Kong") return t("香港", "Hong Kong");
-  if (zone === "Asia/Tokyo") return t("东京", "Tokyo");
-  try {
-    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "short" })
-      .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value ?? zone;
-  } catch {
-    return zone;
-  }
 }
