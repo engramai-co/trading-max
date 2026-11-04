@@ -237,3 +237,34 @@ def test_window_attribution_rebuilds_missing_openings_from_raw_snapshots(
     assert window["accounts"]["B"]["contributions"][0]["contribution_gbp"] == "-10.00"
     day = artifacts.get_json(refs["account/attribution/day.json"].artifact_id).payload
     assert day["accounts"]["A"]["contributions"][0]["contribution_gbp"] == "0.00"
+
+
+def test_day_attribution_waits_for_an_account_still_on_an_earlier_trading_day(
+    tmp_path: Path,
+) -> None:
+    # The ISA has reached Monday; the invest account's latest snapshot is Friday's.
+    _write_snapshot(tmp_path, "invest", "100", fetched_at="2026-11-06T16:00:00Z")
+    _write_snapshot(tmp_path, "isa", "200", fetched_at="2026-11-09T08:00:00Z")
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    accounts = AccountSnapshotStage(tmp_path, artifacts).run(
+        StageContext(job_id="live", scope="intraday", trigger="intraday")
+    )
+
+    result = AccountDayAttributionStage(
+        artifacts, SnapshotStore(tmp_path), state_root=tmp_path
+    ).run(
+        StageContext(
+            job_id="attribution",
+            scope="intraday",
+            trigger="intraday",
+            upstream_artifact_ids=tuple(ref.artifact_id for ref in accounts.artifacts),
+        )
+    )
+
+    refs = {ref.key: ref for ref in result.artifacts}
+    baseline = artifacts.get_json(refs["account/attribution/day_baseline.json"].artifact_id)
+    day = artifacts.get_json(refs["account/attribution/day.json"].artifact_id)
+    assert day.payload["day"] == "2026-11-09"
+    assert set(day.payload["accounts"]) == set(baseline.payload["accounts"]) == {"B"}
+    assert result.warnings == ("day attribution waits for a 2026-11-09 observation: A",)
+    assert day.ref.quality.coverage == "1/2"

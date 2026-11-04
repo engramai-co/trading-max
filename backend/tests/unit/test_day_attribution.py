@@ -32,6 +32,36 @@ def _contributions(attribution, code="A"):
     return {row.ticker: row.contribution_gbp for row in attribution.accounts[code].contributions}
 
 
+def _saved(model):
+    """An artifact as the stage stores it and reads it back on its next run."""
+
+    return model.model_dump(mode="json", by_alias=False)
+
+
+def _two_accounts(a_at: str, a_value: str, b_at: str, b_value: str):
+    """Account A holding one NVDA share and account B one EQGB share, each observed on its own."""
+
+    return {
+        "A": _account(a_at, ("NVDA", "1", a_value)),
+        "B": _account(b_at, ("EQGB", "1", b_value)),
+    }
+
+
+def _stored_opening(captured_at: str, ticker: str, value: str):
+    return {
+        "captured_at": captured_at,
+        "positions": [
+            {
+                "key": ticker + "_US_EQ",
+                "ticker": ticker,
+                "name": ticker + " Inc",
+                "quantity": "1",
+                "value_gbp": value,
+            }
+        ],
+    }
+
+
 def test_first_observation_opens_the_day_with_zero_contributions():
     baseline, attribution = update_day_attribution(
         None, {"A": _account("2026-11-02T07:10:00Z", ("NVDA", "10", "1500.00"))}
@@ -159,6 +189,75 @@ def test_unreconciled_positions_neither_open_nor_attribute_an_account():
     assert _contributions(attribution, "B") == {"EQGB": Decimal("36.00")}
 
 
+def test_an_account_still_on_friday_opens_monday_at_its_own_first_monday_observation():
+    friday, _ = update_day_attribution(
+        None, _two_accounts("2026-11-06T08:00:00Z", "100.00", "2026-11-06T08:00:00Z", "50.00")
+    )
+    # B reaches Monday while A still shows Friday's last observation.
+    monday, attribution = update_day_attribution(
+        _saved(friday),
+        _two_accounts("2026-11-06T16:00:00Z", "100.00", "2026-11-09T08:00:00Z", "52.00"),
+    )
+    assert attribution.day.isoformat() == "2026-11-09"
+    assert set(monday.accounts) == set(attribution.accounts) == {"B"}
+    # A's first Monday observation opens A's Monday: Friday's £100 is no basis for it.
+    monday, attribution = update_day_attribution(
+        _saved(monday),
+        _two_accounts("2026-11-09T08:10:00Z", "110.00", "2026-11-09T08:10:00Z", "53.00"),
+    )
+    assert attribution.accounts["A"].since.isoformat().startswith("2026-11-09T08:10")
+    assert _contributions(attribution) == {"NVDA": Decimal("0.00")}
+    assert _contributions(attribution, "B") == {"EQGB": Decimal("1.00")}
+    _, attribution = update_day_attribution(
+        _saved(monday),
+        _two_accounts("2026-11-09T15:00:00Z", "115.00", "2026-11-09T15:00:00Z", "51.00"),
+    )
+    row = attribution.accounts["A"].contributions[0]
+    assert (row.contribution_gbp, row.opening_value_gbp) == (Decimal("5.00"), Decimal("110.00"))
+
+
+def test_weekend_observations_stay_on_friday_until_each_account_reaches_monday():
+    friday, _ = update_day_attribution(
+        None, _two_accounts("2026-11-06T08:00:00Z", "100.00", "2026-11-06T08:00:00Z", "50.00")
+    )
+    # B's Saturday observation and A's last Friday one share Friday's trading day.
+    weekend, attribution = update_day_attribution(
+        _saved(friday),
+        _two_accounts("2026-11-06T20:00:00Z", "104.00", "2026-11-07T10:00:00Z", "49.00"),
+    )
+    assert attribution.day.isoformat() == "2026-11-06"
+    assert _contributions(attribution) == {"NVDA": Decimal("4.00")}
+    assert _contributions(attribution, "B") == {"EQGB": Decimal("-1.00")}
+    # B's first Monday observation opens Monday; A's Sunday observation still
+    # belongs to Friday, so A waits for its own.
+    _, attribution = update_day_attribution(
+        _saved(weekend),
+        _two_accounts("2026-11-08T12:00:00Z", "104.00", "2026-11-09T00:10:00Z", "49.50"),
+    )
+    assert attribution.day.isoformat() == "2026-11-09"
+    assert set(attribution.accounts) == {"B"}
+    assert _contributions(attribution, "B") == {"EQGB": Decimal("0.00")}
+
+
+def test_an_opening_stored_under_a_later_trading_day_never_opens_it():
+    # Written before openings were kept per account: A's Friday observation stored
+    # as its Monday opening beside B's real one.
+    legacy = {
+        "schema_version": 1,
+        "day": "2026-11-09",
+        "accounts": {
+            "A": _stored_opening("2026-11-06T16:00:00Z", "NVDA", "100.00"),
+            "B": _stored_opening("2026-11-09T08:00:00Z", "EQGB", "50.00"),
+        },
+    }
+    baseline, attribution = update_day_attribution(
+        legacy, _two_accounts("2026-11-09T08:10:00Z", "110.00", "2026-11-09T08:10:00Z", "52.00")
+    )
+    assert baseline.accounts["A"].captured_at.isoformat().startswith("2026-11-09T08:10")
+    assert _contributions(attribution) == {"NVDA": Decimal("0.00")}
+    assert _contributions(attribution, "B") == {"EQGB": Decimal("2.00")}
+
+
 def _window(previous, current, *, history=None):
     """Open or carry the day, then chain the 5D window up to the current observation."""
 
@@ -265,3 +364,52 @@ def test_window_backfills_missing_openings_from_history():
     # 28 Oct -> 30 Oct -> 3 Nov opening -> now: 10 x (150 - 140) in total.
     assert _contributions(window) == {"NVDA": Decimal("100.00")}
     assert window.accounts["A"].since.isoformat().startswith("2026-10-28T00:10")
+
+
+def test_window_chains_an_account_still_on_friday_up_to_its_own_observation():
+    state, _ = _window(
+        None, _two_accounts("2026-11-06T08:00:00Z", "100.00", "2026-11-06T08:00:00Z", "50.00")
+    )
+    state, window = _window(
+        state, _two_accounts("2026-11-06T16:00:00Z", "104.00", "2026-11-09T08:00:00Z", "52.00")
+    )
+    # Monday holds no opening for A, whose chain ends at its own Friday observation.
+    assert "A" not in state["window"]["days"][-1]["accounts"]
+    assert window.accounts["A"].as_of.isoformat().startswith("2026-11-06T16:00")
+    assert _contributions(window) == {"NVDA": Decimal("4.00")}
+    # A's first Monday observation becomes its Monday opening. The 5D window spans
+    # Friday and Monday, so the move between them still counts there.
+    state, window = _window(
+        state, _two_accounts("2026-11-09T08:10:00Z", "110.00", "2026-11-09T08:10:00Z", "53.00")
+    )
+    monday = state["window"]["days"][-1]["accounts"]["A"]
+    assert monday["captured_at"].startswith("2026-11-09T08:10")
+    assert _contributions(window) == {"NVDA": Decimal("10.00")}
+
+
+def test_window_never_starts_from_an_opening_stored_under_another_trading_day():
+    def stored(day: str, captured_at: str, value: str):
+        return {"day": day, "accounts": {"A": _stored_opening(captured_at, "NVDA", value)}}
+
+    # Written before openings were kept per account: A's observation of Monday
+    # 2 November stored as its opening of Tuesday 3 November, the window's first day.
+    previous = {
+        "day": stored("2026-11-06", "2026-11-06T08:00:00Z", "100.00"),
+        "window": {
+            "days": [
+                stored("2026-11-03", "2026-11-02T16:00:00Z", "90.00"),
+                stored("2026-11-06", "2026-11-06T08:00:00Z", "100.00"),
+            ]
+        },
+    }
+    state, window = _window(
+        previous, {"A": _account("2026-11-09T10:00:00Z", ("NVDA", "1", "110.00"))}
+    )
+    # Friday's opening starts the chain: 100 to 110, not 90 from before the window.
+    assert window.accounts["A"].since.isoformat().startswith("2026-11-06T08:00")
+    assert _contributions(window) == {"NVDA": Decimal("10.00")}
+    assert {
+        day["day"]: day["accounts"]["A"]["captured_at"][:10]
+        for day in state["window"]["days"]
+        if "A" in day["accounts"]
+    } == {"2026-11-06": "2026-11-06", "2026-11-09": "2026-11-09"}

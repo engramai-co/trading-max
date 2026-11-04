@@ -1,10 +1,15 @@
 """Per-position contributions to the account change over the 1D and 5D windows.
 
-The first observation of each London trading day becomes the baseline. Later
-observations attribute each position's GBP change to the shares held through the
-whole window. Shares bought or sold during the day, cash, FX on cash and timing
-differences are deliberately left unattributed so that a consumer can show them as
-the residual against the account's own period result.
+Each account's first observation of a London trading day becomes its opening for
+that day. Later observations attribute each position's GBP change to the shares
+held through the whole window. Shares bought or sold during the day, cash, FX on
+cash and timing differences are deliberately left unattributed so that a consumer
+can show them as the residual against the account's own period result.
+
+Accounts sync independently, so openings are kept per account: an opening counts
+only on the trading day it was captured, and an account whose latest observation
+is still on an earlier trading day than the newest one neither opens nor joins
+that day until its own first observation of it.
 
 The 5D window keeps the opening of each of the last five London trading days and
 chains them: each segment from one opening to the next, and from the last opening
@@ -115,6 +120,31 @@ def _timestamp(value: Any) -> datetime:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def observed_day(account: Mapping[str, Any]) -> date:
+    """The London trading day of an account observation."""
+
+    return trading_day(_timestamp(account["fetched_at"]))
+
+
+def _own_day(baseline: DayBaseline) -> DayBaseline:
+    """The baseline without openings captured on another trading day.
+
+    Baselines written before openings were kept per account can hold an account's
+    observation from an earlier trading day under a later one, for example
+    Friday's under Monday. Such an opening never opens that day.
+    """
+
+    return baseline.model_copy(
+        update={
+            "accounts": {
+                code: opening
+                for code, opening in baseline.accounts.items()
+                if trading_day(opening.captured_at) == baseline.day
+            }
+        }
+    )
+
+
 def _decimal(value: Any) -> Decimal | None:
     try:
         number = Decimal(str(value))
@@ -177,7 +207,7 @@ def update_day_attribution(
     previous_baseline: Mapping[str, Any] | None,
     accounts: Mapping[str, Mapping[str, Any]],
 ) -> tuple[DayBaseline, DayAttribution]:
-    """Carry or reset the day's baseline and attribute the change since it."""
+    """Carry or reset each account's opening and attribute the change since it."""
 
     if not accounts:
         raise ValueError("day attribution needs at least one account observation")
@@ -189,9 +219,15 @@ def update_day_attribution(
             baseline = DayBaseline.model_validate(previous_baseline)
         except ValueError:
             baseline = None
-    opening = dict(baseline.accounts) if baseline is not None and baseline.day == day else {}
+    opening = (
+        dict(_own_day(baseline).accounts) if baseline is not None and baseline.day == day else {}
+    )
     result: dict[str, AccountDayAttribution] = {}
     for code, account in accounts.items():
+        if trading_day(observed[code]) != day:
+            # Still on an earlier trading day: the account waits for its own first
+            # observation of this one, so an earlier day never becomes its opening.
+            continue
         current = _positions(account)
         if current is None:
             # Unreconciled position detail cannot open or extend the day.
@@ -217,6 +253,8 @@ def update_window_attribution(
 
     The history callable may supply an opening the stored window lacks, for
     example from an earlier published snapshot when the window is first built.
+    Every opening counts only on the trading day it was captured, so an earlier
+    day's observation stored under a later day never starts or joins the chain.
     """
 
     days = window_days(today.day)
@@ -235,7 +273,7 @@ def update_window_attribution(
                 found = history(day)
                 if found is not None and found.day == day:
                     stored[day] = found
-    openings = [stored[day] for day in days if day in stored]
+    openings = [_own_day(stored[day]) for day in days if day in stored]
     result: dict[str, AccountDayAttribution] = {}
     for code, account in accounts.items():
         current = _positions(account)
@@ -297,6 +335,7 @@ __all__ = [
     "WindowAttribution",
     "WindowBaselines",
     "baseline_from_accounts",
+    "observed_day",
     "trading_day",
     "update_day_attribution",
     "update_window_attribution",
