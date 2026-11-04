@@ -30,6 +30,7 @@ import {
   useCopy,
 } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
+import type { ResearchPrice } from "./research-price-basis";
 import {
   FilingMultiples,
   ModelAlternatives,
@@ -41,7 +42,15 @@ import { useRouteState } from "./route-state";
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
 
-export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
+export function ValuationWorkbench({
+  data,
+  revision,
+  price,
+}: {
+  data: ResearchLensSnapshot;
+  revision?: string | null;
+  price?: ResearchPrice;
+}) {
   const t = useCopy();
   const financial =
     data.context?.capabilities.some(
@@ -66,7 +75,7 @@ export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnaps
     return (
       <>
         <ModelAlternatives data={data} financial />
-        <FilingMultiples data={data} />
+        <FilingMultiples data={data} price={price} />
       </>
     );
   if (query.isPending) return <Pending />;
@@ -83,7 +92,7 @@ export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnaps
           />
           <QueryError retry={query.refetch} />
         </Panel>
-        <FilingMultiples data={data} />
+        <FilingMultiples data={data} price={price} />
       </>
     );
   return (
@@ -91,7 +100,7 @@ export function ValuationWorkbench({ data, revision }: { data: ResearchLensSnaps
       <ModelEditor key={query.data.id} initial={query.data} data={data} revision={revision} />
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
-        <FilingMultiples data={data} />
+        <FilingMultiples data={data} price={price} />
       </details>
     </>
   );

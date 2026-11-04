@@ -47,6 +47,7 @@ import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
 import { PricePreview } from "./research-price-preview";
+import { basisPrice } from "./research-price-basis";
 import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
@@ -145,6 +146,8 @@ export function ResearchWorkspace() {
   const isFund = ["ETF", "MUTUALFUND"].includes(
     quote?.context?.assetType ?? "",
   );
+  // Held securities are quoted at the broker price everywhere on the page.
+  const price = basisPrice(selected, quote?.context?.quote);
   const context = useQuery({
     ...researchLensQuery(ticker, "fundamentals", revision),
     enabled: Boolean(selected) && isFund && tab === "overview",
@@ -520,13 +523,14 @@ export function ResearchWorkspace() {
                             <CompanyOverview
                               data={lens.data}
                               context={context.data}
+                              gics={selected.gics}
                             />
                           )}
                         </>
                       )}
                       {tab === "technical" && params.get("technicalView") === "seasonality" && <Seasonality data={lens.data} revision={revision} />}
                       {tab === "valuation" && (
-                        <ValuationWorkbench data={lens.data} revision={revision} />
+                        <ValuationWorkbench data={lens.data} revision={revision} price={price} />
                       )}
                       {tab === "fundamentals" &&
                         (isFund ? (
@@ -549,7 +553,9 @@ export function ResearchWorkspace() {
                             initialMode="income"
                           />
                         ))}
-                      {tab === "analyst" && <AnalystView data={lens.data} revision={revision} />}
+                      {tab === "analyst" && (
+                        <AnalystView data={lens.data} revision={revision} price={price} />
+                      )}
                       {tab === "options" && <OptionsView data={lens.data} />}
                       {tab === "ledger" && (
                         <ResearchNotebook key={ticker} data={lens.data} />

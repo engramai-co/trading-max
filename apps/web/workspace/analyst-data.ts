@@ -119,3 +119,25 @@ export function analystVerdict(analyst: Json, price: unknown, today: string) {
   };
 }
 
+/**
+ * The one next report date every lens shows. The service decides when it
+ * sends `nextEarningsDate` (null included); older services fall back to the
+ * same rule here: provider events first, then the calendar, never a past date.
+ */
+export function nextEarningsDate(
+  data: { nextEarningsDate?: string | null; analyst?: unknown; fundamentals?: unknown },
+  today: string,
+) {
+  if (data.nextEarningsDate !== undefined) return data.nextEarningsDate;
+  const upcoming = (dates: string[]) => dates.filter((date) => date >= today).sort()[0];
+  const events = objects(object(data.analyst).earningsEvents)
+    .filter((row) => str(row.status) !== "reported")
+    .map((row) => str(row.date).slice(0, 10));
+  const calendar = object(object(data.fundamentals).earningsCalendar).earningsDates;
+  return (
+    upcoming(events) ??
+    upcoming((Array.isArray(calendar) ? calendar : []).map((date) => str(date).slice(0, 10))) ??
+    null
+  );
+}
+

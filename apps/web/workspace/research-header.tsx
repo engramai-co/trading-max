@@ -3,11 +3,50 @@
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { ActionIcon, Avatar, Button, Group, Loader, Menu } from "@mantine/core";
 import { ArrowClockwise, DotsThree, Trash } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
+import { numeric } from "@/lib/numeric";
 import { currency, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import { Panel, Tag, useCopy } from "./foundation";
+import { priceBasis, type PriceTime } from "./research-price-basis";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
+
+/** Re-reads the clock every minute so a quote turns late without new data. */
+function useMinuteClock() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** A late price names its session close or time in amber; a timely one stays quiet. */
+function PriceTimeLabel({ time }: { time: PriceTime }) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  const when =
+    time.kind === "close"
+      ? formatCalendarDate(time.date, locale) + t("收盘", " close")
+      : formatDateTime(time.asOf, locale, timeZone);
+  if (time.stale)
+    return (
+      <small>
+        <Tag tone="warn">{when}</Tag>
+      </small>
+    );
+  return (
+    <small>
+      {when}
+      {time.kind === "time" && time.delayMinutes
+        ? " · " + t("延迟 ", "Delayed ") + time.delayMinutes + t(" 分钟", " min")
+        : ""}
+    </small>
+  );
+}
 
 /** Name, listing, price and actions for the selected security. */
 export function SecurityHeader({
@@ -33,6 +72,16 @@ export function SecurityHeader({
 }) {
   const t = useCopy();
   const market = object(quote?.market);
+  const now = useMinuteClock();
+  const basis = priceBasis(
+    selected,
+    quote?.context?.quote,
+    numeric(market.spot ?? quote?.technical?.price ?? quote?.valuation?.spot),
+    typeof market.currency === "string" ? market.currency : null,
+    new Date(now),
+  );
+  // Older services report only the look-through exposure.
+  const heldValue = selected.directValueGbp ?? selected.exposureGbp;
   return (
     <Panel className="mx-security-panel">
       <div className="mx-security-header">
@@ -66,10 +115,7 @@ export function SecurityHeader({
                   selected.exchange}
               </span>
               {selected.held && (
-                <Tag tone="good">
-                  {t("已持有 ", "Held ") +
-                    currency(selected.exposureGbp)}
-                </Tag>
+                <Tag>{t("已持有 ", "Held ") + currency(heldValue, "GBP", 2)}</Tag>
               )}
             </div>
           </div>
@@ -77,58 +123,19 @@ export function SecurityHeader({
         <div className="mx-security-price">
           <strong>
             {quoteValue(
-              quote?.context?.quote.price ??
-                market.spot ??
-                quote?.technical?.price ??
-                quote?.valuation?.spot,
-              quote?.context?.quote.currency || market.currency,
-
+              basis.price,
+              basis.currency,
               t("币种未提供", "Currency unavailable"),
             )}
           </strong>
-          {quote?.context?.quote.changePct != null && (
-            <small
-              className={
-                "mx-security-change mx-" + tone(quote.context.quote.changePct)
-              }
-            >
-              {percent(quote.context.quote.changePct, true, 2)}
-              {quote.context.quote.change != null &&
-                " (" +
-                  quoteValue(
-                    quote.context.quote.change,
-                    quote.context.quote.currency,
-                    "—",
-                  ) +
-                  ")"}
+          {basis.changePct != null && (
+            <small className={"mx-security-change mx-" + tone(basis.changePct)}>
+              {percent(basis.changePct, true, 2)}
+              {basis.change != null &&
+                " (" + quoteValue(basis.change, basis.currency, "—") + ")"}
             </small>
           )}
-          {quote?.context?.quote.asOf && (
-            <small>
-              {/* Regular session is the normal state; only exceptions are named. */}
-              {[
-                new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  timeZone: quote.context.quote.timezone ?? "UTC",
-                }).format(new Date(quote.context.quote.asOf)) +
-                  " " +
-                  exchangeZone(quote.context.quote.timezone, t),
-                (
-                  {
-                    closed: t("收盘", "Closed"),
-                    post: t("盘后", "Post-market"),
-                    pre: t("盘前", "Pre-market"),
-                  } as Record<string, string>
-                )[quote.context.quote.session],
-                quote.context.quote.delayMinutes
-                  ? t("延迟 ", "Delayed ") + quote.context.quote.delayMinutes + t(" 分钟", " min")
-                  : null,
-              ].filter(Boolean).join(" · ")}
-            </small>
-          )}
+          {basis.time && <PriceTimeLabel time={basis.time} />}
         </div>
       </div>
       <div className="mx-research-controls">
@@ -190,19 +197,4 @@ export function SecurityHeader({
       </div>
     </Panel>
   );
-}
-
-/** Exchange-local time names the market, not an offset. */
-function exchangeZone(zone: string | null | undefined, t: (zh: string, en: string) => string) {
-  if (!zone) return "UTC";
-  if (zone === "America/New_York") return t("美东", "ET");
-  if (zone === "Europe/London") return t("伦敦", "London");
-  if (zone === "Asia/Hong_Kong") return t("香港", "Hong Kong");
-  if (zone === "Asia/Tokyo") return t("东京", "Tokyo");
-  try {
-    return new Intl.DateTimeFormat("en-GB", { timeZone: zone, timeZoneName: "short" })
-      .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value ?? zone;
-  } catch {
-    return zone;
-  }
 }

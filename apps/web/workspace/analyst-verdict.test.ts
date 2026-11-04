@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analystVerdict } from "./analyst-data";
+import { analystVerdict, nextEarningsDate } from "./analyst-data";
+import { filingTitle } from "./research-filings";
 
 const analyst = {
   providerRecommendationKey: "strong_buy",
@@ -33,6 +34,38 @@ describe("analyst verdict", () => {
   it("leaves unknown facts empty instead of guessing", () => {
     const verdict = analystVerdict({}, null, "2026-11-03");
     expect(verdict).toMatchObject({ consensus: null, analysts: null, targetChange: null, estimateChange90: null, nextReport: null });
+  });
+});
+
+describe("next earnings date", () => {
+  const today = "2026-11-04";
+  const stale = { fundamentals: { earningsCalendar: { earningsDates: ["2026-10-22"] } } };
+  it("never shows a past calendar date as the next report", () => {
+    expect(nextEarningsDate(stale, today)).toBeNull();
+    expect(
+      nextEarningsDate(
+        { ...stale, analyst: { earningsEvents: [{ date: "2027-02-04", status: "provider-estimate" }] } },
+        today,
+      ),
+    ).toBe("2027-02-04");
+  });
+  it("trusts the service's single date, including its absence", () => {
+    expect(nextEarningsDate({ ...stale, nextEarningsDate: "2027-02-04" }, today)).toBe("2027-02-04");
+    expect(nextEarningsDate({ nextEarningsDate: null, analyst: { earningsEvents: [{ date: "2027-02-04" }] } }, today))
+      .toBeNull();
+  });
+});
+
+describe("filing titles", () => {
+  const zh = (chinese: string) => chinese;
+  const en = (_zh: string, english: string) => english;
+  it("names forms in Chinese and keeps the provider's description in English", () => {
+    expect(filingTitle("10-Q", "Periodic Financial Reports", zh)).toBe("10-Q · 季报");
+    expect(filingTitle("8-K/A", "Corporate Changes & Voting Matters", zh)).toBe("8-K/A · 重大事项公告（修订）");
+    expect(filingTitle("S-3", "Offering Registrations", zh)).toBe("S-3 · 发行注册");
+    expect(filingTitle("SD", "Specialized Disclosure Report …", zh)).toBe("SD · 冲突矿产披露");
+    expect(filingTitle("10-Q", "Periodic Financial Reports", en)).toBe("10-Q · Periodic Financial Reports");
+    expect(filingTitle("XYZ", "Something new", zh)).toBe("XYZ · Something new");
   });
 });
 
