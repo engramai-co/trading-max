@@ -226,7 +226,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
                 String(entries[0]?.name ?? "") + " · " + code,
                 ...entries.map(
                   (e) =>
-                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value)}`,
+                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value, locale)}`,
                 ),
               ].join("\n");
             },
@@ -377,7 +377,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
                 String(entries[0]?.name ?? "") + " · " + code,
                 ...entries.map(
                   (e) =>
-                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value)}`,
+                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value, locale)}`,
                 ),
               ].join("\n");
             },

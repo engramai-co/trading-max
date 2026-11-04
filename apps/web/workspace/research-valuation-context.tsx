@@ -20,6 +20,7 @@ export function ModelAlternatives({
   financial: boolean;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const facts = data.financialFacts;
   const period =
     facts?.periods.find((p) => p.id === facts.latestTtm) ??
@@ -66,30 +67,30 @@ export function ModelAlternatives({
                 ["ROA", percent(value("roa"))],
                 [
                   t("股东权益", "Shareholders’ equity"),
-                  compact(equity) + " " + (facts?.currency ?? ""),
+                  compact(equity, locale) + " " + (facts?.currency ?? ""),
                 ],
                 [
                   t("有形净资产", "Net tangible assets"),
-                  compact(value("tangibleEquity")) +
+                  compact(value("tangibleEquity"), locale) +
                     " " +
                     (facts?.currency ?? ""),
                 ],
               ]
             : [
                 [t("财务期间", "Financial period"), period?.label ?? "—"],
-                [t("营业收入", "Revenue"), compact(value("revenue"))],
+                [t("营业收入", "Revenue"), compact(value("revenue"), locale)],
                 [
                   t("现金及短期投资", "Cash & investments"),
-                  compact(value("cash")),
+                  compact(value("cash"), locale),
                 ],
                 [
                   t("经营现金流", "Operating cash flow"),
-                  compact(value("operatingCashflow")),
+                  compact(value("operatingCashflow"), locale),
                 ],
                 [t("现金流率", "FCF margin"), percent(value("fcfMargin"))],
                 [
                   t("期末股数", "Period-end shares"),
-                  compact(value("shareCount")),
+                  compact(value("shareCount"), locale),
                 ],
               ]
         }
@@ -276,7 +277,7 @@ export function FilingMultiples({
                       : point?.dataIndex;
                   const r = index == null ? undefined : rows[index];
                   return r
-                    ? `${str(r.priceDate)}\n${ratio}  ${number(r[mode], 2)}×\n${mode === "ps" ? `${t("营收", "Revenue")} ${compact(r.revenue)}` : `EPS ${number(r.eps, 2)}`} ${code}`
+                    ? `${str(r.priceDate)}\n${ratio}  ${number(r[mode], 2)}×\n${mode === "ps" ? `${t("营收", "Revenue")} ${compact(r.revenue, locale)}` : `EPS ${number(r.eps, 2)}`} ${code}`
                     : "";
                 },
               },
@@ -305,7 +306,7 @@ export function FilingMultiples({
                   " · " +
                   code,
                 value: (r) =>
-                  mode === "ps" ? compact(r.revenue) : number(r.eps, 2),
+                  mode === "ps" ? compact(r.revenue, locale) : number(r.eps, 2),
                 numeric: true,
               },
               {
@@ -348,12 +349,12 @@ export function FilingMultiples({
                           <summary>{t("查看", "Open")}</summary>
                           <p>
                             {t("普通股股数", "Common shares")}:{" "}
-                            {compact(r.shares)} · {formatCalendarDate(str(r.shareDate), locale)}
+                            {compact(r.shares, locale)} · {formatCalendarDate(str(r.shareDate), locale)}
                           </p>
                           {objects(r.components).map((o, i) => (
                             <p key={i}>
                               {str(o.periodStart)} → {str(o.periodEnd)} ·{" "}
-                              {compact(o.value)} {code}{" "}
+                              {compact(o.value, locale)} {code}{" "}
                               {safeUrl(str(o.url)) && (
                                 <a
                                   href={safeUrl(str(o.url))}

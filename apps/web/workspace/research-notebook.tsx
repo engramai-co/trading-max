@@ -362,6 +362,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
 
 function ModelVersions({ journal }: { journal: Journal }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const models = journal.models ?? [];
   const [compare, setCompare] = useState<string | null>(null);
@@ -470,7 +471,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       <td key={m.id}>
                         {k === "startMargin"
                           ? percent(m.preview.basis[k])
-                          : compact(m.preview.basis[k]) +
+                          : compact(m.preview.basis[k], locale) +
                             (k === "revenue"
                               ? " " + m.preview.basis.currency
                               : "")}
@@ -596,12 +597,12 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 { label: t("年", "Year"), value: (r) => String(r.year) },
                 {
                   label: t("营收", "Revenue"),
-                  value: (r) => compact(r.revenue),
+                  value: (r) => compact(r.revenue, locale),
                   numeric: true,
                 },
                 {
                   label: t("现金流", "Cash flow"),
-                  value: (r) => compact(r.freeCashflow),
+                  value: (r) => compact(r.freeCashflow, locale),
                   numeric: true,
                 },
                 {

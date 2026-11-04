@@ -1,10 +1,11 @@
+import type { Locale } from "@/components/locale-provider";
 import { compact, number } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 
 /** Compact display only: source records and copy/export retain their precision. */
-export function chartNumber(value: unknown) {
+export function chartNumber(value: unknown, locale: Locale = "en") {
   const n = numeric(value);
-  return n == null ? "—" : Math.abs(n) >= 10_000 ? compact(n) : number(n, 2);
+  return n == null ? "—" : Math.abs(n) >= 10_000 ? compact(n, locale) : number(n, 2);
 }
 
 export function chartName(name: string, width = 24) {
