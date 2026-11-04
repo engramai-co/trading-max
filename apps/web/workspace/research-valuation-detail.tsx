@@ -267,6 +267,7 @@ export function GrowthContext({
   analyst: Record<string, unknown>;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const facts = data.financialFacts;
   const annual = (facts?.periods ?? [])
     .filter((p) => p.kind === "annual")
@@ -338,7 +339,7 @@ export function GrowthContext({
           ],
           [
             nextYear
-              ? t(`${nextYear} 财年营收共识`, `FY${nextYear} revenue consensus`)
+              ? locale === "zh" ? `${nextYear} 财年营收共识` : `FY${nextYear} revenue consensus`
               : t("下一财年营收共识", "Next fiscal-year revenue consensus"),
             percent(next?.growth, true, 2),
           ],
