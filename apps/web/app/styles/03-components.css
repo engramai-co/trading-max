@@ -273,12 +273,12 @@
     color: var(--mx-brand);
   }
 }
-/* A fingertip reaches "+N" without moving the line around it. */
+/* A fingertip reaches "+N" without moving the line around it: the target grows sideways and into the row's padding below, never over the text above. */
 @media (pointer: coarse) {
   .mx-decision-more::after {
     content: "";
     position: absolute;
-    inset: -10px -6px;
+    inset: -2px -6px -10px;
   }
 }
 .mx-decision-watching {
