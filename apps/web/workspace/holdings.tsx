@@ -17,8 +17,8 @@ import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { historyDay, tradingDay } from "@/lib/portfolio/history";
-import { compareHoldings, holdingSort, holdingSortDirection } from "./holdings-data";
+import { historyDay } from "@/lib/portfolio/history";
+import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { signedPounds } from "./day-drivers";
 import {
@@ -111,10 +111,14 @@ function Positions() {
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
-  const day = tradingDay(query.data?.brokerAsOf);
-  const dayLabel = !day || day === historyDay(new Date(now).toISOString())
-    ? t("今日", "Today")
-    : formatCalendarDate(day, locale, now);
+  const today = historyDay(new Date(now).toISOString());
+  const dayLabel = (date?: string | null) =>
+    !date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now);
+  // An account still on Friday is never called today beside one already on Monday.
+  const { latest: columnDay, earlier } = dayChangeColumn(scoped);
+  const columnLabel = dayLabel(columnDay);
+  const otherDay = (h: Holding) =>
+    earlier(h) ? dayLabel(earlier(h)) : null;
   const sortButton = (label: string, key: string) => (
     <button
       className="mx-sort"
@@ -218,7 +222,7 @@ function Positions() {
                   w={155}
                   data={[
                     { value: "value", label: sort === "value" && ascending ? t("市值从小到大", "Smallest value") : t("市值从大到小", "Largest value") },
-                    ...(hasDay ? [{ value: "day", label: sort === "day" && ascending ? dayLabel + t("跌幅最大", " · largest fall") : dayLabel + t("涨幅最大", " · largest rise") }] : []),
+                    ...(hasDay ? [{ value: "day", label: sort === "day" && ascending ? columnLabel + t("跌幅最大", " · largest fall") : columnLabel + t("涨幅最大", " · largest rise") }] : []),
                     { value: "pnl", label: sort === "pnl" && ascending ? t("盈亏从低到高", "Lowest P&L") : t("盈亏从高到低", "Highest P&L") },
                     {
                       value: "allocation",
@@ -265,7 +269,7 @@ function Positions() {
                         </th>
                         {hasDay && (
                           <th className="mx-align-right">
-                            {sortButton(dayLabel, "day")}
+                            {sortButton(columnLabel, "day")}
                           </th>
                         )}
                         <th className="mx-align-right">
@@ -333,11 +337,14 @@ function Positions() {
                                   <strong className={"mx-" + tone(h.dayChangeGbp)}>
                                     {signedPounds(h.dayChangeGbp)}
                                   </strong>
-                                  {h.dayChangePct != null && (
+                                  {(h.dayChangePct != null || otherDay(h)) && (
                                     <small>
-                                      <span className={"mx-" + tone(h.dayChangePct)}>
-                                        {percent(h.dayChangePct, true, 2)}
-                                      </span>
+                                      {h.dayChangePct != null && (
+                                        <span className={"mx-" + tone(h.dayChangePct)}>
+                                          {percent(h.dayChangePct, true, 2)}
+                                        </span>
+                                      )}{" "}
+                                      {otherDay(h) && <Tag tone="warn">{otherDay(h)}</Tag>}
                                     </small>
                                   )}
                                 </>
@@ -393,7 +400,7 @@ function Positions() {
                           </small>
                           {h.dayChangeGbp != null && (
                             <small className="mx-holding-day">
-                              {dayLabel}{" "}
+                              {dayLabel(h.dayChangeDate ?? columnDay)}{" "}
                               <span className={"mx-" + tone(h.dayChangeGbp)}>
                                 {signedPounds(h.dayChangeGbp)}
                                 {h.dayChangePct != null && " " + percent(h.dayChangePct, true, 2)}
@@ -482,7 +489,7 @@ function Positions() {
             <div className="mx-metric-grid mx-position-metrics">
               {selected.dayChangeGbp != null && (
                 <Metric
-                  label={dayLabel}
+                  label={dayLabel(selected.dayChangeDate ?? columnDay)}
                   value={signedPounds(selected.dayChangeGbp)}
                   tone={tone(selected.dayChangeGbp)}
                   note={selected.dayChangePct != null ? percent(selected.dayChangePct, true, 2) : undefined}

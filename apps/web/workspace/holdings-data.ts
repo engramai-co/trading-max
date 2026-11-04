@@ -13,6 +13,20 @@ export function holdingSortDirection(sort: string, direction: string | null) {
     : sort === "ticker" ? "asc" : "desc";
 }
 
+/**
+ * Each day change carries the trading day its own account was measured on. The
+ * column names the latest one; a change from an earlier day reports that day.
+ */
+export function dayChangeColumn(holdings: Holding[]) {
+  const latest = holdings
+    .flatMap((h) => (h.dayChangeGbp != null && h.dayChangeDate ? [h.dayChangeDate] : []))
+    .sort()
+    .at(-1) ?? null;
+  const earlier = (h: Holding) =>
+    h.dayChangeGbp != null && h.dayChangeDate && latest && h.dayChangeDate !== latest ? h.dayChangeDate : null;
+  return { latest, earlier };
+}
+
 export function compareHoldings(a: Holding, b: Holding, sort: string, direction: string) {
   if (sort === "day") {
     // Today's change in GBP. A position without one (opened today, or no

@@ -35,10 +35,6 @@ export function portfolioPerformanceHref(scope: Scope, range: Range) {
 export function historyDay(date: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : portfolioCalendarDateKey(date)!;
 }
-/** The London weekday a moment belongs to, like the 1D window: weekends stay on Friday. */
-export function tradingDay(date: string | null | undefined) {
-  return date && Number.isFinite(Date.parse(date)) ? lastWeekday(historyDay(date)) : null;
-}
 function shiftedDay(day: string, offset: number) {
   return new Date(Date.parse(day) + offset * DAY).toISOString().slice(0, 10);
 }
