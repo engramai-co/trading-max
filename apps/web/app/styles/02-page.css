@@ -617,6 +617,20 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-estimate-tag {
   display: inline-flex;
 }
+/* A caveat tag that opens its explanation; hover and open states follow .mx-info. */
+.mx-tag-help {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+.mx-tag-help:hover .mx-tag,
+.mx-tag-help[aria-expanded="true"] .mx-tag {
+  color: var(--mx-brand);
+  background: var(--mx-brand-soft);
+}
 .mx-metric-label .mx-tag {
   padding-block: 1px;
 }

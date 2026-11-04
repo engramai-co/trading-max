@@ -90,9 +90,12 @@ function useChangeCount(value: string | null) {
 export function Help({
   label,
   children,
+  tag,
 }: {
   label: ReactNode;
   children: ReactNode;
+  /** A caveat tag beside a figure; it opens the explanation in place of the "?" button. */
+  tag?: ReactNode;
 }) {
   const t = useCopy();
   const [opened, setOpened] = useState(false);
@@ -112,7 +115,7 @@ export function Help({
       <Popover.Target>
         <button
           type="button"
-          className="mx-info"
+          className={tag ? "mx-tag-help" : "mx-info"}
           data-mantine-stop-propagation={opened || undefined}
           aria-label={
             typeof label === "string"
@@ -127,7 +130,7 @@ export function Help({
             }
           }}
         >
-          <Question size={16} aria-hidden="true" />
+          {tag ?? <Question size={16} aria-hidden="true" />}
         </button>
       </Popover.Target>
       <Popover.Dropdown className="mx-help-popover" data-mantine-stop-propagation="true"
