@@ -194,6 +194,30 @@ export function ResearchWorkspace() {
     update({ ticker: value });
     setUniverseOpen(false);
   }
+  const position = displayed.findIndex((i) => i.ticker === ticker);
+  const previous = position > 0 ? displayed[position - 1] : undefined;
+  const next = position >= 0 ? displayed[position + 1] : undefined;
+  // J and K step through the visible research list, like the arrow buttons.
+  useEffect(() => {
+    function step(event: KeyboardEvent) {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return;
+      const key = event.key.toLowerCase();
+      const target = key === "j" ? next : key === "k" ? previous : undefined;
+      const origin = event.target instanceof Element ? event.target : null;
+      if (
+        !target ||
+        origin?.closest(
+          "input, textarea, select, [contenteditable], [role=dialog], [role=combobox], [role=listbox], [role=menu]",
+        )
+      )
+        return;
+      event.preventDefault();
+      update({ ticker: target.ticker });
+      setUniverseOpen(false);
+    }
+    window.addEventListener("keydown", step);
+    return () => window.removeEventListener("keydown", step);
+  }, [next, previous, update]);
   const universeHeading = (
     <UniverseHeading
       wide={wide}
@@ -223,6 +247,17 @@ export function ResearchWorkspace() {
     analyst: t("预期与事件", "Estimates & events"),
     options: t("期权结构", "Options"),
     ledger: t("研究记录", "Journal"),
+  };
+  // Phone labels keep all seven lenses in view; each is part of its full title.
+  const shortTitles: Record<ResearchTab, string> = {
+    overview: t("概览", "Overview"),
+    technical: t("价格", "Price"),
+    valuation: t("估值", "Valuation"),
+    fundamentals: t("财务", "Financials"),
+    financials: t("财务", "Financials"),
+    analyst: t("预期", "Estimates"),
+    options: t("期权", "Options"),
+    ledger: t("记录", "Journal"),
   };
   return (
     <Page
@@ -258,36 +293,28 @@ export function ResearchWorkspace() {
           </Button>
           {selected && (
             <>
-              <ActionIcon
-                variant="default"
-                aria-label={t("上一只证券", "Previous security")}
-                disabled={displayed.findIndex((i) => i.ticker === ticker) <= 0}
-                onClick={() =>
-                  selectTicker(
-                    displayed[displayed.findIndex((i) => i.ticker === ticker) - 1]
-                      .ticker,
-                  )
-                }
-              >
-                <CaretLeft size={18} />
-              </ActionIcon>
-              <ActionIcon
-                variant="default"
-                aria-label={t("下一只证券", "Next security")}
-                disabled={
-                  displayed.findIndex((i) => i.ticker === ticker) < 0 ||
-                  displayed.findIndex((i) => i.ticker === ticker) >=
-                    displayed.length - 1
-                }
-                onClick={() =>
-                  selectTicker(
-                    displayed[displayed.findIndex((i) => i.ticker === ticker) + 1]
-                      .ticker,
-                  )
-                }
-              >
-                <CaretRight size={18} />
-              </ActionIcon>
+              <Tooltip label={<>{t("上一只证券", "Previous security")} <kbd>K</kbd></>}>
+                <ActionIcon
+                  variant="default"
+                  aria-label={t("上一只证券", "Previous security")}
+                  aria-keyshortcuts="K"
+                  disabled={!previous}
+                  onClick={() => previous && selectTicker(previous.ticker)}
+                >
+                  <CaretLeft size={18} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={<>{t("下一只证券", "Next security")} <kbd>J</kbd></>}>
+                <ActionIcon
+                  variant="default"
+                  aria-label={t("下一只证券", "Next security")}
+                  aria-keyshortcuts="J"
+                  disabled={!next}
+                  onClick={() => next && selectTicker(next.ticker)}
+                >
+                  <CaretRight size={18} />
+                </ActionIcon>
+              </Tooltip>
               <ResearchComparison ticker={ticker} instruments={instruments} />
             </>
           )}
@@ -433,6 +460,10 @@ export function ResearchWorkspace() {
                         isFund && value === "fundamentals"
                           ? t("持仓与跟踪", "Holdings & tracking")
                           : titles[value],
+                      short:
+                        isFund && value === "fundamentals"
+                          ? t("持仓", "Holdings")
+                          : shortTitles[value],
                     }))}
                 />
                 {operation.isError && (

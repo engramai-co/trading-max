@@ -7,7 +7,8 @@ import { useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { nextEarningsDate } from "./analyst-data";
 import { industryName } from "./exposure-names";
-import { Bento, Facts, Metric, Panel, TextLink, useCopy } from "./foundation";
+import { Bento, Facts, Metric, Panel, useCopy } from "./foundation";
+import Link from "./link";
 import { factIndex, metricNames } from "./research-facts";
 import { filingTitle } from "./research-filings";
 import { useRouteState } from "./route-state";
@@ -197,11 +198,11 @@ export function CompanyOverview({
         <Panel
           bare
           className="mx-bento-wide"
-          title={t("我的敞口", "My exposure")}
-          action={
-            <TextLink href={`/holdings?q=${data.ticker}`}>
-              {t("查看持仓", "Holdings")}
-            </TextLink>
+          title={
+            <Link className="mx-ranking-link" href={`/holdings?q=${encodeURIComponent(data.ticker)}`}>
+              {t("我的敞口", "My exposure")}
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
           }
         >
           <div className="mx-metric-grid">

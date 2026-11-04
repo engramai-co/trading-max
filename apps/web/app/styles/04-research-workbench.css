@@ -108,6 +108,13 @@
   position: absolute;
   inset: -12px -6px;
 }
+/* Panel titles that open a lens or page: the arrow sits a step away from the words. */
+.mx-ranking-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
 .mx-financial-table tr[data-active] {
   background: var(--mx-soft);
 }

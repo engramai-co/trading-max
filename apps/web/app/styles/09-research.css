@@ -131,6 +131,14 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* The excerpt itself opens the full description. */
+.mx-business-excerpt[role="button"],
+.mx-business-description[role="button"] {
+  cursor: pointer;
+}
+.mx-business-excerpt[role="button"]:hover {
+  color: var(--mx-ink);
+}
 .mx-research-content > .mx-overview-context {
   align-items: start;
 }

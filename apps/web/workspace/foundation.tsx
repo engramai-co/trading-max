@@ -397,7 +397,8 @@ export function Tabs<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: Array<{ value: T; label: string }>;
+  /** `short` is the phone label, so a long tab row fits without scrolling. */
+  options: Array<{ value: T; label: string; short?: string }>;
   label: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -445,6 +446,7 @@ export function Tabs<T extends string>({
           type="button"
           role="tab"
           key={option.value}
+          aria-label={option.short ? option.label : undefined}
           aria-selected={value === option.value}
           tabIndex={value === option.value ? 0 : -1}
           onClick={() => onChange(option.value)}
@@ -472,7 +474,14 @@ export function Tabs<T extends string>({
             }
           }}
         >
-          {option.label}
+          {option.short ? (
+            <>
+              <span className="mx-tab-long">{option.label}</span>
+              <span className="mx-tab-short">{option.short}</span>
+            </>
+          ) : (
+            option.label
+          )}
         </button>
       ))}
       <span className="mx-indicator" aria-hidden="true" />
