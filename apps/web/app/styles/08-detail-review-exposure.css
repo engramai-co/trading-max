@@ -23,9 +23,6 @@
   gap: 22px;
   scroll-margin-top: 20px;
 }
-.mx-exposure-detail {
-  scroll-margin-top: 20px;
-}
 .mx-review-highlights {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -62,68 +59,26 @@ button.mx-text-link {
   background: transparent;
   text-align: left;
 }
-.mx-exposure-rankings {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 24px;
-}
-.mx-exposure-ranking {
-  min-width: 0;
+/* Look-through: one quiet line for coverage and time; exceptions are amber tags. */
+.mx-exposure-basis {
   display: flex;
-  flex-direction: column;
-}
-.mx-exposure-ranking h3 {
-  font-size: 13px;
-  font-weight: 600;
-}
-.mx-exposure-ranking ol {
-  list-style: none;
-  padding: 0;
-  margin: 18px 0 8px;
-}
-.mx-exposure-ranking li {
-  margin: 14px 0;
-}
-.mx-exposure-ranking li > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 4px 0 16px;
+  color: var(--mx-muted);
   font-size: 12px;
 }
-.mx-exposure-ranking li > div > span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.mx-exposure-basis .mx-freshness {
+  margin-left: auto;
 }
-.mx-exposure-ranking strong {
-  font-weight: 550;
-}
-.mx-exposure-ranking .mx-text-link {
-  margin-top: auto;
-  align-self: flex-start;
-}
-.mx-rank-track {
-  display: block;
-  height: 4px;
-  background: var(--mx-soft);
-  border-radius: 2px;
-  margin-top: 8px;
-  overflow: hidden;
-}
-.mx-rank-track i {
-  display: block;
-  height: 100%;
-  background: var(--mx-brand);
-  border-radius: inherit;
-}
-.mx-exposure-ranking li:not(:first-child) .mx-rank-track i {
-  opacity: 0.5;
-}
-@media (max-width: 1199px) {
-  .mx-exposure-rankings {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.mx-exposure-paging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
 }
 @media (max-width: 767px) {
   .mx-review-highlights {
@@ -135,17 +90,6 @@ button.mx-text-link {
     padding-left: 0;
     border-top: 1px solid var(--mx-border);
     padding-top: 18px;
-  }
-  .mx-exposure-rankings {
-    gap: 24px 18px;
-  }
-  .mx-exposure-ranking li > div {
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .mx-exposure-ranking li > div > span {
-    white-space: normal;
-    overflow-wrap: anywhere;
   }
   .mx-segments {
     flex-wrap: wrap;
