@@ -21,6 +21,7 @@ import {
   shortRunId,
 } from "@/lib/health";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
+import { formatDateTime } from "@/ui/formatters";
 import { api, ApiError, jsonRequest, number } from "@/workspace/data";
 import {
   Empty,
@@ -42,7 +43,7 @@ import { JobOutcomeSummary } from "./job-outcomes";
 
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["workspace-health"],
@@ -93,6 +94,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const queued = data?.health?.queue.queued ?? 0;
   const running = data?.health?.queue.running ?? 0;
   const worker = data?.health?.worker ?? data?.readiness?.worker;
+  // The heading already says a healthy service is running; only a problem gets a row.
+  const apiReachable = data?.health?.status === "ok" || tone === "setup";
   const scopes = [
     { value: "all", label: t("账户、流水与研究", "Accounts, history & research") },
     { value: "accounts", label: t("账户与流水", "Accounts & history") },
@@ -263,30 +266,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             <Panel title={t("服务与快照", "Service & snapshot")}>
               <Facts
                 rows={[
-                  [
-                    t("账户数据服务", "Account data service"),
-                    data.health?.status === "ok" || tone === "setup" ? (
-                      <span key="api" className="mx-muted">
-                        {t("可访问", "Reachable")}
-                      </span>
-                    ) : (
-                      <Tag key="api" tone="warn">
-                        {t("无法访问", "Unreachable")}
-                      </Tag>
-                    ),
-                  ],
-                  [
-                    t("任务执行服务", "Task worker"),
-                    worker?.healthy ? (
-                      <span key="worker" className="mx-muted">
-                        {t("在线", "Online")}
-                      </span>
-                    ) : (
-                      <Tag key="worker" tone="warn">
-                        {t("未就绪", "Not ready")}
-                      </Tag>
-                    ),
-                  ],
+                  ...(apiReachable
+                    ? []
+                    : [[t("账户数据服务", "Account data service"), <Tag key="api" tone="warn">{t("无法访问", "Unreachable")}</Tag>] as [string, React.ReactNode]]),
+                  ...(worker?.healthy
+                    ? []
+                    : [[t("任务执行服务", "Task worker"), <Tag key="worker" tone="warn">{t("未就绪", "Not ready")}</Tag>] as [string, React.ReactNode]]),
                   [
                     t("最近成功更新", "Last successful update"),
                     <Freshness
@@ -329,8 +314,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   "—"
                 ) : !schedule.enabled ? (
                   <span key={label} className="mx-muted">{t("已关闭", "Disabled")}</span>
+                ) : schedule.nextRunAt ? (
+                  formatDateTime(schedule.nextRunAt, locale, timeZone)
                 ) : (
-                  <Freshness key={label} date={schedule.nextRunAt} label="" />
+                  "—"
                 ),
               ])}
             />
