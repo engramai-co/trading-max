@@ -18,17 +18,24 @@ import { Freshness, Notice, Panel, useCopy } from "./foundation";
 
 /**
  * What the panel offers. Generating always replaces the stored review, so nothing
- * until the lookup answers, a retry if it failed, a first review only once it
- * found none, and a regeneration that asks first when one exists.
+ * while the lookup or a run is in flight, a retry if the lookup failed, a first
+ * review only once a settled lookup found none, and a regeneration that asks
+ * first when one exists. A cached "none" being looked up again, as right after a
+ * review was written, is not yet a settled answer.
  */
-export function narrativeAction(lookup: {
-  isPending: boolean;
-  isError: boolean;
-  data: AnalysisArtifact | null | undefined;
-}) {
+export function narrativeAction(
+  lookup: {
+    isPending: boolean;
+    isError: boolean;
+    isFetching: boolean;
+    data: AnalysisArtifact | null | undefined;
+  },
+  running = false,
+) {
   if (lookup.data) return "regenerate";
   if (lookup.isError) return "retry";
-  return lookup.isPending || lookup.data === undefined ? "wait" : "generate";
+  const settled = !lookup.isPending && !lookup.isFetching && lookup.data === null;
+  return settled && !running ? "generate" : "wait";
 }
 
 /**
@@ -54,7 +61,7 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
   });
   const refetch = query.refetch;
   useEffect(() => registerAnalysisRefresh(() => void refetch()), [refetch]);
-  const offer = narrativeAction(query);
+  const offer = narrativeAction(query, active);
   const content = query.data?.content;
   const generatedAt = query.data?.generatedAt;
   // The review usually predates the figures beside it; say when it was written only then.
