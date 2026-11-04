@@ -480,13 +480,26 @@ html[data-scrolled] .mx-topbar-title strong {
   border-bottom: 1px solid var(--mx-border);
   font-variant-numeric: tabular-nums;
 }
-.mx-job-outcomes li small {
+/* The raw backend message stays one click away, under the human cause. */
+.mx-job-outcomes li > details {
   flex-basis: 100%;
-  color: var(--mx-muted);
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.mx-job-outcomes li > details > summary {
+  color: var(--mx-muted);
+  font-weight: 400;
+}
+.mx-job-outcomes li > details > code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--mx-soft);
+  color: var(--mx-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .mx-decision-coverage {
   margin: 12px 0 0;
