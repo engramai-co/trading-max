@@ -51,7 +51,7 @@ export function CompanyOverview({
     filings = objects(evidence.filings)
       .filter((f) => safeUrl(str(f.url)))
       .slice(0, 3);
-  const date = nextEarningsDate(data, new Date().toISOString().slice(0, 10));
+  const date = nextEarningsDate(data, new Date());
   const profile = object(context?.fundamentals ?? data.fundamentals);
   // GICS from the security master is the classification look-through uses too.
   const classification = (

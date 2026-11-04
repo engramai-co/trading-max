@@ -39,6 +39,7 @@ import {
   CompanyOverview,
 } from "./research-company";
 import { ResearchComparison } from "./research-compare";
+import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { SecurityFinder } from "./research-finder";
 import { FundWorkbench } from "./research-funds";
@@ -148,6 +149,9 @@ export function ResearchWorkspace() {
   );
   // A held line on the quote's listing is quoted at its broker price everywhere on the page.
   const price = basisPrice(selected, quote?.context?.quote);
+  // Lenses name the next report by the exchange's date and carry its sessions:
+  // a lens left open refetches when that date turns or the sessions run out.
+  useLensRefresh(ticker, quote?.context?.quote);
   const context = useQuery({
     ...researchLensQuery(ticker, "fundamentals", revision),
     enabled: Boolean(selected) && isFund && tab === "overview",

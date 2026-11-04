@@ -18,6 +18,7 @@ import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Metric, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { ratingLabel } from "./market-terms";
+import { exchangeDate } from "./research-clock";
 import { filingTitle } from "./research-filings";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
@@ -86,13 +87,13 @@ function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: R
   const t = useCopy();
   const { locale } = useLocale();
   const code = price?.currency ?? data.context?.quote.currency ?? "";
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
   const verdict = analystVerdict(
     object(data.analyst),
     price?.price ?? data.context?.quote.price ?? object(data.market).spot,
-    today,
+    exchangeDate(now, data.context?.quote.timezone),
   );
-  const nextReport = nextEarningsDate(data, today);
+  const nextReport = nextEarningsDate(data, now);
   const label = verdict.consensus ? consensusLabels[verdict.consensus] : null;
   const up = verdict.revisionsUp30;
   const down = verdict.revisionsDown30;
@@ -573,7 +574,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
   const a = object(data.analyst);
   const rows = objects(a.earningsEvents);
   const selected = rows.find((r) => r.id === params.get("eventId"));
-  const next = nextEarningsDate(data, new Date().toISOString().slice(0, 10));
+  const next = nextEarningsDate(data, new Date());
   const filings = objects(object(data.researchEvidence).filings).filter(
     (f) =>
       !selected ||

@@ -1,5 +1,6 @@
 import { numeric } from "@/lib/numeric";
 import { object, objects, str, type Json } from "@/workspace/data";
+import { exchangeDate } from "./research-clock";
 
 export const ratingKeys = [
   "strongBuy",
@@ -120,15 +121,24 @@ export function analystVerdict(analyst: Json, price: unknown, today: string) {
 }
 
 /**
- * The one next report date every lens shows. The service decides when it
- * sends `nextEarningsDate` (null included); older services fall back to the
- * same rule here: provider events first, then the calendar, never a past date.
+ * The one next report date every lens shows, never one whose day has ended in
+ * the quote exchange's time zone. The service decides when it sends
+ * `nextEarningsDate` (null included); older services fall back to the same
+ * rule here: provider events first, then the calendar.
  */
 export function nextEarningsDate(
-  data: { nextEarningsDate?: string | null; analyst?: unknown; fundamentals?: unknown },
-  today: string,
+  data: {
+    nextEarningsDate?: string | null;
+    analyst?: unknown;
+    fundamentals?: unknown;
+    context?: { quote?: { timezone?: string | null } } | null;
+  },
+  now: Date,
 ) {
-  if (data.nextEarningsDate !== undefined) return data.nextEarningsDate;
+  const today = exchangeDate(now, data.context?.quote?.timezone);
+  // A lens left open past the exchange's midnight still names its report.
+  if (data.nextEarningsDate !== undefined)
+    return data.nextEarningsDate && data.nextEarningsDate >= today ? data.nextEarningsDate : null;
   const upcoming = (dates: string[]) => dates.filter((date) => date >= today).sort()[0];
   const events = objects(object(data.analyst).earningsEvents)
     .filter((row) => str(row.status) !== "reported")
