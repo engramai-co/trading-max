@@ -53,6 +53,10 @@ class DayBaseline(DomainModel):
 class PositionContribution(DomainModel):
     ticker: str
     name: str
+    # The broker instrument (for example IAG_US_EQ or IAGl_EQ). Distinct listings
+    # share a display ticker, so consumers join on this. Artifacts written before
+    # it existed have none.
+    instrument: str | None = None
     contribution_gbp: Decimal
     # Value of the shares held through the window at its opening, so a consumer
     # can state the change as a share of it. Only the 1D attribution carries it;
@@ -160,11 +164,12 @@ def _contributions(
             PositionContribution(
                 ticker=end.ticker,
                 name=end.name,
+                instrument=end.key,
                 contribution_gbp=change.quantize(CENT),
                 opening_value_gbp=(held * opening_price).quantize(CENT),
             )
         )
-    rows.sort(key=lambda row: (-abs(row.contribution_gbp), row.ticker))
+    rows.sort(key=lambda row: (-abs(row.contribution_gbp), row.ticker, row.instrument or ""))
     return rows
 
 
@@ -244,17 +249,21 @@ def update_window_attribution(
         if not chain:
             continue
         points = [*chain, (_timestamp(account["fetched_at"]), current)]
-        totals: dict[str, tuple[str, Decimal]] = {}
+        # One total per broker instrument, so two listings never merge.
+        totals: dict[str, tuple[str, str, Decimal]] = {}
         for (_, start), (_, end) in pairwise(points):
             for row in _contributions(start, end):
-                _, total = totals.get(row.ticker, (row.name, Decimal(0)))
-                totals[row.ticker] = (row.name, total + row.contribution_gbp)
+                instrument = row.instrument or row.ticker
+                _, _, total = totals.get(instrument, (row.ticker, row.name, Decimal(0)))
+                totals[instrument] = (row.ticker, row.name, total + row.contribution_gbp)
         rows = sorted(
             (
-                PositionContribution(ticker=ticker, name=name, contribution_gbp=total)
-                for ticker, (name, total) in totals.items()
+                PositionContribution(
+                    ticker=ticker, name=name, instrument=instrument, contribution_gbp=total
+                )
+                for instrument, (ticker, name, total) in totals.items()
             ),
-            key=lambda row: (-abs(row.contribution_gbp), row.ticker),
+            key=lambda row: (-abs(row.contribution_gbp), row.ticker, row.instrument or ""),
         )
         result[code] = AccountDayAttribution(
             since=chain[0][0], as_of=points[-1][0], contributions=rows

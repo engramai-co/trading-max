@@ -173,6 +173,48 @@ def _window(previous, current, *, history=None):
     return state, window
 
 
+def _two_listings(fetched_at: str, us_value: str, london_value: str):
+    """One company held through two broker listings that share the display ticker IAG."""
+
+    return {
+        "fetched_at": fetched_at,
+        "positions": [
+            {
+                "ticker": "IAG",
+                "broker_ticker": "IAG_US_EQ",
+                "name": "IAG (US)",
+                "quantity": "10",
+                "current_value_gbp": us_value,
+            },
+            {
+                "ticker": "IAG",
+                "broker_ticker": "IAGl_EQ",
+                "name": "IAG (London)",
+                "quantity": "100",
+                "current_value_gbp": london_value,
+            },
+        ],
+    }
+
+
+def test_listings_sharing_a_ticker_keep_their_own_instrument():
+    state, _ = _window(None, {"A": _two_listings("2026-11-02T07:10:00Z", "40.00", "300.00")})
+    later = {"A": _two_listings("2026-11-02T15:40:00Z", "42.00", "290.00")}
+    _, day = update_day_attribution(state["day"], later)
+    rows = {row.instrument: row for row in day.accounts["A"].contributions}
+    assert {
+        key: (row.ticker, row.contribution_gbp, row.opening_value_gbp) for key, row in rows.items()
+    } == {
+        "IAG_US_EQ": ("IAG", Decimal("2.00"), Decimal("40.00")),
+        "IAGl_EQ": ("IAG", Decimal("-10.00"), Decimal("300.00")),
+    }
+    _, window = _window(state, later)
+    assert {row.instrument: row.contribution_gbp for row in window.accounts["A"].contributions} == {
+        "IAG_US_EQ": Decimal("2.00"),
+        "IAGl_EQ": Decimal("-10.00"),
+    }
+
+
 def test_window_days_are_the_five_weekdays_ending_on_the_trading_day():
     days = [
         day.isoformat() for day in window_days(trading_day(datetime(2026, 11, 3, 12, tzinfo=UTC)))
