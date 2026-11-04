@@ -16,8 +16,10 @@ shares. Only the difference between the two sides, if any, is scored as a buy or
 sell decision.
 
 Decisions are scored after ``HORIZON_DAYS`` trading days and up to the latest
-close. Closed trades are also compared with selling at the best and worst close
-while the position was held.
+close. Each decision states how many closes followed it and whether its horizon
+window is complete, so a decision with no later close is never read as a zero
+outcome. Closed trades are also compared with selling at the best and worst
+close while the position was held.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
 
-CALCULATION_VERSION = "decisions-v2"
+CALCULATION_VERSION = "decisions-v3"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -259,6 +261,10 @@ def build_decision_review(
                     # The benchmark's change over the same window, in GBP.
                     "market_return_horizon": _round(market_horizon, 6),
                     "market_return_to_date": _round(market_to_date, 6),
+                    # Closes after the decision's own, counted by position: an
+                    # unchanged price after several days is still an outcome.
+                    "observed_days": len(security.closes) - 1 - position,
+                    "horizon_complete": later is not None,
                 }
             )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))

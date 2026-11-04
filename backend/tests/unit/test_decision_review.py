@@ -137,6 +137,45 @@ def test_round_trip_result_is_compared_with_the_days_range() -> None:
     }
 
 
+def test_decisions_count_the_closes_that_followed_them() -> None:
+    # A flat price after a decision is an outcome, not a decision still waiting:
+    # what counts is how many closes followed it. 19 Jan is a market holiday.
+    days = pd.bdate_range("2026-01-05", periods=27).drop(pd.Timestamp("2026-01-19"))
+    closes = pd.Series(100.0, index=days)
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-01-05T15:00:00Z", "Market buy", 10, 1_000),
+                # A weekend order books on Friday, the last business day.
+                _fill("2026-01-10T11:00:00Z", "Market buy", 2, 200),
+                # On the holiday the decision is measured from the close before it.
+                _fill("2026-01-19T15:00:00Z", "Market sell", 5, 500),
+                # The latest close: nothing follows it yet.
+                _fill("2026-02-10T15:00:00Z", "Market buy", 1, 100),
+            ]
+        )
+    )
+    identity = trades["SecurityIdentity"].iloc[0]
+    review = build_decision_review(
+        trades,
+        {identity: SecurityPrices(identity, "NVDA", "NVDA Inc", "NVDA", closes)},
+        as_of=closes.index[-1],
+    )
+    observed = {
+        row["date"]: (row["observed_days"], row["horizon_complete"], row["effect_horizon_gbp"])
+        for row in review["decisions"]
+    }
+    assert observed == {
+        "2026-01-05": (25, True, 0.0),
+        "2026-01-09": (21, True, 0.0),
+        "2026-01-19": (16, False, None),
+        "2026-02-10": (0, False, None),
+    }
+    # Unchanged prices still score: the two settled buys count, neither helped.
+    assert (review["buys"]["evaluated"], review["buys"]["favourable"]) == (2, 0)
+    assert all(row["return_to_date"] == 0.0 for row in review["decisions"])
+
+
 def test_dividends_after_a_decision_count_in_its_effect() -> None:
     closes = _closes("2026-01-05", [100.0] * 30)
     dividends = pd.Series([2.0], index=[closes.index[3]])

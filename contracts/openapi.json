@@ -15521,6 +15521,17 @@
             ],
             "title": "Events"
           },
+          "horizonComplete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizoncomplete"
+          },
           "kind": {
             "enum": [
               "B",
@@ -15555,6 +15566,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "observedDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observeddays"
           },
           "quantity": {
             "anyOf": [

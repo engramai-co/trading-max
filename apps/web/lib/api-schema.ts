@@ -6265,6 +6265,8 @@ export interface components {
             effectToDateGbp?: number | null;
             /** Events */
             events?: components["schemas"]["DecisionEvent"][] | null;
+            /** Horizoncomplete */
+            horizonComplete?: boolean | null;
             /**
              * Kind
              * @enum {string}
@@ -6276,6 +6278,8 @@ export interface components {
             marketReturnToDate?: number | null;
             /** Name */
             name: string;
+            /** Observeddays */
+            observedDays?: number | null;
             /** Quantity */
             quantity?: number | null;
             /** Returnhorizon */
