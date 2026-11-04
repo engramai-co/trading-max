@@ -5,6 +5,11 @@ it needs prices beyond the day a position closed, unlike the daily NAV. Symbols
 are resolved exactly like the NAV: each candidate listing must reconcile with the
 broker's own GBP trade prices. Returns are measured on the provider's
 split-adjusted close, so a later split cannot read as a price collapse.
+
+Only completed daily bars are kept or counted. The provider already returns
+today's bar while the session is open; it becomes a close when the listing's
+exchange calendar says the session has ended, early closes included, or, for an
+exchange without a calendar, once its UTC day is over.
 """
 
 from __future__ import annotations
@@ -16,10 +21,12 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
@@ -30,14 +37,16 @@ from trading_max.analytics.historical_nav import (
     _nominal_close,
     _observed_trade_gbp,
 )
+from trading_max.research.calendar import calendar_name, completed_daily_bars, market_calendar
 
 TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
 #: away from the broker's fills is the wrong instrument or the wrong unit.
 MAX_LOG_DISTANCE = math.log(1.35)
-#: Cache rows carry date, close, split, dividend, high and low. Older caches held
-#: only the first three and are fetched again once.
-CACHE_FORMAT = 2
+#: Cache rows carry date, close, split, dividend, high and low, for completed bars
+#: only, beside the listing's exchange. Older caches can hold a bar that was still
+#: forming when it was fetched, and are fetched again once.
+CACHE_FORMAT = 3
 CACHE_COLUMNS = ["Close", "Stock Splits", "Dividends", "High", "Low"]
 
 
@@ -72,19 +81,58 @@ class SecurityPrices:
         return quoted[quoted > day]
 
 
+@lru_cache(maxsize=512)
+def _listing_exchange(symbol: str) -> str:
+    """The provider's exchange code for a listing, whose calendar ends its sessions."""
+
+    return str((yf.Ticker(symbol).get_history_metadata() or {}).get("exchangeName") or "")
+
+
+def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
+    """Daily provider history that names the listing's exchange in its attrs."""
+
+    frame = _default_history(symbol, start, end)
+    with suppress(Exception):
+        frame.attrs["exchange"] = _listing_exchange(symbol)
+    return frame
+
+
+def _utc(value: datetime) -> pd.Timestamp:
+    stamp = pd.Timestamp(value)
+    return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+
+
+def _closed_since(exchange: str, fetched_at: datetime, now: datetime, through: date) -> bool:
+    """Whether a session up to through has closed since fetched_at, so its bar is new."""
+
+    after, until = _utc(fetched_at), _utc(now)
+    if until <= after:
+        return False
+    name = calendar_name(exchange)
+    if name is None:
+        # Without a calendar, a bar completes when its UTC day is over.
+        return after.date() < min(until.date(), through + timedelta(days=1))
+    closes = market_calendar(name, after.year, until.year).closes
+    closed = closes[(closes > after) & (closes <= until)]
+    return bool((closed.index <= pd.Timestamp(through)).any())
+
+
 class CachedDailyHistory:
     """Daily provider history cached per symbol outside Git.
 
     Past rows are reused; only the recent tail is fetched again. If the overlap
     with the cached rows disagrees (a split back-adjusts every earlier close),
     the whole window is fetched again instead of mixing two bases.
+
+    A bar whose session has not closed is never cached, and a session that has
+    closed since the last fetch has its bar fetched, however recent that was.
     """
 
     def __init__(
         self,
         root: Path,
         *,
-        fetch: HistoryLoader = _default_history,
+        fetch: HistoryLoader = _listing_history,
         refresh_after: timedelta = timedelta(hours=6),
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
@@ -136,6 +184,16 @@ class CachedDailyHistory:
                 )
         return rows
 
+    def _completed_rows(
+        self, symbol: str, start: date, end: date, exchange: str, now: datetime
+    ) -> tuple[list[list], str]:
+        """Fetched rows whose session had closed by now, and the listing's exchange."""
+
+        frame = self.fetch(symbol, start, end)
+        exchange = str(frame.attrs.get("exchange") or exchange)
+        frame.attrs["exchange"] = exchange
+        return self._rows(completed_daily_bars(frame, now=_utc(now))), exchange
+
     def __call__(self, symbol: str, start: date, end: date) -> pd.DataFrame:
         path = self._path(symbol)
         cached: dict = {}
@@ -144,22 +202,26 @@ class CachedDailyHistory:
         if cached.get("format") != CACHE_FORMAT:
             cached = {}
         rows: list[list] = cached.get("rows", [])
+        exchange = str(cached.get("exchange") or "")
         covered_start = date.fromisoformat(cached["start"]) if cached.get("start") else None
         covered_end = date.fromisoformat(cached["end"]) if cached.get("end") else None
         fetched_at = (
             datetime.fromisoformat(cached["fetched_at"]) if cached.get("fetched_at") else None
         )
-        fresh = fetched_at is not None and self.now() - fetched_at < self.refresh_after
+        now = self.now()
+        fresh = fetched_at is not None and now - fetched_at < self.refresh_after
         covers = (
             covered_start is not None
             and covered_end is not None
+            and fetched_at is not None
             and covered_start <= start
             and (covered_end >= end or fresh)
+            and not _closed_since(exchange, fetched_at, now, end)
         )
         if not covers:
             if rows and covered_start is not None and covered_start <= start:
                 tail_start = max(start, (covered_end or start) - timedelta(days=7))
-                tail = self._rows(self.fetch(symbol, tail_start, end))
+                tail, exchange = self._completed_rows(symbol, tail_start, end, exchange, now)
                 known = {row[0]: row[1] for row in rows}
                 overlap = [(known[row[0]], row[1]) for row in tail if row[0] in known]
                 consistent = (
@@ -172,17 +234,18 @@ class CachedDailyHistory:
                     merged.update({row[0]: row for row in tail})
                     rows = [merged[key] for key in sorted(merged)]
                 else:
-                    rows = self._rows(self.fetch(symbol, covered_start, end))
+                    rows, exchange = self._completed_rows(symbol, covered_start, end, exchange, now)
             else:
                 first = min(start, covered_start) if covered_start else start
-                rows = self._rows(self.fetch(symbol, first, end))
+                rows, exchange = self._completed_rows(symbol, first, end, exchange, now)
                 covered_start = first
             payload = {
                 "format": CACHE_FORMAT,
                 "symbol": symbol,
+                "exchange": exchange,
                 "start": (covered_start or start).isoformat(),
                 "end": max(end, covered_end or end).isoformat(),
-                "fetched_at": self.now().isoformat(),
+                "fetched_at": now.isoformat(),
                 "rows": rows,
             }
             self.root.mkdir(parents=True, exist_ok=True)
@@ -190,6 +253,7 @@ class CachedDailyHistory:
             temporary.write_text(json.dumps(payload), encoding="utf-8")
             temporary.replace(path)
         frame = self._frame(rows)
+        frame.attrs["exchange"] = exchange
         if frame.empty:
             return frame
         window = (frame.index >= pd.Timestamp(start)) & (frame.index <= pd.Timestamp(end))
@@ -211,6 +275,7 @@ def resolve_decision_prices(
     end_day: pd.Timestamp,
     history_loader: HistoryLoader,
     memo: dict[str, str] | None = None,
+    now: pd.Timestamp | None = None,
 ) -> tuple[dict[str, SecurityPrices], list[str]]:
     """Resolve adjusted GBP closes per identity; return them and unpriced tickers.
 
@@ -218,8 +283,11 @@ def resolve_decision_prices(
     ``SecurityIdentity``, ``BusinessDate``, ``TradeCurrency`` and settlement totals).
     ``memo`` maps identities to their last accepted listing; it is tried first and
     updated in place, so routine runs request one listing per security.
+    A listing's bars count only once their session has closed by ``now``, read
+    from the exchange the loader names in the frame's attrs.
     """
 
+    now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
     fills = trades[
         trades["TradePrice"].notna()
         & trades["Action"].astype(str).str.contains(TRADE_ACTIONS, case=False, regex=True)
@@ -289,7 +357,9 @@ def resolve_decision_prices(
             if best is not None and best[0] <= MAX_LOG_DISTANCE and best[1] == remembered:
                 break
             try:
-                frame = history_loader(symbol, start_day.date(), end_day.date())
+                frame = completed_daily_bars(
+                    history_loader(symbol, start_day.date(), end_day.date()), now=now
+                )
             except Exception:  # noqa: S112 - an unavailable listing is just a rejected candidate
                 continue
             nominal = _nominal_close(frame)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Mapping
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -46,13 +47,18 @@ def _usd_fill(time: str, action: str, shares: float, total_gbp: float) -> dict:
     }
 
 
+#: The exchange the provider names for each synthetic listing; others name none.
+_EXCHANGES = {"NVDA": "NMS", "VOD.L": "LSE"}
+
+
 def _review_from_quotes(
-    fills: list[dict], listings: Mapping[str, pd.Series], *, viewed: str
+    fills: list[dict], listings: Mapping[str, pd.Series], *, viewed: str, now: str | None = None
 ) -> dict:
     """Review fills as the stage does on the day viewed, through the price resolver.
 
     Each listing quotes only the days in its series, so a day its market is shut
     or has not closed yet is a gap the resolver carries the previous close across.
+    The review runs at now, by default late on the day viewed.
     """
 
     def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -61,13 +67,19 @@ def _review_from_quotes(
         if symbol not in listings:
             raise ValueError("unknown listing")
         quotes = listings[symbol]
-        return pd.DataFrame(
+        frame = pd.DataFrame(
             {"Close": quotes[quotes.index <= pd.Timestamp(end)], "Stock Splits": 0.0}
         )
+        if symbol in _EXCHANGES:
+            frame.attrs["exchange"] = _EXCHANGES[symbol]
+        return frame
 
     trades = _trade_columns(pd.DataFrame(fills))
     prices, unpriced = resolve_decision_prices(
-        trades, end_day=pd.Timestamp(viewed), history_loader=loader
+        trades,
+        end_day=pd.Timestamp(viewed),
+        history_loader=loader,
+        now=pd.Timestamp(now or viewed + "T23:00:00Z"),
     )
     assert unpriced == []
     return build_decision_review(trades, prices, as_of=pd.Timestamp(viewed))
@@ -285,7 +297,7 @@ def test_decisions_on_the_latest_close_wait_for_the_next_one() -> None:
         # An order today is measured from Tuesday's close; nothing follows it either.
         _usd_fill("2026-11-04T14:45:00Z", "Market buy", 1, 100),
     ]
-    review = _review_from_quotes(fills, listings, viewed="2026-11-04")
+    review = _review_from_quotes(fills, listings, viewed="2026-11-04", now="2026-11-04T15:10:00Z")
     assert [(row["date"], row["ticker"]) for row in review["decisions"]] == [
         ("2026-11-03", "NVDA"),
         ("2026-11-03", "VOD"),
@@ -294,6 +306,62 @@ def test_decisions_on_the_latest_close_wait_for_the_next_one() -> None:
     assert [row["observed_days"] for row in review["decisions"]] == [0, 0, 0]
     assert not any(row["horizon_complete"] for row in review["decisions"])
     assert (review["buys"]["evaluated"], review["sells"]["evaluated"]) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    ("now", "closed"), [("2026-11-04T15:10:00Z", False), ("2026-11-04T21:30:00Z", True)]
+)
+def test_todays_bar_is_a_close_only_once_its_session_has_closed(now: str, closed: bool) -> None:
+    # At 15:10 UTC the provider already returns a 4 Nov bar, forty minutes into
+    # New York's session; it is a close only after 21:00 UTC.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-09-21", "2026-11-03"))
+    quotes[pd.Timestamp("2026-11-04")] = 137.5
+    review = _review_from_quotes(
+        [
+            # The 20th close after 7 Oct is 4 Nov's.
+            _usd_fill("2026-10-07T15:00:00Z", "Market buy", 10, 1_000),
+            _usd_fill("2026-11-03T15:00:00Z", "Market buy", 1, 100),
+        ],
+        {"NVDA": quotes},
+        viewed="2026-11-04",
+        now=now,
+    )
+    october, yesterday = review["decisions"]
+    assert yesterday["observed_days"] == (1 if closed else 0)
+    assert (october["observed_days"], october["horizon_complete"]) == (
+        (20, True) if closed else (19, False)
+    )
+    # The forming bar's +10% is no verdict until the session closes on it.
+    assert october["effect_horizon_gbp"] == (pytest.approx(100.0) if closed else None)
+
+
+@pytest.mark.parametrize(
+    ("now", "observed"), [("2025-11-28T17:30:00Z", 0), ("2025-11-28T18:05:00Z", 1)]
+)
+def test_an_early_close_ends_the_session_at_its_own_time(now: str, observed: int) -> None:
+    # New York closes at 13:00 (18:00 UTC) the day after Thanksgiving; on a full
+    # day it would still be trading at 18:05 UTC.
+    days = pd.bdate_range("2025-11-03", "2025-11-28").drop(pd.Timestamp("2025-11-27"))
+    review = _review_from_quotes(
+        [_usd_fill("2025-11-26T16:00:00Z", "Market buy", 10, 1_000)],
+        {"NVDA": pd.Series(125.0, index=days)},
+        viewed="2025-11-28",
+        now=now,
+    )
+    assert review["decisions"][0]["observed_days"] == observed
+
+
+def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:
+    # The provider names no exchange for this listing, so no calendar says when
+    # its session ends: 4 Nov's bar is a close once that UTC day is over.
+    quotes = pd.Series(100.0, index=pd.bdate_range("2026-10-19", "2026-11-04"))  # pence
+    fills = [_fill("2026-11-03T10:00:00Z", "Market buy", 1_000, 1_000, "ABC")]
+    evening, next_day = (
+        _review_from_quotes(fills, {"ABC.L": quotes}, viewed="2026-11-04", now=now)
+        for now in ("2026-11-04T22:00:00Z", "2026-11-05T00:30:00Z")
+    )
+    assert evening["decisions"][0]["observed_days"] == 0
+    assert next_day["decisions"][0]["observed_days"] == 1
 
 
 def test_a_flat_price_after_many_closes_is_a_scored_zero() -> None:
@@ -486,6 +554,76 @@ def test_cache_keeps_dividends_and_ranges_and_refetches_an_older_format(tmp_path
     assert (float(frame["High"].iloc[0]), float(frame["Low"].iloc[0])) == (11.0, 9.5)
     cache("AAA", date(2026, 1, 1), date(2026, 2, 27))
     assert len(calls) == 1
+
+
+def _fetch_with_todays_bar(calls: list[date], exchange: str | None):
+    """Provider rows through end, today's included while its session is still open."""
+
+    def fetch(symbol: str, start: date, end: date) -> pd.DataFrame:
+        calls.append(start)
+        frame = pd.DataFrame(
+            {"Close": 125.0, "Stock Splits": 0.0}, index=pd.bdate_range(start, end)
+        )
+        if exchange:
+            frame.attrs["exchange"] = exchange
+        return frame
+
+    return fetch
+
+
+def test_cache_holds_closed_sessions_only_and_fetches_a_bar_once_it_closes(tmp_path) -> None:
+    calls: list[date] = []
+    clock = {"now": datetime.fromisoformat("2026-11-04T15:10:00+00:00")}
+    cache = CachedDailyHistory(
+        tmp_path, fetch=_fetch_with_todays_bar(calls, "NMS"), now=lambda: clock["now"]
+    )
+    # A cache from before completed bars can hold a bar that was still forming.
+    cache._path("NVDA").write_text(
+        json.dumps(
+            {
+                "format": 2,
+                "symbol": "NVDA",
+                "start": "2026-10-01",
+                "end": "2026-11-04",
+                "fetched_at": "2026-11-04T15:00:00+00:00",
+                "rows": [["2026-11-04", 137.5, 0.0, 0.0, None, None]],
+            }
+        )
+    )
+    window = (date(2026, 10, 1), date(2026, 11, 4))
+    trading = cache("NVDA", *window)
+    assert (len(calls), trading.index[-1], trading.attrs["exchange"]) == (
+        1,
+        pd.Timestamp("2026-11-03"),
+        "NMS",
+    )
+    stored = json.loads(cache._path("NVDA").read_text())
+    assert (stored["exchange"], stored["rows"][-1][0]) == ("NMS", "2026-11-03")
+    clock["now"] = datetime.fromisoformat("2026-11-04T20:30:00+00:00")
+    cache("NVDA", *window)
+    assert len(calls) == 1  # still trading: nothing new to fetch
+    # Less than six hours since the fetch, but New York closed at 21:00 UTC.
+    clock["now"] = datetime.fromisoformat("2026-11-04T21:05:00+00:00")
+    closed = cache("NVDA", *window)
+    assert (len(calls), closed.index[-1]) == (2, pd.Timestamp("2026-11-04"))
+    cache("NVDA", *window)
+    assert len(calls) == 2
+
+
+def test_cache_without_an_exchange_fetches_a_day_once_that_day_is_over(tmp_path) -> None:
+    calls: list[date] = []
+    clock = {"now": datetime.fromisoformat("2026-11-04T22:00:00+00:00")}
+    cache = CachedDailyHistory(
+        tmp_path, fetch=_fetch_with_todays_bar(calls, None), now=lambda: clock["now"]
+    )
+    window = (date(2026, 10, 1), date(2026, 11, 4))
+    assert cache("ABC.L", *window).index[-1] == pd.Timestamp("2026-11-03")
+    clock["now"] = datetime.fromisoformat("2026-11-04T23:30:00+00:00")
+    cache("ABC.L", *window)
+    assert len(calls) == 1
+    clock["now"] = datetime.fromisoformat("2026-11-05T00:30:00+00:00")
+    assert cache("ABC.L", *window).index[-1] == pd.Timestamp("2026-11-04")
+    assert len(calls) == 2
 
 
 def test_resolution_converts_dividends_and_ranges_like_the_closes() -> None:

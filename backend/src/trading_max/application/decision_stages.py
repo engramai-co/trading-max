@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ from trading_max.analytics.ledger import (
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import latest_export_path
+from trading_max.research.calendar import completed_daily_bars
 
 from .account_selection import selected_accounts
 from .stages import StageContext, StageResult
@@ -51,21 +54,27 @@ class AccountDecisionStage:
         history_loader: HistoryLoader | None = None,
         fx_resolver: FxResolver | None = None,
         events_loader: EventLoader | None = None,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
         self.cache_root = self.state_root / "cache" / "decision-prices"
-        self.history_loader = history_loader or CachedDailyHistory(self.cache_root)
+        self.now = now
+        self.history_loader = history_loader or CachedDailyHistory(self.cache_root, now=now)
         self.fx_resolver = fx_resolver or HistoricalFxResolver(self.state_root / "raw" / "fx")
         self.events_loader = events_loader or CachedSecurityEvents(
             self.state_root / "cache" / "decision-events"
         )
 
-    def _market(self, start: pd.Timestamp, end: pd.Timestamp) -> pd.Series | None:
-        """Benchmark closes in GBP; the review stays usable without them."""
+    def _market(
+        self, start: pd.Timestamp, end: pd.Timestamp, now: pd.Timestamp
+    ) -> pd.Series | None:
+        """Completed benchmark closes in GBP; the review stays usable without them."""
 
         try:
-            frame = self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date())
+            frame = completed_daily_bars(
+                self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()), now=now
+            )
             rates = self.history_loader("GBPUSD=X", start.date(), end.date())
         except Exception:
             return None
@@ -99,12 +108,13 @@ class AccountDecisionStage:
         trades = _trade_columns(normalized)
         campaigns, _ = reconstruct_campaigns(normalized)
         as_of = self._account_day(context, profile)
+        now = pd.Timestamp(self.now())
         memo_path = self.cache_root / f"listings-{profile}.json"
         memo: dict[str, str] = {}
         with suppress(FileNotFoundError, ValueError):
             memo = {str(k): str(v) for k, v in json.loads(memo_path.read_text("utf-8")).items()}
         prices, unpriced = resolve_decision_prices(
-            trades, end_day=as_of, history_loader=self.history_loader, memo=memo
+            trades, end_day=as_of, history_loader=self.history_loader, memo=memo, now=now
         )
         self.cache_root.mkdir(parents=True, exist_ok=True)
         memo_path.write_text(json.dumps(memo, sort_keys=True), encoding="utf-8")
@@ -115,7 +125,7 @@ class AccountDecisionStage:
             campaigns=campaigns,
             unpriced=unpriced,
             as_of=as_of,
-            market=self._market(start, as_of),
+            market=self._market(start, as_of, now),
         )
         attach_decision_events(
             review,
