@@ -352,8 +352,12 @@
   .mx-metric-grid {
     gap: 18px;
   }
+  /* Narrow pointer windows wrap long segment rows; touch layouts tile them (11-touch-bento.css). */
+  .mx-segments {
+    flex-wrap: wrap;
+  }
   .mx-segments button {
-    min-height: 34px;
+    min-height: 40px;
     padding: 7px 9px;
   }
   .mx-tabs {

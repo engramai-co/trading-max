@@ -22,6 +22,79 @@
     padding-block: 10px;
   }
 }
+/* Touch: tabs and segments tile their row in cells of at least 44 × 44px, so no tap lands in a gap. */
+@media (pointer: coarse) {
+  .mx-tabs {
+    gap: 0;
+  }
+  /* The pointer layout's 26px gap becomes padding; the outer labels keep their place. */
+  .mx-tabs button {
+    min-width: 44px;
+    padding-inline: 13px;
+  }
+  .mx-tabs button:first-of-type {
+    padding-left: 1px;
+  }
+  .mx-tabs button:last-of-type {
+    padding-right: 1px;
+  }
+  .mx-segments {
+    /* Equal cells as wide as the longest label (measured by Segments); a full row wraps and each row fills. */
+    --mx-segment-cell: max(44px, calc(var(--mx-segment-label, 24px) + 20px));
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 0;
+  }
+  .mx-segments button {
+    flex: 1 0 0;
+    min-width: var(--mx-segment-cell);
+    min-height: 44px;
+    padding: 7px 10px;
+  }
+  /* The pill keeps its inset inside the larger cell. */
+  .mx-segments > .mx-indicator {
+    background: transparent;
+    box-shadow: none;
+  }
+  .mx-segments > .mx-indicator::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 6px;
+    background: var(--mx-surface);
+    box-shadow: 0 1px 3px rgb(17 24 39 / 8%);
+  }
+}
+/* Phones: tabs share the row in equal cells (a row that cannot fit still scrolls). */
+@media (pointer: coarse) and (max-width: 767px) {
+  .mx-tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(max-content, 1fr);
+  }
+  .mx-tabs button,
+  .mx-tabs button:first-of-type,
+  .mx-tabs button:last-of-type {
+    padding-inline: 8px;
+  }
+  /* The eight periods span the panel edge to edge: 44px cells at 390px, no scrolling. */
+  .mx-period-control {
+    width: 100%;
+  }
+  .mx-period-control > .mx-segments {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    width: calc(100% + 36px);
+    max-width: none;
+    margin-inline: -18px;
+    border-inline: 0;
+    border-radius: 0;
+  }
+  .mx-period-control > .mx-segments > button {
+    min-width: 0;
+  }
+}
 /* Layout names the page: tools take the heading row; the security leads with its price. */
 .mx-page-tools {
   justify-content: flex-start;

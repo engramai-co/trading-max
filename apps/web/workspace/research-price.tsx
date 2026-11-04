@@ -202,7 +202,8 @@ export function PriceHistory({
             )
             .map((v) => ({
               value: v,
-              label: v === "ALL" ? t("全部记录", "Available") : v,
+              // Same word as the portfolio periods; it fits a phone row of 44px cells.
+              label: v === "ALL" ? t("全部", "All") : v,
             }))}
         />
         <Group gap="xs">
