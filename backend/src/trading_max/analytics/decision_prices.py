@@ -21,7 +21,6 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +32,6 @@ from trading_max.analytics.historical_nav import (
     HistoryLoader,
     _candidate_symbols_from_ledger,
     _cash_fx_series,
-    _default_history,
     _nominal_close,
     _observed_trade_gbp,
 )
@@ -81,19 +79,23 @@ class SecurityPrices:
         return quoted[quoted > day]
 
 
-@lru_cache(maxsize=512)
-def _listing_exchange(symbol: str) -> str:
-    """The provider's exchange code for a listing, whose calendar ends its sessions."""
-
-    return str((yf.Ticker(symbol).get_history_metadata() or {}).get("exchangeName") or "")
-
-
 def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
-    """Daily provider history that names the listing's exchange in its attrs."""
+    """Daily provider history whose attrs name the listing's exchange.
 
-    frame = _default_history(symbol, start, end)
-    with suppress(Exception):
-        frame.attrs["exchange"] = _listing_exchange(symbol)
+    The exchange comes from the metadata yfinance keeps from this same request;
+    its get_history_metadata would fetch five days of hourly bars to answer.
+    Without that metadata the cache keeps the exchange it already knows.
+    """
+
+    ticker = yf.Ticker(symbol)
+    frame = ticker.history(
+        start=start.isoformat(),
+        end=(end + timedelta(days=1)).isoformat(),
+        auto_adjust=False,
+        actions=True,
+    )
+    metadata = getattr(getattr(ticker, "_price_history", None), "_history_metadata", None)
+    frame.attrs["exchange"] = str((metadata or {}).get("exchangeName") or "")
     return frame
 
 

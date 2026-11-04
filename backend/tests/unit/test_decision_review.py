@@ -4,9 +4,11 @@ import json
 import math
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from trading_max.analytics import decision_prices
 from trading_max.analytics.decision_prices import (
     CachedDailyHistory,
     SecurityPrices,
@@ -624,6 +626,43 @@ def test_cache_without_an_exchange_fetches_a_day_once_that_day_is_over(tmp_path)
     clock["now"] = datetime.fromisoformat("2026-11-05T00:30:00+00:00")
     assert cache("ABC.L", *window).index[-1] == pd.Timestamp("2026-11-04")
     assert len(calls) == 2
+
+
+def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monkeypatch) -> None:
+    requests: list[str] = []
+
+    class Provider:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+            self._price_history = None
+
+        def history(self, *, start: str, end: str, **_: object) -> pd.DataFrame:
+            requests.append("history " + self.symbol)
+            # yfinance keeps the chart response's metadata from this request.
+            self._price_history = SimpleNamespace(_history_metadata={"exchangeName": "NMS"})
+            last = pd.Timestamp(end) - pd.Timedelta(days=1)
+            index = pd.bdate_range(start, last, tz="America/New_York")
+            return pd.DataFrame({"Close": 125.0, "Stock Splits": 0.0}, index=index)
+
+        def get_history_metadata(self) -> dict:
+            requests.append("metadata " + self.symbol)  # five days of hourly bars
+            return {"exchangeName": "NMS"}
+
+    monkeypatch.setattr(decision_prices.yf, "Ticker", Provider)
+    clock = {"now": datetime.fromisoformat("2026-11-04T22:00:00+00:00")}
+    window = (date(2026, 10, 1), date(2026, 11, 4))
+    cold = CachedDailyHistory(tmp_path, now=lambda: clock["now"])
+    assert [cold(symbol, *window).attrs["exchange"] for symbol in ("NVDA", "AMD")] == ["NMS"] * 2
+    # A cold cache makes one request per listing, none of them for metadata.
+    assert requests == ["history NVDA", "history AMD"]
+    # A warm cache in a new process asks for nothing more.
+    warm = CachedDailyHistory(tmp_path, now=lambda: clock["now"])
+    assert [warm(symbol, *window).attrs["exchange"] for symbol in ("NVDA", "AMD")] == ["NMS"] * 2
+    assert len(requests) == 2
+    # The next close is one history request again.
+    clock["now"] = datetime.fromisoformat("2026-11-05T21:30:00+00:00")
+    warm("NVDA", date(2026, 10, 1), date(2026, 11, 5))
+    assert requests[2:] == ["history NVDA"]
 
 
 def test_resolution_converts_dividends_and_ranges_like_the_closes() -> None:
