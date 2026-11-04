@@ -48,12 +48,21 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
       indicator.style.opacity = active ? "1" : "0";
       if (!active) return;
       const label = segments ? null : active.querySelector<HTMLElement>(":scope > .mx-tab-label");
-      const x = active.offsetLeft + (label?.offsetLeft ?? 0);
-      const y = segments ? active.offsetTop : 0;
-      const width = label?.offsetWidth ?? active.offsetWidth;
-      const height = segments ? active.offsetHeight : indicator.offsetHeight;
+      const anchor = label ?? active;
+      // Equal-width touch cells rarely fall on whole pixels and offset* rounds, so the
+      // box comes from the rendered rects. Under a scaled ancestor (an entry
+      // transition) those are scaled too, and the rounded layout offsets are used.
+      const box = list.getBoundingClientRect();
+      const rect = anchor.getBoundingClientRect();
+      const exact = Math.abs(box.width - list.offsetWidth) < 1;
+      const x = exact
+        ? rect.left - box.left - list.clientLeft + list.scrollLeft
+        : active.offsetLeft + (label?.offsetLeft ?? 0);
+      const y = !segments ? 0 : exact ? rect.top - box.top - list.clientTop + list.scrollTop : active.offsetTop;
+      const width = exact ? rect.width : anchor.offsetWidth;
+      const height = !segments ? indicator.offsetHeight : exact ? rect.height : active.offsetHeight;
       // A resize that moves nothing must not cut a running move short.
-      const key = [x, y, width, height].join(" ");
+      const key = [x, y, width, height].map((value) => value.toFixed(2)).join(" ");
       if (key === placed) return;
       placed = key;
       const from = indicator.getBoundingClientRect();
