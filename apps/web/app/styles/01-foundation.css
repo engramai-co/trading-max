@@ -181,10 +181,6 @@ p {
 .mx-sidebar .mx-brand > span {
   display: none;
 }
-.mx-drawer-brand .mx-brand {
-  margin: 0;
-  color: var(--mx-ink);
-}
 .mx-nav-tooltip {
   background: var(--mx-surface);
   color: var(--mx-ink);

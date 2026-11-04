@@ -40,7 +40,7 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-breadcrumb-divider {
   display: none;
 }
-.mx-menu-toggle.mantine-ActionIcon-root {
+.mx-topbar-more.mantine-ActionIcon-root {
   display: none;
 }
 .mx-content main {
@@ -168,6 +168,8 @@ html[data-scrolled] .mx-topbar-title strong {
 }
 .mx-metric-label {
   display: flex;
+  /* A tag or help that does not fit moves down instead of crushing CJK text. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   font-size: 12px;
@@ -191,6 +193,18 @@ html[data-scrolled] .mx-topbar-title strong {
   color: var(--mx-muted);
   line-height: 1.7;
   margin-top: 6px;
+}
+/* A change beside its amount, such as today's percentage. */
+.mx-metric-change {
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.mx-number .mx-estimate-tag {
+  margin-left: 8px;
+  vertical-align: middle;
+  letter-spacing: 0;
 }
 .mx-up {
   color: var(--mx-up);
@@ -282,7 +296,8 @@ html[data-scrolled] .mx-topbar-title strong {
 }
 .mx-overview-statistics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Today carries its drivers, so it gets the widest cell. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
   gap: 24px;
   padding-left: 28px;
   border-left: 1px solid var(--mx-border);
@@ -290,6 +305,11 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-overview-statistics .mx-number {
   font-size: clamp(20px, 1.8vw, 27px);
   white-space: nowrap;
+}
+.mx-overview-statistics .mx-day-drivers {
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  font-size: 12px;
 }
 .mx-attention {
   display: flex;
