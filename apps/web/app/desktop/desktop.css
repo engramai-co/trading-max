@@ -1,65 +1,243 @@
 /* Desktop presentation only. Financial views share the browser's icon rail. */
-.mx-sidebar-search.mantine-ActionIcon-root { display: none; }
+.mx-sidebar-search.mantine-ActionIcon-root {
+  display: none;
+}
 
 /* Set by the App's native shell under a transparent title bar. Native code owns
    the top 28px for dragging, so nothing interactive may sit there. */
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar { padding-top: 36px; }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar .mx-brand { display: none; }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar-search.mantine-ActionIcon-root { display: flex; width: 100%; height: 48px; min-height: 48px; margin: 4px 0 8px; border-radius: 10px; color: var(--mx-side-ink); }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar { position: sticky; top: 0; z-index: 120; height: 28px; border-bottom-color: transparent; transition: border-color 150ms var(--mx-ease); }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar {
+  padding-top: 36px;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar .mx-brand {
+  display: none;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar-search.mantine-ActionIcon-root {
+  display: flex;
+  width: 100%;
+  height: 48px;
+  min-height: 48px;
+  margin: 4px 0 8px;
+  border-radius: 10px;
+  color: var(--mx-side-ink);
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  height: 28px;
+  border-bottom-color: transparent;
+  transition: border-color 150ms var(--mx-ease);
+}
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root,
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-workspace,
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-breadcrumb-divider { display: none; }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong { font-size: 13px; font-weight: 600; opacity: 0; transform: translateY(4px); transition: opacity 160ms var(--mx-ease), transform 160ms var(--mx-ease); }
-html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar { border-bottom-color: var(--mx-border); }
-html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar-title strong { opacity: 1; transform: none; }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main { padding-top: 20px; min-height: calc(100dvh - 28px); }
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-breadcrumb-divider {
+  display: none;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 160ms var(--mx-ease),
+    transform 160ms var(--mx-ease);
+}
+html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar {
+  border-bottom-color: var(--mx-border);
+}
+html[data-desktop-chrome="overlay"][data-scrolled] .mx-desktop-app .mx-topbar-title strong {
+  opacity: 1;
+  transform: none;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main {
+  padding-top: 20px;
+  min-height: calc(100dvh - 28px);
+}
 @media (prefers-reduced-motion: reduce) {
-  html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong { transform: none; }
+  html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-title strong {
+    transform: none;
+  }
 }
-.mx-desktop-tools { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--mx-side-border); padding-top: 12px; }
-.mx-desktop-tools a { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px; text-decoration: none; border-radius: 10px; }
+.mx-desktop-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--mx-side-border);
+  padding-top: 12px;
+}
+.mx-desktop-tools a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px;
+  text-decoration: none;
+  border-radius: 10px;
+}
 @media (hover: hover) and (pointer: fine) {
-  .mx-desktop-tools a:hover { background: var(--mx-side-hover); }
+  .mx-desktop-tools a:hover {
+    background: var(--mx-side-hover);
+  }
 }
-.mx-desktop-warning > svg:first-child { color: var(--mx-warning); }
-.mx-desktop-surface { min-height: 100dvh; background: var(--mx-canvas); }
-.mx-desktop-source { position: sticky; top: 0; z-index: 100; min-height: 66px; padding: 14px 34px; display: flex; align-items: center; justify-content: space-between; gap: 20px; background: var(--mx-canvas); border-bottom: 1px solid var(--mx-border); }
-.mx-desktop-source > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.mx-desktop-source strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mx-desktop-source span { color: var(--mx-muted); font-size: 12px; flex-shrink: 0; }
-.mx-desktop-source a { display: flex; align-items: center; gap: 7px; font-size: 12px; white-space: nowrap; }
-.mx-desktop-surface main { max-width: 1060px; margin: 0 auto; padding: 30px 32px 48px; }
-.mx-desktop-surface .mx-page-heading { align-items: flex-start; }
-.mx-desktop-surface .mx-page-heading h1 { font-size: 27px; }
-.mx-desktop-surface .mx-page-heading p { max-width: 590px; }
-.mx-desktop-surface .mx-page { gap: 22px; }
-.mx-desktop-surface .mx-panel { padding: 22px; }
-.mx-desktop-surface .mx-panel-title h2 { font-size: 16px; }
-.mx-desktop-settings .mx-tabs { gap: 10px; padding-bottom: 14px; }
-.mx-desktop-settings .mx-tabs button { padding: 10px 14px; border-radius: 8px; min-height: 40px; }
-.mx-desktop-settings .mx-tabs button[aria-selected="true"] { background: var(--mx-brand-soft); }
-.mx-desktop-settings .mx-tabs > .mx-indicator { display: none; }
-.mx-desktop-surface .mx-health-hero { padding: 20px 22px; gap: 16px; }
-.mx-desktop-surface .mx-health-hero h2 { font-size: 19px; }
-.mx-desktop-surface .mx-health-hero p { margin-bottom: 6px; }
-.mx-desktop-surface .mx-health-symbol { width: 40px; height: 40px; }
-.mx-desktop-surface .mx-job-row { padding-block: 18px; }
-.mx-activity-controls { border: 1px solid var(--mx-border); background: var(--mx-surface); border-radius: 10px; }
-.mx-activity-controls > summary { padding: 16px 22px; color: var(--mx-muted); font-size: 13px; }
-.mx-activity-controls[open] > summary { border-bottom: 1px solid var(--mx-border); margin-bottom: 20px; }
-.mx-activity-controls > .mx-grid-two { display: flex; flex-direction: column; margin: 0 20px 20px; }
-.mx-activity-controls > .mx-panel { margin: 0 20px 20px; }
-.mx-import-steps { list-style: none; display: flex; gap: 18px; padding: 0 0 18px; margin: 0; border-bottom: 1px solid var(--mx-border); color: var(--mx-muted); font-size: 12px; }
-.mx-import-steps [data-current="true"] { color: var(--mx-brand); font-weight: 600; }
-.mx-desktop-imports .mx-import-drop > p { grid-column: 2; }
+.mx-desktop-warning > svg:first-child {
+  color: var(--mx-warning);
+}
+.mx-desktop-surface {
+  min-height: 100dvh;
+  background: var(--mx-canvas);
+}
+.mx-desktop-source {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  min-height: 66px;
+  padding: 14px 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: var(--mx-canvas);
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-desktop-source > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.mx-desktop-source strong {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-desktop-source span {
+  color: var(--mx-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.mx-desktop-source a {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mx-desktop-surface main {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 30px 32px 48px;
+}
+.mx-desktop-surface .mx-page-heading {
+  align-items: flex-start;
+}
+.mx-desktop-surface .mx-page-heading h1 {
+  font-size: 27px;
+}
+.mx-desktop-surface .mx-page-heading p {
+  max-width: 590px;
+}
+.mx-desktop-surface .mx-page {
+  gap: 22px;
+}
+.mx-desktop-surface .mx-panel {
+  padding: 22px;
+}
+.mx-desktop-surface .mx-panel-title h2 {
+  font-size: 16px;
+}
+.mx-desktop-settings .mx-tabs {
+  gap: 10px;
+  padding-bottom: 14px;
+}
+.mx-desktop-settings .mx-tabs button {
+  padding: 10px 14px;
+  border-radius: 8px;
+  min-height: 40px;
+}
+.mx-desktop-settings .mx-tabs button[aria-selected="true"] {
+  background: var(--mx-brand-soft);
+}
+.mx-desktop-settings .mx-tabs > .mx-indicator {
+  display: none;
+}
+.mx-desktop-surface .mx-health-hero {
+  padding: 20px 22px;
+  gap: 16px;
+}
+.mx-desktop-surface .mx-health-hero h2 {
+  font-size: 19px;
+}
+.mx-desktop-surface .mx-health-hero p {
+  margin-bottom: 6px;
+}
+.mx-desktop-surface .mx-health-symbol {
+  width: 40px;
+  height: 40px;
+}
+.mx-desktop-surface .mx-job-row {
+  padding-block: 18px;
+}
+.mx-activity-controls {
+  border: 1px solid var(--mx-border);
+  background: var(--mx-surface);
+  border-radius: 10px;
+}
+.mx-activity-controls > summary {
+  padding: 16px 22px;
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+.mx-activity-controls[open] > summary {
+  border-bottom: 1px solid var(--mx-border);
+  margin-bottom: 20px;
+}
+.mx-activity-controls > .mx-grid-two {
+  display: flex;
+  flex-direction: column;
+  margin: 0 20px 20px;
+}
+.mx-activity-controls > .mx-panel {
+  margin: 0 20px 20px;
+}
+.mx-import-steps {
+  list-style: none;
+  display: flex;
+  gap: 18px;
+  padding: 0 0 18px;
+  margin: 0;
+  border-bottom: 1px solid var(--mx-border);
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-import-steps [data-current="true"] {
+  color: var(--mx-brand);
+  font-weight: 600;
+}
+.mx-desktop-imports .mx-import-drop > p {
+  grid-column: 2;
+}
 @media (max-width: 700px) {
-  .mx-desktop-surface main { padding: 24px 18px; }
-  .mx-desktop-source { padding: 14px 18px; }
-  .mx-desktop-source > div { flex-direction: column; gap: 4px; }
-  .mx-desktop-surface .mx-page-heading { flex-direction: column; }
-  .mx-desktop-imports .mx-import-drop > p { grid-column: 1; }
+  .mx-desktop-surface main {
+    padding: 24px 18px;
+  }
+  .mx-desktop-source {
+    padding: 14px 18px;
+  }
+  .mx-desktop-source > div {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .mx-desktop-surface .mx-page-heading {
+    flex-direction: column;
+  }
+  .mx-desktop-imports .mx-import-drop > p {
+    grid-column: 1;
+  }
 }
 @media (max-width: 767px) {
-  .mx-desktop-app .mx-content { margin-left: 0; }
+  .mx-desktop-app .mx-content {
+    margin-left: 0;
+  }
 }

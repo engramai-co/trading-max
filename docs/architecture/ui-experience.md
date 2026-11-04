@@ -82,11 +82,15 @@ intraday history, performance calculations, and research with daily reconciliati
 Compatibility aliases do not appear as additional switches. Saved account labels
 flow through the portfolio, holdings, performance and account-review screens.
 
-The single authored stylesheet is organized by component. Its bounded architecture
-budget is 1,000 lines; readable CSS replaces the previous compressed 100-line
-budget. Theme, snapshot-boundary, API-lens and ECharts-lifecycle checks remain in
-place. The shared chart lifecycle and data/locale services are infrastructure,
-independent of the removed presentation layer.
+Authored styles live in `apps/web/app/styles/`, one numbered file per surface
+(foundation, page, components, research, responsive rules and so on).
+`app/globals.css` only imports them in file-name order, which is the cascade
+order: put a rule in the file for its surface and keep later overrides in later
+files. The architecture check enforces the manifest, at most 900 lines per file,
+one declaration per line and 160 characters per line, so diffs stay precise for
+people and agents. Theme, snapshot-boundary, API-lens and ECharts-lifecycle
+checks remain in place. The shared chart lifecycle and data/locale services are
+infrastructure, independent of the removed presentation layer.
 
 ## Compatibility, privacy and rollback
 

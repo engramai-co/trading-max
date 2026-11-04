@@ -4,6 +4,10 @@ import ts from "typescript";
 
 const root = new URL("../", import.meta.url).pathname;
 const allowedCss = new Set(["app/globals.css", "app/desktop/desktop.css"]);
+// Authored styles live in ordered surface files that app/globals.css imports.
+const stylesDirectory = "app/styles/";
+const stylesheetLineBudget = 900;
+const stylesheetLineLength = 160;
 const rawColourAllowlist = new Set(["ui/theme.ts", "ui/charts/palette.ts"]);
 const serverMantineAllowlist = new Set(["app/layout.tsx", "ui/theme.ts"]);
 // Playwright traces contain captured CSS/JS, not authored application code.
@@ -25,13 +29,42 @@ const files = await filesUnder(root);
 const cssFiles = files.filter((file) => extname(file) === ".css");
 for (const file of cssFiles) {
   const path = relative(root, file);
-  if (!allowedCss.has(path)) violations.push(`Unexpected authored stylesheet: ${path}`);
+  if (!allowedCss.has(path) && !(path.startsWith(stylesDirectory) && !path.slice(stylesDirectory.length).includes("/"))) {
+    violations.push(`Unexpected authored stylesheet: ${path}`);
+  }
 }
 
+// app/globals.css is only the ordered manifest of the surface stylesheets.
+const styleFiles = cssFiles
+  .map((file) => relative(root, file))
+  .filter((path) => path.startsWith(stylesDirectory))
+  .sort();
 const globals = join(root, "app/globals.css");
 if ((await stat(globals)).isFile()) {
-  const lines = (await readFile(globals, "utf8")).split(/\r?\n/).length;
-  if (lines > 1000) violations.push(`app/globals.css is ${lines} lines; budget is 1000`);
+  const manifest = (await readFile(globals, "utf8")).split(/\r?\n/).filter((line) => line.trim() && !line.trim().startsWith("/*"));
+  const imports = manifest.map((line) => /^@import "\.\/(styles\/[\w.-]+\.css)";$/.exec(line.trim())?.[1] ?? null);
+  if (imports.some((entry) => entry === null)) violations.push("app/globals.css may only @import ./styles/*.css files");
+  const expected = styleFiles.map((path) => path.slice("app/".length));
+  if (JSON.stringify(imports) !== JSON.stringify(expected)) {
+    violations.push(`app/globals.css must import every app/styles file once, in file-name order: ${expected.join(", ")}`);
+  }
+}
+
+// One declaration per line, so diffs and agent edits stay precise.
+for (const path of [...styleFiles, "app/desktop/desktop.css"]) {
+  const lines = (await readFile(join(root, path), "utf8")).split(/\r?\n/);
+  if (lines.length > stylesheetLineBudget) violations.push(`${path} is ${lines.length} lines; split it (budget ${stylesheetLineBudget})`);
+  let inComment = false;
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    const comment = inComment || trimmed.startsWith("/*");
+    if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inComment = true;
+    else if (inComment && trimmed.includes("*/")) inComment = false;
+    if (line.length > stylesheetLineLength) violations.push(`${path}:${index + 1} is longer than ${stylesheetLineLength} characters`);
+    if (!comment && (trimmed.split(";").length > 2 || (trimmed.includes("{") && trimmed.includes(";")))) {
+      violations.push(`${path}:${index + 1} has more than one declaration; format one per line`);
+    }
+  });
 }
 
 const sourceFiles = files.filter((file) => [".ts", ".tsx", ".js", ".mjs"].includes(extname(file)));

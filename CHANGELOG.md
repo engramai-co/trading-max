@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.21.2] - 2026-11-04
+
+### Changed
+
+- The web stylesheet is split into ordered surface files under
+  `apps/web/app/styles/`, formatted one declaration per line; `globals.css`
+  only imports them in cascade order. The compiled CSS is unchanged apart from
+  whitespace. The architecture check now enforces the manifest, 900 lines per
+  file, one declaration per line and 160 characters per line. Two fully
+  overridden duplicate rules were removed.
+
 ## [1.21.1] - 2026-11-03
 
 ### Fixed
