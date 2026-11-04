@@ -51,6 +51,9 @@ class SecurityPrices:
     ticker: str
     name: str
     symbol: str
+    #: One GBP close per business day through the review day. A day the listing
+    #: has no quote for (a holiday, or today before the close) repeats the close
+    #: before it, so every window can read a price.
     closes: pd.Series
     #: GBP per share on each ex-date, on the same split basis as the closes.
     dividends: pd.Series = field(default_factory=_empty)
@@ -58,6 +61,15 @@ class SecurityPrices:
     #: with the broker's fills; used for the most a same-day round trip could take.
     highs: pd.Series = field(default_factory=_empty)
     lows: pd.Series = field(default_factory=_empty)
+    #: The days in ``closes`` the provider quoted; ``None`` when it quoted all of
+    #: them. Only these are closes a decision can be judged by.
+    quote_days: pd.DatetimeIndex | None = None
+
+    def closes_after(self, day: pd.Timestamp) -> pd.DatetimeIndex:
+        """The days after day with a close the provider quoted; a repeated close never counts."""
+
+        quoted = self.closes.index if self.quote_days is None else self.quote_days
+        return quoted[quoted > day]
 
 
 class CachedDailyHistory:
@@ -325,6 +337,7 @@ def resolve_decision_prices(
             dividends=dividends[dividends > 0],
             highs=extras["High"],
             lows=extras["Low"],
+            quote_days=closes.index[closes.index.isin(best[2].index)],
         )
         if memo is not None:
             memo[identity] = best[1]

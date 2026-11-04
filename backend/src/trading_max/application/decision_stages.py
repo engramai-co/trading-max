@@ -39,7 +39,7 @@ class AccountDecisionStage:
     """Score buys and sells; a missing price source marks that account unavailable."""
 
     name = "accounts.decisions"
-    version = "decision-review-stage-v4"
+    version = "decision-review-stage-v5"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 

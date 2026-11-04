@@ -18,8 +18,10 @@ sell decision.
 Decisions are scored after ``HORIZON_DAYS`` trading days and up to the latest
 close. Each decision states how many closes followed it and whether its horizon
 window is complete, so a decision with no later close is never read as a zero
-outcome. Closed trades are also compared with selling at the best and worst
-close while the position was held.
+outcome. Only closes the provider quoted count: a day without one (a holiday, or
+today before the close) repeats the close before it and is not an outcome.
+Closed trades are also compared with selling at the best and worst close while
+the position was held.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
 
-CALCULATION_VERSION = "decisions-v3"
+CALCULATION_VERSION = "decisions-v4"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -217,10 +219,15 @@ def build_decision_review(
                     else {}
                 )
         position, close = start
-        horizon = position + HORIZON_DAYS
-        later = float(security.closes.iloc[horizon]) if horizon < len(security.closes) else None
+        following = security.closes_after(security.closes.index[position])
+        horizon = (
+            int(security.closes.index.searchsorted(following[HORIZON_DAYS - 1]))
+            if len(following) >= HORIZON_DAYS
+            else None
+        )
+        later = None if horizon is None else float(security.closes.iloc[horizon])
         latest = float(security.closes.iloc[-1])
-        paid_horizon = None if later is None else _dividends(security, position, horizon)
+        paid_horizon = None if horizon is None else _dividends(security, position, horizon)
         paid_to_date = _dividends(security, position, len(security.closes) - 1)
         horizon_return = None if later is None else (later + paid_horizon) / close - 1.0
         latest_return = (latest + paid_to_date) / close - 1.0
@@ -230,7 +237,7 @@ def build_decision_review(
             if opening is not None and opening[1] > 0:
                 closing = _close_on(market, security.closes.index[-1])
                 market_to_date = None if closing is None else closing[1] / opening[1] - 1.0
-                if later is not None:
+                if horizon is not None:
                     ending = _close_on(market, security.closes.index[horizon])
                     market_horizon = None if ending is None else ending[1] / opening[1] - 1.0
         for side, (amount, shares) in legs.items():
@@ -261,10 +268,10 @@ def build_decision_review(
                     # The benchmark's change over the same window, in GBP.
                     "market_return_horizon": _round(market_horizon, 6),
                     "market_return_to_date": _round(market_to_date, 6),
-                    # Closes after the decision's own, counted by position: an
-                    # unchanged price after several days is still an outcome.
-                    "observed_days": len(security.closes) - 1 - position,
-                    "horizon_complete": later is not None,
+                    # Quoted closes after the decision's own: an unchanged price
+                    # after several days is still an outcome, a repeated one is not.
+                    "observed_days": len(following),
+                    "horizon_complete": horizon is not None,
                 }
             )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))

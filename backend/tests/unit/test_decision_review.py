@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from datetime import date, timedelta
 
 import pandas as pd
@@ -33,6 +34,43 @@ def _fill(time: str, action: str, shares: float, total_gbp: float, ticker: str =
         "Currency (Price / share)": "GBP",
         "Currency (Total)": "GBP",
     }
+
+
+def _usd_fill(time: str, action: str, shares: float, total_gbp: float) -> dict:
+    """A US listing quoted in dollars and settled in pounds, at 1.25 dollars per pound."""
+
+    return {
+        **_fill(time, action, shares, total_gbp),
+        "Price / share": total_gbp / shares * 1.25,
+        "Currency (Price / share)": "USD",
+    }
+
+
+def _review_from_quotes(
+    fills: list[dict], listings: Mapping[str, pd.Series], *, viewed: str
+) -> dict:
+    """Review fills as the stage does on the day viewed, through the price resolver.
+
+    Each listing quotes only the days in its series, so a day its market is shut
+    or has not closed yet is a gap the resolver carries the previous close across.
+    """
+
+    def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
+        if symbol == "GBPUSD=X":
+            return pd.DataFrame({"Close": 1.25}, index=pd.bdate_range(start, end))
+        if symbol not in listings:
+            raise ValueError("unknown listing")
+        quotes = listings[symbol]
+        return pd.DataFrame(
+            {"Close": quotes[quotes.index <= pd.Timestamp(end)], "Stock Splits": 0.0}
+        )
+
+    trades = _trade_columns(pd.DataFrame(fills))
+    prices, unpriced = resolve_decision_prices(
+        trades, end_day=pd.Timestamp(viewed), history_loader=loader
+    )
+    assert unpriced == []
+    return build_decision_review(trades, prices, as_of=pd.Timestamp(viewed))
 
 
 def test_sells_and_buys_are_scored_against_the_price_that_followed() -> None:
@@ -174,6 +212,102 @@ def test_decisions_count_the_closes_that_followed_them() -> None:
     # Unchanged prices still score: the two settled buys count, neither helped.
     assert (review["buys"]["evaluated"], review["buys"]["favourable"]) == (2, 0)
     assert all(row["return_to_date"] == 0.0 for row in review["decisions"])
+
+
+@pytest.mark.parametrize(
+    ("monday_closed", "observed", "return_to_date"), [(False, 0, 0.0), (True, 1, 0.04)]
+)
+def test_a_friday_decision_counts_monday_only_once_monday_has_closed(
+    monday_closed: bool, observed: int, return_to_date: float
+) -> None:
+    # Viewed on Monday 2 Nov. Until New York closes the listing has no Monday
+    # quote, and the row that repeats Friday's close is not an outcome.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-12", "2026-10-30"))
+    if monday_closed:
+        quotes[pd.Timestamp("2026-11-02")] = 130.0
+    review = _review_from_quotes(
+        [_usd_fill("2026-10-30T15:00:00Z", "Market buy", 10, 1_000)],
+        {"NVDA": quotes},
+        viewed="2026-11-02",
+    )
+    (friday,) = review["decisions"]
+    assert (friday["observed_days"], friday["horizon_complete"]) == (observed, False)
+    assert friday["return_to_date"] == pytest.approx(return_to_date)
+    assert friday["effect_horizon_gbp"] is None
+
+
+def test_a_london_bank_holiday_is_not_a_close() -> None:
+    # London is shut on Monday 31 Aug 2026, so the listing has no quote that day.
+    days = pd.bdate_range("2026-08-10", "2026-09-30").drop(pd.Timestamp("2026-08-31"))
+    quotes = pd.Series(100.0, index=days)  # pence
+    quotes[days >= "2026-09-28"] = 110.0
+    fills = [
+        _fill("2026-08-28T10:00:00Z", "Market buy", 1_000, 1_000, "VOD"),
+        # An order on the holiday is measured from Friday's close.
+        _fill("2026-08-31T10:00:00Z", "Market sell", 500, 500, "VOD"),
+    ]
+    on_the_holiday = _review_from_quotes(fills, {"VOD.L": quotes}, viewed="2026-08-31")
+    assert [row["observed_days"] for row in on_the_holiday["decisions"]] == [0, 0]
+    friday, holiday = _review_from_quotes(fills, {"VOD.L": quotes}, viewed="2026-09-30")[
+        "decisions"
+    ]
+    # September's 22 closes follow both decisions; the holiday is not one of them.
+    assert (friday["observed_days"], holiday["observed_days"]) == (22, 22)
+    assert friday["horizon_complete"] and holiday["horizon_complete"]
+    # Both horizons end on the 20th close, 28 Sep, not the 20th weekday, 25 Sep.
+    assert friday["return_horizon"] == pytest.approx(0.1)
+    assert holiday["effect_horizon_gbp"] == pytest.approx(-50.0)
+
+
+def test_a_new_york_holiday_is_not_a_close() -> None:
+    # New York is shut on Thanksgiving, Thursday 27 Nov 2025.
+    days = pd.bdate_range("2025-11-10", "2025-11-28").drop(pd.Timestamp("2025-11-27"))
+    quotes = pd.Series(125.0, index=days)
+    quotes[pd.Timestamp("2025-11-28")] = 137.5
+    fills = [_usd_fill("2025-11-26T16:00:00Z", "Market buy", 10, 1_000)]
+    (on_the_holiday,) = _review_from_quotes(fills, {"NVDA": quotes}, viewed="2025-11-27")[
+        "decisions"
+    ]
+    (next_day,) = _review_from_quotes(fills, {"NVDA": quotes}, viewed="2025-11-28")["decisions"]
+    assert on_the_holiday["observed_days"] == 0
+    assert next_day["observed_days"] == 1
+    assert next_day["effect_to_date_gbp"] == pytest.approx(100.0)
+
+
+def test_decisions_on_the_latest_close_wait_for_the_next_one() -> None:
+    # Decisions from Tuesday 3 Nov, viewed at 15:10 London on 4 Nov: neither London
+    # nor New York has closed, so each decision's own close is still the latest.
+    days = pd.bdate_range("2026-10-19", "2026-11-03")
+    listings = {"NVDA": pd.Series(125.0, index=days), "VOD.L": pd.Series(100.0, index=days)}
+    fills = [
+        _usd_fill("2026-11-03T15:00:00Z", "Market buy", 10, 1_000),
+        _fill("2026-11-03T10:00:00Z", "Market sell", 1_000, 1_000, "VOD"),
+        # An order today is measured from Tuesday's close; nothing follows it either.
+        _usd_fill("2026-11-04T14:45:00Z", "Market buy", 1, 100),
+    ]
+    review = _review_from_quotes(fills, listings, viewed="2026-11-04")
+    assert [(row["date"], row["ticker"]) for row in review["decisions"]] == [
+        ("2026-11-03", "NVDA"),
+        ("2026-11-03", "VOD"),
+        ("2026-11-04", "NVDA"),
+    ]
+    assert [row["observed_days"] for row in review["decisions"]] == [0, 0, 0]
+    assert not any(row["horizon_complete"] for row in review["decisions"])
+    assert (review["buys"]["evaluated"], review["sells"]["evaluated"]) == (0, 0)
+
+
+def test_a_flat_price_after_many_closes_is_a_scored_zero() -> None:
+    quotes = pd.Series(100.0, index=pd.bdate_range("2026-01-19", "2026-03-13"))  # pence
+    review = _review_from_quotes(
+        [_fill("2026-02-02T10:00:00Z", "Market buy", 1_000, 1_000, "VOD")],
+        {"VOD.L": quotes},
+        viewed="2026-03-13",
+    )
+    (buy,) = review["decisions"]
+    assert (buy["observed_days"], buy["horizon_complete"]) == (29, True)
+    assert (buy["effect_horizon_gbp"], buy["effect_to_date_gbp"]) == (0.0, 0.0)
+    # A genuine zero: evaluated, and not counted as helping.
+    assert (review["buys"]["evaluated"], review["buys"]["favourable"]) == (1, 0)
 
 
 def test_dividends_after_a_decision_count_in_its_effect() -> None:
