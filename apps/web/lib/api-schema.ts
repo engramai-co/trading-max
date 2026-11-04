@@ -5978,13 +5978,17 @@ export interface components {
          *
          *     Holidays are absent and early closes keep their earlier close, so a client
          *     can tell the latest completed session, the one before it and whether one is
-         *     open at any moment in the window without a calendar of its own.
+         *     open at any moment in the window without a calendar of its own. ``until``
+         *     is when the first session after the listed ones opens: up to then the list
+         *     is complete, and from then on it no longer says which session is current.
          */
         SessionSchedule: {
             /** Calendar */
             calendar: string;
             /** Sessions */
             sessions?: components["schemas"]["ScheduledSession"][];
+            /** Until */
+            until?: string | null;
         };
         /** SnapshotManifest */
         SnapshotManifest: {

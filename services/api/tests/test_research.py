@@ -387,6 +387,7 @@ def test_lens_quote_names_its_listing_and_exchange_sessions(tmp_path, monkeypatc
     sessions = {session.date: session for session in quote.schedule.sessions}
     assert "2026-11-26" not in sessions
     assert sessions["2026-11-27"].close == "2026-11-27T18:00:00Z"
+    assert quote.schedule.until == "2026-12-08T14:30:00Z"
     unknown = ledger.lens_snapshot("OLYM", "overview", manifest, detail="summary").context.quote
     assert unknown.listing is None and unknown.schedule is None
 

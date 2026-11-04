@@ -14513,7 +14513,7 @@
       },
       "SessionSchedule": {
         "additionalProperties": false,
-        "description": "An exchange's sessions around the time a quote was served.\n\nHolidays are absent and early closes keep their earlier close, so a client\ncan tell the latest completed session, the one before it and whether one is\nopen at any moment in the window without a calendar of its own.",
+        "description": "An exchange's sessions around the time a quote was served.\n\nHolidays are absent and early closes keep their earlier close, so a client\ncan tell the latest completed session, the one before it and whether one is\nopen at any moment in the window without a calendar of its own. ``until``\nis when the first session after the listed ones opens: up to then the list\nis complete, and from then on it no longer says which session is current.",
         "properties": {
           "calendar": {
             "title": "Calendar",
@@ -14525,6 +14525,17 @@
             },
             "title": "Sessions",
             "type": "array"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
           }
         },
         "required": [

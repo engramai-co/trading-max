@@ -72,11 +72,14 @@ class SessionSchedule(DomainModel):
 
     Holidays are absent and early closes keep their earlier close, so a client
     can tell the latest completed session, the one before it and whether one is
-    open at any moment in the window without a calendar of its own.
+    open at any moment in the window without a calendar of its own. ``until``
+    is when the first session after the listed ones opens: up to then the list
+    is complete, and from then on it no longer says which session is current.
     """
 
     calendar: str
     sessions: list[ScheduledSession] = Field(default_factory=list)
+    until: str | None = None
 
 
 def calendar_name(exchange: str | None) -> str | None:
@@ -116,17 +119,19 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     start = (current - SCHEDULE_BEFORE).tz_localize(None).normalize()
     end = (current + SCHEDULE_AFTER).tz_localize(None).normalize()
     try:
-        frame = market_calendar(name, start.year, end.year).schedule.loc[start:end]
+        schedule = market_calendar(name, start.year, end.year).schedule
     except CalendarError:
         return None
+    following = schedule.loc[end + pd.Timedelta(days=1) :]
     return SessionSchedule(
         calendar=name,
         sessions=[
             ScheduledSession(
                 date=label.date().isoformat(), open=_utc(row["open"]), close=_utc(row["close"])
             )
-            for label, row in frame.iterrows()
+            for label, row in schedule.loc[start:end].iterrows()
         ],
+        until=_utc(following["open"].iloc[0]) if not following.empty else None,
     )
 
 

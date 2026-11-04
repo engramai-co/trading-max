@@ -79,6 +79,17 @@ def test_session_schedule_skips_thanksgiving_and_keeps_its_early_close():
     # Two weeks back and ten days ahead, weekends excluded.
     assert schedule.sessions[0].date == "2026-11-12"
     assert schedule.sessions[-1].date == "2026-12-04"
+    # Complete until the next session after Friday 4 December opens.
+    assert schedule.until == "2026-12-07T14:30:00Z"
+
+
+def test_session_schedule_names_where_its_coverage_ends():
+    # Built on Wednesday 4 November: the last listed session is Friday 13 November,
+    # and Monday 16 November is the first session it does not cover.
+    schedule = session_schedule("XNYS", datetime(2026, 11, 4, 16, tzinfo=UTC))
+    assert schedule is not None
+    assert schedule.sessions[-1].date == "2026-11-13"
+    assert schedule.until == "2026-11-16T14:30:00Z"
 
 
 def test_session_schedule_skips_uk_bank_holidays():
