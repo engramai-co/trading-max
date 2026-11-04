@@ -74,13 +74,11 @@ function Positions() {
     ? params.get("account")!
     : "all";
   const search = params.get("q") ?? "";
-  const sort = holdingSort(params.get("positionSort"));
+  const requestedSort = holdingSort(params.get("positionSort"));
   const [selected, setSelected] = useState<Holding | null>(null);
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
   const [now] = useState(() => Date.now());
-  const direction = holdingSortDirection(sort, params.get("direction"));
-  const ascending = direction === "asc";
   const scoped = useMemo(
     () =>
       (query.data?.holdings ?? []).filter(
@@ -88,6 +86,12 @@ function Positions() {
       ),
     [query.data, account],
   );
+  // Today's change appears once the day's attribution covers any position;
+  // until then a link sorted by it falls back to market value.
+  const hasDay = scoped.some((h) => h.dayChangeGbp != null);
+  const sort = requestedSort === "day" && !hasDay ? "value" : requestedSort;
+  const direction = holdingSortDirection(sort, params.get("direction"));
+  const ascending = direction === "asc";
   const rows = useMemo(
     () =>
       scoped
@@ -107,8 +111,6 @@ function Positions() {
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
-  // Today's change appears once the day's attribution covers any position.
-  const hasDay = scoped.some((h) => h.dayChangeGbp != null);
   const day = tradingDay(query.data?.brokerAsOf);
   const dayLabel = !day || day === historyDay(new Date(now).toISOString())
     ? t("今日", "Today")
@@ -224,7 +226,7 @@ function Positions() {
                     },
                     { value: "ticker", label: sort === "ticker" && !ascending ? t("代码 Z–A", "Ticker Z–A") : t("代码 A–Z", "Ticker A–Z") },
                   ]}
-                  value={sort === "day" && !hasDay ? "value" : sort}
+                  value={sort}
                   onChange={(v) => update({ positionSort: v, direction: v === "ticker" ? "asc" : "desc" })}
                 />
               </Group>
