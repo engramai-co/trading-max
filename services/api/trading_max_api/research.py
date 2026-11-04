@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import (
@@ -254,7 +255,16 @@ def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, 
     for code, account in accounts.items() if isinstance(accounts, dict) else ():
         if not isinstance(account, dict):
             continue
-        as_of = str(account.get("fetched_at") or account.get("fetched_at_utc") or "") or None
+        # Prices come from the positions, which can be older than the account totals.
+        as_of = (
+            str(
+                account.get("positions_observed_at")
+                or account.get("fetched_at")
+                or account.get("fetched_at_utc")
+                or ""
+            )
+            or None
+        )
         for position in account.get("positions") or []:
             if not isinstance(position, dict):
                 continue
@@ -329,12 +339,33 @@ def _position_fields(holdings: dict[str, JsonObject], ticker: str) -> JsonObject
     }
 
 
+def _exchange_today(metrics: JsonObject | None, now: datetime | None = None) -> date:
+    """The exchange's current calendar date.
+
+    A report dated today is not past until its market's day ends: at 00:01 UTC
+    New York is still on the previous evening.
+    """
+
+    current = now or datetime.now(UTC)
+    zone = str((metrics or {}).get("exchangeTimezoneName") or "")
+    if zone:
+        try:
+            return current.astimezone(ZoneInfo(zone)).date()
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return current.astimezone(UTC).date()
+
+
 def _next_earnings_date(
     analyst: JsonObject | None,
     calendar: JsonObject | None,
     today: date,
 ) -> str | None:
-    """The one next report date: provider events first, then the calendar; never past."""
+    """The one next report date: provider events first, then the calendar; never past.
+
+    Report dates are exchange calendar dates, so `today` must be the exchange's
+    date too (see `_exchange_today`).
+    """
 
     upcoming = [
         day
@@ -370,6 +401,7 @@ def _find(rows: list[JsonObject], ticker: str) -> JsonObject | None:
 def _normalized_earnings_calendar(
     row: JsonObject | None, today: date | None = None
 ) -> JsonObject | None:
+    """Provider calendar with past windows dropped; `today` is the exchange's date."""
     if not row:
         return None
     raw = row.get("calendar")
@@ -405,7 +437,9 @@ def _enrich_fundamentals(
     for row in fundamentals:
         ticker = str(row.get("ticker") or "")
         item = dict(row)
-        calendar = _normalized_earnings_calendar(_find(earnings_rows, ticker))
+        calendar = _normalized_earnings_calendar(
+            _find(earnings_rows, ticker), _exchange_today(row.get("metrics"))
+        )
         if calendar is not None:
             item["earningsCalendar"] = calendar
         technical = _find(technical_rows, ticker)
@@ -837,7 +871,10 @@ class ResearchLedger:
             industry=position.get("industry"),
             etf_contributors=contributors,
             as_of=max(
-                (str(account.get("fetched_at") or "") for account in accounts),
+                (
+                    str(account.get("positions_observed_at") or account.get("fetched_at") or "")
+                    for account in accounts
+                ),
                 default="",
             )
             or None,
@@ -1006,7 +1043,12 @@ class ResearchLedger:
                 "research/technical.json",
                 "research/analyst.json",
             },
-            "analyst": {"research/financials.json", "research/analyst.json"},
+            # The verdict and events name the next report, which can come from the calendar.
+            "analyst": {
+                "research/financials.json",
+                "research/analyst.json",
+                "research/earnings.json",
+            },
             "options": {"research/options.json", "research/technical.json"},
         }.get(view, set())
         # Exposure and historical records depend on the complete snapshot.
@@ -1016,9 +1058,30 @@ class ResearchLedger:
             if view in {"overview", "ledger"} or a.key in keys
         ]
         return (
-            fingerprint([sorted(refs), detail, datetime.now(UTC).date().isoformat()])
+            fingerprint([sorted(refs), detail, self._calendar_days(manifest)])
             if refs
             else manifest.run_id
+        )
+
+    def _calendar_days(self, manifest: SnapshotManifest) -> list[str]:
+        """Today's date in UTC and at every covered exchange.
+
+        Lenses name the next report by the exchange's own date, so cached lenses
+        roll at each exchange's midnight as well as at UTC midnight.
+        """
+
+        now = datetime.now(UTC)
+        zones = {
+            str((row.get("metrics") or {}).get("exchangeTimezoneName") or "")
+            for row in self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
+        }
+        return sorted(
+            {now.date().isoformat()}
+            | {
+                f"{zone}:{_exchange_today({'exchangeTimezoneName': zone}, now).isoformat()}"
+                for zone in zones
+                if zone
+            }
         )
 
     def lens_snapshot(
@@ -1055,6 +1118,8 @@ class ResearchLedger:
             or {}
         )
         metrics = fundamental.get("metrics") or {}
+        # Report dates are compared with the exchange's calendar date.
+        today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
         is_fund = asset_type in {"ETF", "MUTUALFUND"}
         is_financial = any(
@@ -1228,7 +1293,8 @@ class ResearchLedger:
                 _find(
                     self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                     ticker,
-                )
+                ),
+                today,
             )
             if calendar is not None:
                 payload.fundamentals["earningsCalendar"] = calendar
@@ -1369,7 +1435,8 @@ class ResearchLedger:
                 _find(
                     self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                     ticker,
-                )
+                ),
+                today,
             )
             payload.research_evidence = {
                 "filings": list(payload.research_evidence.get("filings") or [])[:3]
@@ -1418,7 +1485,8 @@ class ResearchLedger:
                     _find(
                         self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                         ticker,
-                    )
+                    ),
+                    today,
                 ),
             }
         if view in {"overview", "technical", "fundamentals", "analyst"}:
@@ -1432,9 +1500,10 @@ class ResearchLedger:
                     _find(
                         self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                         ticker,
-                    )
+                    ),
+                    today,
                 ),
-                datetime.now(UTC).date(),
+                today,
             )
         return ResearchLensSnapshot.model_validate(payload.__dict__)
 

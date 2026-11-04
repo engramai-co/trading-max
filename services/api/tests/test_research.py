@@ -5,12 +5,15 @@ from pathlib import Path
 
 import pytest
 
+from services.api.trading_max_api import research as research_module
 from services.api.trading_max_api.artifacts import ArtifactStore
-from services.api.trading_max_api.models import SnapshotManifest
+from services.api.trading_max_api.models import ArtifactInfo, SnapshotManifest
+from services.api.trading_max_api.projections.broker import overlay_live_broker_snapshot
 from services.api.trading_max_api.research import (
     ResearchLedger,
     _account_holdings,
     _business_day_age,
+    _exchange_today,
     _freshness,
     _fundamentals_rows,
     _market_rows,
@@ -161,6 +164,117 @@ def test_next_earnings_date_is_one_date_and_never_past():
     assert _next_earnings_date({"earningsEvents": []}, window, today) == "2026-11-06"
     reported_today = {"earningsEvents": [{"date": "2026-11-04", "status": "reported"}]}
     assert _next_earnings_date(reported_today, None, today) is None
+
+
+def test_broker_price_keeps_the_time_its_positions_were_observed():
+    payloads = _synthetic_accounts()
+    live = payloads["account/intraday/broker_values.json"]["accounts"]["A"]
+    # Fresh live totals whose positions failed reconciliation: the canonical
+    # 12:00 positions stay, and so must their 12:00 time.
+    live["positions_status"] = "unverified"
+    broker = overlay_live_broker_snapshot(
+        payloads["account/broker_snapshot_metrics.json"],
+        payloads["account/intraday/broker_values.json"],
+    )
+    account = broker["accounts"]["A"]
+    assert account["fetched_at"] == "2026-11-04T15:50:01Z"
+    assert account["positions_observed_at"] == "2026-11-04T12:00:01Z"
+    held = _account_holdings(broker, {})["HELD"]
+    assert held["price"] == 200.0 and held["asOf"] == "2026-11-04T12:00:01Z"
+    # Verified live positions carry the live time.
+    live["positions_status"] = "verified"
+    broker = overlay_live_broker_snapshot(
+        payloads["account/broker_snapshot_metrics.json"],
+        payloads["account/intraday/broker_values.json"],
+    )
+    held = _account_holdings(broker, {})["HELD"]
+    assert held["price"] == 190.0 and held["asOf"] == "2026-11-04T15:50:01Z"
+
+
+def _artifact_ref(key: str, sha: str) -> ArtifactInfo:
+    return ArtifactInfo(
+        key=key, source_path=key, size_bytes=1, sha256=sha, media_type="application/json"
+    )
+
+
+def test_analyst_lens_revision_follows_the_earnings_calendar(tmp_path):
+    ledger = ResearchLedger(ArtifactStore(tmp_path), WatchlistStore(tmp_path))
+    ledger._read_optional = lambda _manifest, _key: {}
+
+    def manifest(earnings_sha: str) -> SnapshotManifest:
+        return SnapshotManifest(
+            run_id="synthetic",
+            scope="research",
+            source="test",
+            created_at=datetime.now(UTC),
+            artifacts=[
+                _artifact_ref("research/analyst.json", "a" * 64),
+                _artifact_ref("research/earnings.json", earnings_sha),
+            ],
+        )
+
+    before = ledger.lens_revision(manifest("b" * 64), "analyst", "full")
+    after = ledger.lens_revision(manifest("c" * 64), "analyst", "full")
+    assert before != after
+
+
+def test_report_dates_follow_the_exchange_calendar(tmp_path, monkeypatch):
+    new_york = {"exchangeTimezoneName": "America/New_York"}
+    just_after_utc_midnight = datetime(2026, 11, 5, 0, 1, tzinfo=UTC)
+    assert _exchange_today(new_york, just_after_utc_midnight) == date(2026, 11, 4)
+    assert _exchange_today({"exchangeTimezoneName": "Mars/Olympus"}, just_after_utc_midnight) == (
+        date(2026, 11, 5)
+    )
+    assert _exchange_today(None, just_after_utc_midnight) == date(2026, 11, 5)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return just_after_utc_midnight if tz is None else just_after_utc_midnight.astimezone(tz)
+
+    monkeypatch.setattr(research_module, "datetime", Frozen)
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    watchlist = WatchlistStore(tmp_path)
+    watchlist.add(
+        SecuritySearchResult(
+            ticker="TEST", name="Test", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+    payloads = {
+        "research/fundamentals.json": {"rows": [{"ticker": "TEST", "metrics": new_york}]},
+        "research/earnings.json": {
+            "rows": [{"ticker": "TEST", "calendar": {"Earnings Date": ["2026-11-04"]}}]
+        },
+        "research/analyst.json": {
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "analyst": {
+                        "earningsEvents": [
+                            {"date": "2026-11-04", "status": "provider-estimate"},
+                            {"date": "2027-02-04", "status": "provider-estimate"},
+                        ]
+                    },
+                }
+            ]
+        },
+    }
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=Frozen.now(UTC),
+        artifacts=[],
+    )
+    # 19:01 on 4 November in New York: today's report is still the next one, and
+    # the calendar keeps today's window, in both the analyst and the overview lens.
+    assert ledger.lens_snapshot("TEST", "analyst", manifest).next_earnings_date == "2026-11-04"
+    overview = ledger.lens_snapshot("TEST", "overview", manifest, detail="summary")
+    assert overview.next_earnings_date == "2026-11-04"
+    assert overview.fundamentals["earningsCalendar"]["earningsDates"] == ["2026-11-04"]
 
 
 def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
