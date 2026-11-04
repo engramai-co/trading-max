@@ -3,7 +3,9 @@
  * from the broker snapshot, when its broker line is the research quote's
  * listing; the research quote is the fallback and names its time only when it
  * is not the obvious current price. Sessions come from the server, from the
- * quote exchange's own calendar: holidays and early closes included.
+ * quote exchange's own calendar: holidays and early closes included. Instants
+ * the schedule does not reach belong to no session, and once it has run out
+ * nothing is shown as current until the lens is refetched.
  */
 
 type Session = { date: string; open: string; close: string };
@@ -16,7 +18,7 @@ type Quote = {
   asOf?: string | null;
   delayMinutes?: number | null;
   listing?: string | null;
-  schedule?: { sessions?: Session[] | null } | null;
+  schedule?: { sessions?: Session[] | null; until?: string | null } | null;
 };
 
 type Position = {
@@ -56,6 +58,8 @@ const LATE_MINUTES = 15;
 const BROKER_LATE_MINUTES = 30;
 
 type Scheduled = { date: string; open: number; close: number };
+/** Sessions as instants; the list is complete until `until`. */
+type Calendar = { sessions: Scheduled[]; until: number };
 
 function validInstant(value: string | null | undefined) {
   if (!value) return null;
@@ -64,29 +68,38 @@ function validInstant(value: string | null | undefined) {
 }
 
 /** The quote exchange's sessions in time order; null when the exchange is unknown. */
-function sessions(quote: Quote | undefined): Scheduled[] | null {
-  const rows = (quote?.schedule?.sessions ?? [])
+function calendar(quote: Quote | undefined): Calendar | null {
+  const sessions = (quote?.schedule?.sessions ?? [])
     .map((s) => ({ date: s.date, open: Date.parse(s.open), close: Date.parse(s.close) }))
     .filter((s) => s.open < s.close)
     .sort((a, b) => a.open - b.open);
-  return rows.length ? rows : null;
+  if (!sessions.length) return null;
+  const last = sessions[sessions.length - 1].close;
+  const until = Date.parse(quote?.schedule?.until ?? "");
+  // Without its end a schedule reaches its last close.
+  return { sessions, until: until > last ? until : last };
 }
 
-/** The sessions while they still reach past `now`; the server lists about ten days ahead. */
-function sessionsAt(quote: Quote | undefined, now: Date) {
-  const rows = sessions(quote);
-  return rows && now.valueOf() < rows[rows.length - 1].close ? rows : null;
+/** The session an instant belongs to (the latest one open by then), or -1 beyond the schedule. */
+function sessionOf({ sessions, until }: Calendar, instant: Date) {
+  const time = instant.valueOf();
+  if (time < sessions[0].open || time >= until) return -1;
+  return sessions.findLastIndex((s) => s.open <= time);
 }
 
-/** The session an instant belongs to: the latest one open by then, or -1 before them all. */
-function sessionOf(rows: Scheduled[], instant: Date) {
-  return rows.findLastIndex((s) => s.open <= instant.valueOf());
+/** Whether the quote's schedule has run out: a session it does not list may have opened. */
+export function scheduleExpired(quote: Quote | undefined, now: Date) {
+  const known = calendar(quote);
+  return known != null && now.valueOf() >= known.until;
 }
 
 /** Whether the quote's exchange is in a session at `now`. */
 export function inSession(quote: Quote | undefined, now: Date) {
+  const known = calendar(quote);
   const time = now.valueOf();
-  return Boolean(sessionsAt(quote, now)?.some((s) => s.open <= time && time < s.close));
+  return Boolean(
+    known && time < known.until && known.sessions.some((s) => s.open <= time && time < s.close),
+  );
 }
 
 /** How to name the time of a research quote, and whether it is late. */
@@ -94,18 +107,21 @@ export function quoteTime(quote: Quote, now: Date): PriceTime | null {
   const asOf = validInstant(quote.asOf);
   if (!asOf || !quote.asOf) return null;
   const delayMinutes = quote.delayMinutes ?? null;
-  const lateAfter = ((delayMinutes ?? 0) + LATE_MINUTES) * MINUTE;
-  const rows = sessionsAt(quote, now);
+  const known = calendar(quote);
   // An unknown exchange makes no claim about sessions.
-  if (!rows) return { kind: "time", asOf: quote.asOf, stale: false, delayMinutes };
-  const index = sessionOf(rows, asOf);
-  if (index >= 0 && asOf.valueOf() >= rows[index].close) {
+  if (!known) return { kind: "time", asOf: quote.asOf, stale: false, delayMinutes };
+  const lateAfter = ((delayMinutes ?? 0) + LATE_MINUTES) * MINUTE;
+  // A schedule that has run out cannot show anything as current.
+  const expired = now.valueOf() >= known.until;
+  const index = sessionOf(known, asOf);
+  const session = known.sessions[index];
+  if (session && asOf.valueOf() >= session.close) {
     // A close is current until the next session has traded for longer than the delay.
-    const next = rows[index + 1];
-    const stale = next != null && now.valueOf() >= next.open + lateAfter;
-    return { kind: "close", date: rows[index].date, stale };
+    const next = known.sessions[index + 1];
+    const stale = expired || (next != null && now.valueOf() >= next.open + lateAfter);
+    return { kind: "close", date: session.date, stale };
   }
-  const stale = now.valueOf() - asOf.valueOf() > lateAfter;
+  const stale = expired || now.valueOf() - asOf.valueOf() > lateAfter;
   return { kind: "time", asOf: quote.asOf, stale, delayMinutes };
 }
 
@@ -113,17 +129,19 @@ export function quoteTime(quote: Quote, now: Date): PriceTime | null {
 export function previousClose(quote: Quote, brokerAsOf: string | null | undefined) {
   const quoted = validInstant(quote.asOf);
   const broker = validInstant(brokerAsOf);
-  const rows = sessions(quote);
-  if (quote.price == null || !quoted || !broker || !rows) return null;
-  // A price observed outside a session belongs to the latest session before it.
-  const brokerSession = sessionOf(rows, broker);
-  const quoteSession = sessionOf(rows, quoted);
+  const known = calendar(quote);
+  if (quote.price == null || !quoted || !broker || !known) return null;
+  // A price observed outside a session belongs to the latest session before it;
+  // one the schedule does not reach belongs to none it can compare.
+  const brokerSession = sessionOf(known, broker);
+  const quoteSession = sessionOf(known, quoted);
   if (brokerSession < 0 || quoteSession < 0) return null;
   if (quoteSession === brokerSession)
     return quote.change != null ? quote.price - quote.change : null;
   // Only the immediately preceding session's close is the reference for the
   // broker's session; an older close would turn several sessions into one change.
-  return quoteSession === brokerSession - 1 && quoted.valueOf() >= rows[quoteSession].close
+  return quoteSession === brokerSession - 1 &&
+    quoted.valueOf() >= known.sessions[quoteSession].close
     ? quote.price
     : null;
 }
@@ -134,12 +152,15 @@ export function previousClose(quote: Quote, brokerAsOf: string | null | undefine
  * last in-session refresh may land shortly before the close).
  */
 export function brokerPriceLate(quote: Quote | undefined, asOf: Date, now: Date) {
-  const rows = sessionsAt(quote, now);
-  if (!rows) return false;
+  const known = calendar(quote);
+  if (!known) return false;
   const time = now.valueOf();
+  // A schedule that has run out cannot show a broker price as current.
+  if (time >= known.until) return true;
   const margin = BROKER_LATE_MINUTES * MINUTE;
-  if (rows.some((s) => s.open <= time && time < s.close)) return time - asOf.valueOf() > margin;
-  const closed = rows.findLast((s) => s.close <= time);
+  if (known.sessions.some((s) => s.open <= time && time < s.close))
+    return time - asOf.valueOf() > margin;
+  const closed = known.sessions.findLast((s) => s.close <= time);
   return closed != null && asOf.valueOf() < closed.close - margin;
 }
 

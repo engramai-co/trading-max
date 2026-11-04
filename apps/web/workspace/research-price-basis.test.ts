@@ -6,6 +6,7 @@ import {
   previousClose,
   priceBasis,
   quoteTime,
+  scheduleExpired,
 } from "./research-price-basis";
 
 /** Weekday sessions as the API schedules them, without the given holidays. */
@@ -32,11 +33,23 @@ const nyse = {
   sessions: weekdays("2026-11-02", "2026-12-04", ["14:30:00", "21:00:00"], ["2026-11-26"], {
     "2026-11-27": "18:00:00",
   }),
+  until: "2026-12-07T14:30:00Z",
 };
 // Synthetic LSE schedule (BST): the summer bank holiday closed.
 const lse = {
   calendar: "XLON",
   sessions: weekdays("2026-08-17", "2026-09-11", ["07:00:00", "15:30:00"], ["2026-08-31"]),
+  until: "2026-09-14T07:00:00Z",
+};
+// The NYSE schedule as the API builds it on Wednesday 4 November: it lists
+// sessions up to Friday 13 November and stops covering at Monday's open.
+const builtWednesday = {
+  calendar: "XNYS",
+  sessions: [
+    ...weekdays("2026-10-21", "2026-10-30", ["13:30:00", "20:00:00"]),
+    ...weekdays("2026-11-02", "2026-11-13", ["14:30:00", "21:00:00"]),
+  ],
+  until: "2026-11-16T14:30:00Z",
 };
 
 // Synthetic NYSE quote: Tuesday's close, read on Wednesday.
@@ -287,11 +300,51 @@ describe("research price basis", () => {
     expect(inSession(unknown, wednesday)).toBe(false);
     expect(previousClose(unknown, held.brokerAsOf)).toBeNull();
     expect(brokerPriceLate(unknown, new Date("2026-11-01T00:00:00Z"), wednesday)).toBe(false);
+    expect(scheduleExpired(unknown, new Date("2027-01-01T00:00:00Z"))).toBe(false);
     expect(inSession(close, wednesday)).toBe(true);
-    // Nor once the clock has run past the sessions the quote came with.
-    expect(quoteTime(close, new Date("2026-12-07T16:00:00Z"))).toMatchObject({
-      kind: "time",
-      stale: false,
+  });
+
+  it("compares no instant beyond the schedule", () => {
+    // A 13 November close of 100, up 10, and a broker price of 120 on Tuesday
+    // 17 November: Monday's close is not in the schedule, so there is no change.
+    const friday = { ...close, price: 100, change: 10, asOf: "2026-11-13T21:00:02Z" };
+    const quote = { ...friday, schedule: builtWednesday };
+    const brokerAsOf = "2026-11-17T15:00:00Z";
+    expect(previousClose(quote, brokerAsOf)).toBeNull();
+    const basis = priceBasis(
+      { ...held, brokerPrice: 120, brokerAsOf },
+      quote,
+      null,
+      null,
+      new Date("2026-11-17T15:05:00Z"),
+    );
+    expect(basis).toMatchObject({ source: "broker", price: 120, change: null, changePct: null });
+    // Inside the schedule, Friday evening's broker price measures from Thursday's close.
+    expect(previousClose(quote, "2026-11-13T22:00:00Z")).toBe(90);
+    // Before its first session the schedule cannot place an instant either.
+    expect(previousClose({ ...close, schedule: builtWednesday }, "2026-10-20T15:00:00Z")).toBeNull();
+  });
+
+  it("keeps warnings once the schedule has run out, unlike an unknown exchange", () => {
+    const quote = { ...close, schedule: builtWednesday };
+    // Tuesday's close is late on Friday 13 November, and stays late after Monday's open.
+    expect(quoteTime(quote, new Date("2026-11-13T16:00:00Z"))).toEqual({
+      kind: "close",
+      date: "2026-11-03",
+      stale: true,
     });
+    const expired = new Date("2026-11-16T15:00:00Z");
+    expect(scheduleExpired(quote, new Date("2026-11-16T14:29:00Z"))).toBe(false);
+    expect(scheduleExpired(quote, expired)).toBe(true);
+    expect(quoteTime(quote, expired)).toEqual({ kind: "close", date: "2026-11-03", stale: true });
+    // A delayed intraday quote keeps its amber time, never its delay note.
+    const intraday = { ...quote, asOf: "2026-11-04T15:30:00Z" };
+    expect(quoteTime(intraday, expired)).toMatchObject({ kind: "time", stale: true });
+    // Nothing is current: no session claim, and the broker price is not shown as current.
+    expect(inSession(quote, expired)).toBe(false);
+    expect(brokerPriceLate(quote, new Date("2026-11-16T14:55:00Z"), expired)).toBe(true);
+    expect(
+      priceBasis({ ...held, brokerAsOf: "2026-11-16T14:55:00Z" }, quote, null, null, expired).time,
+    ).toMatchObject({ kind: "time", stale: true });
   });
 });
