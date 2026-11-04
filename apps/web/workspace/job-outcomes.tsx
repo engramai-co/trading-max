@@ -44,7 +44,7 @@ export function recovery(cause: Cause, locale: "zh" | "en", timeZone: string, no
   if (!count) return null;
   const amount = count.toLocaleString(locale === "zh" ? "zh-CN" : "en-GB");
   const when = cause.lastSuccessAt ? " · " + formatDateTime(cause.lastSuccessAt, locale, timeZone, now) : "";
-  return (locale === "zh" ? "之后已成功 " + amount + " 次" : amount + " successful since") + when;
+  return (locale === "zh" ? `之后已成功 ${amount} 次` : `${amount} successful since`) + when;
 }
 
 /** Seven days of finished updates; quiet when everything succeeded. */
@@ -83,7 +83,7 @@ export function JobOutcomeSummary({
               {causeKind(cause.kind, t) && <span>{causeKind(cause.kind, t)}</span>}
               <span>{scopeLabel(cause.scope)}</span>
               {/* A failure that later updates recovered from is history, not an alarm. */}
-              <span className={recovered ? undefined : "mx-down"}>{locale === "zh" ? count(cause.count) + " 次" : count(cause.count) + "×"}</span>
+              <span className={recovered ? undefined : "mx-down"}>{locale === "zh" ? `${count(cause.count)} 次` : `${count(cause.count)}×`}</span>
               {cause.lastAt && (
                 <span className="mx-muted">
                   {t("最近 ", "Last ") + formatDateTime(cause.lastAt, locale, timeZone)}

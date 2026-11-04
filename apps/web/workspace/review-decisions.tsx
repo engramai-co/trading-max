@@ -322,7 +322,7 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
       <EvidenceTable label={t("结果最大的日内做 T", "Largest round trips")} rows={largest} columns={columns} />
       {rows.length > largest.length && (
         <details className="mx-chart-data">
-          <summary>{locale === "zh" ? "全部 " + rows.length + " 次" : "All " + rows.length + " round trips"}</summary>
+          <summary>{locale === "zh" ? `全部 ${rows.length} 次` : `All ${rows.length} round trips`}</summary>
           <EvidenceTable label={t("日内做 T 记录", "Same-day round trips")} rows={rows} pageSize={20} showCount={false} columns={columns} />
         </details>
       )}
@@ -365,13 +365,13 @@ function BestCloses({ rows }: { rows: ClosedTrade[] }) {
         <Metric
           label={t("比持有期最高收盘少赚", "Below the best close while held")}
           value={currency(givenBack)}
-          note={locale === "zh" ? rows.length + " 笔已结束交易" : rows.length + " closed trades"}
+          note={locale === "zh" ? `${rows.length} 笔已结束交易` : `${rows.length} closed trades`}
         />
       </div>
       <EvidenceTable label={t("少赚最多的已结束交易", "Closed trades that left the most behind")} rows={largest} columns={columns} />
       {rows.length > largest.length && (
         <details className="mx-chart-data">
-          <summary>{locale === "zh" ? "全部 " + rows.length + " 笔" : "All " + rows.length + " closed trades"}</summary>
+          <summary>{locale === "zh" ? `全部 ${rows.length} 笔` : `All ${rows.length} closed trades`}</summary>
           <EvidenceTable label={t("已结束交易与持有期最佳卖点", "Closed trades against their best close")} rows={rows} pageSize={20} showCount={false} columns={columns} />
         </details>
       )}
@@ -407,7 +407,7 @@ export function DecisionReview({
   const rows = data.decisions ?? [];
   const days = data.horizonDays ?? 20;
   const window = horizon === "horizon"
-    ? (locale === "zh" ? " " + days + " 个交易日" : " after " + days + " trading days")
+    ? (locale === "zh" ? ` ${days} 个交易日` : ` after ${days} trading days`)
     : t("至今", " to date");
   const sells = sideVerdict(rows, "sell", horizon);
   const buys = sideVerdict(rows, "buy", horizon);
@@ -418,9 +418,10 @@ export function DecisionReview({
   const unpriced = data.coverage?.unpricedTickers ?? [];
   const verdict = (side: "buy" | "sell", summary: ReturnType<typeof sideVerdict>) => {
     const word = summary.evaluated ? verdictWord(side, summary.effect, t) : "";
-    const count = locale === "zh"
-      ? summary.favourable + " / " + summary.evaluated + (side === "sell" ? " 次卖对了" : " 次买对了")
-      : summary.favourable + " of " + summary.evaluated + (side === "sell" ? " sells helped" : " buys helped");
+    const { favourable, evaluated } = summary;
+    const count = side === "sell"
+      ? (locale === "zh" ? `${favourable} / ${evaluated} 次卖对了` : `${favourable} of ${evaluated} sells helped`)
+      : (locale === "zh" ? `${favourable} / ${evaluated} 次买对了` : `${favourable} of ${evaluated} buys helped`);
     return (
       <Metric
         label={(side === "sell" ? t("卖出后", "Sells") : t("买入后", "Buys")) + window + (word ? " · " + word : "")}
@@ -445,7 +446,7 @@ export function DecisionReview({
             value={horizon}
             onChange={setHorizon}
             options={[
-              { value: "horizon", label: locale === "zh" ? days + " 个交易日后" : days + " trading days" },
+              { value: "horizon", label: locale === "zh" ? `${days} 个交易日后` : `${days} trading days` },
               { value: "date", label: t("至今", "To date") },
             ]}
           />
@@ -459,7 +460,7 @@ export function DecisionReview({
               label={t("日内做 T", "Round trips") + (Math.round(trips.result) ? " · " + (trips.result > 0 ? t("赚", "gained") : t("亏", "lost")) : "")}
               value={currency(Math.abs(trips.result))}
               tone={Math.round(trips.result) ? (trips.result < 0 ? "down" : "up") : undefined}
-              note={locale === "zh" ? trips.favourable + " / " + trips.count + " 次盈利" : trips.favourable + " of " + trips.count + " gained"}
+              note={locale === "zh" ? `${trips.favourable} / ${trips.count} 次盈利` : `${trips.favourable} of ${trips.count} gained`}
             />
           )}
         </div>
@@ -467,8 +468,8 @@ export function DecisionReview({
         {unpriced.length > 0 && (
           <p className="mx-muted mx-decision-coverage">
             {locale === "zh"
-              ? unpriced.length + " 只证券没有可核对的行情，未计入：" + unpriced.join("、")
-              : unpriced.length + " securities have no reconcilable prices and are excluded: " + unpriced.join(", ")}
+              ? `${unpriced.length} 只证券没有可核对的行情，未计入：${unpriced.join("、")}`
+              : `${unpriced.length} securities have no reconcilable prices and are excluded: ${unpriced.join(", ")}`}
           </p>
         )}
       </Panel>

@@ -151,7 +151,7 @@ export function ReviewWorkspace() {
                 <Panel title={t("最近的买卖决定", "Recent decisions")}>
                   {watchingCount > 0 && (
                     <p className="mx-decision-watching">
-                      {locale === "zh" ? "观察中 " + watchingCount + " 笔" : "Watching " + watchingCount}
+                      {locale === "zh" ? `观察中 ${watchingCount} 笔` : `Watching ${watchingCount}`}
                       <span className="mx-muted">{" · " + watching.join(locale === "zh" ? "、" : ", ")}</span>
                     </p>
                   )}
