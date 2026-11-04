@@ -185,18 +185,57 @@
   color: var(--mx-muted);
   margin-top: 4px;
 }
-/* Decision rows: market move and company events of the window on their own line. */
+/* Decision rows: security, then the effect over "date · amount · then", then the arrow; the market move and events fill one line beneath. */
 .mx-decision-row {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+  column-gap: 16px;
   row-gap: 6px;
 }
+.mx-decision-row > svg {
+  justify-self: end;
+  color: var(--mx-muted);
+}
+/* Items that do not fit collapse into "+N", measured in ContextLine. */
 .mx-decision-context {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--mx-muted);
+}
+.mx-decision-context > span {
+  flex: none;
+}
+.mx-decision-context > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mx-decision-context > [data-idle] {
+  position: absolute;
+  visibility: hidden;
+}
+.mx-decision-watching {
+  margin: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--mx-border);
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mx-decision-watching > .mx-muted {
+  font-weight: 400;
+}
+.mx-decision-watching:last-child {
+  border-bottom: 0;
 }
 .mx-stack-bar {
   display: flex;
@@ -408,6 +447,13 @@
 }
 .mx-facts dd > .mx-muted {
   font-weight: 400;
+}
+.mx-facts dd small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--mx-muted);
 }
 .mx-table-wrap {
   overflow: auto;

@@ -93,8 +93,11 @@ function ContextLine({ items }: { items: string[] }) {
   useLayoutEffect(() => {
     const element = line.current;
     if (!element) return;
-    // Measured once while every item is laid out; later fits reuse the widths.
-    const widths = Array.from(element.querySelectorAll<HTMLElement>(":scope > [data-item]"), (item) => item.getBoundingClientRect().width);
+    // Measured once while every item is laid out; later fits reuse the widths. The first
+    // item may already be shrunk with an ellipsis, so its full width is its scroll width.
+    const widths = Array.from(element.querySelectorAll<HTMLElement>(":scope > [data-item]"), (item) =>
+      Math.max(item.getBoundingClientRect().width, item.scrollWidth),
+    );
     const more = element.querySelector<HTMLElement>(":scope > [data-more]")?.getBoundingClientRect().width ?? 0;
     const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
     const fit = () => {
@@ -305,6 +308,7 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
   ];
   return (
     <Panel
+      className="mx-decision-table"
       title={t("日内做 T", "Same-day round trips")}
       help={t(
         "同一天买入又卖出同一证券时，配对的股数算一次往返：结果是（卖出均价 − 买入均价）× 股数，已扣除费用。当日价差上限是同样股数在当天最高价与最低价之间能赚到的最多金额，用来对照，不是事先可以做到的策略。多买或多卖的部分仍作为买卖决定计算。",
@@ -350,6 +354,7 @@ function BestCloses({ rows }: { rows: ClosedTrade[] }) {
   ];
   return (
     <Panel
+      className="mx-decision-table"
       title={t("持有期间的最佳卖点", "The best close while held")}
       help={t(
         "按建仓日收盘价估算：若在持有期内最高或最低收盘价全部卖出，结果会是多少。用于看清每笔交易错过了多少，而不是可以事先做到的策略。",

@@ -9,6 +9,15 @@
   min-height: 36px;
   font-size: 12px;
 }
+/* Round trips and best closes: the metric strip leads into its largest rows. */
+.mx-decision-table .mx-metric-grid {
+  margin-bottom: 22px;
+}
+/* Dates and amounts stay on one line; a narrow screen scrolls the table instead. */
+.mx-decision-table td,
+.mx-decision-table tbody th {
+  white-space: nowrap;
+}
 .mx-table-caption {
   text-align: left;
   padding: 12px 0;
@@ -38,6 +47,40 @@
   border-left: 1px solid var(--mx-border);
   padding-left: 24px;
 }
+/* The whole card opens the evidence behind it; the sibling rule above keeps the dividers. */
+button.mx-review-highlight {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.mx-review-highlight:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 6px;
+  border-radius: 4px;
+}
+.mx-highlight-go {
+  margin-left: 6px;
+  vertical-align: -2px;
+  color: var(--mx-muted);
+  transition: color 150ms var(--mx-ease), transform 150ms var(--mx-ease);
+}
+@media (hover: hover) {
+  button.mx-review-highlight:hover .mx-highlight-subject,
+  button.mx-review-highlight:hover .mx-highlight-go {
+    color: var(--mx-brand);
+  }
+  button.mx-review-highlight:hover .mx-highlight-go {
+    transform: translateX(2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-highlight-go {
+    transition: none;
+  }
+}
 .mx-highlight-subject {
   font-size: 13px;
   font-weight: 550;
@@ -47,10 +90,6 @@
   font-size: 24px;
   letter-spacing: -0.6px;
   line-height: 1.4;
-}
-.mx-review-highlight .mx-text-link {
-  margin-top: auto;
-  align-self: flex-start;
 }
 button.mx-text-link {
   padding: 8px 0;
@@ -105,6 +144,11 @@ button.mx-text-link {
     padding-left: 0;
     border-top: 1px solid var(--mx-border);
     padding-top: 18px;
+  }
+  /* The AI review keeps its regenerate button beside the title, out of the thumb path. */
+  .mx-decision-narrative > .mx-panel-heading {
+    flex-direction: row;
+    align-items: flex-start;
   }
   .mx-segments {
     flex-wrap: wrap;
