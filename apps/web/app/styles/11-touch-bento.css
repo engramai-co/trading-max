@@ -80,6 +80,7 @@
   /* The eight periods span the panel edge to edge: 44px cells at 390px, no scrolling. */
   .mx-period-control {
     width: 100%;
+    container: mx-period / inline-size;
   }
   .mx-period-control > .mx-segments {
     display: grid;
@@ -93,6 +94,26 @@
   }
   .mx-period-control > .mx-segments > button {
     min-width: 0;
+  }
+}
+/* The band is the control plus its 36px bleed. Narrower than eight 44px cells, the periods take two full rows of four. */
+@container mx-period (width < 316px) {
+  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) > button {
+    flex: 1 0 25%;
+  }
+}
+/* Seven periods (returns has no 1D) keep one row while seven 44px cells fit, then take rows of four and three. */
+@container mx-period (width < 272px) {
+  .mx-period-control > .mx-segments {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-period-control > .mx-segments > button {
+    flex: 1 0 25%;
   }
 }
 /* Layout names the page: tools take the heading row; the security leads with its price. */
