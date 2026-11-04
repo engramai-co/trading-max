@@ -22,6 +22,7 @@ import Link from "./link";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
+import { indicatorStart } from "./selection-indicator";
 
 export function useCopy() {
   const { locale } = useLocale();
@@ -53,21 +54,16 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
       if (key === placed) return;
       placed = key;
       const from = indicator.getBoundingClientRect();
-      const frame = list.getBoundingClientRect();
       indicator.getAnimations().forEach((animation) => animation.cancel());
       indicator.style.width = width + "px";
       if (segments) indicator.style.height = height + "px";
       const target = "translate(" + x + "px, " + y + "px)";
       indicator.style.transform = target;
       if (!animate || !from.width || !height || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      const startX = from.left - frame.left - list.clientLeft + list.scrollLeft;
-      const startY = from.top - frame.top - list.clientTop + list.scrollTop;
-      if (Math.abs(startX - x) < 0.5 && Math.abs(startY - y) < 0.5 && Math.abs(from.width - width) < 0.5) return;
+      const start = indicatorStart(from, indicator.getBoundingClientRect(), { x, y });
+      if (!start) return;
       indicator.animate(
-        [
-          { transform: "translate(" + startX + "px, " + startY + "px) scale(" + from.width / width + ", " + from.height / height + ")" },
-          { transform: target },
-        ],
+        [{ transform: start }, { transform: target }],
         { duration: 200, easing: getComputedStyle(list).getPropertyValue("--mx-ease").trim() || "ease-out" },
       );
     };
