@@ -159,8 +159,10 @@ function DecisionEntry({
 }) {
   const t = useCopy();
   const entry = useRef<HTMLDivElement>(null);
+  const link = useRef<HTMLAnchorElement>(null);
   const line = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const heading = useId();
   const [place, setPlace] = useState<Placement>({ shown: context.length });
   const [opened, setOpened] = useState(false);
@@ -190,6 +192,12 @@ function DecisionEntry({
           ? current
           : { shown, left, top, room: gap + width },
       );
+      if (shown < widths.length) return;
+      // Everything fits, so the button hides: focus on it or in its list moves to the
+      // row's link rather than falling to the page, and the list closes.
+      const active = document.activeElement;
+      if (active === more || list.current?.contains(active)) link.current?.focus();
+      setOpened(false);
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -201,7 +209,7 @@ function DecisionEntry({
   const hidden = context.length - place.shown;
   return (
     <div ref={entry} className="mx-decision-entry">
-      <Link className="mx-row-link mx-decision-row" href={href}>
+      <Link ref={link} className="mx-row-link mx-decision-row" href={href}>
         {children}
         {context.length > 0 && (
           <span ref={line} className="mx-decision-context" style={hidden ? { paddingInlineEnd: place.room } : undefined}>
@@ -246,7 +254,7 @@ function DecisionEntry({
               <span className="sr-only">{t(" 项", " more")}</span>
             </button>
           </Popover.Target>
-          <Popover.Dropdown className="mx-help-popover" aria-labelledby={heading}>
+          <Popover.Dropdown ref={list} className="mx-help-popover" aria-labelledby={heading}>
             <div className="mx-help-heading">
               <strong id={heading}>{label}</strong>
               <CloseButton data-autofocus size="sm" aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
