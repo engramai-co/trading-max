@@ -9,6 +9,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
+import { ArrowClockwise } from "@phosphor-icons/react";
 import {
   keepPreviousData,
   useMutation,
@@ -27,6 +28,7 @@ import {
   Pending,
   QueryError,
   Segments,
+  Tag,
   useCopy,
 } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
@@ -40,9 +42,11 @@ import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 import {
   editorIdentity,
+  loadedValuationQuery,
   previewRequest,
   valuationDefaultsQuery,
   valuationPreviewQuery,
+  workbenchState,
 } from "./valuation-queries";
 
 const keys = ["bear", "base", "bull"] as const;
@@ -64,6 +68,9 @@ export function ValuationWorkbench({
     ) ?? false;
   // Valued against the price the header shows: a broker refresh recomputes it.
   const query = useQuery({ ...valuationDefaultsQuery(data, price), enabled: !financial });
+  // Once this research has a preview, a failed refresh keeps it and its editor.
+  const loaded = useQuery(loadedValuationQuery(data));
+  const state = workbenchState(query, loaded.data);
   if (financial)
     return (
       <>
@@ -71,8 +78,8 @@ export function ValuationWorkbench({
         <FilingMultiples data={data} price={price} />
       </>
     );
-  if (query.isPending) return <Pending />;
-  if (query.isError)
+  if (state.view === "pending") return <Pending />;
+  if (state.view === "error")
     return (
       <>
         <ModelAlternatives data={data} financial={false} />
@@ -90,7 +97,14 @@ export function ValuationWorkbench({
     );
   return (
     <>
-      <ModelEditor key={editorIdentity(query.data)} initial={query.data} data={data} revision={revision} />
+      <ModelEditor
+        key={editorIdentity(state.preview)}
+        initial={state.preview}
+        data={data}
+        revision={revision}
+        refreshing={query.isFetching}
+        onRetry={state.refreshFailed ? () => void query.refetch() : undefined}
+      />
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
         <FilingMultiples data={data} price={price} />
@@ -103,10 +117,16 @@ function ModelEditor({
   initial,
   data,
   revision,
+  refreshing,
+  onRetry,
 }: {
   initial: Preview;
   data: ResearchLensSnapshot;
   revision?: string | null;
+  /** The default preview is being refetched, as after a broker refresh. */
+  refreshing: boolean;
+  /** Offered when that refetch failed; the last preview stays meanwhile. */
+  onRetry?: () => void;
 }) {
   const t = useCopy();
   const client = useQueryClient();
@@ -162,7 +182,8 @@ function ModelEditor({
   const initialAtHorizon =
     horizon === initial.horizon ? initial : baseline.data;
   const result = query.data ?? initial;
-  const busy = invalidInput || query.isFetching || request !== liveFingerprint;
+  const busy =
+    invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
   const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const saved = savedFingerprint === liveFingerprint;
   const save = useMutation({
@@ -365,6 +386,21 @@ function ModelEditor({
                 setInvalidInput(false);
               }}
             />
+            {onRetry && !refreshing && (
+              <div className="mx-model-refresh" role="alert">
+                <Tag tone="warn">
+                  {t("未能按最新价格重算", "Not revalued at the latest price")}
+                </Tag>
+                <Button
+                  variant="subtle"
+                  size="compact-xs"
+                  leftSection={<ArrowClockwise size={12} />}
+                  onClick={onRetry}
+                >
+                  {t("重试", "Retry")}
+                </Button>
+              </div>
+            )}
             {initialAtHorizon &&
               !busy &&
               !query.isError &&

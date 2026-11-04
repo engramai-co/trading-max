@@ -5,9 +5,11 @@ import { createQueryClient } from "@/ui/query-client";
 import type { Preview } from "./research-facts";
 import {
   editorIdentity,
+  loadedValuationQuery,
   previewRequest,
   valuationDefaultsQuery,
   valuationPreviewQuery,
+  workbenchState,
   type PreviewRequest,
 } from "./valuation-queries";
 
@@ -51,11 +53,13 @@ function preview(spot: typeof spot100, scenarios: Record<string, typeof inputs> 
   } as unknown as Preview;
 }
 
-/** The valuation service: previews at the broker price of the moment. */
+/** The valuation service: previews at the broker price of the moment, or an outage. */
 function service() {
-  const state = { spot: spot100, bodies: [] as PreviewRequest[] };
+  const state = { spot: spot100, bodies: [] as PreviewRequest[], defaultsDown: false };
   const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
     const body = init?.body ? (JSON.parse(String(init.body)) as PreviewRequest) : null;
+    if (!body && state.defaultsDown)
+      return Response.json({ detail: "synthetic outage" }, { status: 503 });
     if (body) state.bodies.push(body);
     return Response.json(preview(state.spot, body?.scenarios));
   });
@@ -67,6 +71,38 @@ const edited = (revenueCagr: number): PreviewRequest => ({
   ...previewRequest(preview(spot100)),
   scenarios: { bear: inputs, base: { ...inputs, revenueCagr }, bull: inputs },
 });
+
+/**
+ * The workbench's queries for one security: its default preview at the
+ * header's spot and the last one of its research that loaded.
+ */
+function workbench(client: ReturnType<typeof createQueryClient>, data: ResearchLensSnapshot) {
+  const defaults = new QueryObserver(client, valuationDefaultsQuery(data, spot100));
+  const loaded = new QueryObserver(client, loadedValuationQuery(data));
+  const stop = [defaults.subscribe(() => {}), loaded.subscribe(() => {})];
+  return {
+    defaults,
+    loaded,
+    view: () => workbenchState(defaults.getCurrentResult(), loaded.getCurrentResult().data),
+    stop: () => stop.forEach((unsubscribe) => unsubscribe()),
+  };
+}
+
+/** The owner edits at 100, then the broker price moves to 120 and the refresh fails. */
+async function editThenFail() {
+  const client = createQueryClient();
+  const { state } = service();
+  const page = workbench(client, lens);
+  await vi.waitFor(() => expect(page.view()).toMatchObject({ view: "editor" }));
+  const editing = page.view();
+  if (editing.view !== "editor") throw new Error("no editor");
+  await client.fetchQuery(valuationPreviewQuery(editing.preview, edited(0.2)));
+  state.spot = spot120;
+  state.defaultsDown = true;
+  page.defaults.setOptions(valuationDefaultsQuery(lens, spot120));
+  await vi.waitFor(() => expect(page.defaults.getCurrentResult().isError).toBe(true));
+  return { client, state, page, editing };
+}
 
 describe("valuation previews", () => {
   it("fetches the defaults again when the broker price moves from 100 to 120", async () => {
@@ -129,6 +165,56 @@ describe("valuation previews", () => {
     expect(state.bodies).toHaveLength(5);
     // A broker refresh never changes the data version a 409 is decided on.
     expect(new Set(state.bodies.map((body) => body.dataVersion))).toEqual(new Set(["research-1"]));
+    client.clear();
+  });
+
+  it("keeps the editor, its edits and the last preview through a failed refresh", async () => {
+    const { client, page, editing } = await editThenFail();
+    const failed = page.view();
+    // The editor stays mounted on the last preview, with the failure noted beside it.
+    expect(failed).toMatchObject({ view: "editor", refreshFailed: true, preview: { basis: { spot: 100 } } });
+    if (failed.view !== "editor" || editing.view !== "editor") throw new Error("no editor");
+    expect(editorIdentity(failed.preview)).toBe(editorIdentity(editing.preview));
+    // The edited scenario keeps its result on that preview's basis.
+    const kept = client.getQueryData(valuationPreviewQuery(failed.preview, edited(0.2)).queryKey);
+    expect(kept?.basis.spot).toBe(100);
+    page.stop();
+    client.clear();
+  });
+
+  it("recomputes the edits at the new spot when a retry succeeds, without resetting them", async () => {
+    const { client, state, page, editing } = await editThenFail();
+    state.defaultsDown = false;
+    await page.defaults.refetch();
+    const recovered = page.view();
+    expect(recovered).toMatchObject({ view: "editor", refreshFailed: false, preview: { basis: { spot: 120 } } });
+    if (recovered.view !== "editor" || editing.view !== "editor") throw new Error("no editor");
+    // Same research and defaults: the editor and its assumptions stay.
+    expect(editorIdentity(recovered.preview)).toBe(editorIdentity(editing.preview));
+    const revalued = await client.fetchQuery(valuationPreviewQuery(recovered.preview, edited(0.2)));
+    expect(revalued.basis.spot).toBe(120);
+    page.stop();
+    client.clear();
+  });
+
+  it("never shows one security's preview for another", async () => {
+    const { client, page } = await editThenFail();
+    const other = {
+      ...lens,
+      ticker: "OTHER",
+      context: { quote: { id: "quote-9" } },
+    } as unknown as ResearchLensSnapshot;
+    page.defaults.setOptions(valuationDefaultsQuery(other, spot120));
+    page.loaded.setOptions(loadedValuationQuery(other));
+    expect(page.view()).toEqual({ view: "pending" });
+    // The first load of a security that fails is the full error state.
+    await vi.waitFor(() => expect(page.view()).toEqual({ view: "error" }));
+    // Back on the first security, its own last preview returns at once,
+    // although the service is still down.
+    page.defaults.setOptions(valuationDefaultsQuery(lens, spot120));
+    page.loaded.setOptions(loadedValuationQuery(lens));
+    expect(page.view()).toMatchObject({ view: "editor", preview: { basis: { ticker: "SYNT", spot: 100 } } });
+    page.stop();
     client.clear();
   });
 });
