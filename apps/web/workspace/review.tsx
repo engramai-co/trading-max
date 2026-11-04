@@ -34,13 +34,12 @@ import {
   QueryError,
   Tabs,
   Tag,
-  TextLink,
   useCopy,
 } from "./foundation";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { useRouteState } from "./route-state";
 import { reviewHighlights } from "./review-highlights";
-import { DecisionReview, effectTone, signedMoney, type TradeDecision } from "./review-decisions";
+import { DecisionReview, effectTone, observing, signedMoney, verdictWord, type TradeDecision } from "./review-decisions";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
 export function ReviewWorkspace() {
@@ -48,12 +47,17 @@ export function ReviewWorkspace() {
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const query = useDashboardLens("review");
-  const recent = (["A", "B"] as const)
+  const latest = (["A", "B"] as const)
     .flatMap((code) =>
       (query.data?.decisionReviews?.[code]?.decisions ?? []).map((row: TradeDecision) => ({ ...row, account: code })),
     )
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp)
-    .slice(0, 8);
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp);
+  // Decisions without a close after them yet say nothing on their own; they share one line.
+  const watching = [...new Set(latest.filter(observing).map((row) => row.ticker))];
+  const watchingCount = latest.filter(observing).length;
+  const recent = latest.filter((row) => !observing(row)).slice(0, 8);
+  // A retired CFD account keeps its review, reached from the account switcher.
+  const codes = query.data?.cfd?.accountStatus === "retired" ? (["A", "B"] as const) : (["A", "B", "C"] as const);
   return (
     <Page title={t("投资复盘", "Investment review")}>
       {query.isPending ? (
@@ -63,8 +67,8 @@ export function ReviewWorkspace() {
       ) : (
         query.data && (
           <>
-              <div className="mx-grid mx-grid-three">
-                {(["A", "B", "C"] as const).map((code) => {
+              <div className={"mx-grid" + (codes.length === 3 ? " mx-grid-three" : "")}>
+                {codes.map((code) => {
                   const account = query.data?.accounts?.find(
                     (a) => a.code === code,
                   );
@@ -75,9 +79,11 @@ export function ReviewWorkspace() {
                   const verdict = (side: "buys" | "sells") => {
                     const summary = decisions?.status === "available" ? decisions[side] : null;
                     if (!summary?.evaluated) return "—";
+                    const effect = summary.effectHorizonGbp ?? 0;
+                    const word = verdictWord(side === "buys" ? "buy" : "sell", effect, t);
                     return (
-                      <span key={side} className={"mx-" + tone(summary.effectHorizonGbp)}>
-                        {signedMoney(summary.effectHorizonGbp)}
+                      <span key={side} className={"mx-" + effectTone(effect)}>
+                        {(word ? word + " " : "") + currency(Math.abs(effect))}
                       </span>
                     );
                   };
@@ -141,12 +147,18 @@ export function ReviewWorkspace() {
                   );
                 })}
               </div>
-              {recent.length > 0 && (
+              {(recent.length > 0 || watchingCount > 0) && (
                 <Panel title={t("最近的买卖决定", "Recent decisions")}>
+                  {watchingCount > 0 && (
+                    <p className="mx-decision-watching">
+                      {locale === "zh" ? "观察中 " + watchingCount + " 笔" : "Watching " + watchingCount}
+                      <span className="mx-muted">{" · " + watching.join(locale === "zh" ? "、" : ", ")}</span>
+                    </p>
+                  )}
                   {recent.map((row) => (
                     <Link
                       key={row.account + row.date + row.ticker + row.side}
-                      className="mx-row-link"
+                      className="mx-row-link mx-decision-row"
                       href={"/account-analysis?account=" + row.account + "&reviewView=decisions"}
                     >
                       <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
@@ -159,7 +171,7 @@ export function ReviewWorkspace() {
                           {percent(row.returnToDate, true, 1)}
                         </small>
                       </span>
-                      <ArrowUpRight size={15} />
+                      <ArrowUpRight size={15} aria-hidden="true" />
                     </Link>
                   ))}
                 </Panel>
@@ -189,20 +201,17 @@ export function AccountReviewWorkspace() {
         accountName(profile, code) + " · " + t("投资复盘", "Account review")
       }
       actions={
-        <Group>
-          <TextLink href="/review">{t("全部账户", "All accounts")}</TextLink>
-          <Select
-            aria-label={t("复盘账户", "Review account")}
-            value={code}
-            w={150}
-            data={[
-              { value: "A", label: accountName(profile, "A") },
-              { value: "B", label: accountName(profile, "B") },
-              { value: "C", label: accountName(profile, "C") },
-            ]}
-            onChange={(v) => update({ account: v })}
-          />
-        </Group>
+        <Select
+          aria-label={t("复盘账户", "Review account")}
+          value={code}
+          w={150}
+          data={[
+            { value: "A", label: accountName(profile, "A") },
+            { value: "B", label: accountName(profile, "B") },
+            { value: "C", label: accountName(profile, "C") },
+          ]}
+          onChange={(v) => update({ account: v })}
+        />
       }
     >
       {query.isPending ? (
@@ -231,7 +240,7 @@ function AccountJournal({
     params.get("reviewView") ?? (decisionsAvailable ? "decisions" : "outcome"),
   );
   const [focusPhase, setFocusPhase] = useState("");
-  const evidence = useRef<HTMLDivElement>(null);
+  const evidence = useRef<HTMLElement>(null);
   const openEvidence = (view: string, phaseId = "") => {
     setFocusPhase(phaseId);
     setTab(view);
@@ -299,7 +308,9 @@ function AccountJournal({
         <div style={{ marginTop: 22 }}>
           <Freshness
             date={
-              str(field(object(review.coverage), "end_date")) || data.brokerAsOf
+              // The review's figures are as of the run that built it, which can be
+              // hours older than the live account value on the overview.
+              data.reviewAsOf ?? (str(field(object(review.coverage), "end_date")) || data.brokerAsOf)
             }
           />
         </div>
@@ -308,7 +319,7 @@ function AccountJournal({
         <ReviewHighlights review={review} cfd={cfd} onEvidence={openEvidence} />
       )}
       </Bento>
-      <div
+      <section
         ref={evidence}
         tabIndex={-1}
         className="mx-review-evidence"
@@ -343,7 +354,7 @@ function AccountJournal({
         {tab === "imports" && cfd ? (
           <CfdImports />
         ) : tab === "decisions" && !cfd ? (
-          <DecisionReview data={data.selectedAccountDecisions} account={code} />
+          <DecisionReview data={data.selectedAccountDecisions} account={code} dataAsOf={data.reviewAsOf} />
         ) : tab === "outcome" ? (
           <>
             <Panel
@@ -439,7 +450,7 @@ function AccountJournal({
         {Array.isArray(review.warnings) && review.warnings.length > 0 && (
           <SystemNotes values={review.warnings.map(String)} />
         )}
-      </div>
+      </section>
     </>
   );
 }
@@ -493,39 +504,38 @@ function ReviewHighlights({
     },
   ];
   return (
-    <Panel
-      bare
-      className="mx-bento-wide"
-      title={t("本次结论", "Review highlights")}
-    >
+    <Panel bare className="mx-bento-wide">
       <div className="mx-review-highlights">
-        {cards.map((card) => (
-          <div className="mx-review-highlight" key={card.title}>
-            <span className="mx-form-help">{card.title}</span>
-            <strong className="mx-highlight-subject">{card.label}</strong>
-            <span
-              className={`mx-highlight-value mx-${tone(card.value) ?? "neutral"}`}
+        {cards.map((card) => {
+          const body = (
+            <>
+              <span className="mx-form-help">
+                {card.title}
+                {card.available && <ArrowRight className="mx-highlight-go" size={14} aria-hidden="true" />}
+              </span>
+              <strong className="mx-highlight-subject">{card.label}</strong>
+              <span className={"mx-highlight-value mx-" + (tone(card.value) ?? "neutral")}>
+                {currency(card.value, "GBP", 2)}
+              </span>
+              {card.partial && <Tag tone="warn">{t("覆盖不完整", "Partial coverage")}</Tag>}
+            </>
+          );
+          // The whole card opens the evidence behind it.
+          return card.available ? (
+            <button
+              type="button"
+              className="mx-review-highlight"
+              key={card.title}
+              onClick={() => onEvidence(card.target, card.target === "phases" ? summary.phase?.id : undefined)}
             >
-              {currency(card.value, "GBP", 2)}
-            </span>
-            {card.partial && <Tag tone="warn">{t("覆盖不完整", "Partial coverage")}</Tag>}
-            {card.available && (
-              <button
-                className="mx-text-link"
-                onClick={() =>
-                  onEvidence(
-                    card.target,
-                    card.target === "phases" ? summary.phase?.id : undefined,
-                  )
-                }
-                aria-label={`${card.title} · ${t("查看证据", "View evidence")}`}
-              >
-                {t("查看证据", "View evidence")}
-                <ArrowRight size={15} />
-              </button>
-            )}
-          </div>
-        ))}
+              {body}
+            </button>
+          ) : (
+            <div className="mx-review-highlight" key={card.title}>
+              {body}
+            </div>
+          );
+        })}
       </div>
     </Panel>
   );
