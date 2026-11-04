@@ -98,8 +98,8 @@ class AccountDecisionStage:
         if closes.empty or usd.empty:
             return None
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
-        gbp = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index), now).to_numpy()
-        market = session_closes(gbp, BENCHMARK_CALENDAR, start=start, end=end, now=now)
+        rates = final_rate_on(usd, pd.date_range(start, end, freq="D"), now)
+        market = session_closes(closes, rates, BENCHMARK_CALENDAR, start=start, end=end, now=now)
         return market.dropna()
 
     def _account_day(self, context: StageContext, profile: str) -> pd.Timestamp:

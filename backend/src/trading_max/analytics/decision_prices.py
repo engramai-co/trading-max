@@ -18,10 +18,11 @@ rate is still pending is passed over, and waits for it on its own.
 
 A listing's closes are its exchange calendar's regular sessions; a row the
 provider returns on any other day repeats an earlier close and is left out. A
-session without a close or without its rate is pending while the provider may
-still publish it, for up to ``GAP_SESSIONS`` later sessions; after that it
-settles on the last final value before the gap. A provider that later fills in
-or corrects settled history restates the effects measured on it.
+session without a close, or a business day without a rate, is pending while the
+provider may still publish it, for up to ``GAP_SESSIONS`` later sessions of its
+calendar. After that a missing close takes the last close before it, at its own
+day's rate, and a missing rate the last rate before it. A provider that later
+fills in or corrects settled history restates the effects measured on it.
 """
 
 from __future__ import annotations
@@ -381,17 +382,23 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
     return value.where(due, value.ffill()).reindex(days)
 
 
+def _divisor(mode: str, final_fx: Mapping[str, pd.Series]) -> pd.Series | float:
+    """A listing currency's units per pound: fixed for sterling, each day's final rate otherwise."""
+
+    if mode == "GBP":
+        return 1.0
+    if mode == "GBX":
+        return 100.0
+    return final_fx.get(mode, _empty())
+
+
 def _at_final_rates(values: pd.Series, mode: str, final_fx: Mapping[str, pd.Series]) -> pd.Series:
     """Values in GBP at their own day's final rate; NaN on a day still waiting for it."""
 
-    if mode == "GBP":
-        return values
-    if mode == "GBX":
-        return values / 100.0
-    rate = final_fx.get(mode)
-    if rate is None:
-        return values * np.nan
-    return values / rate.reindex(values.index).to_numpy()
+    divisor = _divisor(mode, final_fx)
+    if isinstance(divisor, float):
+        return values / divisor
+    return values / divisor.reindex(values.index).to_numpy()
 
 
 def _sessions(calendar: str | None, start: pd.Timestamp, now: pd.Timestamp) -> pd.DatetimeIndex:
@@ -412,7 +419,8 @@ def _sessions(calendar: str | None, start: pd.Timestamp, now: pd.Timestamp) -> p
 
 
 def session_closes(
-    gbp: pd.Series,
+    closes: pd.Series,
+    divisor: pd.Series | float,
     calendar: str | None,
     *,
     start: pd.Timestamp,
@@ -421,23 +429,24 @@ def session_closes(
 ) -> pd.Series:
     """Closes in pounds on a calendar's sessions from start to end, NaN while pending.
 
-    gbp holds the provider's closes in pounds, NaN while a day's rate is pending;
-    a close on a day that is not a session is left out. A session the provider has
-    no close for is pending until GAP_SESSIONS later sessions have closed, then
-    takes the close before it.
+    closes holds the provider's closes in the listing's currency, and divisor its
+    units per pound, by day for a foreign one (NaN while that day's rate is
+    pending); a close on a day that is not a session is left out. A session the
+    provider has no close for is pending until GAP_SESSIONS later sessions have
+    closed. Then it takes the last close before it at its own day's rate, even
+    past a session still waiting for its rate, which stays pending itself.
     """
 
-    gbp = gbp[~gbp.index.duplicated(keep="last")]
-    gbp = gbp[(gbp > 0) | gbp.isna()]
+    closes = closes[~closes.index.duplicated(keep="last")]
+    closes = closes[closes > 0]
     sessions = _sessions(calendar, start, now)
-    values = gbp.reindex(sessions)
-    missing = ~sessions.isin(gbp.index)
+    bars = closes.reindex(sessions)
     recent = np.arange(len(sessions)) >= len(sessions) - GAP_SESSIONS
-    pending = (missing & recent) | (~missing & values.isna().to_numpy())
-    # A settled gap takes the session before it; a pending one passes nothing on.
-    chain = values.mask(pending, -1.0).ffill()
-    chain = chain.where(chain > 0)
-    return chain[chain.index <= end]
+    rate = divisor if isinstance(divisor, float) else divisor.reindex(sessions).to_numpy()
+    # Each session at its own day's rate; a recent gap is pending, an older one
+    # carries the last close before it.
+    values = (bars.ffill() / rate).mask(bars.isna().to_numpy() & recent)
+    return values[values.index <= end]
 
 
 def final_rates(
@@ -583,7 +592,8 @@ def resolve_decision_prices(
             for column in ("Dividends", "High", "Low")
         }
         values = session_closes(
-            _at_final_rates(best[2], mode, final_fx),
+            best[2],
+            _divisor(mode, final_fx),
             calendar_name(best[5]),
             start=start_day,
             end=end_day,

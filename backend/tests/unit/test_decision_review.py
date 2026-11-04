@@ -488,6 +488,32 @@ def test_a_holiday_close_takes_the_last_final_rate_past_one_still_pending() -> N
     assert monday["effect_to_date_gbp"] == pytest.approx(240.0)
 
 
+def test_an_expired_price_gap_settles_past_a_close_still_waiting_for_its_rate() -> None:
+    # As above, and the provider has no Easter Monday bar either. Three New York
+    # closes later (24 Apr, before midnight) the gap settles on Thursday's close at
+    # Monday's own rate, Wednesday's; Thursday's close still waits for its rate,
+    # and nothing moves when that rate settles at midnight.
+    sessions = pd.bdate_range("2025-03-20", "2025-04-25").drop(pd.Timestamp("2025-04-18"))
+    quotes = pd.Series(125.0, index=sessions)
+    quotes[pd.Timestamp("2025-04-17")] = 130.0
+    quotes[quotes.index >= pd.Timestamp("2025-04-22")] = 137.5
+    rates = pd.Series(1.25, index=sessions.drop(pd.to_datetime(["2025-04-17", "2025-04-21"])))
+    rates[pd.Timestamp("2025-04-16")] = 1.30
+    listing = {"NVDA": quotes.drop(pd.Timestamp("2025-04-21"))}
+    fills = [_usd_fill("2025-04-21T15:00:00Z", "Market buy", 60, 6_000)]
+
+    def review(now: str) -> dict:
+        found = _review_from_quotes(fills, listing, viewed="2025-04-24", now=now, rates=rates)
+        return found["decisions"][0]
+
+    evening, after_midnight = review("2025-04-24T21:30:00Z"), review("2025-04-25T00:30:00Z")
+    # 24 Apr's own rate is final only at midnight.
+    assert evening["observed_days"] == 2
+    assert evening["effect_to_date_gbp"] == pytest.approx(600.0)
+    assert after_midnight["observed_days"] == 3
+    assert after_midnight["effect_to_date_gbp"] == pytest.approx(600.0)
+
+
 def test_a_holiday_keeps_the_last_final_rate_and_a_gap_settles_after_three() -> None:
     # Christmas Day 2026 is a Friday: no rate is due from it to the Sunday, and the
     # provider's own Christmas rate is not used.

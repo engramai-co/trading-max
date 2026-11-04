@@ -167,7 +167,8 @@ publishes one for the holiday.
 
 A close or rate the data provider has not published keeps the affected
 decision observing, or its window withheld, for up to three later sessions of
-that calendar. After that it settles on the last final value before the gap.
+that calendar. After that a missing close takes the last close before it, at
+its own day's exchange rate, and a missing rate the last final rate before it.
 If the provider later fills in or corrects that history, the affected effects
 are restated. The S&P 500 comparison follows the New York calendar the same way.
 
