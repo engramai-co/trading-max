@@ -364,6 +364,18 @@
   margin: 0 0 4px;
   scroll-margin-top: calc(80px + env(safe-area-inset-top));
 }
+@media (max-width: 767px) {
+  /* Phones: the pager takes its own row and 显示全部 sits below it. */
+  .mx-exposure-paging > nav {
+    flex-basis: 100%;
+  }
+}
+/* The compact « ‹ 2 / 87 › » tightens its gaps, so it keeps one row down to 320px. */
+@container (width <= 400px) {
+  .mx-exposure-paging .mantine-Pagination-root > .mantine-Group-root {
+    gap: 4px;
+  }
+}
 @media (pointer: coarse) {
   .mx-exposure-paging .mantine-Pagination-root {
     --pagination-control-size: 44px;
