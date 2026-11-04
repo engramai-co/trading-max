@@ -210,7 +210,7 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
               <Instrument ticker={row.ticker} name={row.name} small />
             </SecurityPeek>
             <span className={"mx-row-value mx-" + effectTone(effect)}>
-              {signedMoney(effect)}
+              <span>{signedMoney(effect)}</span>
               <small>
                 {formatCalendarDate(row.date, locale)} · {row.kind === "T" ? t("T 净额 ", "T net ") : ""}
                 {currency(row.amountGbp)} ·{" "}

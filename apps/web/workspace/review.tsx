@@ -161,7 +161,7 @@ export function ReviewWorkspace() {
                     >
                       <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
                       <span className={"mx-row-value mx-" + effectTone(row.effectToDateGbp)}>
-                        {signedMoney(row.effectToDateGbp)}
+                        <span>{signedMoney(row.effectToDateGbp)}</span>
                         <small>
                           {formatCalendarDate(row.date, locale)} ·{" "}
                           {row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ")}

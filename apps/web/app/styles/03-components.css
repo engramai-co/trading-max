@@ -191,10 +191,25 @@
   grid-template-columns: minmax(0, 1fr) auto 20px;
   column-gap: 16px;
   row-gap: 6px;
+  container-type: inline-size;
 }
 .mx-decision-row > svg {
   justify-self: end;
   color: var(--mx-muted);
+}
+/* A narrow row (a phone, or a half-width column on a tablet): the effect stays beside the security and the arrow, */
+/* and its date, amount and change take their own row and wrap. */
+@container (max-width: 440px) {
+  .mx-decision-row > .mx-row-value {
+    display: contents;
+  }
+  .mx-decision-row > .mx-row-value > small {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 0;
+    text-align: left;
+    white-space: normal;
+  }
 }
 /* Items that do not fit collapse into "+N", measured in ContextLine. */
 .mx-decision-context {
