@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  contextFit,
   decisionContext,
   effectTone,
   eventLabel,
@@ -179,6 +180,25 @@ describe("the review index", () => {
     });
     expect(index).toMatchObject({ watchingCount: 2, watching: ["NVDA"], watchingMore: false });
     expect(index.recent.map((row) => [row.account, row.ticker])).toEqual([["B", "AMD"]]);
+  });
+});
+
+describe("the context line under a decision", () => {
+  it("shows every item that fits, keeping no room for +N after the last", () => {
+    expect(contextFit([100, 100], 210, 10, 30)).toBe(2);
+  });
+
+  it("keeps room for +N while items stay hidden", () => {
+    expect(contextFit([100, 100, 100], 260, 10, 30)).toBe(2);
+    expect(contextFit([100, 100, 100], 245, 10, 30)).toBe(1);
+  });
+
+  it("always shows the first item, shrunk if it must be", () => {
+    expect(contextFit([400, 100], 300, 10, 30)).toBe(1);
+  });
+
+  it("has nothing to show for an empty line", () => {
+    expect(contextFit([], 300, 10, 30)).toBe(0);
   });
 });
 
