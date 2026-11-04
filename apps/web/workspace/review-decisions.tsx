@@ -543,7 +543,6 @@ export function DecisionReview({
   };
   return (
     <>
-      {account && <DecisionNarrative account={account} dataAsOf={dataAsOf ?? data.asOf} />}
       <Panel
         title={t("买卖决定", "Buy and sell decisions")}
         help={t(
@@ -583,6 +582,7 @@ export function DecisionReview({
           </p>
         )}
       </Panel>
+      {account && <DecisionNarrative account={account} dataAsOf={dataAsOf ?? data.asOf} />}
       <div className="mx-grid">
         <Panel title={t("卖出后上涨最多", "Sold before the biggest rises")}>
           <DecisionRows rows={sold.worst} horizon={horizon} empty={t("没有卖出后上涨的记录", "No sale was followed by a rise")} />
