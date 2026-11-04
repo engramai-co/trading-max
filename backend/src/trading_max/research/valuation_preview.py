@@ -46,6 +46,9 @@ class FrozenValuationBasis(DomainModel):
     data_version: str
     currency: str
     spot: float = Field(gt=0)
+    # Held securities are valued against the broker price the holdings page shows.
+    spot_source: Literal["quote", "broker"] = "quote"
+    spot_as_of: str | None = None
     revenue: float = Field(gt=0)
     shares: float = Field(gt=0)
     start_margin: float = Field(ge=-1, le=1)

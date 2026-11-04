@@ -1,19 +1,36 @@
 "use client";
-import type { ResearchLensSnapshot } from "@/lib/types";
+import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { Button } from "@mantine/core";
+import { ArrowRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
-import { Bento, Facts, Metric, Panel, TextLink, useCopy } from "./foundation";
+import { nextEarningsDate } from "./analyst-data";
+import { industryName } from "./exposure-names";
+import { Bento, Facts, Metric, Panel, useCopy } from "./foundation";
+import Link from "./link";
 import { factIndex, metricNames } from "./research-facts";
+import { filingTitle } from "./research-filings";
 import { useRouteState } from "./route-state";
+
+/** A panel title that opens the lens holding its detail. */
+function LensTitle({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <button type="button" className="mx-ranking-link" onClick={onOpen}>
+      {label}
+      <ArrowRight size={14} aria-hidden="true" />
+    </button>
+  );
+}
+
 export function CompanyOverview({
   data,
   context,
+  gics,
 }: {
   data: ResearchLensSnapshot;
   context?: ResearchLensSnapshot;
+  gics?: ResearchShell["instruments"][number]["gics"];
 }) {
   const t = useCopy(),
     { update } = useRouteState("push");
@@ -34,11 +51,18 @@ export function CompanyOverview({
     filings = objects(evidence.filings)
       .filter((f) => safeUrl(str(f.url)))
       .slice(0, 3);
-  const calendar = object(object(context?.fundamentals ?? data.fundamentals).earningsCalendar),
-    date = str((calendar.earningsDates as unknown[] | undefined)?.[0]).slice(
-      0,
-      10,
-    );
+  const date = nextEarningsDate(data, new Date());
+  const profile = object(context?.fundamentals ?? data.fundamentals);
+  // GICS from the security master is the classification look-through uses too.
+  const classification = (
+    gics?.sectorName ? [gics.sectorName, gics.industryName] : [profile.sector, profile.industry]
+  )
+    .map(str)
+    .filter(Boolean)
+    .map((name) => industryName(name, locale));
+  const summary = str(info.longBusinessSummary);
+  const excerpt = summary.split(/(?<=\.)\s+(?=[A-Z])/).slice(0, 2).join(" ");
+  const expandable = excerpt.length < summary.length;
   return (
     <Bento className="mx-overview-bento">
       {period && (
@@ -94,7 +118,14 @@ export function CompanyOverview({
       )}
         <Panel
           bare
-          title={t("业务", "Business")}
+          title={
+            <LensTitle
+              label={t("业务", "Business")}
+              onOpen={() =>
+                update({ view: "fundamentals", financialMode: "business", frequency: "annual" })
+              }
+            />
+          }
           action={
             safeUrl(str(info.website)) ? (
               <a
@@ -109,55 +140,46 @@ export function CompanyOverview({
           }
         >
           <p className="mx-company-sector">
-            {[
-              object(context?.fundamentals ?? data.fundamentals).sector,
-              object(context?.fundamentals ?? data.fundamentals).industry,
-            ]
-              .filter(Boolean)
-              .map(str)
-              .join(" / ")}
+            {classification.join(" / ")}
           </p>
-          {Boolean(info.longBusinessSummary) && (
-            <>
+          {Boolean(summary) &&
+            (expandable ? (
+              // The excerpt itself opens and closes the full description.
               <p
-                className={
-                  expanded ? "mx-business-description" : "mx-business-excerpt"
-                }
-              >
-                {expanded
-                  ? str(info.longBusinessSummary)
-                  : str(info.longBusinessSummary)
-                      .split(/(?<=\.)\s+(?=[A-Z])/)
-                      .slice(0, 2)
-                      .join(" ")}
-              </p>
-              <Button
-                variant="subtle"
-                size="compact-xs"
-                onClick={() => setExpanded(!expanded)}
+                className={expanded ? "mx-business-description" : "mx-business-excerpt"}
+                role="button"
+                tabIndex={0}
                 aria-expanded={expanded}
+                data-expandable=""
+                onClick={() => setExpanded(!expanded)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setExpanded(!expanded);
+                  }
+                }}
               >
-                {expanded
-                  ? t("收起", "Less")
-                  : t("完整业务简介", "Full description")}
-              </Button>
-            </>
-          )}
-          <div style={{ marginTop: 18 }}>
-            <TextLink
-              href={`/research?ticker=${data.ticker}&view=fundamentals&financialMode=business&frequency=annual`}
-            >
-              {t("收入来自哪些业务与地区", "Revenue by business & geography")}
-            </TextLink>
-          </div>
+                {expanded ? summary : excerpt + " …"}
+              </p>
+            ) : (
+              <p className="mx-business-description">{summary}</p>
+            ))}
         </Panel>
-        <Panel bare title={t("近期披露与预期", "Disclosures & expectations")}>
+        <Panel
+          bare
+          title={
+            <LensTitle
+              label={t("近期披露与预期", "Disclosures & expectations")}
+              onOpen={() => update({ view: "analyst" })}
+            />
+          }
+        >
           {date && (
             <button
               className="mx-event-link"
               onClick={() => update({ view: "analyst", analystView: "events" })}
             >
-              <span>{t("下一财报窗口", "Next earnings window")}</span>
+              <span>{t("下次财报", "Next report")}</span>
               <strong>{formatCalendarDate(date, locale)}</strong>
             </button>
           )}
@@ -166,29 +188,21 @@ export function CompanyOverview({
               <article key={i}>
                 <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
-                  {str(f.form)} · {str(f.title)} ↗
+                  {filingTitle(str(f.form), str(f.title), t)} ↗
                 </a>
               </article>
             ))}
-          </div>
-          <div style={{ marginTop: 18 }}>
-            <TextLink href={`/research?ticker=${data.ticker}&view=analyst`}>
-              {t(
-                "查看业绩预期与机构调整",
-                "Earnings expectations & analyst actions",
-              )}
-            </TextLink>
           </div>
         </Panel>
       {impact && impact.exposureValueGbp > 0 && (
         <Panel
           bare
           className="mx-bento-wide"
-          title={t("我的敞口", "My exposure")}
-          action={
-            <TextLink href={`/holdings?q=${data.ticker}`}>
-              {t("查看持仓", "Holdings")}
-            </TextLink>
+          title={
+            <Link className="mx-ranking-link" href={`/holdings?q=${encodeURIComponent(data.ticker)}`}>
+              {t("我的敞口", "My exposure")}
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
           }
         >
           <div className="mx-metric-grid">

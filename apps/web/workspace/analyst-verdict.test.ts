@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analystVerdict } from "./analyst-data";
+import { analystVerdict, nextEarningsDate } from "./analyst-data";
+import { filingTitle } from "./research-filings";
 
 const analyst = {
   providerRecommendationKey: "strong_buy",
@@ -33,6 +34,56 @@ describe("analyst verdict", () => {
   it("leaves unknown facts empty instead of guessing", () => {
     const verdict = analystVerdict({}, null, "2026-11-03");
     expect(verdict).toMatchObject({ consensus: null, analysts: null, targetChange: null, estimateChange90: null, nextReport: null });
+  });
+});
+
+describe("next earnings date", () => {
+  const now = new Date("2026-11-04T12:00:00Z");
+  const stale = { fundamentals: { earningsCalendar: { earningsDates: ["2026-10-22"] } } };
+  it("never shows a past calendar date as the next report", () => {
+    expect(nextEarningsDate(stale, now)).toBeNull();
+    expect(
+      nextEarningsDate(
+        { ...stale, analyst: { earningsEvents: [{ date: "2027-02-04", status: "provider-estimate" }] } },
+        now,
+      ),
+    ).toBe("2027-02-04");
+  });
+  it("trusts the service's single date, including its absence", () => {
+    expect(nextEarningsDate({ ...stale, nextEarningsDate: "2027-02-04" }, now)).toBe("2027-02-04");
+    expect(nextEarningsDate({ nextEarningsDate: null, analyst: { earningsEvents: [{ date: "2027-02-04" }] } }, now))
+      .toBeNull();
+  });
+  it("drops a report once its day has ended in New York, not at UTC midnight", () => {
+    const lens = { nextEarningsDate: "2026-11-04", context: { quote: { timezone: "America/New_York" } } };
+    // 19:30 on 4 November in New York is already 5 November in UTC.
+    expect(nextEarningsDate(lens, new Date("2026-11-05T00:30:00Z"))).toBe("2026-11-04");
+    expect(nextEarningsDate(lens, new Date("2026-11-05T04:59:00Z"))).toBe("2026-11-04");
+    // Midnight in New York: the report has passed, whatever the service said.
+    expect(nextEarningsDate(lens, new Date("2026-11-05T05:00:00Z"))).toBeNull();
+    // Older services' fallback reads the same exchange date.
+    const events = {
+      context: lens.context,
+      analyst: { earningsEvents: [{ date: "2026-11-04" }, { date: "2027-02-04" }] },
+    };
+    expect(nextEarningsDate(events, new Date("2026-11-05T04:59:00Z"))).toBe("2026-11-04");
+    expect(nextEarningsDate(events, new Date("2026-11-05T05:00:00Z"))).toBe("2027-02-04");
+    // Without the exchange's zone, UTC's date decides.
+    expect(nextEarningsDate({ nextEarningsDate: "2026-11-04" }, new Date("2026-11-05T00:30:00Z")))
+      .toBeNull();
+  });
+});
+
+describe("filing titles", () => {
+  const zh = (chinese: string) => chinese;
+  const en = (_zh: string, english: string) => english;
+  it("names forms in Chinese and keeps the provider's description in English", () => {
+    expect(filingTitle("10-Q", "Periodic Financial Reports", zh)).toBe("10-Q · 季报");
+    expect(filingTitle("8-K/A", "Corporate Changes & Voting Matters", zh)).toBe("8-K/A · 重大事项公告（修订）");
+    expect(filingTitle("S-3", "Offering Registrations", zh)).toBe("S-3 · 发行注册");
+    expect(filingTitle("SD", "Specialized Disclosure Report …", zh)).toBe("SD · 冲突矿产披露");
+    expect(filingTitle("10-Q", "Periodic Financial Reports", en)).toBe("10-Q · Periodic Financial Reports");
+    expect(filingTitle("XYZ", "Something new", zh)).toBe("XYZ · Something new");
   });
 });
 

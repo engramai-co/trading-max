@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 const countries = [
@@ -46,7 +46,8 @@ test.describe("allocation composition", () => {
     await expect(details).toContainText("United States");
     await expect(details).toContainText("£7,000.00");
     await expect(details).toContainText("70.0%");
-    await page.getByRole("heading", { name: "Look-through details", exact: true }).click();
+    // A click elsewhere on the page keeps the fixed selection.
+    await page.getByRole("heading", { name: "Holdings & exposure", level: 1, exact: true }).click();
     await expect(details).toContainText("United States");
     await choices.getByRole("button", { name: "Other categories", exact: false }).click();
     await expect(details).toContainText("£333.33");
@@ -75,20 +76,21 @@ test.describe("allocation composition", () => {
 
 test.describe("company composition", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
-  const positions = [
-    { ticker: "ALPHA", name: "Alpha Corporation", country: "United States", valueGbp: 5000, allocationPct: 0.5, directValueGbp: 3000, indirectValueGbp: 2000 },
-    ...Array.from({ length: 40 }, (_, i) => ({
-      ticker: `CO${String(i + 1).padStart(2, "0")}`, name: `Synthetic Company ${i + 1}`,
-      country: "United Kingdom", valueGbp: 100, allocationPct: 0.01,
-      directValueGbp: 0, indirectValueGbp: 100,
-    })),
-  ];
-  test.beforeEach(async ({ page }) => {
+  const alpha = { ticker: "ALPHA", name: "Alpha Corporation", country: "United States", valueGbp: 5000, allocationPct: 0.5, directValueGbp: 3000, indirectValueGbp: 2000 };
+  const companies = (count: number, valueGbp: number) => Array.from({ length: count }, (_, i) => ({
+    ticker: `CO${String(i + 1).padStart(2, "0")}`, name: `Synthetic Company ${i + 1}`,
+    country: "United Kingdom", valueGbp, allocationPct: valueGbp / 10000,
+    directValueGbp: 0, indirectValueGbp: valueGbp,
+  }));
+  const positions = [alpha, ...companies(40, 100)];
+  // More companies than one 100-row page, still within the same invested value.
+  const longTail = [alpha, ...companies(140, 25)];
+  async function openCompanies(page: Page, rows: typeof positions) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await page.route("**/api/backend/dashboard/lens/holdings-lookthrough", (route) => route.fulfill({ json: {
       runId: "synthetic-companies", lookthrough: {
-        available: true, positions, underlyingCount: positions.length, sources: [],
+        available: true, positions: rows, underlyingCount: rows.length, sources: [],
         countryAllocation: countries, industryAllocation: [], gicsSubIndustryAllocation: [],
         investedValueGbp: 10000, nonSecurityValueGbp: 1000, cashValueGbp: 300,
         lookthroughCoveragePct: 0.9, gicsCoveragePct: 1, etfValueGbp: 6000,
@@ -96,9 +98,10 @@ test.describe("company composition", () => {
     } }));
     await page.goto("/holdings?view=lookthrough");
     await page.getByRole("group", { name: "Company view", exact: true }).getByRole("button", { name: "Composition", exact: true }).click();
-  });
+  }
 
   test("includes direct and fund exposure, the full tail and a separate uncovered slice", async ({ page, isMobile }) => {
+    await openCompanies(page, positions);
     const chart = page.getByRole("group", { name: "Allocation composition", exact: true });
     const details = page.getByRole("region", { name: "Selected category details" });
     const choices = page.getByRole("group", { name: "Choose allocation category" });
@@ -137,17 +140,26 @@ test.describe("company composition", () => {
         await page.getByRole("button", { name: "Choose appearance", exact: true }).click();
         await page.getByRole("menuitem", { name: "Dark", exact: true }).click();
       }
-      await page.getByRole("heading", { name: "Look-through details", exact: true }).click();
-      await (isMobile ? page.locator(".mx-allocation-composition") : page.getByRole("heading", { name: "Look-through details", exact: true }))
+      await page.getByRole("heading", { name: "Holdings & exposure", level: 1, exact: true }).click();
+      await (isMobile ? page.locator(".mx-allocation-composition") : page.getByRole("tablist", { name: "Exposure dimension", exact: true }))
         .evaluate((element) => element.scrollIntoView({ block: "start" }));
       await page.screenshot({ path: `${process.env.ALLOCATION_CAPTURE_DIR}/${isMobile ? "mobile" : "desktop"}.png` });
     }
   });
 
   test("keeps the complete paginated company table and leaves portfolio weights unchanged when filtering", async ({ page }) => {
+    await openCompanies(page, longTail);
     const details = page.getByRole("region", { name: "Selected category details" });
     const search = page.getByRole("textbox", { name: "Search underlying assets", exact: true });
-    await expect(page.getByLabel("Underlying asset pages", { exact: true })).toBeVisible();
+    const pages = page.getByLabel("Underlying asset pages", { exact: true });
+    await expect(pages).toBeVisible();
+    await expect(page.getByRole("button", { name: /Synthetic Company 140\b/ })).toHaveCount(0);
+    // Showing all lifts paging over the same rows; paging returns on request.
+    await page.getByRole("button", { name: "Show all 141", exact: true }).click();
+    await expect(pages).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Synthetic Company 140\b/ })).toBeVisible();
+    await page.getByRole("button", { name: "Show in pages", exact: true }).click();
+    await expect(pages).toBeVisible();
     await search.fill("CO40");
     await expect(page.getByRole("button", { name: /Synthetic Company 40/ })).toBeVisible();
     await expect(details).toContainText("Alpha Corporation");

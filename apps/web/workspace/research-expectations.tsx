@@ -3,12 +3,15 @@ import { researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { ratingSummary, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
 import { currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { inRange } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
 import { Help, Panel, Tag, useCopy } from "./foundation";
+import type { ResearchPrice } from "./research-price-basis";
 
 function ConsensusGauge({
   score,
@@ -61,16 +64,25 @@ function ConsensusGauge({
   );
 }
 
-export function AnalystExpectations({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
+export function AnalystExpectations({
+  data,
+  revision,
+  price,
+}: {
+  data: ResearchLensSnapshot;
+  revision?: string | null;
+  price?: ResearchPrice;
+}) {
   const t = useCopy();
+  const { locale, timeZone } = useLocale();
   const analyst = object(data.analyst),
     market = object(data.market);
   const summary = ratingSummary(objects(analyst.recommendations));
   const targets = targetSnapshot(
     object(analyst.priceTargets),
-    data.context?.quote.price ?? market.spot ?? data.valuation?.spot,
+    price?.price ?? data.context?.quote.price ?? market.spot ?? data.valuation?.spot,
   );
-  const code = data.context?.quote.currency ?? str(market.currency);
+  const code = price?.currency ?? data.context?.quote.currency ?? str(market.currency);
   const median = targets.rows.find((row) => row.key === "median")!;
   const ratingLabels = [
     t("强烈买入", "Strong buy"),
@@ -108,7 +120,13 @@ export function AnalystExpectations({ data, revision }: { data: ResearchLensSnap
     ? inRange(prices.data?.points ?? [], "1Y")
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
-  const spotDate = str(market.asOf).slice(0, 10);
+  // A broker price carries its own time; a market spot carries its session date.
+  const spotDate = price?.source === "broker" && price.asOf
+    ? price.asOf.slice(0, 10)
+    : str(market.asOf).slice(0, 10);
+  const spotLabel = price?.source === "broker" && price.asOf
+    ? formatDateTime(price.asOf, locale, timeZone)
+    : spotDate && formatCalendarDate(spotDate, locale);
   const values = [
     ...points.map((p) => numeric(p.close)),
     targets.spot,
@@ -377,7 +395,7 @@ export function AnalystExpectations({ data, revision }: { data: ResearchLensSnap
               <strong>{currency(targets.spot, code, 2)}</strong>
             </span>
             <span>
-              {spotDate || t("价格日期未提供", "Price date unavailable")}
+              {spotLabel || t("价格日期未提供", "Price date unavailable")}
             </span>
           </div>
           <div

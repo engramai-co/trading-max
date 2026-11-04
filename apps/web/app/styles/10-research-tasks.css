@@ -75,10 +75,6 @@
 .mx-model-workbench {
   grid-template-columns: minmax(0, 1fr) 320px;
 }
-.mx-model-fields {
-  display: block;
-  margin: 18px 0;
-}
 .mx-assumption-picker {
   margin-top: 18px;
   display: grid;
@@ -104,9 +100,27 @@
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
-.mx-assumption-picker button[aria-pressed="true"] {
+/* The selected assumption is edited in its own row. */
+.mx-assumption-edit {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 5px 5px 5px 10px;
+  font-size: 12px;
   background: var(--mx-soft);
-  border-color: var(--mx-border);
+  border: 1px solid var(--mx-border);
+  border-radius: 6px;
+}
+.mx-assumption-edit > .mantine-NumberInput-root {
+  width: 112px;
+  flex-shrink: 0;
+}
+.mx-assumption-edit input {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .mx-assumption-picker button:focus-visible {
   outline: 2px solid var(--mx-brand);
@@ -133,6 +147,13 @@
 }
 .mx-model-change strong {
   font-variant-numeric: tabular-nums;
+}
+.mx-model-refresh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
 }
 .mx-model-detail {
   border-top: 1px solid var(--mx-border);
@@ -600,12 +621,14 @@
   flex: 1;
   min-width: 0;
 }
-.mx-tech-toggle h3 {
+.mx-tech-group-heading {
+  margin: 0;
+  font: inherit;
+}
+.mx-tech-group-name {
+  display: block;
   font-size: 15px;
   font-weight: 600;
-}
-.mx-tech-toggle .mx-tech-heading > span {
-  font-size: 12px;
 }
 .mx-tech-toggle > strong {
   font-size: 20px;

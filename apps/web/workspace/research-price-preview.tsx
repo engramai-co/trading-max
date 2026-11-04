@@ -103,7 +103,7 @@ export function PricePreview({
           })}
         />
       )}
-      </div><TechnicalScoreCard data={summary} ticker={ticker} pending={pending} compact /></div>
+      </div><TechnicalScoreCard data={summary} pending={pending} compact /></div>
     </Panel>
   );
 }

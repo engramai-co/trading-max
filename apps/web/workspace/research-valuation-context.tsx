@@ -10,6 +10,7 @@ import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Panel, Segments, TextLink, useCopy } from "./foundation";
 import { factIndex } from "./research-facts";
+import type { ResearchPrice } from "./research-price-basis";
 
 export function ModelAlternatives({
   data,
@@ -102,7 +103,13 @@ export function ModelAlternatives({
   );
 }
 
-export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
+export function FilingMultiples({
+  data,
+  price,
+}: {
+  data: ResearchLensSnapshot;
+  price?: ResearchPrice;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   const [requested, setRequested] = useState("ps");
@@ -122,7 +129,7 @@ export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
       ? samples[middle]
       : (samples[middle - 1] + samples[middle]) / 2
     : null;
-  const quote = data.context?.quote;
+  const quote = price ?? data.context?.quote;
   const revenue = data.financialFacts?.observations.find(
     (o) =>
       o.metric === "revenue" && o.periodId === data.financialFacts?.latestTtm,
@@ -323,6 +330,7 @@ export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
                       href={safeUrl(str(r.url))}
                       target="_blank"
                       rel="noreferrer"
+                      aria-label={`${t("披露原文", "Filing")} · ${str(r.publishedAt)}`}
                     >
                       {t("查看", "Open")} ↗
                     </a>
@@ -350,6 +358,7 @@ export function FilingMultiples({ data }: { data: ResearchLensSnapshot }) {
                                   href={safeUrl(str(o.url))}
                                   target="_blank"
                                   rel="noreferrer"
+                                  aria-label={`${t("原始披露", "Filing")} · ${str(o.periodStart)} → ${str(o.periodEnd)}`}
                                 >
                                   ↗ {t("原始披露", "Filing")}
                                 </a>

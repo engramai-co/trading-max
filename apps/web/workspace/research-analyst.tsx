@@ -7,6 +7,7 @@ import { Button, Group, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import {
   analystVerdict,
+  nextEarningsDate,
   normalizeRatingRow,
   ratingKeys,
   recommendationChange,
@@ -16,18 +17,30 @@ import { currency, number, object, objects, percent, safeUrl, str, tone } from "
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Metric, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { ratingLabel } from "./market-terms";
+import { exchangeDate } from "./research-clock";
+import { filingTitle } from "./research-filings";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
+import type { ResearchPrice } from "./research-price-basis";
 import { useRouteState } from "./route-state";
 import { chartName, chartNumber } from "./research-chart-format";
 
-export function AnalystView({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
+export function AnalystView({
+  data,
+  revision,
+  price,
+}: {
+  data: ResearchLensSnapshot;
+  revision?: string | null;
+  price?: ResearchPrice;
+}) {
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const section = params.get("analystView") ?? "forecast";
   return (
     <>
-      {data.analyst && <AnalystVerdict data={data} />}
+      {data.analyst && <AnalystVerdict data={data} price={price} />}
       <Segments
         label={t("预期与事件内容", "Estimates & events content")}
         value={section}
@@ -46,7 +59,7 @@ export function AnalystView({ data, revision }: { data: ResearchLensSnapshot; re
         </Panel>
       ) : section === "ratings" ? (
         <>
-          <AnalystExpectations data={data} revision={revision} />
+          <AnalystExpectations data={data} revision={revision} price={price} />
           <RatingsAndActions data={data} />
         </>
       ) : (
@@ -70,15 +83,17 @@ const consensusLabels: Record<string, [string, string]> = {
 };
 
 /** One line of conclusions before the evidence below it. */
-function AnalystVerdict({ data }: { data: ResearchLensSnapshot }) {
+function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: ResearchPrice }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const code = data.context?.quote.currency ?? "";
+  const code = price?.currency ?? data.context?.quote.currency ?? "";
+  const now = new Date();
   const verdict = analystVerdict(
     object(data.analyst),
-    data.context?.quote.price ?? object(data.market).spot,
-    new Date().toISOString().slice(0, 10),
+    price?.price ?? data.context?.quote.price ?? object(data.market).spot,
+    exchangeDate(now, data.context?.quote.timezone),
   );
+  const nextReport = nextEarningsDate(data, now);
   const label = verdict.consensus ? consensusLabels[verdict.consensus] : null;
   const up = verdict.revisionsUp30;
   const down = verdict.revisionsDown30;
@@ -93,7 +108,6 @@ function AnalystVerdict({ data }: { data: ResearchLensSnapshot }) {
         <Metric
           label={t("中位目标价", "Median target")}
           value={percent(verdict.targetChange, true, 1)}
-          tone={tone(verdict.targetChange)}
           note={verdict.targetMedian != null ? currency(verdict.targetMedian, code || "USD", 2) : undefined}
         />
         <Metric
@@ -106,7 +120,7 @@ function AnalystVerdict({ data }: { data: ResearchLensSnapshot }) {
         />
         <Metric
           label={t("下次财报", "Next report")}
-          value={verdict.nextReport ? formatCalendarDate(verdict.nextReport, locale) : "—"}
+          value={nextReport ? formatCalendarDate(nextReport, locale) : "—"}
           note={verdict.lastSurprise != null
             ? (verdict.lastSurprise >= 0 ? t("上季超预期 ", "Last quarter beat by ") : t("上季低于预期 ", "Last quarter missed by "))
               + percent(Math.abs(verdict.lastSurprise), false, 1)
@@ -185,7 +199,6 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           yAxis: {
             type: "value",
             scale: true,
-            name: code,
             axisLabel: { color: c.axis },
             splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
@@ -533,7 +546,8 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
             { label: t("机构", "Firm"), value: (r) => r.firm },
             {
               label: t("评级变化", "Rating change"),
-              value: (r) => `${r.from || "—"} → ${r.to || "—"}`,
+              value: (r) =>
+                `${r.from ? ratingLabel(r.from, t) : "—"} → ${r.to ? ratingLabel(r.to, t) : "—"}`,
             },
             {
               label: t("目标价", "Target"),
@@ -557,10 +571,10 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
   const { locale } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
-  const a = object(data.analyst),
-    calendar = object(object(data.fundamentals).earningsCalendar);
+  const a = object(data.analyst);
   const rows = objects(a.earningsEvents);
   const selected = rows.find((r) => r.id === params.get("eventId"));
+  const next = nextEarningsDate(data, new Date());
   const filings = objects(object(data.researchEvidence).filings).filter(
     (f) =>
       !selected ||
@@ -572,11 +586,8 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
       {!rows.length ? (
         <Empty
           title={
-            (calendar.earningsDates as string[] | undefined)?.length
-              ? t("下一财报窗口：", "Next earnings window: ") +
-                (calendar.earningsDates as string[])
-                  .map((d) => d.slice(0, 10))
-                  .join(" – ")
+            next
+              ? t("下次财报 ", "Next report ") + formatCalendarDate(next, locale)
               : t("暂无可用财报日历", "Earnings calendar unavailable")
           }
         />
@@ -660,7 +671,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
               <article key={i}>
                 <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
-                  {str(f.form)} · {str(f.title)} ↗
+                  {filingTitle(str(f.form), str(f.title), t)} ↗
                 </a>
               </article>
             ))}

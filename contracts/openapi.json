@@ -5556,6 +5556,26 @@
             "title": "Spot",
             "type": "number"
           },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
+          "spotSource": {
+            "default": "quote",
+            "enum": [
+              "quote",
+              "broker"
+            ],
+            "title": "Spotsource",
+            "type": "string"
+          },
           "startMargin": {
             "maximum": 1.0,
             "minimum": -1.0,
@@ -9700,6 +9720,17 @@
             "title": "Allocationpct",
             "type": "number"
           },
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
           "country": {
             "anyOf": [
               {
@@ -10103,6 +10134,17 @@
             "title": "Id",
             "type": "string"
           },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
+          },
           "price": {
             "anyOf": [
               {
@@ -10135,6 +10177,16 @@
               }
             ],
             "title": "Reportingcurrency"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "session": {
             "default": "unknown",
@@ -10642,10 +10694,59 @@
             "title": "Bloombergticker",
             "type": "string"
           },
+          "brokerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerasof"
+          },
+          "brokerListing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerlisting"
+          },
+          "brokerPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerprice"
+          },
+          "brokerPriceCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerpricecurrency"
+          },
           "categoryId": {
             "default": "",
             "title": "Categoryid",
             "type": "string"
+          },
+          "directValueGbp": {
+            "default": 0.0,
+            "title": "Directvaluegbp",
+            "type": "number"
           },
           "exchange": {
             "default": "",
@@ -10894,10 +10995,59 @@
             "title": "Bloombergticker",
             "type": "string"
           },
+          "brokerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerasof"
+          },
+          "brokerListing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerlisting"
+          },
+          "brokerPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerprice"
+          },
+          "brokerPriceCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerpricecurrency"
+          },
           "categoryId": {
             "default": "",
             "title": "Categoryid",
             "type": "string"
+          },
+          "directValueGbp": {
+            "default": 0.0,
+            "title": "Directvaluegbp",
+            "type": "number"
           },
           "exchange": {
             "default": "",
@@ -11234,6 +11384,17 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "nextEarningsDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextearningsdate"
           },
           "options": {
             "anyOf": [
@@ -14138,6 +14299,31 @@
         "title": "ScenarioProjection",
         "type": "object"
       },
+      "ScheduledSession": {
+        "additionalProperties": false,
+        "description": "One regular session as the exchange schedules it, in UTC.",
+        "properties": {
+          "close": {
+            "title": "Close",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "open",
+          "close"
+        ],
+        "title": "ScheduledSession",
+        "type": "object"
+      },
       "SecuritySearchResponse": {
         "properties": {
           "correctedQuery": {
@@ -14323,6 +14509,39 @@
           "upside"
         ],
         "title": "SensitivityCell",
+        "type": "object"
+      },
+      "SessionSchedule": {
+        "additionalProperties": false,
+        "description": "An exchange's sessions around the time a quote was served.\n\nHolidays are absent and early closes keep their earlier close, so a client\ncan tell the latest completed session, the one before it and whether one is\nopen at any moment in the window without a calendar of its own. ``until``\nis when the first session after the listed ones opens: up to then the list\nis complete, and from then on it no longer says which session is current.",
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledSession"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "calendar"
+        ],
+        "title": "SessionSchedule",
         "type": "object"
       },
       "SnapshotManifest": {
@@ -16846,7 +17065,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.21.3"
+    "version": "1.22.0"
   },
   "openapi": "3.1.0",
   "paths": {

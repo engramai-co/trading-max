@@ -6,8 +6,10 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     ResearchCapability,
@@ -15,7 +17,9 @@ from trading_max.research.facts import (
     build_financial_facts,
     fingerprint,
     make_quote,
+    number,
 )
+from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 
 from .artifacts import ArtifactStore
@@ -42,6 +46,7 @@ from .models import (
     ResearchTimelinePoint,
     SnapshotManifest,
 )
+from .projections.broker import overlay_live_broker_snapshot
 from .projections.research import option_rows, valuation_rows
 from .projections.research import technical_rows as project_technical_rows
 from .watchlist import WatchlistStore
@@ -82,6 +87,9 @@ SOURCE_TERMS: dict[str, tuple[str, ...]] = {
 
 CURRENT_MARKET_KEY = "research/market_snapshot.json"
 LEGACY_MARKET_KEY = "research/daily_market.json"
+BROKER_KEY = "account/broker_snapshot_metrics.json"
+LIVE_BROKER_KEY = "account/intraday/broker_values.json"
+LOOKTHROUGH_KEY = "account/lookthrough_metrics.json"
 
 
 def _artifact(
@@ -207,21 +215,195 @@ def _canonical_ticker(value: str) -> str:
     return ticker[:-2] if ticker.endswith(".L") else ticker
 
 
-def _account_exposure(
-    broker: JsonObject, lookthrough: JsonObject
-) -> tuple[set[str], dict[str, float]]:
-    direct: dict[str, float] = {}
-    for account in broker.get("accounts", {}).values():
-        for position in account.get("positions", []):
+def _quote_unit_price(value: Any, currency: Any) -> tuple[float | None, str | None]:
+    """Report pence prices in pounds, as research quotes do."""
+
+    price = number(value)
+    code = str(currency or "") or None
+    if price is None or price <= 0:
+        return None, code
+    if code in {"GBX", "GBp", "GBx"}:
+        return price / 100, "GBP"
+    return price, code
+
+
+def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, JsonObject]:
+    """Direct and fund exposure per security on the current broker basis.
+
+    Direct values and prices come from the broker snapshot the holdings page
+    shows. Look-through runs less often, so each fund contribution is revalued
+    by that fund's current broker value relative to its value at look-through
+    time; a fund that is no longer held contributes nothing.
+
+    A security has a broker price and listing only when one broker line holds
+    it. Lines on several listings (another market, or a ``.L`` alias the
+    ticker key collapses) leave neither, so no price stands for another listing.
+    """
+
+    holdings: dict[str, JsonObject] = {}
+
+    def entry(key: str) -> JsonObject:
+        return holdings.setdefault(
+            key,
+            {
+                "held": False,
+                "direct": 0.0,
+                "indirect": 0.0,
+                "price": None,
+                "currency": None,
+                "asOf": None,
+                "listing": None,
+                "lines": {},
+                "accounts": [],
+                "contributors": [],
+            },
+        )
+
+    accounts = broker.get("accounts")
+    for code, account in accounts.items() if isinstance(accounts, dict) else ():
+        if not isinstance(account, dict):
+            continue
+        # Prices come from the positions, which can be older than the account totals.
+        as_of = (
+            str(
+                account.get("positions_observed_at")
+                or account.get("fetched_at")
+                or account.get("fetched_at_utc")
+                or ""
+            )
+            or None
+        )
+        for position in account.get("positions") or []:
+            if not isinstance(position, dict):
+                continue
             key = _canonical_ticker(str(position.get("ticker") or ""))
-            direct[key] = direct.get(key, 0.0) + float(position.get("current_value_gbp") or 0.0)
-    exposure = dict(direct)
-    # Fund units are replaced by constituents in look-through rows, so their
-    # direct broker values must remain available in the research directory.
-    for position in lookthrough.get("positions", []):
+            if not key:
+                continue
+            item = entry(key)
+            value = number(position.get("current_value_gbp")) or 0.0
+            item["held"] = True
+            item["direct"] += value
+            if value > 0 and str(code) not in item["accounts"]:
+                item["accounts"].append(str(code))
+            # The same instrument in two accounts is one line; its latest
+            # observation is the price.
+            instrument = str(position.get("broker_ticker") or "")
+            line = item["lines"].setdefault(
+                instrument or str(position.get("isin") or "") or key,
+                {
+                    "listing": broker_listing(instrument),
+                    "price": None,
+                    "currency": None,
+                    "asOf": None,
+                },
+            )
+            price, currency = _quote_unit_price(
+                position.get("current_price"), position.get("price_currency")
+            )
+            if price is not None and (line["asOf"] is None or (as_of or "") >= line["asOf"]):
+                line.update(price=price, currency=currency, asOf=as_of)
+    for item in holdings.values():
+        if len(item["lines"]) == 1:
+            item.update(next(iter(item["lines"].values())))
+
+    fund_values: dict[str, float] = {}
+    for source in lookthrough.get("sources") or []:
+        value = number(source.get("positionValueGbp")) if isinstance(source, dict) else None
+        if value is not None and value > 0:
+            fund_values[_canonical_ticker(str(source.get("ticker") or ""))] = value
+    current_funds = {key: item["direct"] for key, item in holdings.items()}
+    for position in lookthrough.get("positions") or []:
+        if not isinstance(position, dict):
+            continue
         key = _canonical_ticker(str(position.get("ticker") or ""))
-        exposure[key] = float(position.get("valueGbp") or direct.get(key, 0.0))
-    return set(direct), exposure
+        if not key:
+            continue
+        contributors = []
+        for contributor in position.get("etfContributors") or []:
+            if not isinstance(contributor, dict):
+                continue
+            fund = _canonical_ticker(str(contributor.get("ticker") or ""))
+            value = number(contributor.get("valueGbp")) or 0.0
+            then = fund_values.get(fund)
+            if then:
+                value = value * current_funds.get(fund, 0.0) / then
+            contributors.append({**contributor, "valueGbp": round(value, 2)})
+        if contributors:
+            indirect = sum(item["valueGbp"] for item in contributors)
+        elif "indirectValueGbp" in position:
+            indirect = number(position.get("indirectValueGbp")) or 0.0
+        else:
+            # Rows without a direct/fund split predate schema 5.
+            indirect = max(
+                (number(position.get("valueGbp")) or 0.0)
+                - (number(position.get("directValueGbp")) or 0.0),
+                0.0,
+            )
+        item = entry(key)
+        item["indirect"] += indirect
+        item["contributors"].extend(contributors)
+    return holdings
+
+
+def _position_fields(holdings: dict[str, JsonObject], ticker: str) -> JsonObject:
+    """Directory fields for one security; fund units keep their direct value."""
+
+    item = holdings.get(_canonical_ticker(ticker))
+    if item is None:
+        return {"held": False, "exposure_gbp": 0.0}
+    held = bool(item["held"])
+    return {
+        "held": held,
+        "exposure_gbp": round(item["direct"] + item["indirect"], 2),
+        "direct_value_gbp": round(item["direct"], 2),
+        "broker_price": item["price"] if held else None,
+        "broker_price_currency": item["currency"] if held else None,
+        "broker_as_of": item["asOf"] if held else None,
+        "broker_listing": item["listing"] if held else None,
+    }
+
+
+def _exchange_today(metrics: JsonObject | None, now: datetime | None = None) -> date:
+    """The exchange's current calendar date.
+
+    A report dated today is not past until its market's day ends: at 00:01 UTC
+    New York is still on the previous evening.
+    """
+
+    current = now or datetime.now(UTC)
+    zone = str((metrics or {}).get("exchangeTimezoneName") or "")
+    if zone:
+        try:
+            return current.astimezone(ZoneInfo(zone)).date()
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return current.astimezone(UTC).date()
+
+
+def _next_earnings_date(
+    analyst: JsonObject | None,
+    calendar: JsonObject | None,
+    today: date,
+) -> str | None:
+    """The one next report date: provider events first, then the calendar; never past.
+
+    Report dates are exchange calendar dates, so `today` must be the exchange's
+    date too (see `_exchange_today`).
+    """
+
+    upcoming = [
+        day
+        for row in (analyst or {}).get("earningsEvents") or []
+        if isinstance(row, dict) and str(row.get("status") or "") != "reported"
+        if (day := _parse_date(str(row.get("date") or ""))) is not None and day >= today
+    ]
+    if not upcoming:
+        upcoming = [
+            day
+            for value in (calendar or {}).get("earningsDates") or []
+            if (day := _parse_date(str(value))) is not None and day >= today
+        ]
+    return min(upcoming).isoformat() if upcoming else None
 
 
 def _find(rows: list[JsonObject], ticker: str) -> JsonObject | None:
@@ -240,7 +422,10 @@ def _find(rows: list[JsonObject], ticker: str) -> JsonObject | None:
     )
 
 
-def _normalized_earnings_calendar(row: JsonObject | None) -> JsonObject | None:
+def _normalized_earnings_calendar(
+    row: JsonObject | None, today: date | None = None
+) -> JsonObject | None:
+    """Provider calendar with past windows dropped; `today` is the exchange's date."""
     if not row:
         return None
     raw = row.get("calendar")
@@ -252,6 +437,14 @@ def _normalized_earnings_calendar(row: JsonObject | None) -> JsonObject | None:
         calendar["earningsDates"] = [str(item) for item in earnings_dates]
     elif earnings_dates:
         calendar["earningsDates"] = [str(earnings_dates)]
+    # A provider calendar can keep a report that has already happened; a past
+    # window is not the next one.
+    current = today or datetime.now(UTC).date()
+    if calendar.get("earningsDates") and not any(
+        (day := _parse_date(value)) is not None and day >= current
+        for value in calendar["earningsDates"]
+    ):
+        calendar["earningsDates"] = []
     return calendar
 
 
@@ -268,7 +461,9 @@ def _enrich_fundamentals(
     for row in fundamentals:
         ticker = str(row.get("ticker") or "")
         item = dict(row)
-        calendar = _normalized_earnings_calendar(_find(earnings_rows, ticker))
+        calendar = _normalized_earnings_calendar(
+            _find(earnings_rows, ticker), _exchange_today(row.get("metrics"))
+        )
         if calendar is not None:
             item["earningsCalendar"] = calendar
         technical = _find(technical_rows, ticker)
@@ -526,10 +721,7 @@ class ResearchLedger:
         fundamentals = _fundamentals_rows(
             self._read_optional(manifest, "research/fundamentals.json")
         )
-        broker = self._read_optional(manifest, "account/broker_snapshot_metrics.json")
-        lookthrough = self._read_optional(manifest, "account/lookthrough_metrics.json")
-
-        held, exposure = _account_exposure(broker, lookthrough)
+        holdings = self._holdings(manifest)
         market_tickers = {_canonical_ticker(str(row["ticker"])) for row in market}
         technical_tickers = {_canonical_ticker(str(row["ticker"])) for row in technical}
         valuation_tickers = {_canonical_ticker(str(row["ticker"])) for row in valuations}
@@ -591,8 +783,7 @@ class ResearchLedger:
                 has_valuation=_canonical_ticker(item.ticker) in valuation_tickers,
                 has_earnings=_canonical_ticker(item.ticker) in earnings_tickers,
                 has_fundamentals=_canonical_ticker(item.ticker) in fundamentals_tickers,
-                held=_canonical_ticker(item.ticker) in held,
-                exposure_gbp=exposure.get(_canonical_ticker(item.ticker), 0.0),
+                **_position_fields(holdings, item.ticker),
             )
             for item in self.watchlist.items()
         ]
@@ -660,27 +851,16 @@ class ResearchLedger:
         manifest: SnapshotManifest,
     ) -> PortfolioImpact:
         ticker = _canonical_ticker(ticker)
-        broker = self._read_optional(manifest, "account/broker_snapshot_metrics.json")
-        total_value = sum(
-            float(account.get("total_value_gbp") or 0.0)
-            for account in broker.get("accounts", {}).values()
-        )
-        direct_from_broker = sum(
-            float(position.get("current_value_gbp") or 0.0)
-            for account in broker.get("accounts", {}).values()
-            for position in account.get("positions", [])
-            if _canonical_ticker(str(position.get("ticker", ""))) == ticker
-        )
-        holding_accounts = [
-            str(code)
-            for code, account in broker.get("accounts", {}).items()
-            if any(
-                _canonical_ticker(str(position.get("ticker", ""))) == ticker
-                and float(position.get("current_value_gbp") or 0.0) > 0
-                for position in account.get("positions", [])
-            )
+        broker = self._broker_snapshot(manifest)
+        accounts = [
+            account
+            for account in (broker.get("accounts") or {}).values()
+            if isinstance(account, dict)
         ]
-        lookthrough = self._read_optional(manifest, "account/lookthrough_metrics.json")
+        total_value = sum(float(account.get("total_value_gbp") or 0.0) for account in accounts)
+        lookthrough = self._read_optional(manifest, LOOKTHROUGH_KEY)
+        holding = _account_holdings(broker, lookthrough).get(ticker) or {}
+        # Country and industry come from look-through; values from the broker basis.
         position = next(
             (
                 item
@@ -689,9 +869,10 @@ class ResearchLedger:
             ),
             {},
         )
-        direct = float(position.get("directValueGbp") or direct_from_broker)
-        indirect = float(position.get("indirectValueGbp") or 0.0)
-        exposure = float(position.get("valueGbp") or direct + indirect)
+        direct = round(float(holding.get("direct") or 0.0), 2)
+        indirect = round(float(holding.get("indirect") or 0.0), 2)
+        exposure = round(direct + indirect, 2)
+        holding_accounts = list(holding.get("accounts") or [])
         fund_sources = {str(s.get("ticker", "")): s for s in lookthrough.get("sources", [])}
         contributors = [
             {
@@ -699,7 +880,7 @@ class ResearchLedger:
                 "asOf": fund_sources.get(str(item.get("ticker", "")), {}).get("asOf"),
                 "sourceUrl": fund_sources.get(str(item.get("ticker", "")), {}).get("sourceUrl"),
             }
-            for item in position.get("etfContributors", [])
+            for item in holding.get("contributors") or []
         ]
         return PortfolioImpact(
             ticker=ticker,
@@ -713,6 +894,14 @@ class ResearchLedger:
             country=position.get("country"),
             industry=position.get("industry"),
             etf_contributors=contributors,
+            as_of=max(
+                (
+                    str(account.get("positions_observed_at") or account.get("fetched_at") or "")
+                    for account in accounts
+                ),
+                default="",
+            )
+            or None,
         )
 
     def ticker_snapshot(
@@ -805,9 +994,7 @@ class ResearchLedger:
         progressive loading before a lens is selected.
         """
 
-        broker = self._read_optional(manifest, "account/broker_snapshot_metrics.json")
-        lookthrough = self._read_optional(manifest, "account/lookthrough_metrics.json")
-        held, exposure = _account_exposure(broker, lookthrough)
+        holdings = self._holdings(manifest)
         return [
             ResearchDirectoryInstrument(
                 ticker=item.ticker,
@@ -827,11 +1014,31 @@ class ResearchLedger:
                 status=item.status,
                 last_run_id=item.last_run_id,
                 last_error=item.last_error,
-                held=_canonical_ticker(item.ticker) in held,
-                exposure_gbp=exposure.get(_canonical_ticker(item.ticker), 0.0),
+                **_position_fields(holdings, item.ticker),
             )
             for item in self.watchlist.items()
         ]
+
+    def _broker_snapshot(self, manifest: SnapshotManifest) -> JsonObject:
+        """The broker basis the holdings page shows: canonical positions with live values."""
+
+        return overlay_live_broker_snapshot(
+            self._read_optional(manifest, BROKER_KEY),
+            self._read_optional(manifest, LIVE_BROKER_KEY),
+        )
+
+    def _holdings(self, manifest: SnapshotManifest) -> dict[str, JsonObject]:
+        return _account_holdings(
+            self._broker_snapshot(manifest),
+            self._read_optional(manifest, LOOKTHROUGH_KEY),
+        )
+
+    def held_position(self, ticker: str, manifest: SnapshotManifest) -> JsonObject | None:
+        """Current broker price and listing of the one line holding a security."""
+
+        key = _canonical_ticker(self._route_ticker(ticker))
+        item = _account_holdings(self._broker_snapshot(manifest), {}).get(key)
+        return item if item and item["held"] and item["price"] is not None else None
 
     def lens_revision(self, manifest: SnapshotManifest, view: str, detail: str) -> str:
         """Account-only snapshots must not invalidate immutable company research."""
@@ -848,7 +1055,11 @@ class ResearchLedger:
                 "research/valuation.json",
                 "research/technical.json",
             },
-            "technical": {"research/technical.json", "research/earnings.json"},
+            "technical": {
+                "research/technical.json",
+                "research/earnings.json",
+                "research/analyst.json",
+            },
             "valuation": {"research/financials.json", "research/valuation.json"},
             "fundamentals": {
                 "research/financials.json",
@@ -856,7 +1067,12 @@ class ResearchLedger:
                 "research/technical.json",
                 "research/analyst.json",
             },
-            "analyst": {"research/financials.json", "research/analyst.json"},
+            # The verdict and events name the next report, which can come from the calendar.
+            "analyst": {
+                "research/financials.json",
+                "research/analyst.json",
+                "research/earnings.json",
+            },
             "options": {"research/options.json", "research/technical.json"},
         }.get(view, set())
         # Exposure and historical records depend on the complete snapshot.
@@ -866,9 +1082,30 @@ class ResearchLedger:
             if view in {"overview", "ledger"} or a.key in keys
         ]
         return (
-            fingerprint([sorted(refs), detail, datetime.now(UTC).date().isoformat()])
+            fingerprint([sorted(refs), detail, self._calendar_days(manifest)])
             if refs
             else manifest.run_id
+        )
+
+    def _calendar_days(self, manifest: SnapshotManifest) -> list[str]:
+        """Today's date in UTC and at every covered exchange.
+
+        Lenses name the next report by the exchange's own date, so cached lenses
+        roll at each exchange's midnight as well as at UTC midnight.
+        """
+
+        now = datetime.now(UTC)
+        zones = {
+            str((row.get("metrics") or {}).get("exchangeTimezoneName") or "")
+            for row in self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
+        }
+        return sorted(
+            {now.date().isoformat()}
+            | {
+                f"{zone}:{_exchange_today({'exchangeTimezoneName': zone}, now).isoformat()}"
+                for zone in zones
+                if zone
+            }
         )
 
     def lens_snapshot(
@@ -905,6 +1142,8 @@ class ResearchLedger:
             or {}
         )
         metrics = fundamental.get("metrics") or {}
+        # Report dates are compared with the exchange's calendar date.
+        today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
         is_fund = asset_type in {"ETF", "MUTUALFUND"}
         is_financial = any(
@@ -1005,8 +1244,14 @@ class ResearchLedger:
                     intervals=["1d"] if task == "technical" else [],
                 )
             )
+        quote = make_quote(ticker, market or {}, fundamental)
+        # Sessions of the quote's exchange, so clients name closes and late
+        # prices with its holidays and early closes.
+        quote.schedule = session_schedule(
+            listing_calendar(quote.ticker, quote.exchange, quote.timezone), datetime.now(UTC)
+        )
         payload.context = ResearchContext(
-            quote=make_quote(ticker, market or {}, fundamental),
+            quote=quote,
             asset_type=asset_type,
             capabilities=capabilities,
             datasets=datasets,
@@ -1078,7 +1323,8 @@ class ResearchLedger:
                 _find(
                     self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                     ticker,
-                )
+                ),
+                today,
             )
             if calendar is not None:
                 payload.fundamentals["earningsCalendar"] = calendar
@@ -1219,7 +1465,8 @@ class ResearchLedger:
                 _find(
                     self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                     ticker,
-                )
+                ),
+                today,
             )
             payload.research_evidence = {
                 "filings": list(payload.research_evidence.get("filings") or [])[:3]
@@ -1268,9 +1515,26 @@ class ResearchLedger:
                     _find(
                         self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
                         ticker,
-                    )
+                    ),
+                    today,
                 ),
             }
+        if view in {"overview", "technical", "fundamentals", "analyst"}:
+            # Every lens that names the next report reads this one date.
+            analyst_row = _find(
+                self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker
+            )
+            payload.next_earnings_date = _next_earnings_date(
+                (analyst_row or {}).get("analyst"),
+                _normalized_earnings_calendar(
+                    _find(
+                        self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
+                        ticker,
+                    ),
+                    today,
+                ),
+                today,
+            )
         return ResearchLensSnapshot.model_validate(payload.__dict__)
 
     def timeline(

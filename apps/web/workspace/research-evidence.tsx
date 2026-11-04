@@ -13,6 +13,7 @@ import { useRouteState } from "./route-state";
 import { chartName, chartNumber } from "./research-chart-format";
 import { dividendSummary } from "./research-dividends";
 import { EvidenceTable } from "./evidence-table";
+import { filingTitle } from "./research-filings";
 import { categoricalChartColours } from "@/ui/charts/palette";
 
 export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
@@ -706,7 +707,7 @@ export function ResearchDocuments({
                 >
                   {news
                     ? str(row.title)
-                    : str(row.form) + " · " + str(row.title)}{" "}
+                    : filingTitle(str(row.form), str(row.title), t)}{" "}
                   ↗
                 </a>
                 {news ? (

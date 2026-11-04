@@ -95,6 +95,10 @@
 .mx-tabs button[aria-selected="true"] {
   color: var(--mx-brand);
 }
+/* A tab with a phone label shows its full title until the row gets narrow. */
+.mx-tabs .mx-tab-short {
+  display: none;
+}
 .mx-toolbar {
   display: flex;
   justify-content: space-between;

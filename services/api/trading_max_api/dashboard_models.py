@@ -1065,6 +1065,14 @@ class ResearchDirectoryInstrument(ApiModel):
     has_fundamentals: bool = False
     held: bool = False
     exposure_gbp: float = 0.0
+    # The broker basis the holdings page shows; research quotes are the fallback.
+    direct_value_gbp: float = 0.0
+    broker_price: float | None = None
+    broker_price_currency: str | None = None
+    broker_as_of: str | None = None
+    # Market and symbol of the one line holding the security (``LSE:IAG``); none
+    # when that line's market is unknown or several lines share the ticker.
+    broker_listing: str | None = None
 
 
 class ResearchShell(ApiModel):
@@ -1101,6 +1109,7 @@ class ResearchLensSnapshot(ApiModel):
     financials: dict[str, Any] | None = None
     latest_event: ResearchEvent | None = None
     portfolio_impact: PortfolioImpact | None = None
+    next_earnings_date: str | None = None
     timeline: list[ResearchTimelinePoint] = Field(default_factory=list)
     events: list[ResearchEvent] = Field(default_factory=list)
     models: list[ResearchModelRun] = Field(default_factory=list)

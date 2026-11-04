@@ -4,6 +4,62 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-11-04
+
+### Added
+
+- One price for each held security on the research desk. When the broker line is
+  the research quote's listing (same market, symbol and currency), the header,
+  holding value, analyst-target upside, spot and multiples use the broker price
+  the holdings page shows. Other lines, `.L` aliases and several lines under one
+  ticker keep the research quote. The research shell reports `directValueGbp`,
+  `brokerPrice`, `brokerPriceCurrency`, `brokerAsOf` and `brokerListing`; valuation
+  previews report `spotSource` and `spotAsOf` and keep the research data version
+  for edit conflicts.
+- Research quotes carry their exchange's session schedule (`listing`, `schedule`,
+  `until`). Closes, the daily change and lateness follow each exchange's
+  calendar, holidays and early closes; a close that a newer session has passed
+  shows as an amber session-close tag instead of "延迟 20 分钟", and times follow
+  the display time zone. Exchanges without a known calendar make no session
+  claims, and a page that outlives its calendar stays marked out of date and
+  fetches the research again.
+- One next report date (`nextEarningsDate`) across the research desk, never in the
+  past in the exchange's own time zone; open pages refetch as that date turns.
+
+### Changed
+
+- Exposure and portfolio impact use current direct values and revalue fund
+  contributions by each fund's current value.
+- The look-through page shows one line with its underlying count and data time,
+  names coverage only below 98%, drops the portfolio-wide rankings block and the
+  details title, keeps its filters in one row, pages by 100 rows with a show-all
+  switch, and names countries and GICS classes in Chinese (Taiwan and Taiwan
+  Region count as one place).
+- The research overview's panel titles open their lens, the business excerpt
+  opens the full description, and the technical lens drops the repeated state
+  line, per-group tags, the daily label and the single-series legend.
+- Valuation edits the selected assumption in its own row. Previews of held
+  securities follow a broker price refresh, keep edited assumptions, and keep the
+  editor and its last preview with an inline retry when a refresh fails.
+- Research lenses use short labels on phones, and J/K step through the research
+  list. research.tsx, research-valuation-workbench.tsx and the look-through view
+  are split into smaller modules.
+
+### Fixed
+
+- The option chain shows "—" for contracts without a bid or ask, keeps their
+  placeholder volatility out of the charts, and names its columns in the reading
+  language.
+- Estimate periods always show their year, the currency appears once per panel,
+  and the growth reference names the fiscal year of its consensus. Seasonality
+  shows sample counts only below five, in amber, and marks the selected month in
+  the brand colour. Holding value and the median target are no longer coloured
+  as gains.
+- Statement value buttons and filing links have descriptive accessible names;
+  technical diagnosis groups use the accordion heading pattern.
+- The look-through details keep a heading for the open dimension, so heading
+  levels stay in order after the details title was removed.
+
 ## [1.21.3] - 2026-11-04
 
 ### Fixed

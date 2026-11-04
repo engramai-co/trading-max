@@ -2892,6 +2892,14 @@ export interface components {
             shares: number;
             /** Spot */
             spot: number;
+            /** Spotasof */
+            spotAsOf?: string | null;
+            /**
+             * Spotsource
+             * @default quote
+             * @enum {string}
+             */
+            spotSource: "quote" | "broker";
             /** Startmargin */
             startMargin: number;
             /** Ticker */
@@ -4277,6 +4285,8 @@ export interface components {
         PortfolioImpact: {
             /** Allocationpct */
             allocationPct: number;
+            /** Asof */
+            asOf?: string | null;
             /** Country */
             country?: string | null;
             /** Directvaluegbp */
@@ -4384,12 +4394,15 @@ export interface components {
             fundBaseCurrency?: string | null;
             /** Id */
             id: string;
+            /** Listing */
+            listing?: string | null;
             /** Price */
             price: number | null;
             /** Quoteunit */
             quoteUnit: string | null;
             /** Reportingcurrency */
             reportingCurrency?: string | null;
+            schedule?: components["schemas"]["SessionSchedule"] | null;
             /**
              * Session
              * @default unknown
@@ -4567,11 +4580,24 @@ export interface components {
              * @default
              */
             bloombergTicker: string;
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Brokerlisting */
+            brokerListing?: string | null;
+            /** Brokerprice */
+            brokerPrice?: number | null;
+            /** Brokerpricecurrency */
+            brokerPriceCurrency?: string | null;
             /**
              * Categoryid
              * @default
              */
             categoryId: string;
+            /**
+             * Directvaluegbp
+             * @default 0
+             */
+            directValueGbp: number;
             /**
              * Exchange
              * @default
@@ -4695,11 +4721,24 @@ export interface components {
              * @default
              */
             bloombergTicker: string;
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Brokerlisting */
+            brokerListing?: string | null;
+            /** Brokerprice */
+            brokerPrice?: number | null;
+            /** Brokerpricecurrency */
+            brokerPriceCurrency?: string | null;
             /**
              * Categoryid
              * @default
              */
             categoryId: string;
+            /**
+             * Directvaluegbp
+             * @default 0
+             */
+            directValueGbp: number;
             /**
              * Exchange
              * @default
@@ -4847,6 +4886,8 @@ export interface components {
             } | null;
             /** Models */
             models?: components["schemas"]["ResearchModelRun"][];
+            /** Nextearningsdate */
+            nextEarningsDate?: string | null;
             options?: components["schemas"]["OptionSnapshot"] | null;
             portfolioImpact?: components["schemas"]["PortfolioImpact"] | null;
             /** Researchevidence */
@@ -5831,6 +5872,18 @@ export interface components {
             /** Years */
             years: components["schemas"]["ProjectionYear"][];
         };
+        /**
+         * ScheduledSession
+         * @description One regular session as the exchange schedules it, in UTC.
+         */
+        ScheduledSession: {
+            /** Close */
+            close: string;
+            /** Date */
+            date: string;
+            /** Open */
+            open: string;
+        };
         /** SecuritySearchResponse */
         SecuritySearchResponse: {
             /** Correctedquery */
@@ -5918,6 +5971,24 @@ export interface components {
             upside: number;
             /** Value */
             value: number;
+        };
+        /**
+         * SessionSchedule
+         * @description An exchange's sessions around the time a quote was served.
+         *
+         *     Holidays are absent and early closes keep their earlier close, so a client
+         *     can tell the latest completed session, the one before it and whether one is
+         *     open at any moment in the window without a calendar of its own. ``until``
+         *     is when the first session after the listed ones opens: up to then the list
+         *     is complete, and from then on it no longer says which session is current.
+         */
+        SessionSchedule: {
+            /** Calendar */
+            calendar: string;
+            /** Sessions */
+            sessions?: components["schemas"]["ScheduledSession"][];
+            /** Until */
+            until?: string | null;
         };
         /** SnapshotManifest */
         SnapshotManifest: {

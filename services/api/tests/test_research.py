@@ -1,20 +1,395 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
+from services.api.trading_max_api import research as research_module
 from services.api.trading_max_api.artifacts import ArtifactStore
-from services.api.trading_max_api.models import SnapshotManifest
+from services.api.trading_max_api.models import ArtifactInfo, SnapshotManifest
+from services.api.trading_max_api.projections.broker import overlay_live_broker_snapshot
 from services.api.trading_max_api.research import (
     ResearchLedger,
+    _account_holdings,
     _business_day_age,
+    _exchange_today,
     _freshness,
     _fundamentals_rows,
     _market_rows,
+    _next_earnings_date,
+    _normalized_earnings_calendar,
 )
 from services.api.trading_max_api.watchlist import WatchlistStore
+
+
+def _synthetic_accounts() -> dict:
+    """Canonical snapshot at 12:00, live overlay at 15:50, look-through from 12:00."""
+
+    def account(fetched_at, held_value, held_price, fund_value, total):
+        return {
+            "fetched_at": fetched_at,
+            "total_value_gbp": total,
+            "investments_value_gbp": held_value + fund_value,
+            "positions_status": "verified",
+            "checks": {"positions_match_investments": True},
+            "positions": [
+                {
+                    "ticker": "HELD",
+                    "broker_ticker": "HELD_US_EQ",
+                    "current_value_gbp": held_value,
+                    "current_price": held_price,
+                    "price_currency": "USD",
+                },
+                {
+                    "ticker": "FUND.L",
+                    "broker_ticker": "FUNDl_EQ",
+                    "current_value_gbp": fund_value,
+                    "current_price": 9500,
+                    "price_currency": "GBX",
+                },
+            ],
+        }
+
+    return {
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": account("2026-11-04T12:00:01Z", 800.0, 200.0, 1000.0, 2000.0)}
+        },
+        "account/intraday/broker_values.json": {
+            "accounts": {"A": account("2026-11-04T15:50:01Z", 700.0, 190.0, 1100.0, 1950.0)}
+        },
+        "account/lookthrough_metrics.json": {
+            "positions": [
+                {
+                    "ticker": "HELD",
+                    "valueGbp": 810.0,
+                    "directValueGbp": 800.0,
+                    "indirectValueGbp": 10.0,
+                    "country": "United States",
+                    "etfContributors": [{"ticker": "FUND", "valueGbp": 10.0}],
+                },
+                {
+                    "ticker": "ONLYFUND",
+                    "valueGbp": 50.0,
+                    "directValueGbp": 0.0,
+                    "indirectValueGbp": 50.0,
+                    "etfContributors": [{"ticker": "FUND", "valueGbp": 50.0}],
+                },
+            ],
+            "sources": [{"ticker": "FUND", "positionValueGbp": 1000.0, "asOf": "2026-11-02"}],
+        },
+    }
+
+
+def test_held_securities_use_the_current_broker_basis(tmp_path):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    store = ArtifactStore(tmp_path)
+    watchlist = WatchlistStore(tmp_path)
+    for ticker in ("HELD", "FUND.L", "ONLYFUND"):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange="NYSE", bloomberg_ticker="", figi=""
+            )
+        )
+    payloads = _synthetic_accounts()
+    ledger = ResearchLedger(store, watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime.now(UTC),
+        artifacts=[],
+    )
+
+    listing = {item.ticker: item for item in ledger.directory_instruments(manifest)}
+    held = listing["HELD"]
+    # Live values, not the 12:00 canonical or look-through values.
+    assert held.held and held.direct_value_gbp == 700.0
+    assert held.broker_price == 190.0 and held.broker_price_currency == "USD"
+    assert held.broker_as_of == "2026-11-04T15:50:01Z" and held.broker_listing == "US:HELD"
+    # The fund contribution is revalued with the fund: 10 × 1100 / 1000.
+    assert held.exposure_gbp == 711.0
+    fund = listing["FUND.L"]
+    assert fund.broker_price == 95.0 and fund.broker_price_currency == "GBP"
+    assert fund.exposure_gbp == 1100.0 and fund.broker_listing == "LSE:FUND"
+    only_fund = listing["ONLYFUND"]
+    assert not only_fund.held and only_fund.broker_price is None
+    assert only_fund.broker_listing is None and only_fund.exposure_gbp == 55.0
+    assert [item.exposure_gbp for item in ledger.instruments(manifest)] == [711.0, 1100.0, 55.0]
+
+    impact = ledger.portfolio_impact("HELD", manifest)
+    assert impact.direct_value_gbp == 700.0 and impact.indirect_value_gbp == 11.0
+    assert impact.exposure_value_gbp == 711.0
+    assert impact.total_value_gbp == 1950.0
+    assert impact.allocation_pct == pytest.approx(711.0 / 1950.0)
+    assert impact.holding_accounts == ["A"] and impact.as_of == "2026-11-04T15:50:01Z"
+    assert impact.etf_contributors == [
+        {"ticker": "FUND", "valueGbp": 11.0, "asOf": "2026-11-02", "sourceUrl": None}
+    ]
+    assert impact.country == "United States"
+    assert ledger.held_position("HELD", manifest)["price"] == 190.0
+    assert ledger.held_position("HELD", manifest)["listing"] == "US:HELD"
+    assert ledger.held_position("ONLYFUND", manifest) is None
+
+    # A fund sold since look-through no longer contributes.
+    payloads["account/intraday/broker_values.json"]["accounts"]["A"]["positions"].pop()
+    payloads["account/intraday/broker_values.json"]["accounts"]["A"]["investments_value_gbp"] = (
+        700.0
+    )
+    holdings = _account_holdings(
+        ledger._broker_snapshot(manifest), payloads["account/lookthrough_metrics.json"]
+    )
+    assert holdings["HELD"]["indirect"] == 0.0 and "FUND" not in holdings
+
+
+def test_several_broker_lines_under_one_ticker_name_no_broker_price(tmp_path):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    def position(code: str, value: float, price: float, currency: str) -> dict:
+        # Both lines show the display ticker IAG; only the instrument code differs.
+        return {
+            "ticker": "IAG",
+            "broker_ticker": code,
+            "current_value_gbp": value,
+            "current_price": price,
+            "price_currency": currency,
+        }
+
+    broker = {
+        "accounts": {
+            "A": {
+                "fetched_at": "2026-11-04T15:50:01Z",
+                "positions": [position("IAG_US_EQ", 300.0, 4.2, "USD")],
+            },
+            "B": {
+                "fetched_at": "2026-11-04T15:40:01Z",
+                "positions": [position("IAGl_EQ", 200.0, 310.0, "GBX")],
+            },
+        }
+    }
+    watchlist = WatchlistStore(tmp_path)
+    for ticker, exchange in (("IAG", "NYSE"), ("IAG.L", "LSE")):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange=exchange, bloomberg_ticker="", figi=""
+            )
+        )
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: (
+        broker if key == "account/broker_snapshot_metrics.json" else {}
+    )
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime.now(UTC),
+        artifacts=[],
+    )
+
+    # The .L alias collapses both lines into one ticker: neither price is quoted.
+    for item in ledger.directory_instruments(manifest):
+        assert item.held and item.direct_value_gbp == 500.0
+        assert item.broker_price is None and item.broker_listing is None
+        assert ledger.held_position(item.ticker, manifest) is None
+    # One instrument held in two accounts is one line, at its latest observation.
+    broker["accounts"]["B"]["positions"] = [position("IAG_US_EQ", 200.0, 4.1, "USD")]
+    listing = {item.ticker: item for item in ledger.directory_instruments(manifest)}
+    assert listing["IAG"].broker_listing == "US:IAG" and listing["IAG"].broker_price == 4.2
+    assert ledger.held_position("IAG.L", manifest)["listing"] == "US:IAG"
+
+
+def test_next_earnings_date_is_one_date_and_never_past():
+    today = date(2026, 11, 4)
+    analyst = {
+        "earningsEvents": [
+            {"date": "2026-10-22", "status": "reported"},
+            {"date": "2027-02-04", "status": "provider-estimate"},
+            {"date": "2027-05-06", "status": "provider-estimate"},
+        ]
+    }
+    stale_calendar = _normalized_earnings_calendar(
+        {"calendar": {"Earnings Date": ["2026-10-22"]}}, today
+    )
+    assert stale_calendar is not None and stale_calendar["earningsDates"] == []
+    assert stale_calendar["Earnings Date"] == ["2026-10-22"]
+    window = _normalized_earnings_calendar(
+        {"calendar": {"Earnings Date": ["2026-11-02", "2026-11-06"]}}, today
+    )
+    assert window is not None and window["earningsDates"] == ["2026-11-02", "2026-11-06"]
+    assert _next_earnings_date(analyst, stale_calendar, today) == "2027-02-04"
+    assert _next_earnings_date(None, stale_calendar, today) is None
+    assert _next_earnings_date({"earningsEvents": []}, window, today) == "2026-11-06"
+    reported_today = {"earningsEvents": [{"date": "2026-11-04", "status": "reported"}]}
+    assert _next_earnings_date(reported_today, None, today) is None
+
+
+def test_broker_price_keeps_the_time_its_positions_were_observed():
+    payloads = _synthetic_accounts()
+    live = payloads["account/intraday/broker_values.json"]["accounts"]["A"]
+    # Fresh live totals whose positions failed reconciliation: the canonical
+    # 12:00 positions stay, and so must their 12:00 time.
+    live["positions_status"] = "unverified"
+    broker = overlay_live_broker_snapshot(
+        payloads["account/broker_snapshot_metrics.json"],
+        payloads["account/intraday/broker_values.json"],
+    )
+    account = broker["accounts"]["A"]
+    assert account["fetched_at"] == "2026-11-04T15:50:01Z"
+    assert account["positions_observed_at"] == "2026-11-04T12:00:01Z"
+    held = _account_holdings(broker, {})["HELD"]
+    assert held["price"] == 200.0 and held["asOf"] == "2026-11-04T12:00:01Z"
+    # Verified live positions carry the live time.
+    live["positions_status"] = "verified"
+    broker = overlay_live_broker_snapshot(
+        payloads["account/broker_snapshot_metrics.json"],
+        payloads["account/intraday/broker_values.json"],
+    )
+    held = _account_holdings(broker, {})["HELD"]
+    assert held["price"] == 190.0 and held["asOf"] == "2026-11-04T15:50:01Z"
+
+
+def _artifact_ref(key: str, sha: str) -> ArtifactInfo:
+    return ArtifactInfo(
+        key=key, source_path=key, size_bytes=1, sha256=sha, media_type="application/json"
+    )
+
+
+def test_analyst_lens_revision_follows_the_earnings_calendar(tmp_path):
+    ledger = ResearchLedger(ArtifactStore(tmp_path), WatchlistStore(tmp_path))
+    ledger._read_optional = lambda _manifest, _key: {}
+
+    def manifest(earnings_sha: str) -> SnapshotManifest:
+        return SnapshotManifest(
+            run_id="synthetic",
+            scope="research",
+            source="test",
+            created_at=datetime.now(UTC),
+            artifacts=[
+                _artifact_ref("research/analyst.json", "a" * 64),
+                _artifact_ref("research/earnings.json", earnings_sha),
+            ],
+        )
+
+    before = ledger.lens_revision(manifest("b" * 64), "analyst", "full")
+    after = ledger.lens_revision(manifest("c" * 64), "analyst", "full")
+    assert before != after
+
+
+def test_report_dates_follow_the_exchange_calendar(tmp_path, monkeypatch):
+    new_york = {"exchangeTimezoneName": "America/New_York"}
+    just_after_utc_midnight = datetime(2026, 11, 5, 0, 1, tzinfo=UTC)
+    assert _exchange_today(new_york, just_after_utc_midnight) == date(2026, 11, 4)
+    assert _exchange_today({"exchangeTimezoneName": "Mars/Olympus"}, just_after_utc_midnight) == (
+        date(2026, 11, 5)
+    )
+    assert _exchange_today(None, just_after_utc_midnight) == date(2026, 11, 5)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return just_after_utc_midnight if tz is None else just_after_utc_midnight.astimezone(tz)
+
+    monkeypatch.setattr(research_module, "datetime", Frozen)
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    watchlist = WatchlistStore(tmp_path)
+    watchlist.add(
+        SecuritySearchResult(
+            ticker="TEST", name="Test", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+    payloads = {
+        "research/fundamentals.json": {"rows": [{"ticker": "TEST", "metrics": new_york}]},
+        "research/earnings.json": {
+            "rows": [{"ticker": "TEST", "calendar": {"Earnings Date": ["2026-11-04"]}}]
+        },
+        "research/analyst.json": {
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "analyst": {
+                        "earningsEvents": [
+                            {"date": "2026-11-04", "status": "provider-estimate"},
+                            {"date": "2027-02-04", "status": "provider-estimate"},
+                        ]
+                    },
+                }
+            ]
+        },
+    }
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=Frozen.now(UTC),
+        artifacts=[],
+    )
+    # 19:01 on 4 November in New York: today's report is still the next one, and
+    # the calendar keeps today's window, in both the analyst and the overview lens.
+    assert ledger.lens_snapshot("TEST", "analyst", manifest).next_earnings_date == "2026-11-04"
+    overview = ledger.lens_snapshot("TEST", "overview", manifest, detail="summary")
+    assert overview.next_earnings_date == "2026-11-04"
+    assert overview.fundamentals["earningsCalendar"]["earningsDates"] == ["2026-11-04"]
+
+
+def test_lens_quote_names_its_listing_and_exchange_sessions(tmp_path, monkeypatch):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    # 15:00 in New York on the day after Thanksgiving, two hours after its early close.
+    now = datetime(2026, 11, 27, 20, tzinfo=UTC)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(research_module, "datetime", Frozen)
+    watchlist = WatchlistStore(tmp_path)
+    for ticker in ("IAG", "OLYM"):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange="", bloomberg_ticker="", figi=""
+            )
+        )
+    payloads = {
+        "research/fundamentals.json": {
+            "rows": [
+                {
+                    "ticker": "IAG",
+                    "metrics": {
+                        "fullExchangeName": "NYSE",
+                        "exchangeTimezoneName": "America/New_York",
+                    },
+                },
+                {
+                    "ticker": "OLYM",
+                    "metrics": {
+                        "fullExchangeName": "Olympus",
+                        "exchangeTimezoneName": "Mars/Olympus",
+                    },
+                },
+            ]
+        },
+    }
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic", scope="research", source="test", created_at=now, artifacts=[]
+    )
+
+    quote = ledger.lens_snapshot("IAG", "overview", manifest, detail="summary").context.quote
+    assert quote.listing == "US:IAG"
+    assert quote.schedule is not None and quote.schedule.calendar == "XNYS"
+    sessions = {session.date: session for session in quote.schedule.sessions}
+    assert "2026-11-26" not in sessions
+    assert sessions["2026-11-27"].close == "2026-11-27T18:00:00Z"
+    assert quote.schedule.until == "2026-12-08T14:30:00Z"
+    unknown = ledger.lens_snapshot("OLYM", "overview", manifest, detail="summary").context.quote
+    assert unknown.listing is None and unknown.schedule is None
 
 
 def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
@@ -559,7 +934,7 @@ def test_typed_research_ledger_reports_complete_instrument_coverage(
                 {
                     "ticker": "BE",
                     "calendar": {
-                        "Earnings Date": ["2026-09-01"],
+                        "Earnings Date": ["2099-09-01"],
                         "Earnings Average": 0.25,
                     },
                 }
@@ -603,7 +978,7 @@ def test_typed_research_ledger_reports_complete_instrument_coverage(
     assert snapshot.market is not None
     assert snapshot.market["spot"] == 25.0
     assert snapshot.fundamentals is not None
-    assert snapshot.fundamentals["earningsCalendar"]["earningsDates"] == ["2026-09-01"]
+    assert snapshot.fundamentals["earningsCalendar"]["earningsDates"] == ["2099-09-01"]
     assert snapshot.fundamentals["seasonality"][0]["month"] == 1
     assert snapshot.fundamentals["seasonalityCoverage"]["firstSession"] == "2018-01-02"
     assert snapshot.fundamentals["seasonalityCoverage"]["monthlyObservations"] == 102

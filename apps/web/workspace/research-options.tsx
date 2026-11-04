@@ -36,17 +36,20 @@ import { useRouteState } from "./route-state";
 type Chain = NonNullable<ResearchLensSnapshot["options"]>;
 type Contract = Chain["contracts"][number];
 const baseColumns = ["bid", "ask", "iv", "oi", "volume"];
-const columnNames: Record<string, string> = {
-  bid: "Bid",
-  ask: "Ask",
-  iv: "IV",
-  oi: "OI",
-  volume: "Volume",
-  last: "Last",
-  spread: "Spread",
-  delta: "Delta",
-  gamma: "Gamma",
-};
+/** Column names read in the reader's language; the table keeps its classic layout. */
+function chainColumns(t: (zh: string, en: string) => string): Record<string, string> {
+  return {
+    bid: t("买价", "Bid"),
+    ask: t("卖价", "Ask"),
+    iv: t("隐含波动率", "IV"),
+    oi: t("未平仓", "OI"),
+    volume: t("成交量", "Volume"),
+    last: t("最新价", "Last"),
+    spread: t("价差", "Spread"),
+    delta: "Delta",
+    gamma: "Gamma",
+  };
+}
 function validQuote(c: Contract) {
   return (
     c.bid != null && c.ask != null && c.bid >= 0 && c.ask > 0 && c.ask >= c.bid
@@ -56,9 +59,22 @@ function sum(values: (number | null | undefined)[]) {
   const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
   return valid.length ? valid.reduce((n, v) => n + v, 0) : null;
 }
+/**
+ * Before the market opens a contract can have neither bid nor ask. Its implied
+ * volatility and greeks are then provider placeholders, so the chain shows "—".
+ */
+function quoted(c: Contract) {
+  return (c.bid ?? 0) > 0 || (c.ask ?? 0) > 0;
+}
+/** One rule for the table and the volatility charts: a quoted contract with a real IV. */
+function usableIv(c: Contract) {
+  return quoted(c) && c.impliedVolatility != null && c.impliedVolatility > 0.0001;
+}
 function cell(c: Contract | undefined, key: string) {
   if (!c) return "—";
-  if (key === "iv") return percent(c.impliedVolatility);
+  if (!quoted(c) && ["bid", "ask", "iv", "delta", "gamma"].includes(key)) return "—";
+  if (key === "ask" && !(c.ask! > 0)) return "—";
+  if (key === "iv") return usableIv(c) ? percent(c.impliedVolatility) : "—";
   if (key === "spread") return validQuote(c) ? number(c.ask! - c.bid!, 2) : "—";
   const value = {
     bid: c.bid,
@@ -101,6 +117,7 @@ function centreChain(region: HTMLDivElement | null) {
 export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy(),
     { params, update } = useRouteState();
+  const columnNames = chainColumns(t);
   const { locale, timeZone } = useLocale();
   const [columns, setColumns] = useLocalStorage<string[]>({
     key: "mx-option-columns-v2",
@@ -328,11 +345,11 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   <table className="mx-table">
                     <thead>
                       <tr>
-                        <th colSpan={activeCols.length}>Calls</th>
+                        <th colSpan={activeCols.length}>{t("看涨", "Calls")}</th>
                         <th className="mx-strike">
                           {t("行权价", "Strike")} · {cc}
                         </th>
-                        <th colSpan={activeCols.length}>Puts</th>
+                        <th colSpan={activeCols.length}>{t("看跌", "Puts")}</th>
                       </tr>
                       <tr>
                         {[...activeCols].reverse().map((k) => (
@@ -377,7 +394,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                                   tabIndex={k === activeCols[0] ? 0 : -1}
                                   className="mx-cell-button"
                                   onClick={() => setDetail(call!)}
-                                  aria-label={`Call ${strike} ${columnNames[k]} ${cell(call, k)}`}
+                                  aria-label={`${t("看涨", "Call")} ${strike} ${columnNames[k]} ${cell(call, k)}`}
                                 >
                                   {cell(call, k)}
                                 </button>
@@ -401,7 +418,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                                   tabIndex={k === activeCols[0] ? 0 : -1}
                                   className="mx-cell-button"
                                   onClick={() => setDetail(put!)}
-                                  aria-label={`Put ${strike} ${columnNames[k]} ${cell(put, k)}`}
+                                  aria-label={`${t("看跌", "Put")} ${strike} ${columnNames[k]} ${cell(put, k)}`}
                                 >
                                   {cell(put, k)}
                                 </button>
@@ -432,7 +449,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     "Open interest for selected expirations",
                   )}
                   option={{
-                    legend: { top: 0, data: ["Calls", "Puts"] },
+                    legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
                     grid: { left: 72, right: 24, top: 42, bottom: 54 },
                     xAxis: {
                       type: "category",
@@ -443,7 +460,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     },
                     yAxis: { type: "value", name: t("合约数", "Contracts") },
                     series: ["call", "put"].map((side) => ({
-                      name: side === "call" ? "Calls" : "Puts",
+                      name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
                       type: "bar",
                       data: [...new Set(filtered.map((c) => c.strike))]
                         .sort((a, b) => a - b)
@@ -612,8 +629,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
         {detail && (
           <Facts
             rows={[
-              ["Bid / Ask", `${number(detail.bid)} / ${number(detail.ask)}`],
-              ["Last", number(detail.lastPrice)],
+              [`${columnNames.bid} / ${columnNames.ask}`, `${cell(detail, "bid")} / ${cell(detail, "ask")}`],
+              [columnNames.last, number(detail.lastPrice)],
               [t("最后成交", "Last trade"), when(detail.lastTradeAt)],
               [t("报价时间", "Quote time"), when(detail.quoteAsOf)],
               [t("OI 时间", "OI timestamp"), when(detail.openInterestAsOf)],
@@ -654,17 +671,14 @@ function Volatility({
   liquid: boolean;
 }) {
   const t = useCopy();
-  const valid = contracts.filter(
-    (c) => c.impliedVolatility != null && c.impliedVolatility > 0,
-  );
+  const valid = contracts.filter(usableIv);
   const term = options.expiries
     .filter((e) => dates.includes(e.expiry))
     .map((e) => {
       const cs = options.contracts.filter(
         (c) =>
           c.expiry === e.expiry &&
-          c.impliedVolatility != null &&
-          c.impliedVolatility > 0 &&
+          usableIv(c) &&
           (!liquid || validQuote(c)),
       );
       const k = nearMoneyStrikes(
@@ -685,7 +699,7 @@ function Volatility({
       <OptionPlot
         label={`${active} ${t("IV 微笑", "IV smile")}`}
         option={{
-          legend: { top: 0, data: ["Calls", "Puts"] },
+          legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
           grid: { left: 64, right: 24, top: 44, bottom: 54 },
           xAxis: {
             type: "value",
@@ -708,7 +722,7 @@ function Volatility({
             },
           },
           series: ["call", "put"].map((side) => ({
-            name: side === "call" ? "Calls" : "Puts",
+            name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
             type: "line",
             smooth: false,
             connectNulls: false,
@@ -729,7 +743,7 @@ function Volatility({
             "ATM volatility at selected expirations",
           )}
           option={{
-            legend: { top: 0, data: ["Calls", "Puts"] },
+            legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
             grid: { left: 60, right: 20, top: 44, bottom: 44 },
             xAxis: { type: "category", data: term.map((r) => r.expiry) },
             yAxis: {
@@ -739,7 +753,7 @@ function Volatility({
             },
             tooltip: { valueFormatter: (value) => percent(value, false, 2) },
             series: ["call", "put"].map((side) => ({
-              name: side === "call" ? "Calls" : "Puts",
+              name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
               type: "line",
               smooth: false,
               connectNulls: false,

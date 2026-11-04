@@ -753,23 +753,17 @@ export function PriceHistory({
               };
             }}
           />
-          <Legend
-            items={[
-              { label: ticker },
-              ...(comparable
-                ? [{ label: comparison, colour: "var(--mx-chart-2)" }]
-                : []),
-            ]}
-          />
+          {/* A single series needs no legend; a comparison names both lines. */}
+          {comparable && (
+            <Legend
+              items={[{ label: ticker }, { label: comparison, colour: "var(--mx-chart-2)" }]}
+            />
+          )}
           <div className="mx-chart-footer">
             <span>
               {isIntraday
                 ? formatDate(points[0].date) + " → " + formatDate(points.at(-1)!.date)
                 : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
-            </span>
-            <span>
-              {query.data.currency} · {query.data.actualInterval}
-              {query.data.timezone ? ` · ${query.data.timezone}` : ""}
             </span>
           </div>
           {full && markers.length + corporate.length + earnings.length > 0 && (

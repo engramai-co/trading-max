@@ -384,6 +384,11 @@ class ResearchInstrument(ApiModel):
     has_fundamentals: bool = False
     held: bool = False
     exposure_gbp: float = 0.0
+    direct_value_gbp: float = 0.0
+    broker_price: float | None = None
+    broker_price_currency: str | None = None
+    broker_as_of: str | None = None
+    broker_listing: str | None = None
 
 
 class ResearchEvent(ApiModel):
@@ -438,6 +443,7 @@ class PortfolioImpact(ApiModel):
     country: str | None = None
     industry: str | None = None
     etf_contributors: list[dict[str, Any]] = Field(default_factory=list)
+    as_of: str | None = None
 
 
 class ResearchTickerSnapshot(ApiModel):

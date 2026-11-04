@@ -131,6 +131,14 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* The excerpt itself opens the full description. */
+.mx-business-excerpt[role="button"],
+.mx-business-description[role="button"] {
+  cursor: pointer;
+}
+.mx-business-excerpt[role="button"]:hover {
+  color: var(--mx-ink);
+}
 .mx-research-content > .mx-overview-context {
   align-items: start;
 }
@@ -225,7 +233,12 @@
   font-variant-numeric: tabular-nums;
 }
 .mx-month-cell[aria-pressed="true"] {
-  border-color: currentColor;
+  border-color: var(--mx-brand);
+}
+.mx-month-cell .mx-thin-sample {
+  display: block;
+  margin-top: 4px;
+  color: var(--mx-warning);
 }
 .mx-month-cell:hover:not(:disabled) {
   outline: 1px solid var(--mx-border);

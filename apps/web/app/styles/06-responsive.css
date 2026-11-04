@@ -379,6 +379,12 @@
   .mx-tabs button {
     font-size: 12px;
   }
+  .mx-tabs .mx-tab-long {
+    display: none;
+  }
+  .mx-tabs .mx-tab-short {
+    display: inline;
+  }
   .mx-desktop-holdings {
     display: none;
   }
