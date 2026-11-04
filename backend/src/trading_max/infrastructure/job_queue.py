@@ -330,6 +330,8 @@ class SqliteJobQueue:
 
         Cancellations requested by the operator are counted separately; they are
         not failures of the service. Messages are the latest of each cause only.
+        Each cause also counts the successful updates of its scope after it last
+        failed, so a reader can tell a recovered failure from an ongoing one.
         """
 
         start = _iso(since)
@@ -353,6 +355,12 @@ class SqliteJobQueue:
                 row["scope"], {"succeeded": 0, "failed": 0, "interrupted": 0, "cancelled": 0}
             )
             scope_totals[outcome] += 1
+            if outcome == "succeeded":
+                for cause in causes.values():
+                    if cause["scope"] == row["scope"]:
+                        cause["succeeded_after"] += 1
+                        cause["last_success_at"] = _parse(row["observed_at"])
+                continue
             if outcome not in {"failed", "interrupted"}:
                 continue
             code = row["error_code"] or ("job.interrupted" if outcome == "interrupted" else "")
@@ -364,6 +372,9 @@ class SqliteJobQueue:
             cause["count"] += 1
             cause["last_at"] = _parse(row["observed_at"])
             cause["last_message"] = (row["error_message"] or "")[:240] or None
+            # A repeat of the cause restarts its recovery count.
+            cause["succeeded_after"] = 0
+            cause["last_success_at"] = None
         return {
             "since": since,
             "totals": totals,

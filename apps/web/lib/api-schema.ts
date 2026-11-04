@@ -2569,6 +2569,8 @@ export interface components {
             policy?: components["schemas"]["PolicySummary"] | null;
             /** Researchasof */
             researchAsOf: string;
+            /** Reviewasof */
+            reviewAsOf?: string | null;
             /** Reviewsummaries */
             reviewSummaries?: components["schemas"]["OverviewReviewSummary"][];
             /** Risk */
@@ -3398,11 +3400,18 @@ export interface components {
             lastAt?: string | null;
             /** Lastmessage */
             lastMessage?: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt?: string | null;
             /**
              * Scope
              * @enum {string}
              */
             scope: "all" | "accounts" | "research" | "intraday" | "cfd" | "live" | "performance";
+            /**
+             * Succeededafter
+             * @default 0
+             */
+            succeededAfter: number;
         };
         /** JobList */
         JobList: {

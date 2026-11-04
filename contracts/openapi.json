@@ -4489,6 +4489,17 @@
             "title": "Researchasof",
             "type": "string"
           },
+          "reviewAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewasof"
+          },
           "reviewSummaries": {
             "items": {
               "$ref": "#/components/schemas/OverviewReviewSummary"
@@ -6946,6 +6957,18 @@
             ],
             "title": "Lastmessage"
           },
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessat"
+          },
           "scope": {
             "enum": [
               "all",
@@ -6958,6 +6981,11 @@
             ],
             "title": "Scope",
             "type": "string"
+          },
+          "succeededAfter": {
+            "default": 0,
+            "title": "Succeededafter",
+            "type": "integer"
           }
         },
         "required": [

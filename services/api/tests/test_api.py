@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from trading_max.analytics.account_review import build_account_review
 
 from services.api.trading_max_api import app as app_module
 from services.api.trading_max_api.app import create_app
@@ -227,6 +229,53 @@ def test_overview_lens_includes_available_intraday_observations(
         "2026-08-17T19:20:02Z",
         "2026-08-18T19:20:02Z",
     ]
+
+
+def test_account_review_lens_states_when_the_review_was_built(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    previous = store.immutable_snapshots.latest()
+    assert previous is not None
+    review = build_account_review(
+        account_code="A",
+        account_kind="invest",
+        transactions=None,
+        nav_money_series=None,
+        ending_holdings=None,
+    )
+    reviews = store.immutable_artifacts.put_json(
+        key="account/account_reviews.json",
+        payload={"schema_version": 1, "accounts": {"A": review}},
+        kind="account_review",
+        producer_version="test",
+    )
+    # A later snapshot carries the review forward; its time stays the review's own.
+    store.immutable_snapshots.publish(
+        scope="live",
+        source="test",
+        artifacts=[*previous.manifest.artifacts, reviews],
+    )
+    app = create_app(
+        Settings(
+            data_root=tmp_path / "runtime",
+            api_token="secret",
+            embedded_worker=True,
+        )
+    )
+
+    with TestClient(app) as client:
+        invest = client.get("/v1/dashboard/lens/account-analysis?account=A&detail=summary")
+        isa = client.get("/v1/dashboard/lens/account-analysis?account=B&detail=summary")
+
+    assert invest.status_code == 200
+    assert datetime.fromisoformat(invest.json()["reviewAsOf"]) == reviews.ref.generated_at
+    # Without a review for the account there is no review time to state.
+    assert isa.status_code == 200
+    assert "reviewAsOf" not in isa.json()
 
 
 def test_research_price_series_is_scoped_and_bounded(

@@ -83,6 +83,15 @@ def _decision_reviews(request: Request, run_id: str) -> dict[str, AccountDecisio
         return {}
 
 
+def _artifact_generated_at(manifest: SnapshotManifest, key: str) -> str | None:
+    """When an artifact was built; a snapshot can carry it forward from an earlier run."""
+
+    artifact = next((item for item in manifest.artifacts if item.key == key), None)
+    if artifact is None or artifact.generated_at is None:
+        return None
+    return artifact.generated_at.isoformat()
+
+
 def _latest_intraday_points(points: list[NavPoint]) -> list[NavPoint]:
     """Return only the newest London portfolio day used by the 1D charts."""
 
@@ -353,13 +362,19 @@ def dashboard_lens(
     )
     if selected_account is None and selected != "C":
         raise HTTPException(status_code=404, detail=f"account {selected} is unavailable")
+    selected_review = (
+        dashboard_data.account_reviews.get(selected) if selected in {"A", "B"} else None
+    )
     return DashboardLensSnapshot(
         **base,
         cfd=dashboard_data.cfd if selected == "C" else None,
         selected_account=selected_account,
         selected_account_analysis=dashboard_data.account_analysis.get(selected),
-        selected_account_review=(
-            dashboard_data.account_reviews.get(selected) if selected in {"A", "B"} else None
+        selected_account_review=selected_review,
+        review_as_of=(
+            _artifact_generated_at(manifest, "account/account_reviews.json")
+            if selected_review is not None
+            else None
         ),
         selected_cfd_review=(dashboard_data.cfd_review if selected == "C" else None),
         selected_account_report=dashboard_data.account_report.analysis.get(selected, {}),

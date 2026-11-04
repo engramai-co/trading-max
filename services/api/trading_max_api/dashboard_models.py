@@ -1429,6 +1429,9 @@ class DashboardLensSnapshot(ApiModel):
     selected_account: AccountSummary | None = None
     selected_account_analysis: AccountAnalysisMetrics | None = None
     selected_account_review: AccountReview | None = None
+    #: When the selected account review was built. Its figures are as of this
+    #: moment, which can be hours older than broker_as_of.
+    review_as_of: str | None = None
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None
