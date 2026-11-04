@@ -472,8 +472,8 @@ export function DecisionReview({
       <Panel
         title={t("买卖决定", "Buy and sell decisions")}
         help={t(
-          "每个交易日的同一证券、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算，对照的是不做这笔交易：买入之后上涨或派息记为赚，下跌记为亏；卖出之后上涨或派息记为少赚，下跌记为少亏。同一天又买又卖时，配对的股数算作日内做 T，单独计算，只有多买或多卖的部分算作决定。",
-          "One security, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed, against not trading: a buy gains when the security then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
+          "每个交易日的同一证券、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算，对照的是不做这笔交易：买入之后上涨或派息记为赚，下跌记为亏；卖出之后上涨或派息记为少赚，下跌记为少亏。同一天又买又卖时，配对的股数算作日内做 T，单独计算，只有多买或多卖的部分算作决定。只用已收盘的价格和当日的最终汇率；数据源缺失的价格或汇率最多等待三个交易日，之后沿用此前的值。数据源日后补齐或更正历史时，效果会随之重算。",
+          "One security, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed, against not trading: a buy gains when the security then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision. Only completed closes and each day's final exchange rate are used; a missing price or rate waits up to three trading days for the data provider, then takes the last value before it. If the provider later fills in or corrects its history, effects are restated.",
         )}
         action={
           <Segments

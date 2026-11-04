@@ -153,6 +153,24 @@ an installation without a published snapshot; zero with no retained points
 means a successfully read, empty history.
 Cash-flow coverage alone does not certify intraday time-weighted returns.
 
+## Decision review
+
+Decision review scores each buy and sell (one security, one side, one trading
+day) in GBP against not trading, on split-adjusted closes plus the dividends
+that followed. Only a listing's completed regular sessions count, read from its
+exchange calendar: today's bar becomes a close once the session has ended, and
+a provider row on an exchange holiday is not a close. Without a known exchange,
+every weekday is a session. A close in another currency uses that day's final
+exchange rate. Weekends, Christmas Day, New Year's Day, Good Friday and Easter
+Monday always use the last business day's rate, even if the provider later
+publishes one for the holiday.
+
+A close or rate the data provider has not published keeps the affected
+decision observing, or its window withheld, for up to three later sessions of
+that calendar. After that it settles on the last final value before the gap.
+If the provider later fills in or corrects that history, the affected effects
+are restated. The S&P 500 comparison follows the New York calendar the same way.
+
 ## Interpret missing, historical, and modeled values
 
 A missing reading may mean the provider does not cover it, the history is too

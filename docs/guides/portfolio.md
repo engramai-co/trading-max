@@ -92,6 +92,8 @@ unrealized position P&L, and a cash-flow-adjusted return are distinct measures.
 Review shows available account and realized-trade evidence. Realized attribution
 requires matched opening and closing records. Historical imports may have less
 coverage than current positions.
+Buy and sell decisions use completed closes and may be restated when the data
+provider corrects its history; see [decision review](data-and-metrics.md#decision-review).
 
 Use **Data status → Start update** to request a full update and follow the job.
 A request being accepted does not mean it has finished. On failure, the last
