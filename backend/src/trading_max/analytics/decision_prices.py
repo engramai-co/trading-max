@@ -119,6 +119,33 @@ def _closed_since(exchange: str, fetched_at: datetime, now: datetime, through: d
     return bool((closed.index <= pd.Timestamp(through)).any())
 
 
+def _last_closed_session(exchange: str, at: datetime, through: date) -> date | None:
+    """The latest session up to through that had closed by at."""
+
+    when = _utc(at)
+    name = calendar_name(exchange)
+    if name is None:
+        # Without a calendar, a weekday's bar completes when its UTC day is over.
+        last = min(pd.Timestamp(through), pd.Timestamp(when.date()) - pd.Timedelta(days=1))
+        return pd.offsets.BDay().rollback(last).date()
+    closes = market_calendar(name, when.year, when.year).closes
+    closed = closes[(closes <= when) & (closes.index <= pd.Timestamp(through))]
+    return None if closed.empty else closed.index[-1].date()
+
+
+def _lacks_recent_bar(rows: list[list], exchange: str, fetched_at: datetime, through: date) -> bool:
+    """Whether the fetch missed the bar of a session closed shortly before it.
+
+    The provider can publish a final bar some time after the close; a missing
+    older bar is a gap in its history rather than one still to come.
+    """
+
+    session = _last_closed_session(exchange, fetched_at, through)
+    if session is None or session < _utc(fetched_at).date() - timedelta(days=7):
+        return False
+    return all(row[0] != session.isoformat() for row in rows)
+
+
 class CachedDailyHistory:
     """Daily provider history cached per symbol outside Git.
 
@@ -128,6 +155,8 @@ class CachedDailyHistory:
 
     A bar whose session has not closed is never cached, and a session that has
     closed since the last fetch has its bar fetched, however recent that was.
+    A closed session whose bar the provider had not yet published is asked for
+    again once the refresh interval has passed.
     """
 
     def __init__(
@@ -219,6 +248,7 @@ class CachedDailyHistory:
             and covered_start <= start
             and (covered_end >= end or fresh)
             and not _closed_since(exchange, fetched_at, now, end)
+            and (fresh or not _lacks_recent_bar(rows, exchange, fetched_at, end))
         )
         if not covers:
             if rows and covered_start is not None and covered_start <= start:

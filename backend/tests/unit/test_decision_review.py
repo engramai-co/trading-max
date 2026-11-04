@@ -628,6 +628,32 @@ def test_cache_without_an_exchange_fetches_a_day_once_that_day_is_over(tmp_path)
     assert len(calls) == 2
 
 
+def test_cache_asks_again_for_a_closed_session_whose_bar_was_late(tmp_path) -> None:
+    fetched: list[datetime] = []
+    published = {"through": date(2026, 11, 3)}  # 4 Nov's final bar is not out at 21:05
+    clock = {"now": datetime.fromisoformat("2026-11-04T21:05:00+00:00")}
+
+    def fetch(symbol: str, start: date, end: date) -> pd.DataFrame:
+        fetched.append(clock["now"])
+        index = pd.bdate_range(start, min(end, published["through"]))
+        frame = pd.DataFrame({"Close": 125.0, "Stock Splits": 0.0}, index=index)
+        frame.attrs["exchange"] = "NMS"
+        return frame
+
+    cache = CachedDailyHistory(tmp_path, fetch=fetch, now=lambda: clock["now"])
+    window = (date(2026, 10, 1), date(2026, 11, 4))
+    assert cache("NVDA", *window).index[-1] == pd.Timestamp("2026-11-03")
+    published["through"] = date(2026, 11, 4)
+    clock["now"] = datetime.fromisoformat("2026-11-04T23:00:00+00:00")
+    cache("NVDA", *window)
+    assert len(fetched) == 1  # inside the refresh interval
+    clock["now"] = datetime.fromisoformat("2026-11-05T09:05:00+00:00")
+    assert cache("NVDA", *window).index[-1] == pd.Timestamp("2026-11-04")
+    assert len(fetched) == 2
+    cache("NVDA", *window)
+    assert len(fetched) == 2
+
+
 def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monkeypatch) -> None:
     requests: list[str] = []
 
