@@ -185,20 +185,20 @@ describe("the review index", () => {
 
 describe("the context line under a decision", () => {
   it("shows every item that fits, keeping no room for +N after the last", () => {
-    expect(contextFit([100, 100], 210, 10, 30)).toBe(2);
+    expect(contextFit([100, 100], 210, 10, 30).shown).toBe(2);
   });
 
-  it("keeps room for +N while items stay hidden", () => {
-    expect(contextFit([100, 100, 100], 260, 10, 30)).toBe(2);
-    expect(contextFit([100, 100, 100], 245, 10, 30)).toBe(1);
+  it("keeps room for +N while items stay hidden, and starts it one gap after the last shown", () => {
+    expect(contextFit([100, 100, 100], 260, 10, 30)).toEqual({ shown: 2, at: 220 });
+    expect(contextFit([100, 100, 100], 245, 10, 30)).toEqual({ shown: 1, at: 110 });
   });
 
-  it("always shows the first item, shrunk if it must be", () => {
-    expect(contextFit([400, 100], 300, 10, 30)).toBe(1);
+  it("always shows the first item, shrunk to leave +N its room at the end of the line", () => {
+    expect(contextFit([400, 100], 300, 10, 30)).toEqual({ shown: 1, at: 270 });
   });
 
   it("has nothing to show for an empty line", () => {
-    expect(contextFit([], 300, 10, 30)).toBe(0);
+    expect(contextFit([], 300, 10, 30).shown).toBe(0);
   });
 });
 
