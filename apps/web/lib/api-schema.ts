@@ -1344,6 +1344,8 @@ export interface components {
             decisions?: components["schemas"]["TradeDecision"][];
             /** Horizondays */
             horizonDays?: number | null;
+            /** Observingcount */
+            observingCount?: number | null;
             /** Reason */
             reason?: string | null;
             roundTripSummary?: components["schemas"]["RoundTripSummary"];

@@ -1406,6 +1406,9 @@ class AccountDecisions(ApiModel):
     round_trips: list[RoundTripReview] = Field(default_factory=list)
     round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
+    #: Review lens only: decisions with no close after them yet, counted before
+    #: the lens keeps the latest few of them and of those with an outcome.
+    observing_count: int | None = None
 
 
 class DashboardLensSnapshot(ApiModel):

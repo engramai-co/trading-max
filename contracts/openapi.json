@@ -565,6 +565,17 @@
             ],
             "title": "Horizondays"
           },
+          "observingCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observingcount"
+          },
           "reason": {
             "anyOf": [
               {

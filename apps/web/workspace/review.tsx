@@ -40,7 +40,7 @@ import {
 import { accountName, useWorkspaceProfile } from "./profile";
 import { useRouteState } from "./route-state";
 import { reviewHighlights } from "./review-highlights";
-import { DecisionReview, effectTone, observing, signedMoney, verdictWord, type TradeDecision } from "./review-decisions";
+import { DecisionReview, effectTone, latestDecisions, signedMoney, verdictWord } from "./review-decisions";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
 export function ReviewWorkspace() {
@@ -48,15 +48,8 @@ export function ReviewWorkspace() {
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const query = useDashboardLens("review");
-  const latest = (["A", "B"] as const)
-    .flatMap((code) =>
-      (query.data?.decisionReviews?.[code]?.decisions ?? []).map((row: TradeDecision) => ({ ...row, account: code })),
-    )
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp);
   // Decisions without a close after them yet say nothing on their own; they share one line.
-  const watching = [...new Set(latest.filter(observing).map((row) => row.ticker))];
-  const watchingCount = latest.filter(observing).length;
-  const recent = latest.filter((row) => !observing(row)).slice(0, 8);
+  const { watching, watchingCount, watchingMore, recent } = latestDecisions(query.data?.decisionReviews);
   // A retired CFD account keeps its review, reached from the account switcher.
   const codes = query.data?.cfd?.accountStatus === "retired" ? (["A", "B"] as const) : (["A", "B", "C"] as const);
   return (
@@ -153,7 +146,11 @@ export function ReviewWorkspace() {
                   {watchingCount > 0 && (
                     <p className="mx-decision-watching">
                       {locale === "zh" ? `观察中 ${watchingCount} 笔` : `Watching ${watchingCount}`}
-                      <span className="mx-muted">{" · " + watching.join(locale === "zh" ? "、" : ", ")}</span>
+                      {watching.length > 0 && (
+                        <span className="mx-muted">
+                          {" · " + watching.join(locale === "zh" ? "、" : ", ") + (watchingMore ? "…" : "")}
+                        </span>
+                      )}
                     </p>
                   )}
                   {recent.map((row) => (

@@ -55,6 +55,31 @@ export function decisionEffect(row: TradeDecision, horizon: Horizon) {
 }
 
 /**
+ * The review index's decisions across both investing accounts: how many still wait
+ * for a close, counted by the lens before it keeps the latest few, the securities
+ * of those it kept, and the latest decisions with an outcome.
+ */
+export function latestDecisions(reviews: DashboardLens["decisionReviews"], limit = 8) {
+  const accounts = (["A", "B"] as const).map((code) => [code, reviews?.[code]] as const);
+  const rows = accounts
+    .flatMap(([code, review]) => (review?.decisions ?? []).map((row) => ({ ...row, account: code })))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp);
+  const kept = rows.filter(observing);
+  // Payloads from before the count fall back to the rows they carry.
+  const count = accounts.reduce(
+    (sum, [, review]) => sum + (review?.observingCount ?? (review?.decisions ?? []).filter(observing).length),
+    0,
+  );
+  return {
+    watchingCount: count,
+    watching: [...new Set(kept.map((row) => row.ticker))],
+    // The lens kept only the latest; earlier ones may be in other securities.
+    watchingMore: count > kept.length,
+    recent: rows.filter((row) => !observing(row)).slice(0, limit),
+  };
+}
+
+/**
  * What a side's effect means in words, so the reader never decodes a sign:
  * buys gained or lost; sells gave up gains or avoided losses against holding.
  */

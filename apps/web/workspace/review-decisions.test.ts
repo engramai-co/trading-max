@@ -3,6 +3,7 @@ import {
   decisionContext,
   effectTone,
   eventLabel,
+  latestDecisions,
   notableDecisions,
   observing,
   roundTripVerdict,
@@ -145,4 +146,40 @@ describe("decision verdicts", () => {
     expect(decisionContext(decision, "horizon", (zh) => zh, "zh")).toEqual(["标普 500 同期 +0.2%", "6月2日 重大事项公告"]);
   });
 });
+
+describe("the review index", () => {
+  const decision = (date: string, ticker: string, observedDays: number): TradeDecision => ({
+    date,
+    ticker,
+    name: ticker,
+    side: "buy",
+    kind: "B",
+    amountGbp: 100,
+    observedDays,
+    returnToDate: 0,
+  });
+
+  it("counts every observing decision and still lists the latest with an outcome", () => {
+    // The lens kept eight of twelve observing decisions beside an older scored one.
+    const kept = Array.from({ length: 8 }, (_, index) => decision("2026-11-03", "T" + index, 0));
+    const index = latestDecisions({
+      A: { status: "available", observingCount: 12, decisions: [decision("2026-10-01", "OLD", 24), ...kept] },
+    });
+    expect(index).toMatchObject({ watchingCount: 12, watchingMore: true });
+    expect(index.watching).toHaveLength(8);
+    expect(index.recent.map((row) => [row.account, row.ticker])).toEqual([["A", "OLD"]]);
+  });
+
+  it("counts the rows themselves in payloads from before the count", () => {
+    const index = latestDecisions({
+      B: {
+        status: "available",
+        decisions: [decision("2026-10-01", "AMD", 5), decision("2026-11-03", "NVDA", 0), decision("2026-11-03", "NVDA", 0)],
+      },
+    });
+    expect(index).toMatchObject({ watchingCount: 2, watching: ["NVDA"], watchingMore: false });
+    expect(index.recent.map((row) => [row.account, row.ticker])).toEqual([["B", "AMD"]]);
+  });
+});
+
 

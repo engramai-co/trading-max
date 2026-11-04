@@ -19,6 +19,7 @@ from ..dashboard_models import (
     DayAttribution,
     NavPoint,
     OverviewReviewSummary,
+    TradeDecision,
     WindowAttribution,
 )
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
@@ -81,6 +82,31 @@ def _decision_reviews(request: Request, run_id: str) -> dict[str, AccountDecisio
         }
     except (FileNotFoundError, TypeError, ValueError, AttributeError):
         return {}
+
+
+def _observing(decision: TradeDecision) -> bool:
+    """No close has followed the decision; older artifacts say so by having no return."""
+
+    if decision.observed_days is not None:
+        return decision.observed_days < 1
+    return decision.return_to_date is None
+
+
+def _review_index(review: AccountDecisions, keep: int = 8) -> AccountDecisions:
+    """The latest decisions still observing and, separately, the latest with an outcome."""
+
+    observing = [index for index, row in enumerate(review.decisions) if _observing(row)]
+    observed = [index for index, row in enumerate(review.decisions) if not _observing(row)]
+    return review.model_copy(
+        update={
+            "decisions": [
+                review.decisions[index] for index in sorted(observing[-keep:] + observed[-keep:])
+            ],
+            "observing_count": len(observing),
+            "round_trips": review.round_trips[-keep:],
+            "closed_trades": review.closed_trades[:3],
+        }
+    )
 
 
 def _artifact_generated_at(manifest: SnapshotManifest, key: str) -> str | None:
@@ -336,15 +362,10 @@ def dashboard_lens(
             policy=dashboard_data.policy,
         )
     if view == "review":
-        # The index needs each account's verdict and its latest few decisions.
+        # The index needs each account's verdict, how many decisions still wait for
+        # a close, and its latest decisions with an outcome.
         reviews = {
-            code: review.model_copy(
-                update={
-                    "decisions": review.decisions[-8:],
-                    "round_trips": review.round_trips[-8:],
-                    "closed_trades": review.closed_trades[:3],
-                }
-            )
+            code: _review_index(review)
             for code, review in _decision_reviews(request, manifest.run_id).items()
         }
         return DashboardLensSnapshot(
