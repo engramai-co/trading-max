@@ -614,12 +614,14 @@
   flex: 1;
   min-width: 0;
 }
-.mx-tech-toggle h3 {
+.mx-tech-group-heading {
+  margin: 0;
+  font: inherit;
+}
+.mx-tech-group-name {
+  display: block;
   font-size: 15px;
   font-weight: 600;
-}
-.mx-tech-toggle .mx-tech-heading > span {
-  font-size: 12px;
 }
 .mx-tech-toggle > strong {
   font-size: 20px;

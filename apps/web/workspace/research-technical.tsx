@@ -72,12 +72,13 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
       const summary = g.factors.filter((f) => f.contribution != null && f.contribution !== 0)
         .sort((a, b) => Math.abs(b.contribution!) - Math.abs(a.contribution!))[0];
       return <section key={g.key} className="mx-tech-group" data-open={open}>
-        <button type="button" className="mx-tech-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpened(open ? null : g.key)}>
-          <div><div className="mx-tech-heading"><h3>{t(...technicalGroups[g.key])}</h3></div>
+        {/* Accordion pattern: the heading holds the button, never the other way round. */}
+        <h3 className="mx-tech-group-heading"><button type="button" className="mx-tech-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpened(open ? null : g.key)}>
+          <div><span className="mx-tech-group-name">{t(...technicalGroups[g.key])}</span>
             {!open && summary && <span className="mx-tech-reason">{factorMeaning(summary, t)}</span>}</div>
           <strong className={impactTone(g.contribution)}>{g.contribution == null ? "—" : `${g.contribution > 0 ? "+" : ""}${g.contribution}`}</strong>
           {open ? <CaretDown size={18} /> : <CaretRight size={18} />}
-        </button>
+        </button></h3>
         <div id={id} hidden={!open} className="mx-tech-evidence">{g.factors.map((f) => <div key={f.key}>
           <span>{factorMeaning(f, t)}</span><span className={impactTone(f.contribution)}>
             {f.contribution == null ? "—" : f.contribution > 0 ? <TrendUp size={15} /> : f.contribution < 0 ? <TrendDown size={15} /> : <Minus size={15} />}
