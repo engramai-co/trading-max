@@ -12,8 +12,9 @@ exchange calendar says the session has ended, early closes included, or, for an
 exchange without a calendar, once its UTC day is over.
 
 A close in another currency is worth its own day's final exchange rate in pounds.
-A weekend or currency-market holiday always takes the last business day's rate,
-so a rate published late for it cannot change a value.
+A weekend or currency-market holiday always takes the last final rate before it,
+so a rate published late for it cannot change a value; a business day whose own
+rate is still pending is passed over, and waits for it on its own.
 
 A listing's closes are its exchange calendar's regular sessions; a row the
 provider returns on any other day repeats an earlier close and is left out. A
@@ -358,8 +359,8 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
     A business day takes its own rate once the day is over. One the provider has
     not published stays pending for GAP_SESSIONS more business days, then settles
     on the last rate before it. A day with no rate due (a weekend, Christmas Day,
-    New Year's Day, Good Friday or Easter Monday) always takes the last business
-    day's, even when the provider publishes one of its own.
+    New Year's Day, Good Friday or Easter Monday) always takes the last final rate
+    before it, even when the provider publishes one of its own.
     """
 
     rates = rates[rates > 0].sort_index()
@@ -374,11 +375,10 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
     over = due & np.asarray(span < today)
     later = np.cumsum(over[::-1])[::-1] - over
     settled = over & own.isna().to_numpy() & (later >= GAP_SESSIONS)
-    value = own.fillna(own.ffill().where(settled)).to_numpy()
-    # A day with no rate due follows the last business day before it, pending or not.
-    last = np.maximum.accumulate(np.where(due, np.arange(len(span)), -1))
-    result = np.where(last >= 0, value[np.maximum(last, 0)], np.nan)
-    return pd.Series(result, index=span).reindex(days)
+    value = own.fillna(own.ffill().where(settled))
+    # A day with no rate due takes the last final rate before it, passing over a
+    # business day still pending, which waits for its own rate or settles.
+    return value.where(due, value.ffill()).reindex(days)
 
 
 def _at_final_rates(values: pd.Series, mode: str, final_fx: Mapping[str, pd.Series]) -> pd.Series:

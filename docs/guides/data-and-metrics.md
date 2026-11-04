@@ -162,7 +162,7 @@ exchange calendar: today's bar becomes a close once the session has ended, and
 a provider row on an exchange holiday is not a close. Without a known exchange,
 every weekday is a session. A close in another currency uses that day's final
 exchange rate. Weekends, Christmas Day, New Year's Day, Good Friday and Easter
-Monday always use the last business day's rate, even if the provider later
+Monday always use the last final rate before them, even if the provider later
 publishes one for the holiday.
 
 A close or rate the data provider has not published keeps the affected

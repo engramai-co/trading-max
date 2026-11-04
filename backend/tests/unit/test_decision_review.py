@@ -468,7 +468,27 @@ def test_an_easter_monday_close_always_takes_thursdays_rate() -> None:
     assert before["effect_to_date_gbp"] == after["effect_to_date_gbp"] == pytest.approx(240.0)
 
 
-def test_a_holiday_keeps_the_last_business_days_rate_and_a_gap_settles_after_three() -> None:
+def test_a_holiday_close_takes_the_last_final_rate_past_one_still_pending() -> None:
+    # Thursday 17 Apr 2025's rate is missing, still pending once Tuesday's is final.
+    # Easter Monday's close takes Wednesday's, the last final rate before the
+    # holiday, while Thursday's own close keeps waiting for its rate.
+    sessions = pd.bdate_range("2025-03-20", "2025-04-25").drop(pd.Timestamp("2025-04-18"))
+    quotes = pd.Series(125.0, index=sessions)
+    rates = pd.Series(1.25, index=sessions.drop(pd.to_datetime(["2025-04-17", "2025-04-21"])))
+    rates[pd.Timestamp("2025-04-16")] = 1.30
+    fills = [
+        _usd_fill("2025-04-17T15:00:00Z", "Market buy", 60, 6_000),
+        _usd_fill("2025-04-21T15:00:00Z", "Market buy", 60, 6_000),
+    ]
+    thursday, monday = _review_from_quotes(
+        fills, {"NVDA": quotes}, viewed="2025-04-22", now="2025-04-23T00:30:00Z", rates=rates
+    )["decisions"]
+    assert (thursday["observed_days"], thursday["effect_to_date_gbp"]) == (0, None)
+    assert monday["observed_days"] == 1
+    assert monday["effect_to_date_gbp"] == pytest.approx(240.0)
+
+
+def test_a_holiday_keeps_the_last_final_rate_and_a_gap_settles_after_three() -> None:
     # Christmas Day 2026 is a Friday: no rate is due from it to the Sunday, and the
     # provider's own Christmas rate is not used.
     days = pd.date_range("2026-12-23", "2026-12-29")
@@ -481,11 +501,12 @@ def test_a_holiday_keeps_the_last_business_days_rate_and_a_gap_settles_after_thr
     tuesday_night = pd.Timestamp("2026-12-30T00:30:00Z")
     rates = final_rate_on(published, days, tuesday_night)
     assert rates.tolist() == [1.25, 1.26, 1.26, 1.26, 1.26, 1.27, 1.28]
-    # Without Christmas Eve's rate, it and the holiday after it wait for three more
-    # business days, then take 23 Dec's.
+    # Without Christmas Eve's rate, the holiday after it takes 23 Dec's at once;
+    # Christmas Eve itself waits three more business days, then takes it too.
     gap = published.drop(pd.Timestamp("2026-12-24"))
     pending = final_rate_on(gap, days, tuesday_night)
-    assert pending.isna().tolist() == [False, True, True, True, True, False, False]
+    assert pending.isna().tolist() == [False, True, False, False, False, False, False]
+    assert pending[pd.Timestamp("2026-12-25")] == 1.25
     settled = final_rate_on(gap, days, pd.Timestamp("2026-12-31T00:30:00Z"))
     assert settled.tolist() == [1.25, 1.25, 1.25, 1.25, 1.25, 1.27, 1.28]
 
