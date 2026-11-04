@@ -1344,6 +1344,8 @@ export interface components {
             decisions?: components["schemas"]["TradeDecision"][];
             /** Horizondays */
             horizonDays?: number | null;
+            /** Observingcount */
+            observingCount?: number | null;
             /** Reason */
             reason?: string | null;
             roundTripSummary?: components["schemas"]["RoundTripSummary"];
@@ -2569,6 +2571,8 @@ export interface components {
             policy?: components["schemas"]["PolicySummary"] | null;
             /** Researchasof */
             researchAsOf: string;
+            /** Reviewasof */
+            reviewAsOf?: string | null;
             /** Reviewsummaries */
             reviewSummaries?: components["schemas"]["OverviewReviewSummary"][];
             /** Risk */
@@ -3398,11 +3402,18 @@ export interface components {
             lastAt?: string | null;
             /** Lastmessage */
             lastMessage?: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt?: string | null;
             /**
              * Scope
              * @enum {string}
              */
             scope: "all" | "accounts" | "research" | "intraday" | "cfd" | "live" | "performance";
+            /**
+             * Succeededafter
+             * @default 0
+             */
+            succeededAfter: number;
         };
         /** JobList */
         JobList: {
@@ -6256,6 +6267,8 @@ export interface components {
             effectToDateGbp?: number | null;
             /** Events */
             events?: components["schemas"]["DecisionEvent"][] | null;
+            /** Horizoncomplete */
+            horizonComplete?: boolean | null;
             /**
              * Kind
              * @enum {string}
@@ -6267,6 +6280,8 @@ export interface components {
             marketReturnToDate?: number | null;
             /** Name */
             name: string;
+            /** Observeddays */
+            observedDays?: number | null;
             /** Quantity */
             quantity?: number | null;
             /** Returnhorizon */

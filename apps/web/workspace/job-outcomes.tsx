@@ -34,6 +34,19 @@ export function outcomeSummary(outcomes: JobOutcomes) {
   return { finished, failures, rate: finished ? failures / finished : 0 };
 }
 
+/**
+ * Whether a failure has been followed by successful updates of the same scope,
+ * and how many. Null while the failure is still the latest outcome, or when the
+ * service does not report it.
+ */
+export function recovery(cause: Cause, locale: "zh" | "en", timeZone: string, now?: Date) {
+  const count = cause.succeededAfter ?? 0;
+  if (!count) return null;
+  const amount = count.toLocaleString(locale === "zh" ? "zh-CN" : "en-GB");
+  const when = cause.lastSuccessAt ? " · " + formatDateTime(cause.lastSuccessAt, locale, timeZone, now) : "";
+  return (locale === "zh" ? `之后已成功 ${amount} 次` : `${amount} successful since`) + when;
+}
+
 /** Seven days of finished updates; quiet when everything succeeded. */
 export function JobOutcomeSummary({
   outcomes,
@@ -62,23 +75,30 @@ export function JobOutcomeSummary({
           : `${count(failures)} of ${count(finished)} updates failed in the last 7 days (${(rate * 100).toFixed(1)}%)`}
       </p>
       <ul>
-        {(outcomes.causes ?? []).slice(0, 4).map((cause: Cause) => (
-          <li
-            key={[cause.errorCode, cause.scope, cause.kind].join("|")}
-            title={cause.lastMessage ?? cause.errorCode ?? undefined}
-          >
-            <strong>{causeArea(cause.errorCode, t)}</strong>
-            {causeKind(cause.kind, t) && <span>{causeKind(cause.kind, t)}</span>}
-            <span>{scopeLabel(cause.scope)}</span>
-            <span className="mx-down">{locale === "zh" ? `${count(cause.count)} 次` : `${count(cause.count)}×`}</span>
-            {cause.lastAt && (
-              <span className="mx-muted">
-                {t("最近 ", "Last ") + formatDateTime(cause.lastAt, locale, timeZone)}
-              </span>
-            )}
-            {cause.lastMessage && <small>{cause.lastMessage}</small>}
-          </li>
-        ))}
+        {(outcomes.causes ?? []).slice(0, 4).map((cause: Cause) => {
+          const recovered = recovery(cause, locale, timeZone);
+          return (
+            <li key={[cause.errorCode, cause.scope, cause.kind].join("|")}>
+              <strong>{causeArea(cause.errorCode, t)}</strong>
+              {causeKind(cause.kind, t) && <span>{causeKind(cause.kind, t)}</span>}
+              <span>{scopeLabel(cause.scope)}</span>
+              {/* A failure that later updates recovered from is history, not an alarm. */}
+              <span className={recovered ? undefined : "mx-down"}>{locale === "zh" ? `${count(cause.count)} 次` : `${count(cause.count)}×`}</span>
+              {cause.lastAt && (
+                <span className="mx-muted">
+                  {t("最近 ", "Last ") + formatDateTime(cause.lastAt, locale, timeZone)}
+                </span>
+              )}
+              {recovered && <span className="mx-muted">{recovered}</span>}
+              {cause.lastMessage && (
+                <details>
+                  <summary>{t("技术详情", "Technical details")}</summary>
+                  <code>{cause.lastMessage}</code>
+                </details>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

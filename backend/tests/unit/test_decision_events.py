@@ -18,6 +18,12 @@ def _closes(start: str, values: list[float]) -> pd.Series:
     return pd.Series(values, index=pd.bdate_range(start, periods=len(values)), dtype=float)
 
 
+def _listing(
+    ticker: str, closes: pd.Series, quote_days: pd.DatetimeIndex | None = None
+) -> SecurityPrices:
+    return SecurityPrices("ticker:" + ticker, ticker, ticker, ticker, closes, quote_days=quote_days)
+
+
 def _fill(time: str, action: str, shares: float, total_gbp: float) -> dict:
     return {
         "Time": pd.Timestamp(time, tz="UTC"),
@@ -90,7 +96,7 @@ def test_shown_decisions_carry_the_events_of_their_window() -> None:
         {"date": "2026-10-23", "kind": "initiate", "firm": "Citi"},
         {"date": "2026-12-01", "kind": "earnings", "surprise_pct": 1.0},  # after the window
     ]
-    read = attach_decision_events(review, {"LITE": ("LITE", closes)}, lambda symbol: catalog)
+    read = attach_decision_events(review, {"LITE": _listing("LITE", closes)}, lambda _: catalog)
     events = review["decisions"][0]["events"]
     assert read == 1
     # At most four: the most telling kinds are kept (the news drops), shown by date.
@@ -107,9 +113,41 @@ def test_routine_filings_do_not_crowd_out_other_events() -> None:
     }
     catalog = [{"date": f"2026-10-{day}", "kind": "filing", "form": "8-K"} for day in (13, 15, 20)]
     catalog.append({"date": "2026-10-21", "kind": "initiate", "firm": "Bernstein"})
-    attach_decision_events(review, {"VRT": ("VRT", closes)}, lambda symbol: catalog)
+    attach_decision_events(review, {"VRT": _listing("VRT", closes)}, lambda symbol: catalog)
     kinds = [event["kind"] for event in review["decisions"][0]["events"]]
     assert kinds == ["filing", "initiate"]
+
+
+def test_a_window_ends_on_the_horizon_close_that_scored_it() -> None:
+    # London did not quote Monday 31 Aug 2026, so the 20th close after Friday
+    # 28 Aug is 28 Sep, and an event that day is inside the decision's window.
+    days = pd.bdate_range("2026-08-17", "2026-10-09")
+    prices = _listing(
+        "VOD", pd.Series(100.0, index=days), quote_days=days.drop(pd.Timestamp("2026-08-31"))
+    )
+    review = {
+        "horizon_days": 20,
+        "decisions": [{"date": "2026-08-28", "ticker": "VOD", "side": "buy"}],
+    }
+    catalog = [
+        {"date": "2026-09-28", "kind": "earnings", "surprise_pct": 3.0},
+        {"date": "2026-09-29", "kind": "initiate", "firm": "Citi"},  # after the horizon
+    ]
+    attach_decision_events(review, {"VOD": prices}, lambda symbol: catalog)
+    assert [event["date"] for event in review["decisions"][0]["events"]] == ["2026-09-28"]
+
+
+def test_an_open_window_reaches_the_review_day_before_its_close() -> None:
+    # Viewed on 4 Nov before New York closes: today's news is still beside the decision.
+    days = pd.bdate_range("2026-10-19", "2026-11-04")
+    prices = _listing("NVDA", pd.Series(125.0, index=days), quote_days=days[:-1])
+    review = {
+        "horizon_days": 20,
+        "decisions": [{"date": "2026-11-03", "ticker": "NVDA", "side": "buy"}],
+    }
+    catalog = [{"date": "2026-11-04", "kind": "news", "title": "Guidance raised"}]
+    attach_decision_events(review, {"NVDA": prices}, lambda symbol: catalog)
+    assert [event["date"] for event in review["decisions"][0]["events"]] == ["2026-11-04"]
 
 
 def test_decisions_record_the_benchmarks_change_over_the_same_window() -> None:

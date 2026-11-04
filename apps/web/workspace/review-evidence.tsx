@@ -1,7 +1,7 @@
 "use client";
 
 import { behaviorObservation, reviewLabel, systemReason } from "./review-copy";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Select } from "@mantine/core";
 import { Bars, HistoryChart } from "./charts";
 import { currency, number, object, objects, percent, str, type Json } from "@/workspace/data";
@@ -13,31 +13,30 @@ export const field = (data: Json, key: string): unknown =>
   data[key] ??
   data[key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())];
 type Field = [string, string, string, "money" | "percent" | "number" | "count" | "average" | "days" | "text"];
+function detailRows(data: Json, fields: Field[], t: (zh: string, en: string) => string): Array<[ReactNode, ReactNode]> {
+  return fields.map(([zh, en, key, format]) => {
+    const value = field(data, key);
+    return [
+      t(zh, en),
+      format === "money"
+        ? currency(value, "GBP", 2)
+        : format === "percent"
+          ? percent(value, false, 2)
+          : format === "count"
+            ? number(value, 0)
+            : format === "average"
+              ? number(value, 1)
+              : format === "days"
+                ? (value == null ? "—" : number(value, 0) + t(" 天", " days"))
+                : format === "number"
+                  ? number(value)
+                  : reviewLabel(str(value), t) || "—",
+    ];
+  });
+}
 export function DetailFacts({ data, fields }: { data: Json; fields: Field[] }) {
   const t = useCopy();
-  return (
-    <Facts
-      rows={fields.map(([zh, en, key, format]) => {
-        const value = field(data, key);
-        return [
-          t(zh, en),
-          format === "money"
-            ? currency(value, "GBP", 2)
-            : format === "percent"
-              ? percent(value, false, 2)
-              : format === "count"
-                ? number(value, 0)
-                : format === "average"
-                  ? number(value, 1)
-                  : format === "days"
-                    ? (value == null ? "—" : number(value, 0) + t(" 天", " days"))
-                    : format === "number"
-                      ? number(value)
-                      : reviewLabel(str(value), t) || "—",
-        ];
-      })}
-    />
-  );
+  return <Facts rows={detailRows(data, fields, t)} />;
 }
 export function Availability({ data }: { data: Json }) {
   const t = useCopy();
@@ -61,8 +60,45 @@ export function SystemNotes({ values }: { values: string[] }) {
     </details>
   </Notice>;
 }
+const CFD_BEHAVIOR_FIELDS: Field[] = [
+  ["已平仓名义本金", "Closed notional", "total_closed_notional", "money"],
+  ["平均名义本金", "Average notional", "average_closed_notional", "money"],
+  ["收益 / 名义本金", "Return / notional", "net_realised_to_notional_ratio", "percent"],
+  ["融资费用 / 名义本金", "Financing / notional", "financing_cost_to_notional_ratio", "percent"],
+  ["缺失本金的交易", "Trades missing notional", "missing_notional_trade_count", "number"],
+  ["最佳交易贡献", "Best trade concentration", "best_trade_concentration", "percent"],
+  ["前三笔贡献", "Top three concentration", "top_three_trade_concentration", "percent"],
+  ["去除最佳交易后", "Without best trade", "net_without_best_trade", "money"],
+];
+const BEHAVIOR_FIELDS: Field[] = [
+  ["交易总金额", "Gross traded notional", "gross_traded_notional_gbp", "money"],
+  ["买单数", "Buy orders", "buy_orders", "count"],
+  ["卖单数", "Sell orders", "sell_orders", "count"],
+  ["交易时平均持仓数", "Average active positions", "average_active_positions_at_trade_events", "average"],
+  ["交易时最多持仓数", "Peak active positions", "peak_active_positions_at_trade_events", "count"],
+  ["回撤期间买入", "Purchases during drawdowns", "drawdown_buy_notional_gbp", "money"],
+];
 export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
   const t = useCopy();
+  const days = (value: unknown) => (value == null ? "—" : number(value, 0) + t(" 天", " days"));
+  // Observations read like the facts above them: label left, value right, the evidence under the value.
+  const observations = objects(data.observations).flatMap((row): Array<[ReactNode, ReactNode]> => {
+    // The purchase total already appears above; do not repeat the same fact.
+    if (row.diagnostic === "buy_notional_during_money_drawdown_gbp" && row.value === field(data, "drawdown_buy_notional_gbp")) return [];
+    const evidence = object(row.evidence);
+    const diagnostic = behaviorObservation(str(row.diagnostic), row.value, t);
+    const result = field(evidence, "result_gbp");
+    const note = row.diagnostic === "winner_vs_loser_holding_days"
+      ? t("赢家中位 ", "Winners' median ") + days(field(evidence, "winner_median_days")) + " · " + t("输家 ", "losers' ") + days(field(evidence, "loser_median_days"))
+      : [str(evidence.ticker), result == null ? "" : currency(result, "GBP", 2)].filter(Boolean).join(" ");
+    return [[
+      diagnostic.known ? diagnostic.label : diagnostic.label + " · " + str(row.diagnostic),
+      <>
+        {diagnostic.value}
+        {note && <small>{note}</small>}
+      </>,
+    ]];
+  });
   return (
     <Panel
       title={t("交易行为与收益依赖", "Trading behavior and concentration")}
@@ -72,132 +108,12 @@ export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
       )}
     >
       <Availability data={data} />
-      <DetailFacts
-        data={data}
-        fields={
-          cfd
-            ? [
-                [
-                  "已平仓名义本金",
-                  "Closed notional",
-                  "total_closed_notional",
-                  "money",
-                ],
-                [
-                  "平均名义本金",
-                  "Average notional",
-                  "average_closed_notional",
-                  "money",
-                ],
-                [
-                  "收益 / 名义本金",
-                  "Return / notional",
-                  "net_realised_to_notional_ratio",
-                  "percent",
-                ],
-                [
-                  "融资费用 / 名义本金",
-                  "Financing / notional",
-                  "financing_cost_to_notional_ratio",
-                  "percent",
-                ],
-                [
-                  "缺失本金的交易",
-                  "Trades missing notional",
-                  "missing_notional_trade_count",
-                  "number",
-                ],
-                [
-                  "最佳交易贡献",
-                  "Best trade concentration",
-                  "best_trade_concentration",
-                  "percent",
-                ],
-                [
-                  "前三笔贡献",
-                  "Top three concentration",
-                  "top_three_trade_concentration",
-                  "percent",
-                ],
-                [
-                  "去除最佳交易后",
-                  "Without best trade",
-                  "net_without_best_trade",
-                  "money",
-                ],
-              ]
-            : [
-                [
-                  "交易总金额",
-                  "Gross traded notional",
-                  "gross_traded_notional_gbp",
-                  "money",
-                ],
-                ["买单数", "Buy orders", "buy_orders", "count"],
-                ["卖单数", "Sell orders", "sell_orders", "count"],
-                [
-                  "交易时平均持仓数",
-                  "Average active positions",
-                  "average_active_positions_at_trade_events",
-                  "average",
-                ],
-                [
-                  "交易时最多持仓数",
-                  "Peak active positions",
-                  "peak_active_positions_at_trade_events",
-                  "count",
-                ],
-                [
-                  "回撤期间买入",
-                  "Purchases during drawdowns",
-                  "drawdown_buy_notional_gbp",
-                  "money",
-                ],
-              ]
-        }
+      <Facts
+        rows={[
+          ...detailRows(data, cfd ? CFD_BEHAVIOR_FIELDS : BEHAVIOR_FIELDS, t),
+          ...observations,
+        ]}
       />
-      {objects(data.observations).map((row, i) => {
-        const evidence = object(row.evidence);
-        const duration = row.diagnostic === "winner_vs_loser_holding_days";
-        const diagnostic = behaviorObservation(str(row.diagnostic), row.value, t);
-        // The purchase total already appears above; do not repeat the same fact.
-        if (row.diagnostic === "buy_notional_during_money_drawdown_gbp" && row.value === field(data, "drawdown_buy_notional_gbp")) return null;
-        return (
-          <div className="mx-disclosure" key={i}>
-            <strong>
-              {diagnostic.label}
-            </strong>
-            <p>{diagnostic.value}</p>
-            {!diagnostic.known && <details><summary>{t("诊断详情", "Diagnostic details")}</summary>{str(row.diagnostic)}</details>}
-            {duration ? (
-              <DetailFacts
-                data={evidence}
-                fields={[
-                  [
-                    "赢家中位天数",
-                    "Winner median days",
-                    "winner_median_days",
-                    "days",
-                  ],
-                  [
-                    "输家中位天数",
-                    "Loser median days",
-                    "loser_median_days",
-                    "days",
-                  ],
-                ]}
-              />
-            ) : (
-              <p>
-                {str(evidence.ticker)}{" "}
-                {field(evidence, "result_gbp") != null
-                  ? currency(field(evidence, "result_gbp"), "GBP", 2)
-                  : ""}
-              </p>
-            )}
-          </div>
-        );
-      })}
     </Panel>
   );
 }

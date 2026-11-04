@@ -21,6 +21,7 @@ import {
   shortRunId,
 } from "@/lib/health";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
+import { formatDateTime } from "@/ui/formatters";
 import { api, ApiError, jsonRequest, number } from "@/workspace/data";
 import {
   Empty,
@@ -42,7 +43,7 @@ import { JobOutcomeSummary } from "./job-outcomes";
 
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["workspace-health"],
@@ -93,6 +94,15 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const queued = data?.health?.queue.queued ?? 0;
   const running = data?.health?.queue.running ?? 0;
   const worker = data?.health?.worker ?? data?.readiness?.worker;
+  // The heading already says a healthy service is running; only a problem gets a row.
+  const apiReachable = data?.health?.status === "ok" || tone === "setup";
+  const bootstrapIssue = Boolean(
+    tone !== "setup" && data?.health?.bootstrapError &&
+      !(localWorkspace && !latestRunId && data.health.bootstrapError === "FileNotFoundError: no typed snapshot has been published"),
+  );
+  // Service details earn a panel only when something is wrong; otherwise the schedule takes their place.
+  const serviceIssue = Boolean(data) && (!apiReachable || !worker?.healthy || bootstrapIssue || Boolean(data?.errors.length));
+  const lastSuccess = data?.health?.queue.last_success_at;
   const scopes = [
     { value: "all", label: t("账户、流水与研究", "Accounts, history & research") },
     { value: "accounts", label: t("账户与流水", "Accounts & history") },
@@ -133,6 +143,75 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             "查看下面的服务状态和任务详情，定位未完成的步骤。",
             "Check the service status and task details below to find the unfinished step.",
           );
+  const schedule = data && (
+    <Panel title={t("下一次自动更新", "Next scheduled updates")}>
+      <Facts
+        rows={(
+          [
+            [t("账户、流水与研究", "Accounts, history & research"), data.refresh?.nightly],
+            [t("日内采样", "Intraday sampling"), data.refresh?.intraday],
+            [t("账户状态", "Account state"), data.refresh?.live],
+            [t("绩效计算", "Performance"), data.refresh?.performance],
+            [t("证券研究", "Research"), data.refresh?.research],
+          ] as const
+        ).map(([label, schedule]) => [
+          label,
+          !schedule ? (
+            "—"
+          ) : !schedule.enabled ? (
+            <span key={label} className="mx-muted">{t("已关闭", "Disabled")}</span>
+          ) : schedule.nextRunAt ? (
+            formatDateTime(schedule.nextRunAt, locale, timeZone)
+          ) : (
+            "—"
+          ),
+        ])}
+      />
+      <details className="mx-chart-data">
+        <summary>{t("运行诊断详情", "Runtime diagnostics")}</summary>
+        <Facts
+          rows={[
+            [t("工作进程主机", "Worker host"), worker?.host ?? "—"],
+            [t("进程 ID", "Process ID"), number(worker?.pid, 0)],
+            [
+              t("工作进程版本", "Worker version"),
+              worker?.worker_version ?? "—",
+            ],
+            [
+              t("最近心跳", "Last heartbeat"),
+              <Freshness
+                key="heartbeat"
+                date={worker?.last_seen_at}
+                label=""
+              />,
+            ],
+            [
+              t("写入身份验证", "Write authentication"),
+              data.health == null
+                ? "—"
+                : data.health.writeAuthEnabled
+                  ? t("已启用", "Enabled")
+                  : t("未启用", "Disabled"),
+            ],
+            [
+              t("现金流水覆盖", "Cash-flow coverage"),
+              flowVerificationText(data.refresh?.live ?? data.refresh?.intraday, locale),
+            ],
+            [
+              t("覆盖检查快照", "Coverage snapshot"),
+              shortRunId((data.refresh?.live ?? data.refresh?.intraday)?.flowSnapshotRunId),
+            ],
+          ]}
+        />
+        <p>
+          {t(
+            "统计当前快照中保留的估值点，不是历史更新任务数；流水覆盖不等于时间加权收益已验证。",
+            "Counts retained valuations in the current snapshot, not past update jobs. Cash-flow coverage does not certify time-weighted returns.",
+          )}
+        </p>
+      </details>
+    </Panel>
+  );
   return (
     <Page
       title={desktop ? t("同步与活动", "Sync & activity") : t("数据状态", "Data status")}
@@ -176,10 +255,11 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             <div>
               <h2>{title}</h2>
               {subtitle && <p>{subtitle}</p>}
-              <Freshness
-                date={data.checkedAt}
-                label={t("检查时间", "Checked")}
-              />
+              {serviceIssue || !lastSuccess ? (
+                <Freshness date={data.checkedAt} label={t("检查时间", "Checked")} />
+              ) : (
+                <Freshness date={lastSuccess} label={t("最近成功更新", "Last successful update")} />
+              )}
             </div>
             {/* Ready and fresh is the normal state: the heading says it, no tag repeats it. */}
             {!(tone === "ready" && staleHours == null) && (
@@ -260,124 +340,46 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 </>}
               </Stack>
             </Panel>
-            <Panel title={t("服务与快照", "Service & snapshot")}>
-              <Facts
-                rows={[
-                  [
-                    t("账户数据服务", "Account data service"),
-                    data.health?.status === "ok" || tone === "setup" ? (
-                      <span key="api" className="mx-muted">
-                        {t("可访问", "Reachable")}
-                      </span>
-                    ) : (
-                      <Tag key="api" tone="warn">
-                        {t("无法访问", "Unreachable")}
-                      </Tag>
-                    ),
-                  ],
-                  [
-                    t("任务执行服务", "Task worker"),
-                    worker?.healthy ? (
-                      <span key="worker" className="mx-muted">
-                        {t("在线", "Online")}
-                      </span>
-                    ) : (
-                      <Tag key="worker" tone="warn">
-                        {t("未就绪", "Not ready")}
-                      </Tag>
-                    ),
-                  ],
-                  [
-                    t("最近成功更新", "Last successful update"),
-                    <Freshness
-                      key="last"
-                      date={data.health?.queue.last_success_at}
-                      label=""
-                    />,
-                  ],
-                ]}
-              />
-              {tone !== "setup" && data.health?.bootstrapError && !(localWorkspace && !latestRunId && data.health.bootstrapError === "FileNotFoundError: no typed snapshot has been published") && (
-                <Notice tone="bad"><details><summary>{t("资料加载需要检查；查看诊断详情", "Data loading needs attention; view diagnostics")}</summary>{data.health.bootstrapError}</details></Notice>
-              )}
-              {data.errors.length > 0 && (
-                <Notice tone="warn">
-                  {t("部分状态未能读取：", "Some status checks failed: ")}
-                  {data.errors
-                    .map(
-                      (e) =>
-                        e.scope + (e.status ? " (HTTP " + e.status + ")" : ""),
-                    )
-                    .join(" · ")}
-                </Notice>
-              )}
-            </Panel>
-          </div>
-          <Panel title={t("下一次自动更新", "Next scheduled updates")}>
-            <Facts
-              rows={(
-                [
-                  [t("账户、流水与研究", "Accounts, history & research"), data.refresh?.nightly],
-                  [t("日内采样", "Intraday sampling"), data.refresh?.intraday],
-                  [t("账户状态", "Account state"), data.refresh?.live],
-                  [t("绩效计算", "Performance"), data.refresh?.performance],
-                  [t("证券研究", "Research"), data.refresh?.research],
-                ] as const
-              ).map(([label, schedule]) => [
-                label,
-                !schedule ? (
-                  "—"
-                ) : !schedule.enabled ? (
-                  <span key={label} className="mx-muted">{t("已关闭", "Disabled")}</span>
-                ) : (
-                  <Freshness key={label} date={schedule.nextRunAt} label="" />
-                ),
-              ])}
-            />
-            <details className="mx-chart-data">
-              <summary>{t("运行诊断详情", "Runtime diagnostics")}</summary>
-              <Facts
-                rows={[
-                  [t("工作进程主机", "Worker host"), worker?.host ?? "—"],
-                  [t("进程 ID", "Process ID"), number(worker?.pid, 0)],
-                  [
-                    t("工作进程版本", "Worker version"),
-                    worker?.worker_version ?? "—",
-                  ],
-                  [
-                    t("最近心跳", "Last heartbeat"),
-                    <Freshness
-                      key="heartbeat"
-                      date={worker?.last_seen_at}
-                      label=""
-                    />,
-                  ],
-                  [
-                    t("写入身份验证", "Write authentication"),
-                    data.health == null
-                      ? "—"
-                      : data.health.writeAuthEnabled
-                        ? t("已启用", "Enabled")
-                        : t("未启用", "Disabled"),
-                  ],
-                  [
-                    t("现金流水覆盖", "Cash-flow coverage"),
-                    flowVerificationText(data.refresh?.live ?? data.refresh?.intraday, locale),
-                  ],
-                  [
-                    t("覆盖检查快照", "Coverage snapshot"),
-                    shortRunId((data.refresh?.live ?? data.refresh?.intraday)?.flowSnapshotRunId),
-                  ],
-                ]}
-              />
-              <p>
-                {t(
-                  "统计当前快照中保留的估值点，不是历史更新任务数；流水覆盖不等于时间加权收益已验证。",
-                  "Counts retained valuations in the current snapshot, not past update jobs. Cash-flow coverage does not certify time-weighted returns.",
+            {serviceIssue ? (
+              <Panel title={t("服务与快照", "Service & snapshot")}>
+                <Facts
+                  rows={[
+                    ...(apiReachable
+                      ? []
+                      : [[t("账户数据服务", "Account data service"), <Tag key="api" tone="warn">{t("无法访问", "Unreachable")}</Tag>] as [string, React.ReactNode]]),
+                    ...(worker?.healthy
+                      ? []
+                      : [[t("任务执行服务", "Task worker"), <Tag key="worker" tone="warn">{t("未就绪", "Not ready")}</Tag>] as [string, React.ReactNode]]),
+                    [
+                      t("最近成功更新", "Last successful update"),
+                      <Freshness
+                        key="last"
+                        date={data.health?.queue.last_success_at}
+                        label=""
+                      />,
+                    ],
+                  ]}
+                />
+                {bootstrapIssue && (
+                  <Notice tone="bad"><details><summary>{t("资料加载需要检查；查看诊断详情", "Data loading needs attention; view diagnostics")}</summary>{data.health?.bootstrapError}</details></Notice>
                 )}
-              </p>
-            </details>
-          </Panel>
+                {data.errors.length > 0 && (
+                  <Notice tone="warn">
+                    {t("部分状态未能读取：", "Some status checks failed: ")}
+                    {data.errors
+                      .map(
+                        (e) =>
+                          e.scope + (e.status ? " (HTTP " + e.status + ")" : ""),
+                      )
+                      .join(" · ")}
+                  </Notice>
+                )}
+              </Panel>
+            ) : (
+              schedule
+            )}
+          </div>
+          {serviceIssue && schedule}
           </Controls>
           <Panel
             title={t("更新记录", "Update history")}

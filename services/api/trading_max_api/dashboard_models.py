@@ -1342,6 +1342,12 @@ class TradeDecision(ApiModel):
     #: The benchmark's change over the same window, in GBP.
     market_return_horizon: float | None = None
     market_return_to_date: float | None = None
+    #: Sessions after the decision's own, through the latest whose close is final or
+    #: settled; 0 means nothing to judge yet. Absent on artifacts from before
+    #: decisions-v3.
+    observed_days: int | None = None
+    #: Whether the HORIZON_DAYS window has closed and is scored; absent on older artifacts.
+    horizon_complete: bool | None = None
     #: Present on the decisions the review lists: events from a week before to the horizon.
     events: list[DecisionEvent] | None = None
 
@@ -1401,6 +1407,9 @@ class AccountDecisions(ApiModel):
     round_trips: list[RoundTripReview] = Field(default_factory=list)
     round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
+    #: Review lens only: decisions with no close after them yet, counted before
+    #: the lens keeps the latest few of them and of those with an outcome.
+    observing_count: int | None = None
 
 
 class DashboardLensSnapshot(ApiModel):
@@ -1429,6 +1438,9 @@ class DashboardLensSnapshot(ApiModel):
     selected_account: AccountSummary | None = None
     selected_account_analysis: AccountAnalysisMetrics | None = None
     selected_account_review: AccountReview | None = None
+    #: When the selected account review was built. Its figures are as of this
+    #: moment, which can be hours older than broker_as_of.
+    review_as_of: str | None = None
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None

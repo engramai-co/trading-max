@@ -20,6 +20,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 import { api, jsonRequest, number } from "@/workspace/data";
+import { accountName } from "./profile";
 import {
   Empty,
   Facts,
@@ -194,6 +195,15 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
     onSuccess: () => void query.refetch(),
   });
   const data = query.data;
+  // A retired account's ledger is history: its counts stay with the import records.
+  const retired = data?.accountStatus === "retired";
+  const counts: Array<[string, string]> = data
+    ? [
+        [t("已导入文件", "Imported files"), number(data.importedFiles, 0)],
+        [t("独立事件", "Unique events"), number(data.uniqueEvents, 0)],
+        [t("已去重事件", "Duplicates removed"), number(data.duplicateEvents, 0)],
+      ]
+    : [];
   return (
     <Panel
       title={t("CFD 历史账本", "CFD history ledger")}
@@ -206,13 +216,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
         data && (
           <Stack gap="lg">
             <div className="mx-toolbar">
-              <Tag tone={data.isStale ? "warn" : "neutral"}>
-                {data.accountStatus === "retired"
-                  ? t("已停用账户", "Retired account")
-                  : data.isStale
-                    ? t("记录需要更新", "History needs updating")
-                    : t("活动账户", "Active account")}
-              </Tag>
+              {data.isStale && !retired && <Tag tone="warn">{t("记录需要更新", "History needs updating")}</Tag>}
               <Select
                 aria-label={t("CFD 账户状态", "CFD account status")}
                 value={data.accountStatus}
@@ -224,20 +228,13 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                 onChange={(v) => v && preference.mutate(v)}
               />
             </div>
-            <div className="mx-metric-grid mx-metric-grid-three">
-              <Metric
-                label={t("已导入文件", "Imported files")}
-                value={number(data.importedFiles, 0)}
-              />
-              <Metric
-                label={t("独立事件", "Unique events")}
-                value={number(data.uniqueEvents, 0)}
-              />
-              <Metric
-                label={t("已去重事件", "Duplicates removed")}
-                value={number(data.duplicateEvents, 0)}
-              />
-            </div>
+            {!retired && (
+              <div className="mx-metric-grid mx-metric-grid-three">
+                {counts.map(([label, value]) => (
+                  <Metric key={label} label={label} value={value} />
+                ))}
+              </div>
+            )}
             {(data.isStale || data.warnings.length > 0) && (
               <Notice tone="warn">
                 {data.isStale
@@ -257,12 +254,6 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
               <UploadSimple size={26} />
               <div>
                 <h3>{t("导入活动记录", "Import account activity")}</h3>
-                <p>
-                  {t(
-                    "支持 Trading 212 活动 CSV，重复记录自动跳过。",
-                    "Trading 212 activity CSV; duplicate records are skipped.",
-                  )}
-                </p>
               </div>
               <FileInput
                 label={t("CFD 活动 CSV 文件", "CFD activity CSV file")}
@@ -324,6 +315,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
               </summary>
               <Facts
                 rows={[
+                  ...(retired ? counts : []),
                   [
                     t("历史覆盖", "History coverage"),
                     (data.coverageStartDate?.slice(0, 10) ?? "—") +
@@ -495,11 +487,8 @@ export function PersonalPreferences({
               {t("账户显示名称", "Account display names")}
             </h3>
             <div className="mx-form-grid">
-              {[
-                { code: "A", label: "Invest" },
-                { code: "B", label: "ISA" },
-                { code: "C", label: "CFD" },
-              ].map((account) => (
+              {/* The default names are the ones every page shows when no name is set. */}
+              {(["A", "B", "C"] as const).map((code) => ({ code, label: accountName(undefined, code) })).map((account) => (
                 <TextInput
                   key={account.code}
                   label={account.label}

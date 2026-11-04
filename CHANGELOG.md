@@ -4,6 +4,56 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.24.0] - 2026-11-04
+
+### Changed
+
+- Decision review speaks plainly: buys read 赚/亏 and sales 少赚/少亏 against
+  holding, with "N / M 次卖对了". The summary shows the round-trip result in place
+  of the hindsight figure, which moves to its own panel above the round trips, so
+  the page ends on decisions. Round trips and best closes show their five largest
+  rows and keep the rest behind one disclosure.
+- Decision rows keep the effect, date, amount and later change beside the arrow
+  at every width (narrow columns give the details their own line); the S&P 500
+  move and company events fit one line that collapses into +N. Analyst ratings
+  and SEC filings read in Chinese.
+- Decision review counts only completed closes from each listing's exchange
+  calendar and final daily exchange rates. Each decision states how many closes
+  followed it (`observed_days`, `horizon_complete`, `decisions-v4`). A decision
+  with no completed close after it is observing: the review index counts every
+  one ("观察中 N 笔", `observingCount`) and they are neither scored nor plotted as £0.
+  A price or rate the provider has not published keeps a decision observing for
+  up to three later sessions, then settles on the last value before the gap;
+  weekends and currency-market holidays use the last business day's final rate.
+  Effects may be restated if the data provider corrects its history; the help
+  and the data guide say so.
+- The S&P 500 comparison runs between the security's own closes on the New York
+  calendar and waits until the index has a completed close for the same day.
+- The account review states once when its figures were built, with the time
+  (`reviewAsOf`). The AI review shows when it was written only when that is
+  older than the figures, cannot be generated or replaced while a stored review
+  is still loading, asks before replacing one, and writes Chinese dates as
+  2025年8月21日.
+- Data status names each failure cause with "之后已成功 N 次 · <time>"
+  (`succeeded_after` and `last_success_at` on failure causes, ordered by completion)
+  and keeps the raw message in a 技术详情 disclosure. A healthy service leads with
+  the last successful update and shows the schedule beside the update form.
+- Fewer secondary labels across review, data status and settings: 全部账户,
+  本次结论, table record counts, 无需 API 密钥, the CSV helper sentence, the
+  retired-account tag, the plug icons and the 查看数据状态 button are removed. A
+  retired CFD account leaves the review index, connection tags are neutral and
+  the ISA has one name. The CFD review's caveat and the estimate tags are inline
+  tags that open their explanation from the keyboard and touch.
+- Decision prices are cached by completed sessions (cache format 3), take the
+  exchange from the history response itself, and fetch a late final bar again
+  within six hours. review.tsx is split into smaller modules.
+
+### Fixed
+
+- The account review's evidence area is a labelled section, the decision
+  scatter legend shows the gain and loss colours, and behaviour analysis lists
+  observations as aligned rows.
+
 ## [1.23.0] - 2026-11-04
 
 ### Added

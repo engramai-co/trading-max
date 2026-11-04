@@ -480,13 +480,26 @@ html[data-scrolled] .mx-topbar-title strong {
   border-bottom: 1px solid var(--mx-border);
   font-variant-numeric: tabular-nums;
 }
-.mx-job-outcomes li small {
+/* The raw backend message stays one click away, under the human cause. */
+.mx-job-outcomes li > details {
   flex-basis: 100%;
-  color: var(--mx-muted);
   font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.mx-job-outcomes li > details > summary {
+  color: var(--mx-muted);
+  font-weight: 400;
+}
+.mx-job-outcomes li > details > code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--mx-soft);
+  color: var(--mx-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .mx-decision-coverage {
   margin: 12px 0 0;
@@ -601,8 +614,18 @@ html[data-scrolled] .mx-topbar-title strong {
   color: var(--mx-warning);
   background: color-mix(in srgb, var(--mx-warning) 10%, var(--mx-surface));
 }
-.mx-estimate-tag {
+/* A caveat tag that opens its explanation; hover and open outline it in its own tone. */
+.mx-tag-help {
   display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+.mx-tag-help:hover .mx-tag,
+.mx-tag-help[aria-expanded="true"] .mx-tag {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 40%, transparent);
 }
 .mx-metric-label .mx-tag {
   padding-block: 1px;

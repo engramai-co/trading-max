@@ -20,7 +20,8 @@
   font-size: 20px;
   font-weight: 550;
   letter-spacing: -0.4px;
-  margin-top: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .mx-connection-card > p {
   font-size: 12px;
@@ -31,14 +32,9 @@
   align-self: flex-start;
   margin-top: 10px;
 }
-.mx-connection-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  color: var(--mx-brand);
-  background: var(--mx-brand-soft);
+/* Help text that runs long keeps a readable measure in Chinese and English. */
+.mx-measure {
+  max-width: 40em;
 }
 .mx-setting-row {
   display: flex;

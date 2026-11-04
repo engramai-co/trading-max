@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { causeArea, causeKind, outcomeSummary } from "./job-outcomes";
+import { causeArea, causeKind, outcomeSummary, recovery } from "./job-outcomes";
 
 const t = (_zh: string, en: string) => en;
 
@@ -26,6 +26,24 @@ describe("job outcomes", () => {
     expect(causeKind("rate_limit", t)).toBe("Rate limited");
     expect(causeKind("reconciliation", t)).toBe("Positions differ from summary");
     expect(causeKind(null, t)).toBeNull();
+  });
+
+  it("says how many updates succeeded after a failure, and when the latest did", () => {
+    const now = new Date("2026-11-04T16:00:00Z");
+    const cause = {
+      errorCode: "account.snapshot_invalid",
+      scope: "performance" as const,
+      kind: "reconciliation" as const,
+      count: 6,
+      lastAt: "2026-11-02T14:30:12Z",
+      succeededAfter: 1234,
+      lastSuccessAt: "2026-11-04T15:30:09Z",
+    };
+    expect(recovery(cause, "zh", "Europe/London", now)).toBe("之后已成功 1,234 次 · 今天 15:30");
+    expect(recovery(cause, "en", "Europe/London", now)).toBe("1,234 successful since · Today 15:30");
+    // Still failing, or a service that does not report recoveries: nothing to say.
+    expect(recovery({ ...cause, succeededAfter: 0, lastSuccessAt: null }, "zh", "Europe/London", now)).toBeNull();
+    expect(recovery({ ...cause, succeededAfter: undefined as unknown as number }, "zh", "Europe/London", now)).toBeNull();
   });
 });
 

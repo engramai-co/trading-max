@@ -3,10 +3,12 @@
   .mx-text-link {
     min-height: 44px;
   }
-  .mx-info {
+  .mx-info,
+  .mx-tag-help {
     position: relative;
   }
-  .mx-info::after {
+  .mx-info::after,
+  .mx-tag-help::after {
     content: "";
     position: absolute;
     inset: -6px;

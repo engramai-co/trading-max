@@ -249,6 +249,10 @@ class JobFailureCause(ApiModel):
     count: int
     last_at: datetime | None = None
     last_message: str | None = None
+    # Successful updates of the same scope after this cause last failed, and the
+    # latest of them; zero and null while the failure is still the latest outcome.
+    succeeded_after: int = 0
+    last_success_at: datetime | None = None
 
 
 class JobOutcomes(ApiModel):

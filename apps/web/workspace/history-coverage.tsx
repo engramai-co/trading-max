@@ -4,7 +4,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { NavPoint } from "@/lib/types";
 import type { Locale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
-import { Freshness, Tag, useCopy } from "./foundation";
+import { Freshness, Help, Tag, useCopy } from "./foundation";
 import type { PortfolioHistory } from "@/lib/portfolio/history";
 
 /** Estimates change the conclusion when they set an endpoint or dominate the period. */
@@ -40,7 +40,8 @@ export function PeriodSpan({ points }: { points: Array<Pick<NavPoint, "date">> }
 
 /**
  * Estimates are marked beside the period figure, with the chart's dashed stroke.
- * Minor estimates stay neutral; endpoints or a large share turn the tag amber.
+ * Minor estimates stay neutral; endpoints or a large share turn the tag amber. The
+ * tag opens its explanation, for keyboard and touch as well as the pointer.
  */
 export function EstimateTag({ points }: { points: Array<Pick<NavPoint, "valuationSource">> }) {
   const t = useCopy();
@@ -58,14 +59,19 @@ export function EstimateTag({ points }: { points: Array<Pick<NavPoint, "valuatio
       ? t("最新价值是重建估算，区间盈亏与回撤包含估算。", "The latest value is a reconstructed estimate; period P&L and drawdown include estimates.")
       : t("部分价值依据交易、持仓与历史行情补算，区间盈亏与回撤包含估算。", "Some values are reconstructed from transactions, holdings and historical prices; period P&L and drawdown include them.");
   return (
-    <span className="mx-estimate-tag" title={detail} data-material={coverage.material ? "" : undefined}>
-      <Tag tone={coverage.material ? "warn" : "neutral"}>
-        <svg width="14" height="4" aria-hidden="true">
-          <line x1="1" y1="2" x2="13" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" />
-        </svg>
-        {label}
-      </Tag>
-    </span>
+    <Help
+      label={label}
+      tag={
+        <Tag tone={coverage.material ? "warn" : "neutral"}>
+          <svg width="14" height="4" aria-hidden="true">
+            <line x1="1" y1="2" x2="13" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" />
+          </svg>
+          {label}
+        </Tag>
+      }
+    >
+      {detail}
+    </Help>
   );
 }
 

@@ -108,7 +108,7 @@ DEFINITIONS: dict[AnalysisLens, AnalysisDefinition] = {
         analysis_id="decision_review",
         title="Decision review: buys, sells and round trips against what followed, "
         "the market and the company events around them",
-        prompt_version="v1",
+        prompt_version="v2",
     ),
 }
 

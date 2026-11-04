@@ -565,6 +565,17 @@
             ],
             "title": "Horizondays"
           },
+          "observingCount": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observingcount"
+          },
           "reason": {
             "anyOf": [
               {
@@ -4489,6 +4500,17 @@
             "title": "Researchasof",
             "type": "string"
           },
+          "reviewAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewasof"
+          },
           "reviewSummaries": {
             "items": {
               "$ref": "#/components/schemas/OverviewReviewSummary"
@@ -6946,6 +6968,18 @@
             ],
             "title": "Lastmessage"
           },
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessat"
+          },
           "scope": {
             "enum": [
               "all",
@@ -6958,6 +6992,11 @@
             ],
             "title": "Scope",
             "type": "string"
+          },
+          "succeededAfter": {
+            "default": 0,
+            "title": "Succeededafter",
+            "type": "integer"
           }
         },
         "required": [
@@ -15493,6 +15532,17 @@
             ],
             "title": "Events"
           },
+          "horizonComplete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horizoncomplete"
+          },
           "kind": {
             "enum": [
               "B",
@@ -15527,6 +15577,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "observedDays": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observeddays"
           },
           "quantity": {
             "anyOf": [
@@ -17098,7 +17159,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.23.0"
+    "version": "1.24.0"
   },
   "openapi": "3.1.0",
   "paths": {

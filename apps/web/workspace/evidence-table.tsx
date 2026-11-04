@@ -29,6 +29,7 @@ export function EvidenceTable<T>({
   pageSize = 20,
   rowHeaderIndex = 0,
   totalRows,
+  showCount = true,
 }: {
   rows: T[];
   columns: EvidenceColumn<T>[];
@@ -36,6 +37,8 @@ export function EvidenceTable<T>({
   pageSize?: number;
   rowHeaderIndex?: number;
   totalRows?: number;
+  /** False when the surrounding layout already states the count, such as a disclosure summary. */
+  showCount?: boolean;
 }) {
   const t = useCopy();
   const paginationLabels = usePaginationLabels();
@@ -54,7 +57,7 @@ export function EvidenceTable<T>({
       >
         <table className="mx-table">
           {/* A single page shows its rows; the count only helps when paging. */}
-          <caption className={"mx-table-caption" + (rows.length > pageSize ? "" : " sr-only")}>
+          <caption className={"mx-table-caption" + (showCount && rows.length > pageSize ? "" : " sr-only")}>
             {label} · {totalRows ?? rows.length} {t("条记录", "records")}
           </caption>
           <thead>
