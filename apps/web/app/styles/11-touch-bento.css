@@ -355,3 +355,17 @@
 .mx-peek .mx-facts > div {
   padding: 8px 0;
 }
+/* Look-through pages: the pager takes the row's free width, so narrow rows switch to « ‹ 2 / 44 › ». */
+.mx-exposure-paging > nav {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mx-exposure-paging-top {
+  margin: 0 0 4px;
+  scroll-margin-top: calc(80px + env(safe-area-inset-top));
+}
+@media (pointer: coarse) {
+  .mx-exposure-paging .mantine-Pagination-root {
+    --pagination-control-size: 44px;
+  }
+}
