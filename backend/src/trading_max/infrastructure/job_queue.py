@@ -326,12 +326,15 @@ class SqliteJobQueue:
             return row["job_id"] if row is not None else None
 
     def outcomes(self, since: datetime) -> dict[str, Any]:
-        """Summarize finished visible jobs since a moment, grouped by failure cause.
+        """Summarize visible jobs that finished since a moment, grouped by failure cause.
 
         Cancellations requested by the operator are counted separately; they are
         not failures of the service. Messages are the latest of each cause only.
         Each cause also counts the successful updates of its scope after it last
         failed, so a reader can tell a recovered failure from an ongoing one.
+        Jobs are read in the order they finished, not the order they were
+        created: overlapping jobs can finish out of order, and both the window
+        and the recovery count follow the reported times.
         """
 
         start = _iso(since)
@@ -344,7 +347,8 @@ class SqliteJobQueue:
                 "COALESCE(finished_at, started_at, created_at) AS observed_at "
                 "FROM jobs WHERE trigger != 'system' "
                 "AND status IN ('succeeded', 'failed', 'interrupted') "
-                "AND created_at >= ? ORDER BY created_at",
+                "AND COALESCE(finished_at, started_at, created_at) >= ? "
+                "ORDER BY observed_at, created_at, job_id",
                 (start,),
             ).fetchall()
         for row in rows:

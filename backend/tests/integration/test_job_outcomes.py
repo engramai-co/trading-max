@@ -141,3 +141,75 @@ def test_outcomes_count_the_successes_after_each_cause_last_failed(tmp_path: Pat
         }
     finally:
         queue.database.close()
+
+
+def test_outcomes_follow_the_order_jobs_finished_in(tmp_path: Path) -> None:
+    queue = make_queue(tmp_path)
+    now = datetime(2026, 11, 3, 12, tzinfo=UTC)
+    since = now - timedelta(days=7)
+
+    def ago(minutes: int) -> datetime:
+        return now - timedelta(minutes=minutes)
+
+    limited = "isa: Trading 212 returned HTTP 429: too many requests"
+    mismatch = "invest: broker snapshot reconciliation failed: {...}"
+    # (job, scope, status, created, finished, error code, message)
+    rows = [
+        # A slow failure finishes after a quick success that was created later:
+        # the success came first, so it is not a recovery.
+        ("slow-fail", "live", "failed", ago(60), ago(30), "broker.sync_failed", limited),
+        ("quick-ok", "live", "succeeded", ago(50), ago(45), None, None),
+        # A success created before a failure but finishing after it is a recovery.
+        ("perf-ok", "performance", "succeeded", ago(45), ago(20), None, None),
+        (
+            "perf-fail",
+            "performance",
+            "failed",
+            ago(40),
+            ago(35),
+            "account.snapshot_invalid",
+            mismatch,
+        ),
+        # Created before the window, finished inside it: it counts.
+        (
+            "edge-ok",
+            "research",
+            "succeeded",
+            since - timedelta(hours=1),
+            since + timedelta(hours=1),
+            None,
+            None,
+        ),
+    ]
+    with queue.database.transaction() as connection:
+        connection.executemany(
+            "INSERT INTO jobs(job_id, scope, trigger, status, created_at, finished_at, "
+            "error_code, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    job,
+                    scope,
+                    scope,
+                    status,
+                    created.isoformat(timespec="microseconds"),
+                    finished.isoformat(timespec="microseconds"),
+                    code,
+                    message,
+                )
+                for job, scope, status, created, finished, code, message in rows
+            ],
+        )
+    try:
+        summary = queue.outcomes(since)
+        causes = {
+            c["scope"]: (c["count"], c["last_at"], c["succeeded_after"], c["last_success_at"])
+            for c in summary["causes"]
+        }
+        assert causes == {
+            "live": (1, ago(30), 0, None),
+            "performance": (1, ago(35), 1, ago(20)),
+        }
+        assert summary["totals"]["succeeded"] == 3
+        assert summary["scopes"]["research"]["succeeded"] == 1
+    finally:
+        queue.database.close()
