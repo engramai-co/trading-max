@@ -276,7 +276,7 @@ export function FilingMultiples({
                       : point?.dataIndex;
                   const r = index == null ? undefined : rows[index];
                   return r
-                    ? `${str(r.priceDate)}\n${ratio}  ${number(r[mode], 2)}×\n${mode === "ps" ? `TTM ${compact(r.revenue)}` : `EPS ${number(r.eps, 2)}`} ${code}`
+                    ? `${str(r.priceDate)}\n${ratio}  ${number(r[mode], 2)}×\n${mode === "ps" ? `${t("营收", "Revenue")} ${compact(r.revenue)}` : `EPS ${number(r.eps, 2)}`} ${code}`
                     : "";
                 },
               },
@@ -300,7 +300,8 @@ export function FilingMultiples({
               },
               {
                 label:
-                  (mode === "ps" ? t("TTM 营收", "TTM revenue") : "EPS") +
+                  // The P/S · TTM choice and the TTM column beside it state the basis.
+                  (mode === "ps" ? t("营收", "Revenue") : "EPS") +
                   " · " +
                   code,
                 value: (r) =>

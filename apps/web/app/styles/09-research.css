@@ -560,6 +560,21 @@
   display: grid;
   gap: 18px;
 }
+/* The segment names the list: actions head it, and an empty list is one quiet line beside them. */
+.mx-notes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mx-notes-bar > p {
+  margin-right: auto;
+  color: var(--mx-muted);
+}
+.mx-notes-bar + .mx-note-list {
+  margin-top: 20px;
+}
 .mx-note-list {
   display: grid;
 }

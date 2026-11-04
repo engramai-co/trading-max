@@ -300,11 +300,11 @@ function ModelEditor({
         >
           <div className="mx-metric-grid">
             <Metric
-              label={t("TTM 营收", "TTM revenue")}
+              label={t("营收", "Revenue")}
               value={compact(result.basis.revenue)}
             />
             <Metric
-              label={t("TTM 现金流率", "TTM cash-flow margin")}
+              label={t("现金流率", "Cash-flow margin")}
               value={percent(result.basis.startMargin, false, 2)}
             />
           </div>

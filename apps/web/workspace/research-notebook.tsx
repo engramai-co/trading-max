@@ -104,10 +104,18 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
       ) : section === "models" ? (
         <ModelVersions journal={query.data} />
       ) : (
-        <Panel
-          title={t("研究笔记", "Research notes")}
-          action={
-            <Group>
+        <Panel>
+          {/* The 研究笔记 segment names this list; the heading stays for assistive technology. */}
+          <h2 className="sr-only">{t("研究笔记", "Research notes")}</h2>
+          <div className="mx-notes-bar">
+            {!notes.length && (
+              <p>
+                {archived
+                  ? t("没有归档笔记", "No archived notes")
+                  : t("暂无笔记", "No notes yet")}
+              </p>
+            )}
+            <Group gap="xs">
               <Button variant="subtle" onClick={() => setArchived((v) => !v)}>
                 {archived
                   ? t("返回笔记", "Active notes")
@@ -115,20 +123,8 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
               </Button>
               <Button onClick={() => edit()}>{t("写笔记", "New note")}</Button>
             </Group>
-          }
-        >
-          {!notes.length ? (
-            <Empty
-              title={
-                archived
-                  ? t("没有归档笔记", "No archived notes")
-                  : t(
-                      "记录你的判断与验证条件",
-                      "Record your thesis and what would change it",
-                    )
-              }
-            />
-          ) : (
+          </div>
+          {notes.length > 0 && (
             <div className="mx-note-list">
               {notes.map((note) => {
                 const revision = note.revisions.at(-1)!;
