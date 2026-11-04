@@ -20,6 +20,8 @@ from typing import Any
 
 import pandas as pd
 
+from trading_max.analytics.decision_prices import SecurityPrices
+
 EventLoader = Callable[[str], list[dict[str, Any]]]
 
 #: Events this many calendar days before a decision still explain it.
@@ -194,23 +196,28 @@ def shown_decisions(decisions: Sequence[Mapping[str, Any]]) -> list[int]:
     return sorted(chosen)
 
 
-def _window_end(row: Mapping[str, Any], closes: pd.Series, horizon_days: int) -> date:
+def _window_end(row: Mapping[str, Any], prices: SecurityPrices, horizon_days: int) -> date:
+    """The decision's horizon close, counted like its score, or the latest close."""
+
     start = pd.Timestamp(row["date"])
+    closes = prices.closes
     position = int(closes.index.searchsorted(start, side="right")) - 1
-    end = position + horizon_days
-    stamp = closes.index[min(end, len(closes) - 1)] if len(closes) else start
+    if position < 0:
+        return start.date()
+    following = prices.closes_after(closes.index[position])
+    stamp = following[horizon_days - 1] if len(following) >= horizon_days else closes.index[-1]
     return pd.Timestamp(stamp).date()
 
 
 def attach_decision_events(
     review: dict[str, Any],
-    closes_by_ticker: Mapping[str, tuple[str, pd.Series]],
+    prices_by_ticker: Mapping[str, SecurityPrices],
     events: EventLoader,
 ) -> int:
     """Add an events list to each shown decision; return how many listings were read.
 
-    closes_by_ticker maps a ticker to its resolved listing and GBP closes, which
-    give the end of each decision's window (its horizon, or the latest close).
+    prices_by_ticker maps a ticker to its resolved listing and closes, which give
+    the end of each decision's window (its horizon, or the latest close).
     """
 
     decisions = review.get("decisions") or []
@@ -218,14 +225,14 @@ def attach_decision_events(
     loaded: dict[str, list[dict[str, Any]]] = {}
     for index in shown_decisions(decisions):
         row = decisions[index]
-        listing = closes_by_ticker.get(row["ticker"])
-        if listing is None:
+        prices = prices_by_ticker.get(row["ticker"])
+        if prices is None:
             continue
-        symbol, closes = listing
+        symbol = prices.symbol
         if symbol not in loaded:
             loaded[symbol] = events(symbol)
         start = date.fromisoformat(row["date"]) - timedelta(days=LEAD_DAYS)
-        end = _window_end(row, closes, horizon_days)
+        end = _window_end(row, prices, horizon_days)
         inside = [
             event
             for event in loaded[symbol]

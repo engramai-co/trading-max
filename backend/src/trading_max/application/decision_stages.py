@@ -119,7 +119,7 @@ class AccountDecisionStage:
         )
         attach_decision_events(
             review,
-            {security.ticker: (security.symbol, security.closes) for security in prices.values()},
+            {security.ticker: security for security in prices.values()},
             self.events_loader,
         )
         return {"status": "available", **review}
