@@ -264,19 +264,29 @@ function AccountJournal({
   const unavailable = Object.keys(review).length === 0;
   return (
     <>
-      {cfd && (
-        <Notice tone="warn">
-          {t(
-            "这是 CFD 导入历史的复盘。已实现现金权益代理不包含当前未平仓市值，也不等于券商净值。",
-            "This review uses imported CFD history. The realized cash equity proxy excludes current open positions and is not broker NAV.",
-          )}
-        </Notice>
-      )}
       <Bento className="mx-review-bento">
       <Panel bare className="mx-bento-wide">
         <div className="mx-metric-grid mx-metric-lead">
           <Metric
-            label={t("期末价值", "Ending value")}
+            label={
+              cfd ? (
+                // The caveat sits beside the figure it qualifies, not in a banner above the page.
+                <>
+                  {t("期末价值", "Ending value")}
+                  <span
+                    className="mx-estimate-tag"
+                    title={t(
+                      "导入的 CFD 历史只能还原已实现的现金权益：不含当前未平仓市值，也不等于券商净值。",
+                      "Imported CFD history only rebuilds realized cash equity: it excludes open positions and is not broker NAV.",
+                    )}
+                  >
+                    <Tag>{t("已实现现金权益", "Realized cash equity")}</Tag>
+                  </span>
+                </>
+              ) : (
+                t("期末价值", "Ending value")
+              )
+            }
             value={currency(
               money.ending_value_gbp ??
                 money.endingRealisedCashEquityProxyGbp ??
