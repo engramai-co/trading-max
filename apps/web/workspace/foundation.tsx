@@ -136,6 +136,10 @@ export function Help({
       middlewares={{ flip: true, shift: { padding: 16 } }}
       trapFocus
       returnFocus
+      // Mantine 9.5 sets display: none while floating-ui reports the trigger as
+      // detached, as on a first positioning pass or once the trigger scrolls away.
+      // Focus then cannot enter (or drops to the page) and Escape stops closing it.
+      hideDetached={false}
       transitionProps={{ duration: 0 }}
       shadow="md"
     >
