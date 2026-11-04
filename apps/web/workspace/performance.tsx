@@ -308,20 +308,6 @@ export function PerformanceContent({
       ) : (
         <>
           <Panel
-            title={
-              view === "money"
-                ? t("账户价值与盈亏", "Account value & P&L")
-                : t("收益对比", "Return comparison")
-            }
-            help={(
-              <p>{view === "money" ? t(
-                "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。橙色虚线为累计净入金；蓝、红曲线的虚线段表示缺少记录，仅连接前后实测值。最新现金流待核对时，三图与指标统一截至最后可核对时刻。“相对期初 %”不等于投资收益率。",
-                "Every range uses ending value minus opening value minus net contributions. Orange dashes show cumulative contributions; blue/red dashed spans connect observations across missing records. While new cash flows await reconciliation, all three charts and metrics share the last verified cutoff. From opening % is not an investment return.",
-              ) : t(
-                "TWR 剔除出入金影响，与基准从共同起点比较。回撤从所选区间内的收益高点计算。",
-                "TWR removes cash-flow effects and shares a starting date with benchmarks. Drawdown is measured from the return high within the selected period.",
-              )}</p>
-            )}
             action={
               <div className="mx-period-control">
                 <PeriodSpan points={points} />
@@ -329,6 +315,7 @@ export function PerformanceContent({
                   value={actualRange}
                   onChange={(value) => update({ range: value })}
                   label={t("绩效区间", "Performance range")}
+                  shortcuts
                   options={PORTFOLIO_RANGES.filter((v) => view === "money" || v !== "1D").map((v) => ({
                     value: v as Range,
                     label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
@@ -352,6 +339,11 @@ export function PerformanceContent({
                   label={<>{t("区间净盈亏", "P&L in period")}<EstimateTag points={points} /></>}
                   value={currency(pnl, "GBP", 2)}
                   tone={tone(pnl)}
+                  helpLabel={t("区间净盈亏", "P&L in period")}
+                  help={t(
+                    "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。橙色虚线为累计净入金；蓝、红曲线的虚线段表示缺少记录，仅连接前后实测值。最新现金流待核对时，三图与指标统一截至最后可核对时刻。“相对期初 %”不等于投资收益率。",
+                    "Every range uses ending value minus opening value minus net contributions. Orange dashes show cumulative contributions; blue/red dashed spans connect observations across missing records. While new cash flows await reconciliation, all three charts and metrics share the last verified cutoff. From opening % is not an investment return.",
+                  )}
                 />
                 <Metric
                   label={t("最大盈亏回撤", "Maximum P&L drawdown")}
@@ -366,6 +358,10 @@ export function PerformanceContent({
                   label={t("组合 TWR", "Portfolio TWR")}
                   value={percent(twr, true, 2)}
                   tone={tone(twr)}
+                  help={t(
+                    "TWR 剔除出入金影响，与基准从共同起点比较。回撤从所选区间内的收益高点计算。",
+                    "TWR removes cash-flow effects and shares a starting date with benchmarks. Drawdown is measured from the return high within the selected period.",
+                  )}
                 />
               </div>
             )}
@@ -447,7 +443,7 @@ export function PerformanceContent({
                 <table className="mx-table">
                   <thead>
                     <tr>
-                      <th />
+                      <th><span className="sr-only">{t("曲线", "Series")}</span></th>
                       <th className="mx-align-right">{t("区间收益", "Period return")}</th>
                       <th className="mx-align-right">{t("最大回撤", "Maximum drawdown")}</th>
                       <th className="mx-align-right">{t("期末回撤", "Ending drawdown")}</th>
@@ -512,6 +508,7 @@ function RiskDashboard({ data, scope }: { data: DashboardLens; scope: Scope }) {
       <Panel
         title={t("历史收益回撤", "Historical return drawdown")}
         help={t("收益相对历史高点的回落幅度，使用全部可用历史。", "Return decline from the previous high across the full available history.")}
+        action={<Freshness date={data.brokerAsOf} />}
       >
         <HistoryChart
           label={t("收益回撤曲线", "Portfolio return drawdown")}
@@ -548,7 +545,6 @@ function RiskDashboard({ data, scope }: { data: DashboardLens; scope: Scope }) {
             />
           ))}
       </div>
-      <Freshness date={data.brokerAsOf} />
     </>
   );
 }

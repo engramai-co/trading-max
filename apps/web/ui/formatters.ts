@@ -217,22 +217,6 @@ export function formatScheduleTimes(
   });
 }
 
-export function formatTimeZoneLabel(timeZone: string, locale: Locale) {
-  if (timeZone === "Europe/London") return locale === "zh" ? "伦敦" : "London";
-  if (timeZone === "Asia/Hong_Kong") return locale === "zh" ? "香港" : "Hong Kong";
-  try {
-    const formatter = new Intl.DateTimeFormat(localeTag(locale), {
-      timeZone,
-      timeZoneName: "longGeneric",
-    });
-    return formatter.formatToParts(new Date())
-      .find((part) => part.type === "timeZoneName")?.value
-      ?? timeZone.replaceAll("_", " ");
-  } catch {
-    return timeZone.replaceAll("_", " ");
-  }
-}
-
 export function formatCurrency(
   value: number | null | undefined,
   locale: Locale,
