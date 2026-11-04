@@ -10,6 +10,9 @@ Only completed daily bars are kept or counted. The provider already returns
 today's bar while the session is open; it becomes a close when the listing's
 exchange calendar says the session has ended, early closes included, or, for an
 exchange without a calendar, once its UTC day is over.
+
+A close in another currency also waits for that day's exchange rate to be final,
+so its value in pounds, and every effect measured on it, cannot change later.
 """
 
 from __future__ import annotations
@@ -301,6 +304,28 @@ def _converted(series: pd.Series, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.S
     return series / rate
 
 
+def _until(series: pd.Series, day: pd.Timestamp) -> pd.Series:
+    return series if series.empty else series[series.index <= day]
+
+
+def final_rates(
+    history_loader: HistoryLoader,
+    symbol: str,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    now: pd.Timestamp,
+) -> pd.Series:
+    """A currency's GBP rates on the days whose daily rate is final by now.
+
+    A close in that currency has a final GBP value only once its day's rate does:
+    until then, converting it at an earlier rate would change after midnight.
+    """
+
+    return _nominal_close(
+        completed_daily_bars(history_loader(symbol, start.date(), end.date()), now=now)
+    )
+
+
 def resolve_decision_prices(
     trades: pd.DataFrame,
     *,
@@ -316,7 +341,8 @@ def resolve_decision_prices(
     ``memo`` maps identities to their last accepted listing; it is tried first and
     updated in place, so routine runs request one listing per security.
     A listing's bars count only once their session has closed by ``now``, read
-    from the exchange the loader names in the frame's attrs.
+    from the exchange the loader names in the frame's attrs, and a close in a
+    currency other than sterling only once that day's exchange rate is final too.
     """
 
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
@@ -330,12 +356,8 @@ def resolve_decision_prices(
     start_day = pd.Timestamp(fills["BusinessDate"].min()) - pd.Timedelta(days=14)
     end_day = pd.Timestamp(end_day).normalize()
     days = pd.bdate_range(start_day, end_day)
-    gbpusd = (
-        _nominal_close(history_loader("GBPUSD=X", start_day.date(), end_day.date()))
-        .reindex(days)
-        .ffill()
-        .bfill()
-    )
+    usd_rates = final_rates(history_loader, "GBPUSD=X", start_day, end_day, now)
+    gbpusd = usd_rates.reindex(days).ffill().bfill()
     if gbpusd.isna().any():
         raise HistoricalNavError("GBPUSD history is unavailable")
     currencies = {"GBP", "USD"} | {
@@ -363,6 +385,15 @@ def resolve_decision_prices(
             gbpusd=gbpusd,
             history_loader=history_loader,
         )
+    # The last day each currency's rate is final; a close after it has no GBP value yet.
+    rates_final_through = {"USD": usd_rates.index.max()}
+    for code in cash_fx.columns:
+        if code in {"GBP", "USD"}:
+            continue
+        with suppress(Exception):
+            rates = final_rates(history_loader, f"GBP{code}=X", start_day, end_day, now)
+            if not rates.empty:
+                rates_final_through[code] = rates.index.max()
     resolved: dict[str, SecurityPrices] = {}
     unpriced: list[str] = []
     for identity, rows in fills.groupby("SecurityIdentity", sort=True):
@@ -419,16 +450,21 @@ def resolve_decision_prices(
         if best is None or best[0] > MAX_LOG_DISTANCE:
             unpriced.append(ticker)
             continue
-        closes = best[2].reindex(best[2].index.union(days)).sort_index().ffill()
+        converted, mode = best[2], best[4]
+        extras = {
+            column: _gbp_column(best[3], column, mode, cash_fx, gbpusd)
+            for column in ("Dividends", "High", "Low")
+        }
+        if mode not in {"GBP", "GBX"}:
+            through = rates_final_through.get(mode, pd.Timestamp.min)
+            converted = _until(converted, through)
+            extras = {column: _until(values, through) for column, values in extras.items()}
+        closes = converted.reindex(converted.index.union(days)).sort_index().ffill()
         closes = closes[(closes.index >= start_day) & (closes.index <= end_day)].dropna()
         closes = closes[closes > 0]
         if closes.empty:
             unpriced.append(ticker)
             continue
-        extras = {
-            column: _gbp_column(best[3], column, best[4], cash_fx, gbpusd)
-            for column in ("Dividends", "High", "Low")
-        }
         dividends = extras["Dividends"]
         resolved[identity] = SecurityPrices(
             identity,
@@ -439,7 +475,7 @@ def resolve_decision_prices(
             dividends=dividends[dividends > 0],
             highs=extras["High"],
             lows=extras["Low"],
-            quote_days=closes.index[closes.index.isin(best[2].index)],
+            quote_days=closes.index[closes.index.isin(converted.index)],
         )
         if memo is not None:
             memo[identity] = best[1]
@@ -467,4 +503,4 @@ def _gbp_column(
     return _converted(values, mode, cash_fx, gbpusd)
 
 
-__all__ = ["CachedDailyHistory", "SecurityPrices", "resolve_decision_prices"]
+__all__ = ["CachedDailyHistory", "SecurityPrices", "final_rates", "resolve_decision_prices"]

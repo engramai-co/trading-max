@@ -16,7 +16,11 @@ from trading_max.analytics.decision_events import (
     EventLoader,
     attach_decision_events,
 )
-from trading_max.analytics.decision_prices import CachedDailyHistory, resolve_decision_prices
+from trading_max.analytics.decision_prices import (
+    CachedDailyHistory,
+    final_rates,
+    resolve_decision_prices,
+)
 from trading_max.analytics.decision_review import CALCULATION_VERSION, build_decision_review
 from trading_max.analytics.fx import FxResolver, HistoricalFxResolver
 from trading_max.analytics.historical_nav import HistoryLoader, _trade_columns
@@ -69,21 +73,21 @@ class AccountDecisionStage:
     def _market(
         self, start: pd.Timestamp, end: pd.Timestamp, now: pd.Timestamp
     ) -> pd.Series | None:
-        """Completed benchmark closes in GBP; the review stays usable without them."""
+        """Benchmark closes with a final GBP value; the review stays usable without them."""
 
         try:
             frame = completed_daily_bars(
                 self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()), now=now
             )
-            rates = self.history_loader("GBPUSD=X", start.date(), end.date())
+            usd = final_rates(self.history_loader, "GBPUSD=X", start, end, now)
         except Exception:
             return None
         closes = pd.to_numeric(frame.get("Close"), errors="coerce").dropna()
-        usd = pd.to_numeric(rates.get("Close"), errors="coerce").dropna()
         if closes.empty or usd.empty:
             return None
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
-        usd.index = pd.to_datetime(usd.index).tz_localize(None).normalize()
+        # A close has a final GBP value once that day's exchange rate is final too.
+        closes = closes[closes.index <= usd.index.max()]
         market = closes / usd.reindex(closes.index).ffill().bfill()
         return market.dropna()
 

@@ -54,18 +54,27 @@ _EXCHANGES = {"NVDA": "NMS", "VOD.L": "LSE"}
 
 
 def _review_from_quotes(
-    fills: list[dict], listings: Mapping[str, pd.Series], *, viewed: str, now: str | None = None
+    fills: list[dict],
+    listings: Mapping[str, pd.Series],
+    *,
+    viewed: str,
+    now: str | None = None,
+    rates: pd.Series | None = None,
+    market: pd.Series | None = None,
 ) -> dict:
     """Review fills as the stage does on the day viewed, through the price resolver.
 
     Each listing quotes only the days in its series, so a day its market is shut
     or has not closed yet is a gap the resolver carries the previous close across.
-    The review runs at now, by default late on the day viewed.
+    GBPUSD is 1.25 unless rates are given. The review runs at now, by default just
+    after the day viewed, when its closes and its exchange rate are all final.
     """
 
     def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
         if symbol == "GBPUSD=X":
-            return pd.DataFrame({"Close": 1.25}, index=pd.bdate_range(start, end))
+            usd = pd.Series(1.25, index=pd.bdate_range(start, end)) if rates is None else rates
+            window = (usd.index >= pd.Timestamp(start)) & (usd.index <= pd.Timestamp(end))
+            return pd.DataFrame({"Close": usd[window]})
         if symbol not in listings:
             raise ValueError("unknown listing")
         quotes = listings[symbol]
@@ -81,10 +90,10 @@ def _review_from_quotes(
         trades,
         end_day=pd.Timestamp(viewed),
         history_loader=loader,
-        now=pd.Timestamp(now or viewed + "T23:00:00Z"),
+        now=pd.Timestamp(now) if now else pd.Timestamp(viewed, tz="UTC") + pd.Timedelta("24h30min"),
     )
     assert unpriced == []
-    return build_decision_review(trades, prices, as_of=pd.Timestamp(viewed))
+    return build_decision_review(trades, prices, as_of=pd.Timestamp(viewed), market=market)
 
 
 def test_sells_and_buys_are_scored_against_the_price_that_followed() -> None:
@@ -311,20 +320,20 @@ def test_decisions_on_the_latest_close_wait_for_the_next_one() -> None:
 
 
 @pytest.mark.parametrize(
-    ("now", "closed"), [("2026-11-04T15:10:00Z", False), ("2026-11-04T21:30:00Z", True)]
+    ("now", "closed"), [("2026-11-04T15:10:00Z", False), ("2026-11-04T16:45:00Z", True)]
 )
 def test_todays_bar_is_a_close_only_once_its_session_has_closed(now: str, closed: bool) -> None:
-    # At 15:10 UTC the provider already returns a 4 Nov bar, forty minutes into
-    # New York's session; it is a close only after 21:00 UTC.
-    quotes = pd.Series(125.0, index=pd.bdate_range("2026-09-21", "2026-11-03"))
-    quotes[pd.Timestamp("2026-11-04")] = 137.5
+    # At 15:10 UTC the provider already returns a 4 Nov bar while London trades;
+    # it is a close only after 16:30 UTC.
+    quotes = pd.Series(100.0, index=pd.bdate_range("2026-09-21", "2026-11-03"))  # pence
+    quotes[pd.Timestamp("2026-11-04")] = 110.0
     review = _review_from_quotes(
         [
             # The 20th close after 7 Oct is 4 Nov's.
-            _usd_fill("2026-10-07T15:00:00Z", "Market buy", 10, 1_000),
-            _usd_fill("2026-11-03T15:00:00Z", "Market buy", 1, 100),
+            _fill("2026-10-07T10:00:00Z", "Market buy", 1_000, 1_000, "VOD"),
+            _fill("2026-11-03T10:00:00Z", "Market buy", 100, 100, "VOD"),
         ],
-        {"NVDA": quotes},
+        {"VOD.L": quotes},
         viewed="2026-11-04",
         now=now,
     )
@@ -338,19 +347,36 @@ def test_todays_bar_is_a_close_only_once_its_session_has_closed(now: str, closed
 
 
 @pytest.mark.parametrize(
-    ("now", "observed"), [("2025-11-28T17:30:00Z", 0), ("2025-11-28T18:05:00Z", 1)]
+    ("now", "observed"), [("2025-12-24T12:20:00Z", 0), ("2025-12-24T12:35:00Z", 1)]
 )
 def test_an_early_close_ends_the_session_at_its_own_time(now: str, observed: int) -> None:
-    # New York closes at 13:00 (18:00 UTC) the day after Thanksgiving; on a full
-    # day it would still be trading at 18:05 UTC.
-    days = pd.bdate_range("2025-11-03", "2025-11-28").drop(pd.Timestamp("2025-11-27"))
+    # London closes at 12:30 on Christmas Eve; on a full day it trades until 16:30.
     review = _review_from_quotes(
-        [_usd_fill("2025-11-26T16:00:00Z", "Market buy", 10, 1_000)],
-        {"NVDA": pd.Series(125.0, index=days)},
-        viewed="2025-11-28",
+        [_fill("2025-12-23T10:00:00Z", "Market buy", 1_000, 1_000, "VOD")],
+        {"VOD.L": pd.Series(100.0, index=pd.bdate_range("2025-12-01", "2025-12-24"))},
+        viewed="2025-12-24",
         now=now,
     )
     assert review["decisions"][0]["observed_days"] == observed
+
+
+def test_a_dollar_close_counts_once_that_days_exchange_rate_is_final() -> None:
+    # New York closes at 21:00 UTC, but the 4 Nov rate is final only once that day
+    # is over: scoring at 21:30 on the 3 Nov rate would change at midnight.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))  # flat in dollars
+    rates = pd.Series(1.25, index=quotes.index)
+    rates[pd.Timestamp("2026-11-04")] = 1.20
+    fills = [_usd_fill("2026-11-03T15:00:00Z", "Market buy", 60, 6_000)]
+    evening, after_midnight = (
+        _review_from_quotes(fills, {"NVDA": quotes}, viewed="2026-11-04", now=now, rates=rates)[
+            "decisions"
+        ][0]
+        for now in ("2026-11-04T21:30:00Z", "2026-11-05T00:30:00Z")
+    )
+    assert (evening["observed_days"], evening["effect_to_date_gbp"]) == (0, 0.0)
+    # The same dollar close is worth 4.2% more in pounds at the 4 Nov rate.
+    assert after_midnight["observed_days"] == 1
+    assert after_midnight["effect_to_date_gbp"] == pytest.approx(250.0)
 
 
 def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:
