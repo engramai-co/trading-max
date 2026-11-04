@@ -50,9 +50,9 @@ def _valuation_preview(
     ticker: str, request: Request, inputs: ValuationPreviewRequest | None = None
 ) -> ValuationPreview:
     default_source = "user-input"
-    lens = app_service(request, "research").lens_snapshot(
-        ticker, "valuation", latest_or_503(request)
-    )
+    research = app_service(request, "research")
+    manifest = latest_or_503(request)
+    lens = research.lens_snapshot(ticker, "valuation", manifest)
     facts, context = lens.financial_facts, lens.context
     if not facts or not context or not lens.valuation:
         raise HTTPException(status_code=422, detail="valuation-inputs-unavailable")
@@ -81,12 +81,18 @@ def _valuation_preview(
     fx = 1 if facts.currency == quote.currency else number(stored.get("fxRate"))
     if not fx or fx <= 0:
         raise HTTPException(status_code=422, detail="currency-conversion-unavailable")
+    # The data version stays tied to the research quote so a broker refresh
+    # never invalidates an edit in progress.
+    held = research.held_position(ticker, manifest)
+    broker_spot = held is not None and held["currency"] == quote.currency
     basis = FrozenValuationBasis(
         ticker=ticker,
         quote_id=quote.id,
         data_version=fingerprint([facts.version, quote.id]),
         currency=quote.currency,
-        spot=quote.price,
+        spot=held["price"] if broker_spot else quote.price,
+        spot_source="broker" if broker_spot else "quote",
+        spot_as_of=held["asOf"] if broker_spot else quote.as_of,
         revenue=revenue.value * fx,
         shares=shares,
         start_margin=fcf.value / revenue.value,

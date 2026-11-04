@@ -5556,6 +5556,26 @@
             "title": "Spot",
             "type": "number"
           },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
+          "spotSource": {
+            "default": "quote",
+            "enum": [
+              "quote",
+              "broker"
+            ],
+            "title": "Spotsource",
+            "type": "string"
+          },
           "startMargin": {
             "maximum": 1.0,
             "minimum": -1.0,
@@ -9700,6 +9720,17 @@
             "title": "Allocationpct",
             "type": "number"
           },
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
           "country": {
             "anyOf": [
               {
@@ -10642,10 +10673,48 @@
             "title": "Bloombergticker",
             "type": "string"
           },
+          "brokerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerasof"
+          },
+          "brokerPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerprice"
+          },
+          "brokerPriceCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerpricecurrency"
+          },
           "categoryId": {
             "default": "",
             "title": "Categoryid",
             "type": "string"
+          },
+          "directValueGbp": {
+            "default": 0.0,
+            "title": "Directvaluegbp",
+            "type": "number"
           },
           "exchange": {
             "default": "",
@@ -10894,10 +10963,48 @@
             "title": "Bloombergticker",
             "type": "string"
           },
+          "brokerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerasof"
+          },
+          "brokerPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerprice"
+          },
+          "brokerPriceCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerpricecurrency"
+          },
           "categoryId": {
             "default": "",
             "title": "Categoryid",
             "type": "string"
+          },
+          "directValueGbp": {
+            "default": 0.0,
+            "title": "Directvaluegbp",
+            "type": "number"
           },
           "exchange": {
             "default": "",
@@ -11234,6 +11341,17 @@
             },
             "title": "Models",
             "type": "array"
+          },
+          "nextEarningsDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextearningsdate"
           },
           "options": {
             "anyOf": [

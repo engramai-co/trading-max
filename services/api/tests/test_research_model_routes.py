@@ -75,7 +75,9 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
     app = FastAPI()
     app.include_router(router)
     app.state.settings = SimpleNamespace(api_token="synthetic-test-token")
-    app.state.research = SimpleNamespace(lens_snapshot=lambda *args: lens)
+    app.state.research = SimpleNamespace(
+        lens_snapshot=lambda *args: lens, held_position=lambda *args: None
+    )
     app.state.store = SimpleNamespace(latest_manifest=lambda: object())
     app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
     app.state.research_journal = ResearchJournalStore(tmp_path)
@@ -122,3 +124,77 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
             "/v1/research/TEST/valuation-preview", json={**body, "dataVersion": "old"}
         )
         assert conflict.status_code == 409
+
+
+def test_valuation_preview_prices_held_securities_at_the_broker_price(tmp_path):
+    ends = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"]
+    facts = build_financial_facts(
+        {
+            "quarterlyIncomeStatement": [{"index": "Total Revenue", **dict.fromkeys(ends, 1000)}],
+            "quarterlyCashflow": [
+                {"index": "Operating Cash Flow", **dict.fromkeys(ends, 100)},
+                {"index": "Capital Expenditure", **dict.fromkeys(ends, -10)},
+            ],
+        },
+        {"financialCurrency": "USD"},
+    )
+    inputs = {
+        "revenueCagr": 0.1,
+        "targetFcfMargin": 0.15,
+        "discountRate": 0.1,
+        "exitFcfMultiple": 15,
+        "shareCagr": 0,
+    }
+    valuation = valuation_rows(
+        {
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "price": 25,
+                    "currency": "USD",
+                    "assumptions": {"sharesOutstanding": 100},
+                    "scenarios": dict.fromkeys(("bear", "base", "bull"), inputs),
+                }
+            ]
+        }
+    )[0]
+    lens = ResearchLensSnapshot(
+        ticker="TEST",
+        view="valuation",
+        run_id="fixture",
+        generated_at=datetime.now(UTC).isoformat(),
+        financial_facts=facts,
+        context=ResearchContext(
+            quote=make_quote("TEST", {"spot": 25, "currency": "USD"}, {}), asset_type="EQUITY"
+        ),
+        valuation=valuation,
+    )
+    position = {"price": 20.0, "currency": "USD", "asOf": "2026-11-04T15:50:01Z"}
+    positions = {"TEST": position}
+    app = FastAPI()
+    app.include_router(router)
+    app.state.settings = SimpleNamespace(api_token="synthetic-test-token")
+    app.state.research = SimpleNamespace(
+        lens_snapshot=lambda *args: lens,
+        held_position=lambda ticker, _manifest: positions.get(ticker),
+    )
+    app.state.store = SimpleNamespace(latest_manifest=lambda: object())
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    with TestClient(app) as client:
+        held = client.get("/v1/research/TEST/valuation-preview").json()
+        assert held["basis"]["spot"] == 20.0
+        assert held["basis"]["spotSource"] == "broker"
+        assert held["basis"]["spotAsOf"] == "2026-11-04T15:50:01Z"
+        base = held["scenarios"]["base"]
+        assert base["upside"] == pytest.approx(base["value"] / 20.0 - 1)
+        # A broker price in another currency never replaces the quote.
+        position["currency"] = "GBP"
+        other = client.get("/v1/research/TEST/valuation-preview").json()
+        assert other["basis"]["spot"] == 25
+        assert other["basis"]["spotSource"] == "quote"
+        positions.clear()
+        quoted = client.get("/v1/research/TEST/valuation-preview").json()
+        assert quoted["basis"]["spotSource"] == "quote"
+        # Broker refreshes keep the data version, so edits in progress stay valid.
+        assert quoted["basis"]["dataVersion"] == held["basis"]["dataVersion"]

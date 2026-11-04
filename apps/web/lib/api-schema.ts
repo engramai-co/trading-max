@@ -2892,6 +2892,14 @@ export interface components {
             shares: number;
             /** Spot */
             spot: number;
+            /** Spotasof */
+            spotAsOf?: string | null;
+            /**
+             * Spotsource
+             * @default quote
+             * @enum {string}
+             */
+            spotSource: "quote" | "broker";
             /** Startmargin */
             startMargin: number;
             /** Ticker */
@@ -4277,6 +4285,8 @@ export interface components {
         PortfolioImpact: {
             /** Allocationpct */
             allocationPct: number;
+            /** Asof */
+            asOf?: string | null;
             /** Country */
             country?: string | null;
             /** Directvaluegbp */
@@ -4567,11 +4577,22 @@ export interface components {
              * @default
              */
             bloombergTicker: string;
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Brokerprice */
+            brokerPrice?: number | null;
+            /** Brokerpricecurrency */
+            brokerPriceCurrency?: string | null;
             /**
              * Categoryid
              * @default
              */
             categoryId: string;
+            /**
+             * Directvaluegbp
+             * @default 0
+             */
+            directValueGbp: number;
             /**
              * Exchange
              * @default
@@ -4695,11 +4716,22 @@ export interface components {
              * @default
              */
             bloombergTicker: string;
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Brokerprice */
+            brokerPrice?: number | null;
+            /** Brokerpricecurrency */
+            brokerPriceCurrency?: string | null;
             /**
              * Categoryid
              * @default
              */
             categoryId: string;
+            /**
+             * Directvaluegbp
+             * @default 0
+             */
+            directValueGbp: number;
             /**
              * Exchange
              * @default
@@ -4847,6 +4879,8 @@ export interface components {
             } | null;
             /** Models */
             models?: components["schemas"]["ResearchModelRun"][];
+            /** Nextearningsdate */
+            nextEarningsDate?: string | null;
             options?: components["schemas"]["OptionSnapshot"] | null;
             portfolioImpact?: components["schemas"]["PortfolioImpact"] | null;
             /** Researchevidence */

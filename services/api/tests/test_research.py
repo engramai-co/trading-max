@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -9,12 +9,158 @@ from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.models import SnapshotManifest
 from services.api.trading_max_api.research import (
     ResearchLedger,
+    _account_holdings,
     _business_day_age,
     _freshness,
     _fundamentals_rows,
     _market_rows,
+    _next_earnings_date,
+    _normalized_earnings_calendar,
 )
 from services.api.trading_max_api.watchlist import WatchlistStore
+
+
+def _synthetic_accounts() -> dict:
+    """Canonical snapshot at 12:00, live overlay at 15:50, look-through from 12:00."""
+
+    def account(fetched_at, held_value, held_price, fund_value, total):
+        return {
+            "fetched_at": fetched_at,
+            "total_value_gbp": total,
+            "investments_value_gbp": held_value + fund_value,
+            "positions_status": "verified",
+            "checks": {"positions_match_investments": True},
+            "positions": [
+                {
+                    "ticker": "HELD",
+                    "current_value_gbp": held_value,
+                    "current_price": held_price,
+                    "price_currency": "USD",
+                },
+                {
+                    "ticker": "FUND.L",
+                    "current_value_gbp": fund_value,
+                    "current_price": 9500,
+                    "price_currency": "GBX",
+                },
+            ],
+        }
+
+    return {
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": account("2026-11-04T12:00:01Z", 800.0, 200.0, 1000.0, 2000.0)}
+        },
+        "account/intraday/broker_values.json": {
+            "accounts": {"A": account("2026-11-04T15:50:01Z", 700.0, 190.0, 1100.0, 1950.0)}
+        },
+        "account/lookthrough_metrics.json": {
+            "positions": [
+                {
+                    "ticker": "HELD",
+                    "valueGbp": 810.0,
+                    "directValueGbp": 800.0,
+                    "indirectValueGbp": 10.0,
+                    "country": "United States",
+                    "etfContributors": [{"ticker": "FUND", "valueGbp": 10.0}],
+                },
+                {
+                    "ticker": "ONLYFUND",
+                    "valueGbp": 50.0,
+                    "directValueGbp": 0.0,
+                    "indirectValueGbp": 50.0,
+                    "etfContributors": [{"ticker": "FUND", "valueGbp": 50.0}],
+                },
+            ],
+            "sources": [{"ticker": "FUND", "positionValueGbp": 1000.0, "asOf": "2026-11-02"}],
+        },
+    }
+
+
+def test_held_securities_use_the_current_broker_basis(tmp_path):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    store = ArtifactStore(tmp_path)
+    watchlist = WatchlistStore(tmp_path)
+    for ticker in ("HELD", "FUND.L", "ONLYFUND"):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange="NYSE", bloomberg_ticker="", figi=""
+            )
+        )
+    payloads = _synthetic_accounts()
+    ledger = ResearchLedger(store, watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime.now(UTC),
+        artifacts=[],
+    )
+
+    listing = {item.ticker: item for item in ledger.directory_instruments(manifest)}
+    held = listing["HELD"]
+    # Live values, not the 12:00 canonical or look-through values.
+    assert held.held and held.direct_value_gbp == 700.0
+    assert held.broker_price == 190.0 and held.broker_price_currency == "USD"
+    assert held.broker_as_of == "2026-11-04T15:50:01Z"
+    # The fund contribution is revalued with the fund: 10 × 1100 / 1000.
+    assert held.exposure_gbp == 711.0
+    fund = listing["FUND.L"]
+    assert fund.broker_price == 95.0 and fund.broker_price_currency == "GBP"
+    assert fund.exposure_gbp == 1100.0
+    only_fund = listing["ONLYFUND"]
+    assert not only_fund.held and only_fund.broker_price is None
+    assert only_fund.exposure_gbp == 55.0
+    assert [item.exposure_gbp for item in ledger.instruments(manifest)] == [711.0, 1100.0, 55.0]
+
+    impact = ledger.portfolio_impact("HELD", manifest)
+    assert impact.direct_value_gbp == 700.0 and impact.indirect_value_gbp == 11.0
+    assert impact.exposure_value_gbp == 711.0
+    assert impact.total_value_gbp == 1950.0
+    assert impact.allocation_pct == pytest.approx(711.0 / 1950.0)
+    assert impact.holding_accounts == ["A"] and impact.as_of == "2026-11-04T15:50:01Z"
+    assert impact.etf_contributors == [
+        {"ticker": "FUND", "valueGbp": 11.0, "asOf": "2026-11-02", "sourceUrl": None}
+    ]
+    assert impact.country == "United States"
+    assert ledger.held_position("HELD", manifest)["price"] == 190.0
+    assert ledger.held_position("ONLYFUND", manifest) is None
+
+    # A fund sold since look-through no longer contributes.
+    payloads["account/intraday/broker_values.json"]["accounts"]["A"]["positions"].pop()
+    payloads["account/intraday/broker_values.json"]["accounts"]["A"]["investments_value_gbp"] = (
+        700.0
+    )
+    holdings = _account_holdings(
+        ledger._broker_snapshot(manifest), payloads["account/lookthrough_metrics.json"]
+    )
+    assert holdings["HELD"]["indirect"] == 0.0 and "FUND" not in holdings
+
+
+def test_next_earnings_date_is_one_date_and_never_past():
+    today = date(2026, 11, 4)
+    analyst = {
+        "earningsEvents": [
+            {"date": "2026-10-22", "status": "reported"},
+            {"date": "2027-02-04", "status": "provider-estimate"},
+            {"date": "2027-05-06", "status": "provider-estimate"},
+        ]
+    }
+    stale_calendar = _normalized_earnings_calendar(
+        {"calendar": {"Earnings Date": ["2026-10-22"]}}, today
+    )
+    assert stale_calendar is not None and stale_calendar["earningsDates"] == []
+    assert stale_calendar["Earnings Date"] == ["2026-10-22"]
+    window = _normalized_earnings_calendar(
+        {"calendar": {"Earnings Date": ["2026-11-02", "2026-11-06"]}}, today
+    )
+    assert window is not None and window["earningsDates"] == ["2026-11-02", "2026-11-06"]
+    assert _next_earnings_date(analyst, stale_calendar, today) == "2027-02-04"
+    assert _next_earnings_date(None, stale_calendar, today) is None
+    assert _next_earnings_date({"earningsEvents": []}, window, today) == "2026-11-06"
+    reported_today = {"earningsEvents": [{"date": "2026-11-04", "status": "reported"}]}
+    assert _next_earnings_date(reported_today, None, today) is None
 
 
 def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
@@ -559,7 +705,7 @@ def test_typed_research_ledger_reports_complete_instrument_coverage(
                 {
                     "ticker": "BE",
                     "calendar": {
-                        "Earnings Date": ["2026-09-01"],
+                        "Earnings Date": ["2099-09-01"],
                         "Earnings Average": 0.25,
                     },
                 }
@@ -603,7 +749,7 @@ def test_typed_research_ledger_reports_complete_instrument_coverage(
     assert snapshot.market is not None
     assert snapshot.market["spot"] == 25.0
     assert snapshot.fundamentals is not None
-    assert snapshot.fundamentals["earningsCalendar"]["earningsDates"] == ["2026-09-01"]
+    assert snapshot.fundamentals["earningsCalendar"]["earningsDates"] == ["2099-09-01"]
     assert snapshot.fundamentals["seasonality"][0]["month"] == 1
     assert snapshot.fundamentals["seasonalityCoverage"]["firstSession"] == "2018-01-02"
     assert snapshot.fundamentals["seasonalityCoverage"]["monthlyObservations"] == 102
