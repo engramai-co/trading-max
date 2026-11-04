@@ -13,6 +13,7 @@ from trading_max.analytics.day_attribution import (
     LONDON,
     DayBaseline,
     baseline_from_accounts,
+    observed_day,
     update_day_attribution,
     update_window_attribution,
     window_days,
@@ -613,7 +614,7 @@ class AccountDayAttributionStage:
     """Attribute each position's change over the trading day and the 5D window."""
 
     name = "accounts.day_attribution"
-    version = "day-attribution-v2"
+    version = "day-attribution-v4"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -704,12 +705,17 @@ class AccountDayAttributionStage:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError("account.day_attribution_invalid", str(exc)) from exc
-        missing = sorted(set(accounts) - set(attribution.accounts))
-        warnings = (
-            [f"day attribution unavailable without reconciled positions: {', '.join(missing)}"]
-            if missing
-            else []
-        )
+        missing = set(accounts) - set(attribution.accounts)
+        # An account still on an earlier trading day waits for its first observation
+        # of this one; any other missing account lacks reconciled positions.
+        behind = sorted(code for code in missing if observed_day(accounts[code]) != attribution.day)
+        reasons = {
+            "day attribution unavailable without reconciled positions": sorted(
+                missing.difference(behind)
+            ),
+            f"day attribution waits for a {attribution.day} observation": behind,
+        }
+        warnings = [f"{reason}: {', '.join(codes)}" for reason, codes in reasons.items() if codes]
         stored_baseline = self.artifacts.put_json(
             key=DAY_BASELINE_KEY,
             payload=baseline.model_dump(mode="json", by_alias=False),

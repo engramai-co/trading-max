@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from trading_max.analytics.day_attribution import update_day_attribution
 
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.dashboard import build_dashboard_data
@@ -250,6 +251,143 @@ def test_dashboard_exposes_intraday_value_anchors_separately_without_fake_twr(
     assert intraday[0]["cadenceSeconds"] == 600
     assert intraday[0]["priceCadenceSeconds"] == 3600
     assert intraday[-1]["valuationSource"] == "broker"
+
+
+def _publish_day_attribution(store: ArtifactStore, payload: dict[str, object]) -> None:
+    previous = store.immutable_snapshots.latest()
+    assert previous is not None
+    attribution = store.immutable_artifacts.put_json(
+        key="account/attribution/day.json",
+        payload=payload,
+        kind="account_day_attribution",
+        producer_version="test",
+    )
+    store.immutable_snapshots.publish(
+        scope="intraday",
+        source="test",
+        artifacts=[*previous.manifest.artifacts, attribution],
+    )
+
+
+def _measured_day(positions: list[tuple[str, str, str, str, str]]) -> dict[str, object]:
+    """Account A's day from 07:10 to the fixture's 19:00 observation (ticker, listing,
+    quantity, opening value, current value)."""
+
+    def account(fetched_at: str, column: int) -> dict[str, object]:
+        return {
+            "fetched_at": fetched_at,
+            "positions": [
+                {
+                    "ticker": row[0],
+                    "broker_ticker": row[1],
+                    "name": row[0],
+                    "quantity": row[2],
+                    "current_value_gbp": row[column],
+                }
+                for row in positions
+            ],
+        }
+
+    opening, _ = update_day_attribution(None, {"A": account("2026-08-01T07:10:00Z", 3)})
+    _, day = update_day_attribution(
+        opening.model_dump(mode="json", by_alias=False),
+        {"A": account("2026-08-01T19:00:00Z", 4)},
+    )
+    return day.model_dump(mode="json", by_alias=False)
+
+
+def test_holdings_carry_the_day_change_measured_at_their_own_observation(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    # Measured at the fixture's Saturday 19:00 observation, which belongs to
+    # Friday's trading day; ISA positions did not reconcile. The fixture's
+    # holdings carry no broker listing, so the one BE contribution joins by ticker.
+    _publish_day_attribution(store, _measured_day([("BE", "BE_US_EQ", "5", "960.00", "1000.00")]))
+
+    payload = build_dashboard_data(store)
+    holdings = {holding["ticker"]: holding for holding in payload["holdings"]}
+    assert holdings["BE"]["dayChangeGbp"] == 40.0
+    assert holdings["BE"]["dayChangePct"] == pytest.approx(40 / 960)
+    assert holdings["BE"]["dayChangeDate"] == "2026-07-31"
+    assert holdings["XUSE"]["dayChangeGbp"] is None
+    assert holdings["XUSE"]["dayChangePct"] is None
+    assert holdings["XUSE"]["dayChangeDate"] is None
+    validated = DashboardResponse.model_validate(payload)
+    assert validated.holdings[0].day_change_gbp == 40.0
+
+
+def test_two_listings_of_one_ticker_keep_their_own_day_change(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    snapshot_path = report / "broker_snapshot_metrics.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    listing = {
+        "ticker": "IAG",
+        "name": "IAG",
+        "price_currency": "GBP",
+        "total_cost_gbp": 300,
+        "unrealized_profit_loss_gbp": 0,
+    }
+    snapshot["accounts"]["A"]["positions"] = [
+        {**listing, "broker_ticker": "IAG_US_EQ", "quantity": 10, "current_value_gbp": 42},
+        {**listing, "broker_ticker": "IAGl_EQ", "quantity": 100, "current_value_gbp": 290},
+    ]
+    snapshot_path.write_text(json.dumps(snapshot))
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    _publish_day_attribution(
+        store,
+        _measured_day(
+            [
+                ("IAG", "IAG_US_EQ", "10", "40.00", "42.00"),
+                ("IAG", "IAGl_EQ", "100", "300.00", "290.00"),
+            ]
+        ),
+    )
+
+    by_value = {
+        holding["currentValueGbp"]: holding
+        for holding in build_dashboard_data(store)["holdings"]
+        if holding["ticker"] == "IAG"
+    }
+    assert (by_value[42]["dayChangeGbp"], by_value[290]["dayChangeGbp"]) == (2.0, -10.0)
+    assert by_value[42]["dayChangePct"] == pytest.approx(2 / 40)
+    assert by_value[290]["dayChangePct"] == pytest.approx(-10 / 300)
+
+
+def test_holdings_read_day_attributions_written_before_instruments(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    legacy = {
+        "schema_version": 1,
+        "day": "2026-07-31",
+        "accounts": {
+            "A": {
+                "since": "2026-08-01T07:10:00Z",
+                "as_of": "2026-08-01T19:00:00Z",
+                "contributions": [
+                    {"ticker": "BE", "name": "Bloom Energy", "contribution_gbp": "40.00"}
+                ],
+            }
+        },
+    }
+    _publish_day_attribution(store, legacy)
+
+    holdings = {holding["ticker"]: holding for holding in build_dashboard_data(store)["holdings"]}
+    assert holdings["BE"]["dayChangeGbp"] == 40.0
+    assert holdings["BE"]["dayChangePct"] is None
+    assert holdings["BE"]["dayChangeDate"] == "2026-07-31"
 
 
 def test_dashboard_overlays_live_totals_and_only_reconciled_positions(

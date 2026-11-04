@@ -7,7 +7,6 @@ import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
 import { timelineOption, type TimelineLayer } from "./timeline-option";
-import { timelineContext } from "./timeline-labels";
 import type { TimelineTooltip } from "./timeline-tooltip";
 import { valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
 import type { NavPoint } from "@/lib/types";
@@ -44,9 +43,8 @@ export function TimelineChart({
   const { locale, timeZone } = useLocale();
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
-  const context = display && timeline ? timelineContext(timeline.categories, display) : "";
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
-  // Line styles explain themselves through a key, shown only when they occur.
+  // A solid line is the plain record; only the exceptions get a key, and only when they occur.
   const rows = timeline?.rowIndexes ?? [];
   const firstRow = rows.findIndex((row) => row != null);
   const lastRow = rows.length - 1 - [...rows].reverse().findIndex((row) => row != null);
@@ -100,13 +98,12 @@ export function TimelineChart({
           )
         }
       />
-      {context && <p className="mx-timeline-context">{context}</p>}
       {sourceKeys.length > 0 && (
         <div className="mx-chart-legend mx-source-legend">
-          {[{ dash: "", label: t("记录", "Recorded") }, ...sourceKeys].map((key) => (
+          {sourceKeys.map((key) => (
             <span key={key.label}>
               <svg width="18" height="4" aria-hidden="true">
-                <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={key.dash || undefined} />
+                <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={key.dash} />
               </svg>
               {key.label}
             </span>

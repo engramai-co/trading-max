@@ -157,21 +157,25 @@ test.describe("workspace navigation refinements", () => {
       test.skip(testInfo.project.name !== "mobile");
       await page.setViewportSize(size);
       await page.goto("/");
-      await page.getByRole("button", { name: "Switch to English" }).tap();
+      // The dock holds the main pages; one menu adds only what the dock lacks.
+      await page.getByRole("button", { name: "更多", exact: true }).tap();
+      await page.getByRole("menuitem", { name: "Switch to English" }).tap();
       const tools = page.locator(".mx-topbar button");
-      expect(await tools.evaluateAll((buttons) => buttons.every((button) => button.getBoundingClientRect().width >= 44 && button.getBoundingClientRect().height >= 44))).toBe(true);
+      expect(await tools.evaluateAll((buttons) => buttons.filter((button) => button.getClientRects().length)
+        .every((button) => button.getBoundingClientRect().width >= 44 && button.getBoundingClientRect().height >= 44))).toBe(true);
+      await expect(page.locator(".mx-topbar").getByRole("button", { name: "Choose appearance" })).toBeHidden();
       await expect(page.locator(".mx-mobile-dock")).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      const opener = page.getByRole("button", { name: "Open navigation", exact: true });
-      await opener.tap();
-      const menu = page.locator(".mx-mobile-menu");
+      await page.getByRole("button", { name: "More", exact: true }).tap();
+      const menu = page.getByRole("menu");
       await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Connections", "中文", "Light", "Dark", "System"]);
       const box = (await menu.boundingBox())!;
-      expect(box.y).toBeGreaterThan(0);
-      expect(Math.abs(box.y + box.height - size.height)).toBeLessThan(1);
-      await expect(menu.getByRole("link")).toHaveCount(8);
-      expect((await new AxeBuilder({ page }).include(".mx-mobile-menu").analyze()).violations).toEqual([]);
-      await menu.getByRole("button", { name: "Close navigation", exact: true }).tap();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(size.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(size.height);
+      expect((await new AxeBuilder({ page }).include('[role="menu"]').analyze()).violations).toEqual([]);
+      await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       const input = await openSearch(page);
       await expect(input).toHaveCSS("font-size", "16px");

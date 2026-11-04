@@ -50,8 +50,10 @@ export function HistoryRecords({ selection, label }: { selection: HistorySelecti
             },
           }] : []),
         ]} />
-      {data.total > data.pageSize && <Pagination total={Math.ceil(data.total / data.pageSize)} value={page} onChange={setPage}
-        withEdges mt="md" aria-label={t("记录分页", "Record pages")} getControlProps={labels} />}
+      {data.total > data.pageSize && <nav aria-label={t("记录分页", "Record pages")}>
+        <Pagination total={Math.ceil(data.total / data.pageSize)} value={page} onChange={setPage}
+          withEdges mt="md" getControlProps={labels} />
+      </nav>}
     </>)}
   </details>;
 }

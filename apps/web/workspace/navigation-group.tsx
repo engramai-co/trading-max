@@ -60,7 +60,7 @@ export function NavigationGroup({ activeHref, children }: { activeHref?: string;
     element.getAnimations().forEach((animation) => animation.cancel());
     const target = place(box);
     group.current!.dataset.indicator = "true";
-    const motion = pointerRoute.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const motion = pointerRoute.current;
     if (!motion) delete group.current!.dataset.motion;
     if (motion && old && old.href !== activeHref) {
       element.animate([{ transform: start }, { transform: target }], {
@@ -82,7 +82,10 @@ export function NavigationGroup({ activeHref, children }: { activeHref?: string;
   return <div className="mx-nav-group" ref={group}
     onClickCapture={(event) => {
       const link = (event.target as HTMLElement).closest("a");
-      pointerRoute.current = Boolean(link && !link.hasAttribute("aria-current") && event.detail > 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey);
+      // Reduced motion never arms the slide or the icon cross-fade. Deciding here,
+      // before the route renders, keeps the measurement below from starting either.
+      pointerRoute.current = Boolean(link && !link.hasAttribute("aria-current") && event.detail > 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey)
+        && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (pointerRoute.current) event.currentTarget.dataset.motion = "pointer";
       else delete event.currentTarget.dataset.motion;
     }}

@@ -8,6 +8,29 @@ export type HistorySelection = { runId: string; range: Range; scope: Scope };
 export type HistoryInput = { runId: string; brokerAsOf: string; dataRevision: string; nav?: NavPoint[]; intradayNav?: NavPoint[] };
 export type Money = ReturnType<typeof portfolioMoney>;
 const arrays = ["pnls", "pnlPercents", "drawdown", "drawdownPercents", "periodFlows", "valueChanges", "valueChangePercents"] as const;
+/** One live sync: the observation taken at an instant falls within this after it. */
+export const SYNC_MS = 5 * 60_000;
+/** A date and time with seconds and an explicit offset, Z or ±HH:MM. */
+const INSTANT = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+/**
+ * The moment an exact instant names, in epoch milliseconds: an ISO date and time
+ * with seconds and an explicit offset (Z or ±HH:MM) on a real calendar day. Null
+ * for anything else, so a time without an offset is never read in whichever zone
+ * the reader runs in, and 30 February or 24:00 never rolls over into another day.
+ */
+export function exactInstant(value: string) {
+  const match = INSTANT.exec(value);
+  if (!match) return null;
+  // Round trip: the calendar date and time as written must come back unchanged.
+  const [year, month, day, hour, minute, second] = match[1].split(/\D/).map(Number);
+  const wall = new Date(0);
+  wall.setUTCFullYear(year, month - 1, day);
+  wall.setUTCHours(hour, minute, second);
+  if (wall.toISOString().slice(0, 19) !== match[1]) return null;
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) ? instant : null;
+}
 
 /** Grid geometry is encoded separately from observations: never interpolated account data. */
 export type CompactTimeline = {
@@ -54,6 +77,12 @@ export type PreparedHistory = {
   sourceCount: number;
   history: Omit<PortfolioHistory, "timeline"> & { timeline: CompactTimeline };
   money: Money;
+  /**
+   * The cash-flow-adjusted P&L at each opening the request named, on the period
+   * figure's own basis and read from every observation, or null when none was
+   * taken there. Present only when openings were requested.
+   */
+  openings?: Record<string, number | null>;
 };
 export function sliceMoney(money: Money, indexes: number[]): Money {
   const selected = { ...money };
@@ -91,6 +120,21 @@ export function prepareHistory(input: HistoryInput, selection: Pick<HistorySelec
     money: sliceMoney(money, indexes),
   };
   return { chart, history, money };
+}
+
+/**
+ * The cash-flow-adjusted P&L at the observation taken at each instant: the first
+ * timestamped observation at or within one sync after it, from every eligible
+ * observation rather than the thinned chart, and on the same basis as the period
+ * figure. Null when no observation was taken there, or the instant is not exact.
+ */
+export function pnlsAt(prepared: Pick<ReturnType<typeof prepareHistory>, "history" | "money">, instants: readonly string[]) {
+  const times = prepared.history.points.map((point) => point.date.includes("T") ? Date.parse(point.date) : Number.NaN);
+  return Object.fromEntries(instants.map((at) => {
+    const instant = exactInstant(at);
+    const index = instant == null ? -1 : times.findIndex((time) => time >= instant && time <= instant + SYNC_MS);
+    return [at, index < 0 ? null : prepared.money.pnls[index] ?? null];
+  })) as Record<string, number | null>;
 }
 
 export type HistoryPage = {

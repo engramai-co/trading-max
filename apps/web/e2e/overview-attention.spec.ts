@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { prepareHistory } from "../lib/portfolio/prepared";
 
 const checkedAt = "2026-10-09T12:00:00Z";
@@ -12,6 +12,14 @@ const failing = { checkedAt, issues: [{
   scope: "accounts", consecutiveFailures: 3, failingSince: "2026-10-08T21:00:00Z",
 }] };
 const history = prepareHistory({ ...fixture, dataRevision: "synthetic" }, { range: "1D", scope: "total" }).chart;
+
+/** Phones keep language in the top bar's single menu; wider screens show the globe. */
+async function switchToEnglish(page: Page) {
+  const globe = page.getByRole("button", { name: "Switch to English" });
+  if (await globe.isVisible()) return globe.click();
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Switch to English" }).click();
+}
 
 test.describe("overview update attention", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
@@ -34,7 +42,7 @@ test.describe("overview update attention", () => {
     await expect(warning).toHaveText("账户更新连续失败15 小时");
     await expect(warning).toHaveAttribute("href", "/health");
     expect((await new AxeBuilder({ page }).include(".mx-attention").analyze()).violations).toEqual([]);
-    await page.getByRole("button", { name: "Switch to English" }).click();
+    await switchToEnglish(page);
     await expect(page.locator(".mx-attention")).toContainText("Account updates failing15h");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.locator(".mx-attention").evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));

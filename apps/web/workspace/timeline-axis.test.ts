@@ -42,8 +42,6 @@ describe("short-range timestamps", () => {
     const plan = timelineLabels(categories, { ...display, locale: "zh", clock: false });
     expect(plan.ticks(8)).toEqual([0, 144, 288, 432, 576]);
     expect(plan.ticks(8).map(plan.label)).toEqual(["10月5日", "10月6日", "10月7日", "10月8日", "10月9日"]);
-    expect(plan.context).toContain("2026年10月");
-    expect(plan.context).toContain("伦敦");
     expect(plan.ticks(3)).toEqual([0, 288, 576]);
   });
   it("places day ticks in the selected timezone, including non-integral UTC offsets", () => {
@@ -75,14 +73,10 @@ describe("short-range timestamps", () => {
     const categories = Array.from({ length: 144 }, (_, i) => new Date(Date.UTC(2026, 9, 8, 23, i * 10)).toISOString());
     const plan = timelineLabels(categories, { ...display, locale: "zh", timeZone: "Asia/Hong_Kong" });
     expect(plan.ticks(8).map(plan.label)).toContain("10月10日");
-    expect(plan.context).toContain("2026");
-    expect(plan.context).toContain("香港");
   });
-  it("retains year context and treats daily records as dates, not timezone-shifted instants", () => {
+  it("treats daily records as dates, not timezone-shifted instants", () => {
     const plan = timelineLabels(["2025-12-31", "2026-01-01", "2026-01-02"], { ...display, clock: false, intraday: false, timeZone: "America/Los_Angeles" });
     expect(plan.ticks(8).map(plan.label)).toEqual(["31 Dec", "1 Jan", "2 Jan"]);
-    expect(plan.context).toContain("2025");
-    expect(plan.context).toContain("2026");
   });
 });
 

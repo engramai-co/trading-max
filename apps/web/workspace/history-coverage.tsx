@@ -82,6 +82,24 @@ export function HistoryCoverage({ history }: { history: PortfolioHistory }) {
   );
 }
 
+type Cutoff = Pick<PortfolioHistory, "pendingCashFlows" | "cashFlowCutoffAt">;
+
+/** "Through 09:00" for a figure that stops at its cash-flow cutoff, in the display time zone. */
+export function cutoffLabel(history: Cutoff, locale: Locale, timeZone: string) {
+  if (!history.pendingCashFlows) return null;
+  const at = history.cashFlowCutoffAt;
+  if (!at) return locale === "zh" ? "现金流待核对" : "Cash flows pending";
+  const time = formatDate(at, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  return (locale === "zh" ? "截至 " : "Through ") + time;
+}
+
+/** The amber cutoff beside a short-range figure; the figure's own help explains it. */
+export function CutoffTag({ history }: { history: Cutoff }) {
+  const { locale, timeZone } = useLocale();
+  const label = cutoffLabel(history, locale, timeZone);
+  return label ? <Tag tone="warn">{label}</Tag> : null;
+}
+
 export function HistoryHelp() {
   const t = useCopy();
   return (

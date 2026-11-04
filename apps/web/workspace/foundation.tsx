@@ -7,6 +7,7 @@ import {
   Popover,
   Skeleton,
   Stack,
+  Tooltip,
 } from "@mantine/core";
 import {
   ArrowClockwise,
@@ -17,32 +18,58 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
+import { indicatorStart } from "./selection-indicator";
+import { useAltDigitModifier } from "./shortcut-platform";
 
 export function useCopy() {
   const { locale } = useLocale();
   return (zh: string, en: string) => (locale === "zh" ? zh : en);
 }
-// One sliding indicator for tabs and segments. The first placement is
-// instant; later moves transition from wherever the indicator currently is.
+// One sliding indicator for tabs and segments. The first placement is instant.
+// A later move animates transform only: the indicator takes its new size at
+// once, then scales and slides from wherever it currently appears (FLIP), so a
+// quick second choice continues from mid-flight and layout never runs per frame.
 function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: unknown) {
   useLayoutEffect(() => {
     const list = host.current;
     const indicator = list?.querySelector<HTMLElement>(":scope > .mx-indicator");
     if (!list || !indicator) return;
-    const place = () => {
+    const segments = list.classList.contains("mx-segments");
+    // The FLIP start frame scales from the top-left corner it measures.
+    indicator.style.transformOrigin = "0 0";
+    let placed = "";
+    const place = (animate: boolean) => {
       const active = list.querySelector<HTMLElement>(selector);
       indicator.style.opacity = active ? "1" : "0";
       if (!active) return;
-      indicator.style.width = active.offsetWidth + "px";
-      indicator.style.height = list.classList.contains("mx-segments") ? active.offsetHeight + "px" : "";
-      indicator.style.transform = "translate(" + active.offsetLeft + "px, " + (list.classList.contains("mx-segments") ? active.offsetTop : 0) + "px)";
+      const x = active.offsetLeft;
+      const y = segments ? active.offsetTop : 0;
+      const width = active.offsetWidth;
+      const height = segments ? active.offsetHeight : indicator.offsetHeight;
+      // A resize that moves nothing must not cut a running move short.
+      const key = [x, y, width, height].join(" ");
+      if (key === placed) return;
+      placed = key;
+      const from = indicator.getBoundingClientRect();
+      indicator.getAnimations().forEach((animation) => animation.cancel());
+      indicator.style.width = width + "px";
+      if (segments) indicator.style.height = height + "px";
+      const target = "translate(" + x + "px, " + y + "px)";
+      indicator.style.transform = target;
+      if (!animate || !from.width || !height || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const start = indicatorStart(from, indicator.getBoundingClientRect(), { x, y });
+      if (!start) return;
+      indicator.animate(
+        [{ transform: start }, { transform: target }],
+        { duration: 200, easing: getComputedStyle(list).getPropertyValue("--mx-ease").trim() || "ease-out" },
+      );
     };
-    place();
+    place(list.dataset.indicator === "ready");
     const frame = requestAnimationFrame(() => { list.dataset.indicator = "ready"; });
-    const observer = new ResizeObserver(place);
+    const observer = new ResizeObserver(() => place(false));
     observer.observe(list);
     return () => {
       cancelAnimationFrame(frame);
@@ -204,20 +231,23 @@ export function Metric({
   tone,
   large = false,
   help,
+  helpLabel,
 }: {
   label: ReactNode;
   value: ReactNode;
   note?: ReactNode;
   tone?: "up" | "down";
   large?: boolean;
-  help?: string;
+  help?: ReactNode;
+  /** Names the help when the label carries more than text, such as an estimate tag. */
+  helpLabel?: string;
 }) {
   const changes = useChangeCount(typeof value === "string" || typeof value === "number" ? String(value) : null);
   return (
     <div className={"mx-metric" + (large ? " mx-metric-large" : "")}>
       <div className="mx-metric-label">
         {label}
-        {help && <Help label={label}>{help}</Help>}
+        {help && <Help label={helpLabel ?? label}>{help}</Help>}
       </div>
       <div className={"mx-number" + (tone ? " mx-" + tone : "")}>
         <span key={changes} className="mx-number-value" data-changed={changes ? "" : undefined}>{value}</span>
@@ -365,26 +395,73 @@ export function Segments<T extends string>({
   onChange,
   options,
   label,
+  shortcuts = false,
 }: {
   value: T;
   onChange: (value: T) => void;
   options: Array<{ value: T; label: string }>;
   label: string;
+  /**
+   * ⌥1–⌥9 on Apple devices and Alt+1–9 on Windows pick an option by position; one
+   * control per page. Where the browser or system owns those keys, nothing is bound,
+   * hinted or announced.
+   */
+  shortcuts?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const modifier = useAltDigitModifier();
+  const bound = shortcuts && modifier != null;
   useSelectionIndicator(listRef, '[aria-pressed="true"]', value + options.map((option) => option.label).join("\u0000"));
+  // A modifier keeps typing, speech input and screen-reader keys from switching
+  // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
+  const pick = useEffectEvent((event: KeyboardEvent) => {
+    if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.repeat || event.isComposing || event.defaultPrevented) return;
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1];
+    const option = digit ? options[Number(digit) - 1] : undefined;
+    if (!option) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']")) return;
+    if (document.querySelector("[aria-modal='true']")) return;
+    event.preventDefault();
+    if (option.value !== value) onChange(option.value);
+  });
+  useEffect(() => {
+    if (!bound) return;
+    const handle = (event: KeyboardEvent) => pick(event);
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [bound]);
   return (
     <div ref={listRef} className="mx-segments" role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          type="button"
-          key={option.value}
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
+      {options.map((option, index) => {
+        const position = shortcuts && index < 9 ? index + 1 : null;
+        const shortcut = bound ? position : null;
+        const button = (
+          <button
+            type="button"
+            key={option.value}
+            aria-pressed={value === option.value}
+            aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+        // A stable wrapper keeps the buttons mounted once the platform is known.
+        return position ? (
+          <Tooltip
+            key={option.value}
+            disabled={!shortcut}
+            label={<span className="mx-nav-search-hint">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
+            openDelay={500}
+            classNames={{ tooltip: "mx-nav-tooltip" }}
+            transitionProps={{ duration: 0 }}
+            events={{ hover: true, focus: true, touch: false }}
+          >
+            {button}
+          </Tooltip>
+        ) : button;
+      })}
       <span className="mx-indicator" aria-hidden="true" />
     </div>
   );

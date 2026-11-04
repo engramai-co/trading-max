@@ -7,6 +7,7 @@ from contextlib import suppress
 from .artifacts import ArtifactStore
 from .models import SnapshotManifest
 from .projections.broker import overlay_live_broker_snapshot
+from .projections.day_change import holding_day_changes
 from .projections.nav import intraday_nav_points, latest_daily_return, latest_twr, nav_series
 from .projections.research import option_rows, technical_rows, valuation_rows
 from .projections.values import JsonObject, nullable_number, number_value
@@ -253,9 +254,18 @@ def build_dashboard_data(
             for row in diluted_cost_raw.get("holdings", [])
             if isinstance(row, dict)
         }
+    try:
+        day_attribution = store.read_json(run_id, "account/attribution/day.json")
+    except (FileNotFoundError, TypeError, ValueError):
+        day_attribution = None
+    day_changes = holding_day_changes(
+        day_attribution, {code: broker["accounts"][code] for code in account_codes}
+    )
     holdings: list[JsonObject] = []
     for account in account_codes:
-        for position in broker["accounts"][account].get("positions", []):
+        # Day changes follow the positions' own order, joined by broker instrument.
+        account_day_changes = day_changes.get(account, [])
+        for index, position in enumerate(broker["accounts"][account].get("positions", [])):
             current = number_value(position.get("current_value_gbp"))
             cost = number_value(position.get("total_cost_gbp"))
             quantity = number_value(position.get("quantity"))
@@ -281,6 +291,7 @@ def build_dashboard_data(
                 and snapshot_fx_rate_native_per_gbp is not None
                 else None
             )
+            day_change = account_day_changes[index] if index < len(account_day_changes) else None
             holdings.append(
                 {
                     "account": account,
@@ -300,6 +311,9 @@ def build_dashboard_data(
                     "pnlGbp": number_value(position.get("unrealized_profit_loss_gbp")),
                     "pnlPct": current / cost - 1.0 if cost else 0.0,
                     "allocationPct": current / total_value if total_value else 0.0,
+                    "dayChangeGbp": day_change.gbp if day_change else None,
+                    "dayChangePct": day_change.share if day_change else None,
+                    "dayChangeDate": day_change.date if day_change else None,
                 }
             )
     holdings.sort(key=lambda item: item["currentValueGbp"], reverse=True)

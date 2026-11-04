@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { historyDisplayInterval, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { historyDisplayInterval, preferredRange, selectPortfolioHistory, tradingDay } from "@/lib/portfolio/history";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
 import { portfolioMoney } from "@/lib/portfolio/money";
 
@@ -15,6 +15,23 @@ function point(date: string, intraday = false, value: number | null = 100): NavP
 const daily = [point("2026-08-01"), point("2026-09-01"), point("2026-09-04")];
 const intraday = [point("2026-09-04T13:30:00Z", true), point("2026-09-04T13:40:00Z", true, 120)];
 const input = { daily, intraday, scope: "total" as const, asOf: "2026-09-04T20:00:00Z" };
+
+describe("range and trading-day helpers", () => {
+  it("lets a range in the URL win over the one remembered on this device", () => {
+    expect(preferredRange("1M", "1D")).toBe("1M");
+    expect(preferredRange(null, "1D")).toBe("1D");
+    expect(preferredRange("2Y", "YTD")).toBe("YTD");
+    expect(preferredRange(null, "bogus")).toBe("3M");
+  });
+  it("keeps weekends on Friday and follows the London calendar", () => {
+    expect(tradingDay("2026-11-07T10:00:00Z")).toBe("2026-11-06");
+    expect(tradingDay("2026-11-02T23:30:00Z")).toBe("2026-11-02");
+    // 23:30 UTC on a summer Sunday is already Monday 00:30 in London.
+    expect(tradingDay("2026-07-05T23:30:00Z")).toBe("2026-07-06");
+    expect(tradingDay(null)).toBeNull();
+    expect(tradingDay("not a date")).toBeNull();
+  });
+});
 
 describe("unified portfolio history", () => {
   it("keeps observed values and marks wholly unreconciled cash flows as pending", () => {

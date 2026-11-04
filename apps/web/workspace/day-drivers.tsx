@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "./link";
-import { useLocale } from "@/components/locale-provider";
+import { useLocale, type Locale } from "@/components/locale-provider";
 import type { DashboardLens } from "@/lib/types";
 import type { Scope } from "@/lib/portfolio/nav";
+import { tradingDay } from "@/lib/portfolio/history";
+import { exactInstant, SYNC_MS } from "@/lib/portfolio/prepared";
 import { formatDate } from "@/ui/formatters";
 import { currency, tone } from "@/workspace/data";
 import { Tag, useCopy } from "./foundation";
@@ -11,16 +13,14 @@ import { Tag, useCopy } from "./foundation";
 type DayAttribution =
   | NonNullable<DashboardLens["dayAttribution"]>
   | NonNullable<DashboardLens["windowAttribution"]>;
+type AccountAttribution = NonNullable<DayAttribution["accounts"]>[string];
 type Driver = { ticker: string; name: string; amount: number };
 /** 1D measures from today's opening; 5D chains the five trading days' openings. */
 export type DriverSpan = "1D" | "5D";
+export type Drivers = NonNullable<ReturnType<typeof dayDrivers>>;
 
 /** Below this, the strip would describe rounding noise rather than a move. */
 const MIN_EXPLAINED_GBP = 0.01;
-/** A later opening than the chart's first point is stated, since the parts then cover less. */
-const LATE_OPENING_MS = 15 * 60_000;
-/** One display bucket of slack when matching the opening to a chart point. */
-const BUCKET_MS: Record<DriverSpan, number> = { "1D": 5 * 60_000, "5D": 30 * 60_000 };
 
 /** Same precision as the period figure above, so the parts visibly add up to it. */
 export function signedPounds(value: number) {
@@ -28,42 +28,95 @@ export function signedPounds(value: number) {
   return value >= 0.005 ? "+" + text : text;
 }
 
+/** The scoped accounts' attributions, or null while one of them has none. */
+function scopedAccounts(attribution: DayAttribution | null | undefined, scope: Scope) {
+  const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
+  const accounts = codes.map((code) => attribution?.accounts?.[code]);
+  return accounts.length && accounts.every(Boolean) ? (accounts as AccountAttribution[]) : null;
+}
+
+/**
+ * The openings a history request names, so the P&L at each comes back exact. Only
+ * exact instants are named: the request rejects any other, and the strip hides
+ * without one, so a malformed opening never costs the chart itself.
+ */
+export function driverOpenings(attribution: DayAttribution | null | undefined, scope: Scope) {
+  return [...new Set((scopedAccounts(attribution, scope) ?? []).map((account) => account.since))]
+    .filter((since) => exactInstant(since) != null)
+    .sort();
+}
+
 /**
  * Splits the account's change since the trading day's first observation into the
  * largest position contributors and the rest, so the parts always add up to it.
  * When positions leave a large share unexplained, that share is reported on its
  * own instead of hiding inside "other".
+ *
+ * Drivers only explain the figure they sit under, so observations never mix. They
+ * stay hidden while the figure stops at a cash-flow cutoff, and unless every scoped
+ * account was measured on the figure's trading day, no earlier than one sync before
+ * the chart's last point. A later observation of that trading day still counts, such
+ * as a weekend one of Friday's: Other and Unattributed absorb what moved after it.
+ * Openings and observations count only as exact instants with their offset, never
+ * read in the viewer's own time zone.
+ *
+ * Their window opens with the figure's when every scoped account opened within one
+ * sync of its first point. An opening after that is stated, so the strip says what
+ * it covers; one before it, or scoped accounts that opened at different times,
+ * cannot explain the figure and hides the strip.
+ *
+ * The account change is measured over exactly that window: from the figure's first
+ * point, or after a later opening from the cash-flow-adjusted P&L the history
+ * request read at the observation taken there, from every observation rather than
+ * the thinned chart. Without such an observation the strip stays hidden, so
+ * Unattributed is only ever the residual inside the stated window.
  */
 export function dayDrivers({
   attribution,
   scope,
+  day,
   dates,
   pnls,
+  openings,
+  cutOff = false,
   limit = 3,
-  span = "1D",
 }: {
   attribution: DayAttribution;
   scope: Scope;
+  /** The figure's trading day: the last day of its history. */
+  day: string | undefined;
   /** The period chart's points and cumulative net P&L, oldest first. */
   dates: string[];
   pnls: Array<number | null>;
+  /** The P&L the history request read at each named opening (see driverOpenings). */
+  openings?: Record<string, number | null>;
+  /** The figure stops at the last verified cash flow while newer ones await reconciliation. */
+  cutOff?: boolean;
   limit?: number;
-  span?: DriverSpan;
 }) {
-  const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
-  const accounts = codes.map((code) => attribution.accounts?.[code as "A" | "B"]);
-  if (!accounts.length || accounts.some((account) => !account)) return null;
-  const since = accounts.map((account) => account!.since).sort()[0];
-  // Measure the account over the attribution's own window: from the first chart
-  // point at its opening observation (one bucket of slack) to the latest point.
-  const start = dates.findIndex((date) => Date.parse(date) >= Date.parse(since) - BUCKET_MS[span]);
-  const opening = start >= 0 ? pnls[start] : null;
+  if (cutOff || !day || attribution.day !== day) return null;
+  const accounts = scopedAccounts(attribution, scope);
+  if (!accounts) return null;
+  const last = Date.parse(dates.at(-1) ?? "");
+  const measured = (asOf: string) => {
+    const at = exactInstant(asOf);
+    return at != null && at >= last - SYNC_MS && tradingDay(asOf) === day;
+  };
+  if (accounts.some((account) => !measured(account.asOf))) return null;
+  const times = accounts.map((account) => exactInstant(account.since));
+  if (!times.every((time): time is number => time != null)) return null;
+  const earliest = Math.min(...times);
+  const since = accounts[times.indexOf(earliest)].since;
+  const first = Date.parse(dates[0] ?? "");
+  if (!(Math.max(...times) - earliest <= SYNC_MS) || !(earliest >= first - SYNC_MS)) return null;
+  const late = earliest > first + SYNC_MS;
+  const opening = late ? openings?.[since] ?? null : pnls[0];
   const closing = pnls.at(-1);
   if (opening == null || closing == null) return null;
   const accountChange = closing - opening;
   const merged = new Map<string, Driver>();
   for (const account of accounts) {
-    for (const row of account!.contributions ?? []) {
+    for (const row of account.contributions ?? []) {
       const entry = merged.get(row.ticker) ?? { ticker: row.ticker, name: row.name, amount: 0 };
       entry.amount += row.contributionGbp;
       merged.set(row.ticker, entry);
@@ -77,11 +130,12 @@ export function dayDrivers({
     .slice(0, limit);
   const namedTotal = named.reduce((total, row) => total + row.amount, 0);
   const unexplained = accountChange - explained;
+  if (!named.length && Math.abs(accountChange) < MIN_EXPLAINED_GBP) return null;
   // Positions explain little of a large move: cash, FX on cash, trades or timing.
   const material = Math.abs(unexplained) >= Math.max(5, Math.abs(accountChange) * 0.25);
   return {
     since,
-    lateOpening: Date.parse(dates[start]) - Date.parse(dates[0]) > LATE_OPENING_MS ? dates[start] : null,
+    lateOpening: late ? since : null,
     accountChange,
     named,
     other: material ? explained - namedTotal : accountChange - namedTotal,
@@ -90,23 +144,18 @@ export function dayDrivers({
   };
 }
 
-export function DayDrivers({
-  attribution,
-  scope,
-  dates,
-  pnls,
-  span = "1D",
-}: {
-  attribution: DayAttribution;
-  scope: Scope;
-  dates: string[];
-  pnls: Array<number | null>;
-  span?: DriverSpan;
-}) {
+/** "08:10 起" / "since 08:10" for drivers that open after their figure; 5D adds the date. */
+export function openingLabel(at: string, span: DriverSpan, locale: Locale, timeZone: string) {
+  const time = formatDate(at, locale, span === "5D"
+    ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }
+    : { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  return locale === "zh" ? `${time} 起` : `since ${time}`;
+}
+
+/** The strip for drivers that dayDrivers found; callers render nothing without them. */
+export function DayDrivers({ drivers, span = "1D" }: { drivers: Drivers; span?: DriverSpan }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const drivers = dayDrivers({ attribution, scope, dates, pnls, span });
-  if (!drivers || (!drivers.named.length && Math.abs(drivers.accountChange) < MIN_EXPLAINED_GBP)) return null;
   return (
     <ul
       className="mx-day-drivers"
@@ -114,12 +163,7 @@ export function DayDrivers({
     >
       {drivers.lateOpening && (
         <li>
-          <span>
-            {formatDate(drivers.lateOpening, locale, span === "5D"
-              ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone }
-              : { hour: "2-digit", minute: "2-digit", timeZone })}
-            {t(" 起", " onwards")}
-          </span>
+          <span>{openingLabel(drivers.lateOpening, span, locale, timeZone)}</span>
         </li>
       )}
       {drivers.named.map((row) => (

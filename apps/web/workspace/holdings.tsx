@@ -15,8 +15,12 @@ import Link from "./link";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
-import { compareHoldings, holdingSortDirection } from "./holdings-data";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
+import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
+import { useCurrentDay } from "./current-day";
 import { currency, number, percent, tone } from "@/workspace/data";
+import { signedPounds } from "./day-drivers";
 import {
   Empty,
   Facts,
@@ -43,7 +47,7 @@ export function HoldingsWorkspace() {
   const view =
     params.get("view") === "lookthrough" ? "lookthrough" : "positions";
   return (
-    <Page title={t("持仓与真实敞口", "Holdings & exposure")}>
+    <Page title={t("持仓", "Holdings")}>
       <Tabs
         label={t("持仓视图", "Holdings view")}
         value={view}
@@ -62,6 +66,7 @@ export function HoldingsWorkspace() {
 }
 function Positions() {
   const t = useCopy();
+  const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const query = useDashboardLens("holdings-positions");
@@ -69,16 +74,11 @@ function Positions() {
     ? params.get("account")!
     : "all";
   const search = params.get("q") ?? "";
-  const sort = ["value", "pnl", "ticker", "allocation"].includes(
-    params.get("positionSort") ?? "",
-  )
-    ? params.get("positionSort")!
-    : "value";
+  const requestedSort = holdingSort(params.get("positionSort"));
   const [selected, setSelected] = useState<Holding | null>(null);
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
-  const direction = holdingSortDirection(sort, params.get("direction"));
-  const ascending = direction === "asc";
+  const { today, now } = useCurrentDay();
   const scoped = useMemo(
     () =>
       (query.data?.holdings ?? []).filter(
@@ -86,6 +86,12 @@ function Positions() {
       ),
     [query.data, account],
   );
+  // Today's change appears once the day's attribution covers any position;
+  // until then a link sorted by it falls back to market value.
+  const hasDay = scoped.some((h) => h.dayChangeGbp != null);
+  const sort = requestedSort === "day" && !hasDay ? "value" : requestedSort;
+  const direction = holdingSortDirection(sort, params.get("direction"));
+  const ascending = direction === "asc";
   const rows = useMemo(
     () =>
       scoped
@@ -105,6 +111,13 @@ function Positions() {
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
+  const dayLabel = (date?: string | null) =>
+    !date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now);
+  // An account still on Friday is never called today beside one already on Monday.
+  const { latest: columnDay, earlier } = dayChangeColumn(scoped);
+  const columnLabel = dayLabel(columnDay);
+  const otherDay = (h: Holding) =>
+    earlier(h) ? dayLabel(earlier(h)) : null;
   const sortButton = (label: string, key: string) => (
     <button
       className="mx-sort"
@@ -169,13 +182,7 @@ function Positions() {
               />
             </div>
           </div>
-          <Panel
-            title={t("持仓明细", "Positions")}
-            help={t(
-              "选择任一持仓，查看数量、成本和汇率影响。",
-              "Select a position to inspect cost, quantity and currency effects.",
-            )}
-          >
+          <Panel>
             <div className="mx-toolbar" style={{ marginBottom: 22 }}>
               <TextInput
                 className="mx-search-input"
@@ -207,11 +214,14 @@ function Positions() {
                     {rows.length} / {scoped.length}
                   </span>
                 )}
+                {/* Phones sort here; the desktop table sorts from its headers. */}
                 <Select
+                  className="mx-holdings-sort"
                   aria-label={t("持仓排序", "Sort holdings")}
                   w={155}
                   data={[
                     { value: "value", label: sort === "value" && ascending ? t("市值从小到大", "Smallest value") : t("市值从大到小", "Largest value") },
+                    ...(hasDay ? [{ value: "day", label: sort === "day" && ascending ? columnLabel + t("跌幅最大", " · largest fall") : columnLabel + t("涨幅最大", " · largest rise") }] : []),
                     { value: "pnl", label: sort === "pnl" && ascending ? t("盈亏从低到高", "Lowest P&L") : t("盈亏从高到低", "Highest P&L") },
                     {
                       value: "allocation",
@@ -234,8 +244,15 @@ function Positions() {
                         {detailed && (
                           <>
                             <th className="mx-align-right">
-                              {t("买入成本", "Purchase cost")}
-                              <small>{t("摊薄成本 / 股", "Diluted cost / share")}</small>
+                              <span className="mx-th-help">
+                                {t("买入成本", "Purchase cost")}
+                                <Help label={t("买入成本", "Purchase cost")}>
+                                  {t(
+                                    "下方是每股摊薄成本：计入已实现交易与回收资金，可能不同于券商买入均价。",
+                                    "The figure below is the diluted cost per share. It includes realized trades and recovered capital, so it may differ from the broker's average purchase price.",
+                                  )}
+                                </Help>
+                              </span>
                             </th>
                             <th className="mx-align-right">
                               {t("当前价格", "Current price")}
@@ -249,6 +266,11 @@ function Positions() {
                         <th className="mx-align-right">
                           {sortButton(t("市值", "Market value"), "value")}
                         </th>
+                        {hasDay && (
+                          <th className="mx-align-right">
+                            {sortButton(columnLabel, "day")}
+                          </th>
+                        )}
                         <th className="mx-align-right">
                           {sortButton(t("浮动盈亏", "Unrealized P&L"), "pnl")}
                         </th>
@@ -307,6 +329,27 @@ function Positions() {
                               {number(h.quantity, 4)} {t("股", "shares")}
                             </small>
                           </td>
+                          {hasDay && (
+                            <td className="mx-align-right">
+                              {h.dayChangeGbp == null ? "—" : (
+                                <>
+                                  <strong className={"mx-" + tone(h.dayChangeGbp)}>
+                                    {signedPounds(h.dayChangeGbp)}
+                                  </strong>
+                                  {(h.dayChangePct != null || otherDay(h)) && (
+                                    <small>
+                                      {h.dayChangePct != null && (
+                                        <span className={"mx-" + tone(h.dayChangePct)}>
+                                          {percent(h.dayChangePct, true, 2)}
+                                        </span>
+                                      )}{" "}
+                                      {otherDay(h) && <Tag tone="warn">{otherDay(h)}</Tag>}
+                                    </small>
+                                  )}
+                                </>
+                              )}
+                            </td>
+                          )}
                           <td className="mx-align-right">
                             <strong className={"mx-" + tone(h.pnlGbp)}>
                               {currency(h.pnlGbp, "GBP", 2)}
@@ -349,9 +392,20 @@ function Positions() {
                         <Instrument ticker={h.ticker} name={h.name} />
                         <span className="mx-row-value">
                           {currency(h.currentValueGbp, "GBP", 2)}
-                          <small className={"mx-" + tone(h.pnlPct)}>
-                            {percent(h.pnlPct, true)}
+                          <small>
+                            <span className={"mx-" + tone(h.pnlGbp)}>
+                              {currency(h.pnlGbp, "GBP", 2)} · {percent(h.pnlPct, true)}
+                            </span>
                           </small>
+                          {h.dayChangeGbp != null && (
+                            <small className="mx-holding-day">
+                              {dayLabel(h.dayChangeDate ?? columnDay)}{" "}
+                              <span className={"mx-" + tone(h.dayChangeGbp)}>
+                                {signedPounds(h.dayChangeGbp)}
+                                {h.dayChangePct != null && " " + percent(h.dayChangePct, true, 2)}
+                              </span>
+                            </small>
+                          )}
                         </span>
                       </div>
                       <footer>
@@ -359,10 +413,11 @@ function Positions() {
                           {accountName(profile, h.account)} ·{" "}
                           {number(h.quantity, 4)} {t("股", "shares")}
                         </span>
-                        <span className="mx-weight" aria-label={t("组合权重 ", "Weight ") + percent(h.allocationPct)}>
+                        <span className="mx-weight">
                           <span className="mx-mini-bar" aria-hidden="true">
                             <i style={{ width: `${largestAllocation > 0 ? (h.allocationPct / largestAllocation) * 100 : 0}%` }} />
                           </span>
+                          <span className="sr-only">{t("组合权重", "Weight")} </span>
                           {percent(h.allocationPct)}
                         </span>
                       </footer>
@@ -431,15 +486,19 @@ function Positions() {
               value={currency(selected.currentValueGbp, "GBP", 2)}
             />
             <div className="mx-metric-grid mx-position-metrics">
+              {selected.dayChangeGbp != null && (
+                <Metric
+                  label={dayLabel(selected.dayChangeDate ?? columnDay)}
+                  value={signedPounds(selected.dayChangeGbp)}
+                  tone={tone(selected.dayChangeGbp)}
+                  note={selected.dayChangePct != null ? percent(selected.dayChangePct, true, 2) : undefined}
+                />
+              )}
               <Metric
                 label={t("浮动盈亏", "Unrealized P&L")}
                 value={currency(selected.pnlGbp, "GBP", 2)}
                 tone={tone(selected.pnlGbp)}
-              />
-              <Metric
-                label={t("回报率", "Return")}
-                value={percent(selected.pnlPct, true, 2)}
-                tone={tone(selected.pnlPct)}
+                note={percent(selected.pnlPct, true, 2)}
               />
             </div>
             <Facts

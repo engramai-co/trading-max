@@ -288,12 +288,6 @@
     gap: 16px;
   }
 }
-.mx-drawer-nav .mx-nav-link {
-  color: var(--mx-ink);
-}
-.mx-drawer-nav .mx-nav-link[aria-current] {
-  color: var(--mx-nav-active-ink);
-}
 .mx-grid-two {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

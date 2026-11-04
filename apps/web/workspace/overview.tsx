@@ -1,23 +1,21 @@
 "use client";
 
 import { Button, Select } from "@mantine/core";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  ChartLine,
-} from "@phosphor-icons/react";
+import { ArrowUpRight, ChartLine } from "@phosphor-icons/react";
 import Link from "./link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { attentionItems, type AttentionFact, type AttentionItem } from "./attention";
-import { type Scope } from "@/lib/portfolio/nav";
+import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
+  Facts,
   Freshness,
   Instrument,
   Metric,
@@ -33,32 +31,45 @@ import {
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
-import { EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
-import { DayDrivers } from "./day-drivers";
-import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
+import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-drivers";
+import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
+import { useCurrentDay } from "./current-day";
 import { LocalOnboarding } from "./local-onboarding";
 import { SecurityPeek } from "./security-peek";
+
+/** The overview chart reopens on the range last chosen on this device; a range in the URL wins. */
+const RANGE_STORAGE_KEY = "trading_max-overview-range";
+function subscribeToStorage(notify: () => void) {
+  window.addEventListener("storage", notify);
+  return () => window.removeEventListener("storage", notify);
+}
+function storedRange() {
+  try {
+    return window.localStorage.getItem(RANGE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+function useRememberedRange() {
+  const remembered = useSyncExternalStore(subscribeToStorage, storedRange, () => null);
+  const remember = useCallback((range: Range) => {
+    try {
+      window.localStorage.setItem(RANGE_STORAGE_KEY, range);
+    } catch {
+      // Private browsing without storage still switches the range for this view.
+    }
+  }, []);
+  return [remembered, remember] as const;
+}
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   return (
-    <Page
-      className="mx-overview-page"
-      title={t("组合总览", "Portfolio overview")}
-      actions={
-        <Button
-          component={Link}
-          href="/holdings"
-          variant="default"
-          rightSection={<ArrowRight size={15} />}
-        >
-          {t("查看持仓", "View holdings")}
-        </Button>
-      }
-    >
+    <Page className="mx-overview-page" title={t("组合总览", "Portfolio overview")}>
       {query.isPending ? (
         <Pending />
       ) : query.isError ? (
@@ -73,7 +84,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
-  const [now] = useState(() => Date.now());
+  const { today, now } = useCurrentDay();
   const refresh = useQuery({
     queryKey: ["refresh-attention"],
     queryFn: ({ signal }) => api<RefreshAttention>("/refresh/attention", { signal }),
@@ -116,8 +127,12 @@ function OverviewContent({ data }: { data: DashboardLens }) {
   const cash = scope === "total" ? data.totalCashGbp : selected?.cashGbp;
   const value =
     scope === "total" ? data.totalValueGbp : selected?.totalValueGbp;
-  const day =
+  const previousDay =
     scope === "total" ? data.latestModelDayReturn : selected?.dailyReturn;
+  // A retired account with nothing left in it has no row; history stays in review.
+  const cfd = data.cfd && !(data.cfd.accountStatus === "retired" && Math.abs(data.cfd.endingValueGbp ?? 0) < 0.005)
+    ? data.cfd
+    : null;
   const signals = (data.technical ?? [])
     .filter((s) => s.score != null && holdings.some((h) => h.ticker === s.ticker))
     .sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity))
@@ -171,11 +186,13 @@ function OverviewContent({ data }: { data: DashboardLens }) {
                 label={t("可用现金", "Cash balance")}
                 value={currency(cash, "GBP", 2)}
               />
-              <Metric
-                label={t("上一交易日收益", "Previous daily return")}
-                value={percent(day, true, 2)}
-                tone={tone(day)}
-                help={t("已核对现金流的日收益", "Cash-flow-aware daily return")}
+              <TodayMetric
+                scope={scope}
+                runId={data.runId}
+                attribution={data.dayAttribution}
+                previousDay={previousDay}
+                today={today}
+                now={now}
               />
             </div>
           </div>
@@ -195,7 +212,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           <OverviewHistory
             scope={scope}
             runId={data.runId}
-            attribution={data.dayAttribution}
+            dayAttribution={data.dayAttribution}
             windowAttribution={data.windowAttribution}
           />
           <Allocation holdings={holdings} />
@@ -222,21 +239,20 @@ function OverviewContent({ data }: { data: DashboardLens }) {
                 <small>
                   <span className={"mx-" + tone(account.unrealizedPnlGbp)}>
                     {currency(account.unrealizedPnlGbp)}
-                  </span>{" "}
-                  {t("浮动盈亏", "unrealized")}
+                  </span>
                 </small>
               </div>
               <ArrowUpRight size={17} />
             </Link>
           ))}
-          {data.cfd && (
+          {cfd && (
             <div className="mx-chart-footer">
               <span>
                 CFD ·{" "}
                 {t("历史现金权益", "Historical cash equity")}
               </span>
               <TextLink href="/account-analysis?account=C">
-                {currency(data.cfd.endingValueGbp)}
+                {currency(cfd.endingValueGbp)}
               </TextLink>
             </div>
           )}
@@ -248,9 +264,6 @@ function OverviewContent({ data }: { data: DashboardLens }) {
             "当前账户持仓中，按技术评分从低到高展示最多三个已有研究的标的。",
             "Up to three researched holdings in the selected account, ordered by technical score from low to high.",
           )}
-          action={
-            <TextLink href="/research">{t("研究台", "Research")}</TextLink>
-          }
         >
           {signals.length ? (
             signals.map((signal) => {
@@ -356,27 +369,126 @@ function Attention({ items }: { items: AttentionItem[] }) {
     </nav>
   );
 }
-function OverviewHistory({
+/** What today did to the account, and the positions behind it; the 1D chart's own figure. */
+function TodayMetric({
   scope,
   runId,
   attribution,
-  windowAttribution,
+  previousDay,
+  today,
+  now,
 }: {
   scope: Scope;
   runId: string;
   attribution?: DashboardLens["dayAttribution"];
+  previousDay?: number | null;
+  /** Today's calendar day in the display time zone. */
+  today: string;
+  now: number;
+}) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const selection = useMemo(() => ({ range: "1D" as const, scope, runId }), [scope, runId]);
+  // The history answers with the exact P&L at the attribution's opening.
+  const openings = useMemo(() => driverOpenings(attribution, scope), [attribution, scope]);
+  const query = usePortfolioHistory(selection, true, openings);
+  const history = query.data?.history;
+  const money = query.data?.money;
+  const points = history?.points ?? [];
+  const day = history?.endDay;
+  const pnl = money?.pnl ?? null;
+  const share = money?.pnlPercents.at(-1) ?? null;
+  // On a weekend or before the day's first observation the window is an earlier
+  // trading day: name it instead of calling it today.
+  const label = !day || day === today
+    ? t("今日", "Today")
+    : formatCalendarDate(day, locale, now);
+  // The drivers explain this figure only, so they wait while it stops at a cutoff.
+  const drivers = attribution && money && history ? dayDrivers({
+    attribution,
+    scope,
+    day,
+    dates: points.map((p) => p.date),
+    pnls: money.pnls,
+    openings: query.data?.openings,
+    cutOff: history.pendingCashFlows,
+  }) : null;
+  return (
+    <Metric
+      label={<>{label}{history && <CutoffTag history={history} />}</>}
+      helpLabel={label}
+      value={pnl == null ? "—" : (
+        <>
+          {signedPounds(pnl)}
+          {share != null && <small className="mx-metric-change">{percent(share, true, 2)}</small>}
+          <EstimateTag points={points} />
+        </>
+      )}
+      tone={tone(pnl)}
+      help={(
+        <>
+          {history?.pendingCashFlows && (
+            <p>
+              {t(
+                "新的现金流待核对：数字统计至最后可核对的记录，核对完成后更新，届时再列出变动最大的持仓。",
+                "New cash flows await reconciliation: the figure stops at the last verified record and catches up once they are reconciled; the largest position moves follow then.",
+              )}
+            </p>
+          )}
+          <p>
+            {t(
+              "本交易日第一条账户记录以来的净盈亏，已扣除当日出入金；下面列出变动最大的持仓。",
+              "Net P&L since the trading day's first account observation, excluding money moved in or out that day; the largest position moves follow.",
+            )}
+          </p>
+          <Facts rows={[[
+            t("上一交易日收益", "Previous trading day"),
+            <span key="previous" className={previousDay == null ? undefined : "mx-" + tone(previousDay)}>
+              {percent(previousDay, true, 2)}
+            </span>,
+          ]]} />
+        </>
+      )}
+      note={drivers ? <DayDrivers drivers={drivers} /> : undefined}
+    />
+  );
+}
+function OverviewHistory({
+  scope,
+  runId,
+  dayAttribution,
+  windowAttribution,
+}: {
+  scope: Scope;
+  runId: string;
+  dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
 }) {
   const t = useCopy();
   const { params, update } = useRouteState();
-  const range = portfolioRange(params.get("range"));
+  const [remembered, remember] = useRememberedRange();
+  const range = preferredRange(params.get("range"), remembered);
   const selection = useMemo(() => ({ range, scope, runId }), [range, scope, runId]);
-  const query = usePortfolioHistory(selection);
+  // 5D names its window's openings; 1D names Today's, so both share one request.
+  const openings = useMemo(
+    () => driverOpenings(range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : null, scope),
+    [range, scope, dayAttribution, windowAttribution],
+  );
+  const query = usePortfolioHistory(selection, true, openings);
   const history = query.data?.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
   const money = query.data?.money ?? portfolioMoney([], scope);
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
+  const drivers = range === "1W" && windowAttribution ? dayDrivers({
+    attribution: windowAttribution,
+    scope,
+    day: history.endDay,
+    dates: points.map((p) => p.date),
+    pnls: money.pnls,
+    openings: query.data?.openings,
+    cutOff: history.pendingCashFlows,
+  }) : null;
   return (
     <Panel
       className="mx-overview-history"
@@ -388,7 +500,11 @@ function OverviewHistory({
           <Segments
             label={t("图表区间", "Chart range")}
             value={range}
-            onChange={(value) => update({ range: value })}
+            onChange={(value) => {
+              remember(value);
+              update({ range: value });
+            }}
+            shortcuts
             options={PORTFOLIO_RANGES.map(
               (v) => ({
                 value: v,
@@ -411,7 +527,6 @@ function OverviewHistory({
             </strong>
             {money.pnl != null && (
               <span title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}>
-                {t("相对期初 ", "From opening ")}
                 {percent(money.pnlPercents.at(-1), true, 2)}
               </span>
             )}
@@ -421,23 +536,7 @@ function OverviewHistory({
               {t("收益分析", "View performance")}
             </TextLink>
           </div>
-          {range === "1D" && attribution && attribution.day === history.endDay && (
-            <DayDrivers
-              attribution={attribution}
-              scope={scope}
-              dates={points.map((p) => p.date)}
-              pnls={money.pnls}
-            />
-          )}
-          {range === "1W" && windowAttribution && windowAttribution.day === history.endDay && (
-            <DayDrivers
-              span="5D"
-              attribution={windowAttribution}
-              scope={scope}
-              dates={points.map((p) => p.date)}
-              pnls={money.pnls}
-            />
-          )}
+          {drivers && <DayDrivers span="5D" drivers={drivers} />}
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}
@@ -543,7 +642,7 @@ function Allocation({ holdings }: { holdings: Holding[] }) {
       {!rows.length && <Empty title={t("还没有持仓", "No positions yet")} />}
       <div className="mx-allocation-foot">
         <TextLink href="/holdings?view=lookthrough">
-          {t("穿透 ETF，查看底层资产", "Look inside your ETFs")}
+          {t("穿透", "Look-through")}
         </TextLink>
       </div>
     </Panel>

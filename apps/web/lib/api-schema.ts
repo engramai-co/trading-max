@@ -2687,7 +2687,8 @@ export interface components {
         };
         /**
          * DayAttribution
-         * @description Accounts appear only when their position detail reconciled at both ends.
+         * @description Accounts appear only when their position detail reconciled at both ends and
+         *     both their opening and latest observation fall on this trading day.
          */
         DayAttribution: {
             /** Accounts */
@@ -3195,6 +3196,12 @@ export interface components {
             currentPrice: number;
             /** Currentvaluegbp */
             currentValueGbp: number;
+            /** Daychangedate */
+            dayChangeDate?: string | null;
+            /** Daychangegbp */
+            dayChangeGbp?: number | null;
+            /** Daychangepct */
+            dayChangePct?: number | null;
             /** Dilutedcostcurrency */
             dilutedCostCurrency: string;
             /** Dilutedcostgbp */
@@ -6759,7 +6766,9 @@ export interface components {
         };
         /**
          * WindowAttribution
-         * @description The 5D window: daily openings chained from the first available one in the window.
+         * @description The 5D window: daily openings chained from the first available one in the
+         *     window. Accounts appear only when that opening and their latest observation fall
+         *     within the window's trading days.
          */
         WindowAttribution: {
             /** Accounts */

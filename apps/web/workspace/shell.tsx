@@ -3,13 +3,11 @@
 import {
   ActionIcon,
   Button,
-  Drawer,
   Group,
   Menu,
   Modal,
   TextInput,
   Tooltip,
-  VisuallyHidden,
   useMantineColorScheme,
 } from "@mantine/core";
 import { useOs } from "@mantine/hooks";
@@ -21,15 +19,14 @@ import {
   Check,
   CircleHalf,
   ClockCounterClockwise,
+  DotsThree,
   GearSix,
   Globe,
-  List,
   MagnifyingGlass,
   Moon,
   SquaresFour,
   StackSimple,
   Sun,
-  X,
 } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "./link";
@@ -71,7 +68,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const os = useOs();
   const appleKeyboard = os === "macos" || os === "ios";
   const [searchOpen, setSearchOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<{ scope: string | null; visit: string; items: SearchResult[] }>({ scope: null, visit: "", items: [] });
@@ -141,7 +137,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         if (!event.repeat) {
-          setMobileOpen(false);
           if (!searchOpen) searchOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           restoreSearchFocus.current = searchOpen;
           setSearchOpen(!searchOpen);
@@ -240,7 +235,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   function navigate(href: string) {
     restoreSearchFocus.current = false;
     setSearchOpen(false);
-    setMobileOpen(false);
     const route = presentationLink(actualPathname, href);
     if (route.separate) window.open(route.href, "_blank", "noopener");
     else router.push(route.href);
@@ -250,7 +244,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       href="/"
       className="mx-brand"
       aria-label={t("Trading Max · 组合总览", "Trading Max · Overview")}
-      onClick={() => setMobileOpen(false)}
     >
       <BrandMark size={32} className="mx-brand-symbol" />
       <span>
@@ -258,33 +251,82 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       </span>
     </Link>
   );
+  const appearances = [
+    { value: "light", label: t("浅色", "Light"), Icon: Sun },
+    { value: "dark", label: t("深色", "Dark"), Icon: Moon },
+    { value: "auto", label: t("跟随系统", "System"), Icon: CircleHalf },
+  ] as const;
+  const appearanceItems = appearances.map((item) => (
+    <Menu.Item
+      key={item.value}
+      onClick={() => setColorScheme(item.value)}
+      leftSection={<item.Icon size={17} />}
+      rightSection={colorScheme === item.value && <Check size={15} />}
+    >
+      {item.label}
+    </Menu.Item>
+  ));
+  const nextLocale = locale === "zh"
+    ? { value: "en" as const, label: "English", lang: "en", action: "Switch to English" }
+    : { value: "zh" as const, label: "中文", lang: "zh-CN", action: "切换到中文" };
+  // Both top-bar menus open inside the banner landmark and focus their first
+  // item: Mantine's focus placeholder is not a valid child of role="menu".
   const theme = (
-    <Menu position="bottom-end" shadow="md" width={190}>
+    <Menu position="bottom-end" shadow="md" width={190} withinPortal={false} withInitialFocusPlaceholder={false}>
       <Menu.Target>
         <ActionIcon
+          className="mx-topbar-preference"
           variant="subtle"
           aria-label={t("选择外观", "Choose appearance")}
         >
           <CircleHalf size={20} />
         </ActionIcon>
       </Menu.Target>
+      <Menu.Dropdown>{appearanceItems}</Menu.Dropdown>
+    </Menu>
+  );
+  // Phones reach the five main pages from the dock. This one menu holds only
+  // what the dock lacks: workspace management and, on the web, preferences.
+  const more = (
+    <Menu
+      position="bottom-end"
+      shadow="md"
+      width={220}
+      withinPortal={false}
+      withInitialFocusPlaceholder={false}
+      classNames={{ dropdown: "mx-more-menu" }}
+    >
+      <Menu.Target>
+        <ActionIcon className="mx-topbar-more" variant="subtle" aria-label={t("更多", "More")}>
+          <DotsThree size={22} weight="bold" />
+        </ActionIcon>
+      </Menu.Target>
       <Menu.Dropdown>
-        {(
-          [
-            { value: "light", label: t("浅色", "Light"), Icon: Sun },
-            { value: "dark", label: t("深色", "Dark"), Icon: Moon },
-            { value: "auto", label: t("跟随系统", "System"), Icon: CircleHalf },
-          ] as const
-        ).map((item) => (
+        {navigation.filter((n) => n.group === 2).map((n) => (
           <Menu.Item
-            key={item.value}
-            onClick={() => setColorScheme(item.value)}
-            leftSection={<item.Icon size={17} />}
-            rightSection={colorScheme === item.value && <Check size={15} />}
+            key={n.href}
+            component={Link}
+            href={n.href}
+            aria-current={active?.href === n.href ? "page" : undefined}
+            leftSection={<n.icon size={17} weight={active?.href === n.href ? "fill" : "regular"} />}
           >
-            {item.label}
+            {n.label}
           </Menu.Item>
         ))}
+        {!desktop && (
+          <>
+            <Menu.Divider role="separator" />
+            <Menu.Item
+              leftSection={<Globe size={17} />}
+              aria-label={nextLocale.action}
+              onClick={() => setLocale(nextLocale.value)}
+            >
+              <span lang={nextLocale.lang}>{nextLocale.label}</span>
+            </Menu.Item>
+            <Menu.Divider role="separator" />
+            {appearanceItems}
+          </>
+        )}
       </Menu.Dropdown>
     </Menu>
   );
@@ -299,7 +341,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           aria-label={n.label}
           aria-current={active?.href === n.href ? "page" : undefined}
           className="mx-nav-link"
-          onClick={() => setMobileOpen(false)}
         >
           {compact ? <NavigationIcon icon={n.icon} /> : <><n.icon
             size={20}
@@ -335,7 +376,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           searchOpener.current = event.currentTarget;
           restoreSearchFocus.current = false;
           setSearchOpen(true);
-          setMobileOpen(false);
         }}
       >
         <MagnifyingGlass size={desktop && position === "right" ? 22 : 19} aria-hidden="true" />
@@ -343,38 +383,11 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     </Tooltip>
   );
   return (
-    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen || mobileOpen}>
+    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen}>
       <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
       <a className="mx-skip" href="#main-content">
         {t("跳到正文", "Skip to content")}
       </a>
-      <Drawer.Root
-        opened={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        size="100%"
-        position="bottom"
-        transitionProps={{ duration: 240, timingFunction: "cubic-bezier(.32, .72, 0, 1)" }}
-      >
-        <Drawer.Overlay />
-        <Drawer.Content classNames={{ content: "mx-mobile-menu" }}>
-          <Drawer.Header className="mx-mobile-menu-header">
-            <VisuallyHidden component={Drawer.Title}>
-              {t("工作台导航", "Workspace navigation")}
-            </VisuallyHidden>
-            <div className="mx-drawer-brand">{brand}</div>
-            <Drawer.CloseButton aria-label={t("关闭导航", "Close navigation")} />
-          </Drawer.Header>
-          <Drawer.Body className="mx-mobile-menu-body">
-            <nav
-              className="mx-drawer-nav"
-              aria-label={t("移动端导航", "Mobile navigation")}
-            >
-              {links([0, 1])}
-              {links([2])}
-            </nav>
-          </Drawer.Body>
-        </Drawer.Content>
-      </Drawer.Root>
       <aside className="mx-sidebar">
         <Tooltip.Group openDelay={250} closeDelay={100}>
         {brand}
@@ -392,18 +405,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       <div className="mx-content">
         <header className="mx-topbar">
           <div className="mx-topbar-title">
-            <ActionIcon
-              className="mx-menu-toggle"
-              aria-label={
-                mobileOpen
-                  ? t("关闭导航", "Close navigation")
-                  : t("打开导航", "Open navigation")
-              }
-              aria-expanded={mobileOpen}
-              onClick={() => setMobileOpen((open) => !open)}
-            >
-              {mobileOpen ? <X size={21} /> : <List size={21} />}
-            </ActionIcon>
             <span className="mx-topbar-workspace">
               {profile.data?.displayName ||
                 t("工作台", "Workspace")}
@@ -415,12 +416,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             {searchTrigger("mx-topbar-search", "bottom-end")}
             {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
             {!desktop && <ActionIcon
-              aria-label={locale === "zh" ? "Switch to English" : "切换到中文"}
-              onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
+              className="mx-topbar-preference"
+              aria-label={nextLocale.action}
+              onClick={() => setLocale(nextLocale.value)}
             >
               <Globe size={19} />
             </ActionIcon>}
             {!desktop && theme}
+            {more}
           </Group>
         </header>
         <main id="main-content" tabIndex={-1}>

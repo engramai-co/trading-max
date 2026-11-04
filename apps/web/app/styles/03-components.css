@@ -56,13 +56,6 @@
   background: var(--mx-brand);
   pointer-events: none;
 }
-.mx-segments[data-indicator="ready"] > .mx-indicator,
-.mx-tabs[data-indicator="ready"] > .mx-indicator {
-  transition:
-    transform 200ms var(--mx-ease),
-    width 200ms var(--mx-ease),
-    height 200ms var(--mx-ease);
-}
 .mx-tabs::-webkit-scrollbar {
   display: none;
 }
@@ -270,13 +263,6 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-}
-.mx-timeline-context {
-  margin: -4px 12px 8px 64px;
-  color: var(--mx-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
 }
 .sr-only {
   position: absolute;
@@ -490,7 +476,19 @@
   gap: 5px;
   min-height: 26px;
 }
+.mx-th-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mx-chart-toolbar {
+  margin-bottom: 24px;
+}
 .mx-mobile-holdings {
+  display: none;
+}
+/* Phones sort from a menu; the desktop table sorts from its headers. */
+.mx-holdings-sort {
   display: none;
 }
 .mx-search-input {
@@ -638,6 +636,15 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   background: color-mix(in srgb, currentColor calc(7% + var(--mx-heat) * 17%), transparent);
+}
+/* Text a step towards ink keeps 4.5:1 on the strongest tint in both appearances. */
+.mx-heat-pill.mx-up {
+  color: color-mix(in srgb, var(--mx-up) 72%, var(--mx-ink));
+  background: color-mix(in srgb, var(--mx-up) calc(7% + var(--mx-heat) * 17%), transparent);
+}
+.mx-heat-pill.mx-down {
+  color: color-mix(in srgb, var(--mx-down) 72%, var(--mx-ink));
+  background: color-mix(in srgb, var(--mx-down) calc(7% + var(--mx-heat) * 17%), transparent);
 }
 .mx-heat-empty {
   color: var(--mx-muted);

@@ -637,6 +637,68 @@ def test_new_runs_prewarm_both_dashboard_projections(
     assert history_reads[0] == ("3M", "total")
 
 
+def test_overview_lens_leaves_out_attributions_opened_on_another_trading_day(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+
+    def entry(since: str, as_of: str) -> dict[str, object]:
+        row = {"ticker": "BE", "name": "Bloom Energy", "contribution_gbp": "10.00"}
+        return {"since": since, "as_of": as_of, "contributions": [row]}
+
+    # Written before openings were kept per account: A's 1D opened at Friday's
+    # observation and its 5D chain starts before the window.
+    attributions = {
+        "account/attribution/day.json": {
+            "day": "2026-11-09",
+            "accounts": {
+                "A": entry("2026-11-06T16:00:00Z", "2026-11-09T08:10:00Z"),
+                "B": entry("2026-11-09T08:00:00Z", "2026-11-09T08:10:00Z"),
+            },
+        },
+        "account/attribution/window.json": {
+            "start_day": "2026-11-03",
+            "day": "2026-11-09",
+            "accounts": {
+                "A": entry("2026-11-02T16:00:00Z", "2026-11-09T08:10:00Z"),
+                "B": entry("2026-11-03T08:00:00Z", "2026-11-09T08:10:00Z"),
+            },
+        },
+    }
+    previous = store.immutable_snapshots.latest()
+    assert previous is not None
+    store.immutable_snapshots.publish(
+        scope="intraday",
+        source="test",
+        artifacts=[
+            *previous.manifest.artifacts,
+            *(
+                store.immutable_artifacts.put_json(
+                    key=key, payload=payload, kind="account_attribution", producer_version="test"
+                )
+                for key, payload in attributions.items()
+            ),
+        ],
+    )
+    app = create_app(
+        Settings(
+            data_root=tmp_path / "runtime",
+            api_token="secret",
+            embedded_worker=False,
+            dashboard_prewarm_seconds=0,
+        )
+    )
+
+    with TestClient(app) as client:
+        lens = client.get("/v1/dashboard/lens/overview?detail=summary").json()
+
+    assert set(lens["dayAttribution"]["accounts"]) == {"B"}
+    assert set(lens["windowAttribution"]["accounts"]) == {"B"}
+
+
 def test_watchlist_mutations_require_auth_and_preserve_pending_state(
     research_root: Path,
     tmp_path: Path,

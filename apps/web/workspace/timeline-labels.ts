@@ -1,5 +1,5 @@
 import type { Locale } from "@/components/locale-provider";
-import { formatDate, formatTimeZoneLabel, localeTag } from "@/ui/formatters";
+import { formatDate } from "@/ui/formatters";
 
 export type TimelineDisplay = {
   locale: Locale;
@@ -8,22 +8,9 @@ export type TimelineDisplay = {
   clock: boolean;
 };
 
-/** Keep broad date context out of the individual ticks and outside the canvas,
- * where long localized timezone names can wrap and remain accessible. */
-export function timelineContext(categories: string[], display: TimelineDisplay) {
-  const first = categories.find((date) => Number.isFinite(Date.parse(date)));
-  const last = categories.findLast((date) => Number.isFinite(Date.parse(date)));
-  if (!first || !last) return "";
-  const { locale, clock, intraday } = display;
-  const timeZone = intraday ? display.timeZone : "UTC";
-  return new Intl.DateTimeFormat(localeTag(locale), {
-    year: "numeric", month: "short", ...(clock ? { day: "numeric" as const } : {}), timeZone,
-  }).formatRange(Date.parse(first), Date.parse(last))
-    + (intraday ? ` · ${formatTimeZoneLabel(timeZone, locale)}` : "");
-}
-
 /** Presentation only: positions remain indexes into the original trading-time
- * calendar. Neither missing observations nor folded weekends are filled here. */
+ * calendar. Neither missing observations nor folded weekends are filled here.
+ * The period span beside the chart title carries the dates; ticks stay short. */
 export function timelineLabels(categories: string[], display: TimelineDisplay) {
   const { locale, intraday, clock } = display;
   const timeZone = intraday ? display.timeZone : "UTC";
@@ -86,5 +73,5 @@ export function timelineLabels(categories: string[], display: TimelineDisplay) {
     }
     return formatDate(time, locale, { month: "short", day: "numeric", timeZone });
   };
-  return { ticks, label, context: timelineContext(categories, display) };
+  return { ticks, label };
 }

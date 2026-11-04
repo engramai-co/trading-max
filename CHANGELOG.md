@@ -4,6 +4,57 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-11-04
+
+### Added
+
+- Today is the overview's first answer: the third header cell shows today's net
+  P&L in GBP and percent with the positions that moved it most. The previous
+  trading day's return moves into its help; on weekends the cell names the
+  trading day it shows. While new cash flows await reconciliation it states
+  where its figure stops ("截至 09:00", in the display time zone).
+- Holdings show each position's change since its account's first observation
+  of the trading day (`dayChangeGbp`, `dayChangePct`), measured at the same broker
+  observation for the same broker instrument: a sortable today column on
+  desktop once values exist, and today and unrealized P&L in GBP on phone cards
+  and in the position detail.
+- ⌥ (macOS, iOS) or Alt (Windows) with 1–8 switches the overview and
+  performance chart ranges; Linux browsers and ChromeOS keep those keys. The
+  overview reopens on the range last chosen on the device, and a range in the
+  link still wins.
+- History requests accept up to two exact attribution openings (`opening=`)
+  and answer the cash-flow-adjusted P&L at each, from unthinned observations.
+
+### Changed
+
+- The 1D and 5D "What moved" strips only explain the figure they sit under:
+  they wait while the figure is cut off, state a later start ("since 08:10")
+  and measure it from the exact P&L at that opening, and hide when openings are
+  earlier than the figure or differ between accounts.
+- The day attribution (`day-attribution-v4`) records the broker instrument and
+  opening value of each contribution and opens each account's trading day at
+  that account's own first observation of it.
+- Phones reach data status, settings, language and appearance from one More
+  menu; the drawer that repeated the dock is gone.
+- Quieter overview, holdings and performance pages: duplicate shortcuts, panel
+  titles, captions and legend entries are removed; explanations move into help
+  and chart controls share one row.
+- Tabs and segments animate their selection with transform only, level with
+  the tabs.
+
+### Fixed
+
+- When one account syncs into a new trading day before another, the lagging
+  account's first observation of that day no longer reports the move since its
+  previous trading day as that day's change. Attributions opened on another
+  trading day, including ones written before this fix, are left out.
+- Today labels change at midnight in the display time zone and when the page
+  is shown again; with reduced motion, navigation icons no longer cross-fade.
+- Monthly return pills keep 4.5:1 text contrast; top-bar menus contain only
+  valid menu items; record pagination is a named navigation landmark; table
+  corner headers and holding weights are named correctly; labels with tags no
+  longer break Chinese text into a column on phones.
+
 ## [1.22.0] - 2026-11-04
 
 ### Added

@@ -97,11 +97,12 @@ export function timelineOption(
       top: top(index),
       height: index === 0 ? 210 : 150,
     })),
-    // A single plot is named by its panel; stacked plots name themselves. Units live on the ticks.
-    graphic: (layers.length > 1 ? layers : []).map((layer, index) => ({
+    // The legend above names the first plot; plots stacked under it name
+    // themselves. Units live on the ticks.
+    graphic: layers.slice(1).map((layer, index) => ({
       type: "text",
       left: 0,
-      top: top(index) - 28,
+      top: top(index + 1) - 28,
       style: {
         text: layer.label,
         fill: colours.text,

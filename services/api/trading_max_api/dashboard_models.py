@@ -661,6 +661,15 @@ class Holding(ApiModel):
     pnl_gbp: float
     pnl_pct: float
     allocation_pct: float
+    # Change since the London trading day's first observation for the shares held
+    # through it, and that change as a fraction of their opening value. Null when
+    # the day's attribution does not cover the position (opened today, positions
+    # unreconciled, measured at another observation or from an opening on another
+    # trading day, or an ambiguous listing).
+    # day_change_date is the London trading day the change covers (YYYY-MM-DD).
+    day_change_gbp: float | None = None
+    day_change_pct: float | None = None
+    day_change_date: str | None = None
 
 
 class NavPoint(ApiModel):
@@ -1266,14 +1275,17 @@ class AccountDayAttribution(ApiModel):
 
 
 class DayAttribution(ApiModel):
-    """Accounts appear only when their position detail reconciled at both ends."""
+    """Accounts appear only when their position detail reconciled at both ends and
+    both their opening and latest observation fall on this trading day."""
 
     day: str
     accounts: dict[InvestableAccountCode, AccountDayAttribution] = Field(default_factory=dict)
 
 
 class WindowAttribution(ApiModel):
-    """The 5D window: daily openings chained from the first available one in the window."""
+    """The 5D window: daily openings chained from the first available one in the
+    window. Accounts appear only when that opening and their latest observation fall
+    within the window's trading days."""
 
     start_day: str
     day: str
