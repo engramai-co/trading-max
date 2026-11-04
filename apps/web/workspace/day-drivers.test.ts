@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LocaleProvider } from "@/components/locale-provider";
-import { prepareHistory } from "@/lib/portfolio/prepared";
+import { pnlsAt, prepareHistory } from "@/lib/portfolio/prepared";
 import type { NavPoint } from "@/lib/types";
-import { dayDrivers, openingLabel, signedPounds } from "./day-drivers";
+import { dayDrivers, driverOpenings, openingLabel, signedPounds } from "./day-drivers";
 import { CutoffTag, cutoffLabel } from "./history-coverage";
 
 const day = "2026-11-02";
@@ -33,9 +33,13 @@ const attribution = {
 };
 
 describe("dayDrivers", () => {
+  // The attribution opened at 07:10, a sync after the chart's first point; the
+  // history request reads the P&L at that opening.
+  const opened = (pnl: number) => ({ "2026-11-02T07:10:00Z": pnl });
+
   it("merges a ticker held in both accounts and adds up to the account change", () => {
     // Net P&L 0 at 07:00, 5 at 07:10 (the attribution's opening, stated), -40 at 15:40.
-    const drivers = dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40] })!;
+    const drivers = dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40], openings: opened(5) })!;
     expect(drivers.accountChange).toBe(-45);
     expect(drivers.named.map((row) => [row.ticker, row.amount])).toEqual([["NVDA", -94], ["EQGB", 42], ["BE", 9]]);
     const shown = drivers.named.reduce((total, row) => total + row.amount, 0) + drivers.other;
@@ -45,7 +49,7 @@ describe("dayDrivers", () => {
   });
 
   it("scopes to one account and flags a change the positions do not explain", () => {
-    const drivers = dayDrivers({ attribution, scope: "isa", day, dates, pnls: [0, 0, 160] })!;
+    const drivers = dayDrivers({ attribution, scope: "isa", day, dates, pnls: [0, 0, 160], openings: opened(0) })!;
     expect(drivers.named.map((row) => row.ticker)).toEqual(["EQGB", "NVDA", "AAPL"]);
     expect(drivers.unexplained).toBe(160 - 25);
     expect(drivers.material).toBe(true);
@@ -54,19 +58,32 @@ describe("dayDrivers", () => {
     expect(shown).toBe(160);
   });
 
-  it("stays silent without the scoped account or a chart point at its opening", () => {
-    expect(dayDrivers({ attribution: { day, accounts: { A: attribution.accounts.A } }, scope: "total", day, dates, pnls: [0, 5, -40] })).toBeNull();
-    expect(dayDrivers({ attribution, scope: "household", day, dates, pnls: [0, 5, -40] })).toBeNull();
-    expect(dayDrivers({ attribution, scope: "invest", day, dates: ["2026-11-02T06:00:00Z"], pnls: [0] })).toBeNull();
+  it("stays silent without the scoped account or the P&L at its opening", () => {
+    expect(dayDrivers({ attribution: { day, accounts: { A: attribution.accounts.A } }, scope: "total", day, dates, pnls: [0, 5, -40], openings: opened(5) })).toBeNull();
+    expect(dayDrivers({ attribution, scope: "household", day, dates, pnls: [0, 5, -40], openings: opened(5) })).toBeNull();
+    expect(dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40] })).toBeNull();
+    expect(dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40], openings: { "2026-11-02T07:10:00Z": null } })).toBeNull();
     // The figure covers another trading day.
-    expect(dayDrivers({ attribution, scope: "total", day: "2026-10-30", dates, pnls: [0, 5, -40] })).toBeNull();
+    expect(dayDrivers({ attribution, scope: "total", day: "2026-10-30", dates, pnls: [0, 5, -40], openings: opened(5) })).toBeNull();
   });
 
+  it("names the scoped openings for the history request", () => {
+    expect(driverOpenings(attribution, "total")).toEqual(["2026-11-02T07:10:00Z"]);
+    expect(driverOpenings({ day, accounts: { A: { ...attribution.accounts.A, since: "2026-11-02T07:10:20Z" }, B: attribution.accounts.B } }, "total"))
+      .toEqual(["2026-11-02T07:10:00Z", "2026-11-02T07:10:20Z"]);
+    expect(driverOpenings({ day, accounts: { A: attribution.accounts.A } }, "total")).toEqual([]);
+    expect(driverOpenings(attribution, "household")).toEqual([]);
+    expect(driverOpenings(undefined, "invest")).toEqual([]);
+  });
 });
 
 describe("the 5D strip measures the window it states", () => {
-  /** Account A's 5D chart, thinned as the overview receives it; £1,000 contributed throughout. */
-  const chart = (observations: Array<[string, number]>) => {
+  /**
+   * Account A's 5D history as the overview receives it: the thinned chart, and the
+   * P&L the history request reads at the named openings from every observation.
+   * £1,000 is contributed throughout.
+   */
+  const history = (observations: Array<[string, number]>, openings: string[] = []) => {
     const intradayNav = observations.map(([date, value]): NavPoint => ({
       date, intraday: true, valuationSource: "broker", flowStatus: "verified",
       invest: value, isa: null, total: value, household: value, cfd: null,
@@ -74,11 +91,16 @@ describe("the 5D strip measures the window it states", () => {
       investTwr: null, isaTwr: null, totalTwr: null,
       investDrawdown: null, isaDrawdown: null, totalDrawdown: null, cfdProxyDrawdown: null,
     }));
-    const { chart: prepared } = prepareHistory(
+    const prepared = prepareHistory(
       { runId: "five", dataRevision: "five", brokerAsOf: observations.at(-1)![0], intradayNav },
       { range: "1W", scope: "invest" },
     );
-    return { day: prepared.history.endDay, dates: prepared.history.points.map((p) => p.date), pnls: prepared.money.pnls };
+    return {
+      day: prepared.chart.history.endDay,
+      dates: prepared.chart.history.points.map((p) => p.date),
+      pnls: prepared.chart.money.pnls,
+      openings: pnlsAt(prepared, openings),
+    };
   };
   const window = (since: string, amount: number) => ({
     startDay: "2026-10-28",
@@ -87,38 +109,53 @@ describe("the 5D strip measures the window it states", () => {
       A: { since, asOf: "2026-11-03T15:00:00Z", contributions: [{ ticker: "XYZ", name: "XYZ Corp", contributionGbp: amount }] },
     },
   });
-  const observations: Array<[string, number]> = [
-    ["2026-10-28T00:10:00Z", 1000],
-    ["2026-10-28T23:40:00Z", 1010],
-    ["2026-10-29T00:10:00Z", 1050],
-    ["2026-11-03T15:00:00Z", 1100],
+  // Ten-minute syncs from Wednesday 00:00 to Thursday 06:00, each £1 up, then Tuesday's close.
+  const syncs: Array<[string, number]> = [
+    ...Array.from({ length: 181 }, (_, step): [string, number] =>
+      [new Date(Date.parse("2026-10-28T00:00:00Z") + step * 600_000).toISOString().replace(".000Z", "Z"), 1000 + step]),
+    ["2026-11-03T15:00:00Z", 1300],
   ];
 
-  it("measures a later opening from its own observation, never an earlier bucket", () => {
-    const five = chart(observations);
-    // The 23:40 reading sits in the 30-minute bucket before the 00:10 opening.
-    expect(five.dates).toContain("2026-10-28T23:40:00Z");
-    const drivers = dayDrivers({ attribution: window("2026-10-29T00:10:00Z", 50), scope: "invest", ...five })!;
+  it("shows every later opening of continuous syncs with its exact residual", () => {
+    const openings = ["2026-10-29T00:00:00Z", "2026-10-29T00:10:00Z", "2026-10-29T00:20:00Z"];
+    // Thinning keeps one reading per 30 minutes: only the 00:20 opening is on the chart.
+    expect(openings.filter((at) => history(syncs).dates.includes(at))).toEqual(["2026-10-29T00:20:00Z"]);
+    for (const [index, since] of openings.entries()) {
+      // From £1,144 + index to £1,300; XYZ explains £100 of it and the rest is unattributed.
+      const drivers = dayDrivers({ attribution: window(since, 100), scope: "invest", ...history(syncs, [since]) })!;
+      expect([drivers.lateOpening, drivers.accountChange, drivers.unexplained, drivers.material])
+        .toEqual([since, 156 - index, 56 - index, true]);
+    }
+  });
+
+  it("measures the earlier £1,010 / £1,050 / £1,100 case from £1,050", () => {
+    const sparse: Array<[string, number]> = [
+      ["2026-10-28T00:10:00Z", 1000],
+      ["2026-10-28T23:40:00Z", 1010],
+      ["2026-10-29T00:10:00Z", 1050],
+      ["2026-11-03T15:00:00Z", 1100],
+    ];
+    const drivers = dayDrivers({ attribution: window("2026-10-29T00:10:00Z", 50), scope: "invest", ...history(sparse, ["2026-10-29T00:10:00Z"]) })!;
     expect([drivers.lateOpening, drivers.accountChange, drivers.unexplained, drivers.material])
       .toEqual(["2026-10-29T00:10:00Z", 50, 0, false]);
     expect(drivers.named.map((row) => [row.ticker, row.amount])).toEqual([["XYZ", 50]]);
     expect(openingLabel(drivers.lateOpening!, "5D", "en", "Europe/London")).toBe("since 29 Oct, 00:10");
   });
 
-  it("hides a later opening whose observation the thinned chart left out", () => {
-    // A 00:20 reading ends the opening's bucket, so the chart keeps it instead of 00:10.
-    const five = chart([...observations.slice(0, 3), ["2026-10-29T00:20:00Z", 1055], observations[3]]);
-    expect(five.dates).not.toContain("2026-10-29T00:10:00Z");
-    expect(dayDrivers({ attribution: window("2026-10-29T00:10:00Z", 45), scope: "invest", ...five })).toBeNull();
+  it("hides an opening no observation was taken at", () => {
+    // The 00:10 sync left no valuation, though the attribution opened from it.
+    const five = history(syncs.filter(([date]) => date !== "2026-10-29T00:10:00Z"), ["2026-10-29T00:10:05Z"]);
+    expect(five.openings).toEqual({ "2026-10-29T00:10:05Z": null });
+    expect(dayDrivers({ attribution: window("2026-10-29T00:10:05Z", 100), scope: "invest", ...five })).toBeNull();
   });
 
   it("opens with the window's first observation as before", () => {
-    const five = chart(observations);
-    const drivers = dayDrivers({ attribution: window("2026-10-28T00:10:00Z", 100), scope: "invest", ...five })!;
-    expect([drivers.lateOpening, drivers.accountChange, drivers.unexplained]).toEqual([null, 100, 0]);
+    const five = history(syncs);
+    const drivers = dayDrivers({ attribution: window("2026-10-28T00:00:00Z", 300), scope: "invest", ...five })!;
+    expect([drivers.lateOpening, drivers.accountChange, drivers.unexplained]).toEqual([null, 300, 0]);
     // An opening before the window's, or a figure at its cash-flow cutoff, hides the strip.
-    expect(dayDrivers({ attribution: window("2026-10-27T15:00:00Z", 100), scope: "invest", ...five })).toBeNull();
-    expect(dayDrivers({ attribution: window("2026-10-28T00:10:00Z", 100), scope: "invest", ...five, cutOff: true })).toBeNull();
+    expect(dayDrivers({ attribution: window("2026-10-27T15:00:00Z", 300), scope: "invest", ...five })).toBeNull();
+    expect(dayDrivers({ attribution: window("2026-10-28T00:00:00Z", 300), scope: "invest", ...five, cutOff: true })).toBeNull();
   });
 });
 
@@ -132,7 +169,7 @@ describe("drivers open where the figure opens", () => {
     contributions: [{ ticker: "XYZ", name: "XYZ Corp", contributionGbp: amount }],
   });
   const drivers = (accounts: Record<string, ReturnType<typeof account>>, scope: "invest" | "total" = "invest") =>
-    dayDrivers({ attribution: { day, accounts }, scope, day, dates: chart, pnls });
+    dayDrivers({ attribution: { day, accounts }, scope, day, dates: chart, pnls, openings: { "2026-11-02T08:10:00Z": 5 } });
 
   it("states a later opening, so the drivers read against their own window", () => {
     const late = drivers({ A: account("2026-11-02T08:10:00Z", 95) })!;

@@ -5,6 +5,7 @@ import { useLocale, type Locale } from "@/components/locale-provider";
 import type { DashboardLens } from "@/lib/types";
 import type { Scope } from "@/lib/portfolio/nav";
 import { tradingDay } from "@/lib/portfolio/history";
+import { SYNC_MS } from "@/lib/portfolio/prepared";
 import { formatDate } from "@/ui/formatters";
 import { currency, tone } from "@/workspace/data";
 import { Tag, useCopy } from "./foundation";
@@ -12,6 +13,7 @@ import { Tag, useCopy } from "./foundation";
 type DayAttribution =
   | NonNullable<DashboardLens["dayAttribution"]>
   | NonNullable<DashboardLens["windowAttribution"]>;
+type AccountAttribution = NonNullable<DayAttribution["accounts"]>[string];
 type Driver = { ticker: string; name: string; amount: number };
 /** 1D measures from today's opening; 5D chains the five trading days' openings. */
 export type DriverSpan = "1D" | "5D";
@@ -19,13 +21,23 @@ export type Drivers = NonNullable<ReturnType<typeof dayDrivers>>;
 
 /** Below this, the strip would describe rounding noise rather than a move. */
 const MIN_EXPLAINED_GBP = 0.01;
-/** One live sync: observations closer than this are the same one, at either end of the window. */
-const SYNC_MS = 5 * 60_000;
 
 /** Same precision as the period figure above, so the parts visibly add up to it. */
 export function signedPounds(value: number) {
   const text = currency(value, "GBP", 2);
   return value >= 0.005 ? "+" + text : text;
+}
+
+/** The scoped accounts' attributions, or null while one of them has none. */
+function scopedAccounts(attribution: DayAttribution | null | undefined, scope: Scope) {
+  const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
+  const accounts = codes.map((code) => attribution?.accounts?.[code]);
+  return accounts.length && accounts.every(Boolean) ? (accounts as AccountAttribution[]) : null;
+}
+
+/** The openings a history request names, so the P&L at each comes back exact. */
+export function driverOpenings(attribution: DayAttribution | null | undefined, scope: Scope) {
+  return [...new Set((scopedAccounts(attribution, scope) ?? []).map((account) => account.since))].sort();
 }
 
 /**
@@ -46,10 +58,10 @@ export function signedPounds(value: number) {
  * cannot explain the figure and hides the strip.
  *
  * The account change is measured over exactly that window: from the figure's first
- * point, or after a later opening from the chart's own observation of it, at or
- * within one sync after the opening and never before. When the chart lacks that
- * observation, as a thinned 5D chart can, the strip stays hidden; so Unattributed
- * is only ever the residual inside the stated window.
+ * point, or after a later opening from the cash-flow-adjusted P&L the history
+ * request read at the observation taken there, from every observation rather than
+ * the thinned chart. Without such an observation the strip stays hidden, so
+ * Unattributed is only ever the residual inside the stated window.
  */
 export function dayDrivers({
   attribution,
@@ -57,6 +69,7 @@ export function dayDrivers({
   day,
   dates,
   pnls,
+  openings,
   cutOff = false,
   limit = 3,
 }: {
@@ -67,33 +80,31 @@ export function dayDrivers({
   /** The period chart's points and cumulative net P&L, oldest first. */
   dates: string[];
   pnls: Array<number | null>;
+  /** The P&L the history request read at each named opening (see driverOpenings). */
+  openings?: Record<string, number | null>;
   /** The figure stops at the last verified cash flow while newer ones await reconciliation. */
   cutOff?: boolean;
   limit?: number;
 }) {
   if (cutOff || !day || attribution.day !== day) return null;
-  const codes = scope === "invest" ? ["A"] : scope === "isa" ? ["B"] : scope === "total" ? ["A", "B"] : [];
-  const accounts = codes.map((code) => attribution.accounts?.[code as "A" | "B"]);
-  if (!accounts.length || accounts.some((account) => !account)) return null;
+  const accounts = scopedAccounts(attribution, scope);
+  if (!accounts) return null;
   const last = Date.parse(dates.at(-1) ?? "");
   const measured = (asOf: string) => Date.parse(asOf) >= last - SYNC_MS && tradingDay(asOf) === day;
-  if (accounts.some((account) => !measured(account!.asOf))) return null;
-  const openings = accounts.map((account) => Date.parse(account!.since));
-  const earliest = Math.min(...openings);
-  const since = accounts[openings.indexOf(earliest)]!.since;
+  if (accounts.some((account) => !measured(account.asOf))) return null;
+  const times = accounts.map((account) => Date.parse(account.since));
+  const earliest = Math.min(...times);
+  const since = accounts[times.indexOf(earliest)].since;
   const first = Date.parse(dates[0] ?? "");
-  if (!(Math.max(...openings) - earliest <= SYNC_MS) || !(earliest >= first - SYNC_MS)) return null;
+  if (!(Math.max(...times) - earliest <= SYNC_MS) || !(earliest >= first - SYNC_MS)) return null;
   const late = earliest > first + SYNC_MS;
-  const start = late
-    ? dates.findIndex((date) => Date.parse(date) >= earliest && Date.parse(date) <= earliest + SYNC_MS)
-    : 0;
-  const opening = start >= 0 ? pnls[start] : null;
+  const opening = late ? openings?.[since] ?? null : pnls[0];
   const closing = pnls.at(-1);
   if (opening == null || closing == null) return null;
   const accountChange = closing - opening;
   const merged = new Map<string, Driver>();
   for (const account of accounts) {
-    for (const row of account!.contributions ?? []) {
+    for (const row of account.contributions ?? []) {
       const entry = merged.get(row.ticker) ?? { ticker: row.ticker, name: row.name, amount: 0 };
       entry.amount += row.contributionGbp;
       merged.set(row.ticker, entry);

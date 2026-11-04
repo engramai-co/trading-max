@@ -32,7 +32,7 @@ import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
-import { DayDrivers, dayDrivers, signedPounds } from "./day-drivers";
+import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-drivers";
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
@@ -212,6 +212,7 @@ function OverviewContent({ data }: { data: DashboardLens }) {
           <OverviewHistory
             scope={scope}
             runId={data.runId}
+            dayAttribution={data.dayAttribution}
             windowAttribution={data.windowAttribution}
           />
           <Allocation holdings={holdings} />
@@ -388,7 +389,9 @@ function TodayMetric({
   const t = useCopy();
   const { locale } = useLocale();
   const selection = useMemo(() => ({ range: "1D" as const, scope, runId }), [scope, runId]);
-  const query = usePortfolioHistory(selection);
+  // The history answers with the exact P&L at the attribution's opening.
+  const openings = useMemo(() => driverOpenings(attribution, scope), [attribution, scope]);
+  const query = usePortfolioHistory(selection, true, openings);
   const history = query.data?.history;
   const money = query.data?.money;
   const points = history?.points ?? [];
@@ -407,6 +410,7 @@ function TodayMetric({
     day,
     dates: points.map((p) => p.date),
     pnls: money.pnls,
+    openings: query.data?.openings,
     cutOff: history.pendingCashFlows,
   }) : null;
   return (
@@ -452,10 +456,12 @@ function TodayMetric({
 function OverviewHistory({
   scope,
   runId,
+  dayAttribution,
   windowAttribution,
 }: {
   scope: Scope;
   runId: string;
+  dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
 }) {
   const t = useCopy();
@@ -463,7 +469,12 @@ function OverviewHistory({
   const [remembered, remember] = useRememberedRange();
   const range = preferredRange(params.get("range"), remembered);
   const selection = useMemo(() => ({ range, scope, runId }), [range, scope, runId]);
-  const query = usePortfolioHistory(selection);
+  // 5D names its window's openings; 1D names Today's, so both share one request.
+  const openings = useMemo(
+    () => driverOpenings(range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : null, scope),
+    [range, scope, dayAttribution, windowAttribution],
+  );
+  const query = usePortfolioHistory(selection, true, openings);
   const history = query.data?.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
@@ -475,6 +486,7 @@ function OverviewHistory({
     day: history.endDay,
     dates: points.map((p) => p.date),
     pnls: money.pnls,
+    openings: query.data?.openings,
     cutOff: history.pendingCashFlows,
   }) : null;
   return (
