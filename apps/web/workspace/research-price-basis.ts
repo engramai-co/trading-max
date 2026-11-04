@@ -2,8 +2,11 @@
  * One price per security. A held security is priced like the holdings page,
  * from the broker snapshot, when its broker line is the research quote's
  * listing; the research quote is the fallback and names its time only when it
- * is not the obvious current price.
+ * is not the obvious current price. Sessions come from the server, from the
+ * quote exchange's own calendar: holidays and early closes included.
  */
+
+type Session = { date: string; open: string; close: string };
 
 type Quote = {
   price?: number | null;
@@ -11,9 +14,9 @@ type Quote = {
   change?: number | null;
   changePct?: number | null;
   asOf?: string | null;
-  timezone?: string | null;
   delayMinutes?: number | null;
   listing?: string | null;
+  schedule?: { sessions?: Session[] | null } | null;
 };
 
 type Position = {
@@ -46,51 +49,13 @@ export type ResearchPrice = {
   asOf: string | null;
 };
 
-/** Regular sessions in exchange-local minutes. Holidays and half days are not modelled. */
-const SESSIONS: Record<string, readonly [number, number]> = {
-  "America/New_York": [570, 960],
-  "America/Toronto": [570, 960],
-  "Europe/London": [480, 990],
-  "Europe/Dublin": [480, 990],
-  "Europe/Amsterdam": [540, 1050],
-  "Europe/Berlin": [540, 1050],
-  "Europe/Brussels": [540, 1050],
-  "Europe/Madrid": [540, 1050],
-  "Europe/Milan": [540, 1050],
-  "Europe/Paris": [540, 1050],
-  "Europe/Zurich": [540, 1050],
-  "Asia/Hong_Kong": [570, 960],
-  "Asia/Shanghai": [570, 900],
-  "Asia/Seoul": [540, 930],
-  "Asia/Taipei": [540, 810],
-  "Asia/Tokyo": [540, 930],
-};
+const MINUTE = 60_000;
 /** A delayed quote is late once it is older than its delay plus this margin. */
 const LATE_MINUTES = 15;
 /** Broker values refresh about every 10 minutes during a session. */
 const BROKER_LATE_MINUTES = 30;
 
-function exchangeClock(instant: Date, zone: string) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-      weekday: "short",
-    })
-      .formatToParts(instant)
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    minutes: Number(parts.hour) * 60 + Number(parts.minute),
-    weekday: parts.weekday as string,
-  };
-}
+type Scheduled = { date: string; open: number; close: number };
 
 function validInstant(value: string | null | undefined) {
   if (!value) return null;
@@ -98,74 +63,67 @@ function validInstant(value: string | null | undefined) {
   return Number.isNaN(instant.valueOf()) ? null : instant;
 }
 
-function session(zone: string | null | undefined) {
-  return zone && Object.hasOwn(SESSIONS, zone) ? { zone, hours: SESSIONS[zone] } : null;
+/** The quote exchange's sessions in time order; null when the exchange is unknown. */
+function sessions(quote: Quote | undefined): Scheduled[] | null {
+  const rows = (quote?.schedule?.sessions ?? [])
+    .map((s) => ({ date: s.date, open: Date.parse(s.open), close: Date.parse(s.close) }))
+    .filter((s) => s.open < s.close)
+    .sort((a, b) => a.open - b.open);
+  return rows.length ? rows : null;
 }
 
-/** The first trading day after an exchange-local date, skipping weekends. */
-function nextTradingDay(date: string) {
-  const day = new Date(date + "T00:00:00Z");
-  do day.setUTCDate(day.getUTCDate() + 1);
-  while (day.getUTCDay() === 0 || day.getUTCDay() === 6);
-  return day.toISOString().slice(0, 10);
+/** The sessions while they still reach past `now`; the server lists about ten days ahead. */
+function sessionsAt(quote: Quote | undefined, now: Date) {
+  const rows = sessions(quote);
+  return rows && now.valueOf() < rows[rows.length - 1].close ? rows : null;
 }
 
-/** The last trading day before an exchange-local date, skipping weekends. */
-function previousTradingDay(date: string) {
-  const day = new Date(date + "T00:00:00Z");
-  do day.setUTCDate(day.getUTCDate() - 1);
-  while (day.getUTCDay() === 0 || day.getUTCDay() === 6);
-  return day.toISOString().slice(0, 10);
+/** The session an instant belongs to: the latest one open by then, or -1 before them all. */
+function sessionOf(rows: Scheduled[], instant: Date) {
+  return rows.findLastIndex((s) => s.open <= instant.valueOf());
 }
 
-/** Whether the exchange is in its regular session at `now`. */
-export function inSession(zone: string | null | undefined, now: Date) {
-  const known = session(zone);
-  if (!known) return false;
-  const clock = exchangeClock(now, known.zone);
-  return (
-    !["Sat", "Sun"].includes(clock.weekday) &&
-    clock.minutes >= known.hours[0] &&
-    clock.minutes < known.hours[1]
-  );
+/** Whether the quote's exchange is in a session at `now`. */
+export function inSession(quote: Quote | undefined, now: Date) {
+  const time = now.valueOf();
+  return Boolean(sessionsAt(quote, now)?.some((s) => s.open <= time && time < s.close));
 }
 
 /** How to name the time of a research quote, and whether it is late. */
 export function quoteTime(quote: Quote, now: Date): PriceTime | null {
   const asOf = validInstant(quote.asOf);
   if (!asOf || !quote.asOf) return null;
-  const known = session(quote.timezone);
   const delayMinutes = quote.delayMinutes ?? null;
-  const age = (now.valueOf() - asOf.valueOf()) / 60_000;
-  const late = age > (delayMinutes ?? 0) + LATE_MINUTES;
-  if (!known) return { kind: "time", asOf: quote.asOf, stale: false, delayMinutes };
-  const clock = exchangeClock(asOf, known.zone);
-  if (clock.minutes >= known.hours[1]) {
+  const lateAfter = ((delayMinutes ?? 0) + LATE_MINUTES) * MINUTE;
+  const rows = sessionsAt(quote, now);
+  // An unknown exchange makes no claim about sessions.
+  if (!rows) return { kind: "time", asOf: quote.asOf, stale: false, delayMinutes };
+  const index = sessionOf(rows, asOf);
+  if (index >= 0 && asOf.valueOf() >= rows[index].close) {
     // A close is current until the next session has traded for longer than the delay.
-    const next = nextTradingDay(clock.date);
-    const today = exchangeClock(now, known.zone);
-    const stale =
-      today.date > next ||
-      (today.date === next &&
-        today.minutes >= known.hours[0] + (delayMinutes ?? 0) + LATE_MINUTES);
-    return { kind: "close", date: clock.date, stale };
+    const next = rows[index + 1];
+    const stale = next != null && now.valueOf() >= next.open + lateAfter;
+    return { kind: "close", date: rows[index].date, stale };
   }
-  return { kind: "time", asOf: quote.asOf, stale: late, delayMinutes };
+  const stale = now.valueOf() - asOf.valueOf() > lateAfter;
+  return { kind: "time", asOf: quote.asOf, stale, delayMinutes };
 }
 
-/** The close before the broker's trading day, when the quote can tell it. */
+/** The close before the broker price's session, when the quote can tell it. */
 export function previousClose(quote: Quote, brokerAsOf: string | null | undefined) {
   const quoted = validInstant(quote.asOf);
   const broker = validInstant(brokerAsOf);
-  const known = session(quote.timezone);
-  if (quote.price == null || !quoted || !broker || !known) return null;
-  const quoteDay = exchangeClock(quoted, known.zone);
-  const brokerDay = exchangeClock(broker, known.zone);
-  if (quoteDay.date === brokerDay.date)
+  const rows = sessions(quote);
+  if (quote.price == null || !quoted || !broker || !rows) return null;
+  // A price observed outside a session belongs to the latest session before it.
+  const brokerSession = sessionOf(rows, broker);
+  const quoteSession = sessionOf(rows, quoted);
+  if (brokerSession < 0 || quoteSession < 0) return null;
+  if (quoteSession === brokerSession)
     return quote.change != null ? quote.price - quote.change : null;
   // Only the immediately preceding session's close is the reference for the
-  // broker's day; an older close would turn several sessions into one change.
-  return quoteDay.date === previousTradingDay(brokerDay.date) && quoteDay.minutes >= known.hours[1]
+  // broker's session; an older close would turn several sessions into one change.
+  return quoteSession === brokerSession - 1 && quoted.valueOf() >= rows[quoteSession].close
     ? quote.price
     : null;
 }
@@ -175,19 +133,14 @@ export function previousClose(quote: Quote, brokerAsOf: string | null | undefine
  * recent; outside one it must cover the latest completed session's close (the
  * last in-session refresh may land shortly before the close).
  */
-export function brokerPriceLate(zone: string | null | undefined, asOf: Date, now: Date) {
-  const known = session(zone);
-  if (!known) return false;
-  if (inSession(known.zone, now))
-    return (now.valueOf() - asOf.valueOf()) / 60_000 > BROKER_LATE_MINUTES;
-  const clock = exchangeClock(now, known.zone);
-  const closedToday = !["Sat", "Sun"].includes(clock.weekday) && clock.minutes >= known.hours[1];
-  const closeDate = closedToday ? clock.date : previousTradingDay(clock.date);
-  const seen = exchangeClock(asOf, known.zone);
-  return (
-    seen.date < closeDate ||
-    (seen.date === closeDate && seen.minutes < known.hours[1] - BROKER_LATE_MINUTES)
-  );
+export function brokerPriceLate(quote: Quote | undefined, asOf: Date, now: Date) {
+  const rows = sessionsAt(quote, now);
+  if (!rows) return false;
+  const time = now.valueOf();
+  const margin = BROKER_LATE_MINUTES * MINUTE;
+  if (rows.some((s) => s.open <= time && time < s.close)) return time - asOf.valueOf() > margin;
+  const closed = rows.findLast((s) => s.close <= time);
+  return closed != null && asOf.valueOf() < closed.close - margin;
 }
 
 /**
@@ -248,7 +201,7 @@ export function priceBasis(
           ? {
               kind: "time",
               asOf: position.brokerAsOf,
-              stale: brokerPriceLate(research.timezone, asOf, now),
+              stale: brokerPriceLate(research, asOf, now),
               delayMinutes: null,
             }
           : null,
