@@ -39,13 +39,16 @@ corresponding full-history drawdowns, and compact calendar geometry. Empty grid
 slots are display coordinates, not fabricated financial records. The plotting
 cadence and gap rules are identical to the full-source path.
 
-A chart request may also name up to two attribution openings (`opening=`, ISO
-instants, never with `page`). The response then adds `openings`: the
-cash-flow-adjusted P&L at the observation taken at each instant or within one
-sync (five minutes) after it, on the period figure's own basis. It is read from
-all eligible observations before thinning, or null when none was taken there.
-The overview's "what moved" strips measure a later opening from it, so their
-residual never depends on which readings the chart keeps.
+A chart request may also name up to two attribution openings (`opening=`, never
+with `page`). Each must be an exact instant: an ISO date and time with seconds
+and an explicit `Z` or `±HH:MM` offset on a real calendar day. Anything else,
+such as a time without an offset or 30 February, is rejected before any private
+data is read. The response then adds `openings`: the cash-flow-adjusted P&L at
+the observation taken at each instant or within one sync (five minutes) after
+it, on the period figure's own basis. It is read from all eligible observations
+before thinning, or null when none was taken there. The overview's "what moved"
+strips measure a later opening from it, so their residual never depends on which
+readings the chart keeps. They name only exact openings and hide without one.
 
 Both overview and performance pin the chart to the parent lens's `runId`.
 Opening the exact-record table fetches 20 records; subsequent pages use the

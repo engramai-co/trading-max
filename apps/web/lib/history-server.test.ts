@@ -34,6 +34,9 @@ describe("snapshot-pinned history queries", () => {
     for (const query of [
       "", "runId=..%2Fsecret", "runId=abc&scope=unknown", "runId=abc&range=2Y", "runId=abc&page=0", "runId=abc&page=1.5",
       "runId=abc&opening=yesterday", "runId=abc&opening=2026-10-29", `runId=abc&page=1&${at}`, `runId=abc&${at}&${at}&${at}`,
+      // No offset, so the server's own zone would decide; an impossible date; 24:00; an impossible offset.
+      "runId=abc&opening=2026-11-02T08%3A10%3A00", "runId=abc&opening=2026-02-30T08%3A10%3A00Z",
+      "runId=abc&opening=2026-11-02T24%3A00%3A00Z", "runId=abc&opening=2026-11-02T08%3A10%3A00%2B25%3A00",
     ]) {
       expect((await GET(new Request(`http://localhost/api/backend/dashboard/history?${query}`))).status).toBe(400);
     }
@@ -79,6 +82,12 @@ describe("snapshot-pinned history queries", () => {
     expect(chart.openings).toEqual({ "2026-10-29T00:10:00Z": 1, "2026-10-29T00:12:00Z": null });
     const plain = await (await GET(new Request("http://localhost/?runId=opening-revision&range=1W&scope=total"))).json();
     expect(plain).not.toHaveProperty("openings");
+    // The same 00:10 sync, named with explicit offsets either side of UTC.
+    const offsets = new URLSearchParams({ runId: "opening-revision", range: "1W", scope: "total" });
+    offsets.append("opening", "2026-10-29T01:10:00+01:00");
+    offsets.append("opening", "2026-10-28T19:10:00-05:00");
+    expect((await (await GET(new Request(`http://localhost/?${offsets}`))).json()).openings)
+      .toEqual({ "2026-10-29T01:10:00+01:00": 1, "2026-10-28T19:10:00-05:00": 1 });
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 });

@@ -71,6 +71,9 @@ describe("dayDrivers", () => {
     expect(driverOpenings(attribution, "total")).toEqual(["2026-11-02T07:10:00Z"]);
     expect(driverOpenings({ day, accounts: { A: { ...attribution.accounts.A, since: "2026-11-02T07:10:20Z" }, B: attribution.accounts.B } }, "total"))
       .toEqual(["2026-11-02T07:10:00Z", "2026-11-02T07:10:20Z"]);
+    // An opening without its offset is not named: the history request would reject it.
+    expect(driverOpenings({ day, accounts: { A: { ...attribution.accounts.A, since: "2026-11-02T07:10:00" }, B: attribution.accounts.B } }, "total"))
+      .toEqual(["2026-11-02T07:10:00Z"]);
     expect(driverOpenings({ day, accounts: { A: attribution.accounts.A } }, "total")).toEqual([]);
     expect(driverOpenings(attribution, "household")).toEqual([]);
     expect(driverOpenings(undefined, "invest")).toEqual([]);
@@ -149,6 +152,14 @@ describe("the 5D strip measures the window it states", () => {
     expect(dayDrivers({ attribution: window("2026-10-29T00:10:05Z", 100), scope: "invest", ...five })).toBeNull();
   });
 
+  it("neither names, reads nor shows an opening without its offset", () => {
+    const naive = "2026-10-29T00:10:00";
+    expect(driverOpenings(window(naive, 100), "invest")).toEqual([]);
+    const five = history(syncs, [naive]);
+    expect(five.openings).toEqual({ [naive]: null });
+    expect(dayDrivers({ attribution: window(naive, 100), scope: "invest", ...five })).toBeNull();
+  });
+
   it("opens with the window's first observation as before", () => {
     const five = history(syncs);
     const drivers = dayDrivers({ attribution: window("2026-10-28T00:00:00Z", 300), scope: "invest", ...five })!;
@@ -187,6 +198,13 @@ describe("drivers open where the figure opens", () => {
 
   it("hides drivers that opened before the figure", () => {
     expect(drivers({ A: account("2026-11-02T07:50:00Z", 100) })).toBeNull();
+  });
+
+  it("hides an opening or observation without its offset", () => {
+    // 08:00 in London would be the aligned case, but 08:00 in New York opens five hours later.
+    expect(drivers({ A: account("2026-11-02T08:00:00Z", 100) })).not.toBeNull();
+    expect(drivers({ A: account("2026-11-02T08:00:00", 100) })).toBeNull();
+    expect(drivers({ A: { ...account("2026-11-02T08:00:00Z", 100), asOf: "2026-11-02T15:00:00" } })).toBeNull();
   });
 
   it("hides a combined view whose accounts opened at different times", () => {

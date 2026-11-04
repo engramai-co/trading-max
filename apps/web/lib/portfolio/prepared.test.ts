@@ -4,7 +4,7 @@ import { navNumber, type Scope } from "@/lib/portfolio/nav";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { PORTFOLIO_RANGES, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
-import { decodeTimeline, historyPage, prepareHistory, type HistoryInput } from "@/lib/portfolio/prepared";
+import { decodeTimeline, exactInstant, historyPage, prepareHistory, type HistoryInput } from "@/lib/portfolio/prepared";
 
 function row(date: string, index: number, intraday = true): NavPoint {
   const value = 1000 + Math.sin(index / 19) * 50 + (index === 761 ? -300 : 0);
@@ -23,6 +23,23 @@ const input: HistoryInput = { runId: "revision-a", dataRevision: "dataset-a", br
     .filter((p, i) => ![0, 6].includes(new Date(p.date).getUTCDay()) && i % 91 < 87),
 };
 input.intradayNav!.push(row("2026-09-18T16:00Z", 16000), { ...row("2026-09-18T17:00Z", 16001), totalNetContributionsGbp: null, investNetContributionsGbp: null, isaNetContributionsGbp: null });
+
+describe("exact instants", () => {
+  it("reads a real date and time with its explicit offset", () => {
+    for (const at of ["2026-11-02T08:10:00Z", "2026-11-02T08:10:00+00:00", "2026-11-02T09:10:00+01:00", "2026-11-02T03:10:00-05:00"]) {
+      expect(exactInstant(at)).toBe(Date.UTC(2026, 10, 2, 8, 10));
+    }
+    expect(exactInstant("2026-11-02T08:10:00.123456Z")).toBe(Date.UTC(2026, 10, 2, 8, 10, 0, 123));
+    expect(exactInstant("2028-02-29T00:00:00Z")).toBe(Date.UTC(2028, 1, 29));
+  });
+  it.each([
+    "2026-11-02T08:10:00", "2026-02-30T08:10:00Z", "2026-02-29T08:10:00Z", "2026-11-31T08:10:00Z",
+    "2026-11-02T24:00:00Z", "2026-11-02T23:59:60Z", "2026-11-02T08:10:00+25:00", "2026-11-02T08:10:00+0100",
+    "2026-11-02T08:10Z", "2026-11-02 08:10:00Z", "2026-11-02", "yesterday",
+  ])("rejects %s rather than guess a zone or roll over", (at) => {
+    expect(exactInstant(at)).toBeNull();
+  });
+});
 
 describe("indexed history display preserves full-source accounting", () => {
   for (const scope of ["invest", "isa", "total", "household", "cfd"] as Scope[]) {

@@ -5,7 +5,7 @@ import { useLocale, type Locale } from "@/components/locale-provider";
 import type { DashboardLens } from "@/lib/types";
 import type { Scope } from "@/lib/portfolio/nav";
 import { tradingDay } from "@/lib/portfolio/history";
-import { SYNC_MS } from "@/lib/portfolio/prepared";
+import { exactInstant, SYNC_MS } from "@/lib/portfolio/prepared";
 import { formatDate } from "@/ui/formatters";
 import { currency, tone } from "@/workspace/data";
 import { Tag, useCopy } from "./foundation";
@@ -35,9 +35,15 @@ function scopedAccounts(attribution: DayAttribution | null | undefined, scope: S
   return accounts.length && accounts.every(Boolean) ? (accounts as AccountAttribution[]) : null;
 }
 
-/** The openings a history request names, so the P&L at each comes back exact. */
+/**
+ * The openings a history request names, so the P&L at each comes back exact. Only
+ * exact instants are named: the request rejects any other, and the strip hides
+ * without one, so a malformed opening never costs the chart itself.
+ */
 export function driverOpenings(attribution: DayAttribution | null | undefined, scope: Scope) {
-  return [...new Set((scopedAccounts(attribution, scope) ?? []).map((account) => account.since))].sort();
+  return [...new Set((scopedAccounts(attribution, scope) ?? []).map((account) => account.since))]
+    .filter((since) => exactInstant(since) != null)
+    .sort();
 }
 
 /**
@@ -51,6 +57,8 @@ export function driverOpenings(attribution: DayAttribution | null | undefined, s
  * account was measured on the figure's trading day, no earlier than one sync before
  * the chart's last point. A later observation of that trading day still counts, such
  * as a weekend one of Friday's: Other and Unattributed absorb what moved after it.
+ * Openings and observations count only as exact instants with their offset, never
+ * read in the viewer's own time zone.
  *
  * Their window opens with the figure's when every scoped account opened within one
  * sync of its first point. An opening after that is stated, so the strip says what
@@ -90,9 +98,13 @@ export function dayDrivers({
   const accounts = scopedAccounts(attribution, scope);
   if (!accounts) return null;
   const last = Date.parse(dates.at(-1) ?? "");
-  const measured = (asOf: string) => Date.parse(asOf) >= last - SYNC_MS && tradingDay(asOf) === day;
+  const measured = (asOf: string) => {
+    const at = exactInstant(asOf);
+    return at != null && at >= last - SYNC_MS && tradingDay(asOf) === day;
+  };
   if (accounts.some((account) => !measured(account.asOf))) return null;
-  const times = accounts.map((account) => Date.parse(account.since));
+  const times = accounts.map((account) => exactInstant(account.since));
+  if (!times.every((time): time is number => time != null)) return null;
   const earliest = Math.min(...times);
   const since = accounts[times.indexOf(earliest)].since;
   const first = Date.parse(dates[0] ?? "");
