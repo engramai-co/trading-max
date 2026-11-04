@@ -137,7 +137,7 @@ export function contextFit(widths: number[], room: number, gap: number, more: nu
   return { shown, at: Math.max(0, Math.min(used + gap, room - more)) };
 }
 
-type Placement = { shown: number; left?: number; top?: number; room?: number };
+type Placement = { items: string; shown: number; left?: number; top?: number; room?: number };
 
 /**
  * One decision as a link over its whole row: the security, its effect and a line of
@@ -164,15 +164,20 @@ function DecisionEntry({
   const button = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const heading = useId();
-  const [place, setPlace] = useState<Placement>({ shown: context.length });
+  const items = context.join("\u0000");
+  const [measured, setMeasured] = useState<Placement>({ items, shown: context.length });
+  // A placement holds for the items it was measured with. New items, as when a refetch
+  // updates the benchmark, lay out in full to be measured again, while the row, its link
+  // and any focus on them stay.
+  const place = measured.items === items ? measured : { items, shown: context.length };
   const [opened, setOpened] = useState(false);
   useLayoutEffect(() => {
     const row = entry.current;
     const element = line.current;
     const more = button.current;
     if (!row || !element || !more) return;
-    // Measured once while every item is laid out; later fits reuse the widths. The first
-    // item may already be shrunk with an ellipsis, so then its full width is its scroll width.
+    // Measured while every item is laid out, once for each set of items; later fits reuse the
+    // widths. The first item may be shrunk with an ellipsis, so then its full width is its scroll width.
     const widths = Array.from(element.querySelectorAll<HTMLElement>("[data-item]"), (item) => {
       const width = item.getBoundingClientRect().width;
       return item.scrollWidth > item.clientWidth ? Math.max(width, item.scrollWidth) : width;
@@ -187,10 +192,10 @@ function DecisionEntry({
       const box = element.getBoundingClientRect();
       const left = box.left - origin.left + at;
       const top = box.top - origin.top;
-      setPlace((current) =>
-        current.shown === shown && current.left === left && current.top === top
+      setMeasured((current) =>
+        current.items === items && current.shown === shown && current.left === left && current.top === top
           ? current
-          : { shown, left, top, room: gap + width },
+          : { items, shown, left, top, room: gap + width },
       );
       if (shown < widths.length) return;
       // Everything fits, so the button hides: focus on it or in its list moves to the
@@ -205,7 +210,7 @@ function DecisionEntry({
     // The line also moves when the row above it changes height, as when its details wrap.
     observer.observe(row);
     return () => observer.disconnect();
-  }, []);
+  }, [items]);
   const hidden = context.length - place.shown;
   return (
     <div ref={entry} className="mx-decision-entry">
@@ -302,7 +307,6 @@ function DecisionRow({ row, horizon }: { row: TradeDecision; horizon: Horizon })
   const context = decisionContext(row, horizon, t, locale);
   return (
     <DecisionEntry
-      key={context.join("\u0000")}
       href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}
       context={context}
       label={row.ticker + " · " + formatCalendarDate(row.date, locale)}
