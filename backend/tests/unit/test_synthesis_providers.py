@@ -62,6 +62,16 @@ def test_prompt_requires_change_first_non_repetitive_analysis() -> None:
     assert "must not restate the headline" in instructions
 
 
+def test_decision_review_prompt_asks_for_readable_dates() -> None:
+    instructions = _instructions(
+        AnalysisDefinition(analysis_id="decision_review", title="Decision review")
+    )
+
+    assert "2025年8月21日 in Chinese" in instructions
+    assert "never as ISO dates" in instructions
+    assert "2025年8月21日" not in _instructions(definition())
+
+
 @pytest.mark.parametrize(
     "provider_cls, name",
     [

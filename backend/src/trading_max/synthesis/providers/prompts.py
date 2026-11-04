@@ -84,7 +84,9 @@ def _instructions(definition: AnalysisDefinition) -> str:
             "are concrete checks for the owner's next decisions, not trade instructions; "
             "risks and invalidation_conditions may stay empty."
             " Name each account by its accountNames entry, never by its letter code. "
-            "In Chinese, call same-day round trips 日内做 T, buys 买入 and sales 卖出."
+            "In Chinese, call same-day round trips 日内做 T, buys 买入 and sales 卖出. "
+            "Write dates for readers, never as ISO dates such as 2025-08-21: "
+            "2025年8月21日 in Chinese and 21 Aug 2025 in English."
         ),
     }.get(definition.analysis_id, "Stay within the requested analysis lens.")
     return (
