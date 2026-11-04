@@ -1,8 +1,8 @@
 "use client";
 
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
-import { ActionIcon, Avatar, Button, Group, Loader, Menu } from "@mantine/core";
-import { ArrowClockwise, DotsThree, Trash } from "@phosphor-icons/react";
+import { ActionIcon, Avatar, Button, Loader, Menu } from "@mantine/core";
+import { ArrowClockwise, CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
@@ -48,27 +48,23 @@ function PriceTimeLabel({ time }: { time: PriceTime }) {
   );
 }
 
-/** Name, listing, price and actions for the selected security. */
+/**
+ * Name, listing and price of the selected security, shown once. The name is the
+ * switcher: it opens the research list (or focuses the pinned one).
+ */
 export function SecurityHeader({
   ticker,
   selected,
   quote,
-  categoriesAvailable,
-  busy,
-  pending,
-  onRefresh,
-  onManage,
-  onRemove,
+  listOpen,
+  onSwitch,
 }: {
   ticker: string;
   selected: ResearchInstrument;
   quote: ResearchLensSnapshot | undefined;
-  categoriesAvailable: boolean;
-  busy: boolean;
-  pending: boolean;
-  onRefresh: () => void;
-  onManage: () => void;
-  onRemove: () => void;
+  /** Whether the research list is open or pinned beside the page. */
+  listOpen: boolean;
+  onSwitch: () => void;
 }) {
   const t = useCopy();
   const market = object(quote?.market);
@@ -82,6 +78,7 @@ export function SecurityHeader({
   );
   // Older services report only the look-through exposure.
   const heldValue = selected.directValueGbp ?? selected.exposureGbp;
+  const name = selected.name || ticker;
   return (
     <Panel className="mx-security-panel">
       <div className="mx-security-header">
@@ -98,9 +95,20 @@ export function SecurityHeader({
             {ticker.slice(0, 2)}
           </Avatar>
           <div>
-            <h2>{selected.name || ticker}</h2>
+            <h2>
+              <button
+                type="button"
+                className="mx-security-switcher"
+                aria-label={name + t("，切换证券", ", switch security")}
+                aria-expanded={listOpen}
+                onClick={onSwitch}
+              >
+                {name}
+                <CaretDown size={16} aria-hidden="true" />
+              </button>
+            </h2>
             <div className="mx-security-meta">
-              <strong>{ticker}</strong>
+              {selected.name && <strong>{ticker}</strong>}
               <span>
                 {quote?.context?.quote.exchange ||
                   (
@@ -138,63 +146,66 @@ export function SecurityHeader({
           {basis.time && <PriceTimeLabel time={basis.time} />}
         </div>
       </div>
-      <div className="mx-research-controls">
-        <Group gap="xs">
-          <Button
-            aria-label={t("更新研究", "Update research")}
-            variant="default"
-            size="xs"
-            leftSection={busy ? <Loader size={12} /> : <ArrowClockwise size={14} />}
-            disabled={busy}
-            onClick={() => onRefresh()}
-          >
-            <span className="mx-action-long">
-              {busy ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
-            </span>
-            <span className="mx-action-short">
-              {busy ? t("更新中", "Updating") : t("更新", "Update")}
-            </span>
-          </Button>
-          <Menu shadow="md">
-            <Menu.Target>
-              <ActionIcon
-                aria-label={t(
-                  "管理当前证券",
-                  "Manage this security",
-                )}
-              >
-                <DotsThree size={23} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item
-                disabled={!categoriesAvailable}
-                onClick={() => onManage()}
-              >
-                {categoriesAvailable
-                  ? t("调整研究分类", "Change research category")
-                  : t(
-                      "尚未设置研究分类",
-                      "No research categories configured",
-                    )}
-              </Menu.Item>
-              <Menu.Item
-                color="red"
-                disabled={selected.held || pending}
-                leftSection={<Trash size={15} />}
-                onClick={() => onRemove()}
-              >
-                {selected.held
-                  ? t(
-                      "持仓标的保留在研究中",
-                      "Held securities stay in research",
-                    )
-                  : t("从研究清单移除", "Remove from research")}
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Group>
-      </div>
     </Panel>
+  );
+}
+
+/** Update and manage the selected security; they close the research tool row. */
+export function SecurityActions({
+  held,
+  categoriesAvailable,
+  busy,
+  pending,
+  onRefresh,
+  onManage,
+  onRemove,
+}: {
+  held: boolean;
+  categoriesAvailable: boolean;
+  busy: boolean;
+  pending: boolean;
+  onRefresh: () => void;
+  onManage: () => void;
+  onRemove: () => void;
+}) {
+  const t = useCopy();
+  return (
+    <div className="mx-research-actions">
+      {/* Phones show the icon alone; the name stays 更新研究 in every state. */}
+      <Button
+        className="mx-research-refresh"
+        aria-label={t("更新研究", "Update research")}
+        variant="default"
+        leftSection={busy ? <Loader size={14} /> : <ArrowClockwise size={16} />}
+        disabled={busy}
+        onClick={() => onRefresh()}
+      >
+        {busy ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
+      </Button>
+      <Menu shadow="md" position="bottom-end">
+        <Menu.Target>
+          <ActionIcon aria-label={t("管理当前证券", "Manage this security")}>
+            <DotsThree size={23} />
+          </ActionIcon>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item disabled={!categoriesAvailable} onClick={() => onManage()}>
+            {categoriesAvailable
+              ? t("调整研究分类", "Change research category")
+              : t("尚未设置研究分类", "No research categories configured")}
+          </Menu.Item>
+          <Menu.Item
+            color="red"
+            disabled={held || pending}
+            leftSection={<Trash size={15} />}
+            onClick={() => onRemove()}
+          >
+            {held
+              ? t("持仓标的保留在研究中", "Held securities stay in research")
+              : t("从研究清单移除", "Remove from research")}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+    </div>
   );
 }

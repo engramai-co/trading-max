@@ -122,6 +122,10 @@ button.mx-text-link {
 .mx-toolbar .mx-exposure-filters .mantine-Select-root {
   width: 160px;
 }
+/* With no review yet, the AI review is one row: its title and the button that writes it. */
+.mx-decision-narrative > .mx-panel-heading:last-child {
+  margin-bottom: 0;
+}
 @media (max-width: 767px) {
   .mx-review-highlights {
     grid-template-columns: 1fr;
@@ -149,12 +153,6 @@ button.mx-text-link {
   .mx-decision-narrative > .mx-panel-heading {
     flex-direction: row;
     align-items: flex-start;
-  }
-  .mx-segments {
-    flex-wrap: wrap;
-  }
-  .mx-segments button {
-    min-height: 40px;
   }
 }
 

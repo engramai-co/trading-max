@@ -18,7 +18,7 @@ import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { Plot } from "./charts";
-import { compact, number, object, percent, str } from "@/workspace/data";
+import { compact, compactTick, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { quoteValue } from "./financial-values";
 import {
@@ -246,7 +246,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
               />
               <Metric
                 label={t("Call / Put 持仓量", "Call / Put open interest")}
-                value={`${compact(coi)} / ${compact(poi)}`}
+                value={`${compact(coi, locale)} / ${compact(poi, locale)}`}
               />
               <Metric
                 label={t("Put / Call 持仓比", "Put / Call OI")}
@@ -520,7 +520,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                       yAxis: {
                         type: "value",
                         name: `${cc} / 1%`,
-                        axisLabel: { formatter: (v: number) => compact(v) },
+                        axisLabel: { formatter: (v: number) => compactTick(v, locale) },
                       },
                       series: options.expiries
                         .filter((e) => selected.includes(e.expiry))
@@ -796,6 +796,7 @@ function Payoff({
   currencyCode: string;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const [legs, setLegs] = useState<Leg[]>([]),
     [selected, setSelected] = useState<string | null>(null);
   const eligible = contracts.filter(
@@ -932,7 +933,7 @@ function Payoff({
               yAxis: {
                 type: "value",
                 name: `P/L · ${currencyCode}`,
-                axisLabel: { formatter: (v: number) => compact(v) },
+                axisLabel: { formatter: (v: number) => compactTick(v, locale) },
               },
               series: [
                 {

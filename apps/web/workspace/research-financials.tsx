@@ -6,7 +6,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Drawer, Group, Select } from "@mantine/core";
 import { useState } from "react";
 import { Legend, Plot } from "./charts";
-import { compact, number, percent } from "@/workspace/data";
+import { compact, compactTick, number, percent } from "@/workspace/data";
 import { Empty, Metric, Panel, Segments, useCopy } from "./foundation";
 import { FinancialStatements } from "./research-company";
 import {
@@ -76,7 +76,7 @@ export function FinancialWorkbench({
         ? percent(o.value, false, 2)
         : o.unit === "perShare"
           ? number(o.value, 2)
-          : compact(o.value);
+          : compact(o.value, locale);
   const selected = (key: string) => (period ? get(period.id, key) : undefined);
   const previous = period ? periods[periods.indexOf(period) - 1] : undefined;
   const prior = (key: string) => (previous ? get(previous.id, key)?.value ?? null : null);
@@ -327,7 +327,7 @@ export function FinancialWorkbench({
                       axisLabel: {
                         color: c.axis,
                         formatter: (n: number) =>
-                          ratio ? percent(n) : compact(n),
+                          ratio ? percent(n) : compactTick(n, locale),
                       },
                       splitLine: {
                         lineStyle: { color: c.grid, type: "dashed" },
@@ -346,7 +346,7 @@ export function FinancialWorkbench({
                                 : (facts.currency ?? "")),
                           ...entries.map(
                             (e) =>
-                              `${chartName(String(e.seriesName))}   ${ratio ? percent(e.value, false, 2) : chartNumber(e.value)}`,
+                              `${chartName(String(e.seriesName))}   ${ratio ? percent(e.value, false, 2) : chartNumber(e.value, locale)}`,
                           ),
                         ].join("\n");
                       },
@@ -366,7 +366,7 @@ export function FinancialWorkbench({
                               show: true,
                               formatter: (p) =>
                                 chart === "shares"
-                                  ? compact(p.value)
+                                  ? compact(p.value, locale)
                                   : label(key),
                               color: c.text,
                               fontSize: 11,
@@ -463,7 +463,7 @@ export function FinancialWorkbench({
                         type: "value",
                         axisLabel: {
                           color: c.axis,
-                          formatter: (n: number) => compact(n),
+                          formatter: (n: number) => compactTick(n, locale),
                         },
                         splitLine: {
                           lineStyle: { color: c.grid, type: "dashed" },
@@ -476,7 +476,7 @@ export function FinancialWorkbench({
                             Array.isArray(params) ? params : [params]
                           )[0];
                           const item = bridge[p.dataIndex];
-                          return `${label(item.metric)} · ${facts.currency ?? ""}\n${chartNumber(item.to - item.from)}`;
+                          return `${label(item.metric)} · ${facts.currency ?? ""}\n${chartNumber(item.to - item.from, locale)}`;
                         },
                       },
                       series: [
@@ -522,7 +522,7 @@ export function FinancialWorkbench({
                                   style: {
                                     x: from[0],
                                     y: top - 6,
-                                    text: compact(b.to - b.from),
+                                    text: compact(b.to - b.from, locale),
                                     fill: c.text,
                                     fontSize: 11,
                                     align: "center",
@@ -658,11 +658,11 @@ export function FinancialWorkbench({
                   axisLabel: {
                     color: c.axis,
                     formatter: (n: number) =>
-                      activeDetail.unit === "ratio" ? percent(n) : compact(n),
+                      activeDetail.unit === "ratio" ? percent(n) : compactTick(n, locale),
                   },
                 },
                 tooltip: {
-                  valueFormatter: (value) => activeDetail.unit === "ratio" ? percent(value, false, 2) : chartNumber(value),
+                  valueFormatter: (value) => activeDetail.unit === "ratio" ? percent(value, false, 2) : chartNumber(value, locale),
                 },
                 series: [
                   {

@@ -64,8 +64,7 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   const breakdown = tech?.scoreBreakdown;
   if (!tech) return <Panel><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel>;
   return <div id="technical-diagnosis" tabIndex={-1}><Panel className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
-    action={breakdown ? <span className="mx-unit">{t("对总分的影响", "Contribution to total")}</span> : undefined}
-    help={t("以下为现有评分规则的实际加减分，不是四个独立的百分制评分。缺失读数不参与评分；原始指标仍可展开查看。", "These are actual contributions from the existing scoring rules, not four independent /100 scores. Missing readings add no points; original metrics remain available below.")}>
+    help={t("每组右侧的数字是它对总分的影响：现有评分规则实际加减的分数，不是四个独立的百分制评分。缺失读数不参与评分；原始指标仍可展开查看。", "The number beside each group is its contribution to the total score: the points the existing scoring rules actually add or subtract, not four independent /100 scores. Missing readings add no points; original metrics remain available below.")}>
     {breakdown ? <div>{breakdown.groups.map((g) => {
       const open = opened === g.key;
       const id = `technical-factor-${g.key}`;

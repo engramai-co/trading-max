@@ -1,3 +1,4 @@
+import type { Locale } from "@/components/locale-provider";
 import { numeric } from "@/lib/numeric";
 export type Json = Record<string, unknown>;
 export const object = (value: unknown): Json =>
@@ -31,11 +32,29 @@ export const percent = (value: unknown, signed = false, digits = 1) => {
     ? "—"
     : (signed && rounded! > 0 ? "+" : "") + rounded!.toFixed(digits) + "%";
 };
-export const compact = (value: unknown) =>
-  numeric(value)?.toLocaleString("en-GB", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }) ?? "—";
+// Large figures in the reader's units. English keeps the en-GB short scale
+// ("3.8bn", "518.3m"); Chinese counts in 万, 亿 and 万亿 to four significant
+// digits ("38.12亿", "5.183亿", "1.2万"). Research passes the reader's locale;
+// without one the English form is kept (overview and analytics charts).
+const compactFigures: Record<Locale, Intl.NumberFormat> = {
+  en: new Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 }),
+  zh: new Intl.NumberFormat("zh-CN", { notation: "compact", maximumSignificantDigits: 4 }),
+};
+// Axis ticks are round steps, so Chinese ticks keep every digit they carry
+// (up to four decimals of their unit) and close ticks never share a label.
+const compactTicks: Record<Locale, Intl.NumberFormat> = {
+  en: compactFigures.en,
+  zh: new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 4 }),
+};
+export const compact = (value: unknown, locale: Locale = "en") => {
+  const n = numeric(value);
+  return n == null ? "—" : compactFigures[locale].format(n);
+};
+/** Chart axis labels; figures, tooltips and data labels use compact. */
+export const compactTick = (value: unknown, locale: Locale = "en") => {
+  const n = numeric(value);
+  return n == null ? "—" : compactTicks[locale].format(n);
+};
 export const tone = (value: unknown) =>
   numeric(value) == null
     ? undefined

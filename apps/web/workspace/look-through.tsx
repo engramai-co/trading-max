@@ -10,8 +10,9 @@ import {
   TextInput,
 } from "@mantine/core";
 import { MagnifyingGlass } from "@phosphor-icons/react";
+import { useMediaQuery } from "@mantine/hooks";
 import Link from "./link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
@@ -42,6 +43,33 @@ import { Narrative } from "./narrative";
 /** Coverage below this is named; above it the page stays quiet. */
 const COVERAGE_FLOOR = 0.98;
 
+/** Pages of underlying assets; a narrow row shows « ‹ 2 / 44 › » in place of page numbers. */
+function ExposurePager({
+  total,
+  value,
+  onChange,
+}: {
+  total: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const t = useCopy();
+  const paginationLabels = usePaginationLabels();
+  return (
+    <nav aria-label={t("底层资产分页", "Underlying asset pages")}>
+      <Pagination
+        total={total}
+        value={value}
+        onChange={onChange}
+        withEdges
+        layout="responsive"
+        formatLabel={({ page, totalPages }) => page + " / " + totalPages}
+        getControlProps={paginationLabels}
+      />
+    </nav>
+  );
+}
+
 export function Lookthrough() {
   const t = useCopy();
   const query = useDashboardLens("holdings-lookthrough");
@@ -64,15 +92,18 @@ function Exposure({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const paginationLabels = usePaginationLabels();
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
   >("companies");
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
   const [selected, setSelected] = useState<LookthroughPosition | null>(null);
-  const [page, setPage] = useState(1);
+  // The first row shown, so a page-size change keeps the same rows in view.
+  const [start, setStart] = useState(0);
   const [showAll, setShowAll] = useState(false);
+  // Phones read cards (the same breakpoint swaps cards for the table in CSS).
+  const phone = useMediaQuery("(max-width: 767px)");
+  const listTop = useRef<HTMLDivElement>(null);
   const [sector, setSector] = useState("all");
   const [ownership, setOwnership] = useState("all");
   const [sort, setSort] = useState("total");
@@ -141,9 +172,11 @@ function Exposure({
             : b.valueGbp - a.valueGbp,
     );
   // Large pages keep the ranking scannable; "show all" lifts paging with the same filters.
-  const pageSize = 100;
+  // Phones take 25 cards a page, with the page control above the list as well as below.
+  const pageSize = phone ? 25 : 100;
   const pages = showAll ? 1 : Math.max(1, Math.ceil(rows.length / pageSize));
-  const currentPage = Math.min(page, pages);
+  const currentPage = Math.min(Math.floor(start / pageSize) + 1, pages);
+  const setPage = (value: number) => setStart((value - 1) * pageSize);
   const pageRows = showAll
     ? rows
     : rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -358,6 +391,11 @@ function Exposure({
               rows={companyComposition.rows}
               remainder={companyComposition.remainder}
             />}
+            {phone && pages > 1 && (
+              <div className="mx-exposure-paging mx-exposure-paging-top" ref={listTop}>
+                <ExposurePager total={pages} value={currentPage} onChange={setPage} />
+              </div>
+            )}
             <div className="mx-mobile-holdings">
               {pageRows.map((p, i) => (
                 <button
@@ -456,21 +494,21 @@ function Exposure({
             {(pages > 1 || showAll) && (
               <div className="mx-exposure-paging">
                 {pages > 1 && (
-                  <nav aria-label={t("底层资产分页", "Underlying asset pages")}>
-                    <Pagination
-                      total={pages}
-                      value={currentPage}
-                      onChange={setPage}
-                      withEdges
-                      getControlProps={paginationLabels}
-                    />
-                  </nav>
+                  <ExposurePager
+                    total={pages}
+                    value={currentPage}
+                    onChange={(value) => {
+                      setPage(value);
+                      // From the foot of a phone page, the next page starts at the top of the list.
+                      if (phone) listTop.current?.scrollIntoView({ block: "start" });
+                    }}
+                  />
                 )}
                 <Button
                   variant="subtle"
                   onClick={() => {
                     setShowAll(!showAll);
-                    setPage(1);
+                    setStart(0);
                   }}
                 >
                   {showAll

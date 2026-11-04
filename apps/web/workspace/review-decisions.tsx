@@ -1,7 +1,8 @@
 "use client";
 
+import { CloseButton, Popover } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
@@ -119,52 +120,159 @@ export function decisionContext(row: TradeDecision, horizon: Horizon, t: Copy, l
 }
 
 /**
- * One line of context under a decision. What does not fit collapses into "+N";
- * the hidden items stay readable to assistive technology and in the tooltip.
+ * How many context items fit on a line of the given width, and where the "+N"
+ * button starts after them: the first item always shows, shrinking with an
+ * ellipsis if it must, and while any stay hidden the button keeps its room.
  */
-function ContextLine({ items }: { items: string[] }) {
+export function contextFit(widths: number[], room: number, gap: number, more: number) {
+  let used = 0;
+  let shown = 0;
+  for (const [index, width] of widths.entries()) {
+    const next = used + (index ? gap : 0) + width;
+    const reserve = index < widths.length - 1 ? gap + more : 0;
+    if (shown && next + reserve > room) break;
+    used = next;
+    shown = index + 1;
+  }
+  return { shown, at: Math.max(0, Math.min(used + gap, room - more)) };
+}
+
+type Placement = { items: string; shown: number; left?: number; top?: number; room?: number };
+
+/**
+ * One decision as a link over its whole row: the security, its effect and a line of
+ * context beneath, so any of it opens the security's research and its text selects
+ * like any link's. Context that does not fit collapses into a "+N" button beside the
+ * link, placed where the shown items end, that opens the whole line the same way for
+ * pointer, touch, keyboard and screen reader.
+ */
+function DecisionEntry({
+  href,
+  context,
+  label,
+  children,
+}: {
+  href: string;
+  context: string[];
+  label: string;
+  children: ReactNode;
+}) {
+  const t = useCopy();
+  const entry = useRef<HTMLDivElement>(null);
+  const link = useRef<HTMLAnchorElement>(null);
   const line = useRef<HTMLSpanElement>(null);
-  const [shown, setShown] = useState(items.length);
+  const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const heading = useId();
+  const items = context.join("\u0000");
+  const [measured, setMeasured] = useState<Placement>({ items, shown: context.length });
+  // A placement holds for the items it was measured with. New items, as when a refetch
+  // updates the benchmark, lay out in full to be measured again, while the row, its link
+  // and any focus on them stay.
+  const place = measured.items === items ? measured : { items, shown: context.length };
+  const [opened, setOpened] = useState(false);
   useLayoutEffect(() => {
+    const row = entry.current;
     const element = line.current;
-    if (!element) return;
-    // Measured once while every item is laid out; later fits reuse the widths. The first
-    // item may already be shrunk with an ellipsis, so its full width is its scroll width.
-    const widths = Array.from(element.querySelectorAll<HTMLElement>(":scope > [data-item]"), (item) =>
-      Math.max(item.getBoundingClientRect().width, item.scrollWidth),
-    );
-    const more = element.querySelector<HTMLElement>(":scope > [data-more]")?.getBoundingClientRect().width ?? 0;
+    const more = button.current;
+    if (!row || !element || !more) return;
+    // Measured while every item is laid out, once for each set of items; later fits reuse the
+    // widths. The first item may be shrunk with an ellipsis, so then its full width is its scroll width.
+    const widths = Array.from(element.querySelectorAll<HTMLElement>("[data-item]"), (item) => {
+      const width = item.getBoundingClientRect().width;
+      return item.scrollWidth > item.clientWidth ? Math.max(width, item.scrollWidth) : width;
+    });
+    // The button's padding reaches into its margins, so its room on the line is its width less them.
+    const margins = getComputedStyle(more);
+    const width = more.getBoundingClientRect().width + parseFloat(margins.marginLeft) + parseFloat(margins.marginRight);
     const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
     const fit = () => {
-      const room = element.clientWidth;
-      let used = 0;
-      let count = 0;
-      for (const [index, width] of widths.entries()) {
-        const next = used + (index ? gap : 0) + width;
-        const reserve = index < widths.length - 1 ? gap + more : 0;
-        if (count && next + reserve > room) break;
-        used = next;
-        count = index + 1;
-      }
-      setShown(count);
+      const { shown, at } = contextFit(widths, element.clientWidth, gap, width);
+      const origin = row.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      const left = box.left - origin.left + at;
+      const top = box.top - origin.top;
+      setMeasured((current) =>
+        current.items === items && current.shown === shown && current.left === left && current.top === top
+          ? current
+          : { items, shown, left, top, room: gap + width },
+      );
+      if (shown < widths.length) return;
+      // Everything fits, so the button hides: focus on it or in its list moves to the
+      // row's link rather than falling to the page, and the list closes.
+      const active = document.activeElement;
+      if (active === more || list.current?.contains(active)) link.current?.focus();
+      setOpened(false);
     };
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(element);
+    // The line also moves when the row above it changes height, as when its details wrap.
+    observer.observe(row);
     return () => observer.disconnect();
-  }, []);
-  const hidden = items.slice(shown);
+  }, [items]);
+  const hidden = context.length - place.shown;
   return (
-    <span ref={line} className="mx-decision-context">
-      {items.map((item, index) => (
-        <span key={index} data-item="" className={index < shown ? undefined : "sr-only"}>
-          {item}
-        </span>
-      ))}
-      <span data-more="" data-idle={hidden.length ? undefined : ""} aria-hidden="true" title={hidden.join(" · ") || undefined}>
-        +{hidden.length || items.length}
-      </span>
-    </span>
+    <div ref={entry} className="mx-decision-entry">
+      <Link ref={link} className="mx-row-link mx-decision-row" href={href}>
+        {children}
+        {context.length > 0 && (
+          <span ref={line} className="mx-decision-context" style={hidden ? { paddingInlineEnd: place.room } : undefined}>
+            {context.map((item, index) => (
+              <span key={index} data-item="" hidden={index >= place.shown}>
+                {item}
+              </span>
+            ))}
+          </span>
+        )}
+      </Link>
+      {context.length > 0 && (
+        <Popover
+          opened={opened}
+          onChange={setOpened}
+          position="bottom-end"
+          width={320}
+          offset={8}
+          middlewares={{ flip: true, shift: { padding: 16 } }}
+          trapFocus
+          returnFocus
+          transitionProps={{ duration: 0 }}
+          // Mantine hides a dropdown while its first position checks for a detached target,
+          // the moment its focus trap moves focus in; shown from the start, focus lands inside.
+          hideDetached={false}
+          shadow="md"
+        >
+          <Popover.Target>
+            <button
+              ref={button}
+              type="button"
+              className="mx-decision-more"
+              data-idle={hidden ? undefined : ""}
+              style={{ left: place.left, top: place.top }}
+              onClick={() => setOpened((value) => !value)}
+              onKeyDown={(event) => {
+                // Escape closes it from the button too, not only from inside the list.
+                if (event.key === "Escape" && opened) setOpened(false);
+              }}
+            >
+              +{hidden || context.length}
+              <span className="sr-only">{t(" 项", " more")}</span>
+            </button>
+          </Popover.Target>
+          <Popover.Dropdown ref={list} className="mx-help-popover" aria-labelledby={heading}>
+            <div className="mx-help-heading">
+              <strong id={heading}>{label}</strong>
+              <CloseButton data-autofocus size="sm" aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
+            </div>
+            <ul className="mx-help-body mx-decision-more-list">
+              {context.map((item, index) => (
+                <li key={index}>{item}</li>
+              ))}
+            </ul>
+          </Popover.Dropdown>
+        </Popover>
+      )}
+    </div>
   );
 }
 
@@ -190,39 +298,43 @@ export function notableDecisions(rows: TradeDecision[], side: "buy" | "sell", ho
   return { worst: by(-1), best: by(1) };
 }
 
-function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon: Horizon; empty: string }) {
+/** One decision: the security, its effect over "date · amount · then", and the arrow to its research. */
+function DecisionRow({ row, horizon }: { row: TradeDecision; horizon: Horizon }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const effect = decisionEffect(row, horizon);
+  const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
+  const context = decisionContext(row, horizon, t, locale);
+  return (
+    <DecisionEntry
+      href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}
+      context={context}
+      label={row.ticker + " · " + formatCalendarDate(row.date, locale)}
+    >
+      <SecurityPeek ticker={row.ticker}>
+        <Instrument ticker={row.ticker} name={row.name} small />
+      </SecurityPeek>
+      <span className={"mx-row-value mx-" + effectTone(effect)}>
+        <span>{signedMoney(effect)}</span>
+        <small>
+          {formatCalendarDate(row.date, locale)} · {row.kind === "T" ? t("T 净额 ", "T net ") : ""}
+          {currency(row.amountGbp)} ·{" "}
+          {t("之后 ", "then ")}
+          {percent(change, true, 1)}
+        </small>
+      </span>
+      <ArrowUpRight size={15} aria-hidden="true" />
+    </DecisionEntry>
+  );
+}
+
+function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon: Horizon; empty: string }) {
   if (!rows.length) return <p className="mx-muted">{empty}</p>;
   return (
     <>
-      {rows.map((row) => {
-        const effect = decisionEffect(row, horizon);
-        const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
-        const context = decisionContext(row, horizon, t, locale);
-        return (
-          <Link
-            key={row.date + row.ticker + row.side}
-            className="mx-row-link mx-decision-row"
-            href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}
-          >
-            <SecurityPeek ticker={row.ticker}>
-              <Instrument ticker={row.ticker} name={row.name} small />
-            </SecurityPeek>
-            <span className={"mx-row-value mx-" + effectTone(effect)}>
-              <span>{signedMoney(effect)}</span>
-              <small>
-                {formatCalendarDate(row.date, locale)} · {row.kind === "T" ? t("T 净额 ", "T net ") : ""}
-                {currency(row.amountGbp)} ·{" "}
-                {t("之后 ", "then ")}
-                {percent(change, true, 1)}
-              </small>
-            </span>
-            <ArrowUpRight size={15} aria-hidden="true" />
-            {context.length > 0 && <ContextLine key={context.join("\u0000")} items={context} />}
-          </Link>
-        );
-      })}
+      {rows.map((row) => (
+        <DecisionRow key={row.date + row.ticker + row.side} row={row} horizon={horizon} />
+      ))}
     </>
   );
 }
@@ -468,7 +580,6 @@ export function DecisionReview({
   };
   return (
     <>
-      {account && <DecisionNarrative account={account} dataAsOf={dataAsOf ?? data.asOf} />}
       <Panel
         title={t("买卖决定", "Buy and sell decisions")}
         help={t(
@@ -508,6 +619,7 @@ export function DecisionReview({
           </p>
         )}
       </Panel>
+      {account && <DecisionNarrative account={account} dataAsOf={dataAsOf ?? data.asOf} />}
       <div className="mx-grid">
         <Panel title={t("卖出后上涨最多", "Sold before the biggest rises")}>
           <DecisionRows rows={sold.worst} horizon={horizon} empty={t("没有卖出后上涨的记录", "No sale was followed by a rise")} />

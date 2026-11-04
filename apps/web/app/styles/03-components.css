@@ -28,6 +28,10 @@
   color: var(--mx-ink);
   font-weight: 600;
 }
+/* Measured by Segments, so touch cells fit the longest label. */
+.mx-segment-label {
+  display: inline-block;
+}
 .mx-segments > .mx-indicator {
   position: absolute;
   z-index: 0;
@@ -211,10 +215,9 @@
     white-space: normal;
   }
 }
-/* Items that do not fit collapse into "+N", measured in ContextLine. */
+/* Items that do not fit collapse into the "+N" button, measured in DecisionEntry. */
 .mx-decision-context {
   grid-column: 1 / -1;
-  position: relative;
   display: flex;
   gap: 14px;
   min-width: 0;
@@ -232,9 +235,55 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.mx-decision-context > [data-idle] {
+/* An account decision: the row is its link, and "+N" sits beside it over the end of the line, placed by DecisionEntry. */
+.mx-decision-entry {
+  position: relative;
+}
+.mx-decision-entry > .mx-row-link {
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-decision-entry:last-child > .mx-row-link {
+  border-bottom: 0;
+}
+.mx-decision-more {
   position: absolute;
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mx-muted);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mx-decision-more[aria-expanded="true"] {
+  color: var(--mx-brand);
+  background: var(--mx-brand-soft);
+}
+.mx-decision-more[data-idle] {
   visibility: hidden;
+}
+.mx-decision-more-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (hover: hover) {
+  .mx-decision-more:hover {
+    color: var(--mx-brand);
+  }
+}
+/* A fingertip reaches "+N" without moving the line around it: the target grows sideways and into the row's padding below, never over the text above. */
+@media (pointer: coarse) {
+  .mx-decision-more::after {
+    content: "";
+    position: absolute;
+    inset: -2px -6px -10px;
+  }
 }
 .mx-decision-watching {
   margin: 0;

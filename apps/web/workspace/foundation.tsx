@@ -32,6 +32,8 @@ export function useCopy() {
 // A later move animates transform only: the indicator takes its new size at
 // once, then scales and slides from wherever it currently appears (FLIP), so a
 // quick second choice continues from mid-flight and layout never runs per frame.
+// A segment's pill covers its whole cell; a tab's underline follows its label,
+// so touch layouts can widen tabs into equal cells without stretching the line.
 function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: unknown) {
   useLayoutEffect(() => {
     const list = host.current;
@@ -45,12 +47,22 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
       const active = list.querySelector<HTMLElement>(selector);
       indicator.style.opacity = active ? "1" : "0";
       if (!active) return;
-      const x = active.offsetLeft;
-      const y = segments ? active.offsetTop : 0;
-      const width = active.offsetWidth;
-      const height = segments ? active.offsetHeight : indicator.offsetHeight;
+      const label = segments ? null : active.querySelector<HTMLElement>(":scope > .mx-tab-label");
+      const anchor = label ?? active;
+      // Equal-width touch cells rarely fall on whole pixels and offset* rounds, so the
+      // box comes from the rendered rects. Under a scaled ancestor (an entry
+      // transition) those are scaled too, and the rounded layout offsets are used.
+      const box = list.getBoundingClientRect();
+      const rect = anchor.getBoundingClientRect();
+      const exact = Math.abs(box.width - list.offsetWidth) < 1;
+      const x = exact
+        ? rect.left - box.left - list.clientLeft + list.scrollLeft
+        : active.offsetLeft + (label?.offsetLeft ?? 0);
+      const y = !segments ? 0 : exact ? rect.top - box.top - list.clientTop + list.scrollTop : active.offsetTop;
+      const width = exact ? rect.width : anchor.offsetWidth;
+      const height = !segments ? indicator.offsetHeight : exact ? rect.height : active.offsetHeight;
       // A resize that moves nothing must not cut a running move short.
-      const key = [x, y, width, height].join(" ");
+      const key = [x, y, width, height].map((value) => value.toFixed(2)).join(" ");
       if (key === placed) return;
       placed = key;
       const from = indicator.getBoundingClientRect();
@@ -71,11 +83,35 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
     const frame = requestAnimationFrame(() => { list.dataset.indicator = "ready"; });
     const observer = new ResizeObserver(() => place(false));
     observer.observe(list);
+    // A label can change width without the row resizing (a late web font, a phone label).
+    const active = list.querySelector<HTMLElement>(selector);
+    const measured = segments ? active : active?.querySelector<HTMLElement>(":scope > .mx-tab-label");
+    if (measured) observer.observe(measured);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
   }, [host, selector, selection]);
+}
+/**
+ * Touch layouts tile segments in equal cells as wide as the longest label
+ * (11-touch-bento.css); a row that cannot hold them all wraps into equal rows.
+ */
+function useSegmentCells(host: RefObject<HTMLDivElement | null>, labels: string) {
+  useLayoutEffect(() => {
+    const list = host.current;
+    if (!list) return;
+    const spans = [...list.querySelectorAll<HTMLElement>(":scope > button > .mx-segment-label")];
+    const measure = () => {
+      const widest = Math.max(0, ...spans.map((span) => span.offsetWidth));
+      list.style.setProperty("--mx-segment-label", Math.ceil(widest) + "px");
+    };
+    measure();
+    // A late web font changes the labels' width without changing the options.
+    const observer = new ResizeObserver(measure);
+    spans.forEach((span) => observer.observe(span));
+    return () => observer.disconnect();
+  }, [host, labels]);
 }
 /** Counts changes to a text value after the first render, so only real updates animate. */
 function useChangeCount(value: string | null) {
@@ -109,6 +145,10 @@ export function Help({
       middlewares={{ flip: true, shift: { padding: 16 } }}
       trapFocus
       returnFocus
+      // Mantine 9.5 sets display: none while floating-ui reports the trigger as
+      // detached, as on a first positioning pass or once the trigger scrolls away.
+      // Focus then cannot enter (or drops to the page) and Escape stops closing it.
+      hideDetached={false}
       transitionProps={{ duration: 0 }}
       shadow="md"
     >
@@ -414,7 +454,9 @@ export function Segments<T extends string>({
   const listRef = useRef<HTMLDivElement>(null);
   const modifier = useAltDigitModifier();
   const bound = shortcuts && modifier != null;
-  useSelectionIndicator(listRef, '[aria-pressed="true"]', value + options.map((option) => option.label).join("\u0000"));
+  const labels = options.map((option) => option.label).join("\u0000");
+  useSegmentCells(listRef, labels);
+  useSelectionIndicator(listRef, '[aria-pressed="true"]', value + labels);
   // A modifier keeps typing, speech input and screen-reader keys from switching
   // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
   const pick = useEffectEvent((event: KeyboardEvent) => {
@@ -447,7 +489,7 @@ export function Segments<T extends string>({
             aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
             onClick={() => onChange(option.value)}
           >
-            {option.label}
+            <span className="mx-segment-label">{option.label}</span>
           </button>
         );
         // A stable wrapper keeps the buttons mounted once the platform is known.
@@ -554,14 +596,16 @@ export function Tabs<T extends string>({
             }
           }}
         >
-          {option.short ? (
-            <>
-              <span className="mx-tab-long">{option.label}</span>
-              <span className="mx-tab-short">{option.short}</span>
-            </>
-          ) : (
-            option.label
-          )}
+          <span className="mx-tab-label">
+            {option.short ? (
+              <>
+                <span className="mx-tab-long">{option.label}</span>
+                <span className="mx-tab-short">{option.short}</span>
+              </>
+            ) : (
+              option.label
+            )}
+          </span>
         </button>
       ))}
       <span className="mx-indicator" aria-hidden="true" />

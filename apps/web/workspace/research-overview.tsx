@@ -107,7 +107,7 @@ export function CompanyOverview({
                       value={
                         value.unit === "ratio"
                           ? percent(value.value, key.endsWith("Growth"))
-                          : compact(value.value)
+                          : compact(value.value, locale)
                       }
                     />
                   </button>
