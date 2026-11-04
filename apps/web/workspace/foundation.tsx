@@ -9,7 +9,6 @@ import {
   Stack,
   Tooltip,
 } from "@mantine/core";
-import { useOs } from "@mantine/hooks";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -23,6 +22,7 @@ import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type Reac
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { indicatorStart } from "./selection-indicator";
+import { useAltDigitModifier } from "./shortcut-platform";
 
 export function useCopy() {
   const { locale } = useLocale();
@@ -401,12 +401,16 @@ export function Segments<T extends string>({
   onChange: (value: T) => void;
   options: Array<{ value: T; label: string }>;
   label: string;
-  /** ⌥1–⌥9 (Alt elsewhere) pick an option by position; one control per page. */
+  /**
+   * ⌥1–⌥9 on Apple devices and Alt+1–9 on Windows pick an option by position; one
+   * control per page. Where the browser or system owns those keys, nothing is bound,
+   * hinted or announced.
+   */
   shortcuts?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const os = useOs();
-  const apple = os === "macos" || os === "ios";
+  const modifier = useAltDigitModifier();
+  const bound = shortcuts && modifier != null;
   useSelectionIndicator(listRef, '[aria-pressed="true"]', value + options.map((option) => option.label).join("\u0000"));
   // A modifier keeps typing, speech input and screen-reader keys from switching
   // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
@@ -422,15 +426,16 @@ export function Segments<T extends string>({
     if (option.value !== value) onChange(option.value);
   });
   useEffect(() => {
-    if (!shortcuts) return;
+    if (!bound) return;
     const handle = (event: KeyboardEvent) => pick(event);
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
-  }, [shortcuts]);
+  }, [bound]);
   return (
     <div ref={listRef} className="mx-segments" role="group" aria-label={label}>
       {options.map((option, index) => {
-        const shortcut = shortcuts && index < 9 ? index + 1 : null;
+        const position = shortcuts && index < 9 ? index + 1 : null;
+        const shortcut = bound ? position : null;
         const button = (
           <button
             type="button"
@@ -442,11 +447,12 @@ export function Segments<T extends string>({
             {option.label}
           </button>
         );
-        return shortcut ? (
+        // A stable wrapper keeps the buttons mounted once the platform is known.
+        return position ? (
           <Tooltip
             key={option.value}
-            disabled={os === "undetermined"}
-            label={<span className="mx-nav-search-hint">{option.label}<kbd>{(apple ? "⌥" : "Alt ") + shortcut}</kbd></span>}
+            disabled={!shortcut}
+            label={<span className="mx-nav-search-hint">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
             openDelay={500}
             classNames={{ tooltip: "mx-nav-tooltip" }}
             transitionProps={{ duration: 0 }}
