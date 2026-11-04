@@ -208,6 +208,13 @@ function Exposure({
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
   const coverageLow = data.lookthroughCoveragePct < COVERAGE_FLOOR;
   const classificationLow = data.gicsCoveragePct < COVERAGE_FLOOR;
+  const dimensions = [
+    { value: "companies" as const, label: t("公司", "Companies") },
+    { value: "countries" as const, label: t("国家", "Countries") },
+    { value: "sectors" as const, label: t("行业", "Industries") },
+    { value: "gics" as const, label: t("GICS 子行业", "GICS sub-industries") },
+    { value: "sources" as const, label: t("来源与覆盖", "Sources & coverage") },
+  ];
   return (
     <>
       {/* One quiet line: what the look-through covers and when it was taken. */}
@@ -235,17 +242,10 @@ function Exposure({
           label={t("穿透维度", "Exposure dimension")}
           value={view}
           onChange={setView}
-          options={[
-            { value: "companies", label: t("公司", "Companies") },
-            { value: "countries", label: t("国家", "Countries") },
-            { value: "sectors", label: t("行业", "Industries") },
-            { value: "gics", label: t("GICS 子行业", "GICS sub-industries") },
-            {
-              value: "sources",
-              label: t("来源与覆盖", "Sources & coverage"),
-            },
-          ]}
+          options={dimensions}
         />
+        {/* The open dimension heads its section, so the details below sit one level under it. */}
+        <h2 className="sr-only">{dimensions.find((d) => d.value === view)?.label}</h2>
         {view === "companies" ? (
           <>
             {/* Filters on the left, the view switch on the right, one row. */}
