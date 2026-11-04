@@ -66,11 +66,11 @@ def _review_from_quotes(
 ) -> dict:
     """Review fills as the stage does on the day viewed, through the price resolver.
 
-    Each listing quotes only the days in its series, so a day its market is shut
-    or has not closed yet is a gap the resolver carries the previous close across.
-    GBPUSD is 1.25 unless rates are given. The review runs at now, by default just
-    after the day viewed, when its closes and its exchange rate are all final. A
-    listing's dividends, in its own currency, go on their ex-dates.
+    Each listing quotes only the days in its series: a session of its market that
+    is missing from it is a gap the provider left. GBPUSD is 1.25 unless rates are
+    given. The review runs at now, by default just after the day viewed, when its
+    closes and its exchange rate are all final. A listing's dividends, in its own
+    currency, go on their ex-dates.
     """
 
     def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -512,6 +512,45 @@ def test_a_rate_the_provider_never_publishes_settles_after_three_business_days()
     assert settled["effect_to_date_gbp"] == pytest.approx(240.0)
 
 
+def test_a_session_without_a_close_settles_after_three_and_a_late_close_restates_it() -> None:
+    # The provider has no NVDA bar for Tuesday 3 Nov, a regular New York session.
+    # A £6,600 buy that day waits three sessions for it, then is measured from
+    # Monday's close; when the provider fills 3 Nov in, the effect is restated.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-06"))  # dollars
+    quotes[pd.Timestamp("2026-11-02")] = 100.0
+    quotes[pd.Timestamp("2026-11-03")] = 110.0
+    missing = quotes.drop(pd.Timestamp("2026-11-03"))
+    fills = [_usd_fill("2026-11-03T15:00:00Z", "Market buy", 75, 6_600)]
+
+    def review(listing: pd.Series, viewed: str) -> dict:
+        return _review_from_quotes(fills, {"NVDA": listing}, viewed=viewed)["decisions"][0]
+
+    for viewed in ("2026-11-04", "2026-11-05"):
+        waiting = review(missing, viewed)
+        assert (waiting["observed_days"], waiting["effect_to_date_gbp"]) == (0, None)
+    settled = review(missing, "2026-11-06")
+    assert settled["observed_days"] == 3
+    assert settled["effect_to_date_gbp"] == pytest.approx(1_650.0)
+    restated = review(quotes, "2026-11-06")
+    assert restated["effect_to_date_gbp"] == pytest.approx(900.0)
+
+
+def test_a_halted_listing_settles_on_its_last_close_instead_of_observing() -> None:
+    # No bars after 1 Oct, for five weeks of New York sessions.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-09-01", "2026-10-01"))
+    quotes[pd.Timestamp("2026-10-01")] = 150.0
+    fills = [
+        _usd_fill("2026-09-30T15:00:00Z", "Market buy", 10, 1_000),
+        _usd_fill("2026-10-01T15:00:00Z", "Market sell", 10, 1_200),
+    ]
+    buy, sell = _review_from_quotes(fills, {"NVDA": quotes}, viewed="2026-11-04")["decisions"]
+    # Only the last three sessions are still pending; the rest carry 1 Oct's close.
+    assert (buy["observed_days"], buy["horizon_complete"]) == (22, True)
+    assert buy["effect_horizon_gbp"] == buy["effect_to_date_gbp"] == pytest.approx(200.0)
+    assert (sell["observed_days"], sell["horizon_complete"]) == (21, True)
+    assert sell["effect_horizon_gbp"] == sell["effect_to_date_gbp"] == 0.0
+
+
 def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:
     # The provider names no exchange for this listing, so no calendar says when
     # its session ends: 4 Nov's bar is a close once that UTC day is over.
@@ -561,8 +600,8 @@ def test_the_benchmark_waits_for_its_own_close_on_the_securitys_latest_day() -> 
 
 
 def test_a_benchmark_session_without_a_close_withholds_its_windows() -> None:
-    # 3 Nov is a New York session the benchmark has no close for: a window from
-    # 3 Nov has no benchmark change, rather than one measured from 2 Nov.
+    # 3 Nov is a New York session the benchmark has no close for yet: a window
+    # from 3 Nov has no benchmark change, rather than one measured from 2 Nov.
     quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))
     market = pd.Series(400.0, index=quotes.index)
     market[pd.Timestamp("2026-11-04")] = 420.0

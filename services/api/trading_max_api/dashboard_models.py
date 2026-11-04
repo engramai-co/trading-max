@@ -1342,9 +1342,9 @@ class TradeDecision(ApiModel):
     #: The benchmark's change over the same window, in GBP.
     market_return_horizon: float | None = None
     market_return_to_date: float | None = None
-    #: Trading-day closes after the decision's own close, through the latest with a
-    #: final value in pounds; 0 means nothing to judge yet. Absent on artifacts
-    #: from before decisions-v3.
+    #: Sessions after the decision's own, through the latest whose close is final or
+    #: settled; 0 means nothing to judge yet. Absent on artifacts from before
+    #: decisions-v3.
     observed_days: int | None = None
     #: Whether the HORIZON_DAYS window has closed and is scored; absent on older artifacts.
     horizon_complete: bool | None = None

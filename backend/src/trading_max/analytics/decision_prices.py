@@ -13,10 +13,14 @@ exchange without a calendar, once its UTC day is over.
 
 A close in another currency is worth its own day's final exchange rate in pounds.
 A weekend or currency-market holiday always takes the last business day's rate,
-so a rate published late for it cannot change a value. A business day without
-its rate yet (today's, or one the provider has not published) is a pending close
-for up to ``GAP_SESSIONS`` later business days; after that it settles on the
-last rate before it, and a rate the provider fills in later restates it.
+so a rate published late for it cannot change a value.
+
+A listing's closes are its exchange calendar's regular sessions; a row the
+provider returns on any other day repeats an earlier close and is left out. A
+session without a close or without its rate is pending while the provider may
+still publish it, for up to ``GAP_SESSIONS`` later sessions; after that it
+settles on the last final value before the gap. A provider that later fills in
+or corrects settled history restates the effects measured on it.
 """
 
 from __future__ import annotations
@@ -49,8 +53,9 @@ TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
 #: away from the broker's fills is the wrong instrument or the wrong unit.
 MAX_LOG_DISTANCE = math.log(1.35)
-#: A business day's exchange rate the provider has not published stays pending
-#: for this many later business days; then it settles on the last rate before it.
+#: A session's close, or a business day's exchange rate, that the provider has
+#: not published stays pending for this many later sessions of its calendar;
+#: then it settles on the last final value before it.
 GAP_SESSIONS = 3
 #: Cache rows carry date, close, split, dividend, high and low, for completed bars
 #: only, beside the listing's exchange. Older caches can hold a bar that was still
@@ -69,10 +74,9 @@ class SecurityPrices:
     ticker: str
     name: str
     symbol: str
-    #: One GBP close per business day through the review day. A day the listing
-    #: has no quote for (a holiday, or today before the close), or no final value
-    #: in pounds for yet, repeats the close before it, so every window can read a
-    #: price.
+    #: One GBP close per business day and session through the review day. A day
+    #: that is not a session (a holiday, or today before the close) or a pending
+    #: session repeats the close before it, so every window can read a price.
     closes: pd.Series
     #: GBP per share on each ex-date, on the same split basis as the closes; NaN
     #: on a pending day, whose exchange rate is still to come.
@@ -81,30 +85,31 @@ class SecurityPrices:
     #: with the broker's fills; used for the most a same-day round trip could take.
     highs: pd.Series = field(default_factory=_empty)
     lows: pd.Series = field(default_factory=_empty)
-    #: The days in ``closes`` the provider quoted; ``None`` when it quoted all of
-    #: them. Only these are closes a decision can be judged by.
+    #: The days in ``closes`` that are the listing's regular sessions, closed by
+    #: the review; ``None`` when all of them are. Only these are closes a
+    #: decision can be judged by.
     quote_days: pd.DatetimeIndex | None = None
-    #: The quoted days whose close has no final GBP value yet, because that day's
-    #: exchange rate is still to come; ``None`` when there are none. They are
-    #: still sessions, so counting closes does not shift when their rate arrives.
+    #: The sessions whose close or exchange rate is still to come, at most
+    #: ``GAP_SESSIONS`` sessions old; ``None`` when there are none. They still
+    #: count as sessions, so counting closes does not shift when they arrive.
     pending_days: pd.DatetimeIndex | None = None
 
     @property
     def quoted(self) -> pd.DatetimeIndex:
-        """The days in closes with a close the provider quoted."""
+        """The days in closes that are the listing's sessions."""
 
         return self.closes.index if self.quote_days is None else self.quote_days
 
     @property
     def final_days(self) -> pd.DatetimeIndex:
-        """The quoted days whose close has a final GBP value."""
+        """The sessions whose close has a final or settled GBP value."""
 
         if self.pending_days is None:
             return self.quoted
         return self.quoted[~self.quoted.isin(self.pending_days)]
 
     def closes_after(self, day: pd.Timestamp) -> pd.DatetimeIndex:
-        """The days after day with a close the provider quoted; a repeated close never counts."""
+        """The sessions after day; a day that only repeats a close never counts."""
 
         return self.quoted[self.quoted > day]
 
@@ -389,6 +394,52 @@ def _at_final_rates(values: pd.Series, mode: str, final_fx: Mapping[str, pd.Seri
     return values / rate.reindex(values.index).to_numpy()
 
 
+def _sessions(calendar: str | None, start: pd.Timestamp, now: pd.Timestamp) -> pd.DatetimeIndex:
+    """A calendar's regular sessions from start that had closed by now.
+
+    Without a calendar every weekday is one, closed once its UTC day is over.
+    """
+
+    when = _utc(now)
+    closes = None
+    if calendar is not None:
+        # A calendar that cannot cover these dates falls back to weekdays too.
+        with suppress(Exception):
+            closes = market_calendar(calendar, start.year, when.year).closes
+    if closes is None:
+        return pd.bdate_range(start, when.tz_localize(None).normalize() - pd.Timedelta(days=1))
+    return pd.DatetimeIndex(closes[(closes.index >= start) & (closes <= when)].index)
+
+
+def session_closes(
+    gbp: pd.Series,
+    calendar: str | None,
+    *,
+    start: pd.Timestamp,
+    end: pd.Timestamp,
+    now: pd.Timestamp,
+) -> pd.Series:
+    """Closes in pounds on a calendar's sessions from start to end, NaN while pending.
+
+    gbp holds the provider's closes in pounds, NaN while a day's rate is pending;
+    a close on a day that is not a session is left out. A session the provider has
+    no close for is pending until GAP_SESSIONS later sessions have closed, then
+    takes the close before it.
+    """
+
+    gbp = gbp[~gbp.index.duplicated(keep="last")]
+    gbp = gbp[(gbp > 0) | gbp.isna()]
+    sessions = _sessions(calendar, start, now)
+    values = gbp.reindex(sessions)
+    missing = ~sessions.isin(gbp.index)
+    recent = np.arange(len(sessions)) >= len(sessions) - GAP_SESSIONS
+    pending = (missing & recent) | (~missing & values.isna().to_numpy())
+    # A settled gap takes the session before it; a pending one passes nothing on.
+    chain = values.mask(pending, -1.0).ffill()
+    chain = chain.where(chain > 0)
+    return chain[chain.index <= end]
+
+
 def final_rates(
     history_loader: HistoryLoader,
     symbol: str,
@@ -421,10 +472,10 @@ def resolve_decision_prices(
     ``SecurityIdentity``, ``BusinessDate``, ``TradeCurrency`` and settlement totals).
     ``memo`` maps identities to their last accepted listing; it is tried first and
     updated in place, so routine runs request one listing per security.
-    A listing's bars count only once their session has closed by ``now``, read
-    from the exchange the loader names in the frame's attrs. A close in a currency
-    other than sterling is valued at that day's own final exchange rate; until it
-    has one, it is one of the listing's pending days.
+    A listing's closes are the sessions of the exchange the loader names in the
+    frame's attrs that had closed by ``now``. A close in a currency other than
+    sterling is valued at that day's final exchange rate. A session without its
+    close or rate is one of the listing's pending days until it settles.
     """
 
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
@@ -488,7 +539,7 @@ def resolve_decision_prices(
         currency_values = rows["TradeCurrency"].replace("", pd.NA).dropna()
         currency = str(currency_values.iloc[-1] if not currency_values.empty else "USD").upper()
         observed = _observed_trade_gbp(rows, cash_fx)
-        best: tuple[float, str, pd.Series, pd.DataFrame, str] | None = None
+        best: tuple[float, str, pd.Series, pd.DataFrame, str, str] | None = None
         candidates = _candidate_symbols_from_ledger(
             ticker,
             currency,
@@ -502,11 +553,11 @@ def resolve_decision_prices(
             if best is not None and best[0] <= MAX_LOG_DISTANCE and best[1] == remembered:
                 break
             try:
-                frame = completed_daily_bars(
-                    history_loader(symbol, start_day.date(), end_day.date()), now=now
-                )
+                listing = history_loader(symbol, start_day.date(), end_day.date())
+                frame = completed_daily_bars(listing, now=now)
             except Exception:  # noqa: S112 - an unavailable listing is just a rejected candidate
                 continue
+            exchange = str(listing.attrs.get("exchange") or "")
             nominal = _nominal_close(frame)
             if nominal.empty:
                 continue
@@ -522,24 +573,29 @@ def resolve_decision_prices(
                     continue
                 score = float(np.median(np.abs(np.log(left[valid] / fills_at[valid]))))
                 if best is None or score < best[0]:
-                    best = (score, symbol, adjusted, frame, mode)
+                    best = (score, symbol, adjusted, frame, mode, exchange)
         if best is None or best[0] > MAX_LOG_DISTANCE:
             unpriced.append(ticker)
             continue
         frame, mode = best[3], best[4]
-        converted = _at_final_rates(best[2], mode, final_fx)
         extras = {
             column: _gbp_column(frame, column, mode, final_fx)
             for column in ("Dividends", "High", "Low")
         }
-        # A pending close repeats the final close before it, like a day without a quote.
-        closes = converted.dropna().reindex(converted.index.union(days)).sort_index().ffill()
+        values = session_closes(
+            _at_final_rates(best[2], mode, final_fx),
+            calendar_name(best[5]),
+            start=start_day,
+            end=end_day,
+            now=now,
+        )
+        # A pending session, like a day that is not one, repeats the close before it.
+        closes = values.dropna().reindex(values.index.union(days)).sort_index().ffill()
         closes = closes[(closes.index >= start_day) & (closes.index <= end_day)].dropna()
-        closes = closes[closes > 0]
         if closes.empty:
             unpriced.append(ticker)
             continue
-        pending = closes.index[closes.index.isin(converted.index[converted.isna()])]
+        pending = closes.index[closes.index.isin(values.index[values.isna()])]
         resolved[identity] = SecurityPrices(
             identity,
             ticker,
@@ -549,7 +605,7 @@ def resolve_decision_prices(
             dividends=extras["Dividends"],
             highs=extras["High"],
             lows=extras["Low"],
-            quote_days=closes.index[closes.index.isin(converted.index)],
+            quote_days=closes.index[closes.index.isin(values.index)],
             pending_days=pending if len(pending) else None,
         )
         if memo is not None:
@@ -589,4 +645,5 @@ __all__ = [
     "final_rate_on",
     "final_rates",
     "resolve_decision_prices",
+    "session_closes",
 ]

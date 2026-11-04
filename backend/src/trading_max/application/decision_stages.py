@@ -21,6 +21,7 @@ from trading_max.analytics.decision_prices import (
     final_rate_on,
     final_rates,
     resolve_decision_prices,
+    session_closes,
 )
 from trading_max.analytics.decision_review import (
     BENCHMARK_CALENDAR,
@@ -79,7 +80,12 @@ class AccountDecisionStage:
     def _market(
         self, start: pd.Timestamp, end: pd.Timestamp, now: pd.Timestamp
     ) -> pd.Series | None:
-        """Benchmark closes with a final GBP value; the review stays usable without them."""
+        """Benchmark closes in GBP on its sessions; the review stays usable without them.
+
+        A session still pending, without its close or its rate, is left out, and
+        the review withholds the windows that need it; one older than
+        GAP_SESSIONS sessions takes the close before it, like a listing's.
+        """
 
         try:
             frame = completed_daily_bars(
@@ -92,9 +98,8 @@ class AccountDecisionStage:
         if closes.empty or usd.empty:
             return None
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
-        # A close has a final GBP value only at its own day's final exchange rate;
-        # one still waiting for it is left out, and the review withholds its windows.
-        market = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index), now).to_numpy()
+        gbp = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index), now).to_numpy()
+        market = session_closes(gbp, BENCHMARK_CALENDAR, start=start, end=end, now=now)
         return market.dropna()
 
     def _account_day(self, context: StageContext, profile: str) -> pd.Timestamp:

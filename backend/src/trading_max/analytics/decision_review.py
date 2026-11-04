@@ -18,10 +18,12 @@ sell decision.
 Decisions are scored after ``HORIZON_DAYS`` trading days and up to the latest
 close. Each decision states how many closes followed it and whether its horizon
 window is complete, so a decision with no later close is never read as a zero
-outcome. Only closes the provider quoted count: a day without one (a holiday, or
-today before the close) repeats the close before it and is not an outcome.
-A close still waiting for its exchange rate counts as a session, but no window
-starts or ends on it until its value in pounds is final.
+outcome. Only the listing's completed regular sessions count: any other day (a
+holiday, or today before the close) repeats the close before it and is not an
+outcome. A session still waiting for its close or its exchange rate is pending,
+and no window starts or ends on it. A gap the provider leaves settles on the close
+before it after ``GAP_SESSIONS`` later sessions; if the provider later fills in
+or corrects that history, the effects measured on it are restated.
 Closed trades are also compared with selling at the best and worst close while
 the position was held.
 """
@@ -63,9 +65,8 @@ def _market_close(market: pd.Series, sessions: pd.DatetimeIndex, day: pd.Timesta
     """The benchmark's close as of a security's close: that of its latest session by then.
 
     A day the benchmark's exchange is shut takes the session before it. A session
-    the series has no close for has none, whether it is still to come (the session
-    or its value in pounds) or missing from the provider: the window is withheld
-    rather than measured from another session's close.
+    the series has no close for is pending (still to come, or a recent gap): the
+    window is withheld rather than measured from another session's close.
     """
 
     position = int(sessions.searchsorted(day, side="right")) - 1
@@ -267,7 +268,7 @@ def build_decision_review(
         quoted, final = security.quoted, security.final_days
         following = security.closes_after(day_of)
         own = quoted[quoted <= day_of]
-        # Until the decision's own close has a final value in pounds there is
+        # Until the decision's own close is final or settled in pounds there is
         # nothing to measure from: it is observing, like one made today.
         valued = len(own) > 0 and own[-1] in final
         observed = int((following <= final[-1]).sum()) if valued else 0
