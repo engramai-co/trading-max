@@ -15,7 +15,6 @@ import {
   ArrowRight,
   CheckCircle,
   LinkSimple,
-  Plug,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "./link";
@@ -40,6 +39,7 @@ import {
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
+import { accountName } from "./profile";
 import {
   AutomationPreferences,
   CfdImports,
@@ -115,16 +115,6 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
     <Page
       title={desktop ? t("工作区设置", "Workspace settings") : t("设置与连接", "Settings & connections")}
       description={desktop ? t("账户连接与更新计划保存在当前服务；App 的启动与连接切换在 ⌘, 中管理。", "Accounts and schedules belong to the selected service. Manage App startup and workspace switching with ⌘,.") : undefined}
-      actions={
-        <Button
-          component={Link}
-          href="/health"
-          variant="default"
-          rightSection={<ArrowRight size={16} />}
-        >
-          {t("查看数据状态", "Data status")}
-        </Button>
-      }
     >
       <Tabs
         label={t("设置分类", "Settings sections")}
@@ -163,21 +153,18 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                       (i) =>
                         i.provider === "trading212" && i.profile === profile,
                     );
+                    const name = accountName(data.profile, profile === "invest" ? "A" : "B");
                     return (
                       <ConnectionCard
                         key={profile}
-                        title={
-                          profile === "invest"
-                            ? "Invest"
-                            : "Stocks & Shares ISA"
-                        }
+                        title={name}
                         integration={existing}
                         onOpen={() => {
                           setSaved(null);
                           setConnection({
                             kind: "broker",
                             profile,
-                            title: profile === "invest" ? "Invest" : "ISA",
+                            title: name,
                             existing,
                           });
                         }}
@@ -198,12 +185,6 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                         "Yahoo Finance-compatible source",
                       )}
                     </h3>
-                    <p>
-                      {t(
-                        "无需 API 密钥",
-                        "No API key required",
-                      )}
-                    </p>
                   </div>
                   <Button
                     component={Link}
@@ -355,17 +336,9 @@ function ConnectionCard({
   return (
     <div className="mx-connection-card">
       <div className="mx-toolbar">
-        <span className="mx-connection-icon">
-          <Plug size={24} />
-        </span>
+        <h3>{title}</h3>
         <Tag
-          tone={
-            connected
-              ? "good"
-              : integration?.lastTestStatus === "failed"
-                ? "warn"
-                : "neutral"
-          }
+          tone={integration?.lastTestStatus === "failed" && !connected ? "warn" : "neutral"}
         >
           {connected
             ? t("已连接", "Connected")
@@ -374,7 +347,6 @@ function ConnectionCard({
               : t("未连接", "Not connected")}
         </Tag>
       </div>
-      <h3>{title}</h3>
       {subtitle && <p>{subtitle}</p>}
       {integration?.lastTestAt && (
         <Freshness
