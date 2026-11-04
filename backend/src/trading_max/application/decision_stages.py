@@ -94,7 +94,7 @@ class AccountDecisionStage:
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
         # A close has a final GBP value only at its own day's final exchange rate;
         # one still waiting for it is left out, and the review withholds its windows.
-        market = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index)).to_numpy()
+        market = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index), now).to_numpy()
         return market.dropna()
 
     def _account_day(self, context: StageContext, profile: str) -> pd.Timestamp:

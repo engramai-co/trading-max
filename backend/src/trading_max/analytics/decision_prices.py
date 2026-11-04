@@ -11,12 +11,12 @@ today's bar while the session is open; it becomes a close when the listing's
 exchange calendar says the session has ended, early closes included, or, for an
 exchange without a calendar, once its UTC day is over.
 
-A close in another currency is worth its own day's final exchange rate in pounds,
-never another day's, so that value, and every effect measured on it, cannot
-change later. A day without its rate yet (today's, or one the provider has not
-published) is a pending close: a decision is judged by it only once it arrives.
-Only a day with no rate due, a weekend or a currency-market holiday, takes the
-rate before it.
+A close in another currency is worth its own day's final exchange rate in pounds.
+A weekend or currency-market holiday always takes the last business day's rate,
+so a rate published late for it cannot change a value. A business day without
+its rate yet (today's, or one the provider has not published) is a pending close
+for up to ``GAP_SESSIONS`` later business days; after that it settles on the
+last rate before it, and a rate the provider fills in later restates it.
 """
 
 from __future__ import annotations
@@ -49,6 +49,9 @@ TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
 #: away from the broker's fills is the wrong instrument or the wrong unit.
 MAX_LOG_DISTANCE = math.log(1.35)
+#: A business day's exchange rate the provider has not published stays pending
+#: for this many later business days; then it settles on the last rate before it.
+GAP_SESSIONS = 3
 #: Cache rows carry date, close, split, dividend, high and low, for completed bars
 #: only, beside the listing's exchange. Older caches can hold a bar that was still
 #: forming when it was fetched, and are fetched again once.
@@ -344,25 +347,33 @@ def _rate_due(days: pd.DatetimeIndex) -> np.ndarray:
     return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
 
 
-def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex) -> pd.Series:
-    """Each day's final exchange rate, NaN while it is still to come.
+def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -> pd.Series:
+    """Each day's final exchange rate by now, NaN while it is pending.
 
-    A day takes its own rate. A day with no rate due takes the one before it, but
-    only once a later rate is final, by when the provider would have published
-    its own. A due rate that is missing is never borrowed from another day, so a
-    close in that currency waits for it, however long that takes.
+    A business day takes its own rate once the day is over. One the provider has
+    not published stays pending for GAP_SESSIONS more business days, then settles
+    on the last rate before it. A day with no rate due (a weekend, Christmas Day,
+    New Year's Day, Good Friday or Easter Monday) always takes the last business
+    day's, even when the provider publishes one of its own.
     """
 
     rates = rates[rates > 0].sort_index()
     rates = rates[~rates.index.duplicated(keep="last")]
     if rates.empty or days.empty:
         return pd.Series(np.nan, index=days, dtype=float)
-    span = pd.date_range(min(rates.index.min(), days.min()), days.max(), freq="D")
-    own = rates.reindex(span)
-    # A missing due rate stops the rate before it from reaching any later day.
-    carried = own.mask(_rate_due(span) & own.isna().to_numpy(), -1.0).ffill()
-    carried = carried.where((carried > 0) & (span < rates.index.max()))
-    return own.fillna(carried).reindex(days)
+    today = _utc(now).tz_localize(None).normalize()
+    span = pd.date_range(min(rates.index.min(), days.min()), max(days.max(), today), freq="D")
+    due = _rate_due(span)
+    own = rates.reindex(span).where(due)
+    # Business days over by now; a missing rate settles once enough have followed it.
+    over = due & np.asarray(span < today)
+    later = np.cumsum(over[::-1])[::-1] - over
+    settled = over & own.isna().to_numpy() & (later >= GAP_SESSIONS)
+    value = own.fillna(own.ffill().where(settled)).to_numpy()
+    # A day with no rate due follows the last business day before it, pending or not.
+    last = np.maximum.accumulate(np.where(due, np.arange(len(span)), -1))
+    result = np.where(last >= 0, value[np.maximum(last, 0)], np.nan)
+    return pd.Series(result, index=span).reindex(days)
 
 
 def _at_final_rates(values: pd.Series, mode: str, final_fx: Mapping[str, pd.Series]) -> pd.Series:
@@ -456,15 +467,15 @@ def resolve_decision_prices(
             gbpusd=gbpusd,
             history_loader=history_loader,
         )
-    # Each currency's final rate on every day, NaN while one is still to come.
+    # Each currency's final rate on every day, NaN while one is pending.
     calendar_days = pd.date_range(start_day, end_day, freq="D")
-    final_fx = {"USD": final_rate_on(usd_rates, calendar_days)}
+    final_fx = {"USD": final_rate_on(usd_rates, calendar_days, now)}
     for code in cash_fx.columns:
         if code in {"GBP", "USD"}:
             continue
         with suppress(Exception):
             rates = final_rates(history_loader, f"GBP{code}=X", start_day, end_day, now)
-            final_fx[code] = final_rate_on(rates, calendar_days)
+            final_fx[code] = final_rate_on(rates, calendar_days, now)
     resolved: dict[str, SecurityPrices] = {}
     unpriced: list[str] = []
     for identity, rows in fills.groupby("SecurityIdentity", sort=True):
@@ -572,6 +583,7 @@ def _gbp_column(
 
 
 __all__ = [
+    "GAP_SESSIONS",
     "CachedDailyHistory",
     "SecurityPrices",
     "final_rate_on",

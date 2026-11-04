@@ -443,16 +443,16 @@ def test_a_dividend_without_its_days_rate_withholds_the_window_it_falls_in() -> 
     assert after["effect_to_date_gbp"] == after["dividend_to_date_gbp"] == pytest.approx(60.0)
 
 
-def test_an_easter_monday_close_takes_thursdays_rate_once_a_later_one_is_final() -> None:
-    # New York trades on Easter Monday, but the provider may publish no rate for it
-    # or for Good Friday. Monday's close then takes Thursday's rate, once Tuesday's
-    # is final: by then a rate of Monday's own would have been published.
+def test_an_easter_monday_close_always_takes_thursdays_rate() -> None:
+    # New York trades on Easter Monday, a currency-market holiday: Monday's close
+    # takes Thursday's rate at once, and a rate the provider publishes for Monday
+    # later does not flip the verdict.
     sessions = pd.bdate_range("2025-03-20", "2025-04-25").drop(pd.Timestamp("2025-04-18"))
     quotes = pd.Series(125.0, index=sessions)
     skipped = pd.Series(1.25, index=sessions.drop(pd.Timestamp("2025-04-21")))
     skipped[pd.Timestamp("2025-04-17")] = 1.30
-    published = skipped.copy()
-    published[pd.Timestamp("2025-04-21")] = 1.20
+    late = skipped.copy()
+    late[pd.Timestamp("2025-04-21")] = 1.20
     fills = [_usd_fill("2025-04-21T15:00:00Z", "Market buy", 60, 6_000)]
 
     def review(rates: pd.Series, viewed: str, now: str) -> dict:
@@ -460,28 +460,56 @@ def test_an_easter_monday_close_takes_thursdays_rate_once_a_later_one_is_final()
         return found["decisions"][0]
 
     evening = review(skipped, "2025-04-21", "2025-04-21T21:30:00Z")
-    assert (evening["observed_days"], evening["effect_to_date_gbp"]) == (0, None)
-    thursdays = review(skipped, "2025-04-22", "2025-04-23T00:30:00Z")
-    assert thursdays["observed_days"] == 1
-    assert thursdays["effect_to_date_gbp"] == pytest.approx(240.0)
-    # A rate the provider did publish for the holiday is the close's own.
-    own = review(published, "2025-04-22", "2025-04-23T00:30:00Z")
-    assert own["effect_to_date_gbp"] == pytest.approx(-240.0)
+    assert (evening["observed_days"], evening["effect_to_date_gbp"]) == (0, 0.0)
+    before, after = (
+        review(rates, "2025-04-22", "2025-04-23T00:30:00Z") for rates in (skipped, late)
+    )
+    assert before["observed_days"] == after["observed_days"] == 1
+    assert before["effect_to_date_gbp"] == after["effect_to_date_gbp"] == pytest.approx(240.0)
 
 
-def test_a_day_with_no_rate_due_takes_the_one_before_once_a_later_one_is_final() -> None:
-    # Christmas Day 2026 is a Friday: no rate is due from it to the Sunday.
+def test_a_holiday_keeps_the_last_business_days_rate_and_a_gap_settles_after_three() -> None:
+    # Christmas Day 2026 is a Friday: no rate is due from it to the Sunday, and the
+    # provider's own Christmas rate is not used.
     days = pd.date_range("2026-12-23", "2026-12-29")
     published = pd.Series(
-        [1.25, 1.26, 1.27, 1.28],
-        index=pd.to_datetime(["2026-12-23", "2026-12-24", "2026-12-28", "2026-12-29"]),
+        [1.25, 1.26, 1.30, 1.27, 1.28],
+        index=pd.to_datetime(
+            ["2026-12-23", "2026-12-24", "2026-12-25", "2026-12-28", "2026-12-29"]
+        ),
     )
-    assert final_rate_on(published, days).tolist() == [1.25, 1.26, 1.26, 1.26, 1.26, 1.27, 1.28]
-    # Until Monday's rate is final, Christmas Day could still have one of its own.
-    assert final_rate_on(published[:2], days).isna().tolist() == [False, False] + [True] * 5
-    # A missing due rate is never borrowed, nor carried past by the days after it.
-    gap = final_rate_on(published.drop(pd.Timestamp("2026-12-24")), days)
-    assert gap.isna().tolist() == [False, True, True, True, True, False, False]
+    tuesday_night = pd.Timestamp("2026-12-30T00:30:00Z")
+    rates = final_rate_on(published, days, tuesday_night)
+    assert rates.tolist() == [1.25, 1.26, 1.26, 1.26, 1.26, 1.27, 1.28]
+    # Without Christmas Eve's rate, it and the holiday after it wait for three more
+    # business days, then take 23 Dec's.
+    gap = published.drop(pd.Timestamp("2026-12-24"))
+    pending = final_rate_on(gap, days, tuesday_night)
+    assert pending.isna().tolist() == [False, True, True, True, True, False, False]
+    settled = final_rate_on(gap, days, pd.Timestamp("2026-12-31T00:30:00Z"))
+    assert settled.tolist() == [1.25, 1.25, 1.25, 1.25, 1.25, 1.27, 1.28]
+
+
+def test_a_rate_the_provider_never_publishes_settles_after_three_business_days() -> None:
+    # The provider has no GBPUSD rate for Tuesday 11 Jul 2017, while New York
+    # traded: the close waits three business days for it, then takes Monday's.
+    sessions = pd.bdate_range("2017-06-01", "2017-07-14").drop(pd.Timestamp("2017-07-04"))
+    quotes = pd.Series(125.0, index=sessions)
+    rates = pd.Series(1.25, index=pd.bdate_range("2017-06-01", "2017-07-14"))
+    rates = rates.drop(pd.Timestamp("2017-07-11"))
+    rates[pd.Timestamp("2017-07-10")] = 1.30
+    fills = [_usd_fill("2017-07-11T15:00:00Z", "Market buy", 60, 6_000)]
+
+    def review(viewed: str) -> dict:
+        found = _review_from_quotes(fills, {"NVDA": quotes}, viewed=viewed, rates=rates)
+        return found["decisions"][0]
+
+    for viewed in ("2017-07-11", "2017-07-12", "2017-07-13"):
+        waiting = review(viewed)
+        assert (waiting["observed_days"], waiting["effect_to_date_gbp"]) == (0, None)
+    settled = review("2017-07-14")
+    assert settled["observed_days"] == 3
+    assert settled["effect_to_date_gbp"] == pytest.approx(240.0)
 
 
 def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:
