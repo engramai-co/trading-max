@@ -47,7 +47,7 @@ test.describe("allocation composition", () => {
     await expect(details).toContainText("£7,000.00");
     await expect(details).toContainText("70.0%");
     // A click elsewhere on the page keeps the fixed selection.
-    await page.getByRole("heading", { name: "Holdings & exposure", level: 1, exact: true }).click();
+    await page.getByRole("heading", { name: "Holdings", level: 1, exact: true }).click();
     await expect(details).toContainText("United States");
     await choices.getByRole("button", { name: "Other categories", exact: false }).click();
     await expect(details).toContainText("£333.33");
@@ -140,7 +140,7 @@ test.describe("company composition", () => {
         await page.getByRole("button", { name: "Choose appearance", exact: true }).click();
         await page.getByRole("menuitem", { name: "Dark", exact: true }).click();
       }
-      await page.getByRole("heading", { name: "Holdings & exposure", level: 1, exact: true }).click();
+      await page.getByRole("heading", { name: "Holdings", level: 1, exact: true }).click();
       await (isMobile ? page.locator(".mx-allocation-composition") : page.getByRole("tablist", { name: "Exposure dimension", exact: true }))
         .evaluate((element) => element.scrollIntoView({ block: "start" }));
       await page.screenshot({ path: `${process.env.ALLOCATION_CAPTURE_DIR}/${isMobile ? "mobile" : "desktop"}.png` });
