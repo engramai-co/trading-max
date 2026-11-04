@@ -17,6 +17,21 @@ import type { AccountCode, AnalysisArtifact } from "@/lib/types";
 import { Freshness, Notice, Panel, useCopy } from "./foundation";
 
 /**
+ * What the panel offers. Generating always replaces the stored review, so nothing
+ * until the lookup answers, a retry if it failed, a first review only once it
+ * found none, and a regeneration that asks first when one exists.
+ */
+export function narrativeAction(lookup: {
+  isPending: boolean;
+  isError: boolean;
+  data: AnalysisArtifact | null | undefined;
+}) {
+  if (lookup.data) return "regenerate";
+  if (lookup.isError) return "retry";
+  return lookup.isPending || lookup.data === undefined ? "wait" : "generate";
+}
+
+/**
  * An on-demand AI reading of this account's decisions: the pattern behind them,
  * linked to the market and company events listed beside each decision.
  */
@@ -39,6 +54,7 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
   });
   const refetch = query.refetch;
   useEffect(() => registerAnalysisRefresh(() => void refetch()), [refetch]);
+  const offer = narrativeAction(query);
   const content = query.data?.content;
   const generatedAt = query.data?.generatedAt;
   // The review usually predates the figures beside it; say when it was written only then.
@@ -101,15 +117,35 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
       }
       description={content && older ? <Freshness date={generatedAt} label={t("生成于", "Written")} /> : undefined}
       action={
-        content ? (
+        offer === "regenerate" ? (
           regenerate
+        ) : offer === "retry" ? (
+          <Button
+            variant="default"
+            size="xs"
+            loading={query.isFetching}
+            leftSection={<ArrowClockwise size={14} />}
+            onClick={() => void refetch()}
+          >
+            {t("重新加载", "Try again")}
+          </Button>
         ) : (
-          <Button variant="default" size="xs" loading={active} leftSection={<ArrowClockwise size={14} />} onClick={generate}>
+          <Button
+            variant="default"
+            size="xs"
+            loading={active}
+            disabled={offer === "wait"}
+            leftSection={<ArrowClockwise size={14} />}
+            onClick={generate}
+          >
             {t("生成复盘", "Generate")}
           </Button>
         )
       }
     >
+      {offer === "retry" && (
+        <Notice tone="bad">{t("暂时无法读取 AI 复盘。", "The AI review could not be loaded.")}</Notice>
+      )}
       {run.status === "failed" && (
         <Notice tone="bad">
           {t("生成未完成。请在设置中连接模型后重试。", "Generation did not complete. Connect a model in Settings and retry.")}
