@@ -7,7 +7,9 @@ import {
   Popover,
   Skeleton,
   Stack,
+  Tooltip,
 } from "@mantine/core";
+import { useOs } from "@mantine/hooks";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -17,7 +19,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 
@@ -204,20 +206,23 @@ export function Metric({
   tone,
   large = false,
   help,
+  helpLabel,
 }: {
   label: ReactNode;
   value: ReactNode;
   note?: ReactNode;
   tone?: "up" | "down";
   large?: boolean;
-  help?: string;
+  help?: ReactNode;
+  /** Names the help when the label carries more than text, such as an estimate tag. */
+  helpLabel?: string;
 }) {
   const changes = useChangeCount(typeof value === "string" || typeof value === "number" ? String(value) : null);
   return (
     <div className={"mx-metric" + (large ? " mx-metric-large" : "")}>
       <div className="mx-metric-label">
         {label}
-        {help && <Help label={label}>{help}</Help>}
+        {help && <Help label={helpLabel ?? label}>{help}</Help>}
       </div>
       <div className={"mx-number" + (tone ? " mx-" + tone : "")}>
         <span key={changes} className="mx-number-value" data-changed={changes ? "" : undefined}>{value}</span>
@@ -365,26 +370,67 @@ export function Segments<T extends string>({
   onChange,
   options,
   label,
+  shortcuts = false,
 }: {
   value: T;
   onChange: (value: T) => void;
   options: Array<{ value: T; label: string }>;
   label: string;
+  /** ⌥1–⌥9 (Alt elsewhere) pick an option by position; one control per page. */
+  shortcuts?: boolean;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const os = useOs();
+  const apple = os === "macos" || os === "ios";
   useSelectionIndicator(listRef, '[aria-pressed="true"]', value + options.map((option) => option.label).join("\u0000"));
+  // A modifier keeps typing, speech input and screen-reader keys from switching
+  // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
+  const pick = useEffectEvent((event: KeyboardEvent) => {
+    if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.repeat || event.isComposing || event.defaultPrevented) return;
+    const digit = /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1];
+    const option = digit ? options[Number(digit) - 1] : undefined;
+    if (!option) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']")) return;
+    if (document.querySelector("[aria-modal='true']")) return;
+    event.preventDefault();
+    if (option.value !== value) onChange(option.value);
+  });
+  useEffect(() => {
+    if (!shortcuts) return;
+    const handle = (event: KeyboardEvent) => pick(event);
+    window.addEventListener("keydown", handle);
+    return () => window.removeEventListener("keydown", handle);
+  }, [shortcuts]);
   return (
     <div ref={listRef} className="mx-segments" role="group" aria-label={label}>
-      {options.map((option) => (
-        <button
-          type="button"
-          key={option.value}
-          aria-pressed={value === option.value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
+      {options.map((option, index) => {
+        const shortcut = shortcuts && index < 9 ? index + 1 : null;
+        const button = (
+          <button
+            type="button"
+            key={option.value}
+            aria-pressed={value === option.value}
+            aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        );
+        return shortcut ? (
+          <Tooltip
+            key={option.value}
+            disabled={os === "undetermined"}
+            label={<span className="mx-nav-search-hint">{option.label}<kbd>{(apple ? "⌥" : "Alt ") + shortcut}</kbd></span>}
+            openDelay={500}
+            classNames={{ tooltip: "mx-nav-tooltip" }}
+            transitionProps={{ duration: 0 }}
+            events={{ hover: true, focus: true, touch: false }}
+          >
+            {button}
+          </Tooltip>
+        ) : button;
+      })}
       <span className="mx-indicator" aria-hidden="true" />
     </div>
   );
