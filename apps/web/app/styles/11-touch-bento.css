@@ -65,7 +65,8 @@
     box-shadow: 0 1px 3px rgb(17 24 39 / 8%);
   }
 }
-/* Phones: tabs share the row in equal cells (a row that cannot fit still scrolls). */
+/* Phones: tabs share the row in equal cells. A row that cannot fit (zh below 360px, most English rows) keeps one
+   scrolling row with the edge fade and the selected tab revealed: wrapped rows would read as two levels of lenses. */
 @media (pointer: coarse) and (max-width: 767px) {
   .mx-tabs {
     display: grid;
