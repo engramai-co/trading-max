@@ -330,6 +330,7 @@ export function FilingMultiples({
                       href={safeUrl(str(r.url))}
                       target="_blank"
                       rel="noreferrer"
+                      aria-label={`${t("披露原文", "Filing")} · ${str(r.publishedAt)}`}
                     >
                       {t("查看", "Open")} ↗
                     </a>
@@ -357,6 +358,7 @@ export function FilingMultiples({
                                   href={safeUrl(str(o.url))}
                                   target="_blank"
                                   rel="noreferrer"
+                                  aria-label={`${t("原始披露", "Filing")} · ${str(o.periodStart)} → ${str(o.periodEnd)}`}
                                 >
                                   ↗ {t("原始披露", "Filing")}
                                 </a>

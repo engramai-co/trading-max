@@ -417,6 +417,8 @@ export function FinancialWorkbench({
                           {chartMetrics.map((key) => (
                             <td key={key}>
                               <button
+                                type="button"
+                                aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
                                 onClick={() =>
                                   setDetail(get(p.id, key) ?? null)
                                 }
@@ -588,6 +590,8 @@ export function FinancialWorkbench({
                           {[...periods].reverse().map((p) => (
                             <td key={p.id}>
                               <button
+                                type="button"
+                                aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
                                 onClick={() =>
                                   setDetail(get(p.id, key) ?? null)
                                 }

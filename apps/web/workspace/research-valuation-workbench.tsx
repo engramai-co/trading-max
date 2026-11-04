@@ -585,76 +585,78 @@ function ModelEditor({
           )}
           <div
             className="mx-assumption-picker"
+            role="group"
             aria-label={t("选择要调整的假设", "Choose an assumption to adjust")}
           >
-            {fields.map((field) => (
-              <button
-                key={field.key}
-                type="button"
-                aria-pressed={activeField === field.key}
-                onClick={() => {
-                  setActiveField(field.key);
-                  setDraftValue(null);
-                  setInvalidInput(false);
-                }}
-              >
-                <span>{field.label}</span>
-                <strong>
-                  {number(inputs[selected][field.key] * field.scale, 2)}
-                  {field.suffix}
-                </strong>
-              </button>
-            ))}
-          </div>
-          <div className="mx-model-fields">
-            {fields
-              .filter((field) => field.key === activeField)
-              .map((field) => (
-                <NumberInput
-                  key={selected + field.key}
-                  label={field.label}
-                  value={
-                    draftValue ??
-                    Number(
-                      (inputs[selected][field.key] * field.scale).toFixed(3),
-                    )
-                  }
-                  error={
-                    invalidInput
-                      ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
-                      : undefined
-                  }
-                  onChange={(v) => {
-                    setDraftValue(v);
-                    const value = numeric(v);
-                    setInvalidInput(
-                      value == null || value < field.min || value > field.max,
-                    );
-                    if (
-                      value != null &&
-                      value >= field.min &&
-                      value <= field.max
-                    ) {
-                      setInputs((previous) => ({
-                        ...previous,
-                        [selected]: {
-                          ...previous[selected],
-                          [field.key]: value / field.scale,
-                        },
-                      }));
-                      if (field.key === "revenueCagr")
-                        setReferences((v) =>
-                          v.filter((r) => r.scenario !== selected),
-                        );
+            {fields.map((field) =>
+              field.key === activeField ? (
+                // The selected row is the input; its label names the field once.
+                <div key={field.key} className="mx-assumption-edit">
+                  <label htmlFor={"assumption-" + field.key}>{field.label}</label>
+                  <NumberInput
+                    key={selected + field.key}
+                    id={"assumption-" + field.key}
+                    size="xs"
+                    value={
+                      draftValue ??
+                      Number(
+                        (inputs[selected][field.key] * field.scale).toFixed(3),
+                      )
                     }
+                    error={
+                      invalidInput
+                        ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
+                        : undefined
+                    }
+                    onChange={(v) => {
+                      setDraftValue(v);
+                      const value = numeric(v);
+                      setInvalidInput(
+                        value == null || value < field.min || value > field.max,
+                      );
+                      if (
+                        value != null &&
+                        value >= field.min &&
+                        value <= field.max
+                      ) {
+                        setInputs((previous) => ({
+                          ...previous,
+                          [selected]: {
+                            ...previous[selected],
+                            [field.key]: value / field.scale,
+                          },
+                        }));
+                        if (field.key === "revenueCagr")
+                          setReferences((v) =>
+                            v.filter((r) => r.scenario !== selected),
+                          );
+                      }
+                    }}
+                    min={field.min}
+                    max={field.max}
+                    step={field.key === "exitFcfMultiple" ? 1 : 0.5}
+                    decimalScale={2}
+                    suffix={field.suffix}
+                  />
+                </div>
+              ) : (
+                <button
+                  key={field.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveField(field.key);
+                    setDraftValue(null);
+                    setInvalidInput(false);
                   }}
-                  min={field.min}
-                  max={field.max}
-                  step={field.key === "exitFcfMultiple" ? 1 : 0.5}
-                  decimalScale={2}
-                  suffix={field.suffix}
-                />
-              ))}
+                >
+                  <span>{field.label}</span>
+                  <strong>
+                    {number(inputs[selected][field.key] * field.scale, 2)}
+                    {field.suffix}
+                  </strong>
+                </button>
+              ),
+            )}
           </div>
           <details className="mx-model-sources">
             <summary>{t("参数依据", "Assumption sources")}</summary>

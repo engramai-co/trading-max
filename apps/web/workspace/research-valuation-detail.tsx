@@ -88,6 +88,7 @@ export function ValuationWorksheet({
   scenarioNames: Record<string, string>;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   return (
     <details className="mx-model-detail">
       <summary>
@@ -219,8 +220,14 @@ export function ValuationWorksheet({
                 </span>
                 {(reference.evidence ?? []).map((e, j) =>
                   e.url ? (
-                    <a key={j} href={e.url} rel="noreferrer" target="_blank">
-                      {e.publishedAt ?? t("原始披露", "Original filing")} ↗
+                    <a
+                      key={j}
+                      href={e.url}
+                      rel="noreferrer"
+                      target="_blank"
+                      aria-label={`${t("营收共识参考", "Revenue consensus reference")} · ${e.publishedAt ?? t("原始披露", "original filing")}`}
+                    >
+                      {e.publishedAt ? formatCalendarDate(e.publishedAt, locale) : t("原始披露", "Original filing")} ↗
                     </a>
                   ) : null,
                 )}
@@ -233,8 +240,14 @@ export function ValuationWorksheet({
                 </strong>
                 {g.source && <span>{g.source}</span>}
                 {g.links.map((l) => (
-                  <a key={l.url} href={l.url} rel="noreferrer" target="_blank">
-                    {l.date ?? t("原始披露", "Original filing")} ↗
+                  <a
+                    key={l.url}
+                    href={l.url}
+                    rel="noreferrer"
+                    target="_blank"
+                    aria-label={`${metricNames[g.metric] ? t(...metricNames[g.metric]) : g.metric} · ${l.date ?? t("原始披露", "original filing")}`}
+                  >
+                    {l.date ? formatCalendarDate(l.date, locale) : t("原始披露", "Original filing")} ↗
                   </a>
                 ))}
               </li>
@@ -254,7 +267,6 @@ export function GrowthContext({
   analyst: Record<string, unknown>;
 }) {
   const t = useCopy();
-  const { locale } = useLocale();
   const facts = data.financialFacts;
   const annual = (facts?.periods ?? [])
     .filter((p) => p.kind === "annual")
@@ -303,6 +315,8 @@ export function GrowthContext({
   const next = objects(analyst.revenueEstimate).find(
     (r) => str(r.period ?? r.index) === "+1y",
   );
+  // Name the fiscal year the consensus covers instead of appending its end date.
+  const nextYear = str(next?.endDate).slice(0, 4);
   return (
     <Panel
       className="mx-growth-context"
@@ -323,11 +337,10 @@ export function GrowthContext({
             percent(yoy, true, 2),
           ],
           [
-            t("下一财年共识", "Next fiscal-year consensus"),
-            <span key="estimate">
-              {percent(next?.growth, true, 2)}
-              {next?.endDate ? " · " + formatCalendarDate(str(next.endDate), locale) : ""}
-            </span>,
+            nextYear
+              ? t(`${nextYear} 财年营收共识`, `FY${nextYear} revenue consensus`)
+              : t("下一财年营收共识", "Next fiscal-year revenue consensus"),
+            percent(next?.growth, true, 2),
           ],
         ]}
       />
