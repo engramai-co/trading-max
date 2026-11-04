@@ -16846,7 +16846,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.21.2"
+    "version": "1.21.3"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17519,11 +17519,13 @@
             }
           },
           {
+            "description": "summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation.",
             "in": "query",
             "name": "detail",
             "required": false,
             "schema": {
               "default": "full",
+              "description": "summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation.",
               "enum": [
                 "full",
                 "summary"

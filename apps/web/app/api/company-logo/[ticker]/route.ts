@@ -73,8 +73,10 @@ export async function GET(
       },
     });
   }
+  // No logo is a normal answer: the mark falls back to the ticker monogram
+  // without a failed request in the console.
   return new Response(null, {
     headers: { "Cache-Control": "private, max-age=3600" },
-    status: 404,
+    status: 204,
   });
 }

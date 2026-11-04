@@ -28,8 +28,10 @@ export function SecurityPeek({
 }) {
   const pointer = useFinePointer();
   if (!pointer || !ticker || ticker === "—") return <>{children}</>;
+  // The card only previews what the link already leads to, so the target keeps
+  // its own semantics: no popup roles on a plain wrapper.
   return (
-    <HoverCard openDelay={400} closeDelay={80} position="right-start" offset={14} shadow="md" withinPortal>
+    <HoverCard openDelay={400} closeDelay={80} position="right-start" offset={14} shadow="md" withinPortal withRoles={false}>
       <HoverCard.Target>
         <div className="mx-peek-target">{children}</div>
       </HoverCard.Target>

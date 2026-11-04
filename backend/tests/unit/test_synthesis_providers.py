@@ -1,5 +1,7 @@
 import json
+import os
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -157,6 +159,13 @@ def test_bridge_timeout_is_safe(monkeypatch):
     assert error.value.__suppress_context__
 
 
+_BRIDGE_MODULES = Path(pi.__file__).resolve().parents[1] / "_pi" / "node_modules"
+
+
+@pytest.mark.skipif(
+    not _BRIDGE_MODULES.is_dir() and not os.environ.get("CI"),
+    reason="model bridge dependencies are not installed; run `npm run llm:install`",
+)
 def test_installed_bridge_imports_pi_without_ambient_auth():
     with pytest.raises(ProviderError, match="provider_not_configured"):
         pi._invoke({"provider": "deepseek", "apiKey": ""}, 5)
