@@ -107,6 +107,14 @@ function nextTradingDay(date: string) {
   return day.toISOString().slice(0, 10);
 }
 
+/** The last trading day before an exchange-local date, skipping weekends. */
+function previousTradingDay(date: string) {
+  const day = new Date(date + "T00:00:00Z");
+  do day.setUTCDate(day.getUTCDate() - 1);
+  while (day.getUTCDay() === 0 || day.getUTCDay() === 6);
+  return day.toISOString().slice(0, 10);
+}
+
 /** Whether the exchange is in its regular session at `now`. */
 export function inSession(zone: string | null | undefined, now: Date) {
   const known = session(zone);
@@ -152,12 +160,39 @@ export function previousClose(quote: Quote, brokerAsOf: string | null | undefine
   const brokerDay = exchangeClock(broker, known.zone);
   if (quoteDay.date === brokerDay.date)
     return quote.change != null ? quote.price - quote.change : null;
-  // An earlier session's close is the reference for the broker's day.
-  return quoteDay.date < brokerDay.date && quoteDay.minutes >= known.hours[1]
+  // Only the immediately preceding session's close is the reference for the
+  // broker's day; an older close would turn several sessions into one change.
+  return quoteDay.date === previousTradingDay(brokerDay.date) && quoteDay.minutes >= known.hours[1]
     ? quote.price
     : null;
 }
 
+/**
+ * Whether a broker price misses the latest session. During a session it must be
+ * recent; outside one it must cover the latest completed session's close (the
+ * last in-session refresh may land shortly before the close).
+ */
+export function brokerPriceLate(zone: string | null | undefined, asOf: Date, now: Date) {
+  const known = session(zone);
+  if (!known) return false;
+  if (inSession(known.zone, now))
+    return (now.valueOf() - asOf.valueOf()) / 60_000 > BROKER_LATE_MINUTES;
+  const clock = exchangeClock(now, known.zone);
+  const closedToday = !["Sat", "Sun"].includes(clock.weekday) && clock.minutes >= known.hours[1];
+  const closeDate = closedToday ? clock.date : previousTradingDay(clock.date);
+  const seen = exchangeClock(asOf, known.zone);
+  return (
+    seen.date < closeDate ||
+    (seen.date === closeDate && seen.minutes < known.hours[1] - BROKER_LATE_MINUTES)
+  );
+}
+
+/**
+ * The price figures on the research page are quoted against. A held security
+ * uses the broker price only when it is in the research quote's currency: a
+ * different currency means a different listing (or line), and analyst targets,
+ * charts and statements stay on the research basis.
+ */
 export function basisPrice(
   position: Position | undefined,
   quote: Quote | undefined,
@@ -165,11 +200,13 @@ export function basisPrice(
   fallbackCurrency: string | null = null,
 ): ResearchPrice {
   const brokerPrice = position?.held ? position.brokerPrice : null;
-  return brokerPrice != null && brokerPrice > 0
+  const sameListing =
+    Boolean(quote?.currency) && position?.brokerPriceCurrency === quote?.currency;
+  return brokerPrice != null && brokerPrice > 0 && sameListing
     ? {
         source: "broker",
         price: brokerPrice,
-        currency: position?.brokerPriceCurrency || quote?.currency || null,
+        currency: quote?.currency ?? null,
         asOf: position?.brokerAsOf ?? null,
       }
     : {
@@ -190,10 +227,7 @@ export function priceBasis(
   const research = quote ?? {};
   const { source, price, currency } = basisPrice(position, quote, fallbackPrice, fallbackCurrency);
   if (source === "broker" && price != null) {
-    const reference =
-      currency && currency === research.currency
-        ? previousClose(research, position?.brokerAsOf)
-        : null;
+    const reference = previousClose(research, position?.brokerAsOf);
     const change = reference ? price - reference : null;
     const asOf = validInstant(position?.brokerAsOf);
     return {
@@ -207,9 +241,7 @@ export function priceBasis(
           ? {
               kind: "time",
               asOf: position.brokerAsOf,
-              stale:
-                inSession(research.timezone, now) &&
-                (now.valueOf() - asOf.valueOf()) / 60_000 > BROKER_LATE_MINUTES,
+              stale: brokerPriceLate(research.timezone, asOf, now),
               delayMinutes: null,
             }
           : null,

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { inSession, previousClose, priceBasis, quoteTime } from "./research-price-basis";
+import {
+  basisPrice,
+  brokerPriceLate,
+  inSession,
+  previousClose,
+  priceBasis,
+  quoteTime,
+} from "./research-price-basis";
 
 // Synthetic NYSE quote: Tuesday's close, read on Wednesday.
 const close = {
@@ -33,18 +40,25 @@ describe("research price basis", () => {
     });
   });
 
-  it("marks a broker price late during the session and never borrows another currency's change", () => {
+  it("marks a broker price late during the session", () => {
     const late = priceBasis(held, close, null, null, new Date("2026-11-04T17:00:00Z"));
     expect(late.time).toMatchObject({ kind: "time", stale: true });
-    const pence = priceBasis(
-      { ...held, brokerPriceCurrency: "GBP" },
-      close,
-      null,
-      null,
-      new Date("2026-11-04T16:00:00Z"),
-    );
-    expect(pence.change).toBeNull();
-    expect(pence.changePct).toBeNull();
+  });
+
+  it("keeps the research basis when the broker line trades in another currency", () => {
+    // A GBP line of a USD-quoted security: targets and charts stay in USD.
+    const other = { ...held, brokerPrice: 152.4, brokerPriceCurrency: "GBP" };
+    expect(basisPrice(other, close)).toEqual({
+      source: "quote",
+      price: 214.01,
+      currency: "USD",
+      asOf: close.asOf,
+    });
+    const header = priceBasis(other, close, null, null, new Date("2026-11-04T16:00:00Z"));
+    expect(header).toMatchObject({ source: "quote", price: 214.01, currency: "USD", change: 17.76 });
+    // Without a research quote the listing cannot be confirmed.
+    expect(basisPrice(held, undefined, 210, "USD")).toMatchObject({ source: "quote", price: 210 });
+    expect(basisPrice(held, close)).toMatchObject({ source: "broker", price: 194.37, currency: "USD" });
   });
 
   it("falls back to the research quote and names a close that a newer session has passed", () => {
@@ -84,6 +98,42 @@ describe("research price basis", () => {
     // Yesterday's mid-session quote is not a close.
     expect(previousClose({ ...close, asOf: "2026-11-03T18:00:00Z" }, held.brokerAsOf)).toBeNull();
     expect(previousClose(close, null)).toBeNull();
+  });
+
+  it("measures the daily change only from the immediately preceding session", () => {
+    const friday = "2026-11-06T16:00:00Z";
+    // Tuesday's close against Friday's broker price spans three sessions.
+    expect(previousClose(close, friday)).toBeNull();
+    expect(priceBasis({ ...held, brokerAsOf: friday }, close, null, null, new Date(friday)).change)
+      .toBeNull();
+    // Thursday's close is Friday's reference; Friday's close is Monday's.
+    expect(previousClose({ ...close, asOf: "2026-11-05T21:00:02Z" }, friday)).toBe(214.01);
+    expect(previousClose({ ...close, asOf: "2026-11-06T21:00:02Z" }, "2026-11-09T15:00:00Z"))
+      .toBe(214.01);
+  });
+
+  it("calls a broker price late when it misses the latest session, in or out of hours", () => {
+    const zone = "America/New_York";
+    const wednesdayPreMarket = new Date("2026-11-04T11:00:00Z");
+    // Observed at 15:00 on Tuesday: misses Tuesday's close.
+    expect(brokerPriceLate(zone, new Date("2026-11-03T20:00:00Z"), wednesdayPreMarket)).toBe(true);
+    // The last in-session refresh shortly before the close, or one after it, covers the session.
+    expect(brokerPriceLate(zone, new Date("2026-11-03T20:45:00Z"), wednesdayPreMarket)).toBe(false);
+    expect(brokerPriceLate(zone, new Date("2026-11-03T21:05:00Z"), wednesdayPreMarket)).toBe(false);
+    // Friday after the close stays current over the weekend; Friday midday does not.
+    const sunday = new Date("2026-11-08T12:00:00Z");
+    expect(brokerPriceLate(zone, new Date("2026-11-06T21:05:00Z"), sunday)).toBe(false);
+    expect(brokerPriceLate(zone, new Date("2026-11-06T17:00:00Z"), sunday)).toBe(true);
+    // Unknown exchanges make no claim.
+    expect(brokerPriceLate("Mars/Olympus", new Date("2026-11-01T00:00:00Z"), sunday)).toBe(false);
+    const header = priceBasis(
+      { ...held, brokerAsOf: "2026-11-03T20:00:00Z" },
+      close,
+      null,
+      null,
+      wednesdayPreMarket,
+    );
+    expect(header.time).toMatchObject({ kind: "time", stale: true });
   });
 
   it("knows regular sessions and ignores unknown or inherited zone names", () => {
