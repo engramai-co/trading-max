@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { LocaleProvider } from "@/components/locale-provider";
-import { dayDrivers, signedPounds } from "./day-drivers";
+import { dayDrivers, openingLabel, signedPounds } from "./day-drivers";
 import { CutoffTag, cutoffLabel } from "./history-coverage";
 
 const day = "2026-11-02";
@@ -32,7 +32,7 @@ const attribution = {
 
 describe("dayDrivers", () => {
   it("merges a ticker held in both accounts and adds up to the account change", () => {
-    // Net P&L 0 at 07:00, 5 at 07:10 (the opening observation), -40 at 15:40.
+    // Net P&L 0 at 07:00, 5 at 07:10 (the attribution's opening, stated), -40 at 15:40.
     const drivers = dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40] })!;
     expect(drivers.accountChange).toBe(-45);
     expect(drivers.named.map((row) => [row.ticker, row.amount])).toEqual([["NVDA", -94], ["EQGB", 42], ["BE", 9]]);
@@ -60,30 +60,68 @@ describe("dayDrivers", () => {
     expect(dayDrivers({ attribution, scope: "total", day: "2026-10-30", dates, pnls: [0, 5, -40] })).toBeNull();
   });
 
-  it("reports an opening later than the chart's first point", () => {
-    expect(dayDrivers({ attribution, scope: "total", day, dates, pnls: [0, 5, -40] })!.lateOpening).toBeNull();
-    const late = ["2026-11-02T00:00:00Z", ...dates.slice(1)];
-    expect(dayDrivers({ attribution, scope: "total", day, dates: late, pnls: [0, 5, -40] })!.lateOpening).toBe("2026-11-02T07:10:00Z");
-  });
-
-  it("matches a 5D opening to its thirty-minute chart bucket", () => {
-    const week = {
+  it("opens the 5D strip with its window and matches a later opening to its thirty-minute bucket", () => {
+    const week = (since: string) => ({
       startDay: "2026-10-28",
       day: "2026-11-03",
       accounts: {
-        A: { since: "2026-10-28T00:10:00Z", asOf: "2026-11-03T15:00:00Z", contributions: [{ ticker: "NVDA", name: "Nvidia", contributionGbp: 30 }] },
+        A: { since, asOf: "2026-11-03T15:00:00Z", contributions: [{ ticker: "NVDA", name: "Nvidia", contributionGbp: 30 }] },
       },
-    };
-    const buckets = ["2026-10-28T00:00:00Z", "2026-10-28T00:30:00Z", "2026-11-03T15:00:00Z"];
-    // The 00:00 bucket holds the 00:10 opening; one-day matching would skip to 00:30.
-    const drivers = dayDrivers({ attribution: week, scope: "invest", day: week.day, dates: buckets, pnls: [0, 4, 30], span: "5D" })!;
-    expect(drivers.accountChange).toBe(30);
-    expect(drivers.lateOpening).toBeNull();
-    expect(dayDrivers({ attribution: week, scope: "invest", day: week.day, dates: buckets, pnls: [0, 4, 30] })!.accountChange).toBe(26);
-    // The 5D strip follows the same rule: never beside a cut-off or a newer figure.
-    expect(dayDrivers({ attribution: week, scope: "invest", day: week.day, dates: buckets, pnls: [0, 4, 30], span: "5D", cutOff: true })).toBeNull();
-    const after = [...buckets.slice(0, 2), "2026-11-03T15:30:00Z"];
-    expect(dayDrivers({ attribution: week, scope: "invest", day: week.day, dates: after, pnls: [0, 4, 30], span: "5D" })).toBeNull();
+    });
+    const five = (since: string, dates: string[], extra: { cutOff?: boolean; span?: "1D" | "5D" } = {}) =>
+      dayDrivers({ attribution: week(since), scope: "invest", day: "2026-11-03", dates, pnls: [0, 2, 4, 30], span: "5D", ...extra });
+    // The window's first observation opens both the chart and the attribution.
+    const chart = ["2026-10-28T00:10:00Z", "2026-10-29T00:00:00Z", "2026-10-29T00:30:00Z", "2026-11-03T15:00:00Z"];
+    const aligned = five("2026-10-28T00:10:00Z", chart)!;
+    expect([aligned.accountChange, aligned.lateOpening]).toEqual([30, null]);
+    // A chain that opens on the second day says so. Its 00:10 opening sits in the
+    // 00:00 bucket; matching within one sync would skip to 00:30.
+    const later = five("2026-10-29T00:10:00Z", chart)!;
+    expect([later.accountChange, later.lateOpening]).toEqual([28, "2026-10-29T00:10:00Z"]);
+    expect(openingLabel(later.lateOpening!, "5D", "en", "Europe/London")).toBe("since 29 Oct, 00:10");
+    expect(five("2026-10-29T00:10:00Z", chart, { span: "1D" })!.accountChange).toBe(26);
+    // An opening before the window's, a cut-off figure or a newer one hide the strip.
+    expect(five("2026-10-27T15:00:00Z", chart)).toBeNull();
+    expect(five("2026-10-28T00:10:00Z", chart, { cutOff: true })).toBeNull();
+    expect(five("2026-10-28T00:10:00Z", [...chart.slice(0, 3), "2026-11-03T15:30:00Z"])).toBeNull();
+  });
+});
+
+describe("drivers open where the figure opens", () => {
+  // Net P&L 0 at 08:00, 5 at 08:10 and 100 at 15:00: a +£100 headline.
+  const chart = ["2026-11-02T08:00:00Z", "2026-11-02T08:10:00Z", "2026-11-02T15:00:00Z"];
+  const pnls = [0, 5, 100];
+  const account = (since: string, amount: number) => ({
+    since,
+    asOf: "2026-11-02T15:00:00Z",
+    contributions: [{ ticker: "XYZ", name: "XYZ Corp", contributionGbp: amount }],
+  });
+  const drivers = (accounts: Record<string, ReturnType<typeof account>>, scope: "invest" | "total" = "invest") =>
+    dayDrivers({ attribution: { day, accounts }, scope, day, dates: chart, pnls });
+
+  it("states a later opening, so the drivers read against their own window", () => {
+    const late = drivers({ A: account("2026-11-02T08:10:00Z", 95) })!;
+    expect([late.lateOpening, late.accountChange, late.material]).toEqual(["2026-11-02T08:10:00Z", 95, false]);
+    expect(late.named.map((row) => [row.ticker, row.amount])).toEqual([["XYZ", 95]]);
+    expect(openingLabel(late.lateOpening!, "1D", "zh", "Europe/London")).toBe("08:10 起");
+    expect(openingLabel(late.lateOpening!, "1D", "en", "Europe/London")).toBe("since 08:10");
+    expect(openingLabel(late.lateOpening!, "1D", "en", "Asia/Shanghai")).toBe("since 16:10");
+  });
+
+  it("leaves an opening within one sync of the figure's as it was", () => {
+    const aligned = drivers({ A: account("2026-11-02T08:04:00Z", 100) })!;
+    expect([aligned.lateOpening, aligned.accountChange, aligned.material]).toEqual([null, 100, false]);
+  });
+
+  it("hides drivers that opened before the figure", () => {
+    expect(drivers({ A: account("2026-11-02T07:50:00Z", 100) })).toBeNull();
+  });
+
+  it("hides a combined view whose accounts opened at different times", () => {
+    expect(drivers({ A: account("2026-11-02T08:00:00Z", 60), B: account("2026-11-02T08:10:00Z", 35) }, "total")).toBeNull();
+    // Openings within one sync of each other are one time, stated once.
+    const together = drivers({ A: account("2026-11-02T08:10:20Z", 60), B: account("2026-11-02T08:10:00Z", 35) }, "total")!;
+    expect([together.lateOpening, together.accountChange]).toEqual(["2026-11-02T08:10:00Z", 95]);
   });
 });
 

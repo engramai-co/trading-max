@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "./link";
-import { useLocale } from "@/components/locale-provider";
+import { useLocale, type Locale } from "@/components/locale-provider";
 import type { DashboardLens } from "@/lib/types";
 import type { Scope } from "@/lib/portfolio/nav";
 import { tradingDay } from "@/lib/portfolio/history";
@@ -19,11 +19,9 @@ export type Drivers = NonNullable<ReturnType<typeof dayDrivers>>;
 
 /** Below this, the strip would describe rounding noise rather than a move. */
 const MIN_EXPLAINED_GBP = 0.01;
-/** A later opening than the chart's first point is stated, since the parts then cover less. */
-const LATE_OPENING_MS = 15 * 60_000;
 /** One display bucket of slack when matching the opening to a chart point. */
 const BUCKET_MS: Record<DriverSpan, number> = { "1D": 5 * 60_000, "5D": 30 * 60_000 };
-/** One live sync: drivers measured longer than this before the chart's last point are stale. */
+/** One live sync: observations closer than this are the same one, at either end of the window. */
 const SYNC_MS = 5 * 60_000;
 
 /** Same precision as the period figure above, so the parts visibly add up to it. */
@@ -43,6 +41,11 @@ export function signedPounds(value: number) {
  * account was measured on the figure's trading day, no earlier than one sync before
  * the chart's last point. A later observation of that trading day still counts, such
  * as a weekend one of Friday's: Other and Unattributed absorb what moved after it.
+ *
+ * Their window opens with the figure's when every scoped account opened within one
+ * sync of its first point. An opening after that is stated, so the strip says what
+ * it covers; one before it, or scoped accounts that opened at different times,
+ * cannot explain the figure and hides the strip.
  */
 export function dayDrivers({
   attribution,
@@ -73,7 +76,11 @@ export function dayDrivers({
   const last = Date.parse(dates.at(-1) ?? "");
   const measured = (asOf: string) => Date.parse(asOf) >= last - SYNC_MS && tradingDay(asOf) === day;
   if (accounts.some((account) => !measured(account!.asOf))) return null;
-  const since = accounts.map((account) => account!.since).sort()[0];
+  const openings = accounts.map((account) => Date.parse(account!.since));
+  const earliest = Math.min(...openings);
+  const since = accounts[openings.indexOf(earliest)]!.since;
+  const first = Date.parse(dates[0] ?? "");
+  if (!(Math.max(...openings) - earliest <= SYNC_MS) || !(earliest >= first - SYNC_MS)) return null;
   // Measure the account over the attribution's own window: from the first chart
   // point at its opening observation (one bucket of slack) to the latest point.
   const start = dates.findIndex((date) => Date.parse(date) >= Date.parse(since) - BUCKET_MS[span]);
@@ -102,13 +109,21 @@ export function dayDrivers({
   const material = Math.abs(unexplained) >= Math.max(5, Math.abs(accountChange) * 0.25);
   return {
     since,
-    lateOpening: Date.parse(dates[start]) - Date.parse(dates[0]) > LATE_OPENING_MS ? dates[start] : null,
+    lateOpening: earliest > first + SYNC_MS ? since : null,
     accountChange,
     named,
     other: material ? explained - namedTotal : accountChange - namedTotal,
     unexplained,
     material,
   };
+}
+
+/** "08:10 起" / "since 08:10" for drivers that open after their figure; 5D adds the date. */
+export function openingLabel(at: string, span: DriverSpan, locale: Locale, timeZone: string) {
+  const time = formatDate(at, locale, span === "5D"
+    ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone }
+    : { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  return locale === "zh" ? `${time} 起` : `since ${time}`;
 }
 
 /** The strip for drivers that dayDrivers found; callers render nothing without them. */
@@ -122,12 +137,7 @@ export function DayDrivers({ drivers, span = "1D" }: { drivers: Drivers; span?: 
     >
       {drivers.lateOpening && (
         <li>
-          <span>
-            {formatDate(drivers.lateOpening, locale, span === "5D"
-              ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone }
-              : { hour: "2-digit", minute: "2-digit", timeZone })}
-            {t(" 起", " onwards")}
-          </span>
+          <span>{openingLabel(drivers.lateOpening, span, locale, timeZone)}</span>
         </li>
       )}
       {drivers.named.map((row) => (
