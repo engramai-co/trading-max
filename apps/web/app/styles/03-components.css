@@ -56,13 +56,6 @@
   background: var(--mx-brand);
   pointer-events: none;
 }
-.mx-segments[data-indicator="ready"] > .mx-indicator,
-.mx-tabs[data-indicator="ready"] > .mx-indicator {
-  transition:
-    transform 200ms var(--mx-ease),
-    width 200ms var(--mx-ease),
-    height 200ms var(--mx-ease);
-}
 .mx-tabs::-webkit-scrollbar {
   display: none;
 }

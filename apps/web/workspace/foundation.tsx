@@ -27,24 +27,53 @@ export function useCopy() {
   const { locale } = useLocale();
   return (zh: string, en: string) => (locale === "zh" ? zh : en);
 }
-// One sliding indicator for tabs and segments. The first placement is
-// instant; later moves transition from wherever the indicator currently is.
+// One sliding indicator for tabs and segments. The first placement is instant.
+// A later move animates transform only: the indicator takes its new size at
+// once, then scales and slides from wherever it currently appears (FLIP), so a
+// quick second choice continues from mid-flight and layout never runs per frame.
 function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: unknown) {
   useLayoutEffect(() => {
     const list = host.current;
     const indicator = list?.querySelector<HTMLElement>(":scope > .mx-indicator");
     if (!list || !indicator) return;
-    const place = () => {
+    const segments = list.classList.contains("mx-segments");
+    // The FLIP start frame scales from the top-left corner it measures.
+    indicator.style.transformOrigin = "0 0";
+    let placed = "";
+    const place = (animate: boolean) => {
       const active = list.querySelector<HTMLElement>(selector);
       indicator.style.opacity = active ? "1" : "0";
       if (!active) return;
-      indicator.style.width = active.offsetWidth + "px";
-      indicator.style.height = list.classList.contains("mx-segments") ? active.offsetHeight + "px" : "";
-      indicator.style.transform = "translate(" + active.offsetLeft + "px, " + (list.classList.contains("mx-segments") ? active.offsetTop : 0) + "px)";
+      const x = active.offsetLeft;
+      const y = segments ? active.offsetTop : 0;
+      const width = active.offsetWidth;
+      const height = segments ? active.offsetHeight : indicator.offsetHeight;
+      // A resize that moves nothing must not cut a running move short.
+      const key = [x, y, width, height].join(" ");
+      if (key === placed) return;
+      placed = key;
+      const from = indicator.getBoundingClientRect();
+      const frame = list.getBoundingClientRect();
+      indicator.getAnimations().forEach((animation) => animation.cancel());
+      indicator.style.width = width + "px";
+      if (segments) indicator.style.height = height + "px";
+      const target = "translate(" + x + "px, " + y + "px)";
+      indicator.style.transform = target;
+      if (!animate || !from.width || !height || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const startX = from.left - frame.left - list.clientLeft + list.scrollLeft;
+      const startY = from.top - frame.top - list.clientTop + list.scrollTop;
+      if (Math.abs(startX - x) < 0.5 && Math.abs(startY - y) < 0.5 && Math.abs(from.width - width) < 0.5) return;
+      indicator.animate(
+        [
+          { transform: "translate(" + startX + "px, " + startY + "px) scale(" + from.width / width + ", " + from.height / height + ")" },
+          { transform: target },
+        ],
+        { duration: 200, easing: getComputedStyle(list).getPropertyValue("--mx-ease").trim() || "ease-out" },
+      );
     };
-    place();
+    place(list.dataset.indicator === "ready");
     const frame = requestAnimationFrame(() => { list.dataset.indicator = "ready"; });
-    const observer = new ResizeObserver(place);
+    const observer = new ResizeObserver(() => place(false));
     observer.observe(list);
     return () => {
       cancelAnimationFrame(frame);
