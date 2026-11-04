@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
+from trading_max.research.calendar import market_calendar
 
 CALCULATION_VERSION = "decisions-v4"
 HORIZON_DAYS = 20
@@ -43,6 +44,8 @@ MAX_ROUND_TRIPS = 500
 #: Fills must sit inside the day's range, give or take costs and FX spread, for
 #: that range to describe the same quotes; otherwise the range is not shown.
 RANGE_TOLERANCE = 0.1
+#: The exchange calendar of the benchmark the stage supplies (SPY, in New York).
+BENCHMARK_CALENDAR = "XNYS"
 
 
 def _round(value: float | None, digits: int = 2) -> float | None:
@@ -56,17 +59,20 @@ def _close_on(closes: pd.Series, day: pd.Timestamp) -> tuple[int, float] | None:
     return position, float(closes.iloc[position])
 
 
-def _market_close(market: pd.Series, day: pd.Timestamp) -> float | None:
-    """The benchmark's close as of a security's close, once the benchmark has one.
+def _market_close(market: pd.Series, sessions: pd.DatetimeIndex, day: pd.Timestamp) -> float | None:
+    """The benchmark's close as of a security's close: that of its latest session by then.
 
-    A day after the benchmark's latest close has none yet: its session, or its
-    value in pounds, is still to come. A day it did not trade takes its close before.
+    A day the benchmark's exchange is shut takes the session before it. A session
+    the series has no close for has none, whether it is still to come (the session
+    or its value in pounds) or missing from the provider: the window is withheld
+    rather than measured from another session's close.
     """
 
-    if day > market.index.max():
+    position = int(sessions.searchsorted(day, side="right")) - 1
+    if position < 0:
         return None
-    found = _close_on(market, day)
-    return None if found is None or found[1] <= 0 else found[1]
+    value = _on_day(market, sessions[position])
+    return None if value is None or value <= 0 else value
 
 
 def _dividends(security: SecurityPrices, start: int, end: int) -> float | None:
@@ -170,14 +176,16 @@ def build_decision_review(
     unpriced: Sequence[str] = (),
     as_of: pd.Timestamp,
     market: pd.Series | None = None,
+    benchmark_calendar: str = BENCHMARK_CALENDAR,
 ) -> dict[str, Any]:
     """``trades`` carries NAV trade columns plus ``TotalGBP`` settlement amounts.
 
     ``market`` is an optional benchmark close series in GBP; each decision then
     records the benchmark's change over the same window, to separate the
     market's move from the security's own. The window runs between the
-    security's own closes, and its change is withheld until the benchmark has a
-    close for the window's last day.
+    security's own closes, each read as the benchmark's latest session by then on
+    ``benchmark_calendar``: a day its exchange is shut carries the session
+    before, and a session without a close withholds the change.
     """
 
     fills = trades[
@@ -195,6 +203,10 @@ def build_decision_review(
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0
+    sessions = None
+    if market is not None and not market.empty:
+        last_year = max(market.index.max().year, pd.Timestamp(as_of).year)
+        sessions = market_calendar(benchmark_calendar, market.index.min().year, last_year).sessions
     for (identity, day), day_rows in fills.groupby(["SecurityIdentity", "BusinessDate"], sort=True):
         security = prices.get(identity)
         legs = {
@@ -266,16 +278,16 @@ def build_decision_review(
         if valued:
             latest_return, paid_to_date = _window(security, position, close, final[-1])
         market_horizon = market_to_date = None
-        if market is not None and not market.empty and valued:
+        if market is not None and sessions is not None and valued:
             # Both windows run between the security's own closes, not the days
             # its last close is carried across.
-            opening = _market_close(market, own[-1])
+            opening = _market_close(market, sessions, own[-1])
             if opening is not None:
                 if latest_return is not None:
-                    closing = _market_close(market, final[-1])
+                    closing = _market_close(market, sessions, final[-1])
                     market_to_date = None if closing is None else closing / opening - 1.0
                 if horizon_return is not None:
-                    ending = _market_close(market, horizon_day)
+                    ending = _market_close(market, sessions, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
         for side, (amount, shares) in legs.items():
             if not amount:

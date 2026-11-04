@@ -22,7 +22,11 @@ from trading_max.analytics.decision_prices import (
     final_rates,
     resolve_decision_prices,
 )
-from trading_max.analytics.decision_review import CALCULATION_VERSION, build_decision_review
+from trading_max.analytics.decision_review import (
+    BENCHMARK_CALENDAR,
+    CALCULATION_VERSION,
+    build_decision_review,
+)
 from trading_max.analytics.fx import FxResolver, HistoricalFxResolver
 from trading_max.analytics.historical_nav import HistoryLoader, _trade_columns
 from trading_max.analytics.ledger import (
@@ -39,7 +43,8 @@ from .account_selection import selected_accounts
 from .stages import StageContext, StageResult
 
 DECISIONS_KEY = "account/decisions.json"
-#: The benchmark that separates the market's move from a security's own, in GBP.
+#: The benchmark that separates the market's move from a security's own, in GBP;
+#: it trades on the BENCHMARK_CALENDAR exchange's sessions.
 BENCHMARK_SYMBOL = "SPY"
 
 
@@ -131,6 +136,7 @@ class AccountDecisionStage:
             unpriced=unpriced,
             as_of=as_of,
             market=self._market(start, as_of, now),
+            benchmark_calendar=BENCHMARK_CALENDAR,
         )
         attach_decision_events(
             review,

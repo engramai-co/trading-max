@@ -532,6 +532,56 @@ def test_the_benchmark_waits_for_its_own_close_on_the_securitys_latest_day() -> 
     assert closed["decisions"][0]["market_return_to_date"] == pytest.approx(0.05)
 
 
+def test_a_benchmark_session_without_a_close_withholds_its_windows() -> None:
+    # 3 Nov is a New York session the benchmark has no close for: a window from
+    # 3 Nov has no benchmark change, rather than one measured from 2 Nov.
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))
+    market = pd.Series(400.0, index=quotes.index)
+    market[pd.Timestamp("2026-11-04")] = 420.0
+    review = _review_from_quotes(
+        [
+            _usd_fill("2026-10-30T15:00:00Z", "Market buy", 10, 1_000),
+            _usd_fill("2026-11-03T15:00:00Z", "Market buy", 10, 1_000),
+        ],
+        {"NVDA": quotes},
+        viewed="2026-11-04",
+        market=market.drop(pd.Timestamp("2026-11-03")),
+    )
+    earlier, on_the_gap = review["decisions"]
+    assert earlier["market_return_to_date"] == pytest.approx(0.05)
+    assert on_the_gap["market_return_to_date"] is None
+
+
+def test_the_benchmark_carries_its_close_across_its_exchanges_holiday() -> None:
+    # London trades on Thanksgiving and New York does not: a decision that day
+    # starts from the benchmark's 25 Nov close.
+    quotes = pd.Series(100.0, index=pd.bdate_range("2026-11-02", "2026-11-30"))  # pence
+    market = pd.Series(400.0, index=quotes.index.drop(pd.Timestamp("2026-11-26")))
+    market[market.index > pd.Timestamp("2026-11-26")] = 420.0
+    review = _review_from_quotes(
+        [_fill("2026-11-26T10:00:00Z", "Market buy", 1_000, 1_000, "VOD")],
+        {"VOD.L": quotes},
+        viewed="2026-11-30",
+        market=market,
+    )
+    assert review["decisions"][0]["market_return_to_date"] == pytest.approx(0.05)
+
+
+def test_a_benchmark_holiday_on_the_latest_close_takes_the_session_before() -> None:
+    # On Friday 3 Jul 2026 London trades while New York observes Independence Day:
+    # a window to 3 Jul ends on the benchmark's 2 Jul close, all weekend.
+    quotes = pd.Series(100.0, index=pd.bdate_range("2026-06-15", "2026-07-03"))  # pence
+    market = pd.Series(400.0, index=pd.bdate_range("2026-06-15", "2026-07-02"))
+    market[pd.Timestamp("2026-07-02")] = 410.0
+    review = _review_from_quotes(
+        [_fill("2026-07-01T10:00:00Z", "Market buy", 1_000, 1_000, "VOD")],
+        {"VOD.L": quotes},
+        viewed="2026-07-05",
+        market=market,
+    )
+    assert review["decisions"][0]["market_return_to_date"] == pytest.approx(0.025)
+
+
 def test_a_flat_price_after_many_closes_is_a_scored_zero() -> None:
     quotes = pd.Series(100.0, index=pd.bdate_range("2026-01-19", "2026-03-13"))  # pence
     review = _review_from_quotes(
