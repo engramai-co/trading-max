@@ -8,6 +8,8 @@ export type HistorySelection = { runId: string; range: Range; scope: Scope };
 export type HistoryInput = { runId: string; brokerAsOf: string; dataRevision: string; nav?: NavPoint[]; intradayNav?: NavPoint[] };
 export type Money = ReturnType<typeof portfolioMoney>;
 const arrays = ["pnls", "pnlPercents", "drawdown", "drawdownPercents", "periodFlows", "valueChanges", "valueChangePercents"] as const;
+/** One live sync: the observation taken at an instant falls within this after it. */
+export const SYNC_MS = 5 * 60_000;
 
 /** Grid geometry is encoded separately from observations: never interpolated account data. */
 export type CompactTimeline = {
@@ -54,6 +56,12 @@ export type PreparedHistory = {
   sourceCount: number;
   history: Omit<PortfolioHistory, "timeline"> & { timeline: CompactTimeline };
   money: Money;
+  /**
+   * The cash-flow-adjusted P&L at each opening the request named, on the period
+   * figure's own basis and read from every observation, or null when none was
+   * taken there. Present only when openings were requested.
+   */
+  openings?: Record<string, number | null>;
 };
 export function sliceMoney(money: Money, indexes: number[]): Money {
   const selected = { ...money };
@@ -91,6 +99,21 @@ export function prepareHistory(input: HistoryInput, selection: Pick<HistorySelec
     money: sliceMoney(money, indexes),
   };
   return { chart, history, money };
+}
+
+/**
+ * The cash-flow-adjusted P&L at the observation taken at each instant: the first
+ * timestamped observation at or within one sync after it, from every eligible
+ * observation rather than the thinned chart, and on the same basis as the period
+ * figure. Null when no observation was taken there.
+ */
+export function pnlsAt(prepared: Pick<ReturnType<typeof prepareHistory>, "history" | "money">, instants: readonly string[]) {
+  const times = prepared.history.points.map((point) => point.date.includes("T") ? Date.parse(point.date) : Number.NaN);
+  return Object.fromEntries(instants.map((at) => {
+    const instant = Date.parse(at);
+    const index = times.findIndex((time) => time >= instant && time <= instant + SYNC_MS);
+    return [at, index < 0 ? null : prepared.money.pnls[index] ?? null];
+  })) as Record<string, number | null>;
 }
 
 export type HistoryPage = {
