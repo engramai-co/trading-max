@@ -1,15 +1,15 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button } from "@mantine/core";
-import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
+import { Button, Group } from "@mantine/core";
+import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { estimateGroups } from "./research-display";
 import { useRouteState } from "./route-state";
 
+/** Fiscal periods always carry their year, so neighbouring columns read alike. */
 export function forecastPeriodLabel(
   analyst: Record<string, unknown>,
   value: unknown,
@@ -22,7 +22,8 @@ export function forecastPeriodLabel(
     return (
       (str(value).endsWith("y")
         ? t("财年截至 ", "FY ending ")
-        : t("季度截至 ", "Quarter ending ")) + formatCalendarDate(end, locale)
+        : t("季度截至 ", "Quarter ending ")) +
+      formatDate(end.slice(0, 10), locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
     );
   const relative =
     {
@@ -37,7 +38,6 @@ export function forecastPeriodLabel(
 
 export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
-  const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const period =
     params.get("estimateFrequency") === "year" ? "year" : "quarter";
@@ -56,25 +56,15 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
       prior: "yearAgoRevenue",
     },
   ];
-  const label = (value: unknown) => {
-    const fiscal = objects(analyst.fiscalPeriods).find(
-      (p) => p.period === value,
-    );
-    const end = str(fiscal?.endDate);
-    if (end)
-      return str(value).endsWith("y")
-        ? t("财年截至 ", "FY ending ") + formatCalendarDate(end, locale)
-        : t("季度截至 ", "Quarter ending ") + formatCalendarDate(end, locale);
-    const relative =
-      {
-        "0q": t("本季度", "Current quarter"),
-        "+1q": t("下季度", "Next quarter"),
-        "0y": t("本财年", "Current year"),
-        "+1y": t("下财年", "Next year"),
-      }[str(value)] ?? str(value);
-    const asOf = str(analyst.asOf).slice(0, 10);
-    return relative + (asOf ? " · " + formatCalendarDate(asOf, locale) : "");
-  };
+  const label = (value: unknown) => forecastPeriodLabel(analyst, value, t);
+  // One currency per panel: revenue cells are compact numbers, EPS cells carry their symbol.
+  const codes = [
+    ...new Set(
+      [...objects(analyst.earningsEstimate), ...objects(analyst.revenueEstimate)]
+        .map((row) => str(row.currency))
+        .filter(Boolean),
+    ),
+  ];
   return (
     <Panel
       title={t("盈利与营收预期", "Earnings & revenue estimates")}
@@ -83,15 +73,18 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
         "Quarterly and fiscal-year estimates are compared separately. Ranges show the lowest and highest analyst estimates. Growth uses the provider's matching year-over-year comparison; estimates change as analysts revise them.",
       )}
       action={
-        <Segments
-          label={t("预期报告周期", "Estimate reporting period")}
-          value={period}
-          onChange={(v) => update({ estimateFrequency: v })}
-          options={[
-            { value: "quarter", label: t("季度", "Quarterly") },
-            { value: "year", label: t("年度", "Annual") },
-          ]}
-        />
+        <Group gap="sm" wrap="nowrap">
+          {codes.length === 1 && <span className="mx-unit">{codes[0]}</span>}
+          <Segments
+            label={t("预期报告周期", "Estimate reporting period")}
+            value={period}
+            onChange={(v) => update({ estimateFrequency: v })}
+            options={[
+              { value: "quarter", label: t("季度", "Quarterly") },
+              { value: "year", label: t("年度", "Annual") },
+            ]}
+          />
+        </Group>
       }
     >
       <div className="mx-grid mx-forecast-grid">
@@ -124,10 +117,12 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                         {rows.map((row, i) => (
                           <th scope="col" key={i}>
                             {label(row.period ?? row.index)}
-                            <small>
-                              {str(row.currency) ||
-                                t("币种未提供", "Currency unavailable")}
-                            </small>
+                            {codes.length !== 1 && (
+                              <small>
+                                {str(row.currency) ||
+                                  t("币种未提供", "Currency unavailable")}
+                              </small>
+                            )}
                           </th>
                         ))}
                       </tr>

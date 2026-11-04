@@ -225,7 +225,12 @@
   font-variant-numeric: tabular-nums;
 }
 .mx-month-cell[aria-pressed="true"] {
-  border-color: currentColor;
+  border-color: var(--mx-brand);
+}
+.mx-month-cell .mx-thin-sample {
+  display: block;
+  margin-top: 4px;
+  color: var(--mx-warning);
 }
 .mx-month-cell:hover:not(:disabled) {
   outline: 1px solid var(--mx-border);

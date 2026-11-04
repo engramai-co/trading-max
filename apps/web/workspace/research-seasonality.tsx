@@ -11,6 +11,9 @@ import { Facts, Panel, Segments, useCopy } from "./foundation";
 import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
+/** Fewer observations than this make a month's average unreliable. */
+const THIN_SAMPLE = 5;
+
 export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
@@ -192,6 +195,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
         </div>
         <div
           className="mx-month-calendar"
+          role="group"
           aria-label={t("各月历史表现", "Historical performance by month")}
         >
           {rows.map((row) => (
@@ -208,7 +212,10 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
               <strong>
                 {percent(row[measure as keyof typeof row], true, 1)}
               </strong>
-              <small>n={number(row.observations, 0)}</small>
+              {/* Only a thin sample needs its count. */}
+              {(numeric(row.observations) ?? 0) < THIN_SAMPLE && (
+                <small className="mx-thin-sample">n={number(row.observations, 0)}</small>
+              )}
             </button>
           ))}
         </div>

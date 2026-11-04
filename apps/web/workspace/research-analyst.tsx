@@ -17,6 +17,8 @@ import { currency, number, object, objects, percent, safeUrl, str, tone } from "
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Metric, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { ratingLabel } from "./market-terms";
+import { filingTitle } from "./research-filings";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
 import type { ResearchPrice } from "./research-price-basis";
@@ -196,7 +198,6 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           yAxis: {
             type: "value",
             scale: true,
-            name: code,
             axisLabel: { color: c.axis },
             splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
@@ -544,7 +545,8 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
             { label: t("机构", "Firm"), value: (r) => r.firm },
             {
               label: t("评级变化", "Rating change"),
-              value: (r) => `${r.from || "—"} → ${r.to || "—"}`,
+              value: (r) =>
+                `${r.from ? ratingLabel(r.from, t) : "—"} → ${r.to ? ratingLabel(r.to, t) : "—"}`,
             },
             {
               label: t("目标价", "Target"),
@@ -671,7 +673,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
               <article key={i}>
                 <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
-                  {str(f.form)} · {str(f.title)} ↗
+                  {filingTitle(str(f.form), str(f.title), t)} ↗
                 </a>
               </article>
             ))}
