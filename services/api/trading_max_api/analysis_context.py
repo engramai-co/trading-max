@@ -69,8 +69,8 @@ _EFFECT_SIGN = (
     "that then fell, or a sale followed by a rise that the account gave up. "
     "'favourable' counts positive effects. return_* and market_return_* are "
     "the security's and the S&P 500's own change after the decision, whatever "
-    "the side. observed_days counts the closes after a decision; at 0 nothing "
-    "has followed it yet, so its zero effect is not an outcome."
+    "the side. observed_days counts the closes after a decision; at 0 it has no "
+    "outcome yet, so a zero or missing effect is not a result."
 )
 
 

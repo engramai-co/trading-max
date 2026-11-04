@@ -11,8 +11,12 @@ today's bar while the session is open; it becomes a close when the listing's
 exchange calendar says the session has ended, early closes included, or, for an
 exchange without a calendar, once its UTC day is over.
 
-A close in another currency also waits for that day's exchange rate to be final,
-so its value in pounds, and every effect measured on it, cannot change later.
+A close in another currency is worth its own day's final exchange rate in pounds,
+never another day's, so that value, and every effect measured on it, cannot
+change later. A day without its rate yet (today's, or one the provider has not
+published) is a pending close: a decision is judged by it only once it arrives.
+Only a day with no rate due, a weekend or a currency-market holiday, takes the
+rate before it.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -29,6 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from pandas.tseries.holiday import EasterMonday, GoodFriday
 
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
@@ -62,10 +67,12 @@ class SecurityPrices:
     name: str
     symbol: str
     #: One GBP close per business day through the review day. A day the listing
-    #: has no quote for (a holiday, or today before the close) repeats the close
-    #: before it, so every window can read a price.
+    #: has no quote for (a holiday, or today before the close), or no final value
+    #: in pounds for yet, repeats the close before it, so every window can read a
+    #: price.
     closes: pd.Series
-    #: GBP per share on each ex-date, on the same split basis as the closes.
+    #: GBP per share on each ex-date, on the same split basis as the closes; NaN
+    #: on a pending day, whose exchange rate is still to come.
     dividends: pd.Series = field(default_factory=_empty)
     #: GBP daily high and low as quoted that day (before later splits), comparable
     #: with the broker's fills; used for the most a same-day round trip could take.
@@ -74,12 +81,24 @@ class SecurityPrices:
     #: The days in ``closes`` the provider quoted; ``None`` when it quoted all of
     #: them. Only these are closes a decision can be judged by.
     quote_days: pd.DatetimeIndex | None = None
+    #: The quoted days whose close has no final GBP value yet, because that day's
+    #: exchange rate is still to come; ``None`` when there are none. They are
+    #: still sessions, so counting closes does not shift when their rate arrives.
+    pending_days: pd.DatetimeIndex | None = None
 
     @property
     def quoted(self) -> pd.DatetimeIndex:
         """The days in closes with a close the provider quoted."""
 
         return self.closes.index if self.quote_days is None else self.quote_days
+
+    @property
+    def final_days(self) -> pd.DatetimeIndex:
+        """The quoted days whose close has a final GBP value."""
+
+        if self.pending_days is None:
+            return self.quoted
+        return self.quoted[~self.quoted.isin(self.pending_days)]
 
     def closes_after(self, day: pd.Timestamp) -> pd.DatetimeIndex:
         """The days after day with a close the provider quoted; a repeated close never counts."""
@@ -301,6 +320,8 @@ class CachedDailyHistory:
 
 
 def _converted(series: pd.Series, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.Series) -> pd.Series:
+    """Values in GBP at the latest rate by each day: close enough to match fills with."""
+
     if mode == "GBP":
         return series
     if mode == "GBX":
@@ -309,8 +330,52 @@ def _converted(series: pd.Series, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.S
     return series / rate
 
 
-def _until(series: pd.Series, day: pd.Timestamp) -> pd.Series:
-    return series if series.empty else series[series.index <= day]
+def _rate_due(days: pd.DatetimeIndex) -> np.ndarray:
+    """Whether each day should have a daily exchange rate of its own.
+
+    None is due at weekends, on Christmas Day and New Year's Day, when the
+    currency market closes, or on Good Friday and Easter Monday, which the
+    provider can skip.
+    """
+
+    first, last = days.min(), days.max()
+    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
+    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
+    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
+
+
+def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex) -> pd.Series:
+    """Each day's final exchange rate, NaN while it is still to come.
+
+    A day takes its own rate. A day with no rate due takes the one before it, but
+    only once a later rate is final, by when the provider would have published
+    its own. A due rate that is missing is never borrowed from another day, so a
+    close in that currency waits for it, however long that takes.
+    """
+
+    rates = rates[rates > 0].sort_index()
+    rates = rates[~rates.index.duplicated(keep="last")]
+    if rates.empty or days.empty:
+        return pd.Series(np.nan, index=days, dtype=float)
+    span = pd.date_range(min(rates.index.min(), days.min()), days.max(), freq="D")
+    own = rates.reindex(span)
+    # A missing due rate stops the rate before it from reaching any later day.
+    carried = own.mask(_rate_due(span) & own.isna().to_numpy(), -1.0).ffill()
+    carried = carried.where((carried > 0) & (span < rates.index.max()))
+    return own.fillna(carried).reindex(days)
+
+
+def _at_final_rates(values: pd.Series, mode: str, final_fx: Mapping[str, pd.Series]) -> pd.Series:
+    """Values in GBP at their own day's final rate; NaN on a day still waiting for it."""
+
+    if mode == "GBP":
+        return values
+    if mode == "GBX":
+        return values / 100.0
+    rate = final_fx.get(mode)
+    if rate is None:
+        return values * np.nan
+    return values / rate.reindex(values.index).to_numpy()
 
 
 def final_rates(
@@ -346,8 +411,9 @@ def resolve_decision_prices(
     ``memo`` maps identities to their last accepted listing; it is tried first and
     updated in place, so routine runs request one listing per security.
     A listing's bars count only once their session has closed by ``now``, read
-    from the exchange the loader names in the frame's attrs, and a close in a
-    currency other than sterling only once that day's exchange rate is final too.
+    from the exchange the loader names in the frame's attrs. A close in a currency
+    other than sterling is valued at that day's own final exchange rate; until it
+    has one, it is one of the listing's pending days.
     """
 
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
@@ -390,15 +456,15 @@ def resolve_decision_prices(
             gbpusd=gbpusd,
             history_loader=history_loader,
         )
-    # The last day each currency's rate is final; a close after it has no GBP value yet.
-    rates_final_through = {"USD": usd_rates.index.max()}
+    # Each currency's final rate on every day, NaN while one is still to come.
+    calendar_days = pd.date_range(start_day, end_day, freq="D")
+    final_fx = {"USD": final_rate_on(usd_rates, calendar_days)}
     for code in cash_fx.columns:
         if code in {"GBP", "USD"}:
             continue
         with suppress(Exception):
             rates = final_rates(history_loader, f"GBP{code}=X", start_day, end_day, now)
-            if not rates.empty:
-                rates_final_through[code] = rates.index.max()
+            final_fx[code] = final_rate_on(rates, calendar_days)
     resolved: dict[str, SecurityPrices] = {}
     unpriced: list[str] = []
     for identity, rows in fills.groupby("SecurityIdentity", sort=True):
@@ -445,42 +511,35 @@ def resolve_decision_prices(
                     continue
                 score = float(np.median(np.abs(np.log(left[valid] / fills_at[valid]))))
                 if best is None or score < best[0]:
-                    best = (
-                        score,
-                        symbol,
-                        _converted(adjusted, mode, cash_fx, gbpusd),
-                        frame,
-                        mode,
-                    )
+                    best = (score, symbol, adjusted, frame, mode)
         if best is None or best[0] > MAX_LOG_DISTANCE:
             unpriced.append(ticker)
             continue
-        converted, mode = best[2], best[4]
+        frame, mode = best[3], best[4]
+        converted = _at_final_rates(best[2], mode, final_fx)
         extras = {
-            column: _gbp_column(best[3], column, mode, cash_fx, gbpusd)
+            column: _gbp_column(frame, column, mode, final_fx)
             for column in ("Dividends", "High", "Low")
         }
-        if mode not in {"GBP", "GBX"}:
-            through = rates_final_through.get(mode, pd.Timestamp.min)
-            converted = _until(converted, through)
-            extras = {column: _until(values, through) for column, values in extras.items()}
-        closes = converted.reindex(converted.index.union(days)).sort_index().ffill()
+        # A pending close repeats the final close before it, like a day without a quote.
+        closes = converted.dropna().reindex(converted.index.union(days)).sort_index().ffill()
         closes = closes[(closes.index >= start_day) & (closes.index <= end_day)].dropna()
         closes = closes[closes > 0]
         if closes.empty:
             unpriced.append(ticker)
             continue
-        dividends = extras["Dividends"]
+        pending = closes.index[closes.index.isin(converted.index[converted.isna()])]
         resolved[identity] = SecurityPrices(
             identity,
             ticker,
             name,
             best[1],
             closes,
-            dividends=dividends[dividends > 0],
+            dividends=extras["Dividends"],
             highs=extras["High"],
             lows=extras["Low"],
             quote_days=closes.index[closes.index.isin(converted.index)],
+            pending_days=pending if len(pending) else None,
         )
         if memo is not None:
             memo[identity] = best[1]
@@ -488,12 +547,14 @@ def resolve_decision_prices(
 
 
 def _gbp_column(
-    frame: pd.DataFrame, column: str, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.Series
+    frame: pd.DataFrame, column: str, mode: str, final_fx: Mapping[str, pd.Series]
 ) -> pd.Series:
-    """A provider column in GBP, converted like the closes; empty when absent.
+    """A provider column in GBP at each day's final rate, like the closes; empty when absent.
 
-    Dividends stay on the split-adjusted basis of the return closes. Highs and lows
-    are restored to the prices quoted that day, the basis of the broker's fills.
+    Dividends stay on the split-adjusted basis of the return closes; one on a
+    pending day has no GBP value yet (NaN). Highs and lows are restored to the
+    prices quoted that day, the basis of the broker's fills, and are left out on
+    a pending day.
     """
 
     if column not in frame:
@@ -501,11 +562,19 @@ def _gbp_column(
     if column == "Dividends":
         values = pd.to_numeric(frame[column], errors="coerce").dropna()
         values.index = pd.to_datetime(values.index).tz_localize(None).normalize()
+        values = values[values > 0]
     else:
         values = _nominal_close(frame.assign(Close=frame[column]))
     if values.empty:
         return _empty()
-    return _converted(values, mode, cash_fx, gbpusd)
+    converted = _at_final_rates(values, mode, final_fx)
+    return converted if column == "Dividends" else converted.dropna()
 
 
-__all__ = ["CachedDailyHistory", "SecurityPrices", "final_rates", "resolve_decision_prices"]
+__all__ = [
+    "CachedDailyHistory",
+    "SecurityPrices",
+    "final_rate_on",
+    "final_rates",
+    "resolve_decision_prices",
+]

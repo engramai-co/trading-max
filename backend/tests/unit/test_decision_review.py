@@ -12,6 +12,7 @@ from trading_max.analytics import decision_prices
 from trading_max.analytics.decision_prices import (
     CachedDailyHistory,
     SecurityPrices,
+    final_rate_on,
     resolve_decision_prices,
 )
 from trading_max.analytics.decision_review import HORIZON_DAYS, build_decision_review
@@ -61,13 +62,15 @@ def _review_from_quotes(
     now: str | None = None,
     rates: pd.Series | None = None,
     market: pd.Series | None = None,
+    dividends: Mapping[str, pd.Series] | None = None,
 ) -> dict:
     """Review fills as the stage does on the day viewed, through the price resolver.
 
     Each listing quotes only the days in its series, so a day its market is shut
     or has not closed yet is a gap the resolver carries the previous close across.
     GBPUSD is 1.25 unless rates are given. The review runs at now, by default just
-    after the day viewed, when its closes and its exchange rate are all final.
+    after the day viewed, when its closes and its exchange rate are all final. A
+    listing's dividends, in its own currency, go on their ex-dates.
     """
 
     def loader(symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -81,6 +84,8 @@ def _review_from_quotes(
         frame = pd.DataFrame(
             {"Close": quotes[quotes.index <= pd.Timestamp(end)], "Stock Splits": 0.0}
         )
+        if dividends and symbol in dividends:
+            frame["Dividends"] = dividends[symbol].reindex(frame.index, fill_value=0.0)
         if symbol in _EXCHANGES:
             frame.attrs["exchange"] = _EXCHANGES[symbol]
         return frame
@@ -377,6 +382,106 @@ def test_a_dollar_close_counts_once_that_days_exchange_rate_is_final() -> None:
     # The same dollar close is worth 4.2% more in pounds at the 4 Nov rate.
     assert after_midnight["observed_days"] == 1
     assert after_midnight["effect_to_date_gbp"] == pytest.approx(250.0)
+
+
+def test_a_close_without_its_own_days_rate_waits_instead_of_borrowing_one() -> None:
+    # The provider has no 3 Nov rate until a later, wider fetch fills it at 1.20.
+    # Until then 3 Nov's close has no value in pounds: its decision observes
+    # rather than scoring £0 at 2 Nov's rate, then -£240 once the rate arrives.
+    gap = pd.Timestamp("2026-11-03")
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))  # flat in dollars
+    filled = pd.Series(1.25, index=quotes.index)
+    filled[gap] = 1.20
+    fills = [
+        _usd_fill("2026-10-30T15:00:00Z", "Market buy", 60, 6_000),
+        _usd_fill("2026-11-03T15:00:00Z", "Market buy", 60, 6_000),
+    ]
+    before, after = (
+        _review_from_quotes(fills, {"NVDA": quotes}, viewed="2026-11-04", rates=rates)["decisions"]
+        for rates in (filled.drop(gap), filled)
+    )
+    assert (before[1]["observed_days"], before[1]["effect_to_date_gbp"]) == (0, None)
+    assert after[1]["observed_days"] == 1
+    assert after[1]["effect_to_date_gbp"] == pytest.approx(-240.0)
+    # A window between final closes does not move when the gap fills.
+    assert (after[0]["observed_days"], after[0]["effect_to_date_gbp"]) == (3, 0.0)
+    assert before[0] == after[0]
+
+
+def test_a_horizon_ending_on_a_close_without_its_rate_waits_for_it() -> None:
+    # 3 Nov is the 20th close after 6 Oct, and its rate arrives late, at 1.20.
+    gap = pd.Timestamp("2026-11-03")
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))
+    filled = pd.Series(1.25, index=quotes.index)
+    filled[gap] = 1.20
+    fills = [_usd_fill("2026-10-06T15:00:00Z", "Market buy", 60, 6_000)]
+    (before,), (after,) = (
+        _review_from_quotes(fills, {"NVDA": quotes}, viewed="2026-11-04", rates=rates)["decisions"]
+        for rates in (filled.drop(gap), filled)
+    )
+    assert (before["horizon_complete"], before["effect_horizon_gbp"]) == (False, None)
+    assert after["horizon_complete"] is True
+    assert after["effect_horizon_gbp"] == pytest.approx(250.0)
+    # The close still counts while it waits, so the count cannot shift when it arrives.
+    assert before["observed_days"] == after["observed_days"] == 21
+
+
+def test_a_dividend_without_its_days_rate_withholds_the_window_it_falls_in() -> None:
+    gap = pd.Timestamp("2026-11-03")
+    quotes = pd.Series(125.0, index=pd.bdate_range("2026-10-01", "2026-11-04"))
+    rates = pd.Series(1.25, index=quotes.index)
+    paid = {"NVDA": pd.Series({gap: 1.25})}  # dollars per share, on a day without its rate
+    fills = [_usd_fill("2026-10-30T15:00:00Z", "Market buy", 60, 6_000)]
+    (before,), (after,) = (
+        _review_from_quotes(
+            fills, {"NVDA": quotes}, viewed="2026-11-04", rates=known, dividends=paid
+        )["decisions"]
+        for known in (rates.drop(gap), rates)
+    )
+    assert before["observed_days"] == after["observed_days"] == 3
+    assert (before["effect_to_date_gbp"], before["dividend_to_date_gbp"]) == (None, None)
+    assert after["effect_to_date_gbp"] == after["dividend_to_date_gbp"] == pytest.approx(60.0)
+
+
+def test_an_easter_monday_close_takes_thursdays_rate_once_a_later_one_is_final() -> None:
+    # New York trades on Easter Monday, but the provider may publish no rate for it
+    # or for Good Friday. Monday's close then takes Thursday's rate, once Tuesday's
+    # is final: by then a rate of Monday's own would have been published.
+    sessions = pd.bdate_range("2025-03-20", "2025-04-25").drop(pd.Timestamp("2025-04-18"))
+    quotes = pd.Series(125.0, index=sessions)
+    skipped = pd.Series(1.25, index=sessions.drop(pd.Timestamp("2025-04-21")))
+    skipped[pd.Timestamp("2025-04-17")] = 1.30
+    published = skipped.copy()
+    published[pd.Timestamp("2025-04-21")] = 1.20
+    fills = [_usd_fill("2025-04-21T15:00:00Z", "Market buy", 60, 6_000)]
+
+    def review(rates: pd.Series, viewed: str, now: str) -> dict:
+        found = _review_from_quotes(fills, {"NVDA": quotes}, viewed=viewed, now=now, rates=rates)
+        return found["decisions"][0]
+
+    evening = review(skipped, "2025-04-21", "2025-04-21T21:30:00Z")
+    assert (evening["observed_days"], evening["effect_to_date_gbp"]) == (0, None)
+    thursdays = review(skipped, "2025-04-22", "2025-04-23T00:30:00Z")
+    assert thursdays["observed_days"] == 1
+    assert thursdays["effect_to_date_gbp"] == pytest.approx(240.0)
+    # A rate the provider did publish for the holiday is the close's own.
+    own = review(published, "2025-04-22", "2025-04-23T00:30:00Z")
+    assert own["effect_to_date_gbp"] == pytest.approx(-240.0)
+
+
+def test_a_day_with_no_rate_due_takes_the_one_before_once_a_later_one_is_final() -> None:
+    # Christmas Day 2026 is a Friday: no rate is due from it to the Sunday.
+    days = pd.date_range("2026-12-23", "2026-12-29")
+    published = pd.Series(
+        [1.25, 1.26, 1.27, 1.28],
+        index=pd.to_datetime(["2026-12-23", "2026-12-24", "2026-12-28", "2026-12-29"]),
+    )
+    assert final_rate_on(published, days).tolist() == [1.25, 1.26, 1.26, 1.26, 1.26, 1.27, 1.28]
+    # Until Monday's rate is final, Christmas Day could still have one of its own.
+    assert final_rate_on(published[:2], days).isna().tolist() == [False, False] + [True] * 5
+    # A missing due rate is never borrowed, nor carried past by the days after it.
+    gap = final_rate_on(published.drop(pd.Timestamp("2026-12-24")), days)
+    assert gap.isna().tolist() == [False, True, True, True, True, False, False]
 
 
 def test_a_listing_without_a_known_exchange_waits_for_its_day_to_end() -> None:

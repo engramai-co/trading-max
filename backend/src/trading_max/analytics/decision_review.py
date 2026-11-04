@@ -20,6 +20,8 @@ close. Each decision states how many closes followed it and whether its horizon
 window is complete, so a decision with no later close is never read as a zero
 outcome. Only closes the provider quoted count: a day without one (a holiday, or
 today before the close) repeats the close before it and is not an outcome.
+A close still waiting for its exchange rate counts as a session, but no window
+starts or ends on it until its value in pounds is final.
 Closed trades are also compared with selling at the best and worst close while
 the position was held.
 """
@@ -67,8 +69,11 @@ def _market_close(market: pd.Series, day: pd.Timestamp) -> float | None:
     return None if found is None or found[1] <= 0 else found[1]
 
 
-def _dividends(security: SecurityPrices, start: int, end: int) -> float:
-    """Dividends per share with an ex-date after close index start, up to end."""
+def _dividends(security: SecurityPrices, start: int, end: int) -> float | None:
+    """Dividends per share with an ex-date after close index start, up to end.
+
+    None while one of them has no final value in pounds yet.
+    """
 
     if security.dividends.empty:
         return 0.0
@@ -77,7 +82,19 @@ def _dividends(security: SecurityPrices, start: int, end: int) -> float:
     paid = security.dividends[
         (security.dividends.index > after) & (security.dividends.index <= until)
     ]
-    return float(paid.sum())
+    return None if paid.isna().any() else float(paid.sum())
+
+
+def _window(
+    security: SecurityPrices, position: int, close: float, end: pd.Timestamp
+) -> tuple[float | None, float | None]:
+    """The return from the close at position to the close on end, and its dividends."""
+
+    ending = int(security.closes.index.searchsorted(end))
+    paid = _dividends(security, position, ending)
+    if paid is None:
+        return None, None
+    return (float(security.closes.iloc[ending]) + paid) / close - 1.0, paid
 
 
 def _on_day(series: pd.Series, day: pd.Timestamp) -> float | None:
@@ -234,29 +251,31 @@ def build_decision_review(
                     else {}
                 )
         position, close = start
-        following = security.closes_after(security.closes.index[position])
-        horizon = (
-            int(security.closes.index.searchsorted(following[HORIZON_DAYS - 1]))
-            if len(following) >= HORIZON_DAYS
-            else None
-        )
-        later = None if horizon is None else float(security.closes.iloc[horizon])
-        latest = float(security.closes.iloc[-1])
-        paid_horizon = None if horizon is None else _dividends(security, position, horizon)
-        paid_to_date = _dividends(security, position, len(security.closes) - 1)
-        horizon_return = None if later is None else (later + paid_horizon) / close - 1.0
-        latest_return = (latest + paid_to_date) / close - 1.0
+        day_of = security.closes.index[position]
+        quoted, final = security.quoted, security.final_days
+        following = security.closes_after(day_of)
+        own = quoted[quoted <= day_of]
+        # Until the decision's own close has a final value in pounds there is
+        # nothing to measure from: it is observing, like one made today.
+        valued = len(own) > 0 and own[-1] in final
+        observed = int((following <= final[-1]).sum()) if valued else 0
+        horizon_day = following[HORIZON_DAYS - 1] if len(following) >= HORIZON_DAYS else None
+        horizon_return = paid_horizon = latest_return = paid_to_date = None
+        if valued and horizon_day is not None and horizon_day in final:
+            horizon_return, paid_horizon = _window(security, position, close, horizon_day)
+        if valued:
+            latest_return, paid_to_date = _window(security, position, close, final[-1])
         market_horizon = market_to_date = None
-        if market is not None and not market.empty:
+        if market is not None and not market.empty and valued:
             # Both windows run between the security's own closes, not the days
             # its last close is carried across.
-            quoted = security.quoted
-            opening = _market_close(market, quoted[quoted <= security.closes.index[position]][-1])
+            opening = _market_close(market, own[-1])
             if opening is not None:
-                closing = _market_close(market, quoted[-1])
-                market_to_date = None if closing is None else closing / opening - 1.0
-                if horizon is not None:
-                    ending = _market_close(market, security.closes.index[horizon])
+                if latest_return is not None:
+                    closing = _market_close(market, final[-1])
+                    market_to_date = None if closing is None else closing / opening - 1.0
+                if horizon_return is not None:
+                    ending = _market_close(market, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
         for side, (amount, shares) in legs.items():
             if not amount:
@@ -277,19 +296,24 @@ def build_decision_review(
                     if horizon_return is None
                     else _round(sign * amount * horizon_return),
                     "return_to_date": _round(latest_return, 6),
-                    "effect_to_date_gbp": _round(sign * amount * latest_return),
+                    "effect_to_date_gbp": None
+                    if latest_return is None
+                    else _round(sign * amount * latest_return),
                     # The dividend part of each effect, already included above.
                     "dividend_horizon_gbp": None
                     if paid_horizon is None
                     else _round(sign * amount * paid_horizon / close),
-                    "dividend_to_date_gbp": _round(sign * amount * paid_to_date / close),
+                    "dividend_to_date_gbp": None
+                    if paid_to_date is None
+                    else _round(sign * amount * paid_to_date / close),
                     # The benchmark's change over the same window, in GBP.
                     "market_return_horizon": _round(market_horizon, 6),
                     "market_return_to_date": _round(market_to_date, 6),
-                    # Quoted closes after the decision's own: an unchanged price
-                    # after several days is still an outcome, a repeated one is not.
-                    "observed_days": len(following),
-                    "horizon_complete": horizon is not None,
+                    # Quoted closes after the decision's own, through the latest
+                    # final one: an unchanged price after several days is still an
+                    # outcome, a repeated one is not.
+                    "observed_days": observed,
+                    "horizon_complete": horizon_return is not None,
                 }
             )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))

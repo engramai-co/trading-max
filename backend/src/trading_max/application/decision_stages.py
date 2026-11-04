@@ -18,6 +18,7 @@ from trading_max.analytics.decision_events import (
 )
 from trading_max.analytics.decision_prices import (
     CachedDailyHistory,
+    final_rate_on,
     final_rates,
     resolve_decision_prices,
 )
@@ -86,9 +87,9 @@ class AccountDecisionStage:
         if closes.empty or usd.empty:
             return None
         closes.index = pd.to_datetime(closes.index).tz_localize(None).normalize()
-        # A close has a final GBP value once that day's exchange rate is final too.
-        closes = closes[closes.index <= usd.index.max()]
-        market = closes / usd.reindex(closes.index).ffill().bfill()
+        # A close has a final GBP value only at its own day's final exchange rate;
+        # one still waiting for it is left out, and the review withholds its windows.
+        market = closes / final_rate_on(usd, pd.DatetimeIndex(closes.index)).to_numpy()
         return market.dropna()
 
     def _account_day(self, context: StageContext, profile: str) -> pd.Timestamp:
