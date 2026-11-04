@@ -38,6 +38,12 @@ import {
 import { GrowthContext, ValuationSensitivity, ValuationWorksheet } from "./research-valuation-detail";
 import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
+import {
+  editorIdentity,
+  previewRequest,
+  valuationDefaultsQuery,
+  valuationPreviewQuery,
+} from "./valuation-queries";
 
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
@@ -56,21 +62,8 @@ export function ValuationWorkbench({
     data.context?.capabilities.some(
       (c) => c.reason === "financial-company-requires-equity-model",
     ) ?? false;
-  const query = useQuery({
-    queryKey: [
-      "valuation-workbench",
-      data.ticker,
-      data.context?.quote.id,
-      data.financialFacts?.version,
-    ],
-    queryFn: ({ signal }) =>
-      api<Preview>(
-        `/research/${encodeURIComponent(data.ticker)}/valuation-preview`,
-        { signal },
-      ),
-    retry: false,
-    enabled: !financial,
-  });
+  // Valued against the price the header shows: a broker refresh recomputes it.
+  const query = useQuery({ ...valuationDefaultsQuery(data, price), enabled: !financial });
   if (financial)
     return (
       <>
@@ -97,7 +90,7 @@ export function ValuationWorkbench({
     );
   return (
     <>
-      <ModelEditor key={query.data.id} initial={query.data} data={data} revision={revision} />
+      <ModelEditor key={editorIdentity(query.data)} initial={query.data} data={data} revision={revision} />
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
         <FilingMultiples data={data} price={price} />
@@ -158,44 +151,13 @@ function ModelEditor({
   const liveFingerprint = JSON.stringify(liveRequest);
   const request = JSON.stringify(debounced);
   const query = useQuery({
-    queryKey: ["valuation-preview", initial.id, request],
-    queryFn: ({ signal }) =>
-      api<Preview>(
-        `/research/${encodeURIComponent(initial.basis.ticker)}/valuation-preview`,
-        { ...jsonRequest("POST", debounced), signal },
-      ),
-    initialData: request === JSON.stringify({
-      scenarios: Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
-      horizon: initial.horizon,
-      dataVersion: initial.basis.dataVersion,
-      references: initial.references ?? [],
-    }) ? initial : undefined,
+    ...valuationPreviewQuery(initial, debounced),
+    initialData: request === JSON.stringify(previewRequest(initial)) ? initial : undefined,
     placeholderData: keepPreviousData,
-    staleTime: Infinity,
-    retry: false,
   });
   const baseline = useQuery({
-    queryKey: ["valuation-preview", initial.id, JSON.stringify({
-      scenarios: Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
-      horizon,
-      dataVersion: initial.basis.dataVersion,
-      references: initial.references ?? [],
-    })],
-    queryFn: ({ signal }) =>
-      api<Preview>(
-        `/research/${encodeURIComponent(initial.basis.ticker)}/valuation-preview`,
-        { ...jsonRequest("POST", {
-          scenarios: Object.fromEntries(
-            keys.map((k) => [k, initial.scenarios[k].inputs]),
-          ),
-          horizon,
-          dataVersion: initial.basis.dataVersion,
-          references: initial.references ?? [],
-        }), signal },
-      ),
+    ...valuationPreviewQuery(initial, previewRequest(initial, horizon)),
     enabled: horizon !== initial.horizon,
-    staleTime: Infinity,
-    retry: false,
   });
   const initialAtHorizon =
     horizon === initial.horizon ? initial : baseline.data;

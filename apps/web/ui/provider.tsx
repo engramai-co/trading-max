@@ -2,41 +2,17 @@
 
 import { MantineProvider } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import {
-  QueryClient,
-  QueryClientProvider,
-  defaultShouldDehydrateQuery,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { tradingMaxTheme } from "@/ui/theme";
 import { FinePointerProvider } from "@/ui/pointer";
+import { createQueryClient } from "@/ui/query-client";
 
 export function TradingMaxProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          dehydrate: {
-            shouldDehydrateQuery: (query) =>
-              defaultShouldDehydrateQuery(query) ||
-              query.state.status === "pending",
-          },
-          mutations: {
-            retry: 0,
-          },
-          queries: {
-            gcTime: 30 * 60_000,
-            refetchOnReconnect: true,
-            refetchOnWindowFocus: false,
-            retry: 1,
-            staleTime: 30_000,
-          },
-        },
-      }),
-  );
+  const [queryClient] = useState(createQueryClient);
 
   return (
     <MantineProvider
