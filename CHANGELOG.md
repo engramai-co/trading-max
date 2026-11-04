@@ -4,6 +4,37 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-11-04
+
+### Changed
+
+- Decision review leads with the evidence. The 买卖决定 totals, horizon switch and
+  timeline come first; the AI review follows as its headline and summary, with
+  the evidence, 下次决定前 and 保留意见 behind one disclosure. With no review yet it
+  is a single row with 生成复盘. On a phone, 买卖决定 starts about a screen higher.
+- A decision's "+N" is a button that lists the events that did not fit, by tap,
+  click, Enter or Space; Escape returns focus to it. Each row stays one link to
+  the research view, its outcome is announced once, its text can be selected,
+  and it keeps keyboard focus when a refresh changes its context.
+- The research desk shows the selected security once: its name opens the
+  research list, and 更新 and ⋯ share one tool row. On a phone the 3-month price
+  chart fits the first screen.
+- Touch screens: research tabs, segments and period controls are at least
+  44×44 with no gaps between them; the eight periods take two rows of four when
+  one row cannot hold them at that size. The look-through list shows 25 rows per
+  page on phones, with the pager above and below the list.
+- Research figures in Chinese use 亿 and 万 with four significant digits, and
+  chart axis ticks stay distinct. English figures are unchanged.
+- Fewer repeated labels: valuation reads 营收 and 现金流率 under its TTM heading,
+  the 对总分的影响 caption moves into the 技术诊断 help, the journal drops its second
+  研究笔记 title, and an empty journal reads 暂无笔记 beside 写笔记. The technical
+  lens period 全部记录 reads 全部, like the portfolio periods.
+
+### Fixed
+
+- Help popovers and the regenerate confirmation move keyboard focus inside when
+  they open and return it on Escape.
+
 ## [1.24.0] - 2026-11-04
 
 ### Changed
