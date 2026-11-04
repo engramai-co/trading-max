@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     ResearchCapability,
@@ -1243,8 +1244,14 @@ class ResearchLedger:
                     intervals=["1d"] if task == "technical" else [],
                 )
             )
+        quote = make_quote(ticker, market or {}, fundamental)
+        # Sessions of the quote's exchange, so clients name closes and late
+        # prices with its holidays and early closes.
+        quote.schedule = session_schedule(
+            listing_calendar(quote.ticker, quote.exchange, quote.timezone), datetime.now(UTC)
+        )
         payload.context = ResearchContext(
-            quote=make_quote(ticker, market or {}, fundamental),
+            quote=quote,
             asset_type=asset_type,
             capabilities=capabilities,
             datasets=datasets,

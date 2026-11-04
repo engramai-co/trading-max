@@ -4402,6 +4402,7 @@ export interface components {
             quoteUnit: string | null;
             /** Reportingcurrency */
             reportingCurrency?: string | null;
+            schedule?: components["schemas"]["SessionSchedule"] | null;
             /**
              * Session
              * @default unknown
@@ -5871,6 +5872,18 @@ export interface components {
             /** Years */
             years: components["schemas"]["ProjectionYear"][];
         };
+        /**
+         * ScheduledSession
+         * @description One regular session as the exchange schedules it, in UTC.
+         */
+        ScheduledSession: {
+            /** Close */
+            close: string;
+            /** Date */
+            date: string;
+            /** Open */
+            open: string;
+        };
         /** SecuritySearchResponse */
         SecuritySearchResponse: {
             /** Correctedquery */
@@ -5958,6 +5971,20 @@ export interface components {
             upside: number;
             /** Value */
             value: number;
+        };
+        /**
+         * SessionSchedule
+         * @description An exchange's sessions around the time a quote was served.
+         *
+         *     Holidays are absent and early closes keep their earlier close, so a client
+         *     can tell the latest completed session, the one before it and whether one is
+         *     open at any moment in the window without a calendar of its own.
+         */
+        SessionSchedule: {
+            /** Calendar */
+            calendar: string;
+            /** Sessions */
+            sessions?: components["schemas"]["ScheduledSession"][];
         };
         /** SnapshotManifest */
         SnapshotManifest: {

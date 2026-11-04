@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 import pandas as pd
 import pytest
 from trading_max.research.calendar import (
     completed_daily_bars,
     completed_months,
     listing_calendar,
+    session_schedule,
 )
 from trading_max.research.technical import _rsi, price_series
 
@@ -64,11 +67,39 @@ def test_daily_observations_wait_for_actual_close_including_short_sessions():
     assert len(completed_daily_bars(frame, now=pd.Timestamp("2024-07-04T20:01:00Z"))) == 2
 
 
+def test_session_schedule_skips_thanksgiving_and_keeps_its_early_close():
+    schedule = session_schedule("XNYS", datetime(2026, 11, 26, 16, tzinfo=UTC))
+    assert schedule is not None and schedule.calendar == "XNYS"
+    sessions = {session.date: session for session in schedule.sessions}
+    assert "2026-11-26" not in sessions
+    assert sessions["2026-11-25"].open == "2026-11-25T14:30:00Z"
+    assert sessions["2026-11-25"].close == "2026-11-25T21:00:00Z"
+    # The day after Thanksgiving closes at 13:00 in New York.
+    assert sessions["2026-11-27"].close == "2026-11-27T18:00:00Z"
+    # Two weeks back and ten days ahead, weekends excluded.
+    assert schedule.sessions[0].date == "2026-11-12"
+    assert schedule.sessions[-1].date == "2026-12-04"
+
+
+def test_session_schedule_skips_uk_bank_holidays():
+    summer = session_schedule("XLON", datetime(2026, 8, 31, 11, tzinfo=UTC))
+    assert summer is not None
+    dates = [session.date for session in summer.sessions]
+    assert "2026-08-28" in dates and "2026-08-31" not in dates and "2026-09-01" in dates
+    assert summer.sessions[dates.index("2026-09-01")].open == "2026-09-01T07:00:00Z"
+    christmas = session_schedule("XLON", datetime(2026, 12, 24, 9, tzinfo=UTC))
+    assert christmas is not None
+    by_date = {session.date: session for session in christmas.sessions}
+    assert by_date["2026-12-24"].close == "2026-12-24T12:30:00Z"
+    assert "2026-12-25" not in by_date and "2026-12-28" not in by_date
+
+
 def test_listing_calendar_reads_the_exchange_then_its_zone():
     assert listing_calendar("AAPL", "NasdaqGS", "America/New_York") == "XNYS"
     assert listing_calendar("IAG", "NYSE", None) == "XNYS"
     assert listing_calendar("IAG.L", "LSE", "Europe/London") == "XLON"
     assert listing_calendar("IAG.L", None, None) == "XLON"
     assert listing_calendar("SAP.DE", "XETRA", "Europe/Berlin") == "XETR"
-    # Unknown exchanges have no calendar.
+    # Unknown exchanges have no calendar and no schedule.
     assert listing_calendar("OLYM", "Olympus", "Mars/Olympus") is None
+    assert session_schedule(None, datetime(2026, 11, 4, tzinfo=UTC)) is None

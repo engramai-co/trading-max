@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
 import pandas as pd
+from exchange_calendars.errors import CalendarError
+from pydantic import Field
+
+from trading_max.domain import DomainModel
 
 EXCHANGES = {
     "NMS": "XNYS",
@@ -48,6 +53,30 @@ ZONES = {
     "Asia/Tokyo": "XTKS",
     "Australia/Sydney": "XASX",
 }
+# A schedule covers the recent sessions a quote or broker price can belong to
+# and the coming ones a page can stay open into.
+SCHEDULE_BEFORE = timedelta(days=14)
+SCHEDULE_AFTER = timedelta(days=10)
+
+
+class ScheduledSession(DomainModel):
+    """One regular session as the exchange schedules it, in UTC."""
+
+    date: str
+    open: str
+    close: str
+
+
+class SessionSchedule(DomainModel):
+    """An exchange's sessions around the time a quote was served.
+
+    Holidays are absent and early closes keep their earlier close, so a client
+    can tell the latest completed session, the one before it and whether one is
+    open at any moment in the window without a calendar of its own.
+    """
+
+    calendar: str
+    sessions: list[ScheduledSession] = Field(default_factory=list)
 
 
 def calendar_name(exchange: str | None) -> str | None:
@@ -71,6 +100,34 @@ def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | N
 @lru_cache(maxsize=64)
 def market_calendar(name: str, first_year: int, last_year: int):
     return xcals.get_calendar(name, start=f"{first_year - 1}-01-01", end=f"{last_year + 1}-12-31")
+
+
+def _utc(value: pd.Timestamp) -> str:
+    return value.tz_convert("UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
+    """Scheduled sessions from two weeks before `now` to ten days after it."""
+
+    if not name:
+        return None
+    current = pd.Timestamp(now)
+    current = current.tz_localize("UTC") if current.tzinfo is None else current.tz_convert("UTC")
+    start = (current - SCHEDULE_BEFORE).tz_localize(None).normalize()
+    end = (current + SCHEDULE_AFTER).tz_localize(None).normalize()
+    try:
+        frame = market_calendar(name, start.year, end.year).schedule.loc[start:end]
+    except CalendarError:
+        return None
+    return SessionSchedule(
+        calendar=name,
+        sessions=[
+            ScheduledSession(
+                date=label.date().isoformat(), open=_utc(row["open"]), close=_utc(row["close"])
+            )
+            for label, row in frame.iterrows()
+        ],
+    )
 
 
 def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFrame:

@@ -336,6 +336,61 @@ def test_report_dates_follow_the_exchange_calendar(tmp_path, monkeypatch):
     assert overview.fundamentals["earningsCalendar"]["earningsDates"] == ["2026-11-04"]
 
 
+def test_lens_quote_names_its_listing_and_exchange_sessions(tmp_path, monkeypatch):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    # 15:00 in New York on the day after Thanksgiving, two hours after its early close.
+    now = datetime(2026, 11, 27, 20, tzinfo=UTC)
+
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.astimezone(tz)
+
+    monkeypatch.setattr(research_module, "datetime", Frozen)
+    watchlist = WatchlistStore(tmp_path)
+    for ticker in ("IAG", "OLYM"):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange="", bloomberg_ticker="", figi=""
+            )
+        )
+    payloads = {
+        "research/fundamentals.json": {
+            "rows": [
+                {
+                    "ticker": "IAG",
+                    "metrics": {
+                        "fullExchangeName": "NYSE",
+                        "exchangeTimezoneName": "America/New_York",
+                    },
+                },
+                {
+                    "ticker": "OLYM",
+                    "metrics": {
+                        "fullExchangeName": "Olympus",
+                        "exchangeTimezoneName": "Mars/Olympus",
+                    },
+                },
+            ]
+        },
+    }
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: payloads.get(key, {})
+    manifest = SnapshotManifest(
+        run_id="synthetic", scope="research", source="test", created_at=now, artifacts=[]
+    )
+
+    quote = ledger.lens_snapshot("IAG", "overview", manifest, detail="summary").context.quote
+    assert quote.listing == "US:IAG"
+    assert quote.schedule is not None and quote.schedule.calendar == "XNYS"
+    sessions = {session.date: session for session in quote.schedule.sessions}
+    assert "2026-11-26" not in sessions
+    assert sessions["2026-11-27"].close == "2026-11-27T18:00:00Z"
+    unknown = ledger.lens_snapshot("OLYM", "overview", manifest, detail="summary").context.quote
+    assert unknown.listing is None and unknown.schedule is None
+
+
 def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
     research_root, tmp_path, typed_fixture, seed_watchlist
 ):

@@ -10178,6 +10178,16 @@
             ],
             "title": "Reportingcurrency"
           },
+          "schedule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionSchedule"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "session": {
             "default": "unknown",
             "title": "Session",
@@ -14289,6 +14299,31 @@
         "title": "ScenarioProjection",
         "type": "object"
       },
+      "ScheduledSession": {
+        "additionalProperties": false,
+        "description": "One regular session as the exchange schedules it, in UTC.",
+        "properties": {
+          "close": {
+            "title": "Close",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "open",
+          "close"
+        ],
+        "title": "ScheduledSession",
+        "type": "object"
+      },
       "SecuritySearchResponse": {
         "properties": {
           "correctedQuery": {
@@ -14474,6 +14509,28 @@
           "upside"
         ],
         "title": "SensitivityCell",
+        "type": "object"
+      },
+      "SessionSchedule": {
+        "additionalProperties": false,
+        "description": "An exchange's sessions around the time a quote was served.\n\nHolidays are absent and early closes keep their earlier close, so a client\ncan tell the latest completed session, the one before it and whether one is\nopen at any moment in the window without a calendar of its own.",
+        "properties": {
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledSession"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "calendar"
+        ],
+        "title": "SessionSchedule",
         "type": "object"
       },
       "SnapshotManifest": {
