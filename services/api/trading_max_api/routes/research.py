@@ -84,7 +84,14 @@ def _valuation_preview(
     # The data version stays tied to the research quote so a broker refresh
     # never invalidates an edit in progress.
     held = research.held_position(ticker, manifest)
-    broker_spot = held is not None and held["currency"] == quote.currency
+    # Only the same listing in the same currency: a line on another market or a
+    # ``.L`` alias is a different price, even in the quote's currency.
+    broker_spot = (
+        held is not None
+        and held.get("listing") is not None
+        and held["listing"] == quote.listing
+        and held["currency"] == quote.currency
+    )
     basis = FrozenValuationBasis(
         ticker=ticker,
         quote_id=quote.id,

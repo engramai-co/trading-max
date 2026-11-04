@@ -388,6 +388,7 @@ class ResearchInstrument(ApiModel):
     broker_price: float | None = None
     broker_price_currency: str | None = None
     broker_as_of: str | None = None
+    broker_listing: str | None = None
 
 
 class ResearchEvent(ApiModel):

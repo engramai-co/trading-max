@@ -10134,6 +10134,17 @@
             "title": "Id",
             "type": "string"
           },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
+          },
           "price": {
             "anyOf": [
               {
@@ -10684,6 +10695,17 @@
             ],
             "title": "Brokerasof"
           },
+          "brokerListing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerlisting"
+          },
           "brokerPrice": {
             "anyOf": [
               {
@@ -10973,6 +10995,17 @@
               }
             ],
             "title": "Brokerasof"
+          },
+          "brokerListing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerlisting"
           },
           "brokerPrice": {
             "anyOf": [

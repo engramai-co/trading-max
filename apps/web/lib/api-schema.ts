@@ -4394,6 +4394,8 @@ export interface components {
             fundBaseCurrency?: string | null;
             /** Id */
             id: string;
+            /** Listing */
+            listing?: string | null;
             /** Price */
             price: number | null;
             /** Quoteunit */
@@ -4579,6 +4581,8 @@ export interface components {
             bloombergTicker: string;
             /** Brokerasof */
             brokerAsOf?: string | null;
+            /** Brokerlisting */
+            brokerListing?: string | null;
             /** Brokerprice */
             brokerPrice?: number | null;
             /** Brokerpricecurrency */
@@ -4718,6 +4722,8 @@ export interface components {
             bloombergTicker: string;
             /** Brokerasof */
             brokerAsOf?: string | null;
+            /** Brokerlisting */
+            brokerListing?: string | null;
             /** Brokerprice */
             brokerPrice?: number | null;
             /** Brokerpricecurrency */

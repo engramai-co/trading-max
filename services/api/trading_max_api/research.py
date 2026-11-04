@@ -18,6 +18,7 @@ from trading_max.research.facts import (
     make_quote,
     number,
 )
+from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 
 from .artifacts import ArtifactStore
@@ -232,6 +233,10 @@ def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, 
     shows. Look-through runs less often, so each fund contribution is revalued
     by that fund's current broker value relative to its value at look-through
     time; a fund that is no longer held contributes nothing.
+
+    A security has a broker price and listing only when one broker line holds
+    it. Lines on several listings (another market, or a ``.L`` alias the
+    ticker key collapses) leave neither, so no price stands for another listing.
     """
 
     holdings: dict[str, JsonObject] = {}
@@ -246,6 +251,8 @@ def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, 
                 "price": None,
                 "currency": None,
                 "asOf": None,
+                "listing": None,
+                "lines": {},
                 "accounts": [],
                 "contributors": [],
             },
@@ -277,11 +284,26 @@ def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, 
             item["direct"] += value
             if value > 0 and str(code) not in item["accounts"]:
                 item["accounts"].append(str(code))
+            # The same instrument in two accounts is one line; its latest
+            # observation is the price.
+            instrument = str(position.get("broker_ticker") or "")
+            line = item["lines"].setdefault(
+                instrument or str(position.get("isin") or "") or key,
+                {
+                    "listing": broker_listing(instrument),
+                    "price": None,
+                    "currency": None,
+                    "asOf": None,
+                },
+            )
             price, currency = _quote_unit_price(
                 position.get("current_price"), position.get("price_currency")
             )
-            if price is not None and (item["asOf"] is None or (as_of or "") >= item["asOf"]):
-                item.update(price=price, currency=currency, asOf=as_of)
+            if price is not None and (line["asOf"] is None or (as_of or "") >= line["asOf"]):
+                line.update(price=price, currency=currency, asOf=as_of)
+    for item in holdings.values():
+        if len(item["lines"]) == 1:
+            item.update(next(iter(item["lines"].values())))
 
     fund_values: dict[str, float] = {}
     for source in lookthrough.get("sources") or []:
@@ -336,6 +358,7 @@ def _position_fields(holdings: dict[str, JsonObject], ticker: str) -> JsonObject
         "broker_price": item["price"] if held else None,
         "broker_price_currency": item["currency"] if held else None,
         "broker_as_of": item["asOf"] if held else None,
+        "broker_listing": item["listing"] if held else None,
     }
 
 
@@ -1010,7 +1033,7 @@ class ResearchLedger:
         )
 
     def held_position(self, ticker: str, manifest: SnapshotManifest) -> JsonObject | None:
-        """Current broker price of a held security, for figures quoted against it."""
+        """Current broker price and listing of the one line holding a security."""
 
         key = _canonical_ticker(self._route_ticker(ticker))
         item = _account_holdings(self._broker_snapshot(manifest), {}).get(key)

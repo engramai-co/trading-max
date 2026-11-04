@@ -27,9 +27,45 @@ EXCHANGES = {
     "AMS": "XAMS",
 }
 
+# Exchanges by the time zone the provider reports, for exchange names it does
+# not give as a code above (for example NasdaqGS or XETRA).
+ZONES = {
+    "America/New_York": "XNYS",
+    "America/Toronto": "XTSE",
+    "Europe/London": "XLON",
+    "Europe/Dublin": "XDUB",
+    "Europe/Amsterdam": "XAMS",
+    "Europe/Berlin": "XETR",
+    "Europe/Brussels": "XBRU",
+    "Europe/Madrid": "XMAD",
+    "Europe/Rome": "XMIL",
+    "Europe/Paris": "XPAR",
+    "Europe/Zurich": "XSWX",
+    "Asia/Hong_Kong": "XHKG",
+    "Asia/Shanghai": "XSHG",
+    "Asia/Seoul": "XKRX",
+    "Asia/Taipei": "XTAI",
+    "Asia/Tokyo": "XTKS",
+    "Australia/Sydney": "XASX",
+}
+
 
 def calendar_name(exchange: str | None) -> str | None:
     return EXCHANGES.get(str(exchange or "").upper())
+
+
+def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
+    """The calendar of the exchange that quotes a listing.
+
+    The provider's exchange code decides, then its time zone, then a London
+    ``.L`` symbol.
+    """
+
+    return (
+        calendar_name(exchange)
+        or ZONES.get(str(timezone or ""))
+        or ("XLON" if str(symbol or "").strip().upper().endswith(".L") else None)
+    )
 
 
 @lru_cache(maxsize=64)

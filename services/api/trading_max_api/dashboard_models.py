@@ -1070,6 +1070,9 @@ class ResearchDirectoryInstrument(ApiModel):
     broker_price: float | None = None
     broker_price_currency: str | None = None
     broker_as_of: str | None = None
+    # Market and symbol of the one line holding the security (``LSE:IAG``); none
+    # when that line's market is unknown or several lines share the ticker.
+    broker_listing: str | None = None
 
 
 class ResearchShell(ApiModel):

@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.research.listing import quote_listing
 
 DataState = Literal["available", "missing", "notApplicable", "unsupported", "stale", "invalid"]
 
@@ -84,6 +85,8 @@ class QuoteSnapshot(DomainModel):
     change_pct: float | None = None
     delay_minutes: int | None = None
     source: str = "yahoo-finance"
+    # Market and symbol, such as ``US:IAG`` or ``LSE:IAG``.
+    listing: str | None = None
 
 
 class DatasetClock(DomainModel):
@@ -543,6 +546,9 @@ def make_quote(
         delay_minutes=int(metrics["exchangeDataDelayedBy"])
         if number(metrics.get("exchangeDataDelayedBy")) is not None
         else None,
+        listing=quote_listing(
+            ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
+        ),
     )
 
 

@@ -36,12 +36,14 @@ def _synthetic_accounts() -> dict:
             "positions": [
                 {
                     "ticker": "HELD",
+                    "broker_ticker": "HELD_US_EQ",
                     "current_value_gbp": held_value,
                     "current_price": held_price,
                     "price_currency": "USD",
                 },
                 {
                     "ticker": "FUND.L",
+                    "broker_ticker": "FUNDl_EQ",
                     "current_value_gbp": fund_value,
                     "current_price": 9500,
                     "price_currency": "GBX",
@@ -106,15 +108,15 @@ def test_held_securities_use_the_current_broker_basis(tmp_path):
     # Live values, not the 12:00 canonical or look-through values.
     assert held.held and held.direct_value_gbp == 700.0
     assert held.broker_price == 190.0 and held.broker_price_currency == "USD"
-    assert held.broker_as_of == "2026-11-04T15:50:01Z"
+    assert held.broker_as_of == "2026-11-04T15:50:01Z" and held.broker_listing == "US:HELD"
     # The fund contribution is revalued with the fund: 10 × 1100 / 1000.
     assert held.exposure_gbp == 711.0
     fund = listing["FUND.L"]
     assert fund.broker_price == 95.0 and fund.broker_price_currency == "GBP"
-    assert fund.exposure_gbp == 1100.0
+    assert fund.exposure_gbp == 1100.0 and fund.broker_listing == "LSE:FUND"
     only_fund = listing["ONLYFUND"]
     assert not only_fund.held and only_fund.broker_price is None
-    assert only_fund.exposure_gbp == 55.0
+    assert only_fund.broker_listing is None and only_fund.exposure_gbp == 55.0
     assert [item.exposure_gbp for item in ledger.instruments(manifest)] == [711.0, 1100.0, 55.0]
 
     impact = ledger.portfolio_impact("HELD", manifest)
@@ -128,6 +130,7 @@ def test_held_securities_use_the_current_broker_basis(tmp_path):
     ]
     assert impact.country == "United States"
     assert ledger.held_position("HELD", manifest)["price"] == 190.0
+    assert ledger.held_position("HELD", manifest)["listing"] == "US:HELD"
     assert ledger.held_position("ONLYFUND", manifest) is None
 
     # A fund sold since look-through no longer contributes.
@@ -139,6 +142,62 @@ def test_held_securities_use_the_current_broker_basis(tmp_path):
         ledger._broker_snapshot(manifest), payloads["account/lookthrough_metrics.json"]
     )
     assert holdings["HELD"]["indirect"] == 0.0 and "FUND" not in holdings
+
+
+def test_several_broker_lines_under_one_ticker_name_no_broker_price(tmp_path):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    def position(code: str, value: float, price: float, currency: str) -> dict:
+        # Both lines show the display ticker IAG; only the instrument code differs.
+        return {
+            "ticker": "IAG",
+            "broker_ticker": code,
+            "current_value_gbp": value,
+            "current_price": price,
+            "price_currency": currency,
+        }
+
+    broker = {
+        "accounts": {
+            "A": {
+                "fetched_at": "2026-11-04T15:50:01Z",
+                "positions": [position("IAG_US_EQ", 300.0, 4.2, "USD")],
+            },
+            "B": {
+                "fetched_at": "2026-11-04T15:40:01Z",
+                "positions": [position("IAGl_EQ", 200.0, 310.0, "GBX")],
+            },
+        }
+    }
+    watchlist = WatchlistStore(tmp_path)
+    for ticker, exchange in (("IAG", "NYSE"), ("IAG.L", "LSE")):
+        watchlist.add(
+            SecuritySearchResult(
+                ticker=ticker, name=ticker, exchange=exchange, bloomberg_ticker="", figi=""
+            )
+        )
+    ledger = ResearchLedger(ArtifactStore(tmp_path), watchlist)
+    ledger._read_optional = lambda _manifest, key: (
+        broker if key == "account/broker_snapshot_metrics.json" else {}
+    )
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime.now(UTC),
+        artifacts=[],
+    )
+
+    # The .L alias collapses both lines into one ticker: neither price is quoted.
+    for item in ledger.directory_instruments(manifest):
+        assert item.held and item.direct_value_gbp == 500.0
+        assert item.broker_price is None and item.broker_listing is None
+        assert ledger.held_position(item.ticker, manifest) is None
+    # One instrument held in two accounts is one line, at its latest observation.
+    broker["accounts"]["B"]["positions"] = [position("IAG_US_EQ", 200.0, 4.1, "USD")]
+    listing = {item.ticker: item for item in ledger.directory_instruments(manifest)}
+    assert listing["IAG"].broker_listing == "US:IAG" and listing["IAG"].broker_price == 4.2
+    assert ledger.held_position("IAG.L", manifest)["listing"] == "US:IAG"
 
 
 def test_next_earnings_date_is_one_date_and_never_past():
