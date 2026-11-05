@@ -248,9 +248,7 @@
   }
 }
 @media (max-width: 767px) {
-  .mx-page {
-    gap: 18px;
-  }
+  /* Spacing and type on phones are settled in 12-phone-rhythm.css, which loads last. */
   .mx-page-heading {
     flex-direction: column;
     gap: 15px;
@@ -283,7 +281,6 @@
   }
   .mx-grid {
     grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
   }
   .mx-overview-page > .mx-page-heading {
     flex-direction: row;

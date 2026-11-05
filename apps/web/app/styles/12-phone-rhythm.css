@@ -1,0 +1,431 @@
+/* Phones below 768px: the Quiet Ledger spacing rhythm and type roles over every surface. Loaded last, so it settles
+   phone values over the surface files; 768px and wider keep their own. Tokens live in 01-foundation.css. */
+@media (max-width: 767px) {
+  /* Sections sit 24px apart; a page heading sits 12px above its content. */
+  .mx-content main {
+    padding: var(--mx-space-panel) var(--mx-space-panel) 32px;
+  }
+  .mx-page,
+  .mx-grid,
+  .mx-grid-two,
+  .mx-settings-content {
+    gap: var(--mx-space-section);
+  }
+  .mx-page > .mx-page-heading {
+    gap: var(--mx-space-heading);
+    padding-bottom: 0;
+    margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
+  }
+  .mx-page > .mx-page-heading:not(.mx-page-tools) > div:first-child {
+    min-width: 0;
+  }
+  .mx-page .mx-page-heading h1:not(.sr-only) {
+    font-size: var(--mx-text-page);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .mx-page .mx-page-heading p {
+    margin-top: var(--mx-space-tight);
+  }
+  .mx-page .mx-page-actions {
+    gap: var(--mx-space-group);
+  }
+  /* Panels: 16px inside and flat; a panel heading sits 12px above its content. */
+  .mx-page .mx-panel:not(.mx-bento, .mx-overview-portfolio, .mx-overview-followups),
+  .mx-bento > .mx-bento-cell {
+    padding: var(--mx-space-panel);
+  }
+  .mx-page .mx-panel {
+    box-shadow: none;
+  }
+  .mx-page .mx-panel-heading {
+    gap: var(--mx-space-group);
+    margin-bottom: var(--mx-space-heading);
+  }
+  .mx-page .mx-panel-heading p {
+    margin-top: var(--mx-space-tight);
+  }
+  .mx-page .mx-toolbar:not(.mx-chart-toolbar),
+  .mx-page .mx-period-control {
+    gap: var(--mx-space-group) var(--mx-space-items);
+  }
+  .mx-page .mx-chart-toolbar {
+    gap: var(--mx-space-group) var(--mx-space-items);
+    margin-bottom: var(--mx-space-heading);
+  }
+  .mx-page .mx-chart-metrics {
+    margin-bottom: var(--mx-space-heading);
+  }
+  /* Type roles: titles 15/600, body 13/400, labels 12/500. Tabs and segments read as labels. */
+  .mx-page :is(.mx-panel-heading h2, .mx-account-card h2, .mx-connection-card h3, .mx-setting-row h3, .mx-danger-zone h3,
+    .mx-import-drop h3, .mx-section-label, .mx-sensitivity-heading h3) {
+    font-size: var(--mx-text-title);
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .mx-content main,
+  .mx-page :is(.mx-prose, .mx-help-body, .mx-form-help, .mx-body-copy, .mx-page-heading p, .mx-panel-heading p,
+    .mx-company-description, .mx-business-description, .mx-business-excerpt, .mx-connection-card > p, .mx-health-hero p,
+    .mx-setting-row p, .mx-danger-zone p, .mx-import-drop p, .mx-health-row p, .mx-details, .mx-job-list, .mx-job-outcomes,
+    .mx-row-link, .mx-holding-mobile, .mx-day-drivers, .mx-document-feed, .mx-allocation-row) {
+    font-size: var(--mx-text-body);
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .mx-page :is(.mx-metric-label, .mx-metric-note, .mx-freshness, .mx-period-span, .mx-security-meta, .mx-security-price small,
+    .mx-tag, .mx-highlight-title, .mx-attention-label, .mx-unit, .mx-chart-legend, .mx-chart-data > summary,
+    .mx-source-links, .mx-scale-labels, .mx-holding-mobile footer, .mx-facts dt, .mx-settings-nav button) {
+    font-size: var(--mx-text-label);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .mx-page :is(.mx-tabs button, .mx-segments button) {
+    font-size: var(--mx-text-label);
+    font-weight: 500;
+  }
+  .mx-page :is(.mx-tabs button[aria-selected="true"], .mx-segments button[aria-pressed="true"]) {
+    font-weight: 600;
+  }
+  .mx-page :is(strong, b, .mx-attention strong, .mx-option-chain .mx-strike, .mx-decision-watching,
+    .mx-chart-tooltip__primary dd > span, .mx-document-feed a, .mx-job-name > strong, .mx-inline-control[aria-pressed="true"],
+    .mx-highlight-subject, .mx-rating-distribution strong, .mx-target-summary b, .mx-target-values .mx-target-primary,
+    .mx-disclosure > summary, .mx-detail-value, .mx-price-levels strong) {
+    font-weight: 600;
+  }
+  .mx-nav-link[aria-current],
+  .mx-brand-max {
+    font-weight: 600;
+  }
+  .mx-page .mx-facts dd {
+    font-size: var(--mx-text-body);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  /* Figures: the lead 40, page figures 28, metrics 20. The technical score keeps its own size: it is the lens's answer. */
+  .mx-page .mx-metric-grid:not(.mx-overview-statistics) {
+    gap: var(--mx-space-items);
+  }
+  .mx-page .mx-metric .mx-number,
+  .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric:not(:first-child) .mx-number,
+  .mx-page .mx-review-bento .mx-metric-lead > .mx-metric:not(:first-child) .mx-number,
+  .mx-page .mx-overview-statistics .mx-number,
+  .mx-page .mx-highlight-value {
+    margin-top: var(--mx-space-tight);
+    font-size: var(--mx-text-metric);
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+  .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric:first-child .mx-number,
+  .mx-page .mx-review-bento .mx-metric-lead > .mx-metric:first-child .mx-number,
+  .mx-page .mx-period-figure strong,
+  .mx-page .mx-security-panel .mx-security-price strong,
+  .mx-page .mx-health-hero h2,
+  .mx-page .mx-detail-value {
+    font-size: var(--mx-text-page);
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.025em;
+  }
+  .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric-large:first-child .mx-number,
+  .mx-page .mx-overview-totals > .mx-metric-large .mx-number {
+    font-size: var(--mx-text-lead);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+  }
+  .mx-page .mx-metric-note {
+    margin-top: var(--mx-space-tight);
+  }
+  .mx-page .mx-metric-label {
+    gap: var(--mx-space-tight);
+  }
+  /* Tables and lists: body text in cells, labels in headers. */
+  .mx-page :is(.mx-table, .mx-financial-table) :is(td, tbody th) {
+    font-size: var(--mx-text-body);
+    font-weight: 400;
+    line-height: 1.5;
+  }
+  .mx-page :is(.mx-table, .mx-financial-table) thead th {
+    font-size: var(--mx-text-label);
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .mx-page .mx-table :is(th, td) small {
+    font-size: var(--mx-text-label);
+    line-height: 1.5;
+  }
+  .mx-page :is(.mx-desktop-holdings, .mx-return-table) .mx-table td,
+  .mx-page .mx-decision-table .mx-table td {
+    padding-block: var(--mx-space-items);
+  }
+  .mx-page .mx-row-link {
+    gap: var(--mx-space-group) var(--mx-space-items);
+  }
+  /* Overview */
+  .mx-page .mx-overview-split > .mx-panel,
+  .mx-page .mx-summary {
+    padding: var(--mx-space-panel);
+  }
+  .mx-page .mx-summary-top {
+    margin-bottom: var(--mx-space-heading);
+  }
+  .mx-page .mx-overview-totals {
+    gap: var(--mx-space-items);
+  }
+  /* The statistics take two columns; today spans both under a hairline. */
+  .mx-page .mx-overview-statistics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--mx-space-group) var(--mx-space-items);
+    padding: 0;
+    border: 0;
+  }
+  .mx-page .mx-overview-statistics .mx-day-drivers {
+    margin: var(--mx-space-tight) 0 0;
+    font-size: var(--mx-text-body);
+  }
+  .mx-page .mx-attention {
+    margin-top: var(--mx-space-group);
+  }
+  .mx-page .mx-period-figure {
+    gap: var(--mx-space-tight) var(--mx-space-group);
+    margin: 0 0 var(--mx-space-group);
+  }
+  .mx-page .mx-day-drivers {
+    gap: var(--mx-space-tight) var(--mx-space-items);
+    margin-block: 0 var(--mx-space-group);
+  }
+  .mx-page .mx-overview-split .mx-panel-heading {
+    gap: var(--mx-space-group) var(--mx-space-items);
+  }
+  /* Research: the identity sits on the page. */
+  .mx-page .mx-research-content {
+    gap: var(--mx-space-section);
+  }
+  .mx-research-content > .mx-security-panel,
+  .mx-research-content > .mx-tabs {
+    margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
+  }
+  .mx-page .mx-security-panel {
+    border-color: transparent;
+    background: transparent;
+  }
+  .mx-page .mx-security-header {
+    gap: var(--mx-space-items);
+  }
+  .mx-page .mx-security-name h2 {
+    font-size: var(--mx-text-figure);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .mx-page .mx-security-meta {
+    margin-top: var(--mx-space-tight);
+    gap: var(--mx-space-tight) var(--mx-space-group);
+  }
+  /* Review */
+  .mx-page .mx-review-evidence {
+    gap: var(--mx-space-section);
+  }
+  .mx-page .mx-review-evidence > .mx-tabs {
+    margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
+  }
+  .mx-page .mx-review-freshness {
+    margin-top: var(--mx-space-group);
+  }
+  .mx-page .mx-review-highlights {
+    column-gap: var(--mx-space-items);
+  }
+  .mx-page .mx-review-highlight {
+    row-gap: var(--mx-space-tight);
+  }
+  .mx-page .mx-panel-heading.mx-decision-tools {
+    gap: var(--mx-space-group);
+  }
+  .mx-page .mx-decision-table .mx-metric-grid {
+    margin-bottom: var(--mx-space-heading);
+  }
+  /* Holdings: the summary sits on the page; each panel's tools sit 12px above what they control. */
+  .mx-page .mx-holdings-summary > .mx-toolbar,
+  .mx-page .mx-holdings-list > .mx-toolbar {
+    margin-bottom: var(--mx-space-heading);
+  }
+  .mx-page .mx-holdings-summary {
+    border-color: transparent;
+    background: transparent;
+  }
+  .mx-page .mx-exposure-basis {
+    margin-block: calc(-1 * var(--mx-space-tight));
+  }
+  /* Data status and settings: connections are hairline-separated rows. */
+  .mx-page .mx-health-hero {
+    padding: var(--mx-space-panel);
+    gap: var(--mx-space-items);
+  }
+  .mx-page .mx-connection-grid {
+    gap: 0 var(--mx-space-items);
+  }
+  .mx-page .mx-connection-card {
+    padding: var(--mx-space-items) 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    gap: var(--mx-space-group);
+  }
+  .mx-page .mx-setting-row {
+    gap: var(--mx-space-items);
+    padding-block: var(--mx-space-items);
+  }
+  .mx-page .mx-setting-row:first-child {
+    padding-block-start: 0;
+  }
+  .mx-page .mx-setting-row p {
+    margin-block: var(--mx-space-tight);
+  }
+  .mx-page .mx-connection-card > .mantine-Button-root {
+    margin-top: var(--mx-space-tight);
+  }
+  .mx-page .mx-health-hero :is(h2, p) + .mx-freshness {
+    margin-top: var(--mx-space-tight);
+  }
+  /* Phone layout: the account select and freshness share a row; on the narrowest screens the freshness moves below. */
+  .mx-page :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--mx-space-group);
+  }
+  .mx-page :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mantine-Select-root {
+    flex: 0 1 156px;
+  }
+  /* English names the account in full, so its select keeps 200px and the freshness moves below it. */
+  .mx-page:lang(en) :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mantine-Select-root {
+    flex-basis: 200px;
+  }
+  .mx-page :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mx-freshness {
+    justify-content: flex-end;
+  }
+  .mx-page .mx-overview-statistics > .mx-metric {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .mx-page .mx-overview-statistics > .mx-metric:last-child {
+    grid-column: 1 / -1;
+    padding-top: var(--mx-space-group);
+    border-top: 1px solid var(--mx-border);
+  }
+  .mx-page .mx-overview-statistics > .mx-metric:last-child .mx-metric-note {
+    margin: var(--mx-space-tight) 0 0;
+  }
+  /* The history title and its span share a row; the periods span the panel below them and still wrap by its width. */
+  .mx-page .mx-overview-history .mx-panel-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--mx-space-group);
+    container: mx-period / inline-size;
+  }
+  .mx-page .mx-overview-history .mx-period-control {
+    display: contents;
+    container: none;
+  }
+  .mx-page .mx-overview-history .mx-period-control > .mx-segments {
+    grid-column: 1 / -1;
+    width: calc(100% + 2 * var(--mx-space-panel));
+    margin-inline: calc(-1 * var(--mx-space-panel));
+  }
+  .mx-page .mx-overview-history .mx-period-span {
+    grid-column: 2;
+  }
+  .mx-page .mx-overview-history .mx-period-figure {
+    column-gap: 6px;
+  }
+  .mx-page .mx-overview-history .mx-period-figure .mx-text-link {
+    padding-inline: 0;
+  }
+  .mx-page .mx-overview-history .mx-period-figure strong {
+    font-size: var(--mx-text-figure);
+  }
+  .mx-page .mx-overview-split > .mx-panel + .mx-panel {
+    padding-top: var(--mx-space-section);
+  }
+  /* Holdings summary: the invested value leads two smaller figures on one line while they fit; a figure that does not
+     fit moves to the next line instead of running into its neighbour. */
+  .mx-page .mx-holdings-summary > .mx-metric-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mx-space-group);
+  }
+  .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric {
+    flex: 1 1 0;
+  }
+  .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric:first-child {
+    flex-grow: 1.3;
+  }
+  .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric:first-child .mx-number {
+    font-size: var(--mx-text-figure);
+  }
+  .mx-page .mx-holding-mobile {
+    padding-block: var(--mx-space-items);
+  }
+  .mx-page .mx-holding-mobile footer {
+    margin-top: var(--mx-space-group);
+    gap: var(--mx-space-tight) var(--mx-space-group);
+  }
+  .mx-page .mx-security-panel .mx-security-price {
+    margin-top: var(--mx-space-group);
+    column-gap: var(--mx-space-group);
+  }
+  .mx-page .mx-review-highlights {
+    margin-block: calc(-1 * var(--mx-space-tight));
+  }
+  .mx-page .mx-review-highlights > .mx-review-highlight {
+    gap: var(--mx-space-tight) var(--mx-space-group);
+    padding-block: var(--mx-space-tight);
+  }
+  .mx-page .mx-review-highlight .mx-highlight-value {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-page .mx-decision-review > .mx-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--mx-space-group) var(--mx-space-items);
+  }
+  .mx-page .mx-decision-review > .mx-metric-grid > .mx-metric {
+    min-width: 0;
+  }
+  /* The account review and data status headings keep their control beside the title. */
+  .mx-account-review-page > .mx-page-heading,
+  .mx-health-page > .mx-page-heading {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .mx-account-review-page > .mx-page-heading .mx-page-actions > .mantine-Select-root {
+    max-width: 128px;
+  }
+  .mx-page .mx-connection-card + .mx-connection-card {
+    border-top: 1px solid var(--mx-border);
+  }
+  /* Phones use three weights: 400 text, 500 labels, 600 titles and figures. The role rules above set the rest. */
+  .mx-eyebrow,
+  .mx-number,
+  .mx-monogram,
+  .mx-instrument strong,
+  .mx-timeline-entry h3,
+  .mx-security-price strong,
+  .mx-chart-tooltip__primary dd > span,
+  .mx-command-result mark {
+    font-weight: 600;
+  }
+  .mx-command-group,
+  .mantine-InputWrapper-label {
+    font-weight: 500;
+  }
+  /* Headings and table headers that only carry the browser's bold; any authored weight still wins. */
+  :where(h1, h2, h3, h4, h5, h6, b, strong) {
+    font-weight: 600;
+  }
+  :where(th) {
+    font-weight: 500;
+  }
+}
