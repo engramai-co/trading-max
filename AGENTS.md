@@ -111,7 +111,9 @@ break any existing feature.
 
 - Keep runtime state, credentials, logs, broker exports, snapshots, generated
   research, and cached logos outside Git.
-- Use synthetic fixtures in tests.
+- Use synthetic fixtures in tests. Keep synthetic credentials low-entropy
+  (`synthetic-secret`): CI runs gitleaks over every commit in a pull request,
+  and random-looking values such as `synthetic-secret-7f3a` fail it.
 - Preserve the typed snapshot boundary and the independent research-lens API.
 - Remote WebView pages receive no native commands, filesystem or credential access.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
