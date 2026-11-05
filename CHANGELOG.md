@@ -4,6 +4,43 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.26.0] - 2026-11-05
+
+### Changed
+
+- A recent decision on the review index opens the account review on that
+  decision. It leads the decisions panel with its effect (or 观察中 and the
+  trading days so far), opens on 至今 while its 20-day window is incomplete,
+  is ringed on the timeline, takes focus once on arrival and clears with one
+  button. A link that no longer matches, or matches two securities, opens the
+  normal review.
+- The account review keeps its angle in the address (`reviewView`), so a
+  refresh, Back or a shared link reopens it, and each decision keeps its own
+  horizon.
+- Decision counts describe outcomes in the words their effect takes:
+  "赚 170 / 325 次" for buys and "少亏 120 / 251 次" for sales. The hindsight
+  panel reads 与持有期最高收盘对照. The decisions help is three short
+  paragraphs, and the panel title that repeated the selected tab is kept for
+  screen readers only.
+- Phones: the account review compacts its summary and highlights so the angles
+  and their first figures fit the first screen. Look-through leads with
+  companies: search sits beside one 筛选 control for country, sector and
+  ownership (with a count), and sort beside the view switch ("Rank | Mix" in
+  English).
+- Settings: one Alpaca 增强 switch replaces the status tag and its button, and
+  Alpaca writes run one at a time. The CFD import drops its repeated heading
+  and names its file control in every state. A failed reload keeps the page and
+  offers 重试.
+- Research 财务与业务 drops the period title beside the period picker and the
+  second currency label.
+
+### Fixed
+
+- The phone look-through pagers above and below the list have distinct names
+  for assistive technology.
+- The Alpaca switch and 清除筛选 have 44px touch targets, and saving is
+  announced.
+
 ## [1.25.0] - 2026-11-04
 
 ### Changed

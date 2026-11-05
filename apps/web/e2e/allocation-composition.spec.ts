@@ -25,7 +25,8 @@ test.describe("allocation composition", () => {
     } }));
     await page.goto("/holdings?view=lookthrough");
     await page.getByRole("tab", { name: "Countries", exact: true }).click();
-    await page.getByRole("group", { name: "Allocation chart" }).getByRole("button", { name: "Composition", exact: true }).click();
+    // Phones label the same choice "Mix".
+    await page.getByRole("group", { name: "Allocation chart" }).getByRole("button", { name: /^(Composition|Mix)$/ }).click();
   });
 
   test("clicking or tapping a slice fixes accurate details, including small and grouped categories", async ({ page, isMobile }) => {
@@ -97,7 +98,7 @@ test.describe("company composition", () => {
       },
     } }));
     await page.goto("/holdings?view=lookthrough");
-    await page.getByRole("group", { name: "Company view", exact: true }).getByRole("button", { name: "Composition", exact: true }).click();
+    await page.getByRole("group", { name: "Company view", exact: true }).getByRole("button", { name: /^(Composition|Mix)$/ }).click();
   }
 
   test("includes direct and fund exposure, the full tail and a separate uncovered slice", async ({ page, isMobile }) => {
@@ -147,11 +148,12 @@ test.describe("company composition", () => {
     }
   });
 
-  test("keeps the complete paginated company table and leaves portfolio weights unchanged when filtering", async ({ page }) => {
+  test("keeps the complete paginated company table and leaves portfolio weights unchanged when filtering", async ({ page, isMobile }) => {
     await openCompanies(page, longTail);
     const details = page.getByRole("region", { name: "Selected category details" });
     const search = page.getByRole("textbox", { name: "Search underlying assets", exact: true });
-    const pages = page.getByLabel("Underlying asset pages", { exact: true });
+    // Phones page above and below the list, and each pager names its place.
+    const pages = page.getByLabel(isMobile ? "Underlying asset pages, below the list" : "Underlying asset pages", { exact: true });
     await expect(pages).toBeVisible();
     await expect(page.getByRole("button", { name: /Synthetic Company 140\b/ })).toHaveCount(0);
     // Showing all lifts paging over the same rows; paging returns on request.

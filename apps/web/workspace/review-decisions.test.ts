@@ -1,13 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
   contextFit,
+  decisionAction,
   decisionContext,
+  decisionKeys,
+  decisionParam,
+  decisionTooltip,
   effectTone,
   eventLabel,
+  favourableCount,
+  horizonScope,
   latestDecisions,
+  linkedDecision,
   notableDecisions,
   observing,
+  openingHorizon,
+  parseDecisionParam,
+  pendingOutcome,
   roundTripVerdict,
+  sameDecision,
   sideVerdict,
   signedMoney,
   verdictWord,
@@ -199,6 +210,194 @@ describe("the context line under a decision", () => {
 
   it("has nothing to show for an empty line", () => {
     expect(contextFit([], 300, 10, 30).shown).toBe(0);
+  });
+});
+
+describe("the decision a link opens", () => {
+  it("names a decision by day, side and ticker, keeping every dot of the ticker", () => {
+    const sale = { date: "2026-10-14", side: "sell" as const, ticker: "SEMI.AS" };
+    expect(decisionParam(sale)).toBe("2026-10-14.sell.SEMI.AS");
+    expect(parseDecisionParam("2026-10-14.sell.SEMI.AS")).toEqual(sale);
+    for (const ticker of ["MU", "BRK.B", "RDS.A.L", "BRK-B", "^GSPC", "EURUSD=X", "AAPL_US_EQ"]) {
+      const buy = { date: "2025-01-31", side: "buy" as const, ticker };
+      expect(parseDecisionParam(decisionParam(buy))).toEqual(buy);
+    }
+  });
+
+  it("comes back unchanged through a link's query string", () => {
+    const buy = { date: "2026-11-03", side: "buy" as const, ticker: "EURUSD=X" };
+    const href = "/account-analysis?" + new URLSearchParams({ account: "B", reviewView: "decisions", decision: decisionParam(buy) });
+    expect(href).toContain("decision=2026-11-03.buy.EURUSD%3DX");
+    expect(parseDecisionParam(new URL(href, "https://example.test").searchParams.get("decision"))).toEqual(buy);
+  });
+
+  it("reads nothing from a value that is not a real day, a side and a ticker", () => {
+    for (const value of [
+      null,
+      undefined,
+      "",
+      "   ",
+      "garbage",
+      "2026-10-14",
+      "2026-10-14.buy",
+      "2026-10-14.buy.",
+      "2026-10-14..SEMI.AS",
+      "2026-10-14.hold.SEMI.AS",
+      "2026-10-14.BUY.MU",
+      "2026-10-14.B.MU",
+      "14-10-2026.buy.MU",
+      "2026-1-14.buy.MU",
+      "2026-13-01.buy.MU",
+      "2026-02-30.buy.MU",
+      "2026-10-14.buy. MU",
+      "2026-10-14.buy.MU\nNVDA",
+      "2026-10-14.buy." + "X".repeat(65),
+      "SEMI.AS.sell.2026-10-14",
+    ]) {
+      expect(parseDecisionParam(value)).toBeNull();
+    }
+    // Space around the whole value, as from a pasted link, is not part of it.
+    expect(parseDecisionParam(" 2024-02-29.sell.MU ")).toEqual({ date: "2024-02-29", side: "sell", ticker: "MU" });
+  });
+
+  it("opens a decision only when exactly one fits the link", () => {
+    const ref = { date: "2026-06-01", side: "sell" as const, ticker: "ABC" };
+    const holdings = { ...row("sell", "ABC", 10, 20), name: "ABC Holdings" };
+    const mining = { ...row("sell", "ABC", -5, 3), name: "ABC Mining" };
+    expect(linkedDecision([holdings, row("buy", "ABC", 1, 1)], ref)).toBe(holdings);
+    // Two securities share the ticker: the link could mean either, so it opens neither.
+    expect(linkedDecision([holdings, mining], ref)).toBeUndefined();
+    expect(linkedDecision([], ref)).toBeUndefined();
+    expect(linkedDecision(undefined, ref)).toBeUndefined();
+    expect(linkedDecision([holdings], null)).toBeUndefined();
+  });
+
+  it("matches only the same day, side and ticker", () => {
+    const decision = row("sell", "SEMI.AS", 10, 20);
+    expect(sameDecision(decision, { date: "2026-06-01", side: "sell", ticker: "SEMI.AS" })).toBe(true);
+    expect(sameDecision(decision, { date: "2026-06-01", side: "buy", ticker: "SEMI.AS" })).toBe(false);
+    expect(sameDecision(decision, { date: "2026-06-02", side: "sell", ticker: "SEMI.AS" })).toBe(false);
+    expect(sameDecision(decision, { date: "2026-06-01", side: "sell", ticker: "SEMI" })).toBe(false);
+  });
+});
+
+describe("a decision without an outcome yet", () => {
+  const zh = (chinese: string) => chinese;
+  const en = (_zh: string, english: string) => english;
+
+  it("says it is observing until a close follows it, never £0", () => {
+    const today = { ...row("buy", "AAPL", null, 0), observedDays: 0, horizonComplete: false };
+    expect(pendingOutcome(today, "date", 20, zh, "zh")).toBe("观察中");
+    expect(pendingOutcome(today, "horizon", 20, en, "en")).toBe("Observing");
+  });
+
+  it("counts the trading days that have passed until its window completes", () => {
+    const young = { ...row("sell", "MU", null, 12), observedDays: 5, horizonComplete: false };
+    expect(pendingOutcome(young, "horizon", 20, zh, "zh")).toBe("5 / 20 个交易日");
+    expect(pendingOutcome(young, "horizon", 20, en, "en")).toBe("5 of 20 trading days");
+    // To date it already has an outcome.
+    expect(pendingOutcome(young, "date", 20, zh, "zh")).toBeNull();
+  });
+
+  it("has nothing to add once the window has an outcome, even one of £0", () => {
+    const flat = { ...row("buy", "FLAT", 0, 0), observedDays: 25, horizonComplete: true };
+    expect(pendingOutcome(flat, "horizon", 20, zh, "zh")).toBeNull();
+    expect(pendingOutcome(flat, "date", 20, zh, "zh")).toBeNull();
+  });
+
+  it("says the data is pending once the closes are there but the result is not", () => {
+    // A late exchange rate: 21 closes, yet the 20-day result is not out.
+    const late = { ...row("buy", "LATE", null, 30), observedDays: 21, horizonComplete: false };
+    expect(pendingOutcome(late, "horizon", 20, zh, "zh")).toBe("等待数据");
+    expect(pendingOutcome(late, "horizon", 20, en, "en")).toBe("Awaiting data");
+    const unpublished = { ...row("sell", "GAP", null, 8), observedDays: 25, horizonComplete: true };
+    expect(pendingOutcome(unpublished, "horizon", 20, zh, "zh")).toBe("等待数据");
+    // To date, a missing result is pending whatever the count.
+    const today = { ...row("buy", "TODAY", null, 0), effectToDateGbp: null, observedDays: 3, horizonComplete: false };
+    expect(pendingOutcome(today, "date", 20, zh, "zh")).toBe("等待数据");
+    expect(pendingOutcome(today, "horizon", 20, zh, "zh")).toBe("3 / 20 个交易日");
+  });
+
+  it("reads the same on the decision's row and on its timeline point", () => {
+    const young = { ...row("sell", "MU", null, 12), observedDays: 5, horizonComplete: false };
+    const late = { ...row("buy", "LATE", null, 30), observedDays: 21, horizonComplete: false };
+    for (const [decision, expected] of [[young, "5 / 20 个交易日"], [late, "等待数据"]] as const) {
+      const outcome = decisionTooltip(decision, "horizon", 20, zh, "zh").split("\n")[2];
+      expect(outcome).toBe(expected);
+      expect(outcome).toBe(pendingOutcome(decision, "horizon", 20, zh, "zh"));
+    }
+    expect(decisionTooltip(late, "horizon", 20, en, "en")).not.toContain("21 of 20");
+    expect(decisionTooltip(late, "date", 20, en, "en").split("\n")[2]).toBe("Then +3.0% · +£30");
+  });
+});
+
+describe("what a decision did, in a list of both sides", () => {
+  const zh = (chinese: string) => chinese;
+  const en = (_zh: string, english: string) => english;
+
+  it("names the side, and for a T day the side of the shares beyond its round trip", () => {
+    expect(decisionAction({ kind: "B", side: "buy" }, zh)).toBe("买入 ");
+    expect(decisionAction({ kind: "S", side: "sell" }, en)).toBe("Sold ");
+    expect(decisionAction({ kind: "T", side: "buy" }, zh)).toBe("做 T 后净买入 ");
+    expect(decisionAction({ kind: "T", side: "sell" }, en)).toBe("Net sold after a T ");
+  });
+});
+
+describe("the horizon a review opens on", () => {
+  it("opens a decision inside its first trading days to date, and anything else at its horizon", () => {
+    const young = { ...row("sell", "MU", null, 12), observedDays: 5, horizonComplete: false };
+    const settled = { ...row("buy", "NVDA", 40, 60), observedDays: 30, horizonComplete: true };
+    expect(openingHorizon(young)).toBe("date");
+    expect(openingHorizon(settled)).toBe("horizon");
+    expect(openingHorizon(undefined)).toBe("horizon");
+  });
+});
+
+describe("where a horizon choice is kept", () => {
+  it("keeps one entry per account and decision, and one for each account's review without one", () => {
+    const sale = { date: "2026-10-14", side: "sell" as const, ticker: "SEMI.AS" };
+    expect(horizonScope("A", sale)).toBe(horizonScope("A", { ...sale }));
+    expect(horizonScope("A", sale)).not.toBe(horizonScope("B", sale));
+    expect(horizonScope("A")).not.toBe(horizonScope("A", sale));
+    expect(horizonScope("A")).not.toBe(horizonScope("B"));
+  });
+});
+
+describe("how many decisions came out favourable", () => {
+  it("counts in the words the effect takes, as the help defines them", () => {
+    expect(favourableCount("buy", 170, 325, "zh")).toBe("赚 170 / 325 次");
+    expect(favourableCount("buy", 170, 325, "en")).toBe("Gained after 170 of 325 buys");
+    expect(favourableCount("sell", 120, 251, "zh")).toBe("少亏 120 / 251 次");
+    expect(favourableCount("sell", 120, 251, "en")).toBe("Avoided losses after 120 of 251 sells");
+  });
+
+  it("counts the effect, dividends included, so a flat close that paid out is a gain and not a rise", () => {
+    const paid = { ...row("buy", "DIV", 4, 4), returnHorizon: 0, returnToDate: 0, dividendHorizonGbp: 4, dividendToDateGbp: 4 };
+    expect(sideVerdict([paid], "buy", "horizon")).toMatchObject({ evaluated: 1, favourable: 1 });
+  });
+});
+
+describe("keys for a list of decisions", () => {
+  it("keys a lone decision by its day, side and ticker, so a name correction keeps its row", () => {
+    const mu = { ...row("buy", "MU", 1, 2), name: "Micron" };
+    const corrected = { ...mu, name: "Micron Technology" };
+    expect(decisionKeys([mu])).toEqual(decisionKeys([corrected]));
+    // Nor do other rows, added or reordered by a refetch, change it.
+    expect(decisionKeys([row("sell", "NVDA", 3, 4), corrected])[1]).toBe(decisionKeys([mu])[0]);
+  });
+
+  it("tells twins apart by security, and exact repeats by their order", () => {
+    const delta = { ...row("sell", "SYND.AS", 10, 20), name: "Synthetic Delta" };
+    const twin = { ...delta, name: "Synthetic Delta Holdings" };
+    const keys = decisionKeys([delta, twin, delta, row("buy", "MU", 1, 2)]);
+    expect(new Set(keys).size).toBe(4);
+    expect(decisionKeys([delta, twin])).toEqual(keys.slice(0, 2));
+  });
+
+  it("keeps the same decision in two accounts apart", () => {
+    const invest = { ...row("buy", "MU", 1, 2), account: "A" };
+    const isa = { ...invest, account: "B" };
+    expect(new Set(decisionKeys([invest, isa])).size).toBe(2);
   });
 });
 

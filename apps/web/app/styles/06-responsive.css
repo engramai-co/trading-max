@@ -372,6 +372,12 @@
   .mx-tabs .mx-tab-short {
     display: inline;
   }
+  .mx-segments .mx-segment-long {
+    display: none;
+  }
+  .mx-segments .mx-segment-short {
+    display: inline;
+  }
   .mx-desktop-holdings {
     display: none;
   }

@@ -51,8 +51,8 @@ import { OpenAIOAuthConnection } from "./settings-oauth";
 import { ReconstructionMarketData } from "./settings-market-data";
 
 import { LocalOnboarding } from "./local-onboarding";
+import { settingsKey } from "./settings-query";
 
-const settingsKey = ["workspace-settings"];
 type Connection =
   | {
       kind: "broker";
@@ -135,9 +135,19 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
               )}
         </Notice>
       )}
+      {query.isError && data && (
+        // A failed reload keeps the loaded page; one notice says so for every panel and offers the retry.
+        <Notice tone="bad">
+          {t("设置未能重新载入。", "Settings could not be reloaded.")}{" "}
+          <button type="button" className="mx-text-link mx-reload-retry" onClick={() => void query.refetch()}>
+            {t("重试", "Retry")}
+          </button>
+        </Notice>
+      )}
       {query.isPending ? (
         <Pending />
-      ) : query.isError || !data ? (
+      ) : !data ? (
+        // A failed refresh keeps the loaded settings, with any focused control or chosen file, in place.
         <QueryError retry={query.refetch} />
       ) : (
         <>
@@ -196,7 +206,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                   </Button>
                 </div>
               </Panel>
-              <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} onSaved={() => { void client.invalidateQueries({ queryKey: settingsKey }); }} />
+              <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} />
               {!desktop && <CfdImports />}
               </>}
             </>

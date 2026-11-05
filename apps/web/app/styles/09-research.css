@@ -653,6 +653,12 @@
 .mx-metric-grid-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+/* The period summary under the period picker: its heading row keeps only the currency, at the right on every width. */
+.mx-period-summary > .mx-panel-heading {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
 @media (max-width: 767px) {
   .mx-document-feed article {
     grid-template-columns: 1fr;

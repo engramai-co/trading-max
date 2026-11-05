@@ -9,10 +9,10 @@ import {
   Stack,
   TextInput,
 } from "@mantine/core";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { useMediaQuery } from "@mantine/hooks";
 import Link from "./link";
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
@@ -45,18 +45,20 @@ const COVERAGE_FLOOR = 0.98;
 
 /** Pages of underlying assets; a narrow row shows « ‹ 2 / 44 › » in place of page numbers. */
 function ExposurePager({
+  label,
   total,
   value,
   onChange,
 }: {
+  /** Phones show a pager above and below the list, so each names its place. */
+  label: string;
   total: number;
   value: number;
   onChange: (value: number) => void;
 }) {
-  const t = useCopy();
   const paginationLabels = usePaginationLabels();
   return (
-    <nav aria-label={t("底层资产分页", "Underlying asset pages")}>
+    <nav aria-label={label}>
       <Pagination
         total={total}
         value={value}
@@ -67,6 +69,108 @@ function ExposurePager({
         getControlProps={paginationLabels}
       />
     </nav>
+  );
+}
+
+/**
+ * The company list's controls. Desktop keeps every filter inline. Phones keep search with 筛选 on one row and
+ * sort with the view switch on the next; country, sector and ownership open under 筛选, which counts those set.
+ */
+function CompanyToolbar({
+  phone,
+  search,
+  filters,
+  sort,
+  view,
+  active,
+  filtered,
+  count,
+  onClear,
+}: {
+  phone: boolean;
+  search: ReactNode;
+  filters: ReactNode;
+  sort: ReactNode;
+  view: ReactNode;
+  /** How many of country, sector and ownership are set. */
+  active: number;
+  /** A search or a filter is set, so the result count and 清除筛选 apply. */
+  filtered: boolean;
+  count: string;
+  onClear: () => void;
+}) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const panel = useId();
+  // Desktop: filters on the left, the view switch on the right, one row.
+  if (!phone)
+    return (
+      <div className="mx-toolbar" style={{ margin: "20px 0" }}>
+        <Group gap="sm" wrap="wrap" className="mx-exposure-filters">
+          {search}
+          {filters}
+          {sort}
+          {filtered && (
+            <>
+              <Button variant="subtle" onClick={onClear}>
+                {t("清除筛选", "Clear filters")}
+              </Button>
+              <span role="status">{count}</span>
+            </>
+          )}
+        </Group>
+        {view}
+      </div>
+    );
+  return (
+    <div className="mx-exposure-toolbar">
+      <div className="mx-exposure-row">
+        {search}
+        <Button
+          ref={toggle}
+          variant="default"
+          className="mx-exposure-filter-toggle"
+          leftSection={<FunnelSimple size={16} />}
+          aria-expanded={open}
+          aria-controls={panel}
+          onClick={() => setOpen(!open)}
+        >
+          {t("筛选", "Filters")}
+          {active > 0 && (
+            <>
+              <span className="mx-exposure-filter-count" aria-hidden="true">{active}</span>
+              <span className="sr-only">{locale === "zh" ? `（已选 ${active} 项）` : `(${active} active)`}</span>
+            </>
+          )}
+        </Button>
+      </div>
+      <div id={panel} className="mx-exposure-filter-panel" hidden={!open}>
+        {filters}
+      </div>
+      <div className="mx-exposure-row">
+        {sort}
+        {view}
+      </div>
+      {/* Mounted while empty, so the first count after a change is announced as well. */}
+      <div className="mx-exposure-result" data-filtered={filtered || undefined}>
+        <span role="status">{filtered ? count : null}</span>
+        {filtered && (
+          <Button
+            variant="subtle"
+            onClick={(event) => {
+              // The button leaves with the filters; keyboard focus returns to 筛选 rather than the page.
+              const focused = event.currentTarget === document.activeElement;
+              onClear();
+              if (focused) toggle.current?.focus();
+            }}
+          >
+            {t("清除筛选", "Clear filters")}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -132,6 +236,7 @@ function Exposure({
     ).values(),
   ].sort(byLabel);
   const filtered = Boolean(search.trim()) || country !== "all" || sector !== "all" || ownership !== "all";
+  const activeFilters = [country, sector, ownership].filter((value) => value !== "all").length;
   const rows = data.positions
     .filter(
       (p) =>
@@ -281,9 +386,9 @@ function Exposure({
         <h2 className="sr-only">{dimensions.find((d) => d.value === view)?.label}</h2>
         {view === "companies" ? (
           <>
-            {/* Filters on the left, the view switch on the right, one row. */}
-            <div className="mx-toolbar" style={{ margin: "20px 0" }}>
-              <Group gap="sm" wrap="wrap" className="mx-exposure-filters">
+            <CompanyToolbar
+              phone={phone}
+              search={
                 <TextInput
                   className="mx-search-input"
                   value={search}
@@ -298,52 +403,58 @@ function Exposure({
                   )}
                   leftSection={<MagnifyingGlass size={17} />}
                 />
-                <Select
-                  aria-label={t("国家筛选", "Filter country")}
-                  value={country}
-                  onChange={(v) => {
-                    setCountry(v ?? "all");
-                    setPage(1);
-                  }}
-                  data={[
-                    { value: "all", label: t("全部国家", "All countries") },
-                    ...countries,
-                  ]}
-                  searchable
-                />
-                <Select
-                  aria-label={t("行业筛选", "Filter sector")}
-                  value={sector}
-                  onChange={(v) => {
-                    setSector(v ?? "all");
-                    setPage(1);
-                  }}
-                  data={[
-                    { value: "all", label: t("全部行业", "All sectors") },
-                    ...sectors,
-                  ]}
-                  searchable
-                />
-                <Select
-                  aria-label={t("持有方式", "Ownership")}
-                  value={ownership}
-                  onChange={(v) => {
-                    setOwnership(v ?? "all");
-                    setPage(1);
-                  }}
-                  data={[
-                    { value: "all", label: t("全部持有方式", "All ownership") },
-                    { value: "direct", label: t("仅直接持有", "Direct only") },
-                    {
-                      value: "indirect",
-                      label: t("仅基金内持有", "Funds only"),
-                    },
-                    {
-                      value: "both",
-                      label: t("直接与基金内都有", "Direct and funds"),
-                    },
-                  ]}
-                />
+              }
+              filters={
+                <>
+                  <Select
+                    aria-label={t("国家筛选", "Filter country")}
+                    value={country}
+                    onChange={(v) => {
+                      setCountry(v ?? "all");
+                      setPage(1);
+                    }}
+                    data={[
+                      { value: "all", label: t("全部国家", "All countries") },
+                      ...countries,
+                    ]}
+                    searchable
+                  />
+                  <Select
+                    aria-label={t("行业筛选", "Filter sector")}
+                    value={sector}
+                    onChange={(v) => {
+                      setSector(v ?? "all");
+                      setPage(1);
+                    }}
+                    data={[
+                      { value: "all", label: t("全部行业", "All sectors") },
+                      ...sectors,
+                    ]}
+                    searchable
+                  />
+                  <Select
+                    aria-label={t("持有方式", "Ownership")}
+                    value={ownership}
+                    onChange={(v) => {
+                      setOwnership(v ?? "all");
+                      setPage(1);
+                    }}
+                    data={[
+                      { value: "all", label: t("全部持有方式", "All ownership") },
+                      { value: "direct", label: t("仅直接持有", "Direct only") },
+                      {
+                        value: "indirect",
+                        label: t("仅基金内持有", "Funds only"),
+                      },
+                      {
+                        value: "both",
+                        label: t("直接与基金内都有", "Direct and funds"),
+                      },
+                    ]}
+                  />
+                </>
+              }
+              sort={
                 <Select
                   aria-label={t("敞口排序", "Sort exposure")}
                   value={sort}
@@ -364,27 +475,24 @@ function Exposure({
                     { value: "name", label: t("名称 A–Z", "Name A–Z") },
                   ]}
                 />
-                {filtered && (
-                  <>
-                    <Button variant="subtle" onClick={clearFilters}>
-                      {t("清除筛选", "Clear filters")}
-                    </Button>
-                    <span role="status">
-                      {number(rows.length, 0)} / {number(data.positions.length, 0)}
-                    </span>
-                  </>
-                )}
-              </Group>
-              <Segments
-                label={t("公司视图", "Company view")}
-                value={chart}
-                onChange={setChart}
-                options={[
-                  { value: "rank", label: t("排名", "Rank") },
-                  { value: "pie", label: t("组成", "Composition") },
-                ]}
-              />
-            </div>
+              }
+              view={
+                <Segments
+                  label={t("公司视图", "Company view")}
+                  value={chart}
+                  onChange={setChart}
+                  options={[
+                    { value: "rank", label: t("排名", "Rank") },
+                    // Phones show "Mix", so sort and the view switch share one row down to 320px.
+                    { value: "pie", label: t("组成", "Composition"), short: t("组成", "Mix") },
+                  ]}
+                />
+              }
+              active={activeFilters}
+              filtered={filtered}
+              count={number(rows.length, 0) + " / " + number(data.positions.length, 0)}
+              onClear={clearFilters}
+            />
             {chart === "pie" && <AllocationComposition
               key={`companies-${snapshot}`}
               companies
@@ -393,7 +501,12 @@ function Exposure({
             />}
             {phone && pages > 1 && (
               <div className="mx-exposure-paging mx-exposure-paging-top" ref={listTop}>
-                <ExposurePager total={pages} value={currentPage} onChange={setPage} />
+                <ExposurePager
+                  label={t("底层资产分页（列表上方）", "Underlying asset pages, above the list")}
+                  total={pages}
+                  value={currentPage}
+                  onChange={setPage}
+                />
               </div>
             )}
             <div className="mx-mobile-holdings">
@@ -495,6 +608,11 @@ function Exposure({
               <div className="mx-exposure-paging">
                 {pages > 1 && (
                   <ExposurePager
+                    label={
+                      phone
+                        ? t("底层资产分页（列表下方）", "Underlying asset pages, below the list")
+                        : t("底层资产分页", "Underlying asset pages")
+                    }
                     total={pages}
                     value={currentPage}
                     onChange={(value) => {
@@ -608,7 +726,7 @@ function Exposure({
                 onChange={setChart}
                 options={[
                   { value: "rank", label: t("排名", "Rank") },
-                  { value: "pie", label: t("组成", "Composition") },
+                  { value: "pie", label: t("组成", "Composition"), short: t("组成", "Mix") },
                 ]}
               />
             </Group>
