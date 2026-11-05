@@ -750,7 +750,7 @@ export function DecisionReview({
   const title = t("买卖决定", "Buy and sell decisions");
   return (
     <>
-      <Panel>
+      <Panel className="mx-decision-review">
         {/* The selected tab above already names this panel, so its heading is for assistive technology.
             Letting go of a decision returns focus here, to the panel the decision led. */}
         <div ref={toolRow} className="mx-panel-heading mx-decision-tools">

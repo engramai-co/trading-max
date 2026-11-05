@@ -145,8 +145,8 @@ function Positions() {
         <QueryError retry={query.refetch} />
       ) : (
         <>
-          <div className="mx-panel">
-            <div className="mx-toolbar" style={{ marginBottom: 24 }}>
+          <div className="mx-panel mx-holdings-summary">
+            <div className="mx-toolbar">
               <Select
                 aria-label={t("选择账户", "Choose account")}
                 w={190}
@@ -182,8 +182,8 @@ function Positions() {
               />
             </div>
           </div>
-          <Panel>
-            <div className="mx-toolbar" style={{ marginBottom: 22 }}>
+          <Panel className="mx-holdings-list">
+            <div className="mx-toolbar">
               <TextInput
                 className="mx-search-input"
                 aria-label={t("筛选持仓", "Filter positions")}

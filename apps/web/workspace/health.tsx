@@ -216,7 +216,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     <Page
       title={desktop ? t("同步与活动", "Sync & activity") : t("数据状态", "Data status")}
       description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
-      className={desktop ? "mx-activity-page" : ""}
+      className={desktop ? "mx-health-page mx-activity-page" : "mx-health-page"}
       actions={
         <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
           variant="default"
