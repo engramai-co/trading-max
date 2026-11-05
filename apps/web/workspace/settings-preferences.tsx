@@ -252,12 +252,10 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
             </ol>}
             <div className="mx-import-drop">
               <UploadSimple size={26} />
-              <div>
-                <h3>{t("导入活动记录", "Import account activity")}</h3>
-              </div>
               <FileInput
-                label={t("CFD 活动 CSV 文件", "CFD activity CSV file")}
-                placeholder={t("选择 CSV 文件", "Choose CSV file")}
+                // Empty, the button is named by its prompt; once a file is chosen, the name keeps the purpose beside the file.
+                aria-label={file ? t("CFD 活动 CSV 文件：", "CFD activity CSV file: ") + file.name : undefined}
+                placeholder={t("选择 CFD 活动 CSV 文件", "Choose CFD activity CSV file")}
                 accept=".csv,text/csv"
                 value={file}
                 clearable

@@ -70,6 +70,38 @@
 .mx-setting-row .mantine-Switch-root {
   flex-shrink: 0;
 }
+/* A switch that carries its own label spans the row: the label on the left, the switch on the right. */
+.mx-setting-row > .mx-setting-switch {
+  flex: 1;
+  min-width: 0;
+}
+.mx-setting-switch .mantine-Switch-body {
+  align-items: center;
+  justify-content: space-between;
+}
+.mx-setting-switch .mantine-Switch-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+/* The reload notice's retry: cobalt deepened toward the ink to stay legible on the tinted notice in both themes;
+   its tall hit area reaches into the notice's padding instead of growing the line. */
+.mx-notice .mx-reload-retry {
+  color: color-mix(in srgb, var(--mx-brand) 78%, var(--mx-ink));
+  margin-block: -10px;
+}
+@media (pointer: coarse) {
+  .mx-notice .mx-reload-retry {
+    min-height: 44px;
+    margin-block: -12px;
+  }
+}
+/* Touch: the switch's input spans a 44px band of its row; the 20px track and the row's height stay. */
+@media (pointer: coarse) {
+  .mx-setting-switch {
+    padding-block: 12px;
+    margin-block: -12px;
+  }
+}
 .mx-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -111,7 +143,9 @@
   padding: 22px;
   border-radius: 10px;
 }
+/* The icon sits level with the file control beside it. */
 .mx-import-drop > svg {
+  align-self: center;
   color: var(--mx-brand);
 }
 .mx-import-drop > .mantine-InputWrapper-root {

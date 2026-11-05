@@ -293,8 +293,8 @@ is false. Offline compatibility tests use a deterministic fake provider.
 Yahoo Finance-compatible data remains the default market-data path. Optional
 Alpaca keys are configured in **Accounts & data → Reconstruction market data**,
 not in the CLI wizard. Choose **Test connection**, then **Save and enable** to
-activate it. Use **Turn off enhancement** to disable it later. It improves
-supported US historical reconstruction and retains YF
+activate it. Turn off the **Alpaca enhancement** switch to disable it later. It
+improves supported US historical reconstruction and retains YF
 fallback; it does not promise complete overnight data or replace broker
 observations. See [coverage and permissions](../../guides/data-and-metrics.md#optional-alpaca-reconstruction-enhancement).
 

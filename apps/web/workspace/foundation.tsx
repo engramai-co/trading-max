@@ -442,7 +442,8 @@ export function Segments<T extends string>({
 }: {
   value: T;
   onChange: (value: T) => void;
-  options: Array<{ value: T; label: string }>;
+  /** `short` is the phone label, so a switch keeps its row beside other controls; the name follows what shows. */
+  options: Array<{ value: T; label: string; short?: string }>;
   label: string;
   /**
    * ⌥1–⌥9 on Apple devices and Alt+1–9 on Windows pick an option by position; one
@@ -489,7 +490,16 @@ export function Segments<T extends string>({
             aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
             onClick={() => onChange(option.value)}
           >
-            <span className="mx-segment-label">{option.label}</span>
+            <span className="mx-segment-label">
+              {option.short ? (
+                <>
+                  <span className="mx-segment-long">{option.label}</span>
+                  <span className="mx-segment-short">{option.short}</span>
+                </>
+              ) : (
+                option.label
+              )}
+            </span>
           </button>
         );
         // A stable wrapper keeps the buttons mounted once the platform is known.

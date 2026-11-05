@@ -32,16 +32,33 @@
   gap: 22px;
   scroll-margin-top: 20px;
 }
+.mx-review-freshness {
+  margin-top: 22px;
+}
 .mx-review-highlights {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px;
 }
+/* A highlight stacks its title (with the arrow when it opens evidence), its subject and its amount. */
 .mx-review-highlight {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "title go"
+    "subject subject"
+    "value value";
+  align-content: start;
+  justify-items: start;
+  row-gap: 9px;
   min-width: 0;
+}
+/* On wider screens the figure's parts take their places in the card's own grid. */
+.mx-highlight-figure {
+  display: contents;
+}
+.mx-review-highlight > .mx-tag {
+  grid-column: 1 / -1;
 }
 .mx-review-highlight + .mx-review-highlight {
   border-left: 1px solid var(--mx-border);
@@ -61,9 +78,16 @@ button.mx-review-highlight:focus-visible {
   outline-offset: 6px;
   border-radius: 4px;
 }
+.mx-highlight-title {
+  grid-area: title;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--mx-muted);
+}
 .mx-highlight-go {
+  grid-area: go;
+  align-self: center;
   margin-left: 6px;
-  vertical-align: -2px;
   color: var(--mx-muted);
   transition: color 150ms var(--mx-ease), transform 150ms var(--mx-ease);
 }
@@ -82,14 +106,96 @@ button.mx-review-highlight:focus-visible {
   }
 }
 .mx-highlight-subject {
+  grid-area: subject;
   font-size: 13px;
   font-weight: 550;
   overflow-wrap: anywhere;
 }
 .mx-highlight-value {
+  grid-area: value;
   font-size: 24px;
   letter-spacing: -0.6px;
   line-height: 1.4;
+}
+/* The decision panel's tools take its heading row: the help beside the horizon, where a panel keeps its action. */
+/* Letting go of a decision scrolls the row clear of the sticky bar: 56px, or 64px and the safe area on phones. */
+.mx-panel-heading.mx-decision-tools {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  scroll-margin-top: calc(80px + env(safe-area-inset-top));
+}
+/* Phones: a compact summary, then the angles. Each highlight takes one line and still opens its evidence. */
+@media (max-width: 767px) {
+  /* The horizon fills the row after the help, whose glyph lines up with the panel's content edge. */
+  .mx-panel-heading.mx-decision-tools {
+    flex-direction: row;
+  }
+  .mx-decision-tools .mx-info {
+    margin-left: -10px;
+  }
+  .mx-decision-tools > .mx-segments {
+    flex: 1;
+  }
+  .mx-decision-tools > .mx-segments > button {
+    flex: 1;
+  }
+  .mx-review-bento .mx-metric-grid {
+    gap: 14px 18px;
+  }
+  .mx-review-bento .mx-metric-lead > .mx-metric:first-child .mx-number {
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+  .mx-review-bento .mx-metric-grid.mx-metric-lead > .mx-metric:not(:first-child) .mx-number {
+    font-size: 17px;
+    letter-spacing: -0.3px;
+  }
+  .mx-review-bento .mx-number {
+    margin-top: 3px;
+  }
+  .mx-review-freshness {
+    margin-top: 14px;
+  }
+  .mx-review-highlights {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-block: -9px;
+  }
+  /* Outranks the button reset above, so a row that opens evidence keeps its padding too. */
+  .mx-review-highlights > .mx-review-highlight {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: center;
+    justify-content: space-between;
+    gap: 2px 12px;
+    min-height: 44px;
+    padding-block: 9px;
+  }
+  .mx-review-highlight + .mx-review-highlight {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--mx-border);
+  }
+  /* Subject, amount and arrow stay together: beside the title, or under it at the right. */
+  .mx-highlight-figure {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .mx-highlight-subject {
+    text-align: right;
+  }
+  .mx-highlight-value {
+    font-size: 14px;
+    font-weight: 550;
+    letter-spacing: 0;
+  }
+  .mx-highlight-go {
+    margin-left: 0;
+  }
 }
 button.mx-text-link {
   padding: 8px 0;
@@ -111,6 +217,94 @@ button.mx-text-link {
 .mx-exposure-basis .mx-freshness {
   margin-left: auto;
 }
+/* Phones (look-through.tsx below 768px): search with 筛选, then sort with the view switch; the filters open under 筛选. */
+.mx-exposure-toolbar {
+  margin: 20px 0 16px;
+}
+.mx-exposure-toolbar > * + * {
+  margin-top: 10px;
+}
+.mx-exposure-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 8px;
+}
+.mx-exposure-row > .mx-search-input,
+.mx-exposure-row > .mantine-Select-root {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.mx-exposure-row > .mx-exposure-filter-toggle {
+  align-self: stretch;
+  height: auto;
+}
+/* Open, the toggle reads as selected, the same way a chosen settings section does. */
+.mx-exposure-filter-toggle[aria-expanded="true"] {
+  background: var(--mx-brand-soft);
+  color: var(--mx-brand);
+}
+/* A narrow search clips its hint with an ellipsis rather than mid-word. */
+.mx-exposure-toolbar .mantine-Input-input {
+  text-overflow: ellipsis;
+}
+/* Touch: each control clears 44px and sits level with the view switch's cells. */
+@media (pointer: coarse) {
+  .mx-exposure-toolbar .mantine-Input-input {
+    height: 44px;
+  }
+  /* 清除筛选 takes 44px of taps without moving the list. */
+  .mx-exposure-result > .mantine-Button-root {
+    height: 44px;
+    margin-block: -2px;
+  }
+}
+.mx-exposure-filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--mx-brand-soft);
+  color: var(--mx-brand);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+/* Open, the count keeps its pill against the selected background. */
+.mx-exposure-filter-toggle[aria-expanded="true"] .mx-exposure-filter-count {
+  background: var(--mx-surface);
+}
+.mx-exposure-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 8px;
+}
+.mx-exposure-filter-panel[hidden] {
+  display: none;
+}
+/* Kept mounted for the status announcement; it takes room only while a count is shown. */
+.mx-exposure-result:not([data-filtered]) {
+  margin-top: 0;
+}
+/* A shown count heads the list the way the top pager does, 4px above it. */
+.mx-exposure-toolbar:has(> .mx-exposure-result[data-filtered]) {
+  margin-bottom: 4px;
+}
+.mx-exposure-result[data-filtered] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* 清除筛选 ends on the controls' right edge. */
+.mx-exposure-result > .mantine-Button-root {
+  margin-inline-end: calc(var(--button-padding-x) * -1);
+}
 .mx-exposure-paging {
   display: flex;
   flex-wrap: wrap;
@@ -127,28 +321,6 @@ button.mx-text-link {
   margin-bottom: 0;
 }
 @media (max-width: 767px) {
-  .mx-review-highlights {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-  /* Phones: search across, filters two to a row. */
-  .mx-toolbar .mx-exposure-filters {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
-  }
-  .mx-toolbar .mx-exposure-filters .mx-search-input {
-    grid-column: 1 / -1;
-  }
-  .mx-toolbar .mx-exposure-filters .mantine-Select-root {
-    width: auto;
-  }
-  .mx-review-highlight + .mx-review-highlight {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 1px solid var(--mx-border);
-    padding-top: 18px;
-  }
   /* The AI review keeps its regenerate button beside the title, out of the thumb path. */
   .mx-decision-narrative > .mx-panel-heading {
     flex-direction: row;

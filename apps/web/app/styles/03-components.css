@@ -32,6 +32,10 @@
 .mx-segment-label {
   display: inline-block;
 }
+/* A segment with a phone label shows its full label until the row gets narrow. */
+.mx-segment-short {
+  display: none;
+}
 .mx-segments > .mx-indicator {
   position: absolute;
   z-index: 0;
@@ -283,6 +287,41 @@
     content: "";
     position: absolute;
     inset: -2px -6px -10px;
+  }
+}
+/* The decision a link opened the page on: its usual row on a soft ground, then the button that lets it go. */
+/* Arriving scrolls it clear of the sticky bar above and the phone dock below. */
+.mx-decision-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 6px;
+  margin-bottom: 22px;
+  padding-inline: 0 8px;
+  border-radius: 10px;
+  background: var(--mx-soft);
+  scroll-margin-top: 80px;
+  scroll-margin-bottom: calc(var(--mx-mobile-dock-height, 0px) + env(safe-area-inset-bottom) + 16px);
+}
+/* The row's link reaches the card's edge and pads itself, so its focus ring sits inside the card's corners. */
+.mx-decision-focus > .mx-decision-entry > .mx-row-link {
+  padding-inline: 16px 10px;
+  border-bottom: 0;
+  border-radius: 10px;
+}
+.mx-decision-focus > .mx-decision-entry > .mx-row-link:focus-visible {
+  outline-offset: -2px;
+}
+/* Centred on the security's line: the row's 14px padding plus half the mark's extra height. */
+.mx-decision-unfocus {
+  margin-top: 16px;
+  color: var(--mx-muted);
+}
+@media (pointer: coarse) {
+  .mx-decision-unfocus::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
   }
 }
 .mx-decision-watching {

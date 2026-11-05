@@ -188,7 +188,9 @@ export function FinancialWorkbench({
         <>
           {mode !== "ownership" && (
             <Panel
-              title={period.label}
+              className="mx-period-summary"
+              // The period picker above already shows the period; the heading keeps it for assistive technology.
+              title={<span className="sr-only">{period.label}</span>}
               action={
                 <span className="mx-unit">
                   {facts.currency ?? t("币种未提供", "Currency unavailable")}
@@ -435,14 +437,8 @@ export function FinancialWorkbench({
                 </details>
               </Panel>
               {bridge.length > 0 && (
-                <Panel
-                  title={t("从营收到净利润", "Revenue to net income")}
-                  action={
-                    <span className="mx-unit">
-                      {period.label} · {facts.currency}
-                    </span>
-                  }
-                >
+                // The summary above carries the currency once; each bar's tooltip repeats it beside the amount.
+                <Panel title={t("从营收到净利润", "Revenue to net income")}>
                   <Plot
                     research
                     label={t("利润桥接", "Income bridge")}
