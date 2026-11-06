@@ -141,11 +141,15 @@
   }
   .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric-large:first-child .mx-number,
   .mx-page .mx-overview-totals > .mx-metric-large .mx-number {
-    /* 40px from 352px up; narrower phones size it to their width so an eight-figure value still fits. */
-    font-size: min(var(--mx-text-lead), calc((100vw - 64px) / 7.2));
+    font-size: var(--mx-text-lead);
     font-weight: 600;
     line-height: 1.12;
     letter-spacing: -0.035em;
+  }
+  /* The portfolio value is 40px from 352px up; narrower phones size it to their width so an eight-figure value still
+     fits. */
+  .mx-page .mx-overview-totals > .mx-metric-large .mx-number {
+    font-size: min(var(--mx-text-lead), calc((100vw - 64px) / 7.2));
   }
   .mx-page .mx-metric-note {
     margin-top: var(--mx-space-tight);
@@ -533,10 +537,14 @@
   .mx-page .mx-metric-label:has(.mx-tag-help) {
     row-gap: 20px;
   }
-  /* A switch on its own in a settings row offers 44 × 44px; the row keeps its height. */
+  /* A switch on its own in a settings row offers 44 × 44px: its input fills the padded box, and the row keeps its
+     height. */
   .mx-page .mx-setting-row > .mantine-Switch-root:not(.mx-setting-switch) {
     padding: 12px 3px;
     margin: -12px -3px;
+  }
+  .mx-page .mx-setting-row > .mantine-Switch-root:not(.mx-setting-switch) .mantine-Switch-input {
+    inset: 0;
   }
   /* The estimate tag can wrap above the performance link; 12px rows keep their 44px hit areas apart. */
   .mx-page .mx-period-figure:has(.mx-tag-help) {
