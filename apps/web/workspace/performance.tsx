@@ -362,7 +362,7 @@ export function PerformanceContent({
             </div>
             {view === "money" && <HistoryCoverage history={history} />}
             {view === "money" ? (
-              <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
+              <div className="mx-metric-grid mx-metric-lead mx-chart-metrics">
                 <Metric
                   label={t("期末价值", "Ending value")}
                   value={currency(navNumber(last, scope), "GBP", 2)}
@@ -388,7 +388,7 @@ export function PerformanceContent({
                 />
               </div>
             ) : (
-              <div className="mx-metric-grid mx-metric-lead" style={{ marginBottom: 27 }}>
+              <div className="mx-metric-grid mx-metric-lead mx-chart-metrics">
                 <Metric
                   large
                   label={t("组合 TWR", "Portfolio TWR")}

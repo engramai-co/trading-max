@@ -78,7 +78,7 @@
   .mx-tabs button:last-of-type {
     padding-inline: 8px;
   }
-  /* The eight periods span the panel edge to edge: 44px cells at 390px, no scrolling. */
+  /* The eight periods span the panel edge to edge, bleeding through its padding: 44px cells at 390px, no scrolling. */
   .mx-period-control {
     width: 100%;
     container: mx-period / inline-size;
@@ -87,9 +87,9 @@
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr);
-    width: calc(100% + 36px);
+    width: calc(100% + 2 * var(--mx-space-panel));
     max-width: none;
-    margin-inline: -18px;
+    margin-inline: calc(-1 * var(--mx-space-panel));
     border-inline: 0;
     border-radius: 0;
   }
@@ -97,8 +97,8 @@
     min-width: 0;
   }
 }
-/* The band is the control plus its 36px bleed. Narrower than eight 44px cells, the periods take two full rows of four. */
-@container mx-period (width < 316px) {
+/* The band is the control plus its 32px bleed. Narrower than eight 44px cells, the periods take two full rows of four. */
+@container mx-period (width < 320px) {
   .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) {
     display: flex;
     flex-wrap: wrap;
@@ -108,7 +108,7 @@
   }
 }
 /* Seven periods (returns has no 1D) keep one row while seven 44px cells fit, then take rows of four and three. */
-@container mx-period (width < 272px) {
+@container mx-period (width < 276px) {
   .mx-period-control > .mx-segments {
     display: flex;
     flex-wrap: wrap;

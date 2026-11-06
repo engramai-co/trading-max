@@ -633,6 +633,16 @@
 .mx-chart-toolbar {
   margin-bottom: 24px;
 }
+/* The metric strip between a chart's tools and the chart. */
+.mx-chart-metrics {
+  margin-bottom: 27px;
+}
+.mx-holdings-summary > .mx-toolbar {
+  margin-bottom: 24px;
+}
+.mx-holdings-list > .mx-toolbar {
+  margin-bottom: 22px;
+}
 .mx-mobile-holdings {
   display: none;
 }

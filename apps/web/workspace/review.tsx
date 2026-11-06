@@ -217,14 +217,15 @@ export function AccountReviewWorkspace() {
   const [horizons, setHorizons] = useState<HorizonChoices>({});
   return (
     <Page
+      className="mx-account-review-page"
       title={
         accountName(profile, code) + " · " + t("投资复盘", "Account review")
       }
       actions={
         <Select
+          className="mx-review-account"
           aria-label={t("复盘账户", "Review account")}
           value={code}
-          w={150}
           data={[
             { value: "A", label: accountName(profile, "A") },
             { value: "B", label: accountName(profile, "B") },

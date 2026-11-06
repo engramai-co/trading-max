@@ -64,6 +64,24 @@
   --mx-chart-4: #b9a0e0;
   --mx-chart-5: #a3a8b2;
 }
+/* Phones: one spacing rhythm and five type roles, used by 12-phone-rhythm.css. Wider windows keep literal values. */
+@media (max-width: 767px) {
+  :root {
+    --mx-space-section: 24px;
+    --mx-space-panel: 16px;
+    --mx-space-heading: 12px;
+    --mx-space-items: 12px;
+    --mx-space-group: 8px;
+    --mx-space-tight: 4px;
+    --mx-text-lead: 40px;
+    --mx-text-page: 28px;
+    --mx-text-figure: 24px;
+    --mx-text-metric: 20px;
+    --mx-text-title: 15px;
+    --mx-text-body: 13px;
+    --mx-text-label: 12px;
+  }
+}
 * {
   box-sizing: border-box;
 }
