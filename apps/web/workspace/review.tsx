@@ -223,9 +223,9 @@ export function AccountReviewWorkspace() {
       }
       actions={
         <Select
+          className="mx-review-account"
           aria-label={t("复盘账户", "Review account")}
           value={code}
-          w={150}
           data={[
             { value: "A", label: accountName(profile, "A") },
             { value: "B", label: accountName(profile, "B") },

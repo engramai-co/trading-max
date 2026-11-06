@@ -56,6 +56,18 @@
   .mx-page .mx-chart-metrics {
     margin-bottom: var(--mx-space-heading);
   }
+  /* Chart metrics pair up while their figures fit (a basis over a third keeps it to two a row); a figure that does
+     not fit takes its own row, and an estimated P&L takes the whole row for its tag and help. */
+  .mx-page .mx-chart-metrics {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-page .mx-chart-metrics > .mx-metric {
+    flex: 1 1 34%;
+  }
+  .mx-page .mx-chart-metrics > .mx-metric:has(.mx-tag-help) {
+    flex-basis: 100%;
+  }
   /* Type roles: titles 15/600, body 13/400, labels 12/500. Tabs and segments read as labels. */
   .mx-page :is(.mx-panel-heading h2, .mx-account-card h2, .mx-connection-card h3, .mx-setting-row h3, .mx-danger-zone h3,
     .mx-import-drop h3, .mx-section-label, .mx-sensitivity-heading h3) {
@@ -155,6 +167,15 @@
   .mx-page .mx-table :is(th, td) small {
     font-size: var(--mx-text-label);
     line-height: 1.5;
+  }
+  /* The analyst target table: its headers read as labels and its values as body text; the median leads at 600. */
+  .mx-page .mx-target-values th {
+    font-size: var(--mx-text-label);
+    font-weight: 500;
+  }
+  .mx-page .mx-target-values td {
+    font-size: var(--mx-text-body);
+    font-weight: 400;
   }
   .mx-page :is(.mx-desktop-holdings, .mx-return-table) .mx-table td,
   .mx-page .mx-decision-table .mx-table td {
@@ -408,8 +429,13 @@
     align-items: center;
     flex-wrap: wrap;
   }
-  .mx-account-review-page > .mx-page-heading .mx-page-actions > .mantine-Select-root {
-    max-width: 128px;
+  /* The account select sits beside a short title and takes its own row under a long one; either way it grows to
+     name the account in full. */
+  .mx-account-review-page > .mx-page-heading .mx-page-actions {
+    flex: 1 0 128px;
+  }
+  .mx-page .mx-review-account {
+    width: 100%;
   }
   .mx-page .mx-connection-card + .mx-connection-card {
     border-top: 1px solid var(--mx-border);
@@ -471,14 +497,14 @@
     inset: min(0px, calc(50% - 22px));
   }
   /* The assumption rows sit 4px apart; past their 1px border, the hit areas meet in the gap. The sources disclosure
-     below them sits 16px away, so both hit areas fit. */
+     sits 16px from them and from the reset below, so its hit area fits between. */
   .mx-page .mx-assumption-picker button::after {
     content: "";
     position: absolute;
     inset: -3px 0;
   }
   .mx-page .mx-model-sources {
-    margin-top: 16px;
+    margin-block: 16px;
   }
   /* The day drivers wrap at phone widths. Their rows sit 44px apart and 12px clear of the controls above and below,
      so each link's 44px hit area is its own. */
@@ -495,8 +521,22 @@
   .mx-page .mx-attention {
     margin-top: 12px;
   }
+  /* Tags, like info buttons, reach the 44px minimum and no further. */
   .mx-page .mx-tag-help::after {
-    inset: min(-6px, calc(50% - 22px));
+    inset: min(0px, calc(50% - 22px));
+  }
+  /* A heading's info button reaches 11px below its title; the controls that wrap under the title sit 12px away. */
+  .mx-page .mx-panel-heading {
+    row-gap: var(--mx-space-heading);
+  }
+  /* A label that wraps its help under an estimate tag keeps their 44px hit areas apart. */
+  .mx-page .mx-metric-label:has(.mx-tag-help) {
+    row-gap: 20px;
+  }
+  /* A switch on its own in a settings row offers 44 × 44px; the row keeps its height. */
+  .mx-page .mx-setting-row > .mantine-Switch-root:not(.mx-setting-switch) {
+    padding: 12px 3px;
+    margin: -12px -3px;
   }
   /* The estimate tag can wrap above the performance link; 12px rows keep their 44px hit areas apart. */
   .mx-page .mx-period-figure:has(.mx-tag-help) {
@@ -518,5 +558,11 @@
   /* "+N" shares its line with the decision above it, so it takes the row's padding below and grows sideways. */
   .mx-page .mx-decision-more::after {
     inset: -2px -9px -12px;
+  }
+}
+/* The narrowest phones keep one chart metric a row, as their metric grids do. */
+@media (max-width: 359px) {
+  .mx-page .mx-chart-metrics > .mx-metric {
+    flex-basis: 100%;
   }
 }

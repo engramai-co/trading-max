@@ -116,8 +116,14 @@ function hitAreas() {
     return out;
   };
   const selector = "main :is(a[href], button, [role=button], [role=tab], summary, input:not([type=hidden]), select)";
+  // A closed disclosure's content keeps layout boxes in some engines but cannot be reached; its summary can.
+  const reachable = (el: Element) => {
+    const closed = el.closest("details:not([open])");
+    return !closed || el.closest("summary")?.parentElement === closed;
+  };
   return [...document.querySelectorAll(selector)]
-    .filter((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest(".sr-only"))
+    .filter((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest(".sr-only")
+      && reachable(el))
     .map((el, index) => {
       el.setAttribute("data-hit-index", String(index));
       const r = el.getBoundingClientRect();

@@ -26,6 +26,9 @@
 .mx-table th[scope="row"] {
   font-weight: 500;
 }
+.mx-review-account {
+  width: 150px;
+}
 .mx-review-evidence {
   display: flex;
   flex-direction: column;
