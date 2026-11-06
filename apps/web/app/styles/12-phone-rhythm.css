@@ -129,7 +129,8 @@
   }
   .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric-large:first-child .mx-number,
   .mx-page .mx-overview-totals > .mx-metric-large .mx-number {
-    font-size: var(--mx-text-lead);
+    /* 40px from 352px up; narrower phones size it to their width so an eight-figure value still fits. */
+    font-size: min(var(--mx-text-lead), calc((100vw - 64px) / 7.2));
     font-weight: 600;
     line-height: 1.12;
     letter-spacing: -0.035em;
@@ -173,10 +174,12 @@
   .mx-page .mx-overview-totals {
     gap: var(--mx-space-items);
   }
-  /* The statistics take two columns; today spans both under a hairline. */
+  /* The statistics share a row while their figures fit and a figure that does not takes the next row; today takes its
+     own row under a hairline. */
   .mx-page .mx-overview-statistics {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: last baseline;
     gap: var(--mx-space-group) var(--mx-space-items);
     padding: 0;
     border: 0;
@@ -306,11 +309,16 @@
   }
   .mx-page .mx-overview-statistics > .mx-metric {
     display: block;
+    flex: 1 1 0;
     padding: 0;
     border: 0;
   }
+  /* A label stays on one line; the figures beside each other share their baseline. */
+  .mx-page .mx-overview-statistics > .mx-metric:not(:last-child) {
+    min-width: max-content;
+  }
   .mx-page .mx-overview-statistics > .mx-metric:last-child {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
     padding-top: var(--mx-space-group);
     border-top: 1px solid var(--mx-border);
   }
@@ -322,7 +330,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--mx-space-group);
+    gap: var(--mx-space-heading) var(--mx-space-group);
     container: mx-period / inline-size;
   }
   .mx-page .mx-overview-history .mx-period-control {
@@ -472,20 +480,43 @@
   .mx-page .mx-model-sources {
     margin-top: 16px;
   }
+  /* The day drivers wrap at phone widths. Their rows sit 44px apart and 12px clear of the controls above and below,
+     so each link's 44px hit area is its own. */
+  .mx-page .mx-day-drivers {
+    row-gap: 24px;
+    line-height: 20px;
+  }
   .mx-page .mx-day-drivers a::after {
-    inset: min(-10px, calc(50% - 22px)) min(-6px, calc(50% - 22px));
+    inset: -12px min(-6px, calc(50% - 22px));
+  }
+  .mx-page .mx-period-figure + .mx-day-drivers {
+    margin-top: 4px;
+  }
+  .mx-page .mx-attention {
+    margin-top: 12px;
   }
   .mx-page .mx-tag-help::after {
     inset: min(-6px, calc(50% - 22px));
   }
+  /* The estimate tag can wrap above the performance link; 12px rows keep their 44px hit areas apart. */
+  .mx-page .mx-period-figure:has(.mx-tag-help) {
+    row-gap: var(--mx-space-heading);
+  }
+  /* Centred on its row, the estimate tag keeps its hit area within the figure, clear of the drivers below. */
+  .mx-page .mx-period-figure > .mx-tag-help {
+    align-self: center;
+  }
+  /* An estimate tag on today's figure sits right above its drivers: its 44px hit area reaches 9px below the tag and a
+     driver's reaches 12px above its line, so 21px keeps them apart. */
+  .mx-page .mx-overview-statistics .mx-number:has(.mx-tag-help) + .mx-metric-note {
+    margin-top: 21px;
+  }
+  /* Info buttons offer the 44px minimum. A larger area would reach past the 12px below a heading into its content. */
+  .mx-page .mx-info::after {
+    inset: min(0px, calc(50% - 22px));
+  }
   /* "+N" shares its line with the decision above it, so it takes the row's padding below and grows sideways. */
   .mx-page .mx-decision-more::after {
     inset: -2px -9px -12px;
-  }
-}
-/* The narrowest phones wrap today's drivers onto a second row of links; 44px rows keep each hit area its own. */
-@media (max-width: 359px) and (pointer: coarse) {
-  .mx-page .mx-day-drivers {
-    row-gap: 24px;
   }
 }
