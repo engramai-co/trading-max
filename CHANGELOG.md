@@ -4,6 +4,36 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-11-06
+
+### Changed
+
+- Phones (narrower than 768px) use the Quiet Ledger rhythm: 24px between
+  sections, 16px inside panels and 12px from a heading to its content. Body,
+  table and list text is 13px, labels are 12px, and text uses three weights
+  (400, 500, 600). Desktop, tablet and the desktop App window keep the 1.26.0
+  spacing and type.
+- On phones the overview shows floating P&L and cash side by side, with the
+  account selector and data time on one row; a figure too long to share a row
+  takes its own, and the portfolio value scales down on the narrowest phones.
+  The research identity, the holdings summary and the settings connection
+  cards drop their boxes. The overview chart, the research price chart and the
+  review angles move up the first screen.
+- Phone analytics metrics pair up while their figures fit; an estimated period
+  P&L takes the whole row so its tag and help stay on one line.
+- The phone account review keeps its account selector beside a short title and
+  gives it the full row under a long one, so the account name is never cut.
+- Phone controls reach 44px touch targets: selects, buttons, info buttons and
+  estimate tags, the overview's attention and day-driver links, disclosure
+  summaries and the update-schedule switches.
+
+### Fixed
+
+- On phones, the overview's day drivers, the analytics P&L tag and help, and
+  the risk cards' review links no longer share hit areas with neighbouring
+  controls.
+- The phone analytics returns figure no longer runs past its column.
+
 ## [1.26.0] - 2026-11-05
 
 ### Changed
