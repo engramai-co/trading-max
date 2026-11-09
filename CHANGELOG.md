@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.28.2] - 2026-11-09
+
+### Fixed
+
+- A sector board left without official closing prices no longer stays that way
+  when the service starts long after the market's close, as after a restart or
+  an outage: the session is tried again a few times and settles once the
+  closes arrive. A market whose stored board is from an earlier session is
+  filled the same way.
+
 ## [1.28.1] - 2026-11-09
 
 ### Added

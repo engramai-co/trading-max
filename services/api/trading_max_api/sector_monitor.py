@@ -175,11 +175,14 @@ class _DailyCloses:
     """Daily closes and names for one market session.
 
     Closes fetched during the session carry its live price; `final` marks
-    closes fetched after it, which hold its official close.
+    closes fetched after it, which hold its official close. `late` marks the
+    first attempt past the refresh window, which may ask again for closes the
+    window gave up on.
     """
 
     session: str
     final: bool = False
+    late: bool = False
     closes: dict[str, dict[str, float]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
     misses: dict[str, int] = field(default_factory=dict)
@@ -338,7 +341,8 @@ class SectorMonitor:
                 candidates.append(boundary)
                 continue
             if session is not None and session.break_end is not None and in_break(session, now):
-                candidates.append(self._ceil_slot(session.break_end))
+                # A rate-limit pause can outlast the break.
+                candidates.append(max(boundary, self._ceil_slot(session.break_end)))
                 continue
             upcoming = next_session(market, now)
             if upcoming is not None:
@@ -380,11 +384,13 @@ class SectorMonitor:
         symbols: list[str],
         *,
         final: bool,
+        late: bool = False,
     ) -> _DailyCloses:
         """Daily closes for ranks, names, and after the close the official closes.
 
         A symbol the provider leaves out (or, after the close, returns without
-        the session's close) is asked for again on later refreshes, a few times.
+        the session's close) is asked for again on later refreshes, a few times,
+        and a few times more once the refresh window has passed.
         """
 
         cached = self._daily.get(market)
@@ -396,6 +402,10 @@ class SectorMonitor:
             cached.misses.clear()
             for closes in cached.closes.values():
                 closes.pop(session_date, None)
+        if late and not cached.late:
+            # Closes the window gave up on may have arrived since; those already held stay.
+            cached.late = True
+            cached.misses.clear()
         wanted = [
             symbol
             for symbol in symbols
@@ -492,6 +502,8 @@ class SectorMonitor:
             return sum(c.weight for c in universe.constituents if c.symbol in sessions)
 
         after_close = board_complete(session, fetched_at)
+        # Past the refresh window: a late fill, as after a restart or an outage.
+        late = now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER
         if not after_close and coverage() < MIN_COVERAGE:
             if now < session.open + OPEN_GRACE:
                 return RefreshResult(published=False)
@@ -502,7 +514,7 @@ class SectorMonitor:
             )
 
         daily_sessions = prior_session_dates(market, session.date, RANK_SESSIONS + 1)
-        daily = self._daily_closes(market, session.date, symbols, final=after_close)
+        daily = self._daily_closes(market, session.date, symbols, final=after_close, late=late)
         self._check_active()
         if after_close:
             previous_date = daily_sessions[-1] if daily_sessions else ""
@@ -608,6 +620,12 @@ class SectorMonitor:
             exposure_basis_gbp=portfolio.invested_gbp,
             groupings=[SectorGrouping.model_validate(asdict(grouping)) for grouping in groupings],
         )
+        problem = (
+            f"Closing prices cover {closing:.0%} of the {universe.universe} weight"
+            f" for {session.date}"
+            if after_close and not complete
+            else None
+        )
         previous = self.boards.load(market)
         if previous is not None and _regresses(previous, board):
             LOGGER.info(
@@ -615,14 +633,11 @@ class SectorMonitor:
                 extra={"market": market, "session": session.date},
             )
             return RefreshResult(published=False, stale=True)
+        if late and not complete and previous is not None and previous.complete:
+            # A late fill that cannot settle its session leaves an earlier settled board in place.
+            return RefreshResult(published=False, problem=problem)
         self._check_active()
         self.boards.save(board)
-        problem = (
-            f"Closing prices cover {closing:.0%} of the {universe.universe} weight"
-            f" for {session.date}"
-            if after_close and not complete
-            else None
-        )
         return RefreshResult(published=True, problem=problem)
 
     def run_once(self) -> SectorMonitorState:
@@ -645,10 +660,9 @@ class SectorMonitor:
             if self._paused_until is not None and self._now() < self._paused_until:
                 break
             session = latest_session(market, now)
+            # Past the refresh window, only a few attempts may settle the session.
             backfilling = (
-                session is not None
-                and self.boards.load(market) is None
-                and now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER
+                session is not None and now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER
             )
             entry: dict[str, Any] = {"lastAttemptAt": self._now().isoformat()}
             result = RefreshResult(published=False)
@@ -674,12 +688,14 @@ class SectorMonitor:
             if result.published:
                 published = True
                 entry["lastSuccessAt"] = self._now().isoformat()
-                self._backfill.pop(market, None)
-            elif backfilling and session is not None:
+            if backfilling and session is not None and (not result.published or result.problem):
+                # A late attempt that leaves the session unsettled counts against the few allowed.
                 self._backfill[market] = (
                     session.date,
                     self._backfill_attempts(market, session) + 1,
                 )
+            elif result.published:
+                self._backfill.pop(market, None)
             with self._lock:
                 self._state["markets"].setdefault(market, {}).update(entry)
         with self._lock:
