@@ -744,6 +744,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sector Board */
+        get: operations["sector_board_v1_sectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/securities/search": {
         parameters: {
             query?: never;
@@ -4515,6 +4532,7 @@ export interface components {
             nightly: components["schemas"]["NightlySchedule"];
             performance: components["schemas"]["PerformanceSchedule"];
             research: components["schemas"]["NightlySchedule"];
+            sectors?: components["schemas"]["SectorMonitorState"] | null;
         };
         /** ResearchAlert */
         ResearchAlert: {
@@ -5901,6 +5919,332 @@ export interface components {
             date: string;
             /** Open */
             open: string;
+        };
+        /** SectorBoard */
+        SectorBoard: {
+            /**
+             * Asof
+             * @description End of the latest price bar included.
+             */
+            asOf?: string | null;
+            /**
+             * Complete
+             * @description The session closed and its final bars were captured.
+             */
+            complete: boolean;
+            /**
+             * Exposurebasisgbp
+             * @description Invested value of the look-through the exposure was matched against.
+             */
+            exposureBasisGbp?: number | null;
+            /**
+             * Exposuregbp
+             * @default 0
+             */
+            exposureGbp: number;
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
+            /** Groupings */
+            groupings?: components["schemas"]["SectorGrouping"][];
+            /**
+             * Market
+             * @enum {string}
+             */
+            market: "us" | "uk" | "hk" | "kr";
+            /**
+             * Membercount
+             * @default 0
+             */
+            memberCount: number;
+            /**
+             * Pricedcount
+             * @default 0
+             */
+            pricedCount: number;
+            /** Ranksessions */
+            rankSessions?: string[];
+            /** Sessiondate */
+            sessionDate: string;
+            source: components["schemas"]["SectorSource"];
+            /** Times */
+            times?: string[];
+        };
+        /** SectorBoardResponse */
+        SectorBoardResponse: {
+            board?: components["schemas"]["SectorBoard"] | null;
+            /**
+             * Market
+             * @enum {string}
+             */
+            market: "us" | "uk" | "hk" | "kr";
+            /** Markets */
+            markets?: components["schemas"]["SectorMarketStatus"][];
+            /** @description Refresh schedule, so an empty board can say when the next update runs. */
+            monitor?: components["schemas"]["SectorMonitorState"] | null;
+        };
+        /**
+         * SectorBreadth
+         * @description Members up, unchanged (within ±0.05%) and down on the session.
+         */
+        SectorBreadth: {
+            /**
+             * Down
+             * @default 0
+             */
+            down: number;
+            /**
+             * Flat
+             * @default 0
+             */
+            flat: number;
+            /**
+             * Up
+             * @default 0
+             */
+            up: number;
+        };
+        /** SectorGroup */
+        SectorGroup: {
+            breadth?: components["schemas"]["SectorBreadth"];
+            /** Change */
+            change?: number | null;
+            /**
+             * Exposuregbp
+             * @default 0
+             */
+            exposureGbp: number;
+            /**
+             * Key
+             * @description GICS sector code or research theme id.
+             */
+            key: string;
+            leader?: components["schemas"]["SectorLeader"] | null;
+            /**
+             * Membercount
+             * @default 0
+             */
+            memberCount: number;
+            /** Members */
+            members?: components["schemas"]["SectorMember"][];
+            /**
+             * Name
+             * @description English GICS sector name or theme label.
+             */
+            name: string;
+            /**
+             * Namezh
+             * @description A theme's own Chinese label; GICS names are translated by the client.
+             */
+            nameZh?: string | null;
+            /**
+             * Path
+             * @description Session change at each of the board's times.
+             */
+            path?: (number | null)[];
+            /**
+             * Ranks
+             * @description Rank among the grouping's groups for each of the board's rank sessions.
+             */
+            ranks?: (number | null)[];
+            /**
+             * Streak
+             * @description Consecutive latest sessions ranked within the top three.
+             * @default 0
+             */
+            streak: number;
+            /** Subgroups */
+            subgroups?: components["schemas"]["SectorSubgroup"][];
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
+        };
+        /** SectorGrouping */
+        SectorGrouping: {
+            /** Groups */
+            groups?: components["schemas"]["SectorGroup"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gics" | "themes";
+        };
+        /** SectorLeader */
+        SectorLeader: {
+            /** Change */
+            change: number;
+            /** Name */
+            name: string;
+            /** Symbol */
+            symbol: string;
+        };
+        /** SectorMarketStatus */
+        SectorMarketStatus: {
+            /** Asof */
+            asOf?: string | null;
+            /** Calendar */
+            calendar: string;
+            /**
+             * Complete
+             * @default false
+             */
+            complete: boolean;
+            /**
+             * Exposuregbp
+             * @default 0
+             */
+            exposureGbp: number;
+            /** Fetchedat */
+            fetchedAt?: string | null;
+            /** Lasterror */
+            lastError?: string | null;
+            /** Lasterrorat */
+            lastErrorAt?: string | null;
+            /**
+             * Market
+             * @enum {string}
+             */
+            market: "us" | "uk" | "hk" | "kr";
+            /** Sessiondate */
+            sessionDate?: string | null;
+            /** Sessions */
+            sessions?: components["schemas"]["SectorSessionWindow"][];
+            /** Timezone */
+            timezone: string;
+        };
+        /** SectorMember */
+        SectorMember: {
+            /** Change */
+            change?: number | null;
+            /**
+             * Exposuregbp
+             * @default 0
+             */
+            exposureGbp: number;
+            /** Name */
+            name: string;
+            /**
+             * Researchticker
+             * @description The research desk ticker when the research universe covers this member.
+             */
+            researchTicker?: string | null;
+            /**
+             * Subgroup
+             * @description GICS industry-group code; empty for themes or an unclassified member.
+             * @default
+             */
+            subgroup: string;
+            /**
+             * Symbol
+             * @description Provider symbol, for example AAPL, HSBA.L, 0700.HK.
+             */
+            symbol: string;
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
+        };
+        /**
+         * SectorMonitorState
+         * @description Ten-minute sector-board refreshes for the markets that are trading.
+         */
+        SectorMonitorState: {
+            /** Enabled */
+            enabled: boolean;
+            /** Intervalseconds */
+            intervalSeconds: number;
+            /** Lastattemptat */
+            lastAttemptAt?: string | null;
+            /** Lasterror */
+            lastError?: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt?: string | null;
+            /** Nextrunat */
+            nextRunAt?: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "disabled" | "starting" | "idle" | "refreshing" | "error";
+        };
+        /**
+         * SectorSessionWindow
+         * @description One regular session as the exchange schedules it, in UTC.
+         */
+        SectorSessionWindow: {
+            /** Breakend */
+            breakEnd?: string | null;
+            /** Breakstart */
+            breakStart?: string | null;
+            /**
+             * Close
+             * Format: date-time
+             */
+            close: string;
+            /** Date */
+            date: string;
+            /**
+             * Open
+             * Format: date-time
+             */
+            open: string;
+        };
+        /** SectorSource */
+        SectorSource: {
+            /**
+             * Asof
+             * @description The issuer's holdings date.
+             */
+            asOf: string;
+            /** Fund */
+            fund: string;
+            /** Fundticker */
+            fundTicker: string;
+            /**
+             * Prices
+             * @default Yahoo Finance
+             */
+            prices: string;
+            /**
+             * Universe
+             * @description Index universe, for example S&P 500.
+             */
+            universe: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * SectorSubgroup
+         * @description A GICS industry group inside one sector.
+         */
+        SectorSubgroup: {
+            breadth?: components["schemas"]["SectorBreadth"];
+            /** Change */
+            change?: number | null;
+            /**
+             * Exposuregbp
+             * @default 0
+             */
+            exposureGbp: number;
+            /** Key */
+            key: string;
+            /**
+             * Membercount
+             * @default 0
+             */
+            memberCount: number;
+            /** Name */
+            name: string;
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
         };
         /** SecuritySearchResponse */
         SecuritySearchResponse: {
@@ -8270,6 +8614,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValuationPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sector_board_v1_sectors_get: {
+        parameters: {
+            query?: {
+                /** @description Market to show; defaults to the one trading now. */
+                market?: ("us" | "uk" | "hk" | "kr") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectorBoardResponse"];
                 };
             };
             /** @description Validation Error */

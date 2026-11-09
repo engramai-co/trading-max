@@ -1,0 +1,640 @@
+/* 板块行情: one market's sectors as a map of today, with the selected sector beside it. */
+.mx-sectors-page .mx-page-actions {
+  flex: 1;
+  align-self: stretch;
+  min-width: 0;
+}
+.mx-sectors-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  width: 100%;
+}
+.mx-sectors-clock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+.mx-sectors-clock > span:not(.mx-tag) + span:not(.mx-tag)::before {
+  content: "·";
+  margin-right: 8px;
+}
+.mx-sectors-grouping {
+  margin-left: auto;
+}
+.mx-sectors-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  align-items: start;
+  gap: 22px;
+}
+.mx-sectors-body[data-fetching] .mx-sector-map,
+.mx-sectors-phone[data-fetching] .mx-sector-list {
+  opacity: 0.55;
+}
+.mx-sectors-phone {
+  display: none;
+}
+.mx-sector-map {
+  position: relative;
+  height: clamp(440px, calc(100dvh - 230px), 760px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--mx-surface);
+  transition: opacity 160ms var(--mx-ease);
+}
+.mx-sector-block,
+.mx-sector-tile,
+.mx-sector-breadth i,
+.mx-sector-breadth-bar i {
+  --mx-heat-hue: var(--mx-soft);
+}
+.mx-sector-block[data-tone="up"],
+.mx-sector-tile[data-tone="up"],
+.mx-sector-breadth i[data-tone="up"],
+.mx-sector-breadth-bar i[data-tone="up"] {
+  --mx-heat-hue: var(--mx-up);
+}
+.mx-sector-block[data-tone="down"],
+.mx-sector-tile[data-tone="down"],
+.mx-sector-breadth i[data-tone="down"],
+.mx-sector-breadth-bar i[data-tone="down"] {
+  --mx-heat-hue: var(--mx-down);
+}
+.mx-sector-block {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: var(--mx-soft);
+  color: var(--mx-ink);
+  text-align: left;
+  transition: background-color 140ms var(--mx-ease);
+}
+.mx-sector-block:not([data-roomy]) {
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-surface));
+}
+.mx-sector-block::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px transparent;
+  pointer-events: none;
+  transition: box-shadow 160ms var(--mx-ease);
+}
+.mx-sector-block[aria-pressed="true"]::after {
+  box-shadow: inset 0 0 0 2px var(--mx-brand);
+}
+/* Hover draws a hairline rather than darkening the ground, so the gain and loss figures keep their contrast. */
+.mx-sector-block:not([aria-pressed="true"]):hover::after {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--mx-ink) 35%, transparent);
+}
+.mx-sector-block:focus-visible {
+  outline: none;
+}
+.mx-sector-block:focus-visible::after {
+  box-shadow: inset 0 0 0 2px var(--mx-brand), inset 0 0 0 4px var(--mx-surface);
+}
+.mx-sector-head {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 8px 10px 0;
+}
+/* The strip carries the sector's own move as a light wash; its figures stay ink so contrast holds on any wash. */
+.mx-sector-block[data-roomy] .mx-sector-head {
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-head-mix), var(--mx-soft));
+}
+.mx-sector-block:not([data-roomy]) .mx-sector-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  padding: 7px 8px;
+}
+.mx-sector-block[data-narrow] .mx-sector-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  height: 52px;
+}
+.mx-sector-block[data-narrow] .mx-sector-name {
+  max-width: 100%;
+}
+.mx-sector-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-sector-block:not([data-roomy]) .mx-sector-name {
+  max-width: 100%;
+}
+.mx-sector-move {
+  display: inline-flex;
+  flex: none;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: auto;
+}
+.mx-sector-block:not([data-roomy]) .mx-sector-move,
+.mx-sector-block[data-narrow] .mx-sector-move {
+  margin-left: 0;
+}
+.mx-sector-change {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.mx-sector-streak {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.mx-sector-breadth,
+.mx-sector-breadth-bar {
+  display: flex;
+  gap: 1px;
+  overflow: hidden;
+}
+.mx-sector-breadth {
+  position: absolute;
+  right: 10px;
+  bottom: 5px;
+  left: 10px;
+  height: 3px;
+  border-radius: 2px;
+}
+.mx-sector-breadth i,
+.mx-sector-breadth-bar i {
+  display: block;
+  min-width: 0;
+  background: var(--mx-border);
+}
+.mx-sector-breadth i[data-tone="up"],
+.mx-sector-breadth i[data-tone="down"],
+.mx-sector-breadth-bar i[data-tone="up"],
+.mx-sector-breadth-bar i[data-tone="down"] {
+  background: var(--mx-heat-hue);
+}
+.mx-sector-tiles {
+  position: relative;
+  flex: 1;
+  margin: 0 3px 3px;
+}
+.mx-sector-tile {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-surface));
+  color: var(--mx-ink);
+  font-size: 12px;
+  line-height: 16px;
+}
+.mx-sector-tile-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-sector-tile-change {
+  font-weight: 600;
+}
+.mx-sector-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: mx-sector-in 180ms var(--mx-ease) both;
+}
+@keyframes mx-sector-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.mx-sector-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.mx-sector-detail-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.mx-sector-detail-change {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.mx-sector-spark {
+  margin: 0;
+}
+.mx-sector-spark-plot {
+  position: relative;
+  height: 112px;
+}
+.mx-sector-spark-plot svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.mx-sector-spark-zero {
+  stroke: var(--mx-border);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+.mx-sector-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+}
+.mx-sector-spark-peak {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border: 1.5px solid var(--mx-muted);
+  border-radius: 50%;
+  background: var(--mx-surface);
+}
+.mx-sector-spark-peak[data-tone="up"],
+.mx-sector-spark-high[data-tone="up"]::before {
+  border-color: var(--mx-up);
+}
+.mx-sector-spark-peak[data-tone="down"],
+.mx-sector-spark-high[data-tone="down"]::before {
+  border-color: var(--mx-down);
+}
+.mx-sector-spark-empty {
+  display: grid;
+  place-items: center;
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+.mx-sector-spark-high {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-sector-spark-high::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--mx-muted);
+  border-radius: 50%;
+}
+.mx-sector-spark-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-sector-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+  margin: 0;
+}
+.mx-sector-facts dt {
+  margin-bottom: 6px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-sector-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+}
+.mx-sector-facts dd.mx-sector-breadth-detail {
+  flex-direction: column;
+  align-items: stretch;
+}
+.mx-sector-breadth-bar {
+  height: 6px;
+  border-radius: 3px;
+}
+.mx-sector-breadth-detail > span:last-child {
+  display: flex;
+  gap: 10px;
+}
+.mx-sector-leader-name {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mx-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-sector-ranks {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-sector-ranks li {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  background: var(--mx-soft);
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.mx-sector-ranks li[data-top] {
+  background: var(--mx-ink);
+  color: var(--mx-surface);
+}
+.mx-sector-ranks-cell > span {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-sector-subgroups,
+.mx-sector-members ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-sector-subgroups,
+.mx-sector-detail > .mx-sector-members {
+  border-top: 1px solid var(--mx-border);
+}
+.mx-sector-subgroups > li {
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-sector-subgroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.mx-sector-subgroup svg {
+  flex: none;
+  color: var(--mx-muted);
+  transition: transform 160ms var(--mx-ease);
+}
+.mx-sector-subgroup[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.mx-sector-subgroup-name,
+.mx-sector-member-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-sector-member-name {
+  color: var(--mx-muted);
+}
+.mx-sector-held {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-sector-subgroup-change,
+.mx-sector-member-change {
+  min-width: 64px;
+  font-weight: 600;
+  text-align: right;
+}
+.mx-sector-members ul {
+  padding-left: 22px;
+}
+.mx-sector-detail > .mx-sector-members ul {
+  padding-left: 0;
+}
+.mx-sector-members li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  font-size: 13px;
+}
+.mx-sector-symbol {
+  flex: none;
+  min-width: 56px;
+  font-weight: 600;
+}
+a.mx-sector-symbol {
+  color: var(--mx-brand);
+  text-decoration: none;
+}
+a.mx-sector-symbol:hover {
+  text-decoration: underline;
+}
+.mx-sector-more {
+  min-height: 36px;
+  margin: 0 0 8px 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mx-brand);
+  font-size: 13px;
+}
+.mx-sector-detail > .mx-sector-members .mx-sector-more {
+  margin-left: 0;
+}
+.mx-sector-list {
+  margin: 0;
+  list-style: none;
+}
+.mx-sector-list li + li {
+  border-top: 1px solid var(--mx-border);
+}
+.mx-sector-list button {
+  display: grid;
+  grid-template-areas:
+    "name spark change caret"
+    "meta meta meta caret";
+  grid-template-columns: minmax(0, 1fr) 72px minmax(64px, auto) 16px;
+  align-items: center;
+  gap: 6px 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+.mx-sector-list-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  /* Long sector names wrap to a second line rather than losing their ends. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.mx-sector-list-spark {
+  grid-area: spark;
+  width: 72px;
+  height: 26px;
+  overflow: visible;
+}
+.mx-sector-list-change {
+  grid-area: change;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
+}
+.mx-sector-list-meta {
+  display: flex;
+  grid-area: meta;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mx-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mx-sector-list-meta .mx-sector-breadth-bar {
+  flex: none;
+  width: 48px;
+  height: 4px;
+}
+.mx-sector-list-meta .mx-sector-streak {
+  flex: none;
+}
+.mx-sector-list-leader {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mx-sector-list-caret {
+  grid-area: caret;
+  color: var(--mx-muted);
+}
+.mx-sector-phone-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mx-sector-back {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mx-brand);
+  font-size: 15px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-sector-detail {
+    animation: none;
+  }
+  .mx-sector-block,
+  .mx-sector-block::after,
+  .mx-sector-subgroup svg {
+    transition: none;
+  }
+}
+@media (max-width: 899px) {
+  .mx-sectors-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-sector-map {
+    height: clamp(360px, 50vh, 520px);
+  }
+}
+@media (max-width: 767px) {
+  .mx-sectors-body {
+    display: none;
+  }
+  .mx-sectors-phone {
+    display: block;
+  }
+  .mx-sectors-bar {
+    gap: var(--mx-space-group);
+  }
+  .mx-sectors-bar > .mx-segments,
+  .mx-sectors-grouping,
+  .mx-sectors-clock {
+    flex: 1 1 100%;
+  }
+  .mx-sectors-grouping {
+    margin-left: 0;
+  }
+  .mx-sectors-clock {
+    font-size: var(--mx-text-label);
+  }
+  .mx-sector-list {
+    padding: 0 var(--mx-space-panel);
+  }
+  .mx-sector-detail {
+    gap: var(--mx-space-items);
+  }
+  .mx-sector-detail-change {
+    font-size: var(--mx-text-figure);
+  }
+}
+/* The narrowest phones keep the sector's name whole and drop the small intraday line. */
+@media (max-width: 359px) {
+  .mx-sector-list button {
+    grid-template-areas:
+      "name change caret"
+      "meta meta caret";
+    grid-template-columns: minmax(0, 1fr) minmax(64px, auto) 16px;
+  }
+  .mx-sector-list-spark {
+    display: none;
+  }
+  /* The leader waits for the sector's own step rather than clipping its number. */
+  .mx-sector-list-leader {
+    display: none;
+  }
+}

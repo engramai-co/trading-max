@@ -19,6 +19,7 @@ export const pageAliases: Record<string, string> = Object.fromEntries(Object.ent
   "/": ["组合", "总览", "overview", "portfolio", "home"],
   "/holdings": ["持仓", "配置", "holdings", "positions", "allocation"],
   "/analytics": ["收益", "绩效", "performance", "analytics", "returns"],
+  "/sectors": ["板块", "行业", "行情", "主题", "sectors", "industries", "markets", "themes"],
   "/research": ["证券", "研究", "research", "securities"],
   "/review": ["投资", "复盘", "交易", "review", "history", "trades"],
   "/health": ["数据", "状态", "同步", "health", "sync", "activity"],

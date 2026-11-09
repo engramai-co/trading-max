@@ -142,6 +142,8 @@ def main() -> None:
             embedded_worker=False,
             llm_provider="deepseek",
             allowed_origins=(f"http://127.0.0.1:{args.web_port}",),
+            # Like a running service: sector boards follow the research schedule.
+            sector_monitor_enabled=True,
         ),
         credential_store=InMemoryCredentialStore(),
     )

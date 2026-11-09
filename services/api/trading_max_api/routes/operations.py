@@ -115,6 +115,7 @@ def refresh_state(request: Request) -> RefreshState:
         alerts=AlertMonitorState.model_validate(
             app_service(request, "alert_monitor").status(),
         ),
+        sectors=app_service(request, "sector_monitor").status(),
     )
 
 

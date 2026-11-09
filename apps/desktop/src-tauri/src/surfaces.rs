@@ -35,6 +35,7 @@ pub fn allowed_link(url: &Url, address: &str) -> bool {
             "/desktop"
                 | "/desktop/holdings"
                 | "/desktop/analytics"
+                | "/desktop/sectors"
                 | "/desktop/research"
                 | "/desktop/review"
                 | "/desktop/account-analysis"
@@ -146,6 +147,7 @@ mod tests {
         let base = "https://mini.example.test/";
         for path in [
             "/desktop",
+            "/desktop/sectors?market=hk",
             "/desktop/settings?tab=models",
             "/desktop/activity?scope=cfd",
             "/desktop/imports",

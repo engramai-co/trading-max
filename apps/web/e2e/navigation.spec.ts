@@ -136,7 +136,7 @@ test.describe("workspace navigation refinements", () => {
     await page.goto("/");
     const dock = page.locator(".mx-mobile-dock");
     await expect(dock).toBeVisible();
-    await expect(dock.getByRole("link")).toHaveText(["总览", "持仓", "收益", "研究", "复盘"]);
+    await expect(dock.getByRole("link")).toHaveText(["总览", "持仓", "收益", "板块", "研究", "复盘"]);
     expect(await dock.getByRole("link").first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(12);
     expect(await dock.getByRole("link").evaluateAll((links) => links.every((link) => link.getBoundingClientRect().height >= 56))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -165,6 +165,13 @@ test.describe("workspace navigation refinements", () => {
         .every((button) => button.getBoundingClientRect().width >= 44 && button.getBoundingClientRect().height >= 44))).toBe(true);
       await expect(page.locator(".mx-topbar").getByRole("button", { name: "Choose appearance" })).toBeHidden();
       await expect(page.locator(".mx-mobile-dock")).toBeVisible();
+      // Six cells at 320px: the English names are short enough to fit at 12px without clipping.
+      const dockLinks = page.locator(".mx-mobile-dock").getByRole("link");
+      await expect(dockLinks).toHaveText(["Home", "Assets", "Returns", "Sectors", "Stocks", "Review"]);
+      expect(await dockLinks.evaluateAll((links) => links.every((link) => {
+        const label = link.querySelector("span:last-child")!;
+        return label.getBoundingClientRect().width <= link.getBoundingClientRect().width + 0.5;
+      }))).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.getByRole("button", { name: "More", exact: true }).tap();
       const menu = page.getByRole("menu");
@@ -209,7 +216,7 @@ test.describe("workspace navigation refinements", () => {
     })).toBe(true);
   });
 
-  test("desktop rail keeps five adjacent, named icons with hover and focus hints", async ({ page }, testInfo) => {
+  test("desktop rail keeps six adjacent, named icons with hover and focus hints", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop");
     await page.goto("/");
     const rail = page.locator(".mx-sidebar");
@@ -218,7 +225,7 @@ test.describe("workspace navigation refinements", () => {
     await expect(page.locator(".mx-topbar").getByRole("button", { name: searchName })).toBeVisible();
     const nav = rail.getByRole("navigation", { name: /主导航|Primary navigation/ });
     await expect(nav.locator(".mx-nav-group")).toHaveCount(1);
-    await expect(nav.getByRole("link")).toHaveCount(5);
+    await expect(nav.getByRole("link")).toHaveCount(6);
     expect((await rail.boundingBox())!.width).toBeLessThanOrEqual(80);
     expect(await nav.innerText()).toBe("");
     expect(await nav.getByRole("link").evaluateAll((links) => links.every((link) => link.getAttribute("aria-label") && link.getBoundingClientRect().height >= 44))).toBe(true);

@@ -1,6 +1,6 @@
 // Explicit URL presentation. Ordinary browser routes never opt in via cookies,
 // user-agent detection or a persistent preference.
-const pages = new Set(["", "holdings", "analytics", "research", "review", "account-analysis", "settings", "activity", "imports"]);
+const pages = new Set(["", "holdings", "analytics", "sectors", "research", "review", "account-analysis", "settings", "activity", "imports"]);
 export function desktopPage(pathname: string): string | null {
   if (pathname !== "/desktop" && !pathname.startsWith("/desktop/")) return null;
   const page = pathname.slice("/desktop".length).replace(/^\//, "");

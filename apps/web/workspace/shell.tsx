@@ -22,6 +22,7 @@ import {
   DotsThree,
   GearSix,
   Globe,
+  Layout,
   MagnifyingGlass,
   Moon,
   SquaresFour,
@@ -79,14 +80,15 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     {
       href: "/",
       label: t("组合总览", "Overview"),
-      mobileLabel: t("总览", "Overview"),
+      // Six dock cells are about 47px wide on a 320px phone: English names stay short.
+      mobileLabel: t("总览", "Home"),
       icon: SquaresFour,
       group: 0,
     },
     {
       href: "/holdings",
       label: t("持仓与穿透", "Holdings"),
-      mobileLabel: t("持仓", "Holdings"),
+      mobileLabel: t("持仓", "Assets"),
       icon: ChartPieSlice,
       group: 0,
     },
@@ -98,9 +100,16 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       group: 0,
     },
     {
+      href: "/sectors",
+      label: t("板块行情", "Sectors"),
+      mobileLabel: t("板块", "Sectors"),
+      icon: Layout,
+      group: 1,
+    },
+    {
       href: "/research",
       label: t("证券研究", "Research"),
-      mobileLabel: t("研究", "Research"),
+      mobileLabel: t("研究", "Stocks"),
       icon: ChartBar,
       group: 1,
     },
@@ -285,7 +294,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       <Menu.Dropdown>{appearanceItems}</Menu.Dropdown>
     </Menu>
   );
-  // Phones reach the five main pages from the dock. This one menu holds only
+  // Phones reach the six main pages from the dock. This one menu holds only
   // what the dock lacks: workspace management and, on the web, preferences.
   const more = (
     <Menu

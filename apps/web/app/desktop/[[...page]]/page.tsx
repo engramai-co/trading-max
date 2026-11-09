@@ -6,6 +6,7 @@ import { HoldingsWorkspace } from "@/workspace/holdings";
 import { PerformanceWorkspace } from "@/workspace/performance";
 import { ResearchWorkspace } from "@/workspace/research";
 import { ReviewWorkspace, AccountReviewWorkspace } from "@/workspace/review";
+import { SectorsWorkspace } from "@/workspace/sectors";
 import { SettingsWorkspace } from "@/workspace/settings";
 import { HealthWorkspace } from "@/workspace/health";
 import { ImportsWorkspace } from "@/workspace/imports";
@@ -20,6 +21,7 @@ export default async function DesktopPage({ params, searchParams }: { params: Pr
     "": <OverviewWorkspace localWorkspace={localWorkspace} />,
     holdings: <HoldingsWorkspace />,
     analytics: <PerformanceWorkspace />,
+    sectors: <SectorsWorkspace />,
     research: <ResearchWorkspace />,
     review: <ReviewWorkspace />,
     "account-analysis": <AccountReviewWorkspace />,

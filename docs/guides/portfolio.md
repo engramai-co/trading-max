@@ -87,6 +87,23 @@ range, and currency are the ones you intend to compare.
 observations; an unavailable Sharpe or Sortino is not zero risk. Money P&L,
 unrealized position P&L, and a cash-flow-adjusted return are distinct measures.
 
+## Watch today's sectors
+
+**Sectors** shows how far each sector has moved in the current session for the
+US, UK, Hong Kong and Korea. Block area follows index weight and colour follows
+the session's move. Each sector shows how many members are up and down and,
+while it keeps ranking in the top three, for how many sessions. Select a sector
+for its intraday path, leader, ranks over the last five sessions and your
+look-through exposure, then open an industry group to reach its companies.
+**My themes** regroups the US securities on your research watchlist by your
+research themes.
+
+Constituents and weights come from iShares fund holdings; prices come from
+Yahoo and some exchanges are delayed. Boards refresh every 10 minutes while a
+market is open, only when **Research & daily reconciliation** updates are on,
+and settle on official closing prices after the close. A failed refresh keeps
+the last board and says so beside its time.
+
 ## Review and refresh
 
 Review shows available account and realized-trade evidence. Realized attribution

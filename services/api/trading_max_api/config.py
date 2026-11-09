@@ -84,6 +84,9 @@ class Settings:
     alert_monitor_enabled: bool = False
     alert_held_interval_seconds: int = 300
     alert_watchlist_interval_seconds: int = 900
+    # Sector boards follow the research schedule; running services enable the
+    # monitor through from_env, embedded and test apps opt in.
+    sector_monitor_enabled: bool = False
     # Running services enable this through from_env; embedded/test apps opt in.
     dashboard_prewarm_seconds: float = 0.0
     embedded_worker: bool = False
@@ -175,6 +178,7 @@ class Settings:
                     "900",
                 )
             ),
+            sector_monitor_enabled=_bool_from_env("TRADING_MAX_SECTOR_MONITOR_ENABLED", True),
             dashboard_prewarm_seconds=float(
                 os.environ.get("TRADING_MAX_DASHBOARD_PREWARM_SECONDS", "3")
             ),

@@ -32,6 +32,16 @@
 .mx-segment-label {
   display: inline-block;
 }
+/* A live state, such as an open market, beside a segment's name: neutral, in the segment's own ink. */
+.mx-segment-marker {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
 /* A segment with a phone label shows its full label until the row gets narrow. */
 .mx-segment-short {
   display: none;

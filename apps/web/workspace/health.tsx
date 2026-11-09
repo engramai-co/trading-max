@@ -153,6 +153,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             [t("账户状态", "Account state"), data.refresh?.live],
             [t("绩效计算", "Performance"), data.refresh?.performance],
             [t("证券研究", "Research"), data.refresh?.research],
+            [t("板块行情", "Sectors"), data.refresh?.sectors],
           ] as const
         ).map(([label, schedule]) => [
           label,
