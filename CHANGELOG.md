@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.28.1] - 2026-11-09
+
+### Added
+
+- The research desk's price chart offers YTD between 3M and 1Y without opening
+  the full chart. On touch phones the seven ranges keep one row where seven
+  44px cells fit and otherwise take rows of four and three.
+
 ## [1.28.0] - 2026-11-09
 
 ### Added

@@ -23,6 +23,7 @@ import {
 } from "./foundation";
 import { useRouteState } from "./route-state";
 import {
+  compactPriceRanges,
   incompletePriceRange,
   priceIntervals,
   priceRanges,
@@ -195,14 +196,10 @@ export function PriceHistory({
             reset();
           }}
           options={ranges
-            .filter(
-              (v) =>
-                full ||
-                ["1D", "5D", "1M", "3M", "1Y", "ALL", range].includes(v),
-            )
+            .filter((v) => full || compactPriceRanges.includes(v) || v === range)
             .map((v) => ({
               value: v,
-              // Same word as the portfolio periods; it fits a phone row of 44px cells.
+              // Same word as the portfolio periods; seven 44px cells share a phone row, or rows of four and three.
               label: v === "ALL" ? t("全部", "All") : v,
             }))}
         />

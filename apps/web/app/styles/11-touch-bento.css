@@ -117,6 +117,23 @@
     flex: 1 0 25%;
   }
 }
+/* The compact chart's seven price ranges follow the same rule: one row while seven 44px cells fit, else four and three. */
+@media (pointer: coarse) and (max-width: 767px) {
+  /* Full width first: a content-sized row would measure as empty once it becomes the container. */
+  .mx-price-tools {
+    width: 100%;
+    container: mx-price-tools / inline-size;
+  }
+}
+/* Seven 44px cells and the control's 1px border on each side. */
+@container mx-price-tools (width < 310px) {
+  .mx-price-tools > .mx-segments:has(> button:nth-of-type(7)):not(:has(> button:nth-of-type(8))) {
+    width: 100%;
+  }
+  .mx-price-tools > .mx-segments:has(> button:nth-of-type(7)):not(:has(> button:nth-of-type(8))) > button {
+    flex: 1 0 25%;
+  }
+}
 /* Layout names the page: tools take the heading row; the security leads with its price. */
 .mx-page-tools {
   justify-content: flex-start;
