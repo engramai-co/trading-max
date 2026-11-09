@@ -4,6 +4,37 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-11-09
+
+### Added
+
+- A Sectors (板块) page shows how far each sector of one market has moved in
+  the current session: US (S&P 500), UK (FTSE 100), Hong Kong (the HKEX-listed
+  names of the MSCI AC Far East ex-Japan index) and Korea (MSCI Korea). A map
+  sizes sectors by index weight, nests GICS industry groups inside them and
+  colours both by the session's move; each sector carries its breadth and how
+  many sessions in a row it has ranked in the top three. The selected sector
+  shows its intraday line and high, up and down counts, leader, ranks over the
+  last five sessions, your look-through exposure, and its industry groups and
+  companies, with links into research. Phones get a ranked list that opens a
+  sector as its own step.
+- The US board can group by your research themes (three or more priced
+  members) instead of GICS sectors.
+- With Research automatic updates on, sector boards refresh every 10 minutes
+  while each market is open and settle on official closing prices after the
+  close. Constituents and weights come from iShares fund holdings; prices come
+  from Yahoo Finance in batches of twenty symbols. A failed or incomplete
+  refresh keeps the last board and is flagged beside its time; Data status
+  lists the next sector update.
+
+### Changed
+
+- The mobile dock holds six pages. Its English labels are shorter so they fit
+  a 320px phone: Home, Assets, Returns, Sectors, Stocks and Review.
+- The Research automatic-update setting now also describes the sector
+  refreshes it controls.
+- The desktop App opens links to Sectors in its workspace window.
+
 ## [1.27.0] - 2026-11-06
 
 ### Changed

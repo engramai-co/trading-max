@@ -10500,6 +10500,16 @@
           },
           "research": {
             "$ref": "#/components/schemas/NightlySchedule"
+          },
+          "sectors": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectorMonitorState"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -14396,6 +14406,723 @@
         "title": "ScheduledSession",
         "type": "object"
       },
+      "SectorBoard": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "End of the latest price bar included.",
+            "title": "Asof"
+          },
+          "complete": {
+            "description": "The session closed and its final bars were captured.",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "exposureBasisGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Invested value of the look-through the exposure was matched against.",
+            "title": "Exposurebasisgbp"
+          },
+          "exposureGbp": {
+            "default": 0.0,
+            "title": "Exposuregbp",
+            "type": "number"
+          },
+          "fetchedAt": {
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "groupings": {
+            "items": {
+              "$ref": "#/components/schemas/SectorGrouping"
+            },
+            "title": "Groupings",
+            "type": "array"
+          },
+          "market": {
+            "enum": [
+              "us",
+              "uk",
+              "hk",
+              "kr"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "memberCount": {
+            "default": 0,
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "pricedCount": {
+            "default": 0,
+            "title": "Pricedcount",
+            "type": "integer"
+          },
+          "rankSessions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ranksessions",
+            "type": "array"
+          },
+          "sessionDate": {
+            "title": "Sessiondate",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SectorSource"
+          },
+          "times": {
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Times",
+            "type": "array"
+          }
+        },
+        "required": [
+          "market",
+          "sessionDate",
+          "complete",
+          "fetchedAt",
+          "source"
+        ],
+        "title": "SectorBoard",
+        "type": "object"
+      },
+      "SectorBoardResponse": {
+        "properties": {
+          "board": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectorBoard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "market": {
+            "enum": [
+              "us",
+              "uk",
+              "hk",
+              "kr"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/SectorMarketStatus"
+            },
+            "title": "Markets",
+            "type": "array"
+          },
+          "monitor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectorMonitorState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Refresh schedule, so an empty board can say when the next update runs."
+          }
+        },
+        "required": [
+          "market"
+        ],
+        "title": "SectorBoardResponse",
+        "type": "object"
+      },
+      "SectorBreadth": {
+        "description": "Members up, unchanged (within ±0.05%) and down on the session.",
+        "properties": {
+          "down": {
+            "default": 0,
+            "title": "Down",
+            "type": "integer"
+          },
+          "flat": {
+            "default": 0,
+            "title": "Flat",
+            "type": "integer"
+          },
+          "up": {
+            "default": 0,
+            "title": "Up",
+            "type": "integer"
+          }
+        },
+        "title": "SectorBreadth",
+        "type": "object"
+      },
+      "SectorGroup": {
+        "properties": {
+          "breadth": {
+            "$ref": "#/components/schemas/SectorBreadth"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "exposureGbp": {
+            "default": 0.0,
+            "title": "Exposuregbp",
+            "type": "number"
+          },
+          "key": {
+            "description": "GICS sector code or research theme id.",
+            "title": "Key",
+            "type": "string"
+          },
+          "leader": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectorLeader"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "memberCount": {
+            "default": 0,
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/SectorMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "description": "English GICS sector name or theme label.",
+            "title": "Name",
+            "type": "string"
+          },
+          "nameZh": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A theme's own Chinese label; GICS names are translated by the client.",
+            "title": "Namezh"
+          },
+          "path": {
+            "description": "Session change at each of the board's times.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "ranks": {
+            "description": "Rank among the grouping's groups for each of the board's rank sessions.",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Ranks",
+            "type": "array"
+          },
+          "streak": {
+            "default": 0,
+            "description": "Consecutive latest sessions ranked within the top three.",
+            "title": "Streak",
+            "type": "integer"
+          },
+          "subgroups": {
+            "items": {
+              "$ref": "#/components/schemas/SectorSubgroup"
+            },
+            "title": "Subgroups",
+            "type": "array"
+          },
+          "weight": {
+            "default": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "SectorGroup",
+        "type": "object"
+      },
+      "SectorGrouping": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/SectorGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "gics",
+              "themes"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SectorGrouping",
+        "type": "object"
+      },
+      "SectorLeader": {
+        "properties": {
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "name",
+          "change"
+        ],
+        "title": "SectorLeader",
+        "type": "object"
+      },
+      "SectorMarketStatus": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "complete": {
+            "default": false,
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "exposureGbp": {
+            "default": 0.0,
+            "title": "Exposuregbp",
+            "type": "number"
+          },
+          "fetchedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetchedat"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "lastErrorAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterrorat"
+          },
+          "market": {
+            "enum": [
+              "us",
+              "uk",
+              "hk",
+              "kr"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "sessionDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessiondate"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SectorSessionWindow"
+            },
+            "title": "Sessions",
+            "type": "array"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "market",
+          "calendar",
+          "timezone"
+        ],
+        "title": "SectorMarketStatus",
+        "type": "object"
+      },
+      "SectorMember": {
+        "properties": {
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "exposureGbp": {
+            "default": 0.0,
+            "title": "Exposuregbp",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "researchTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The research desk ticker when the research universe covers this member.",
+            "title": "Researchticker"
+          },
+          "subgroup": {
+            "default": "",
+            "description": "GICS industry-group code; empty for themes or an unclassified member.",
+            "title": "Subgroup",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Provider symbol, for example AAPL, HSBA.L, 0700.HK.",
+            "title": "Symbol",
+            "type": "string"
+          },
+          "weight": {
+            "default": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "symbol",
+          "name"
+        ],
+        "title": "SectorMember",
+        "type": "object"
+      },
+      "SectorMonitorState": {
+        "description": "Ten-minute sector-board refreshes for the markets that are trading.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "intervalSeconds": {
+            "title": "Intervalseconds",
+            "type": "integer"
+          },
+          "lastAttemptAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastattemptat"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "lastSuccessAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastsuccessat"
+          },
+          "nextRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextrunat"
+          },
+          "phase": {
+            "enum": [
+              "disabled",
+              "starting",
+              "idle",
+              "refreshing",
+              "error"
+            ],
+            "title": "Phase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "phase",
+          "intervalSeconds"
+        ],
+        "title": "SectorMonitorState",
+        "type": "object"
+      },
+      "SectorSessionWindow": {
+        "description": "One regular session as the exchange schedules it, in UTC.",
+        "properties": {
+          "breakEnd": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakend"
+          },
+          "breakStart": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakstart"
+          },
+          "close": {
+            "format": "date-time",
+            "title": "Close",
+            "type": "string"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "open": {
+            "format": "date-time",
+            "title": "Open",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "open",
+          "close"
+        ],
+        "title": "SectorSessionWindow",
+        "type": "object"
+      },
+      "SectorSource": {
+        "properties": {
+          "asOf": {
+            "description": "The issuer's holdings date.",
+            "title": "Asof",
+            "type": "string"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "string"
+          },
+          "fundTicker": {
+            "title": "Fundticker",
+            "type": "string"
+          },
+          "prices": {
+            "default": "Yahoo Finance",
+            "title": "Prices",
+            "type": "string"
+          },
+          "universe": {
+            "description": "Index universe, for example S&P 500.",
+            "title": "Universe",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "universe",
+          "fund",
+          "fundTicker",
+          "url",
+          "asOf"
+        ],
+        "title": "SectorSource",
+        "type": "object"
+      },
+      "SectorSubgroup": {
+        "description": "A GICS industry group inside one sector.",
+        "properties": {
+          "breadth": {
+            "$ref": "#/components/schemas/SectorBreadth"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "exposureGbp": {
+            "default": 0.0,
+            "title": "Exposuregbp",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "memberCount": {
+            "default": 0,
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weight": {
+            "default": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "SectorSubgroup",
+        "type": "object"
+      },
       "SecuritySearchResponse": {
         "properties": {
           "correctedQuery": {
@@ -17159,7 +17886,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.27.0"
+    "version": "1.28.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -19524,6 +20251,63 @@
         "summary": "Valuation Preview Calculate",
         "tags": [
           "research"
+        ]
+      }
+    },
+    "/v1/sectors": {
+      "get": {
+        "operationId": "sector_board_v1_sectors_get",
+        "parameters": [
+          {
+            "description": "Market to show; defaults to the one trading now.",
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "us",
+                    "uk",
+                    "hk",
+                    "kr"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Market to show; defaults to the one trading now.",
+              "title": "Market"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SectorBoardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sector Board",
+        "tags": [
+          "sectors"
         ]
       }
     },

@@ -65,6 +65,19 @@ export type ResearchShell = Concrete<ApiSchemas["ResearchShell"]>;
 
 export type ResearchLensSnapshot = Concrete<ApiSchemas["ResearchLensSnapshot"]>;
 
+export type SectorBoardResponse = Concrete<ApiSchemas["SectorBoardResponse"]>;
+export type SectorBoard = NonNullable<SectorBoardResponse["board"]>;
+export type SectorMarketStatus = SectorBoardResponse["markets"][number];
+export type SectorMarketCode = SectorMarketStatus["market"];
+export type SectorSessionWindow = SectorMarketStatus["sessions"][number];
+export type SectorMonitorState = NonNullable<SectorBoardResponse["monitor"]>;
+export type SectorGrouping = SectorBoard["groupings"][number];
+export type SectorGroupingKind = SectorGrouping["kind"];
+export type SectorGroup = SectorGrouping["groups"][number];
+export type SectorSubgroup = SectorGroup["subgroups"][number];
+export type SectorMember = SectorGroup["members"][number];
+export type SectorBreadth = SectorGroup["breadth"];
+
 export type ValuationScenarioInput = {
   revenueCagr: number | null;
   targetFcfMargin: number | null;
@@ -157,6 +170,7 @@ export type RefreshState = Omit<
   | "live"
   | "performance"
   | "research"
+  | "sectors"
 > & {
   latestJob: RefreshJob | null;
   latestFullJob: RefreshJob | null;
@@ -177,6 +191,8 @@ export type RefreshState = Omit<
   research?: Omit<Concrete<ApiSchemas["NightlySchedule"]>, "lastJob"> & {
     lastJob: RefreshJob | null;
   };
+  /** Absent from services that predate the sector board. */
+  sectors?: Concrete<ApiSchemas["SectorMonitorState"]> | null;
 };
 
 /** Read-only metrics returned by the durable job queue health probes. */

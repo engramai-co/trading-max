@@ -327,6 +327,18 @@ class AlertMonitorState(ApiModel):
     last_error: str | None = None
 
 
+class SectorMonitorState(ApiModel):
+    """Ten-minute sector-board refreshes for the markets that are trading."""
+
+    enabled: bool
+    phase: Literal["disabled", "starting", "idle", "refreshing", "error"]
+    interval_seconds: int
+    next_run_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error: str | None = None
+
+
 class RefreshState(ApiModel):
     active_job_id: str | None = None
     latest_job: JobRecord | None = None
@@ -338,6 +350,7 @@ class RefreshState(ApiModel):
     performance: PerformanceSchedule
     research: NightlySchedule
     alerts: AlertMonitorState
+    sectors: SectorMonitorState | None = None
 
 
 class ResearchArtifactState(ApiModel):

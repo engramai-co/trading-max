@@ -419,6 +419,7 @@ def update_automation_settings(
     app_service(request, "scheduler").configure(enabled=saved.research_enabled)
     app_service(request, "intraday_scheduler").configure(enabled=saved.live_enabled)
     app_service(request, "performance_scheduler").configure(enabled=saved.performance_enabled)
+    app_service(request, "sector_monitor").configure(enabled=saved.research_enabled)
     return _automation_settings(request)
 
 

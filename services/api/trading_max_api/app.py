@@ -55,9 +55,11 @@ from .routes.imports import router as imports_router
 from .routes.local_workspace import router as local_workspace_router
 from .routes.operations import router as operations_router
 from .routes.research import router as research_router
+from .routes.sectors import router as sectors_router
 from .routes.settings import router as settings_router
 from .routes.system import router as system_router
 from .scheduler import NightlyScheduler
+from .sector_monitor import SectorMonitor
 from .security_entity_resolution import OpenCodeWebSearchResolver
 from .settings import SettingsRepository
 from .typed_analysis import TypedAnalysisManager
@@ -334,6 +336,13 @@ def create_app(
         held_interval_seconds=settings.alert_held_interval_seconds,
         watchlist_interval_seconds=settings.alert_watchlist_interval_seconds,
     )
+    sector_monitor = SectorMonitor(
+        settings.data_root,
+        store,
+        watchlist,
+        available=settings.sector_monitor_enabled,
+        enabled=automation_preferences.research_enabled,
+    )
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
@@ -391,6 +400,7 @@ def create_app(
         intraday_scheduler.start()
         performance_scheduler.start()
         alert_monitor.start()
+        sector_monitor.start()
         yield
         logger.info("service stopping")
         dashboard_prewarm_stop.set()
@@ -398,6 +408,7 @@ def create_app(
         intraday_scheduler.close()
         performance_scheduler.close()
         alert_monitor.close()
+        sector_monitor.close()
         jobs.close()
         analysis.close()
         oauth_login.close()
@@ -443,6 +454,7 @@ def create_app(
     app.state.cfd_imports = cfd_imports
     app.state.analysis = analysis
     app.state.alert_monitor = alert_monitor
+    app.state.sector_monitor = sector_monitor
     app.state.research = research
     app.state.security_search = security_search
     app.state.valuation_assumptions = valuation_assumptions
@@ -471,6 +483,7 @@ def create_app(
     app.include_router(analysis_router)
     app.include_router(operations_router)
     app.include_router(research_router)
+    app.include_router(sectors_router)
     return app
 
 

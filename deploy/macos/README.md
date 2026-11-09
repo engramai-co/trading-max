@@ -62,6 +62,14 @@ prices are available; daily-only history stays daily and broker gaps stay gaps. 
 [valuation history](../../docs/architecture/unified-nav-history.md). Disable collection with
 `TRADING_MAX_INTRADAY_ENABLED=false`.
 
+While research automatic updates are on, the API also refreshes the Sectors
+boards in 10-minute slots from each market's open until 30 minutes after its
+close (never during the Hong Kong lunch break), then settles them on official
+closes. Each refresh reads cached iShares holdings files and requests Yahoo
+prices in batches of twenty symbols; a rate limit pauses sector refreshes for
+30 minutes. Boards are stored under `state/sectors/` in the state root. Disable
+the sector monitor with `TRADING_MAX_SECTOR_MONITOR_ENABLED=false`.
+
 It must be mode `0600`. Snapshots, artifacts, the SQLite queue, and broker raw
 state live below the configured state root; logs live in
 `~/Library/Logs/Trading Max`.

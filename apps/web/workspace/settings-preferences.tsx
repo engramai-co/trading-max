@@ -95,8 +95,8 @@ export function AutomationPreferences() {
           title: t("证券研究与每日对账", "Research & daily reconciliation"),
           description:
             t(
-              "更新关注列表的市场数据和模型；每日账户流水对账安排在 ",
-              "Update watchlist market data and models. Daily account reconciliation runs at ",
+              "更新关注列表的市场数据和模型，开盘时段每 10 分钟更新板块行情；每日账户流水对账安排在 ",
+              "Update watchlist market data and models, and sectors every 10 minutes while markets are open. Daily account reconciliation runs at ",
             ) +
             s.dailyReconciliationLocalTime +
             " · " +
