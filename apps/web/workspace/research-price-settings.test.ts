@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  compactPriceRanges,
   incompletePriceRange,
+  priceRanges,
   resolvePriceInterval,
   supportsPriceRange,
 } from "./research-price-settings";
 
 describe("security chart range and interval", () => {
+  it("offers year to date on the compact chart, in the full chart's order", () => {
+    expect(compactPriceRanges).toContain("YTD");
+    expect(priceRanges.filter((range) => compactPriceRanges.includes(range))).toEqual(
+      compactPriceRanges,
+    );
+    expect(resolvePriceInterval("YTD", null, false)).toBe("1d");
+  });
   it("keeps the basic chart readable despite a saved advanced interval", () => {
     expect(resolvePriceInterval("3M", "15m", false)).toBe("1d");
     expect(resolvePriceInterval("1Y", "15m", true)).toBe("1d");

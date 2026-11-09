@@ -9,6 +9,8 @@ export const priceRanges = [
   "2Y",
   "ALL",
 ];
+/** The compact chart's ranges, in the same order; the full chart offers every range. */
+export const compactPriceRanges = ["1D", "5D", "1M", "3M", "YTD", "1Y", "ALL"];
 export const priceIntervals = ["15m", "60m", "1d", "1wk"];
 
 /** Security OHLC history, independent of the portfolio's ten-minute NAV record. */
