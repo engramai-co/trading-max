@@ -142,8 +142,10 @@ def is_due(
     A board is refreshed until it holds the current session's closing prices,
     never during a midday break, and at most until a few hours after the
     close: a session whose prices never arrive keeps the last board rather
-    than polling all night. A market without any board is filled from its
-    latest session even later, but only ``BACKFILL_ATTEMPTS`` times.
+    than polling all night. Later still, a market without the latest session's
+    closing board (none at all, an older session's, or this session's unsettled
+    one, as after a restart) is filled from that session, but only
+    ``BACKFILL_ATTEMPTS`` times.
     """
 
     if in_break(session, now):
@@ -154,7 +156,7 @@ def is_due(
         return False
     if now <= session.close + COMPLETE_AFTER + GIVE_UP_AFTER:
         return True
-    return board_session is None and backfill_attempts < BACKFILL_ATTEMPTS
+    return backfill_attempts < BACKFILL_ATTEMPTS
 
 
 __all__ = [

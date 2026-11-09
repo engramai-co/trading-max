@@ -43,6 +43,8 @@ from services.api.trading_max_api.sector_monitor import (
 )
 from services.api.trading_max_api.sector_sessions import (
     BACKFILL_ATTEMPTS,
+    COMPLETE_AFTER,
+    GIVE_UP_AFTER,
     board_complete,
     in_break,
     is_due,
@@ -303,15 +305,18 @@ def test_refresh_timing_rules() -> None:
     assert is_due(session, SESSION, False, datetime(2026, 11, 6, 5, tzinfo=UTC))
     # Boards are refreshed until a few hours after the close.
     assert is_due(session, "2026-11-05", True, datetime(2026, 11, 6, 11, 30, tzinfo=UTC))
-    assert not is_due(session, "2026-11-05", True, datetime(2026, 11, 6, 11, 31, tzinfo=UTC))
     assert is_due(session, SESSION, False, datetime(2026, 11, 6, 10, tzinfo=UTC))
-    assert not is_due(session, SESSION, False, datetime(2026, 11, 6, 20, tzinfo=UTC))
     assert not is_due(session, "2026-11-07", False, morning)
-    # Without any board, the latest session is filled later too, a few times.
+    # Later, a session still without its closing board is filled a few times, whatever was
+    # stored: no board, an older session's, or this session's unsettled one (a restart).
     late = datetime(2026, 11, 7, 12, tzinfo=UTC)
-    assert is_due(session, None, False, late)
-    assert is_due(session, None, False, late, backfill_attempts=BACKFILL_ATTEMPTS - 1)
-    assert not is_due(session, None, False, late, backfill_attempts=BACKFILL_ATTEMPTS)
+    for stored, complete in ((None, False), ("2026-11-05", True), (SESSION, False)):
+        assert is_due(session, stored, complete, late)
+        assert is_due(session, stored, complete, late, backfill_attempts=BACKFILL_ATTEMPTS - 1)
+        assert not is_due(session, stored, complete, late, backfill_attempts=BACKFILL_ATTEMPTS)
+    assert not is_due(session, SESSION, True, late)
+    just_after = datetime(2026, 11, 6, 11, 31, tzinfo=UTC)
+    assert not is_due(session, "2026-11-05", True, just_after, backfill_attempts=BACKFILL_ATTEMPTS)
     assert not board_complete(session, datetime(2026, 11, 6, 8, 29, tzinfo=UTC))
     assert board_complete(session, datetime(2026, 11, 6, 8, 30, tzinfo=UTC))
 
@@ -612,6 +617,98 @@ def test_backfill_without_prices_is_reported_and_bounded(tmp_path: Path) -> None
     sectors.run_once()
     assert len(prices.intraday_requests) == requests
     assert sectors.status().next_run_at == datetime(2026, 11, 9, tzinfo=UTC)
+
+
+def test_a_late_fill_retries_an_unsettled_close(tmp_path: Path) -> None:
+    universes, prices = us_board_inputs()  # bars stop before the close; no official closes yet
+    _, official = us_board_inputs(official=True)
+    clock = {"now": datetime(2026, 11, 7, 12, tzinfo=UTC)}  # a restart long after the close
+    sectors = monitor(tmp_path, universes, prices, clock)
+
+    state = sectors.run_once()
+    board = sectors.boards.load("us")
+    assert board is not None and (board.session_date, board.complete) == (SESSION, False)
+    assert state.last_error is not None and "US: Closing prices cover 0%" in state.last_error
+    assert sectors.due("us", clock["now"])
+
+    # The provider's closes arrive by the next slot: the board settles and the market rests.
+    prices.history = official.history
+    clock["now"] += timedelta(minutes=10)
+    sectors.run_once()
+    board = sectors.boards.load("us")
+    assert board is not None and board.complete is True
+    assert board.as_of == US_CLOSE
+    assert not sectors.due("us", clock["now"])
+
+
+def test_an_unsettled_close_is_retried_only_a_few_times(tmp_path: Path) -> None:
+    universes, prices = us_board_inputs()  # official closes never arrive
+    clock = {"now": datetime(2026, 11, 7, 12, tzinfo=UTC)}
+    sectors = monitor(tmp_path, universes, prices, clock)
+
+    for attempt in range(BACKFILL_ATTEMPTS):
+        assert sectors.due("us", clock["now"]), attempt
+        sectors.run_once()
+        clock["now"] += timedelta(minutes=10)
+
+    board = sectors.boards.load("us")
+    assert board is not None and board.complete is False
+    assert not sectors.due("us", clock["now"])
+    requests = len(prices.intraday_requests)
+    sectors.run_once()
+    assert len(prices.intraday_requests) == requests
+
+
+def test_a_late_fill_asks_again_for_closes_the_window_gave_up_on(tmp_path: Path) -> None:
+    universes, prices = us_board_inputs()  # the session's official closes are late
+    _, official = us_board_inputs(official=True)
+    clock = {"now": US_CLOSE + COMPLETE_AFTER}
+    sectors = monitor(tmp_path, universes, prices, clock)
+
+    # Within the window the closes are asked for a few times, then no more.
+    for minute in (30, 40, 50, 60):
+        clock["now"] = US_CLOSE + timedelta(minutes=minute)
+        sectors.run_once()
+    requests = len(prices.daily_requests)
+    clock["now"] = US_CLOSE + timedelta(minutes=70)
+    sectors.run_once()
+    assert len(prices.daily_requests) == requests
+
+    # Past the window, the first late attempt asks again and settles the session.
+    prices.history = official.history
+    clock["now"] = US_CLOSE + COMPLETE_AFTER + GIVE_UP_AFTER + timedelta(minutes=10)
+    sectors.run_once()
+    assert len(prices.daily_requests) == requests + 1
+    board = sectors.boards.load("us")
+    assert board is not None and board.complete is True
+
+
+def test_a_late_fill_never_replaces_a_settled_board_with_an_unsettled_one(
+    tmp_path: Path,
+) -> None:
+    universes, official = us_board_inputs(official=True)
+    clock = {"now": US_CLOSE + COMPLETE_AFTER}
+    earlier = monitor(tmp_path, universes, official, clock)
+    assert earlier.refresh("us", clock["now"]).problem is None
+    settled = earlier.boards.load("us")
+    assert settled is not None and settled.complete
+    # Stored as the previous session's settled board.
+    earlier.boards.save(settled.model_copy(update={"session_date": PRIOR[-1]}))
+
+    _, prices = us_board_inputs()  # the latest session's closes are missing
+    clock["now"] = datetime(2026, 11, 7, 12, tzinfo=UTC)  # a restart long after the close
+    sectors = monitor(tmp_path, universes, prices, clock)
+    state = sectors.run_once()
+    kept = sectors.boards.load("us")
+    assert kept is not None and (kept.session_date, kept.complete) == (PRIOR[-1], True)
+    assert state.last_error is not None and "US: Closing prices cover 0%" in state.last_error
+    assert sectors.due("us", clock["now"])
+
+    prices.history = official.history
+    clock["now"] += timedelta(minutes=10)
+    sectors.run_once()
+    board = sectors.boards.load("us")
+    assert board is not None and (board.session_date, board.complete) == (SESSION, True)
 
 
 def test_missing_daily_closes_are_asked_for_again(tmp_path: Path) -> None:
@@ -935,6 +1032,19 @@ def test_rate_limiting_pauses_every_market(tmp_path: Path) -> None:
     assert state.next_run_at == datetime(2026, 11, 6, 16, 30, tzinfo=UTC)
     clock["now"] = datetime(2026, 11, 6, 16, 31, tzinfo=UTC)
     assert sectors.due("us", clock["now"])
+
+
+def test_the_next_run_waits_out_a_pause_that_outlasts_a_lunch_break(tmp_path: Path) -> None:
+    universes, prices = us_board_inputs()
+    prices.raise_intraday = SparkRateLimited("Yahoo Finance is rate-limiting price requests")
+    # Monday 04:40 UTC: Hong Kong at lunch until 05:00; a late US fill meets a rate limit.
+    clock = {"now": datetime(2026, 11, 9, 4, 40, tzinfo=UTC)}
+    sectors = monitor(tmp_path, universes, prices, clock)
+
+    state = sectors.run_once()
+
+    assert len(prices.intraday_requests) == 1
+    assert state.next_run_at == datetime(2026, 11, 9, 5, 10, tzinfo=UTC)
 
 
 def test_switching_off_stops_a_refresh_before_it_publishes(tmp_path: Path) -> None:
