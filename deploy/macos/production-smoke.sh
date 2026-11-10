@@ -42,4 +42,25 @@ if not payload.get("runId") or not payload.get("artifacts"):
 for route in "/" "/health" "/analytics" "/research" "/holdings" "/review" "/settings"; do
   curl --fail --silent --show-error --max-time 15 "$WEB_BASE$route" >/dev/null
 done
+# Browsers ask for compressed data. The web proxy compresses larger responses
+# itself, so each compressed body must still carry its Content-Encoding label;
+# an unlabelled compressed body leaves every data page unreadable in a browser.
+/usr/bin/python3 - "$WEB_BASE" <<'PY'
+import gzip, json, sys, urllib.request
+
+url = sys.argv[1] + "/api/backend/dashboard/lens/overview?detail=summary"
+for coding in ("gzip", "br"):
+    request = urllib.request.Request(url, headers={"Accept-Encoding": coding})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        body = response.read()
+        label = response.headers.get("Content-Encoding")
+    if label == "gzip":
+        body = gzip.decompress(body)
+    elif label is not None:
+        continue  # A labelled br body is decoded by the browser.
+    try:
+        json.loads(body)
+    except ValueError:
+        raise SystemExit(f"web proxy sent an unreadable {coding} response (Content-Encoding: {label})")
+PY
 printf '%s\n' "Trading Max read-only production smoke passed"
