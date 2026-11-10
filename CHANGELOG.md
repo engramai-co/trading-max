@@ -11,6 +11,7 @@ All notable public Trading Max releases are recorded here.
 - The overview now reports whether each holding is a fund, including after an
   intraday broker refresh. Funds continue to show no company research scores.
 - The app closes old log files when logging is reconfigured.
+- Updated the PDF reader used for fund documents to fix security issues.
 
 ## [1.29.0] - 2026-11-10
 
