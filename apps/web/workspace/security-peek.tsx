@@ -35,7 +35,8 @@ export function SecurityPeek({
       <HoverCard.Target>
         <div className="mx-peek-target">{children}</div>
       </HoverCard.Target>
-      <HoverCard.Dropdown className="mx-peek">
+      {/* The card renders in a portal but still bubbles through its trigger's link in React: a click on it stays here. */}
+      <HoverCard.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}>
         <PeekBody ticker={ticker} position={position} />
       </HoverCard.Dropdown>
     </HoverCard>

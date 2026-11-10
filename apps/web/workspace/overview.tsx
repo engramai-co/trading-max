@@ -1,23 +1,38 @@
 "use client";
 
+/*
+ * Direction contract — 首页「账本在下」(owner-pinned 合并账本 with a pie; seed 34de5601), comp-led.
+ * THESIS: the morning read in three bands: what the money did, how far US sectors went today, and every
+ *   holding with its research on one row. No separate allocation, account or research boxes.
+ * OWN-WORLD: the Quiet Ledger, unchanged: white hairline panels on the cool canvas, ink figures, cobalt only
+ *   for links and selection, green and red only for gains and losses, sector heat washes.
+ * STORY: read the value and today → the period curve → which US sectors moved → each holding's weight, day,
+ *   P&L, score and model upside, flags marked in place → open research or a sector.
+ * FIRST VIEWPORT: the summary across the top; 区间净盈亏 (about 62%) beside the 美股板块 map (about 38%);
+ *   the 持仓 panel below: donut left, ledger right.
+ * FORM: 账本在下, the owner's pick among three pie variants of the dealt 合并账本 (index 1, seed 34de5601);
+ *   approved comp .impeccable/mocks/decision/overview-r2-ledgerpie.png.
+ * FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict,
+ *   DESIGN.md, and every shipping raster carrying its provenance.
+ */
+
 import { Button, Select } from "@mantine/core";
-import { ArrowUpRight, ChartLine } from "@phosphor-icons/react";
+import { ChartLine } from "@phosphor-icons/react";
 import Link from "./link";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
+import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { attentionItems, type AttentionFact, type AttentionItem } from "./attention";
+import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
   Facts,
   Freshness,
-  Instrument,
   Metric,
   Notice,
   Page,
@@ -38,7 +53,8 @@ import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { useCurrentDay } from "./current-day";
 import { LocalOnboarding } from "./local-onboarding";
-import { SecurityPeek } from "./security-peek";
+import { OverviewHoldings } from "./overview-holdings";
+import { OverviewSectors } from "./overview-sectors";
 
 /** The overview chart reopens on the range last chosen on this device; a range in the URL wins. */
 const RANGE_STORAGE_KEY = "trading_max-overview-range";
@@ -69,7 +85,7 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
   const t = useCopy();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   return (
-    <Page className="mx-overview-page" title={t("组合总览", "Portfolio overview")}>
+    <Page className="mx-overview-page" title={t("组合总览", "Portfolio overview")} titleHidden>
       {query.isPending ? (
         <Pending />
       ) : query.isError ? (
@@ -129,22 +145,8 @@ function OverviewContent({ data }: { data: DashboardLens }) {
     scope === "total" ? data.totalValueGbp : selected?.totalValueGbp;
   const previousDay =
     scope === "total" ? data.latestModelDayReturn : selected?.dailyReturn;
-  // A retired account with nothing left in it has no row; history stays in review.
-  const cfd = data.cfd && !(data.cfd.accountStatus === "retired" && Math.abs(data.cfd.endingValueGbp ?? 0) < 0.005)
-    ? data.cfd
-    : null;
-  const signals = (data.technical ?? [])
-    .filter((s) => s.score != null && holdings.some((h) => h.ticker === s.ticker))
-    .sort((a, b) => (a.score ?? Infinity) - (b.score ?? Infinity))
-    .slice(0, 3);
-  const attention = attentionItems({
-    holdings,
-    technical: data.technical,
-    valuations: data.valuations,
-    brokerAsOf: data.brokerAsOf,
-    refresh: refresh.data,
-    now,
-  });
+  // Data problems speak here; a holding's readings are marked in its own row below.
+  const attention = attentionItems({ brokerAsOf: data.brokerAsOf, refresh: refresh.data, now });
   return (
     <>
       <div className="mx-panel mx-overview-portfolio">
@@ -208,117 +210,17 @@ function OverviewContent({ data }: { data: DashboardLens }) {
             </Notice>
           </div>
         )}
-        <div className="mx-overview-split">
-          <OverviewHistory
-            scope={scope}
-            runId={data.runId}
-            dayAttribution={data.dayAttribution}
-            windowAttribution={data.windowAttribution}
-          />
-          <Allocation holdings={holdings} />
-        </div>
       </div>
-      <div className="mx-panel mx-overview-followups mx-overview-split">
-        <Panel
-          className="mx-overview-accounts"
-          title={t("账户", "Accounts")}
-        >
-          {accounts.map((account) => (
-            <Link
-              className="mx-row-link"
-              href={"/account-analysis?account=" + account.code}
-              key={account.code}
-            >
-              <div className="mx-account-title">
-                <strong style={{ fontSize: 13 }}>
-                  {accountName(profile, account.code)}
-                </strong>
-              </div>
-              <div className="mx-row-value">
-                {currency(account.totalValueGbp, "GBP", 2)}
-                <small>
-                  <span className={"mx-" + tone(account.unrealizedPnlGbp)}>
-                    {currency(account.unrealizedPnlGbp)}
-                  </span>
-                </small>
-              </div>
-              <ArrowUpRight size={17} />
-            </Link>
-          ))}
-          {cfd && (
-            <div className="mx-chart-footer">
-              <span>
-                CFD ·{" "}
-                {t("历史现金权益", "Historical cash equity")}
-              </span>
-              <TextLink href="/account-analysis?account=C">
-                {currency(cfd.endingValueGbp)}
-              </TextLink>
-            </div>
-          )}
-        </Panel>
-        <Panel
-          className="mx-overview-research"
-          title={t("持仓研究", "Holdings research")}
-          help={t(
-            "当前账户持仓中，按技术评分从低到高展示最多三个已有研究的标的。",
-            "Up to three researched holdings in the selected account, ordered by technical score from low to high.",
-          )}
-        >
-          {signals.length ? (
-            signals.map((signal) => {
-              const valuation = data.valuations?.find(
-                (v) => v.ticker === signal.ticker,
-              );
-              const name = holdings.find(
-                (h) => h.ticker === signal.ticker,
-              )?.name;
-              const held = holdings.filter((h) => h.ticker === signal.ticker);
-              return (
-                <Link
-                  className="mx-row-link"
-                  key={signal.ticker}
-                  href={"/research?ticker=" + encodeURIComponent(signal.ticker)}
-                >
-                  <SecurityPeek
-                    ticker={signal.ticker}
-                    position={{
-                      valueGbp: held.reduce((sum, h) => sum + h.currentValueGbp, 0),
-                      weightPct: held.reduce((sum, h) => sum + h.allocationPct, 0),
-                    }}
-                  >
-                    <Instrument ticker={signal.ticker} name={name} small />
-                  </SecurityPeek>
-                  <div className="mx-row-value">
-                    {t("技术 ", "Technical ")}{signal.score}
-                    <span className="mx-metric-note">/100</span>
-                    {valuation?.ev5Upside != null && (
-                      <small>
-                        {t("模型空间 ", "Model upside ") +
-                          percent(valuation.ev5Upside, true)}
-                      </small>
-                    )}
-                  </div>
-                  <ArrowUpRight size={16} />
-                </Link>
-              );
-            })
-          ) : (
-            <Empty
-              title={t("暂无研究数据", "No research data")}
-              description={t(
-                "添加标的并更新研究后，相关线索会出现在这里。",
-                "Add securities and update research to surface their latest context.",
-              )}
-              action={
-                <TextLink href="/research">
-                  {t("进入研究台", "Open research")}
-                </TextLink>
-              }
-            />
-          )}
-        </Panel>
+      <div className="mx-overview-row">
+        <OverviewHistory
+          scope={scope}
+          runId={data.runId}
+          dayAttribution={data.dayAttribution}
+          windowAttribution={data.windowAttribution}
+        />
+        <OverviewSectors />
       </div>
+      <OverviewHoldings holdings={holdings} technical={data.technical} valuations={data.valuations} />
       <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />
     </>
   );
@@ -333,15 +235,6 @@ function Attention({ items }: { items: AttentionItem[] }) {
     if (days >= 2) return zh ? `账户数据 ${days} 天未更新` : `No account update for ${days} days`;
     return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} hours`;
   };
-  const fact = (f: AttentionFact) => {
-    if (f.kind === "score") return zh ? `技术 ${f.value}/100` : `Technical ${f.value}/100`;
-    if (f.kind === "rsi") {
-      const stretched = f.value >= 75 ? (zh ? "超买" : "overbought") : zh ? "超卖" : "oversold";
-      return `RSI ${f.value} ${stretched}`;
-    }
-    if (f.kind === "upside") return zh ? `模型空间 ${percent(f.value, true, 0)}` : `Model upside ${percent(f.value, true, 0)}`;
-    return zh ? `浮亏 ${percent(Math.abs(f.value), false, 0)}` : `${percent(f.value, true, 0)} vs cost`;
-  };
   return (
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
       {items.map((item) =>
@@ -355,14 +248,9 @@ function Attention({ items }: { items: AttentionItem[] }) {
               : item.minutes > 0 ? item.minutes + t(" 分钟", "m")
                 : item.failures + t(" 次", " attempts")}</span>
           </Link>
-        ) : item.kind === "stale" ? (
+        ) : (
           <Link key="stale" href="/health" data-tone="warning">
             {age(item.hours)}
-          </Link>
-        ) : (
-          <Link key={item.ticker} href={item.href} data-tone={item.facts[0].kind === "rsi" ? "warning" : "down"}>
-            <strong>{item.ticker}</strong>
-            <span>{item.facts.map(fact).join(" · ")}</span>
           </Link>
         ),
       )}
@@ -548,6 +436,7 @@ function OverviewHistory({
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
             recordSource={selection}
+            height={264}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
               unit: "GBP",
@@ -557,94 +446,6 @@ function OverviewHistory({
           />
         </>
       )}
-    </Panel>
-  );
-}
-function Allocation({ holdings }: { holdings: Holding[] }) {
-  const t = useCopy();
-  const grouped = new Map<
-    string,
-    { ticker: string; name: string; value: number }
-  >();
-  for (const h of holdings) {
-    const current = grouped.get(h.ticker);
-    grouped.set(h.ticker, {
-      ticker: h.ticker,
-      name: h.name,
-      value: (current?.value ?? 0) + h.currentValueGbp,
-    });
-  }
-  const rows = [...grouped.values()].sort((a, b) => b.value - a.value);
-  const total = rows.reduce((sum, r) => sum + r.value, 0);
-  const shown = rows.slice(0, 5);
-  const other = rows.slice(5).reduce((sum, r) => sum + r.value, 0);
-  return (
-    <Panel
-      className="mx-overview-allocation"
-      title={t("持仓分布", "Holdings allocation")}
-      help={t(
-        "按已投资市值计算占比，不含现金。",
-        "Shares of invested value; cash is excluded.",
-      )}
-    >
-      <div className="mx-stack-bar" aria-hidden="true">
-        {[...shown.map((r) => r.value), other]
-          .filter((v) => v > 0)
-          .map((v, i) => (
-            <span
-              key={i}
-              style={{
-                width: percent(total > 0 ? v / total : 0),
-                background: "var(--mx-chart-" + i + ")",
-              }}
-            />
-          ))}
-      </div>
-      <div className="mx-overview-allocation-list">
-        {shown.map((row, index) => (
-          <Link
-            className="mx-allocation-row"
-            key={row.ticker}
-            href={"/research?ticker=" + encodeURIComponent(row.ticker)}
-          >
-            <span className="mx-allocation-name">
-              <i
-                aria-hidden="true"
-                style={{ background: `var(--mx-chart-${index})` }}
-              />
-              <span>
-                <strong>{row.ticker}</strong>
-                <small>{row.name}</small>
-              </span>
-            </span>
-            <div className="mx-row-value">
-              {percent(total > 0 ? row.value / total : null)}
-              <small>{currency(row.value)}</small>
-            </div>
-          </Link>
-        ))}
-        {other > 0 && (
-          <div className="mx-allocation-row">
-            <span className="mx-allocation-name">
-              <i
-                aria-hidden="true"
-                style={{ background: "var(--mx-chart-5)" }}
-              />
-              {t("其他持仓", "Other holdings")}
-            </span>
-            <span className="mx-row-value">
-              {percent(other / total)}
-              <small>{currency(other)}</small>
-            </span>
-          </div>
-        )}
-      </div>
-      {!rows.length && <Empty title={t("还没有持仓", "No positions yet")} />}
-      <div className="mx-allocation-foot">
-        <TextLink href="/holdings?view=lookthrough">
-          {t("穿透", "Look-through")}
-        </TextLink>
-      </div>
     </Panel>
   );
 }

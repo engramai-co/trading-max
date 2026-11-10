@@ -28,6 +28,8 @@
   --mx-chart-3: #a24477;
   --mx-chart-4: #7a6599;
   --mx-chart-5: #6b7280;
+  /* The holdings donut's shared segment for everything outside its coloured holdings. */
+  --mx-rest: #d9dee5;
   --mx-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --mantine-color-body: var(--mx-surface);
   --mantine-color-text: var(--mx-ink);
@@ -63,6 +65,7 @@
   --mx-chart-3: #e78db8;
   --mx-chart-4: #b9a0e0;
   --mx-chart-5: #a3a8b2;
+  --mx-rest: #3a3e45;
 }
 /* Phones: one spacing rhythm and five type roles, used by 12-phone-rhythm.css. Wider windows keep literal values. */
 @media (max-width: 767px) {

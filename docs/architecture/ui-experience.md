@@ -13,7 +13,7 @@ typed snapshots, and provider boundaries support the interface independently.
 
 | Workspace | Questions and interactions |
 | --- | --- |
-| Overview | Account value, cash, unrealized P&L, history, invested allocation, account and security entry points |
+| Overview | Account value, cash, unrealized P&L, period history, today's US sectors, holdings with allocation and research readings |
 | Holdings | Account filters, search and sort, position details; companies, countries, industries and ETF source coverage |
 | Performance | Money and contributions, rebased portfolio and benchmark returns, monthly TWR, drawdown and risk statistics |
 | Review | Account selection, money reconciliation, realized attribution, trade quality, phases and ending risk |
@@ -45,11 +45,13 @@ unavailable; zero is only shown when the source contains a zero.
 The overview groups current value and cash-flow-adjusted period net P&L in one
 portfolio surface. Its history uses the detailed performance view's accounting
 cutoff and starts period P&L from zero.
-Holdings allocation is a compact supporting column, with the security count
-kept secondary. Accounts and holdings research follow the same desktop column
-boundary in a shared surface. Narrow layouts give the history chart the full
-width; phones present supporting metrics as labelled rows. Sections grow with
-their content instead of imposing equal card heights.
+Today's US sectors sit beside the history: a weighted map for a mouse, equal
+blocks for touch. Holdings follow in one panel: a donut keyed by each row's dot
+beside a ledger of weight, latest move, unrealized P&L and research readings,
+with readings past their thresholds marked on their cells. Narrow layouts give
+the history chart the full width; phones present supporting metrics as
+labelled rows and holdings as a list under one set of column names. Sections
+grow with their content instead of imposing equal card heights.
 
 A labelled navigation sidebar gives way to a bottom navigation and focus-trapped
 menu on small screens. Search supports keyboard selection. Filter state updates

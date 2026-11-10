@@ -320,6 +320,112 @@ def test_holdings_carry_the_day_change_measured_at_their_own_observation(
     assert validated.holdings[0].day_change_gbp == 40.0
 
 
+@pytest.mark.parametrize(
+    ("issuer_holdings", "named"),
+    [("recorded", True), ("unavailable", True), ("unreconciled", False)],
+)
+def test_holdings_name_every_fund_the_look_through_met(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+    issuer_holdings: str,
+    named: bool,
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    lookthrough_path = report / "lookthrough_metrics.json"
+    lookthrough = json.loads(lookthrough_path.read_text())
+    lookthrough["positions"][0]["securityType"] = "EQUITY"
+    if issuer_holdings == "recorded":
+        # Current look-throughs list every fund position by the broker's identifiers.
+        lookthrough["fundPositions"] = [{"ticker": "XUSE", "isin": None}]
+    elif issuer_holdings == "unavailable":
+        # Older ones: a source row for issuer holdings that could not be fetched.
+        lookthrough["sources"] = [
+            {
+                "ticker": "XUSE",
+                "status": "unavailable",
+                "isin": None,
+                "asOf": "",
+                "sourceUrl": "",
+                "issuer": "",
+                "holdingsCount": 0,
+                "weightTotalPct": 0.0,
+                "positionValueGbp": 700,
+            }
+        ]
+    else:
+        # Older ones: issuer weights that sum to 98% left the fund as direct
+        # exposure without a source row. Until the look-through runs again it
+        # stays unnamed rather than guessed from a ticker.
+        lookthrough["sources"] = []
+        lookthrough["positions"].append(
+            {
+                "isin": None,
+                "ticker": "XUSE",
+                "name": "XUSE",
+                "country": "Unclassified",
+                "securityType": "ETF",
+                "valueGbp": 700,
+                "allocationPct": 0.4118,
+                "directValueGbp": 700,
+                "indirectValueGbp": 0,
+                "etfContributors": [],
+            }
+        )
+    lookthrough_path.write_text(json.dumps(lookthrough))
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+
+    payload = build_dashboard_data(store)
+    holdings = {holding["ticker"]: holding for holding in payload["holdings"]}
+    assert holdings["XUSE"]["isFund"] is named
+    assert holdings["BE"]["isFund"] is False
+    validated = DashboardResponse.model_validate(payload)
+    assert {holding.ticker: holding.is_fund for holding in validated.holdings} == {
+        "BE": False,
+        "XUSE": named,
+    }
+
+
+@pytest.mark.parametrize("recorded", [True, False])
+def test_a_fund_sharing_a_ticker_does_not_make_a_company_a_fund(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+    recorded: bool,
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    snapshot_path = report / "broker_snapshot_metrics.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["accounts"]["A"]["positions"][0]["isin"] = "US0937121079"
+    snapshot_path.write_text(json.dumps(snapshot))
+    lookthrough_path = report / "lookthrough_metrics.json"
+    lookthrough = json.loads(lookthrough_path.read_text())
+    # A fund elsewhere listed as BE: same ticker, its own ISIN.
+    fund = {"ticker": "BE", "isin": "IE0000000BE1"}
+    if recorded:
+        lookthrough["fundPositions"] = [fund]
+    else:
+        lookthrough["sources"] = [
+            {
+                **fund,
+                "status": "unavailable",
+                "asOf": "",
+                "sourceUrl": "",
+                "issuer": "",
+                "holdingsCount": 0,
+                "weightTotalPct": 0.0,
+                "positionValueGbp": 0,
+            }
+        ]
+    lookthrough_path.write_text(json.dumps(lookthrough))
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+
+    holdings = {holding["ticker"]: holding for holding in build_dashboard_data(store)["holdings"]}
+    assert holdings["BE"]["isFund"] is False
+
+
 def test_two_listings_of_one_ticker_keep_their_own_day_change(
     research_root: Path,
     tmp_path: Path,

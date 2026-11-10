@@ -304,7 +304,8 @@ html[data-scrolled] .mx-topbar-title strong {
 }
 .mx-overview-statistics .mx-number {
   font-size: clamp(20px, 1.8vw, 27px);
-  white-space: nowrap;
+  /* The figure and its change stay together; an estimate tag wraps below them when the cell runs out. */
+  white-space: normal;
 }
 .mx-overview-statistics .mx-day-drivers {
   gap: 4px 14px;
@@ -361,97 +362,8 @@ html[data-scrolled] .mx-topbar-title strong {
     background: var(--mx-brand-soft);
   }
 }
-.mx-overview-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr);
-}
-.mx-overview-portfolio > .mx-overview-split {
-  border-top: 1px solid var(--mx-border);
-}
-.mx-overview-split > .mx-panel {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 24px;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: transparent;
-}
-.mx-overview-split > .mx-panel + .mx-panel {
-  border-left: 1px solid var(--mx-border);
-}
-.mx-overview-split .mx-panel-heading {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 20px;
-}
 .mx-overview-notice {
   padding: 0 28px 24px;
-}
-.mx-overview-allocation .mx-stack-bar {
-  flex-shrink: 0;
-  margin-bottom: 12px;
-}
-.mx-overview-allocation .mx-allocation-foot {
-  margin-top: auto;
-  padding-top: 20px;
-}
-.mx-allocation-name {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  font-size: 12px;
-}
-.mx-allocation-name > i {
-  width: 6px;
-  height: 6px;
-  flex-shrink: 0;
-  border-radius: 2px;
-}
-.mx-allocation-name > span {
-  min-width: 0;
-}
-.mx-allocation-name strong {
-  display: block;
-  font-size: 12px;
-  font-weight: 600;
-}
-.mx-allocation-name small {
-  display: block;
-  margin-top: 3px;
-  font-size: 12px;
-  color: var(--mx-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.mx-overview-allocation a.mx-allocation-row {
-  text-decoration: none;
-  border-radius: 3px;
-}
-.mx-overview-allocation a.mx-allocation-row:hover {
-  background: var(--mx-soft);
-}
-.mx-overview-allocation .mx-row-value {
-  font-size: 13px;
-}
-.mx-overview-allocation .mx-allocation-row {
-  padding-block: 10px;
-}
-.mx-overview-followups .mx-row-link {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 16px;
-}
-.mx-overview-accounts .mx-account-title,
-.mx-overview-accounts .mx-account-title > div {
-  min-width: 0;
-}
-.mx-overview-accounts .mx-account-title strong {
-  overflow-wrap: anywhere;
 }
 .mx-history-coverage {
   margin-bottom: 18px;

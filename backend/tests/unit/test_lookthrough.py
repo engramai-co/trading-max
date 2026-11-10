@@ -248,6 +248,7 @@ def test_lookthrough_reports_missing_fund_source_without_fabricating_coverage() 
             "positionValueGbp": 100.0,
         }
     ]
+    assert result["fundPositions"] == [{"ticker": "XUSE", "isin": "IE000R4ZNTN3"}]
 
 
 def test_fund_holdings_only_treat_confirmed_company_instruments_as_equity() -> None:
@@ -467,6 +468,9 @@ def test_lookthrough_keeps_partial_fund_as_unverified_direct_exposure() -> None:
     assert result["lookthroughCoveragePct"] == 0.0
     assert result["positions"][0]["ticker"] == "XUSE"
     assert result["positions"][0]["directValueGbp"] == 100.0
+    # Without a source row, the fund is still recorded as one.
+    assert result["sources"] == []
+    assert result["fundPositions"] == [{"ticker": "XUSE", "isin": "IE000R4ZNTN3"}]
 
 
 def test_lookthrough_stage_reads_account_artifacts_and_publishes_dependencies(
