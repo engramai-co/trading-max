@@ -1,141 +1,120 @@
-<p align="center"><img src="apps/web/public/brand/trading-max-symbol.svg" alt="Trading Max" width="76"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/trading-max-lockup-dark.svg">
+    <img src="apps/web/public/brand/trading-max-lockup.svg" alt="Trading Max" width="460">
+  </picture>
+</p>
 
-<h1 align="center">Your portfolio, explained.</h1>
+<h3 align="center">Your portfolio, explained.</h3>
 
 <p align="center">
-  <strong>Trading Max</strong> is a private workspace for your Trading 212 accounts.<br>
-  Understand performance, look through your holdings, and research your next decision.
+  A private, read-only investment workspace for Trading 212.<br>
+  See what changed, look beneath every fund, follow today's sectors and keep research beside your positions.
 </p>
 
 <p align="center">
-  <a href="#get-started">Install Trading Max</a> ·
-  <a href="#explore-the-workspace">Explore the workspace</a> ·
-  <a href="docs/README.md">Read the guides</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/engramai-co/trading-max?style=flat-square&color=1768E5"></a>
+  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/engramai-co/trading-max?style=flat-square&color=1768E5&label=release"></a>
+  <a href="https://github.com/engramai-co/trading-max/releases/latest"><img alt="macOS on Apple Silicon" src="https://img.shields.io/badge/macOS-Apple%20Silicon-17191C?style=flat-square&logo=apple&logoColor=white"></a>
   <a href="LICENSE"><img alt="Apache 2.0 licence" src="https://img.shields.io/github/license/engramai-co/trading-max?style=flat-square&color=17191C"></a>
   <img alt="Read-only broker access" src="https://img.shields.io/badge/broker%20access-read--only-2F7D4C?style=flat-square">
 </p>
 
-![Trading Max portfolio overview: account value, period net P&L, holdings allocation, and account breakdown](docs/assets/workspace-overview.png)
+<p align="center">
+  <a href="https://github.com/engramai-co/trading-max/releases/latest"><b>Download for Mac</b></a> ·
+  <a href="#run-from-source"><b>Run from source</b></a> ·
+  <a href="docs/README.md"><b>Guides</b></a>
+</p>
 
-## See what changed. Understand why.
+<p align="center">
+  <img src="docs/assets/workspace-overview.png" alt="Trading Max overview: portfolio value, period P&L, today's US sectors and the holdings panel" width="100%">
+</p>
 
-**Separate investment results from money moving in and out.** Bring Invest and
-Stocks ISA into one view, then inspect each account. Follow account value,
-net contributions, profit and loss, drawdown, and cash-flow-adjusted return
-comparisons where the history supports them.
+## What you get
 
-**Find what you actually own.** A fund ticker is only the beginning. Combine
-direct holdings with supported ETF constituents to inspect company, sector,
-country, and asset-class exposure—and see where your positions overlap.
+- **Results, not deposits.** Investment results stay separate from money moving
+  in and out, for Invest and Stocks ISA together or one account at a time.
+- **Today's sectors.** Sector maps for the US, UK, Hong Kong and Korea, sized by
+  index weight and coloured by the session's move, with your own exposure beside
+  each sector.
+- **Look-through.** Your direct shares combined with the constituents ETF issuers
+  publish: the companies, sectors and countries you actually own, and where they
+  overlap.
+- **Research beside your positions.** Up to seven views per security, from the
+  business and its financials to price, estimates, valuation scenarios, options
+  and your journal. Your buys, sells and trims sit on the charts.
+- **Decision review.** Past trades set against what happened next.
 
-**Put research beside your portfolio.** Move from a company's operating results
-to its filings, expectations, valuation scenarios, and your own saved model.
-Research a new security without rebuilding the portfolio dashboard.
+<p align="center">
+  <img src="docs/assets/sectors-overview.png" alt="US sector map with the Industrials detail: intraday path, breadth, leader and your exposure" width="49%">
+  <img src="docs/assets/holdings-exposure.png" alt="Look-through exposure by company, split into direct holdings and holdings via funds" width="49%">
+</p>
+<p align="center">
+  <img src="docs/assets/research-overview.png" alt="Company research: three-month price history, technical state and operating facts" width="49%">
+  <img src="docs/assets/research-valuation.png" alt="Valuation scenarios compared with the current price, with editable assumptions" width="49%">
+</p>
 
-## Explore the workspace
-
-### Look beneath the fund name
-
-Switch between positions and look-through exposure. Filter, sort, and open a
-holding to follow it into company research. Coverage remains explicit when a
-fund's underlying holdings cannot be resolved.
-
-![Look-through holdings, allocation views, and underlying company exposure](docs/assets/holdings-exposure.png)
-
-### Start with the business
-
-A clear company overview leads into financial statements, margins, cash flow,
-business segments, ownership, and dividends. Switch reporting periods, compare
-segment trends, and inspect exact values and their source records.
-
-![Company research with a three-month price overview and operating facts](docs/assets/research-overview.png)
-
-![Business segment history with revenue, share, growth, and exact records](docs/assets/research-financials.png)
-
-### Make your assumptions visible
-
-Compare conservative, base, and optimistic valuation scenarios. Change one
-assumption at a time, inspect the annual projection and sensitivity, and save
-a version with a reason. The model shows what your assumptions imply; analyst
-targets remain a separate reference.
-
-![Valuation scenarios compared with the current price and editable assumptions](docs/assets/research-valuation.png)
-
-Price & technicals brings the everyday chart and technical diagnosis together,
-with a full chart for deeper analysis. Exact indicator readings and seasonality
-remain available. Estimates, event history, supported option chains, and a
-research journal complete the workspace.
-
-*Screenshots use hypothetical Trading 212 accounts and transactions. Market
-and company research come from real providers; pictured values are dated
-examples, not live quotes. Company marks belong to their owners.*
+<p align="center"><sub>Screenshots use a hypothetical portfolio. Market and company data come from real providers and show dated examples, not live quotes.</sub></p>
 
 ## Get started
 
-The desktop entry brings workspaces and existing-server connections into
-one App. The Apple Silicon Mac preview can connect to your own HTTPS
-service, remember it and recover when it is unavailable. A separate local demo
-uses synthetic data.
+### Mac App
 
-The [1.28.0 release](https://github.com/engramai-co/trading-max/releases/tag/v1.28.0)
-provides the Developer ID signed and Apple-notarized macOS preview DMG and its
-verification manifest. Existing Apps on 1.12.0 or newer can update from
-**App Settings → About & updates**. It bundles its Python and Node runtimes; local workspaces
-start empty and guide you through connecting and checking your accounts.
-See [desktop onboarding and acceptance scope](docs/installation/desktop-onboarding.md)
-and [installation, upgrades and recovery](docs/installation/desktop-updates.md).
+1. Download the DMG from the [latest release](https://github.com/engramai-co/trading-max/releases/latest).
+   It runs on Apple Silicon and is Developer ID signed and Apple-notarized.
+2. Open it and drag **Trading Max Preview** to Applications.
+3. Start a local workspace, connect to your own Trading Max service over HTTPS,
+   or open the demo with synthetic data.
+4. Add your read-only Trading 212 API keys in **Settings**, run the first sync
+   and check the totals against Trading 212.
 
-Already using a source installation? The existing CLI and local launch scripts
-remain supported. The former Codex skill, runbook and source-installation guide
-are [archived for reference](docs/archive/onboarding/README.md), including their
-update, backup and recovery procedures. Credentials belong in local Settings,
-never in chat or the source checkout.
+Updates install from **App Settings → About & updates**. See the
+[desktop guide](docs/installation/desktop-onboarding.md).
 
-Developers can start with [CONTRIBUTING.md](CONTRIBUTING.md) or the
-[desktop build guide](apps/desktop/README.md).
+### Run from source
 
-## Your data, on your computer
+You need Git, Python 3.12, [uv](https://docs.astral.sh/uv/) and Node.js 22
+(22.19 or newer).
 
-- **Read-only accounts.** Trading Max has no order-placement path.
-- **Private local state.** Credentials use the operating-system credential
-  manager. Portfolio data, research, saved models, and backups live outside
-  the source checkout. The app listens on loopback by default.
-- **Real sources.** Trading 212 supplies account data; Yahoo-compatible market
-  data and disclosure adapters supply research. Optional Alpaca data enhances
-  supported US historical reconstruction, with YF retained as fallback.
-  [Availability and history vary by provider](docs/guides/data-and-metrics.md).
-- **Optional AI.** Portfolio analytics and research work without a model key.
-  Connect a model to resolve company names and aliases into verified security
-  candidates. Automatic AI portfolio analysis is disabled by default.
-- **Recoverable history.** A failed refresh keeps the last valid snapshot.
-  Verified independent backups and retained macOS releases support recovery.
-  Optional compact storage preserves original records, while charts load only
-  the requested view and fetch exact history on demand.
-  [Storage and recovery guide](docs/operations/storage-maintenance.md).
+```bash
+git clone https://github.com/engramai-co/trading-max.git
+cd trading-max
+uv run --package trading-max-backend trading-max onboard
+deploy/local/start.sh
+```
 
-This is a local, single-user application. See [Privacy](PRIVACY.md) for provider
-requests and storage, and [data conventions](docs/guides/data-and-metrics.md)
-for valuation, return, and coverage limits.
+Then open <http://127.0.0.1:3413>. `onboard` installs the locked dependencies,
+keeps your data outside the checkout, builds the web app and can connect
+Trading 212. The [source guide](docs/archive/onboarding/local-installation.md)
+covers background services, updates and backups.
 
-<a id="documentation"></a>
+## Your data stays yours
 
-## Find your next step
+- **Read-only.** There is no order-placement path. Trading Max never trades.
+- **Local.** Credentials live in the operating-system keychain. Data stays on
+  your machine or your own server, on loopback by default.
+- **Sourced.** Every figure keeps its basis, source and as-of time. Stale or
+  failed data is disclosed, never papered over.
+- **AI optional.** Analytics and research work without a model key.
+
+Trading 212 supplies account data; Yahoo-compatible market data and disclosure
+filings supply research. See [Privacy](PRIVACY.md) and
+[data conventions](docs/guides/data-and-metrics.md).
+
+## Learn more
 
 | I want to… | Start here |
 |---|---|
 | Understand my portfolio | [Portfolio guide](docs/guides/portfolio.md) |
-| Research a company or use a valuation model | [Research guide](docs/guides/research.md) |
-| Choose a workspace or connect a service | [Desktop onboarding](docs/installation/desktop-onboarding.md) |
-| Maintain an existing source installation | [Archived installation and recovery](docs/archive/onboarding/local-installation.md) |
+| Research a company or build a valuation | [Research guide](docs/guides/research.md) |
+| Install, update or recover the App | [Desktop guide](docs/installation/desktop-updates.md) |
 | Understand the architecture or API | [Documentation index](docs/README.md) |
-| Report a problem or contribute | [Support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) |
+| Get help or contribute | [Support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) |
 | See what shipped | [Changelog](CHANGELOG.md) · [Releases](https://github.com/engramai-co/trading-max/releases) |
 
-Trading Max is open source under the [Apache License 2.0](LICENSE).
-It is not affiliated with or endorsed by Trading 212, Yahoo, Bloomberg/OpenFIGI,
-ETF issuers, or model providers. See [third-party notices](THIRD_PARTY_NOTICES.md)
-and [trademarks](TRADEMARKS.md).
+## License
+
+Trading Max is open source under the [Apache License 2.0](LICENSE). It is an
+independent project, not affiliated with or endorsed by Trading 212, Yahoo,
+Bloomberg/OpenFIGI, ETF issuers or model providers, and nothing here is
+investment advice. See [third-party notices](THIRD_PARTY_NOTICES.md) and
+[trademarks](TRADEMARKS.md).
