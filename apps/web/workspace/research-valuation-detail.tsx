@@ -323,14 +323,14 @@ export function GrowthContext({
       className="mx-growth-context"
       title={t("营收增长参考", "Revenue-growth context")}
       help={t(
-        "历史CAGR按所示年度收入跨度复算；最新季度同比与下一财年共识各用自己的期间。它们是参考，修改模型仍由你决定。",
+        "历史 CAGR 按所示年度收入跨度复算；最新季度同比与下一财年共识各用自己的期间。它们是参考，修改模型仍由你决定。",
         "Historical CAGR uses the available annual-revenue span. Latest-quarter YoY and next-fiscal-year consensus retain their own periods. These references do not overwrite your model inputs.",
       )}
     >
       <Facts
         rows={[
-          [t("历史3年 CAGR", "Historical 3Y CAGR"), cagr(3)],
-          [t("历史5年 CAGR", "Historical 5Y CAGR"), cagr(5)],
+          [t("历史 3 年 CAGR", "Historical 3Y CAGR"), cagr(3)],
+          [t("历史 5 年 CAGR", "Historical 5Y CAGR"), cagr(5)],
           [
             quarter
               ? `${quarter.label} ${t("同比", "YoY")}`

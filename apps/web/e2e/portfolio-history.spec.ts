@@ -61,7 +61,7 @@ test.describe("overview to performance", () => {
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
       await overview.getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
-      await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks ISA");
+      await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
       await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
       await page.locator(".mx-chart-data summary").first().click();

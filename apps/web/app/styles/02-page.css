@@ -578,6 +578,20 @@ html[data-scrolled] .mx-topbar-title strong {
   color: var(--mx-muted);
   margin: 8px 0 17px;
 }
+/* At the narrowest phone widths, pretty wrapping can leave interior
+   punctuation at the end of a line in WebKit. Let those descriptions flow. */
+@media (min-width: 360px) {
+  .mx-empty p:lang(zh) {
+    text-wrap: pretty;
+  }
+}
+.mx-empty h3:lang(zh),
+.mx-not-found .mx-empty p:lang(zh) {
+  text-wrap: balance;
+}
+.mx-centered-copy-tail {
+  white-space: nowrap;
+}
 .mx-loading {
   display: flex;
   flex-direction: column;

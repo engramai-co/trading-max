@@ -4,6 +4,7 @@ import { useComputedColorScheme, VisuallyHidden } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
 import { useId, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
+import { CenteredCopy } from "@/ui/centered-copy";
 import { allocationChartColours, useChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
 import { currency, percent } from "@/workspace/data";
@@ -121,7 +122,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
         {companies ? <VisuallyHidden id={description}>
           {t("点击扇区或公司查看详情，也可用左右方向键切换。", "Select a slice or company for details. Arrow keys also switch companies.")}
         </VisuallyHidden> : <p id={description} className="mx-form-help">
-          {t("点击扇区或分类查看详情，也可用左右方向键切换。", "Select a slice or category for details. Arrow keys also switch categories.")}
+          <CenteredCopy>{t("点击扇区或分类查看详情，也可用左右方向键切换。", "Select a slice or category for details. Arrow keys also switch categories.")}</CenteredCopy>
         </p>}
       </div>
       <div className="mx-allocation-details">

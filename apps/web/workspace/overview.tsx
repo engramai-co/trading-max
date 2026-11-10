@@ -127,8 +127,8 @@ function OverviewContent({ data }: { data: DashboardLens }) {
         <Empty
           title={t("暂无账户数据", "No account data")}
           description={t(
-            "连接 Trading 212 账户，完成首次同步后即可查看资产和投资表现。",
-            "Connect a Trading 212 account and sync once to see your investments here.",
+            "连接 Trading\u00a0212 账户，完成首次同步后即可查看资产和投资表现。",
+            "Connect a Trading\u00a0212 account and sync once to see your investments here.",
           )}
           action={
             <Button component={Link} href="/settings">

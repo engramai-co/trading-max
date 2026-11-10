@@ -124,7 +124,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
   const showChange = roomy || (width >= 44 && height >= 28);
   // The top-three streak joins the strip only where it fits whole; otherwise the block's
   // hover title and accessible name carry it, and the rail spells it out on selection.
-  const chip = group.streak >= 2 ? (locale === "zh" ? `连${group.streak}日前三` : `Top 3 · ${group.streak}d`) : "";
+  const chip = group.streak >= 2 ? (locale === "zh" ? `连 ${group.streak} 日前三` : `Top 3 · ${group.streak}d`) : "";
   const chipRoom = textWidth(chip, 11) + 10 + 6;
   const showChip = roomy && chip !== ""
     && (narrow ? textWidth(change, 13) + chipRoom + 20 : textWidth(name, 13) + textWidth(change, 13) + chipRoom + 32) <= width;

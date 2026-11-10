@@ -11,8 +11,8 @@ export function useWorkspaceProfile() {
   });
 }
 export function accountName(profile: UserProfile | undefined, code: string) {
-  return (
+  const label =
     profile?.accountLabels[code]?.trim() ||
-    ({ A: "Invest", B: "Stocks ISA", C: "CFD" }[code] ?? code)
-  );
+    ({ A: "Invest", B: "Stocks ISA", C: "CFD" }[code] ?? code);
+  return label === "Stocks ISA" ? "Stocks\u00a0ISA" : label;
 }
