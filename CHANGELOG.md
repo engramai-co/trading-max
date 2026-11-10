@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.29.2] - 2026-11-10
+
+### Fixed
+
+- Centred Chinese messages sit on their visual centre, even when they end in
+  full-width punctuation.
+- Chinese research and sector text has clearer spacing around Latin letters
+  and digits. Short product names stay together across line breaks.
+
 ## [1.29.1] - 2026-11-10
 
 ### Fixed

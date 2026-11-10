@@ -176,7 +176,7 @@ export function FilingMultiples({
       help={
         mode === "ps"
           ? t(
-              "以披露后首个交易日收盘价、当时披露的普通股股数及TTM营收计算。TTM营收＝上一财年＋本年累计－上年同期累计；缺期间不外推。股数调整其日期后的拆股，ADR转换不明确时不计算。分位仅针对所示披露样本，至少需8个有效样本；不代表每日历史分位。",
+              "以披露后首个交易日收盘价、当时披露的普通股股数及 TTM 营收计算。TTM 营收＝上一财年＋本年累计－上年同期累计；缺期间不外推。股数调整其日期后的拆股，ADR 转换不明确时不计算。分位仅针对所示披露样本，至少需 8 个有效样本；不代表每日历史分位。",
               "Next-session close × common shares known at publication / TTM revenue. Revenue is prior FY + current fiscal YTD − prior fiscal YTD; incomplete periods are excluded. Shares account for subsequent splits. Unknown ADR ratios are unsupported. Percentile uses the displayed filing sample, requires eight valid observations, and is not a daily-history percentile.",
             )
           : t(

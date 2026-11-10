@@ -275,7 +275,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
               <span className="mx-sector-list-meta">
                 <BreadthBar breadth={group.breadth} />
                 <span>{t("涨", "Up")} {up} · {t("跌", "Down")} {down}</span>
-                {group.streak >= 2 && <span className="mx-sector-streak">{locale === "zh" ? `连${group.streak}日前三` : `Top 3 · ${group.streak}d`}</span>}
+                {group.streak >= 2 && <span className="mx-sector-streak">{locale === "zh" ? `连 ${group.streak} 日前三` : `Top 3 · ${group.streak}d`}</span>}
                 {group.leader && (
                   <span className="mx-sector-list-leader">
                     {displaySymbol(group.leader.symbol) + " " + formatDeltaPercent(group.leader.change, locale, 2)}

@@ -19,6 +19,7 @@ import {
 import Link from "./link";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { indicatorStart } from "./selection-indicator";
 import { useAltDigitModifier } from "./shortcut-platform";
@@ -344,8 +345,8 @@ export function Empty({
       <div className="mx-empty-mark">
         <Info size={24} />
       </div>
-      <h3>{title}</h3>
-      {description && <p>{description}</p>}
+      <h3><CenteredCopy>{title}</CenteredCopy></h3>
+      {description && <p><CenteredCopy>{description}</CenteredCopy></p>}
       {action}
     </div>
   );

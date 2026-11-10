@@ -155,7 +155,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             <>
               {localWorkspace && <LocalOnboarding />}
               <Panel
-                title={t("Trading 212 账户", "Trading 212 accounts")}
+                title={t("Trading\u00a0212 账户", "Trading\u00a0212 accounts")}
               >
                 <div className="mx-connection-grid">
                   {(["invest", "isa"] as const).map((profile) => {

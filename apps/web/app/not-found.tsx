@@ -6,6 +6,7 @@ export default function NotFound() {
   const t = useCopy();
   return (
     <Page
+      className="mx-not-found"
       eyebrow="404"
       title={t("页面不存在", "Page not found")}
     >
