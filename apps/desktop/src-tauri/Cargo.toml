@@ -1,9 +1,9 @@
 [package]
 name = "trading-max-desktop-preview"
-version = "1.29.0"
+version = "1.29.1"
 edition = "2021"
 license = "Apache-2.0"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 
 [features]
 diagnostics = ["tauri/devtools"]

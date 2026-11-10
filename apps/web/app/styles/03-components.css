@@ -690,23 +690,6 @@
   color: var(--mx-muted);
   margin-top: 7px;
 }
-.mx-heatmap {
-  display: grid;
-  grid-template-columns: 50px repeat(12, minmax(35px, 1fr));
-  gap: 5px;
-  overflow-x: auto;
-  font-size: 12px;
-}
-.mx-heatmap > span {
-  display: grid;
-  place-items: center;
-  min-height: 32px;
-  border-radius: 4px;
-  color: var(--mx-muted);
-}
-.mx-heatmap-cell {
-  background: var(--mx-soft);
-}
 .mx-month-cards {
   display: none;
 }

@@ -1,6 +1,6 @@
 [project]
 name = "trading-max"
-version = "1.29.0"
+version = "1.29.1"
 description = "Local-first portfolio dashboard, research orchestration API, and artifact store"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
@@ -32,7 +32,7 @@ members = ["backend"]
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = [".", "backend/src"]
-testpaths = ["services/api/tests"]
+testpaths = ["services/api/tests", "backend/tests"]
 
 [tool.ruff]
 target-version = "py312"

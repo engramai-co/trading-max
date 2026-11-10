@@ -1,5 +1,6 @@
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
+import { combinedHoldingPnl, finite, groupHoldings, isFundHolding } from "./holding-groups";
 
 /**
  * Holdings always listed. Every listed row owns a palette colour: the flagged holdings beyond these take the
@@ -39,9 +40,6 @@ export type HoldingsLedger = {
   total: number;
 };
 
-const finite = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) ? value : null;
-
 /**
  * One security's move in its latest session across the accounts holding it. The API measures each
  * position on the shares held through the session, so its share is exact and the opening it implies
@@ -76,9 +74,7 @@ export function holdingsLedger({ holdings, technical, valuations, signals }: {
   valuations?: DashboardLens["valuations"];
   signals: HoldingSignal[];
 }): HoldingsLedger {
-  const byTicker = new Map<string, Holding[]>();
-  for (const holding of holdings) byTicker.set(holding.ticker, [...(byTicker.get(holding.ticker) ?? []), holding]);
-  const securities = [...byTicker.entries()].map(([ticker, positions]) => ({
+  const securities = [...groupHoldings(holdings)].map(([ticker, positions]) => ({
     ticker,
     positions,
     value: positions.reduce((sum, h) => sum + (finite(h.currentValueGbp) ?? 0), 0),
@@ -92,11 +88,9 @@ export function holdingsLedger({ holdings, technical, valuations, signals }: {
   const hidden = securities.filter((security, index) => index >= COLOURED_HOLDINGS && !flagged.has(security.ticker));
   const rows = shown.map((security, index): LedgerRow => {
     const { ticker, positions, value } = security;
-    const cost = positions.reduce((sum, h) => sum + (finite(h.costGbp) ?? 0), 0);
-    const pnl = positions.reduce((sum, h) => sum + (finite(h.pnlGbp) ?? 0), 0);
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
-    const fund = positions.some((h) => h.isFund);
+    const fund = isFundHolding(positions);
     return {
       ticker,
       name: positions[0].name,
@@ -104,7 +98,7 @@ export function holdingsLedger({ holdings, technical, valuations, signals }: {
       weight: share(value),
       day: move.share,
       dayDate: move.date && move.date !== columnDay ? move.date : null,
-      pnl: cost > 0 ? pnl / cost : finite(positions[0].pnlPct),
+      pnl: combinedHoldingPnl(positions),
       fund,
       score: fund ? null : finite(technical?.find((row) => row.ticker === ticker)?.score),
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),

@@ -649,13 +649,6 @@ class SecurityMasterEnricher:
         self.material_exposure_pct = material_exposure_pct
         self.max_workers = max_workers
 
-    def _local_catalog(self) -> SecurityMasterCatalog:
-        if not self.catalog_path.is_file():
-            return SecurityMasterCatalog(schema_version=3)
-        return SecurityMasterCatalog.model_validate_json(
-            self.catalog_path.read_text(encoding="utf-8")
-        )
-
     def _is_fresh(self, record: SecurityEntityRecord) -> bool:
         if not record.as_of:
             return False
