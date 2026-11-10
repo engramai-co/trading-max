@@ -1,12 +1,13 @@
 "use client";
 
+import { useComputedColorScheme } from "@mantine/core";
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import type { SectorGroup, SectorGroupingKind } from "@/lib/types";
 import { formatDeltaPercent } from "@/ui/formatters";
 import { industryName } from "./exposure-names";
 import { useCopy } from "./foundation";
-import { displaySymbol, heat, issuerName, neighbour, squarify, type Direction, type Tile } from "./sectors-data";
+import { displaySymbol, heat, heatMix, issuerName, neighbour, squarify, type Direction, type Tile } from "./sectors-data";
 
 /** Space between sectors, the sector name strip (one or two lines), and the inset of a sector's tiles. */
 const GAP = 3;
@@ -34,13 +35,13 @@ function memberLabel(member: { symbol: string; name: string } | undefined) {
 }
 
 /** Rough rendered width: CJK glyphs are square, Latin ones a little over half as wide. */
-function textWidth(text: string, size: number) {
+export function textWidth(text: string, size: number) {
   return [...text].reduce((width, glyph) => width + (/[\u2e80-\u9fff\uff00-\uffef]/.test(glyph) ? size : size * 0.58), 0);
 }
 
 /** Tile fill: the gain or loss hue mixed into the neutral ground by the size of the move. */
-function fill(change: number | null | undefined): CSSProperties {
-  return { "--mx-heat-mix": Math.round(Math.abs(heat(change)) * 56) + "%" } as CSSProperties;
+function fill(change: number | null | undefined, scheme: "light" | "dark"): CSSProperties {
+  return { "--mx-heat-mix": heatMix(change, scheme) } as CSSProperties;
 }
 
 /** A sector's name strip carries its own move as a lighter wash, so the sector reads before its parts. */
@@ -109,6 +110,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const scheme = useComputedColorScheme("light");
   const left = Math.round(tile.x);
   const top = Math.round(tile.y);
   const width = Math.max(0, Math.round(tile.x + tile.w) - left - GAP);
@@ -156,7 +158,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
       // Blocks too small for the strip still answer on hover with all three layers.
       title={roomy && (showChip || !chip) ? undefined : spoken}
       tabIndex={selected ? 0 : -1}
-      style={{ left, top, width, height, ...fill(group.change), ...wash(group.change) }}
+      style={{ left, top, width, height, ...fill(group.change, scheme), ...wash(group.change) }}
       onClick={(event) => {
         const tileTarget = (event.target as HTMLElement).closest<HTMLElement>("[data-subgroup]");
         onSelect(group.key, byMember ? undefined : tileTarget?.dataset.subgroup);
@@ -199,7 +201,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
                 data-subgroup={subgroup ? subgroup.key : undefined}
                 data-tone={changeTone(cellChange)}
                 title={cellName + " " + formatDeltaPercent(cellChange, locale, 2)}
-                style={{ left: x, top: y, width: w, height: h, ...fill(cellChange) }}
+                style={{ left: x, top: y, width: w, height: h, ...fill(cellChange, scheme) }}
               >
                 {w >= 58 && h >= 24 && <span className="mx-sector-tile-name">{cellName}</span>}
                 {w >= 58 && h >= 42 && <span className="mx-sector-tile-change">{formatDeltaPercent(cellChange, locale, 2)}</span>}

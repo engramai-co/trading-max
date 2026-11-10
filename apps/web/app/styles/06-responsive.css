@@ -79,21 +79,6 @@
     padding-left: 0;
     border-left: 0;
   }
-  .mx-overview-portfolio > .mx-overview-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .mx-overview-portfolio > .mx-overview-split > .mx-panel + .mx-panel {
-    border-left: 0;
-    border-top: 1px solid var(--mx-border);
-  }
-  .mx-overview-allocation-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 28px;
-  }
-  .mx-overview-followups {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 959px) {
   .mx-grid-wide,
@@ -323,19 +308,6 @@
   }
   .mx-overview-statistics .mx-day-drivers {
     margin: 0;
-  }
-  .mx-overview-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .mx-overview-split > .mx-panel {
-    padding: 22px 18px;
-  }
-  .mx-overview-split > .mx-panel + .mx-panel {
-    border-left: 0;
-    border-top: 1px solid var(--mx-border);
-  }
-  .mx-overview-allocation-list {
-    grid-template-columns: minmax(0, 1fr);
   }
   .mx-overview-notice {
     padding: 0 18px 20px;

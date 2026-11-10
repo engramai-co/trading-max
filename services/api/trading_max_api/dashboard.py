@@ -30,6 +30,35 @@ def _risk_metrics(raw: JsonObject) -> JsonObject:
     }
 
 
+Identity = tuple[str, str]
+
+
+def _identity(ticker: object, isin: object) -> Identity:
+    return str(ticker or "").strip().upper(), str(isin or "").strip().upper()
+
+
+def _same_security(left: Identity, right: Identity) -> bool:
+    """ISINs decide when both sides carry one, so a shared ticker never joins two securities."""
+
+    if left[1] and right[1]:
+        return left[1] == right[1]
+    return bool(left[0]) and left[0] == right[0]
+
+
+def _fund_identities(lookthrough: JsonObject) -> list[Identity]:
+    """The broker positions the look-through treated as funds.
+
+    Current snapshots list them by the broker's own identifiers, however their
+    issuer holdings reconciled. An older snapshot has only its source rows,
+    which carry the same identifiers, so until the look-through runs again a
+    fund whose issuer weights did not reconcile is not named.
+    """
+
+    recorded = lookthrough.get("fundPositions")
+    rows = recorded if isinstance(recorded, list) else lookthrough.get("sources") or []
+    return [_identity(row.get("ticker"), row.get("isin")) for row in rows if isinstance(row, dict)]
+
+
 def _benchmark_series(raw: JsonObject) -> dict[str, list[JsonObject]]:
     result: dict[str, list[JsonObject]] = {}
     payload = raw.get("benchmark_series")
@@ -244,6 +273,7 @@ def build_dashboard_data(
         lookthrough.setdefault("gicsPendingValueGbp", 0.0)
         lookthrough.setdefault("gicsNotApplicableValueGbp", 0.0)
         lookthrough.setdefault("gicsSubIndustryAllocation", [])
+    fund_identities = _fund_identities(lookthrough)
     try:
         diluted_cost_raw = store.read_json(run_id, "account/diluted_cost_metrics.json")
     except FileNotFoundError:
@@ -314,6 +344,12 @@ def build_dashboard_data(
                     "dayChangeGbp": day_change.gbp if day_change else None,
                     "dayChangePct": day_change.share if day_change else None,
                     "dayChangeDate": day_change.date if day_change else None,
+                    "isFund": any(
+                        _same_security(
+                            _identity(position.get("ticker"), position.get("isin")), fund
+                        )
+                        for fund in fund_identities
+                    ),
                 }
             )
     holdings.sort(key=lambda item: item["currentValueGbp"], reverse=True)

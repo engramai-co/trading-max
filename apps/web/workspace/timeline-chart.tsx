@@ -26,6 +26,7 @@ export function TimelineChart({
   recordSource,
   range,
   pendingCashFlows = false,
+  height,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -38,6 +39,8 @@ export function TimelineChart({
   recordSource?: HistorySelection;
   range?: Range;
   pendingCashFlows?: boolean;
+  /** A single-layer chart's height where a surface needs it shorter than the default. */
+  height?: number;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -77,7 +80,7 @@ export function TimelineChart({
     <>
       <Plot
         label={label}
-        height={(layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510) - (shortRange ? 24 : 0)}
+        height={(height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510)) - (shortRange ? 24 : 0)}
         option={(colours) =>
           timelineOption(dates, layers, colours, (time) => {
             const zone = intraday ? timeZone : "UTC";

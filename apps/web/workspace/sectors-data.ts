@@ -205,6 +205,14 @@ export function heat(change: number | null | undefined, saturation = 0.03) {
   return Math.sign(change) * Math.min(1, Math.abs(change) / saturation) ** 0.7;
 }
 
+/** The strongest wash, as a share of the gain or loss hue; dark grounds stop sooner so ink figures keep 4.5:1. */
+export const HEAT_MIX = { light: 56, dark: 46 } as const;
+
+/** A block's wash for a session change, as a CSS percentage. */
+export function heatMix(change: number | null | undefined, scheme: keyof typeof HEAT_MIX) {
+  return Math.round(Math.abs(heat(change)) * HEAT_MIX[scheme]) + "%";
+}
+
 /** Today's rank; null when too little of the group is priced to rank it. */
 function standing(group: Pick<SectorGroup, "ranks">) {
   return group.ranks?.at(-1) ?? null;

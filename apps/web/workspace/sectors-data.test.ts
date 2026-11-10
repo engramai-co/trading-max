@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  byStanding, displaySymbol, heat, issuerName, marketPhase, neighbour, sectorMarket, sessionPosition, sparkline, squarify,
+  byStanding, displaySymbol, heat, heatMix, issuerName, marketPhase, neighbour, sectorMarket, sessionPosition, sparkline, squarify,
   strongestGroup,
 } from "./sectors-data";
 import type { SectorGroup } from "@/lib/types";
@@ -101,6 +101,10 @@ describe("intraday line and colour", () => {
     expect(heat(-0.05)).toBe(-1);
     expect(heat(0.015)).toBeGreaterThan(0.5);
     expect(heat(-0.015)).toBeLessThan(-0.5);
+    expect(heatMix(0.05, "light")).toBe("56%");
+    expect(heatMix(-0.05, "dark")).toBe("46%");
+    expect(heatMix(0.0004, "light")).toBe("0%");
+    expect(heatMix(null, "dark")).toBe("0%");
   });
 
   it("opens on the best-ranked group and validates markets", () => {

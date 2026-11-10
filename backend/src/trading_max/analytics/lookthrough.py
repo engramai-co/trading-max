@@ -658,6 +658,12 @@ class LookthroughService:
             ),
             "positions": output_positions,
             "sources": sources,
+            # Every broker position treated as a fund, by the broker's own identifiers, whether
+            # its issuer holdings verified, were unavailable or did not reconcile.
+            "fundPositions": [
+                {"ticker": ticker or None, "isin": isin or None}
+                for ticker, isin in sorted(fund_position_keys)
+            ],
             "warnings": list(dict.fromkeys(warnings)),
         }
 

@@ -4,6 +4,37 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.29.0] - 2026-11-10
+
+### Added
+
+- The overview shows today's US sectors beside the period P&L chart. With a
+  mouse, a map sizes each sector by index weight and colours it by the
+  session's move; phones and touch screens get one block per sector, largest
+  first, each large enough to tap. Every block opens its sector on the Sectors
+  page.
+
+### Changed
+
+- The overview's holdings panel combines allocation and research: a donut of
+  your largest holdings beside one table of weight, the latest session's move,
+  unrealized P&L, technical score and model upside. Each row's dot keys its
+  segment, and the remaining holdings share one row. Readings past their
+  thresholds are marked on their cells for up to four holdings; the panel's
+  help gives the thresholds. Funds show no research scores yet.
+- The overview's attention list shows only data problems: failing updates and
+  account data that stopped arriving. The Invest and ISA, allocation and
+  research panels left the overview; account review keeps per-account figures.
+- The dashboard API marks each holding the look-through treats as a fund
+  (`isFund`), including a fund whose issuer holdings are unavailable or do not
+  reconcile. The look-through records those positions as `fundPositions`.
+
+### Fixed
+
+- In the dark theme, sector colours stop at a slightly lower strength so their
+  figures keep their contrast.
+- Clicking a security's hover preview no longer opens the link beneath it.
+
 ## [1.28.2] - 2026-11-09
 
 ### Fixed

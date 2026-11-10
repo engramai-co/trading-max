@@ -4,10 +4,11 @@
 
 ## Begin with account scope
 
-Overview combines investing accounts and shows value, unrealized P&L,
-daily return, allocation, and account summaries. Use the account selector to
-inspect an individual account. Invest and Stocks ISA remain distinct records
-even when the same security appears in both.
+Overview combines investing accounts and shows value, unrealized P&L, daily
+return, period net P&L, today's US sectors, and every holding with its weight,
+latest move and research readings. Use the account selector to inspect an
+individual account; account review has the per-account figures. Invest and
+Stocks ISA remain distinct records even when the same security appears in both.
 
 Historical CFD records, where imported, are a separate realized-cash proxy.
 They are not reconstructed CFD positions and do not enter investing strategy
@@ -97,6 +98,8 @@ for its intraday path, leader, ranks over the last five sessions and your
 look-through exposure, then open an industry group to reach its companies.
 **My themes** regroups the US securities on your research watchlist by your
 research themes.
+The overview carries the US sectors beside its period chart; each block opens
+that sector here.
 
 Constituents and weights come from iShares fund holdings; prices come from
 Yahoo and some exchanges are delayed. Boards refresh every 10 minutes while a

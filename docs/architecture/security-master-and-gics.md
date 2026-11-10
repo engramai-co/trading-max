@@ -205,7 +205,10 @@ against a newer profile crosswalk without repeating provider requests.
 - GICS sub-industry allocation and coverage;
 - eligible-equity, classified, pending and non-applicable exposure totals;
 - explicit `classified`, `pending-identity`, `pending-classification` and
-  `not-applicable` statuses.
+  `not-applicable` statuses;
+- every broker position treated as a fund (`fundPositions`), by the broker's
+  own ticker and ISIN, whether its issuer holdings verified, were unavailable
+  or did not reconcile.
 
 Fund units themselves do not count as GICS-eligible exposure. Only their
 underlying equities do. Cash, derivatives, bonds and an unexpanded fund

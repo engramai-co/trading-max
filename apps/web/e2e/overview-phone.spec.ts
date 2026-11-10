@@ -39,7 +39,7 @@ const attribution = (range: "1D" | "1W") => {
 };
 /**
  * Large values: seven- and eight-figure statistics that cannot share a 320px row. One researched holding fills the
- * holdings research panel without crossing an attention threshold.
+ * holdings ledger without crossing an attention threshold.
  */
 const lens = (large: boolean) => ({
   runId: "synthetic-phone", brokerAsOf,
@@ -59,6 +59,42 @@ const lens = (large: boolean) => ({
   windowAttribution: { ...attribution("1W"), startDay: days[0] },
 });
 const failing = { checkedAt: brokerAsOf, issues: [{ scope: "accounts", consecutiveFailures: 3, failingSince: "2026-11-03T06:00:00Z" }] };
+/** Synthetic US sectors mid-session: eleven blocks, each a link of its own, the largest a double one. */
+const SECTORS: Array<[string, string, number, number]> = [
+  ["45", "Information Technology", 0.31, 0.0145],
+  ["40", "Financials", 0.13, -0.0059],
+  ["50", "Communication Services", 0.1, 0.0043],
+  ["25", "Consumer Discretionary", 0.1, -0.0005],
+  ["35", "Health Care", 0.09, -0.0006],
+  ["20", "Industrials", 0.08, 0.0012],
+  ["30", "Consumer Staples", 0.05, -0.0128],
+  ["10", "Energy", 0.03, -0.0002],
+  ["55", "Utilities", 0.025, -0.0039],
+  ["60", "Real Estate", 0.02, -0.0068],
+  ["15", "Materials", 0.02, -0.0073],
+];
+const sessionDate = brokerAsOf.slice(0, 10);
+const sectors = {
+  market: "us",
+  markets: [{
+    market: "us", calendar: "SYNTH", timezone: "America/New_York",
+    sessions: [{ date: sessionDate, open: sessionDate + "T14:30:00Z", close: sessionDate + "T21:00:00Z", breakStart: null, breakEnd: null }],
+    sessionDate, complete: false, asOf: brokerAsOf, fetchedAt: brokerAsOf, exposureGbp: 0, lastError: null, lastErrorAt: null,
+  }],
+  monitor: { enabled: true, phase: "idle", intervalSeconds: 600, nextRunAt: null, lastAttemptAt: null, lastSuccessAt: null, lastError: null },
+  board: {
+    market: "us", sessionDate, complete: false, asOf: brokerAsOf, fetchedAt: brokerAsOf, times: [], rankSessions: [],
+    memberCount: 66, pricedCount: 66, exposureGbp: 0, exposureBasisGbp: 0,
+    source: { universe: "Synthetic 66", fund: "Synthetic fund", fundTicker: "SYN", url: "https://example.invalid", asOf: sessionDate, prices: "Synthetic" },
+    groupings: [{
+      kind: "gics",
+      groups: SECTORS.map(([key, name, weight, change]) => ({
+        key, name, nameZh: null, change, weight, breadth: { up: 3, flat: 0, down: 3 }, memberCount: 6, leader: null,
+        path: [], ranks: [], streak: 0, exposureGbp: 0, subgroups: [], members: [],
+      })),
+    }],
+  },
+};
 
 async function open(page: Page, locale: "zh" | "en", { estimated = false, large = false } = {}) {
   await page.clock.install({ time: new Date(brokerAsOf) });
@@ -74,7 +110,8 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
     }
     const json = url.pathname.includes("/dashboard/lens/overview") ? lens(large)
       : url.pathname.endsWith("/refresh/attention") ? failing
-        : url.pathname.endsWith("/profile") ? { accountLabels: {} } : {};
+        : url.pathname.endsWith("/sectors") ? sectors
+          : url.pathname.endsWith("/profile") ? { accountLabels: {} } : {};
     return route.fulfill({ json });
   });
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
@@ -82,7 +119,9 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
   await expect(page.locator(".mx-overview-statistics .mx-day-drivers a")).toHaveCount(3);
   await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
   await expect(page.locator(".mx-attention a")).toHaveCount(1);
-  await expect(page.locator(".mx-overview-research .mx-row-link")).toHaveCount(1);
+  await expect(page.locator(".mx-overview-holdings .mx-ledger-item")).toHaveCount(1);
+  await expect(page.locator(".mx-overview-sector-grid a")).toHaveCount(SECTORS.length);
+  await expect(page.locator(".mx-overview-sector-map")).toHaveCount(0);
   if (estimated) await expect(page.locator(".mx-overview-statistics .mx-number .mx-tag-help")).toHaveCount(1);
 }
 
@@ -148,7 +187,7 @@ function hitAreas() {
       return {
         name: el.tagName.toLowerCase() + " " + (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 32),
         index, parent: parent ? Number(parent.getAttribute("data-hit-index")) : null,
-        driver: Boolean(el.closest(".mx-day-drivers")), ...area,
+        driver: Boolean(el.closest(".mx-day-drivers")), sector: Boolean(el.closest(".mx-overview-sector-grid")), ...area,
       };
     });
 }
@@ -184,9 +223,10 @@ test.describe("overview on phones", () => {
       for (const width of [320, 360, 375, 390]) {
         await resize(page, width);
         const areas = await page.evaluate(hitAreas);
-        const small = areas.filter((a) => a.driver && (a.right - a.left < 43.5 || a.bottom - a.top < 43.5))
+        const small = areas.filter((a) => (a.driver || a.sector) && (a.right - a.left < 43.5 || a.bottom - a.top < 43.5))
           .map((a) => `${a.name} ${Math.round(a.right - a.left)}x${Math.round(a.bottom - a.top)}`);
-        expect.soft(small, `driver hit areas under 44px at ${width}px`).toEqual([]);
+        expect.soft(small, `driver and sector hit areas under 44px at ${width}px`).toEqual([]);
+        expect.soft(areas.filter((a) => a.sector).length, `sector blocks at ${width}px`).toBe(SECTORS.length);
         const meeting: string[] = [];
         for (const a of areas) {
           for (const b of areas) {

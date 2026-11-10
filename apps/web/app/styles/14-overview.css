@@ -1,0 +1,457 @@
+/* 组合总览: the period curve beside today's US sectors, then every holding with its research. */
+/* The layout names the page; its heading stays for assistive technology without taking a row. */
+.mx-overview-page > .mx-page-tools {
+  display: contents;
+}
+.mx-overview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+  align-items: stretch;
+  gap: 22px;
+}
+.mx-overview-row > .mx-panel {
+  display: flex;
+  flex-direction: column;
+}
+/* Headings keep their controls on the title's row while they fit; phones keep the Quiet Ledger rhythm. */
+@media (min-width: 768px) {
+  .mx-overview-row .mx-panel-heading,
+  .mx-overview-holdings .mx-panel-heading {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .mx-overview-sectors .mx-panel-heading {
+    align-items: center;
+  }
+}
+
+/* Today's US sectors: flat blocks by index weight, washed by the session's move (the Market Heat Rule). */
+.mx-overview-sector-map {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 248px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.mx-overview-sector {
+  --mx-heat-hue: var(--mx-soft);
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-soft));
+  color: var(--mx-ink);
+  text-decoration: none;
+  transition: box-shadow 160ms var(--mx-ease);
+}
+.mx-overview-sector[data-tone="up"] {
+  --mx-heat-hue: var(--mx-up);
+}
+.mx-overview-sector[data-tone="down"] {
+  --mx-heat-hue: var(--mx-down);
+}
+/* Hover draws a hairline rather than darkening the wash, so the figures keep their contrast. */
+@media (hover: hover) {
+  .mx-overview-sector:hover {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--mx-ink) 35%, transparent);
+  }
+}
+.mx-overview-sector:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--mx-brand), inset 0 0 0 4px var(--mx-surface);
+}
+.mx-overview-sector-name,
+.mx-overview-sector-change {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mx-overview-sector-change {
+  font-variant-numeric: tabular-nums;
+}
+.mx-overview-sector-name[data-wrap] {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* A small block sets its words tighter before it gives them up. */
+.mx-overview-sector[data-compact] {
+  padding: 5px 6px;
+}
+.mx-overview-sector[data-compact] :is(.mx-overview-sector-name, .mx-overview-sector-change) {
+  font-size: 12px;
+  line-height: 16px;
+}
+/* The narrowest blocks give up padding before they give up their move. */
+.mx-overview-sector[data-tight] {
+  padding-inline: 3px;
+}
+/* A wide, short block keeps its name and move on one line. */
+.mx-overview-sector[data-inline] {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+/* Phones and touch: one block per sector, by index weight, each a target of its own with its whole move. With an odd
+   count the largest sector takes a double block, so eleven sectors fill two, three or four columns evenly; rows share
+   whatever height the panel has. */
+.mx-overview-sector-grid {
+  display: none;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(52px, 1fr);
+  gap: 3px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.mx-overview-sector-grid > .mx-overview-sector {
+  position: relative;
+  justify-content: center;
+}
+.mx-overview-sector-grid > .mx-overview-sector:first-child:nth-last-child(odd) {
+  grid-column: span 2;
+}
+@media (max-width: 767px), (hover: none), (pointer: coarse) {
+  .mx-overview-sector-map {
+    display: none;
+  }
+  .mx-overview-sector-grid {
+    display: grid;
+  }
+}
+
+/* Holdings: the donut keys the ledger; each row's dot is its segment. */
+.mx-overview-holdings {
+  --mx-ledger-rule: color-mix(in oklab, var(--mx-border) 62%, var(--mx-surface));
+}
+.mx-ledger {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+.mx-ledger-chart {
+  display: grid;
+  place-items: start center;
+  align-self: stretch;
+  margin-right: 28px;
+  padding: 10px 32px 0 4px;
+  border-right: 1px solid var(--mx-border);
+}
+/* The donut stays beside the rows it keys while a long ledger scrolls. */
+.mx-ledger-donut {
+  position: sticky;
+  top: 88px;
+  width: 224px;
+  aspect-ratio: 1;
+}
+.mx-ledger-donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.mx-ledger-donut path {
+  fill: var(--mx-dot);
+  transition: opacity 150ms var(--mx-ease);
+}
+.mx-ledger-donut path[data-rest] {
+  fill: var(--mx-rest);
+}
+.mx-ledger-donut svg[data-focus] path:not([data-current]) {
+  opacity: 0.3;
+}
+.mx-ledger-centre {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+  text-align: center;
+}
+.mx-ledger-centre strong {
+  max-width: 120px;
+  overflow: hidden;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* English names the count in a smaller word; Chinese keeps 只 at the figure's size. */
+.mx-ledger-centre strong small {
+  margin-left: 4px;
+  color: var(--mx-muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.mx-ledger-centre span {
+  color: var(--mx-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-ledger-table {
+  width: 100%;
+  /* Fixed layout: the figures keep their widths and the name takes the rest, truncating if it must. */
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.mx-ledger-table :is(th, td) {
+  padding: 6px 0 6px 18px;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+}
+.mx-ledger-table :is(th, td):first-child {
+  padding-left: 0;
+  text-align: left;
+}
+/* The figures share the width the names leave rather than crowding the right edge. */
+.mx-ledger-table :is(th, td):not(:first-child) {
+  width: 104px;
+}
+.mx-ledger-table thead th {
+  padding-top: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--mx-border);
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-ledger-table tbody tr {
+  border-bottom: 1px solid var(--mx-ledger-rule);
+  cursor: pointer;
+  transition: background-color 150ms var(--mx-ease);
+}
+.mx-ledger-table tbody tr:last-child {
+  border-bottom: 0;
+}
+.mx-ledger-table tbody tr[data-focus] {
+  background: var(--mx-soft);
+}
+@media (hover: hover) {
+  .mx-ledger-table tbody tr:hover {
+    background: var(--mx-soft);
+  }
+}
+/* The holding's link names the row; a click anywhere on the row follows it. */
+.mx-ledger-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+.mx-ledger-link:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+}
+.mx-ledger-link .mx-peek-target {
+  min-width: 0;
+}
+.mx-ledger-link .mx-instrument-name {
+  max-width: none;
+  line-height: 16px;
+}
+.mx-ledger-link .mx-instrument strong {
+  font-size: 13px;
+  line-height: 17px;
+}
+.mx-ledger-link .mx-monogram {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+.mx-overview-holdings .mx-company-logo img {
+  padding: 3px;
+}
+.mx-ledger-rest :is(th, td) {
+  color: var(--mx-muted);
+}
+.mx-ledger-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mx-dot);
+}
+.mx-ledger-dot[data-rest] {
+  background: var(--mx-rest);
+}
+.mx-ledger-flag {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--mx-down);
+  vertical-align: 0.1em;
+}
+.mx-ledger-flag[data-tone="warning"] {
+  background: var(--mx-warning);
+}
+.mx-ledger-note {
+  margin-left: 6px;
+  color: var(--mx-warning);
+  font-size: 12px;
+}
+.mx-ledger-table .mx-tag {
+  margin-right: 6px;
+}
+.mx-ledger-list {
+  display: none;
+}
+@media (max-width: 1199px) {
+  .mx-ledger-chart {
+    margin-right: 20px;
+    padding-right: 22px;
+  }
+  .mx-ledger-donut {
+    width: 184px;
+  }
+  .mx-ledger-table :is(th, td):not(:first-child) {
+    width: 84px;
+  }
+}
+@media (max-width: 959px) {
+  .mx-overview-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-overview-sector-map {
+    flex: none;
+    height: 280px;
+  }
+  .mx-ledger {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-ledger-chart {
+    margin: 0 0 20px;
+    padding: 0;
+    border-right: 0;
+  }
+  .mx-ledger-donut {
+    position: relative;
+    top: auto;
+  }
+}
+/* A full-width panel on a touch tablet lays the blocks four abreast. */
+@media (min-width: 768px) and (max-width: 959px) {
+  .mx-overview-sector-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+/* Phones: each holding over one row of its figures, under one set of column names. */
+@media (max-width: 767px) {
+  .mx-overview-row {
+    gap: var(--mx-space-section);
+  }
+  .mx-overview-sectors .mx-panel-heading,
+  .mx-overview-holdings .mx-panel-heading {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .mx-ledger-chart {
+    margin-bottom: var(--mx-space-items);
+  }
+  .mx-ledger-donut {
+    width: 184px;
+  }
+  .mx-ledger-table {
+    display: none;
+  }
+  .mx-ledger-list {
+    display: block;
+  }
+  .mx-ledger-list ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .mx-ledger-list-head,
+  .mx-ledger-item dl {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--mx-space-group);
+    margin-left: 18px;
+  }
+  .mx-ledger-list-head {
+    padding-bottom: var(--mx-space-group);
+    border-bottom: 1px solid var(--mx-border);
+    color: var(--mx-muted);
+    font-size: var(--mx-text-label);
+    line-height: 1.5;
+  }
+  .mx-ledger-list-head span {
+    overflow-wrap: anywhere;
+  }
+  .mx-ledger-list li + li {
+    border-top: 1px solid var(--mx-ledger-rule);
+  }
+  .mx-ledger-item {
+    display: block;
+    padding-block: var(--mx-space-items);
+    color: inherit;
+    text-decoration: none;
+  }
+  .mx-ledger-item-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+  .mx-ledger-item-head > .mx-instrument,
+  .mx-ledger-item-head > span:not(.mx-ledger-dot) {
+    flex: 1;
+    min-width: 0;
+  }
+  .mx-ledger-item-head > strong {
+    font-size: var(--mx-text-body);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .mx-ledger-item dl {
+    margin-top: var(--mx-space-tight);
+    margin-bottom: 0;
+  }
+  .mx-ledger-item dd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 4px;
+    margin: 0;
+    font-size: var(--mx-text-body);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .mx-ledger-item .mx-ledger-note {
+    margin-left: 0;
+  }
+  .mx-ledger-item-rest {
+    color: var(--mx-muted);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-overview-sector,
+  .mx-ledger-donut path,
+  .mx-ledger-table tbody tr {
+    transition: none;
+  }
+}

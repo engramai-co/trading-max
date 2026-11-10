@@ -31,7 +31,7 @@
     gap: var(--mx-space-group);
   }
   /* Panels: 16px inside and flat; a panel heading sits 12px above its content. */
-  .mx-page .mx-panel:not(.mx-bento, .mx-overview-portfolio, .mx-overview-followups),
+  .mx-page .mx-panel:not(.mx-bento, .mx-overview-portfolio),
   .mx-bento > .mx-bento-cell {
     padding: var(--mx-space-panel);
   }
@@ -79,7 +79,7 @@
   .mx-page :is(.mx-prose, .mx-help-body, .mx-form-help, .mx-body-copy, .mx-page-heading p, .mx-panel-heading p,
     .mx-company-description, .mx-business-description, .mx-business-excerpt, .mx-connection-card > p, .mx-health-hero p,
     .mx-setting-row p, .mx-danger-zone p, .mx-import-drop p, .mx-health-row p, .mx-details, .mx-job-list, .mx-job-outcomes,
-    .mx-row-link, .mx-holding-mobile, .mx-day-drivers, .mx-document-feed, .mx-allocation-row) {
+    .mx-row-link, .mx-holding-mobile, .mx-day-drivers, .mx-document-feed) {
     font-size: var(--mx-text-body);
     font-weight: 400;
     line-height: 1.5;
@@ -189,7 +189,6 @@
     gap: var(--mx-space-group) var(--mx-space-items);
   }
   /* Overview */
-  .mx-page .mx-overview-split > .mx-panel,
   .mx-page .mx-summary {
     padding: var(--mx-space-panel);
   }
@@ -224,7 +223,7 @@
     gap: var(--mx-space-tight) var(--mx-space-items);
     margin-block: 0 var(--mx-space-group);
   }
-  .mx-page .mx-overview-split .mx-panel-heading {
+  .mx-page .mx-overview-row .mx-panel-heading {
     gap: var(--mx-space-group) var(--mx-space-items);
   }
   /* Research: the identity sits on the page. */
@@ -378,9 +377,6 @@
   }
   .mx-page .mx-overview-history .mx-period-figure strong {
     font-size: var(--mx-text-figure);
-  }
-  .mx-page .mx-overview-split > .mx-panel + .mx-panel {
-    padding-top: var(--mx-space-section);
   }
   /* Holdings summary: the invested value leads two smaller figures on one line while they fit; a figure that does not
      fit moves to the next line instead of running into its neighbour. */
