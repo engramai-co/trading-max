@@ -1,35 +1,39 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.28.0 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.29.0 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.28.0).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.29.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.28.0
+## Verified scope for 1.29.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
-Gatekeeper checks. All 19 packaged runtime checks passed, including process
-cleanup, isolated empty/demo workspaces and failed-upgrade recovery.
+Gatekeeper checks.
 
 Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
 older-version fixture with the released updater implementation. Invalid signed
 feeds, modified archives, interrupted downloads and cancellation left the
 installed application and its running services unchanged. **Install and Relaunch**
-installed the exact final 1.28.0 DMG, stopped the previous runtime and automatically
+installed the exact final 1.29.0 DMG, stopped the previous runtime and automatically
 reopened the isolated demo. The saved connection and disabled auto-open preference
-were unchanged. All installed file contents, modes and symlinks matched the
+were unchanged. All 20,329 installed file contents, modes and symlinks matched the
 accepted package; signature, staple and Gatekeeper checks passed again. Quitting
-the updated App, with Cmd-Q or by closing its window, stopped its owned services.
+the updated App with Cmd-Q stopped its owned services.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-An installed 1.18.4 App discovered and downloaded the public 1.28.0 update
+An installed 1.28.0 App discovered and downloaded the public 1.29.0 update
 through App Settings and installed it through **Install and Relaunch**. Its
-connection and startup preferences were unchanged and the installed bundle
-matched the accepted package exactly. Its saved HTTPS service was offline at the
-time, so this update did not re-check reconnection; the 1.18.4 update did.
+connection and startup preferences were unchanged, the installed bundle
+matched the accepted package exactly, and it reconnected to its saved HTTPS
+service.
 
+Version 1.29.0 brings the workspace's changes since 1.28.0 to the App: today's
+US sectors beside the period P&L on the overview; one holdings panel that pairs
+a donut with weight, the latest move, unrealized P&L, technical score and model
+upside; an attention list limited to data problems; YTD on the research price
+chart; and sector boards that settle after a late start.
 Version 1.28.0 brings the workspace's changes since 1.18.4 to the App: the
 Sectors page for the US, UK, Hong Kong and Korea; today's change first on the
 overview; a decision review that scores same-day round trips and dividends,
