@@ -15,6 +15,13 @@ updates:
     groups:
       frontend-dependencies:
         patterns: ["*"]
+    ignore:
+      # Next 16.4.5 drops the Content-Encoding label from compressed route
+      # responses. Hold 16.4.4–16.4.5 until a browser check passes.
+      - dependency-name: "next"
+        versions: ["16.4.4", "16.4.5"]
+      - dependency-name: "eslint-config-next"
+        versions: ["16.4.4", "16.4.5"]
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
