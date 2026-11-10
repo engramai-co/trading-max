@@ -3,8 +3,24 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # Importing the API during collection creates its default app and opens its log.
+    scratch = TemporaryDirectory(prefix="trading-max-pytest-")
+    config.add_cleanup(scratch.cleanup)
+    root = Path(scratch.name)
+    environment = pytest.MonkeyPatch()
+    config.add_cleanup(environment.undo)
+    environment.setenv("TRADING_MAX_DATA_ROOT", str(root / "state"))
+    environment.setenv("TRADING_MAX_LOG_DIR", str(root / "logs"))
+    environment.setenv(
+        "TRADING_MAX_CREDENTIAL_SERVICE", "com.engram.trading-max.credentials.pytest"
+    )
+    environment.setenv("PYTHON_KEYRING_BACKEND", "keyring.backends.null.Keyring")
 
 
 @pytest.fixture
