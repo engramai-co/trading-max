@@ -3233,10 +3233,7 @@ export interface components {
             dilutedCostPerShareNative: number | null;
             /** Fximpactgbp */
             fxImpactGbp: number | null;
-            /**
-             * Isfund
-             * @default false
-             */
+            /** Isfund */
             isFund: boolean;
             /** Name */
             name: string;

@@ -27,7 +27,7 @@ async def _bounded_request_body(request: Request) -> bytes:
         content.extend(chunk)
         if len(content) > MAX_CFD_IMPORT_BYTES:
             raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                 detail={
                     "code": "cfd_import_too_large",
                     "message": "the CFD CSV exceeds the 1 MB import limit",
@@ -65,7 +65,7 @@ async def import_cfd_csv(
 ) -> CfdImportResult:
     if filename is None or not filename.strip():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "cfd_filename_required",
                 "message": "X-Trading-Max-Filename is required",
@@ -86,7 +86,7 @@ async def import_cfd_csv(
         result = imports.import_bytes(filename, content)
     except CfdImportError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "cfd_import_invalid",
                 "message": str(exc),

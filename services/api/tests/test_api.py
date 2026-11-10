@@ -38,6 +38,64 @@ def _fixture_watchlist(data_root: Path) -> WatchlistStore:
     return watchlist
 
 
+def test_overview_serializes_fund_flags_after_live_positions_replace_snapshot_positions(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    lookthrough_path = report / "lookthrough_metrics.json"
+    lookthrough = json.loads(lookthrough_path.read_text())
+    fund_isin = "IE000000TEST"
+    lookthrough["fundPositions"] = [{"ticker": "XUSE", "isin": fund_isin}]
+    lookthrough_path.write_text(json.dumps(lookthrough))
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    previous = store.immutable_snapshots.latest()
+    assert previous is not None
+    broker = store.read_json(previous.manifest.run_id, "account/broker_snapshot_metrics.json")
+    isa = broker["accounts"]["B"]
+    observed_at = "2026-08-01T20:10:00Z"
+    live = store.immutable_artifacts.put_json(
+        key="account/intraday/broker_values.json",
+        payload={
+            "generated_at_utc": observed_at,
+            "accounts": {
+                "B": {
+                    **isa,
+                    "fetched_at": observed_at,
+                    "positions_status": "verified",
+                    "checks": {"positions_match_investments": True},
+                    # The latest position uses a different ticker, but its ISIN still
+                    # joins it to the fund already identified by the look-through.
+                    "positions": [{**isa["positions"][0], "ticker": "SYNETF", "isin": fund_isin}],
+                },
+            },
+        },
+        kind="account_intraday_value",
+        producer_version="test",
+    )
+    store.immutable_snapshots.publish(
+        scope="intraday", source="test", artifacts=[*previous.manifest.artifacts, live]
+    )
+    app = create_app(
+        Settings(
+            data_root=tmp_path / "runtime",
+            api_token="secret",
+            embedded_worker=False,
+            dashboard_prewarm_seconds=0,
+        )
+    )
+    with TestClient(app) as client:
+        response = client.get("/v1/dashboard/lens/overview?detail=summary")
+
+    assert response.status_code == 200
+    holdings = {holding["ticker"]: holding for holding in response.json()["holdings"]}
+    assert set(holdings) == {"BE", "SYNETF"}
+    assert holdings["SYNETF"]["isFund"] is True
+    assert holdings["BE"]["isFund"] is False
+
+
 def test_api_bootstraps_and_serves_dashboard(
     research_root: Path,
     tmp_path: Path,

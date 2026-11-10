@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from services.api.trading_max_api.logging_setup import (
@@ -63,5 +64,14 @@ def test_configure_logging_writes_rotating_jsonl(tmp_path: Path) -> None:
 def test_configure_logging_is_idempotent(tmp_path: Path) -> None:
     configure_logging(level="INFO", log_directory=tmp_path)
     first = len(logging.getLogger().handlers)
+    old_handler = next(
+        handler
+        for handler in logging.getLogger().handlers
+        if isinstance(handler, RotatingFileHandler)
+    )
+    old_stream = old_handler.stream
+    assert old_stream is not None and not old_stream.closed
     configure_logging(level="INFO", log_directory=tmp_path)
     assert len(logging.getLogger().handlers) == first
+    assert old_handler not in logging.getLogger().handlers
+    assert old_stream.closed

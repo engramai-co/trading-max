@@ -480,7 +480,7 @@ export function FinancialWorkbench({
                           type: "custom",
                           data: bridge.map((b, i) => [i, b.from, b.to]),
                           encode: { x: 0, y: [1, 2] },
-                          renderItem: (p, api) => {
+                          renderItem: (_params, api) => {
                             const i = Number(api.value(0));
                             const from = api.coord([i, api.value(1)]);
                             const to = api.coord([i, api.value(2)]);

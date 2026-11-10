@@ -6,7 +6,6 @@ import {
   Group,
   Popover,
   Skeleton,
-  Stack,
   Tooltip,
 } from "@mantine/core";
 import {
@@ -680,7 +679,4 @@ export function Instrument({
       </span>
     </div>
   );
-}
-export function SectionStack({ children }: { children: ReactNode }) {
-  return <Stack gap="lg">{children}</Stack>;
 }

@@ -556,11 +556,6 @@ a.mx-sector-symbol:hover {
   grid-area: caret;
   color: var(--mx-muted);
 }
-.mx-sector-phone-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
 .mx-sector-back {
   display: inline-flex;
   align-self: flex-start;

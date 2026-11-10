@@ -53,11 +53,6 @@ def _quality_status(warnings: list[str]) -> str:
     return "warning" if warnings else "verified"
 
 
-def _canonical(ticker: str) -> str:
-    value = str(ticker or "").upper()
-    return value[:-2] if value.endswith(".L") else value
-
-
 MERGEABLE_RESEARCH_KEYS = frozenset(
     {
         "research/market_snapshot.json",
