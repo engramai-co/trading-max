@@ -1,10 +1,10 @@
 /**
  * Guards the bilingual contract.
  *
- * Chinese copy is allowed in three shapes:
+ * Chinese copy is allowed in the following shapes:
  *   - the message catalogue itself,
  *   - `<Localized zh=... en=...>` blocks for rich text,
- *   - explicit `zh ? ... : ...` / `locale === "zh" ? ... : ...` ternaries,
+ *   - the Chinese branch of a bilingual `zh ? ... : ...` or `locale === "zh" ? ... : ...` ternary,
  *   - bilingual string-pair arrays (`["中文", "English"]` or extended rows).
  *
  * Anything else means a string would render as Chinese even when the user has
@@ -162,6 +162,22 @@ function stripMixedArrays(source: string): string {
   return out.join("");
 }
 
+function isChineseCondition(node: ts.Expression): boolean {
+  return (
+    (ts.isIdentifier(node) && node.text === "zh") ||
+    (ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
+      ts.isIdentifier(node.left) &&
+      node.left.text === "locale" &&
+      ts.isStringLiteral(node.right) &&
+      node.right.text === "zh")
+  );
+}
+
+function isCopyString(node: ts.Expression): boolean {
+  return ts.isStringLiteralLike(node) || ts.isTemplateExpression(node);
+}
+
 /** Strip the constructs that are allowed to carry Chinese. */
 function stripAllowed(source: string): string {
   const parsed = ts.createSourceFile(
@@ -183,8 +199,22 @@ function stripAllowed(source: string): string {
         ts.StringLiteral,
         ts.StringLiteral,
       ];
-      if (zh.text.trim() && en.text.trim() && !HANZI.test(en.text))
+      if (zh.text.trim() && en.text.trim() && !HANZI.test(en.text)) {
         spans.push([node.getStart(parsed), node.end]);
+        return;
+      }
+    }
+    if (
+      ts.isConditionalExpression(node) &&
+      isChineseCondition(node.condition) &&
+      ((isCopyString(node.whenTrue) && isCopyString(node.whenFalse)) ||
+        (ts.isObjectLiteralExpression(node.whenTrue) &&
+          ts.isObjectLiteralExpression(node.whenFalse)))
+    ) {
+      // Keep the English branch in the scan, even for templates and copy objects.
+      spans.push([node.whenTrue.getStart(parsed), node.whenTrue.end]);
+      visit(node.whenFalse);
+      return;
     }
     ts.forEachChild(node, visit);
   }
@@ -195,9 +225,12 @@ function stripAllowed(source: string): string {
   // Comments are never UI copy; keep line structure for clear reports.
   s = s.replace(/\/\*[\s\S]*?\*\//g, KEEP_NEWLINES);
   s = s.replace(/(^|\n)\s*\/\/[^\n]*/g, "$1");
-  // The language toggle renders the untranslated name of the language
-  // itself (中文 / EN), which is standard UI practice.
+  // Language controls name the target language in that language, even in English.
   s = s.replace(/中\s*文\s*<\/button>/g, "</button>");
+  s = s.replace(
+    /\{\s*value:\s*"zh"\s+as\s+const,\s*label:\s*"中文",\s*lang:\s*"zh-CN",\s*action:\s*"切换到中文"\s*\}/g,
+    KEEP_NEWLINES,
+  );
   // <Localized zh="..." en="..." /> and multi-line variants
   s = s.replace(/<Localized\b[\s\S]*?\/>/g, KEEP_NEWLINES);
   s = s.replace(/<Localized\b[\s\S]*?<\/Localized\s*>/g, KEEP_NEWLINES);
@@ -210,21 +243,6 @@ function stripAllowed(source: string): string {
   // statusCopy = { zh: { ... }, en: { ... } } paired objects
   s = s.replace(
     /\bzh\s*:\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*,?\s*en\s*:\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,
-    KEEP_NEWLINES,
-  );
-  // balanced copy objects: locale === "zh" ? { ...zh copy... } : { ...en copy... }
-  s = s.replace(
-    /locale\s*===\s*"zh"\s*\?\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*:\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,
-    KEEP_NEWLINES,
-  );
-  // zh ? "中文" : "English" inline / multi-line ternaries
-  s = s.replace(
-    /\bzh\s*\?\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[\s\S]*?`)\s*:\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[\s\S]*?`)/g,
-    KEEP_NEWLINES,
-  );
-  // locale === "zh" ? "中文" : "English" ternaries
-  s = s.replace(
-    /locale\s*===\s*"zh"\s*\?\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[\s\S]*?`)\s*:\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[\s\S]*?`)/g,
     KEEP_NEWLINES,
   );
   // ["中文", "English"] mixed-language translation arrays.
@@ -244,6 +262,21 @@ describe("bilingual coverage", () => {
     expect(HANZI.test(stripAllowed('t(\n"中文",\n"English",\n)'))).toBe(false);
     expect(HANZI.test(stripAllowed('t("中文", "还是中文")'))).toBe(true);
     expect(HANZI.test(stripAllowed('t("中文")'))).toBe(true);
+  });
+
+  it.each([
+    ['zh ? "中文" : "English"', 'zh ? "中文" : "还是中文"'],
+    [
+      'locale === "zh" ? `共 ${count} 项` : `${count} items`',
+      'locale === "zh" ? `共 ${count} 项` : `${count} 项`',
+    ],
+    [
+      'locale === "zh" ? { label: "中文" } : { label: "English" }',
+      'locale === "zh" ? { label: "中文" } : { label: "还是中文" }',
+    ],
+  ])("checks the English branch of %s", (translated, untranslated) => {
+    expect(HANZI.test(stripAllowed(translated))).toBe(false);
+    expect(HANZI.test(stripAllowed(untranslated))).toBe(true);
   });
 
   it("scans the whole frontend", () => {

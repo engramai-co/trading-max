@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import time
 from datetime import UTC, date
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 from starlette.testclient import TestClient
+from trading_max.application.decision_stages import AccountDecisionStage
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.reference import (
     SecurityEntityRecord,
@@ -30,6 +32,18 @@ from services.api.trading_max_api.valuation_assumptions import (
     ValuationAssumptionsStore,
 )
 from services.api.trading_max_api.watchlist import WatchlistStore
+
+
+@pytest.fixture
+def synthetic_decision_market_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    def history(symbol: str, start: date, end: date) -> pd.DataFrame:
+        close = 1.25 if symbol == "GBPUSD=X" else 100.0
+        return pd.DataFrame({"Close": close}, index=pd.date_range(start, end, freq="B"))
+
+    monkeypatch.setattr(
+        "trading_max.application.runtime.AccountDecisionStage",
+        partial(AccountDecisionStage, history_loader=history, events_loader=lambda _symbol: []),
+    )
 
 
 def _research_history(ticker: str, _period: str) -> pd.DataFrame:
@@ -170,7 +184,9 @@ def _seed_security_master(root: Path) -> None:
 
 
 @pytest.mark.parametrize("profiles", [("invest",), ("isa",), ("invest", "isa")])
-def test_typed_manager_runs_accounts_without_legacy_pipeline(tmp_path: Path, profiles) -> None:
+def test_typed_manager_runs_accounts_without_legacy_pipeline(
+    tmp_path: Path, profiles, synthetic_decision_market_data
+) -> None:
     for profile in profiles:
         _write_snapshot(tmp_path, profile, "100")
     codes = tuple("A" if profile == "invest" else "B" for profile in profiles)
@@ -657,6 +673,7 @@ def test_typed_research_job_runs_all_research_artifacts_with_injected_providers(
 
 def test_full_refresh_reconciles_bootstrapped_watchlist_status(
     tmp_path: Path,
+    synthetic_decision_market_data,
 ) -> None:
     _write_snapshot(tmp_path, "invest", "100")
     _write_snapshot(tmp_path, "isa", "100")
@@ -713,7 +730,9 @@ def test_full_refresh_reconciles_bootstrapped_watchlist_status(
         manager.close()
 
 
-def test_api_typed_runtime_admits_refresh_without_legacy_root(tmp_path: Path) -> None:
+def test_api_typed_runtime_admits_refresh_without_legacy_root(
+    tmp_path: Path, synthetic_decision_market_data
+) -> None:
     _write_snapshot(tmp_path, "invest", "100")
     _write_snapshot(tmp_path, "isa", "100")
     _seed_nav_snapshot(tmp_path)

@@ -131,12 +131,12 @@ def test_automation_settings_persist_and_reconfigure_live_schedulers(
     store = ArtifactStore(data_root)
     typed_fixture(research_root, store)
     headers = {"Authorization": "Bearer secret"}
+    # Exercise scheduler configuration and persistence without executing the queued work.
     initial_settings = Settings(
         data_root=data_root,
         api_token="secret",
         nightly_enabled=True,
         intraday_enabled=False,
-        embedded_worker=True,
     )
     with TestClient(
         create_app(initial_settings, credential_store=InMemoryCredentialStore())
@@ -211,7 +211,6 @@ def test_automation_settings_persist_and_reconfigure_live_schedulers(
         api_token="secret",
         nightly_enabled=True,
         intraday_enabled=False,
-        embedded_worker=True,
     )
     with TestClient(
         create_app(
