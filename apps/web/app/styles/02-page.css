@@ -129,9 +129,6 @@ html[data-scrolled] .mx-topbar-title strong {
   gap: 22px;
   align-items: start;
 }
-.mx-grid-wide {
-  grid-template-columns: minmax(0, 1.9fr) minmax(290px, 1fr);
-}
 .mx-grid-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -144,17 +141,6 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-metric-grid.mx-metric-lead > .mx-metric:not(:first-child) .mx-number {
   font-size: clamp(18px, 1.6vw, 23px);
   letter-spacing: -0.5px;
-}
-.mx-metric-grid.mx-metric-compact {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--mx-border);
-}
-.mx-metric-grid.mx-metric-compact > .mx-metric .mx-number {
-  font-size: 18px;
-  letter-spacing: -0.3px;
-  margin-top: 4px;
 }
 .mx-position-metrics {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
@@ -199,11 +185,6 @@ html[data-scrolled] .mx-topbar-title strong {
   margin-left: 8px;
   font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0;
-}
-.mx-number .mx-estimate-tag {
-  margin-left: 8px;
-  vertical-align: middle;
   letter-spacing: 0;
 }
 .mx-up {
@@ -280,8 +261,7 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-overview-page > .mx-page-heading {
   align-items: center;
 }
-.mx-overview-portfolio.mx-panel,
-.mx-overview-followups.mx-panel {
+.mx-overview-portfolio.mx-panel {
   padding: 0;
 }
 .mx-overview-totals {
@@ -318,11 +298,6 @@ html[data-scrolled] .mx-topbar-title strong {
   align-items: center;
   gap: 8px;
   margin-top: 24px;
-}
-.mx-attention-label {
-  margin-right: 4px;
-  color: var(--mx-muted);
-  font-size: 12px;
 }
 .mx-attention a {
   display: inline-flex;

@@ -124,7 +124,7 @@ watches its parent. Process cleanup never searches by executable name or port.
 
 ## Build on an Apple Silicon Mac
 
-Use the repository's supported Node 22 and uv toolchain plus Rust 1.85+ and Xcode.
+Use the repository's supported Node 22 and uv toolchain plus Rust 1.88+ and Xcode.
 From the checkout root:
 
 ```sh

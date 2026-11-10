@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Holding } from "@/lib/types";
 import { allocationChartColours } from "@/ui/charts/palette";
-import { SIGNAL_LIMIT } from "./attention";
+import { holdingSignals, SIGNAL_LIMIT } from "./attention";
 import { COLOURED_HOLDINGS, holdingsLedger } from "./overview-holdings-data";
 
 const holding = (ticker: string, value: number, extra: Partial<Holding> = {}) =>
@@ -82,6 +82,27 @@ describe("overview holdings ledger", () => {
     });
     expect(ledger.rows[0]).toMatchObject({ ticker: "NVDA", fund: false, score: 64, upside: -0.2, pnl: 1, href: "/research?ticker=NVDA" });
     expect(ledger.rows[1]).toMatchObject({ ticker: "VWRP.L", fund: true, score: null, upside: null });
+  });
+
+  it("uses the same unrounded loss for the ledger and signals, with the first position as fallback", () => {
+    const holdings = [
+      holding("WEIGHTED", 250, { costGbp: 250, pnlGbp: -51.23 }),
+      holding("FALLBACK", 200, { costGbp: 0, pnlPct: -0.30123 }),
+      holding("WEIGHTED", 50, { account: "B", costGbp: 50, pnlGbp: -10 }),
+      holding("FALLBACK", 300, { account: "B", costGbp: Infinity, pnlPct: -0.05, isFund: true }),
+      holding("WEIGHTED", 25, { account: "B", costGbp: NaN, pnlGbp: NaN }),
+    ];
+    const technical = [{ ticker: "FALLBACK", score: 5 }] as never;
+    const signals = holdingSignals({ holdings, technical });
+    const { rows } = holdingsLedger({ holdings, signals, technical });
+    expect(rows.map(({ ticker, pnl, score }) => ({ ticker, pnl, score }))).toEqual([
+      { ticker: "FALLBACK", pnl: -0.30123, score: null },
+      { ticker: "WEIGHTED", pnl: (-51.23 - 10) / 300, score: null },
+    ]);
+    for (const { ticker, pnl } of rows) {
+      const signal = signals.find((item) => item.ticker === ticker);
+      expect(signal?.facts).toEqual([expect.objectContaining({ kind: "loss", value: pnl })]);
+    }
   });
 
   it("stays empty without positions", () => {

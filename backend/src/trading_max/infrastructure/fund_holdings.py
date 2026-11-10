@@ -167,10 +167,6 @@ def _industry(value: Any, *, default: str = "Other industries") -> str:
     return INDUSTRY_ALIASES.get(raw, raw) if raw else default
 
 
-def _country_from_isin(isin: str) -> str:
-    return ISIN_PREFIX_COUNTRIES.get(isin[:2].upper(), "Other markets")
-
-
 def _check_total(label: str, values: list[FundHolding] | Mapping[str, float]) -> None:
     total = (
         sum(item.weight_pct for item in values)

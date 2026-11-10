@@ -56,9 +56,6 @@
   .mx-topbar {
     padding-inline: 26px;
   }
-  .mx-grid-wide {
-    grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr);
-  }
   .mx-panel {
     padding: 20px;
   }
@@ -81,7 +78,6 @@
   }
 }
 @media (max-width: 959px) {
-  .mx-grid-wide,
   .mx-grid-three {
     grid-template-columns: minmax(0, 1fr);
   }

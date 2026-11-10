@@ -90,6 +90,7 @@ def configure_logging(
     for handler in list(root.handlers):
         if getattr(handler, "_trading_max_managed", False):
             root.removeHandler(handler)
+            handler.close()
 
     formatter = JsonFormatter()
 

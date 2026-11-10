@@ -85,7 +85,7 @@
     line-height: 1.5;
   }
   .mx-page :is(.mx-metric-label, .mx-metric-note, .mx-freshness, .mx-period-span, .mx-security-meta, .mx-security-price small,
-    .mx-tag, .mx-highlight-title, .mx-attention-label, .mx-unit, .mx-chart-legend, .mx-chart-data > summary,
+    .mx-tag, .mx-highlight-title, .mx-unit, .mx-chart-legend, .mx-chart-data > summary,
     .mx-source-links, .mx-scale-labels, .mx-holding-mobile footer, .mx-facts dt, .mx-settings-nav button) {
     font-size: var(--mx-text-label);
     font-weight: 500;

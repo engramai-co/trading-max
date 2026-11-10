@@ -1,4 +1,5 @@
 import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
+import { combinedHoldingPnl, finite, groupHoldings, isFundHolding, type HoldingGroup } from "./holding-groups";
 
 /** One reading that crossed an attention threshold for a held security. */
 export type AttentionFact = { kind: "score" | "rsi" | "upside" | "loss"; value: number; severity: number };
@@ -18,18 +19,15 @@ export const THRESHOLD = { score: 30, rsiHigh: 75, rsiLow: 25, upside: -0.2, los
 /** Broker data normally refreshes every few minutes; six hours means updates stopped. */
 export const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 
-const finite = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) ? value : null;
-
 function factsFor(
   ticker: string,
-  positions: Holding[],
+  positions: HoldingGroup,
   technical: DashboardLens["technical"],
   valuations: DashboardLens["valuations"],
 ): AttentionFact[] {
   const facts: AttentionFact[] = [];
   // Funds carry no company research readings yet; only their loss against cost counts.
-  if (!positions.some((h) => h.isFund)) {
+  if (!isFundHolding(positions)) {
     const signal = technical?.find((row) => row.ticker === ticker);
     const score = finite(signal?.score);
     if (score != null && score <= THRESHOLD.score) facts.push({ kind: "score", value: score, severity: 60 + (THRESHOLD.score - score) });
@@ -42,9 +40,7 @@ function factsFor(
       facts.push({ kind: "upside", value: upside, severity: 55 + Math.min(30, (THRESHOLD.upside - upside) * 100) });
     }
   }
-  const cost = positions.reduce((sum, h) => sum + (finite(h.costGbp) ?? 0), 0);
-  const pnl = positions.reduce((sum, h) => sum + (finite(h.pnlGbp) ?? 0), 0);
-  const loss = cost > 0 ? pnl / cost : finite(positions[0]?.pnlPct);
+  const loss = combinedHoldingPnl(positions);
   if (loss != null && loss <= THRESHOLD.loss) facts.push({ kind: "loss", value: loss, severity: 45 + Math.min(30, (THRESHOLD.loss - loss) * 100) });
   return facts.sort((a, b) => b.severity - a.severity);
 }
@@ -101,9 +97,7 @@ export function holdingSignals({
   limit?: number;
 }): HoldingSignal[] {
   const signals: HoldingSignal[] = [];
-  const byTicker = new Map<string, Holding[]>();
-  for (const holding of holdings) byTicker.set(holding.ticker, [...(byTicker.get(holding.ticker) ?? []), holding]);
-  for (const [ticker, positions] of byTicker) {
+  for (const [ticker, positions] of groupHoldings(holdings)) {
     const facts = factsFor(ticker, positions, technical, valuations);
     if (!facts.length) continue;
     signals.push({

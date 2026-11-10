@@ -6438,7 +6438,6 @@
             "title": "Fximpactgbp"
           },
           "isFund": {
-            "default": false,
             "title": "Isfund",
             "type": "boolean"
           },
@@ -6495,7 +6494,8 @@
           "costGbp",
           "pnlGbp",
           "pnlPct",
-          "allocationPct"
+          "allocationPct",
+          "isFund"
         ],
         "title": "Holding",
         "type": "object"
@@ -17891,7 +17891,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.29.0"
+    "version": "1.29.1"
   },
   "openapi": "3.1.0",
   "paths": {
