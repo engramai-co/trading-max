@@ -116,4 +116,8 @@ break any existing feature.
   and random-looking values such as `synthetic-secret-7f3a` fail it.
 - Preserve the typed snapshot boundary and the independent research-lens API.
 - Remote WebView pages receive no native commands, filesystem or credential access.
+- After a deployment or a web-framework upgrade, load a data page in a real
+  browser or request it with `Accept-Encoding: br, gzip`. Plain HTTP checks
+  without that header can pass while browsers receive compressed bytes without
+  `Content-Encoding` and show a data error.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
