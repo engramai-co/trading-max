@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.29.3] - 2026-11-10
+
+### Fixed
+
+- The overview and other pages that load larger data work again in browsers.
+  Since 1.29.1 they could fail to read their data and show an error instead.
+
 ## [1.29.2] - 2026-11-10
 
 ### Fixed
