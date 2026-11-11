@@ -69,6 +69,9 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   contract **before** placing connection preferences or fixtures there. It
   rejects nonempty, unmarked directories. Never add its marker to an unknown
   user directory to bypass that protection.
+- The desktop demo keeps its runtime under `demo/<App version>/` in the App
+  data root. Read `runtime-status.json` and its logs there; the root holds only
+  connection preferences and status, and an update starts a new demo root.
 - Native updater fixtures share the daily App's data and preferences namespace.
   Quit the App first, preserve the original state and verify the backup before
   switching to synthetic state. Record file hashes, modes and symlinks. Restore

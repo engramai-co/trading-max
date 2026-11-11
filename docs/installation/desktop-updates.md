@@ -1,37 +1,46 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.29.3 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.31.0 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.29.3).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.31.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.29.3
+## Verified scope for 1.31.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
 
 Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
-older-version fixture with the released updater implementation. Invalid signed
-feeds, modified archives, interrupted downloads and cancellation left the
-installed application and its running services unchanged. The updater downloaded
-and installed the exact final 1.29.3 DMG; the previous runtime stopped and the
-updated App served the isolated demo, whose overview loaded its data in a
-browser. That run did not observe whether installation began from **Install and
-Relaunch** or on quit; the public update below exercised **Install and Relaunch**.
-The saved connection and disabled auto-open preference were unchanged. All
-20,331 installed file contents, modes and symlinks matched the accepted package;
+older-version fixture built from the release source with its updater unchanged.
+Invalid signed feeds, modified archives, interrupted downloads and cancellation
+left the installed application and its running services unchanged. The updater
+downloaded the exact final 1.31.0 DMG and reached **Ready to Install**;
+**Install and Relaunch** stopped the previous App and its runtime, and the
+updated App reopened on the isolated demo with its overview loaded. The saved
+connection and disabled auto-open preference were unchanged. All 20,313
+installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
 with Cmd-Q stopped its owned services.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-An installed 1.29.0 App discovered and downloaded the public 1.29.3 update
+An installed 1.29.3 App discovered and downloaded the public 1.31.0 update
 through App Settings, reached **Ready to Install** and installed it through
 **Install and Relaunch**. Its connection and startup preferences were unchanged,
 the installed bundle matched the accepted package exactly, and it reconnected to
 its saved HTTPS service.
 
+Version 1.31.0 brings the workspace's changes since 1.29.3 to the App: the
+Trading 212 connection form explains how to create a read-only API key for each
+account; the demo labels its synthetic data and shows its snapshot date; the
+welcome screen shows the App version in English when the system language is
+English and in Simplified Chinese otherwise; Money & P&L leads with signed net
+P&L, adds up opening value, contributions and P&L, and marks the worst
+drawdown and its recovery; loading keeps the last complete figures in view;
+holding details lead with market value, weight and gains, with UK pence quotes
+shown in pounds; chart axis labels stay inside smaller windows; and research
+keeps a dated record of analysts' estimates for held and watched securities.
 Version 1.29.3 brings the workspace's changes since 1.29.0 to the App: the
 overview reports whether each holding is a fund, including after an intraday
 broker refresh; centred Chinese messages sit on their visual centre; Chinese
