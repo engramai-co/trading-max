@@ -48,7 +48,9 @@ quote, financial observations, growth references and worksheet remain frozen.
 
 Successful scheduled research publications record Yahoo Finance valuation
 fields and analyst EPS consensus for held and watched listings in the state
-root's `trading_max.db`. No extra provider requests are needed. Each UTC
+root's `trading_max.db`. The archive reuses the scheduled research fetches.
+Scheduled research covers the watchlist plus every listing held in Invest and
+Stocks ISA, without changing the saved watchlist. Each UTC
 observation preserves the vendor's `forwardPE`, `forwardEps`, `trailingPE` and
 `trailingEps`, plus any available quote and raw consensus periods (`0q`, `+1q`,
 `0y`, `+1y`). The quote price is in pounds when the vendor quotes in pence;
