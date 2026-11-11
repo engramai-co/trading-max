@@ -98,6 +98,13 @@ export function prepareHistory(input: HistoryInput, selection: Pick<HistorySelec
   const dates = history.points.map((point) => point.date);
   const selected = new Set<number>();
   if (dates.length) { selected.add(0); selected.add(dates.length - 1); }
+  if (money.drawdownEpisode) {
+    // Keep the exact points available to the analytics markers without changing
+    // the sampling cadence of the overview or of other series.
+    for (const point of [money.drawdownEpisode.peak, money.drawdownEpisode.trough]) {
+      selected.add(dates.indexOf(point.date));
+    }
+  }
   // A union of the existing display selections preserves all plotted lines,
   // including gaps present in only one field. Cash-flow/source anchors survive.
   const values = [

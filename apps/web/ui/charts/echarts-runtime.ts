@@ -9,6 +9,7 @@ import {
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
 } from "echarts/components";
 import { init, use as registerModules } from "echarts/core";
@@ -24,6 +25,7 @@ registerModules([
   GridComponent,
   LegendComponent,
   MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
   LabelLayout,
   CanvasRenderer,

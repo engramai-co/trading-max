@@ -30,3 +30,39 @@ describe("one money basis for intraday and daily ranges", () => {
     expect(portfolioMoney(rows.slice(0, 1), "total").pnl).toBeNull();
   });
 });
+
+describe("maximum P&L drawdown", () => {
+  function history(values: number[], estimates: number[] = []) {
+    return portfolioMoney(values.map((total, i) => ({
+      date: `2026-01-0${i + 1}`,
+      total,
+      totalNetContributionsGbp: 100,
+      valuationSource: estimates.includes(i) ? "reconstructed" : "broker",
+    }) as NavPoint), "total");
+  }
+
+  it("has no episode on a rising or flat path", () => {
+    expect(history([100, 110, 110])).toMatchObject({ maxDrawdown: 0, drawdownEpisode: null });
+  });
+
+  it("locates the last tied peak, the worst trough and the first recovery", () => {
+    expect(history([100, 120, 120, 80, 119, 120, 130])).toMatchObject({
+      maxDrawdown: -40,
+      drawdownEpisode: {
+        peak: { date: "2026-01-03", estimated: false },
+        trough: { date: "2026-01-04", estimated: false },
+        recovery: { date: "2026-01-06", estimated: false },
+      },
+    });
+  });
+
+  it("leaves recovery absent when available observations do not regain the peak", () => {
+    expect(history([100, 120, 80, 119]).drawdownEpisode?.recovery).toBeNull();
+  });
+
+  it("keeps estimate flags on the readings they qualify", () => {
+    expect(history([100, 120, 80, 125], [1, 2]).drawdownEpisode).toMatchObject({
+      peak: { estimated: true }, trough: { estimated: true }, recovery: { estimated: false },
+    });
+  });
+});

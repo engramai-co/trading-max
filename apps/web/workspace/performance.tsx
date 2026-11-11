@@ -11,7 +11,7 @@ import { HistoryChart, Legend, type ChartLine } from "./charts";
 import { TimelineChart } from "./timeline-chart";
 import type { TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
-import { currency, number, object, percent, tone } from "@/workspace/data";
+import { number, object, percent, tone } from "@/workspace/data";
 import { inRange, navNumber, observedNav, periodReturn, type Range, type Scope } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
 import {
@@ -32,11 +32,12 @@ import {
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
-import { EstimateTag, HistoryCoverage, PeriodSpan } from "./history-coverage";
+import { HistoryCoverage, PeriodSpan } from "./history-coverage";
 import { PORTFOLIO_RANGES, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
+import { MoneyDrawdown, MoneySummary } from "./performance-money";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
@@ -144,7 +145,6 @@ export function PerformanceContent({
   const first = points[0],
     last = points.at(-1);
   const money = view === "money" && historyQuery.data ? historyQuery.data.money : portfolioMoney(points, scope);
-  const { contributions, pnl } = money;
   const twr =
     points.length > 1
       ? periodReturn(
@@ -216,6 +216,7 @@ export function PerformanceContent({
             label: t("区间净盈亏", "Period P&L"),
             percentage: moneyUnit === "percent",
             zeroBaseline: true,
+            markerDate: money.drawdownEpisode?.peak.date,
             lines: [
               {
                 name: t("净盈亏", "Net P&L"),
@@ -230,6 +231,7 @@ export function PerformanceContent({
       label: view === "money" ? t("盈亏回撤", "P&L drawdown") : t("期间回撤", "Period drawdown"),
       percentage: view === "returns" || moneyUnit === "percent",
       drawdown: true,
+      markerDate: view === "money" ? money.drawdownEpisode?.trough.date : undefined,
       lines:
         view === "returns"
           ? returnDrawdowns
@@ -312,14 +314,14 @@ export function PerformanceContent({
             <div className="mx-toolbar mx-chart-toolbar">
               {view === "money" ? (
                 <Segments
-                  label={t("金额显示方式", "Value display")}
+                  label={t("图表单位", "Chart units")}
                   value={moneyUnit}
                   onChange={setMoneyUnit}
                   options={[
                     { value: "gbp", label: "GBP" },
                     {
                       value: "percent",
-                      label: t("相对期初 %", "From opening %"),
+                      label: t("占期初价值 %", "% of opening value"),
                     },
                   ]}
                 />
@@ -362,31 +364,7 @@ export function PerformanceContent({
             </div>
             {view === "money" && <HistoryCoverage history={history} />}
             {view === "money" ? (
-              <div className="mx-metric-grid mx-metric-lead mx-chart-metrics">
-                <Metric
-                  label={t("期末价值", "Ending value")}
-                  value={currency(navNumber(last, scope), "GBP", 2)}
-                />
-                <Metric
-                  label={t("区间净入金", "Net contributions in period")}
-                  value={currency(contributions, "GBP", 2)}
-                />
-                <Metric
-                  label={<>{t("区间净盈亏", "P&L in period")}<EstimateTag points={points} /></>}
-                  value={currency(pnl, "GBP", 2)}
-                  tone={tone(pnl)}
-                  helpLabel={t("区间净盈亏", "P&L in period")}
-                  help={t(
-                    "各区间均使用期末价值 − 期初价值 − 净入金计算净盈亏，回撤从区间内盈亏高点计算。橙色虚线为累计净入金；蓝、红曲线的虚线段表示缺少记录，仅连接前后实测值。最新现金流待核对时，三图与指标统一截至最后可核对时刻。“相对期初 %”不等于投资收益率。",
-                    "Every range uses ending value minus opening value minus net contributions. Orange dashes show cumulative contributions; blue/red dashed spans connect observations across missing records. While new cash flows await reconciliation, all three charts and metrics share the last verified cutoff. From opening % is not an investment return.",
-                  )}
-                />
-                <Metric
-                  label={t("最大盈亏回撤", "Maximum P&L drawdown")}
-                  value={currency(money.maxDrawdown, "GBP", 2)}
-                  tone="down"
-                />
-              </div>
+              <MoneySummary money={money} points={points} />
             ) : (
               <div className="mx-metric-grid mx-metric-lead mx-chart-metrics">
                 <Metric
@@ -409,6 +387,7 @@ export function PerformanceContent({
               <TimelineChart
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
+                drawdownHeading={view === "money" ? <MoneyDrawdown money={money} /> : undefined}
                 intraday={isIntraday}
                 range={actualRange}
                 timeline={view === "money" ? history.timeline : undefined}

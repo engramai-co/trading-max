@@ -4,10 +4,13 @@ import type { ChartLine } from "./charts";
 import { numeric } from "@/lib/numeric";
 import { percent } from "@/workspace/data";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
-import type { CalendarTimeline } from "@/lib/portfolio/history";
+import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
 import { timelineAxis } from "./timeline-axis";
 import { timelineLabels, type TimelineDisplay } from "./timeline-labels";
+import { moneyAxis, type moneyTimelineLayout } from "./money-timeline-layout";
+
+const moneyPercentTick = new Intl.NumberFormat("en-GB", { style: "percent", maximumFractionDigits: 8 });
 
 export type TimelineLayer = {
   label: string;
@@ -15,20 +18,47 @@ export type TimelineLayer = {
   percentage?: boolean;
   drawdown?: boolean;
   zeroBaseline?: boolean;
+  markerDate?: string;
 };
+
+/** Daily views normally plot the day's last reading. Include an intraday
+ * drawdown observation before that reading so every layer shares its cursor. */
+function includeDailyMarkers(calendar: CalendarTimeline, dates: string[], layers: TimelineLayer[]): CalendarTimeline {
+  if (calendar.categories[0]?.includes("T")) return calendar;
+  const selected = new Set(calendar.rowIndexes);
+  const additions = new Map<string, number[]>();
+  for (const date of new Set(layers.map((layer) => layer.markerDate))) {
+    if (!date) continue;
+    const row = dates.indexOf(date);
+    if (row < 0 || selected.has(row)) continue;
+    const day = historyDay(date);
+    additions.set(day, [...(additions.get(day) ?? []), row]);
+  }
+  if (!additions.size) return calendar;
+  const result: CalendarTimeline = { ...calendar, categories: [], rowIndexes: [], anchors: [] };
+  calendar.categories.forEach((day, position) => {
+    const extra = additions.get(day)?.sort((a, b) => a - b) ?? [];
+    result.categories.push(...extra.map(() => day), day);
+    result.rowIndexes.push(...extra, calendar.rowIndexes[position]);
+    result.anchors!.push(...extra.map(() => true), !!calendar.anchors?.[position]);
+  });
+  return result;
+}
 
 export function timelineOption(
   dates: string[],
   layers: TimelineLayer[],
   colours: ChartColours,
   formatDay: (time: number) => string,
-  calendar?: CalendarTimeline,
+  baseCalendar?: CalendarTimeline,
   details: Array<{ label: string; values: Array<number | null>; percentage?: boolean }> = [],
   formatTimestamp = formatDay,
   tooltip?: TimelineTooltip,
   display?: TimelineDisplay,
   provenance?: Array<{ estimated: boolean; note: string }>,
+  moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
 ): EChartsOption {
+  const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
   const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : times.indexOf(position);
   const hasEstimates = provenance?.some((point) => point.estimated) ?? false;
@@ -70,7 +100,7 @@ export function timelineOption(
     max: times.at(-1),
     axisLabel: { formatter: (value: string | number) => formatDay(typeof value === "string" ? Date.parse(value) : value) },
   };
-  const top = (index: number) => (index === 0 ? 32 : 292 + (index - 1) * 196);
+  const top = (index: number) => moneyLayout?.grids[index]?.top ?? (index === 0 ? 32 : 292 + (index - 1) * 196);
   const axisDensity = (count: number) => {
     const ticks = ticksForWidth(count);
     return {
@@ -95,11 +125,11 @@ export function timelineOption(
       left: 64,
       right: 12,
       top: top(index),
-      height: index === 0 ? 210 : 150,
+      height: moneyLayout?.grids[index]?.height ?? (index === 0 ? 210 : 150),
     })),
     // The legend above names the first plot; plots stacked under it name
     // themselves. Units live on the ticks.
-    graphic: layers.slice(1).map((layer, index) => ({
+    graphic: layers.slice(1, moneyLayout ? -1 : undefined).map((layer, index) => ({
       type: "text",
       left: 0,
       top: top(index + 1) - 28,
@@ -144,6 +174,7 @@ export function timelineOption(
       const observed = layer.lines
         .flatMap((line) => line.values)
         .filter((v): v is number => v != null);
+      const range = moneyLayout && index > 0 ? moneyAxis(observed, !!layer.drawdown, !!layer.percentage) : undefined;
       const allZero =
         observed.length > 0 && observed.every((value) => value === 0);
       return {
@@ -152,17 +183,17 @@ export function timelineOption(
         scale: true,
         boundaryGap: index === 0 ? ["8%", "8%"] : [0, 0],
         splitNumber: index === 0 ? 4 : 2,
-        ...(layer.drawdown
+        ...(range ?? (layer.drawdown
           ? {
               max: 0,
               ...(allZero ? { min: layer.percentage ? -0.01 : -1 } : {}),
             }
-          : {}),
+          : {})),
         axisLabel: {
           color: colours.axis,
           formatter: (v: number) =>
             layer.percentage
-              ? percent(v, false, Number.isInteger(Math.round(v * 1000) / 10) ? 0 : 1)
+              ? range ? moneyPercentTick.format(v) : percent(v, false, Number.isInteger(Math.round(v * 1000) / 10) ? 0 : 1)
               : (v < 0 ? "−£" : "£") + Math.abs(v).toLocaleString("en-GB", {
                   notation: "compact",
                   maximumSignificantDigits: 5,
@@ -219,7 +250,16 @@ export function timelineOption(
             line.colour ??
               (index === 0 ? "brand" : index === 1 ? "accent" : "secondary")
           ];
-        const data = historySeries(dates, line.values, false, calendar);
+        const markerRow = layer.markerDate == null ? -1 : dates.indexOf(layer.markerDate);
+        const markerValue = line.values[markerRow];
+        const markerPosition = markerRow < 0 ? -1 : calendar ? calendar.rowIndexes.indexOf(markerRow) : times[markerRow];
+        const hasMarker = markerPosition >= 0 && markerValue != null;
+        // The same genuine observation anchors both the visible stroke and the marker.
+        const plotCalendar = calendar && hasMarker ? {
+          ...calendar,
+          anchors: calendar.rowIndexes.map((_, position) => position === markerPosition || !!calendar.anchors?.[position]),
+        } : calendar;
+        const data = historySeries(dates, line.values, false, plotCalendar);
         const gaps = historyGapSeries(data);
         const strokes = hasEstimates
           ? historySourceSeries(data, (position) => provenance?.[rowAt(position)]?.estimated ?? false)
@@ -246,6 +286,15 @@ export function timelineOption(
             type: line.dashed ? "dashed" : "solid",
           },
           itemStyle: { color: colour },
+          markPoint: hasMarker ? {
+            silent: true,
+            symbol: "circle",
+            symbolSize: 7,
+            itemStyle: { color: colour, borderColor: colours.tooltip, borderWidth: 1.5 },
+            label: { show: false },
+            tooltip: { show: false },
+            data: [{ name: layer.label, coord: [markerPosition, markerValue] }],
+          } : undefined,
           markLine: layer.zeroBaseline && index === 0 ? {
             silent: true,
             symbol: "none",
@@ -267,7 +316,7 @@ export function timelineOption(
           tooltip: { show: false },
           symbol: "none",
           showSymbol: false,
-          connectNulls: true,
+          connectNulls: !moneyLayout,
           step: line.step,
           lineStyle: { width: 0, opacity: 0 },
           areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
@@ -280,6 +329,7 @@ export function timelineOption(
           symbol: "none",
           showSymbol: false,
           markLine: undefined,
+          markPoint: undefined,
           emphasis: { disabled: true },
         } satisfies SeriesOption;
         const observed = hasEstimates ? [{

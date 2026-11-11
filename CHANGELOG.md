@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- Money & P&L leads with signed net profit or loss and shows how opening value,
+  contributions and P&L add up to ending value.
+- The taller P&L chart shows a zero line and clearer ticks. The drawdown chart
+  marks the worst decline and shows when it recovered, if it did.
+- The percentage view is now called “% of opening value”, because it divides
+  the change by the opening value and is not an investment return.
+
 ## [1.29.4] - 2026-11-11
 
 ### Added
