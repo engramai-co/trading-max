@@ -272,7 +272,7 @@ export function PerformanceContent({
   };
   return (
     <>
-      <div className="mx-toolbar">
+      <div className="mx-toolbar mx-analytics-toolbar">
         <Tabs
           label={t("绩效分析方式", "Performance perspective")}
           value={view}
@@ -293,6 +293,10 @@ export function PerformanceContent({
             { value: "risk", label: t("风险诊断", "Risk profile") },
           ]}
         />
+        <span className="mx-freshness-group">
+          <Freshness date={data?.brokerAsOf} />
+          {failure && shown && <UpdateFailure updatedAt={shown.updatedAt} retry={failure.refetch} />}
+        </span>
         <Select
           disabled={!!fixedScope}
           aria-label={t("分析账户", "Analysis account")}
@@ -301,10 +305,6 @@ export function PerformanceContent({
           data={scopeOptions}
           w={200}
         />
-        <span className="mx-freshness-group">
-          <Freshness date={data?.brokerAsOf} />
-          {failure && shown && <UpdateFailure updatedAt={shown.updatedAt} retry={failure.refetch} />}
-        </span>
       </div>
       {invalidScope ? (
         <Notice>

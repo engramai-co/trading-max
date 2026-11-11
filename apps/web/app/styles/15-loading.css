@@ -104,6 +104,10 @@
   align-items: center;
   gap: 6px;
 }
+/* The account picker stays at the row's end; its data time sits just before it. */
+.mx-analytics-toolbar > .mx-freshness-group {
+  margin-left: auto;
+}
 @media (prefers-reduced-motion: reduce) {
   .mx-data-body {
     transition: none;
