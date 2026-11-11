@@ -3320,6 +3320,8 @@ export interface components {
             fxImpactGbp: number | null;
             /** Isfund */
             isFund: boolean;
+            /** Listingmarket */
+            listingMarket?: ("US" | "LSE") | null;
             /** Name */
             name: string;
             /** Pnlgbp */

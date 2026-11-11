@@ -647,12 +647,15 @@ class Holding(ApiModel):
     account: InvestableAccountCode
     ticker: str
     name: str
+    # A listing market established by the broker code or canonical listing suffix.
+    listing_market: Literal["US", "LSE"] | None = None
     quantity: float
     current_price: float
     diluted_cost_gbp: float | None
     diluted_cost_per_share_gbp: float | None
     diluted_cost_per_share_native: float | None
     diluted_cost_currency: str
+    # Historical field: quote units per GBP, including the GBX unit scale.
     snapshot_fx_rate_native_per_gbp: float | None
     fx_impact_gbp: float | None
     price_currency: str

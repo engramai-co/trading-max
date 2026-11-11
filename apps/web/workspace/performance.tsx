@@ -446,11 +446,12 @@ export function PerformanceContent({
                     {returnLines.map((line, index) => {
                       const end = [...line.values].reverse().find((value) => value != null);
                       const drawdown = returnDrawdowns[index]?.values ?? [];
+                      const maximumDrawdown = minimumObserved(drawdown);
                       return (
                         <tr key={line.name}>
                           <th>{line.name}</th>
                           <td className={"mx-align-right mx-" + tone(end)}>{percent(end, true, 2)}</td>
-                          <td className="mx-align-right mx-down">{percent(minimumObserved(drawdown), false, 2)}</td>
+                          <td className={"mx-align-right mx-" + tone(maximumDrawdown)}>{percent(maximumDrawdown, false, 2)}</td>
                           <td className="mx-align-right">{percent([...drawdown].reverse().find((value) => value != null), false, 2)}</td>
                         </tr>
                       );

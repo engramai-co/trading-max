@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from contextlib import suppress
 
+from trading_max.research.listing import broker_listing
+
 from .artifacts import ArtifactStore
 from .models import SnapshotManifest
 from .projections.broker import overlay_live_broker_snapshot
@@ -296,13 +298,18 @@ def build_dashboard_data(
         # Day changes follow the positions' own order, joined by broker instrument.
         account_day_changes = day_changes.get(account, [])
         for index, position in enumerate(broker["accounts"][account].get("positions", [])):
+            ticker = str(position.get("ticker"))
+            listing = broker_listing(str(position.get("broker_ticker") or ""))
+            listing_market = listing.partition(":")[0] if listing else None
+            if listing_market is None and ticker.upper().endswith(".L"):
+                listing_market = "LSE"
             current = number_value(position.get("current_value_gbp"))
             cost = number_value(position.get("total_cost_gbp"))
             quantity = number_value(position.get("quantity"))
             current_price = number_value(position.get("current_price"))
             price_currency = str(position.get("price_currency") or "GBP")
             diluted_cost = diluted_cost_by_key.get(
-                (account, str(position.get("ticker"))),
+                (account, ticker),
                 {},
             )
             diluted_cost_per_share_gbp = nullable_number(
@@ -325,8 +332,9 @@ def build_dashboard_data(
             holdings.append(
                 {
                     "account": account,
-                    "ticker": str(position.get("ticker")),
+                    "ticker": ticker,
                     "name": str(position.get("name")),
+                    "listingMarket": listing_market,
                     "quantity": quantity,
                     "currentPrice": current_price,
                     "priceCurrency": price_currency,

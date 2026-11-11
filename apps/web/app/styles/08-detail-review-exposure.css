@@ -1,3 +1,136 @@
+/* Position impact, the figures behind it, then the quote basis on demand. */
+.mx-position-detail {
+  display: grid;
+  gap: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-position-detail .mx-instrument strong {
+  font-size: 15px;
+}
+.mx-position-detail .mx-instrument-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: none;
+  color: var(--mx-ink);
+  font-size: 13px;
+}
+.mx-instrument-listing,
+.mx-position-account {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-position-account {
+  display: block;
+  margin-top: 4px;
+}
+.mx-position-impact {
+  display: grid;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-position-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  align-items: last baseline;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+.mx-position-value .mx-metric {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mx-position-weight {
+  margin-inline-start: auto;
+  text-align: right;
+  font-size: 12px;
+  color: var(--mx-muted);
+}
+.mx-position-moves {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.mx-position-moves > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.mx-position-moves dt {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-position-moves dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.mx-position-moves strong {
+  font-size: 24px;
+  font-weight: 550;
+  line-height: 1.4;
+}
+.mx-position-moves small {
+  font-size: 12px;
+}
+.mx-position-cost-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-position-calculation {
+  border-top: 1px solid var(--mx-border);
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-position-calculation:not(.mx-job-row) > summary {
+  width: 100%;
+  min-height: 44px;
+  font-size: 12px;
+}
+.mx-position-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.mx-position-actions > a {
+  flex: 1 1 auto;
+}
+@media (max-width: 767px) {
+  .mx-position-drawer :is(.mantine-Drawer-header, .mantine-Drawer-body) {
+    padding-inline: 16px;
+  }
+  .mx-position-drawer .mantine-Drawer-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .mx-position-impact {
+    gap: 12px;
+  }
+  .mx-position-value .mx-number {
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+  }
+  .mx-position-moves strong {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .mx-position-detail .mx-facts > div {
+    padding-block: 12px;
+  }
+  .mx-position-actions > a {
+    height: 44px;
+  }
+}
+
 /* Detail remains available without overwhelming the primary reading flow. */
 .mx-chart-data {
   margin-top: 18px;

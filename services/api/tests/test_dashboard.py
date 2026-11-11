@@ -158,6 +158,7 @@ def test_dashboard_contract_is_built_from_snapshot(
 
     assert payload["totalValueGbp"] == 2000
     assert payload["holdings"][0]["ticker"] == "BE"
+    assert payload["holdings"][0]["listingMarket"] is None
     assert payload["holdings"][0]["dilutedCostGbp"] == 321.85
     assert payload["holdings"][0]["dilutedCostPerShareGbp"] == 64.37
     assert payload["holdings"][0]["dilutedCostPerShareNative"] == pytest.approx(83.681)
@@ -464,6 +465,7 @@ def test_two_listings_of_one_ticker_keep_their_own_day_change(
         if holding["ticker"] == "IAG"
     }
     assert (by_value[42]["dayChangeGbp"], by_value[290]["dayChangeGbp"]) == (2.0, -10.0)
+    assert (by_value[42]["listingMarket"], by_value[290]["listingMarket"]) == ("US", "LSE")
     assert by_value[42]["dayChangePct"] == pytest.approx(2 / 40)
     assert by_value[290]["dayChangePct"] == pytest.approx(-10 / 300)
 
