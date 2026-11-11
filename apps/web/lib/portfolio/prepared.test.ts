@@ -96,12 +96,17 @@ describe("indexed history display preserves full-source accounting", () => {
     expect(chart.history.points.every((p) => JSON.stringify(p) === JSON.stringify(originals.get(p.date)))).toBe(true);
     expect(records).toEqual(untouched);
   });
-  it("keeps an intraday loss in full-source maximum drawdown even in a daily chart", () => {
+  it("retains the full-source drawdown episode even when the chart uses daily buckets", () => {
     const small = { ...input, nav: [], intradayNav: [100, 70, 110].map((v, i) => ({ ...row(`2026-09-18T1${i}:00Z`, i), total: v, totalNetContributionsGbp: 100 })) };
     const { chart } = prepareHistory(small, { range: "1Y", scope: "total" });
     expect(chart.money.maxDrawdown).toBe(-30);
     expect(chart.money.pnl).toBe(10);
-    expect(chart.history.points).toHaveLength(2);
+    expect(chart.money.drawdownEpisode).toEqual({
+      peak: { date: "2026-09-18T10:00Z", estimated: false },
+      trough: { date: "2026-09-18T11:00Z", estimated: false },
+      recovery: { date: "2026-09-18T12:00Z", estimated: false },
+    });
+    expect(chart.history.points.map((point) => point.total)).toEqual([100, 70, 110]);
   });
   it.each([0, -100])("does not invent percentage returns for opening %s", (opening) => {
     const { chart } = prepareHistory({ ...input, nav: [], intradayNav: [opening, 30].map((v, i) => ({ ...row(`2026-09-18T1${i}:00Z`, i), total: v })) }, { range: "1D", scope: "total" });

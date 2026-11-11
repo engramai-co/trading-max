@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChartColours } from "@/ui/charts/palette";
 import { timelineOption, type TimelineLayer } from "./timeline-option";
+import { moneyTimelineLayout } from "./money-timeline-layout";
 
 const colours = {
   brand: "green",
@@ -150,5 +151,68 @@ describe("shared performance timeline", () => {
   it("does not show an artificial 100% range for an all-zero drawdown series", () => {
     const axes = options().yAxis as Array<{ min?: number; max?: number }>;
     expect(axes[2]).toMatchObject({ min: -0.01, max: 0 });
+  });
+});
+
+describe("money timeline", () => {
+  it.each([
+    [0, 0, 0],
+    [42, 410, 840],
+    [-17, -35, -45],
+    [-21715, 0, 29274],
+    [-152, -500, 6200],
+    [0, 0.00019, -0.00021],
+  ])("includes zero and real extremes for P&L %s, %s, %s", (a, b, c) => {
+    const values = [a, b, c];
+    const drawdown = [0, 0, -Math.abs(c)];
+    const moneyLayers = [
+      layers[0],
+      { ...layers[1], lines: [{ name: "P&L", values }] },
+      { ...layers[2], percentage: false, lines: [{ name: "Drawdown", values: drawdown }] },
+    ];
+    const option = timelineOption(dates, moneyLayers, colours, String, undefined, [], String,
+      undefined, undefined, undefined, moneyTimelineLayout(false));
+    const [, pnl, decline] = option.yAxis as Array<{ min: number; max: number; interval: number }>;
+    expect(pnl.min).toBeLessThanOrEqual(Math.min(0, ...values));
+    expect(pnl.max).toBeGreaterThanOrEqual(Math.max(0, ...values));
+    expect((-pnl.min / pnl.interval) % 1).toBeCloseTo(0);
+    expect(Math.round((pnl.max - pnl.min) / pnl.interval)).toBeGreaterThanOrEqual(3);
+    expect(Math.round((pnl.max - pnl.min) / pnl.interval)).toBeLessThanOrEqual(4);
+    expect(decline.max).toBe(0);
+    expect(decline.min).toBeLessThanOrEqual(Math.min(...drawdown));
+    expect(Math.round(-decline.min / decline.interval)).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps real marker observations in the plotted line even within a wider display bucket", () => {
+    const calendar = { categories: dates, rowIndexes: [0, 1, 2], displayIntervalMinutes: 60 * 24 * 15 };
+    const moneyLayers = [
+      layers[0],
+      { ...layers[1], markerDate: dates[1], lines: [{ name: "P&L", values: [0, 20, 5] }] },
+      { ...layers[2], markerDate: dates[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15] }] },
+    ];
+    const option = timelineOption(dates, moneyLayers, colours, String, calendar, [], String,
+      undefined, undefined, undefined, moneyTimelineLayout(false));
+    const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
+    expect(series[1].data.map((point) => point.value)).toContainEqual([1, 20]);
+    expect(series[1].markPoint?.data).toEqual([{ name: "P&L", coord: [1, 20] }]);
+    expect(series[2].markPoint?.data).toEqual([{ name: "Drawdown", coord: [2, -0.15] }]);
+  });
+
+  it("adds a real intraday extreme before the close on the shared daily axis", () => {
+    const dated = ["2025-01-01", "2025-01-02T14:00:00Z", "2025-01-02T21:00:00Z", "2025-01-03"];
+    const calendar = { categories: ["2025-01-01", "2025-01-02", "2025-01-03"], rowIndexes: [0, 2, 3], displayIntervalMinutes: 1440 };
+    const moneyLayers = [
+      { ...layers[0], lines: [{ name: "NAV", values: [100, 135, 120, 115] }] },
+      { ...layers[1], markerDate: dated[1], lines: [{ name: "P&L", values: [0, 35, 20, 15] }] },
+      { ...layers[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15, -0.20] }] },
+    ];
+    const option = timelineOption(dated, moneyLayers, colours, String, calendar, [],
+      (time) => new Date(time).toISOString(), undefined, undefined, undefined, moneyTimelineLayout(false));
+    const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
+    expect(series[0].data.map((point) => point.value)).toContainEqual([1, 135]);
+    expect(series[1].data.map((point) => point.value)).toEqual([[0, 0], [1, 35], [2, 20], [3, 15]]);
+    expect(series[1].markPoint?.data[0].coord).toEqual([1, 35]);
+    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
+    expect(tooltip.formatter([{ value: [1, 135] }])).toContain("2025-01-02T14:00:00.000Z");
   });
 });

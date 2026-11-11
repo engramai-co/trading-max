@@ -1,5 +1,7 @@
 "use client";
 
+import { useMediaQuery } from "@mantine/hooks";
+import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
@@ -13,6 +15,7 @@ import type { NavPoint } from "@/lib/types";
 import type { HistorySelection } from "@/lib/portfolio/prepared";
 import { HistoryRecords } from "./history-records";
 import type { Range } from "@/lib/portfolio/nav";
+import { moneyTimelineLayout } from "./money-timeline-layout";
 
 export function TimelineChart({
   dates,
@@ -27,6 +30,7 @@ export function TimelineChart({
   range,
   pendingCashFlows = false,
   height,
+  drawdownHeading,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -41,9 +45,12 @@ export function TimelineChart({
   pendingCashFlows?: boolean;
   /** A single-layer chart's height where a surface needs it shorter than the default. */
   height?: number;
+  drawdownHeading?: ReactNode;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const phone = useMediaQuery("(max-width: 767px)");
+  const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone) : undefined;
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
@@ -76,31 +83,42 @@ export function TimelineChart({
       </>
     );
   }
+  const plot = (
+    <Plot
+      label={label}
+      height={(moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510)) - (shortRange ? 24 : 0)}
+      option={(colours) =>
+        timelineOption(dates, layers, colours, (time) => {
+          const zone = intraday ? timeZone : "UTC";
+          // One line per date; the year appears only on dates outside the
+          // latest year shown, so it marks the boundary instead of repeating.
+          const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
+          const year = formatDate(time, locale, { year: "numeric", timeZone: zone });
+          return year === formatDate(Date.parse(dates.at(-1)!), locale, { year: "numeric", timeZone: zone })
+            ? day
+            : day + "\n" + year;
+        },
+          timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
+            ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
+            : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
+          tooltip,
+          display,
+          observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
+          moneyLayout,
+        )
+      }
+    />
+  );
   return (
     <>
-      <Plot
-        label={label}
-        height={(height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510)) - (shortRange ? 24 : 0)}
-        option={(colours) =>
-          timelineOption(dates, layers, colours, (time) => {
-            const zone = intraday ? timeZone : "UTC";
-            // One line per date; the year appears only on dates outside the
-            // latest year shown, so it marks the boundary instead of repeating.
-            const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
-            const year = formatDate(time, locale, { year: "numeric", timeZone: zone });
-            return year === formatDate(Date.parse(dates.at(-1)!), locale, { year: "numeric", timeZone: zone })
-              ? day
-              : day + "\n" + year;
-          },
-            timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
-              ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
-              : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
-            tooltip,
-            display,
-            observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
-          )
-        }
-      />
+      {moneyLayout ? (
+        <div className="mx-money-timeline">
+          <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>
+            {drawdownHeading}
+          </div>
+          {plot}
+        </div>
+      ) : plot}
       {sourceKeys.length > 0 && (
         <div className="mx-chart-legend mx-source-legend">
           {sourceKeys.map((key) => (

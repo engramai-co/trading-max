@@ -768,3 +768,83 @@
 .mx-heat-empty {
   color: var(--mx-muted);
 }
+
+.mx-money-summary {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 27px;
+}
+.mx-money-equation {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 8px;
+  margin: 0;
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+.mx-money-equation > span {
+  white-space: nowrap;
+}
+.mx-money-equation strong {
+  color: var(--mx-ink);
+  font-weight: 550;
+}
+.mx-money-timeline {
+  position: relative;
+}
+.mx-money-timeline-heading {
+  position: absolute;
+  inset-inline: 0;
+  pointer-events: none;
+}
+.mx-money-drawdown,
+.mx-money-drawdown-dates,
+.mx-money-event {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.mx-money-drawdown,
+.mx-money-drawdown-dates {
+  flex-wrap: wrap;
+}
+.mx-money-drawdown {
+  font-size: 13px;
+}
+.mx-money-drawdown h3 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+}
+.mx-money-drawdown-dates {
+  color: var(--mx-muted);
+  font-size: 12px;
+  margin-inline-start: auto;
+}
+.mx-money-event {
+  gap: 4px;
+  white-space: nowrap;
+}
+.mx-money-event .mx-tag {
+  padding-block: 0;
+}
+@media (max-width: 767px) {
+  .mx-money-summary {
+    gap: var(--mx-space-group);
+    margin-bottom: var(--mx-space-heading);
+  }
+  .mx-page .mx-money-summary .mx-metric-large .mx-number {
+    font-size: min(var(--mx-text-lead), calc((100vw - 64px) / 7.2));
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+  }
+  .mx-money-equation {
+    font-size: var(--mx-text-label);
+  }
+  .mx-money-drawdown {
+    justify-content: space-between;
+  }
+  .mx-money-drawdown-dates {
+    flex-basis: 100%;
+  }
+}
