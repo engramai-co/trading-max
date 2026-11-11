@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.30.1] - 2026-11-11
+
 ### Changed
 
 - The overview, holdings, returns, research and review use quieter loading
