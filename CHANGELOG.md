@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.29.4] - 2026-11-11
+
 ### Added
 
 - Research now keeps a dated record of analysts' earnings estimates for held and
