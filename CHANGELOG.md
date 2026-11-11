@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.30.2] - 2026-11-11
+
 ### Changed
 
 - Holding details lead with market value, portfolio weight and gains or losses.
