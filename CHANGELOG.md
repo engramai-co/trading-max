@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.31.0] - 2026-11-11
+
 ### Added
 
 - The Trading 212 connection form explains how to create a read-only API key
