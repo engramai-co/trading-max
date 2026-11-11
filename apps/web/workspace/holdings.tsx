@@ -7,11 +7,9 @@ import {
   Drawer,
   Group,
   Select,
-  Stack,
   TextInput,
 } from "@mantine/core";
-import { ArrowDown, ArrowRight, MagnifyingGlass } from "@phosphor-icons/react";
-import Link from "./link";
+import { ArrowDown, MagnifyingGlass } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
@@ -23,7 +21,6 @@ import { currency, number, percent, tone } from "@/workspace/data";
 import { signedPounds } from "./day-drivers";
 import {
   Empty,
-  Facts,
   Freshness,
   Help,
   Instrument,
@@ -38,6 +35,7 @@ import {
   useCopy,
 } from "./foundation";
 import { Lookthrough } from "./look-through";
+import { HoldingDetail } from "./holding-detail";
 import { useRouteState } from "./route-state";
 import { SecurityPeek } from "./security-peek";
 import { accountName, useWorkspaceProfile } from "./profile";
@@ -76,7 +74,12 @@ function Positions() {
     : "all";
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
-  const [selected, setSelected] = useState<Holding | null>(null);
+  const [selected, setSelected] = useState<{ holding: Holding; accountAsOf?: string | null } | null>(null);
+  function selectHolding(holding: Holding) {
+    // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
+    const accountAsOf = query.data?.accounts?.find((item) => item.code === holding.account)?.asOf;
+    setSelected({ holding, accountAsOf });
+  }
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
   const { today, now } = useCurrentDay();
@@ -291,7 +294,7 @@ function Positions() {
                           <td>
                             <button
                               className="mx-table-button"
-                              onClick={() => setSelected(h)}
+                              onClick={() => selectHolding(h)}
                               aria-label={
                                 t("查看持仓 ", "View position ") + h.ticker
                               }
@@ -389,7 +392,7 @@ function Positions() {
                     <button
                       key={h.account + h.ticker}
                       className="mx-holding-mobile"
-                      onClick={() => setSelected(h)}
+                      onClick={() => selectHolding(h)}
                     >
                       <div>
                         <Instrument ticker={h.ticker} name={h.name} />
@@ -477,77 +480,17 @@ function Positions() {
         opened={selected !== null}
         onClose={() => setSelected(null)}
         title={t("持仓明细", "Position detail")}
+        closeButtonProps={{ "aria-label": t("关闭持仓明细", "Close position detail") }}
+        classNames={{ content: "mx-position-drawer" }}
       >
         {selected && (
-          <Stack gap="lg">
-            <Instrument ticker={selected.ticker} name={selected.name} />
-            <Metric
-              large
-              label={t("当前市值", "Current market value")}
-              value={currency(selected.currentValueGbp, "GBP", 2)}
-            />
-            <div className="mx-metric-grid mx-position-metrics">
-              {selected.dayChangeGbp != null && (
-                <Metric
-                  label={dayLabel(selected.dayChangeDate ?? columnDay)}
-                  value={signedPounds(selected.dayChangeGbp)}
-                  tone={tone(selected.dayChangeGbp)}
-                  note={selected.dayChangePct != null ? percent(selected.dayChangePct, true, 2) : undefined}
-                />
-              )}
-              <Metric
-                label={t("浮动盈亏", "Unrealized P&L")}
-                value={currency(selected.pnlGbp, "GBP", 2)}
-                tone={tone(selected.pnlGbp)}
-                note={percent(selected.pnlPct, true, 2)}
-              />
-            </div>
-            <Facts
-              rows={[
-                [t("账户", "Account"), accountName(profile, selected.account)],
-                [t("持有数量", "Quantity"), number(selected.quantity, 5)],
-                [
-                  t("当前价格", "Current price"),
-                  currency(selected.currentPrice, selected.priceCurrency, 2),
-                ],
-                [
-                  t("买入总成本", "Total purchase cost"),
-                  currency(selected.costGbp, "GBP", 2),
-                ],
-                [
-                  <span key="diluted-cost">{t("摊薄成本 / 股", "Diluted cost / share")}{" "}<Help label={t("摊薄成本", "Diluted cost")}>{t("计入已实现交易与回收资金，可能不同于券商买入均价。", "Includes realized trades and recovered capital; it may differ from broker purchase cost.")}</Help></span>,
-                  currency(
-                    selected.dilutedCostPerShareNative,
-                    selected.dilutedCostCurrency,
-                    2,
-                  ),
-                ],
-                [
-                  t("摊薄成本 / 股 · GBP", "Diluted cost / share · GBP"),
-                  currency(selected.dilutedCostPerShareGbp, "GBP", 2),
-                ],
-                [
-                  t("汇率影响", "FX impact"),
-                  currency(selected.fxImpactGbp, "GBP", 2),
-                ],
-                [
-                  t("快照汇率 / GBP", "Snapshot FX / GBP"),
-                  number(selected.snapshotFxRateNativePerGbp, 5),
-                ],
-                [
-                  t("总组合占比", "Overall portfolio weight"),
-                  percent(selected.allocationPct),
-                ],
-              ]}
-            />
-            <Button
-              component={Link}
-              href={"/research?ticker=" + encodeURIComponent(selected.ticker)}
-              rightSection={<ArrowRight size={16} />}
-            >
-              {t("研究这项投资", "Research this investment")}
-            </Button>
-          </Stack>
+          <HoldingDetail
+            holding={selected.holding}
+            account={accountName(profile, selected.holding.account)}
+            accountAsOf={selected.accountAsOf}
+            today={today}
+            now={now}
+          />
         )}
       </Drawer>
     </>

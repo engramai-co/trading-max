@@ -20,6 +20,7 @@ import { useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useStat
 import { useLocale } from "@/components/locale-provider";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
+import type { ChangeTone } from "./data";
 import { indicatorStart } from "./selection-indicator";
 import { useAltDigitModifier } from "./shortcut-platform";
 import { LocalWorkspaceContext } from "./loading-context";
@@ -280,7 +281,7 @@ export function Metric({
   label: ReactNode;
   value: ReactNode;
   note?: ReactNode;
-  tone?: "up" | "down";
+  tone?: ChangeTone;
   large?: boolean;
   help?: ReactNode;
   /** Names the help when the label carries more than text, such as an estimate tag. */
@@ -703,17 +704,22 @@ export function Instrument({
   ticker,
   name,
   small = false,
+  listing,
+  detail,
 }: {
   ticker: string;
   name?: string;
   small?: boolean;
+  listing?: string;
+  detail?: ReactNode;
 }) {
   return (
     <div className={"mx-instrument" + (small ? " mx-instrument-small" : "")}>
       <SecurityMark key={ticker} ticker={ticker} />
       <span>
-        <strong>{ticker}</strong>
+        <strong>{ticker}{listing && <span className="mx-instrument-listing"> · {listing}</span>}</strong>
         {name && <span className="mx-instrument-name">{name}</span>}
+        {detail}
       </span>
     </div>
   );

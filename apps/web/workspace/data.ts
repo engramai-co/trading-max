@@ -55,12 +55,11 @@ export const compactTick = (value: unknown, locale: Locale = "en") => {
   const n = numeric(value);
   return n == null ? "—" : compactTicks[locale].format(n);
 };
-export const tone = (value: unknown) =>
-  numeric(value) == null
-    ? undefined
-    : Number(value) < 0
-      ? ("down" as const)
-      : ("up" as const);
+export type ChangeTone = "up" | "down" | "neutral";
+export const tone = (value: unknown): ChangeTone | undefined => {
+  const n = numeric(value);
+  return n == null ? undefined : n < 0 ? "down" : n > 0 ? "up" : "neutral";
+};
 export type ApiValidationIssue = {
   path: string[];
   type: string;

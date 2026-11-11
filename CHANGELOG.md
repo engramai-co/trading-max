@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.30.2] - 2026-11-11
+
+### Changed
+
+- Holding details lead with market value, portfolio weight and gains or losses.
+  UK pence quotes show in pounds beside the cost figures, with the original
+  quote and conversion under Quote and calculation. Funds link to look-through
+  exposure.
+
+### Fixed
+
+- Zero changes use neutral text instead of gain colours.
+
 ## [1.30.1] - 2026-11-11
 
 ### Changed

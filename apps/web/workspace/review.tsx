@@ -145,7 +145,7 @@ export function ReviewWorkspace() {
                                 ],
                               ]
                             : [
-                                ["TWR", <span key="twr" className={risk?.twr == null ? undefined : risk.twr < 0 ? "mx-down" : "mx-up"}>{percent(risk?.twr, true)}</span>],
+                                ["TWR", <span key="twr" className={risk?.twr == null ? undefined : "mx-" + tone(risk.twr)}>{percent(risk?.twr, true)}</span>],
                                 [
                                   locale === "zh" ? `卖出后 ${days} 个交易日` : `Sells after ${days} trading days`,
                                   verdict("sells"),
