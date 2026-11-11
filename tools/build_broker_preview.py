@@ -81,7 +81,11 @@ def fetch_market_inputs(symbol: str, start: str, cache: Path) -> tuple[str, dict
         "currency": currency,
         "exchange": info.get("exchange", ""),
         "quote": quote,
-        "daily": {stamp.date().isoformat(): float(value) for stamp, value in nominal.items()},
+        "daily": {
+            stamp.date().isoformat(): float(value)
+            for stamp, value in nominal.items()
+            if math.isfinite(float(value))
+        },
         "splits": {
             stamp.date().isoformat(): float(value)
             for stamp, value in history["Stock Splits"].items()

@@ -7,8 +7,10 @@ the production adapters. NAV is calculated from the hypothetical ledger and
 observed historical prices. An unavailable provider leaves unavailable data.
 Automated tests continue to use entirely synthetic fixtures and no real accounts.
 
-Keep the fixture, state, provider caches and logs outside the checkout. Supply
-`tools/build_broker_preview.py` with an external JSON fixture containing:
+Keep the fixture, state, provider caches and logs outside the checkout. Install
+the whole workspace first with `uv sync --all-packages --group dev --frozen`;
+`uv sync --frozen` alone leaves out backend dependencies the builder needs.
+Supply `tools/build_broker_preview.py` with an external JSON fixture containing:
 
 - `start_date` and `deposit_date` in ISO date format;
 - `fills`, each containing a `date` and `fraction` (fractions total one);
