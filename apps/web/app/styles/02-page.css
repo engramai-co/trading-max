@@ -57,7 +57,6 @@ html[data-scrolled] .mx-topbar-title strong {
   display: flex;
   flex-direction: column;
   gap: 22px;
-  animation: mx-appear 220ms var(--mx-ease) both;
 }
 .mx-page-heading {
   display: flex;
@@ -447,7 +446,7 @@ html[data-scrolled] .mx-topbar-title strong {
   background: currentColor;
   flex-shrink: 0;
 }
-/* Motion for real changes only: a new value slides in, a new snapshot pings, switched tab content fades from half opacity so it is never hidden. */
+/* New figures and switched tab content stay visible throughout the transition. */
 @keyframes mx-fade {
   from {
     opacity: 0.5;
@@ -459,18 +458,9 @@ html[data-scrolled] .mx-topbar-title strong {
     transform: translateY(0.22em);
   }
 }
-@keyframes mx-dot-ping {
-  from {
-    transform: scale(2.4);
-    color: var(--mx-brand);
-  }
-}
 .mx-number-value[data-changed] {
   display: inline-block;
   animation: mx-number-in 180ms var(--mx-ease);
-}
-.mx-status-dot[data-changed] {
-  animation: mx-dot-ping 700ms var(--mx-ease);
 }
 .mx-tabs ~ *,
 .mx-toolbar:has(> .mx-tabs) ~ * {
@@ -591,15 +581,6 @@ html[data-scrolled] .mx-topbar-title strong {
 }
 .mx-centered-copy-tail {
   white-space: nowrap;
-}
-.mx-loading {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 24px;
-  background: var(--mx-surface);
-  border: 1px solid var(--mx-border);
-  border-radius: 12px;
 }
 .mx-text-link {
   display: inline-flex;

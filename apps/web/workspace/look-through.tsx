@@ -26,6 +26,7 @@ import {
   Empty,
   Facts,
   Freshness,
+  UpdateFailure,
   Instrument,
   Metric,
   Panel,
@@ -178,11 +179,12 @@ export function Lookthrough() {
   const t = useCopy();
   const query = useDashboardLens("holdings-lookthrough");
   return query.isPending ? (
-    <Pending />
-  ) : query.isError ? (
+    <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
+  ) : query.isError && !query.data ? (
     <QueryError retry={query.refetch} />
   ) : query.data?.lookthrough ? (
-    <Exposure data={query.data.lookthrough} snapshot={query.data.runId} />
+    <Exposure data={query.data.lookthrough} snapshot={query.data.runId}
+      failure={query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : undefined} />
   ) : (
     <Empty title={t("暂无穿透记录", "No look-through records")} />
   );
@@ -190,9 +192,11 @@ export function Lookthrough() {
 function Exposure({
   data,
   snapshot,
+  failure,
 }: {
   data: LookthroughData;
   snapshot: string;
+  failure?: { updatedAt: number; retry: () => unknown };
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -374,6 +378,7 @@ function Exposure({
           </Tag>
         )}
         <Freshness date={data.brokerAsOf || data.generatedAt} />
+        {failure && <UpdateFailure {...failure} />}
       </div>
       <Panel>
         <Tabs

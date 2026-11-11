@@ -1,10 +1,5 @@
-import { Suspense } from "react";
 import { ReviewWorkspace } from "@/workspace/review";
-import { Pending } from "@/workspace/foundation";
+export const dynamic = "force-dynamic";
 export default function Page() {
-  return (
-    <Suspense fallback={<Pending />}>
-      <ReviewWorkspace />
-    </Suspense>
-  );
+  return <ReviewWorkspace />;
 }

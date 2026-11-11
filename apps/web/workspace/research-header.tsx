@@ -9,7 +9,7 @@ import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import { currency, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
-import { Panel, Tag, useCopy } from "./foundation";
+import { Panel, Tag, UpdateFailure, useCopy } from "./foundation";
 import { priceBasis, type PriceTime } from "./research-price-basis";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
@@ -56,12 +56,16 @@ export function SecurityHeader({
   ticker,
   selected,
   quote,
+  quotePending,
+  failure,
   listOpen,
   onSwitch,
 }: {
   ticker: string;
   selected: ResearchInstrument;
   quote: ResearchLensSnapshot | undefined;
+  quotePending: boolean;
+  failure?: { updatedAt: number; retry: () => unknown };
   /** Whether the research list is open or pinned beside the page. */
   listOpen: boolean;
   onSwitch: () => void;
@@ -129,13 +133,17 @@ export function SecurityHeader({
           </div>
         </div>
         <div className="mx-security-price">
-          <strong>
+          {basis.price == null && quotePending ? (
+            <span aria-hidden="true" className="mx-quote-reserved" />
+          ) : basis.price == null ? (
+            <small>{t("暂无价格", "Price unavailable")}</small>
+          ) : <strong>
             {quoteValue(
               basis.price,
               basis.currency,
               t("币种未提供", "Currency unavailable"),
             )}
-          </strong>
+          </strong>}
           {basis.changePct != null && (
             <small className={"mx-security-change mx-" + tone(basis.changePct)}>
               {percent(basis.changePct, true, 2)}
@@ -143,7 +151,10 @@ export function SecurityHeader({
                 " (" + quoteValue(basis.change, basis.currency, "—") + ")"}
             </small>
           )}
-          {basis.time && <PriceTimeLabel time={basis.time} />}
+          <div className="mx-quote-as-of">
+            {basis.time && <PriceTimeLabel time={basis.time} />}
+            {failure && <UpdateFailure {...failure} />}
+          </div>
         </div>
       </div>
     </Panel>

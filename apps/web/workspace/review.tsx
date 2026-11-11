@@ -4,7 +4,7 @@ import { SystemNotes } from "./review-evidence";
 import { Group, Select } from "@mantine/core";
 import { ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
 import Link from "./link";
-import { type Dispatch, type SetStateAction, useEffect, useEffectEvent, useRef, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useEffectEvent, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -33,6 +33,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  UpdateFailure,
   Tabs,
   Tag,
   useCopy,
@@ -52,6 +53,7 @@ import {
   signedMoney,
   verdictWord,
 } from "./review-decisions";
+import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
 export function ReviewWorkspace() {
@@ -66,10 +68,15 @@ export function ReviewWorkspace() {
   // A retired CFD account keeps its review, reached from the account switcher.
   const codes = query.data?.cfd?.accountStatus === "retired" ? (["A", "B"] as const) : (["A", "B", "C"] as const);
   return (
-    <Page title={t("投资复盘", "Investment review")}>
+    <Page title={t("投资复盘", "Investment review")} actions={
+      <span className="mx-freshness-group">
+        <Freshness date={query.data?.reviewAsOf ?? query.data?.brokerAsOf} />
+        {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+      </span>
+    }>
       {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
+        <Pending shape="review" label={t("正在读取账户复盘…", "Loading account reviews…")} />
+      ) : !query.data && query.isError ? (
         <QueryError retry={query.refetch} />
       ) : (
         query.data && (
@@ -209,6 +216,8 @@ export function AccountReviewWorkspace() {
         ? "B"
         : "A";
   const query = useDashboardLens("account-analysis", code, true, ACCOUNT_REVIEW_SELECTION);
+  const current = useMemo(() => query.data && { code, data: query.data, updatedAt: query.dataUpdatedAt }, [code, query.data, query.dataUpdatedAt]);
+  const result = useRetainedResult(current);
   // A link that names a decision lands on it once, with the first review the page draws. A review
   // drawn again, after a failed refetch or for another account, leaves focus where the reader put it.
   const [landing, setLanding] = useState(true);
@@ -236,22 +245,23 @@ export function AccountReviewWorkspace() {
         />
       }
     >
-      {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
+      {!result && query.isPending ? (
+        <Pending shape="review" label={t("正在读取账户复盘…", "Loading account review…")} />
+      ) : !result ? (
         <QueryError retry={query.refetch} />
       ) : (
-        query.data && (
+        <div className="mx-data-body mx-account-read" aria-busy={query.isPending || undefined}>
           <AccountJournal
-            key={code}
-            data={query.data}
-            code={code}
+            key={result.code}
+            data={result.data}
+            code={result.code}
+            failure={query.isError ? { updatedAt: result.updatedAt, retry: query.refetch } : undefined}
             landing={landing}
             onLanded={() => setLanding(false)}
             horizons={horizons}
             onHorizons={setHorizons}
           />
-        )
+        </div>
       )}
     </Page>
   );
@@ -259,6 +269,7 @@ export function AccountReviewWorkspace() {
 function AccountJournal({
   data,
   code,
+  failure,
   landing,
   onLanded,
   horizons,
@@ -266,6 +277,7 @@ function AccountJournal({
 }: {
   data: DashboardLens;
   code: AccountCode;
+  failure?: { updatedAt: number; retry: () => unknown };
   /** This is the first review the page draws, so a linked decision takes focus. */
   landing: boolean;
   onLanded: () => void;
@@ -379,7 +391,7 @@ function AccountJournal({
           />
         </div>
         <Availability data={money} />
-        <div className="mx-review-freshness">
+        <div className="mx-review-freshness mx-freshness-group">
           <Freshness
             date={
               // The review's figures are as of the run that built it, which can be
@@ -387,6 +399,7 @@ function AccountJournal({
               data.reviewAsOf ?? (str(field(object(review.coverage), "end_date")) || data.brokerAsOf)
             }
           />
+          {failure && <UpdateFailure {...failure} />}
         </div>
       </Panel>
       {!unavailable && (

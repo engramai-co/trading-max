@@ -32,10 +32,12 @@ export function periodSpan(points: Array<Pick<NavPoint, "date">>, locale: Locale
   return start === end ? end : start + " – " + end;
 }
 
-export function PeriodSpan({ points }: { points: Array<Pick<NavPoint, "date">> }) {
+export function PeriodSpan({ points, reserve = false }: { points: Array<Pick<NavPoint, "date">>; reserve?: boolean }) {
   const { locale, timeZone } = useLocale();
   const span = periodSpan(points, locale, timeZone);
-  return span ? <span className="mx-period-span">{span}</span> : null;
+  return span ? <span className="mx-period-span">{span}</span> : reserve
+    ? <span className="mx-period-span mx-period-span-reserved" aria-hidden="true">&nbsp;</span>
+    : null;
 }
 
 /**

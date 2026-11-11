@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Pending } from "@/workspace/foundation";
 import { OverviewWorkspace } from "@/workspace/overview";
 import { HoldingsWorkspace } from "@/workspace/holdings";
 import { PerformanceWorkspace } from "@/workspace/performance";
@@ -30,5 +28,5 @@ export default async function DesktopPage({ params, searchParams }: { params: Pr
     imports: <ImportsWorkspace demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"} />,
   }[page[0] ?? ""];
   if (!content) notFound();
-  return <Suspense fallback={<Pending />}>{content}</Suspense>;
+  return content;
 }

@@ -9,7 +9,7 @@ import type { SectorBoardResponse, SectorGroup } from "@/lib/types";
 import { formatDateTime, formatDeltaPercent } from "@/ui/formatters";
 import { useFinePointer } from "@/ui/pointer";
 import { api } from "@/workspace/data";
-import { Empty, Panel, Pending, QueryError, useCopy } from "./foundation";
+import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
 import { heatMix, marketPhase, squarify, type Tile } from "./sectors-data";
@@ -168,17 +168,23 @@ function labels(names: { full: string; short: string; tiny: string }, change: st
  * Today's US sectors on the overview: one flat block per GICS sector, area by index weight and a wash by
  * the session's move. The board is the 板块 page's own US answer, so opening a block reuses it.
  */
-export function OverviewSectors() {
+export function useOverviewSectors() {
+  return useQuery({
+    queryKey: ["workspace-sectors", "us"],
+    queryFn: ({ signal }) => api<SectorBoardResponse>("/sectors?market=us", { signal }),
+    refetchInterval: 60_000,
+    retry: 1,
+  });
+}
+
+export function OverviewSectors({ query, initialWaiting }: {
+  query: ReturnType<typeof useOverviewSectors>;
+  initialWaiting: boolean;
+}) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const now = useMinute();
   const phaseName = usePhaseNames();
-  const query = useQuery({
-    queryKey: ["workspace-sectors", "us"],
-    queryFn: () => api<SectorBoardResponse>("/sectors?market=us"),
-    refetchInterval: 60_000,
-    retry: 1,
-  });
   const data = query.data;
   const board = data?.board?.market === "us" ? data.board : null;
   // An answer missing its parts shows the empty board rather than breaking the overview.
@@ -186,17 +192,17 @@ export function OverviewSectors() {
   const groups = board?.groupings?.find((grouping) => grouping.kind === "gics")?.groups ?? [];
   const clock = status && board && (
     <SessionClock status={status} board={board} phase={marketPhase(status.sessions, status.timezone, now).phase}
-      phaseName={phaseName} monitorOn={data?.monitor?.enabled !== false} refreshFailed={query.isError} now={now} sources={false} />
+      phaseName={phaseName} monitorOn={data?.monitor?.enabled !== false} refreshFailed={false} now={now} sources={false} />
   );
   return (
     <Panel
       className="mx-overview-sectors"
       title={t("美股板块", "US sectors")}
       help={board ? <SectorSources source={board.source} /> : undefined}
-      action={clock || undefined}
+      action={<span className="mx-freshness-group">{!initialWaiting && clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
-      {query.isPending ? (
-        <Pending compact />
+      {initialWaiting || query.isPending ? (
+        <Pending shape="sectors" quiet={initialWaiting} label={t("正在读取美股板块…", "Loading US sectors…")} />
       ) : !board && query.isError ? (
         <QueryError retry={query.refetch} />
       ) : !board || !groups.length ? (

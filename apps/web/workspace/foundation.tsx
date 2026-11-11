@@ -5,7 +5,6 @@ import {
   CloseButton,
   Group,
   Popover,
-  Skeleton,
   Tooltip,
 } from "@mantine/core";
 import {
@@ -17,12 +16,14 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { indicatorStart } from "./selection-indicator";
 import { useAltDigitModifier } from "./shortcut-platform";
+import { LocalWorkspaceContext } from "./loading-context";
+import { scheduleLoadingStatus, updateFailureLabel } from "./loading-state";
 
 export function useCopy() {
   const { locale } = useLocale();
@@ -351,30 +352,67 @@ export function Empty({
     </div>
   );
 }
-export function Pending({ compact = false }: { compact?: boolean }) {
-  const t = useCopy();
+export function LoadingStatus({ label }: { label: string }) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => scheduleLoadingStatus(() => setVisible(true)), []);
   return (
-    <div
-      aria-busy="true"
-      aria-label={t("正在加载", "Loading")}
-      className="mx-loading"
-    >
-      <Skeleton h={18} w="30%" radius="sm" />
-      <Skeleton h={compact ? 70 : 220} radius="md" />
-      <Skeleton h={14} w="60%" radius="sm" />
+    <div className="mx-loading-status" role="status" aria-label={label}>
+      <span className="mx-loading-message" aria-hidden="true">{label}</span>
+      {visible && <span className="sr-only">{label}</span>}
     </div>
   );
 }
+
+function LoadingShape({ className = "" }: { className?: string }) {
+  return <div aria-hidden="true" className={`mx-loading-shape ${className}`} />;
+}
+
+export function Pending({ compact = false, shape, label, height, quiet = false }: {
+  compact?: boolean;
+  shape?: "summary" | "holdings" | "review" | "analytics" | "chart" | "research" | "sectors";
+  label?: string;
+  height?: number;
+  quiet?: boolean;
+}) {
+  const t = useCopy();
+  return (
+    <div className={`mx-loading mx-loading-${shape ?? (compact ? "compact" : "generic")}`} style={{ minHeight: height }}>
+      <LoadingShape />
+      {!quiet && <LoadingStatus label={label ?? t("正在读取数据…", "Loading data…")} />}
+    </div>
+  );
+}
+
+function useReadErrorCopy() {
+  const t = useCopy();
+  const local = useContext(LocalWorkspaceContext);
+  return local ? t(
+    "请检查本机工作区是否正在运行，再试一次。",
+    "Check that your local workspace is running, then try again.",
+  ) : t(
+    "请检查与工作区服务器的连接，再试一次。",
+    "Check your connection to the workspace server, then try again.",
+  );
+}
+
+export function UpdateFailure({ updatedAt, retry }: { updatedAt: number; retry: () => unknown }) {
+  const { locale, timeZone } = useLocale();
+  const t = useCopy();
+  const detail = useReadErrorCopy();
+  if (!updatedAt) return null;
+  const label = updateFailureLabel(updatedAt, locale, timeZone);
+  return <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
+    title={detail} aria-label={label + " · " + t("重试", "Retry")} onClick={() => void retry()}>{label}</button>;
+}
+
 export function QueryError({ retry }: { retry: () => unknown }) {
   const t = useCopy();
+  const detail = useReadErrorCopy();
   return (
     <Panel>
       <Empty
         title={t("暂时无法读取数据", "Data is temporarily unavailable")}
-        description={t(
-          "请确认本地服务正在运行，或前往数据状态查看原因。",
-          "Check that the local service is running, or open Data status for details.",
-        )}
+        description={detail}
         action={
           <Group>
             <Button
@@ -401,10 +439,9 @@ export function Freshness({
 }) {
   const { locale, timeZone } = useLocale();
   const t = useCopy();
-  const changes = useChangeCount(date ?? null);
   return (
     <span className="mx-freshness">
-      <span key={changes} className="mx-status-dot" data-changed={changes ? "" : undefined} />
+      <span className="mx-status-dot" />
       {label ?? t("数据截至", "Data as of")}{" "}
       {date
         ? /^\d{4}-\d{2}-\d{2}$/.test(date)
