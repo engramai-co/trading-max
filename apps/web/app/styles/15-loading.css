@@ -183,3 +183,8 @@
 .mx-toolbar:has(> .mx-tabs) ~ .mx-data-body {
   animation: none !important;
 }
+/* Keep the panel's flex spacing between figures and touch targets. */
+.mx-overview-history > .mx-data-body {
+  display: flex;
+  flex-direction: column;
+}

@@ -166,18 +166,19 @@ test.describe("a link to one decision", () => {
     await expect(row).toBeFocused();
     const twenty = page.getByRole("group", { name: "对照时点" }).getByRole("button", { name: "20 个交易日后" });
     await twenty.click();
-    const account = page.getByRole("combobox", { name: "复盘账户" });
-    await account.focus();
+    await row.focus();
     context = { ...context, failing: true };
     await reconnect(page);
-    // The lens retries once before the page shows the error in place of the review.
+    // Once the retry fails, report it beside the data time and keep the review mounted.
     await page.clock.fastForward(5_000);
-    await expect(page.getByText("暂时无法读取数据")).toBeVisible();
+    const failure = page.getByRole("button", { name: /更新失败 · 上次成功 \d{2}:\d{2} · 重试/ });
+    await expect(failure).toBeVisible();
+    await expect(row).toBeFocused();
+    await expect(twenty).toHaveAttribute("aria-pressed", "true");
     context = { ...context, failing: false };
     await reconnect(page);
-    await expect(row).toBeVisible();
-    await expect(account).toBeFocused();
-    // The review is drawn anew, and keeps the horizon the reader chose.
+    await expect(failure).toHaveCount(0);
+    await expect(row).toBeFocused();
     await expect(twenty).toHaveAttribute("aria-pressed", "true");
   });
 
