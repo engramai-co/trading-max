@@ -124,7 +124,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const todayOpenings = useMemo(() => driverOpenings(data?.dayAttribution, scope), [data?.dayAttribution, scope]);
   const history = usePortfolioHistory(selection, Boolean(data?.runId), openings);
   const todayHistory = usePortfolioHistory(todaySelection, Boolean(data?.runId), todayOpenings);
-  const ready = data && !history.isPending && !todayHistory.isPending && !sectors.isPending && runtime.status !== "loading";
+  // The summary, today's figure and the P&L chart share one snapshot and arrive together. Sectors come
+  // from their own live monitor and keep their own placeholder, so a slow board never holds the portfolio.
+  const ready = data && !history.isPending && !todayHistory.isPending && runtime.status !== "loading";
   const firstResult = useRetainedResult(ready ? true : undefined);
   const initialWaiting = !firstResult && !query.isError;
   const accounts = (data?.accounts ?? []).filter((a) => a.isInvestable);
