@@ -316,7 +316,8 @@ export function timelineOption(
           tooltip: { show: false },
           symbol: "none",
           showSymbol: false,
-          connectNulls: !moneyLayout,
+          // Gaps stay bridged: the fill continues under the dotted bridge.
+          connectNulls: true,
           step: line.step,
           lineStyle: { width: 0, opacity: 0 },
           areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
