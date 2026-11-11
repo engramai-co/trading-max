@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.30.0] - 2026-11-11
+
 ### Changed
 
 - Money & P&L leads with signed net profit or loss and shows how opening value,
