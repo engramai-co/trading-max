@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.valuation_preview import (
     AssumptionReference,
@@ -455,6 +456,19 @@ def research_timeline(
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
 ) -> list[ResearchTimelinePoint]:
     return app_service(request, "research").timeline(ticker, limit=limit)
+
+
+@router.get(
+    "/v1/research/{ticker}/estimate-history",
+    response_model=list[EstimateObservation],
+)
+def research_estimate_history(
+    ticker: str,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=MAX_HISTORY_ROWS)] = 504,
+) -> list[EstimateObservation]:
+    """Return the latest observations for an exact ticker, oldest first."""
+    return app_service(request, "estimate_history").list(ticker, limit=limit)
 
 
 @router.get(

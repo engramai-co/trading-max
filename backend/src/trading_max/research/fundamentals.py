@@ -60,6 +60,8 @@ FUNDAMENTAL_KEYS = (
     "enterpriseValue",
     "trailingPE",
     "forwardPE",
+    "trailingEps",
+    "forwardEps",
     "priceToSalesTrailing12Months",
     "priceToBook",
     "enterpriseToEbitda",

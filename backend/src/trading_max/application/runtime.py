@@ -13,6 +13,7 @@ from trading_max.infrastructure import (
     StoredSnapshot,
 )
 from trading_max.research.disclosures import ResearchEvidenceProvider
+from trading_max.research.estimate_history import EstimateHistory
 from trading_max.research.fundamentals import YFinanceResearchService
 from trading_max.research.market import MarketResearchService
 
@@ -64,6 +65,7 @@ class TypedWorkerRuntime:
         extra_stages: Iterable[object] = (),
         intraday_history_loader_factory=None,
         broker_profiles_loader=None,
+        estimate_history: EstimateHistory | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.on_snapshot_published = on_snapshot_published
@@ -81,6 +83,7 @@ class TypedWorkerRuntime:
         self.intraday_history_loader_factory = intraday_history_loader_factory
         self.broker_profiles_loader = broker_profiles_loader
         self.extra_stages = tuple(extra_stages)
+        self.estimate_history = estimate_history
         self.artifacts = ContentAddressedArtifactStore(self.state_root / "artifacts")
         self.snapshots = SnapshotStore(self.state_root)
 
@@ -141,6 +144,7 @@ class TypedWorkerRuntime:
                     self.artifacts,
                     self.snapshots,
                     self.on_snapshot_published,
+                    estimate_history=self.estimate_history,
                 ),
                 *self.extra_stages,
             ]

@@ -15,6 +15,7 @@ import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from heapq import nlargest
 from pathlib import Path
 
 from trading_max.domain import ArtifactRef, JobScope, SnapshotManifest
@@ -118,7 +119,7 @@ class SnapshotStore:
                 self.artifacts.get_ref(ref.artifact_id)
         return StoredSnapshot(manifest=manifest, path=path)
 
-    def list(self, *, limit: int = 100) -> list[StoredSnapshot]:
+    def list(self, *, limit: int = 100, scan_limit: int | None = None) -> list[StoredSnapshot]:
         """Return valid typed snapshots in manifest order.
 
         The latest pointer remains the only way to resolve the current state;
@@ -131,9 +132,15 @@ class SnapshotStore:
         snapshots: list[StoredSnapshot] = []
         if not self.snapshots_root.is_dir():
             return snapshots
-        for directory in self.snapshots_root.iterdir():
-            if not directory.is_dir() or directory.name.startswith("."):
-                continue
+        directories = (
+            path
+            for path in self.snapshots_root.iterdir()
+            if not path.name.startswith(".") and path.is_dir()
+        )
+        if scan_limit is not None:
+            # Typed run IDs sort by publication time, bounding manifest reads.
+            directories = iter(nlargest(scan_limit, directories, key=lambda path: path.name))
+        for directory in directories:
             try:
                 # History listings are index reads. Verifying every artifact of
                 # every historical snapshot here re-hashes the entire store on

@@ -456,6 +456,7 @@ def create_app(
     app.state.alert_monitor = alert_monitor
     app.state.sector_monitor = sector_monitor
     app.state.research = research
+    app.state.estimate_history = jobs.estimate_history
     app.state.security_search = security_search
     app.state.valuation_assumptions = valuation_assumptions
     app.state.security_prices = SecurityPriceHistory(settings.data_root)

@@ -33,7 +33,9 @@ from trading_max.reference import (
     SecurityDescriptor,
     canonical_security_type,
 )
+from trading_max.research.estimate_history import SCHEDULED_RESEARCH_TRIGGERS, EstimateHistory
 from trading_max.research.fundamentals import YFinanceResearchService
+from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.market import MarketResearchService
 from trading_max.worker import DurableWorker
 
@@ -50,7 +52,7 @@ from .models import (
     RefreshFailure,
     SecuritySearchResult,
 )
-from .watchlist import WatchlistStore, magnificent_seven_securities
+from .watchlist import TICKER_PATTERN, WatchlistStore, magnificent_seven_securities
 
 LOGGER = logging.getLogger(__name__)
 
@@ -363,6 +365,7 @@ class TypedJobManager:
             migrations_dir=_migration_dir(),
         )
         self.queue = SqliteJobQueue(self.database)
+        self.estimate_history = EstimateHistory(self.database)
         extras = (analysis_stage,) if analysis_stage is not None else ()
         self.runtime = TypedWorkerRuntime(
             store.data_root,
@@ -377,6 +380,7 @@ class TypedJobManager:
             broker_profiles_loader=broker_profiles_loader,
             on_snapshot_published=on_snapshot_published,
             extra_stages=extras,
+            estimate_history=self.estimate_history,
         )
         # Queue admission and execution share this exact registry. Stage
         # versions therefore have one process-local source of truth.
@@ -621,6 +625,30 @@ class TypedJobManager:
             return tickers
         return self.watchlist.tickers()
 
+    def _held_research_tickers(self) -> list[str]:
+        """Use direct broker listings without changing the saved watchlist."""
+        tickers: list[str] = []
+        for profile in ("invest", "isa"):
+            try:
+                metrics = self._latest_account_metrics(profile)
+            except (OSError, ValueError, RuntimeError):
+                # An unavailable broker snapshot does not block watchlist research.
+                LOGGER.warning("could not load %s holdings for scheduled research", profile)
+                continue
+            if metrics is None:
+                continue
+            for position in metrics.positions:
+                listing = broker_listing(position.broker_ticker)
+                if listing is not None:
+                    market, symbol = listing.split(":", 1)
+                    ticker = f"{symbol}.L" if market == LONDON else symbol
+                else:
+                    # Imported and preview positions can already contain the listing symbol.
+                    ticker = position.ticker.strip().upper()
+                if TICKER_PATTERN.fullmatch(ticker):
+                    tickers.append(ticker)
+        return tickers
+
     def submit(
         self,
         scope: JobScope,
@@ -666,7 +694,10 @@ class TypedJobManager:
         elif tickers:
             research_tickers = list(dict.fromkeys(tickers))
         else:
-            research_tickers = list(dict.fromkeys(self._bootstrap_watchlist()))
+            research_tickers = self._bootstrap_watchlist()
+            if trigger in SCHEDULED_RESEARCH_TRIGGERS:
+                research_tickers = [*research_tickers, *self._held_research_tickers()]
+            research_tickers = list(dict.fromkeys(research_tickers))
         job_id = secrets.token_hex(16)
         record = self.queue.enqueue(
             scope,

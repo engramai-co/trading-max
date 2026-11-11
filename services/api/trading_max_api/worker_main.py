@@ -11,6 +11,7 @@ from pathlib import Path
 from trading_max.application import TypedWorkerRuntime
 from trading_max.domain import JobStatus
 from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue
+from trading_max.research.estimate_history import EstimateHistory
 from trading_max.worker import DurableWorker
 
 from .artifacts import ArtifactStore
@@ -76,6 +77,7 @@ def _run_typed_worker(settings: Settings) -> None:
 
     runtime = TypedWorkerRuntime(
         store.data_root,
+        estimate_history=EstimateHistory(database),
         broker_profiles_loader=broker_profiles_loader(preferences),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,

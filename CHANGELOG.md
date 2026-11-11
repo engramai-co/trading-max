@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- Research now keeps a dated record of analysts' earnings estimates for held and
+  watched securities, so forward P/E history can be charted later.
+
 ## [1.29.3] - 2026-11-10
 
 ### Fixed

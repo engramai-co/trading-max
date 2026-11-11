@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from contextlib import suppress
 
@@ -12,6 +13,14 @@ from trading_max.infrastructure import (
     StoredSnapshot,
 )
 from trading_max.research.coverage import merge_rows, row_clocks
+from trading_max.research.estimate_history import (
+    ANALYST_KEY,
+    ESTIMATE_KEYS,
+    FUNDAMENTALS_KEY,
+    SCHEDULED_RESEARCH_TRIGGERS,
+    EstimateHistory,
+    estimate_observations,
+)
 from trading_max.research.fundamentals import (
     AnalystBatch,
     EarningsBatch,
@@ -29,6 +38,8 @@ from trading_max.research.market import (
 
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _upstream_json(
@@ -730,10 +741,13 @@ class TypedPublishSnapshotStage:
         artifacts: ContentAddressedArtifactStore,
         snapshots: SnapshotStore,
         on_snapshot_published: Callable[[StoredSnapshot, str], None] | None = None,
+        *,
+        estimate_history: EstimateHistory | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.snapshots = snapshots
         self.on_snapshot_published = on_snapshot_published
+        self.estimate_history = estimate_history
 
     def _merge_partial_research(
         self,
@@ -814,12 +828,20 @@ class TypedPublishSnapshotStage:
             context=context,
         )
         refs_by_key.update({ref.key: ref for ref in new_refs})
+        estimate_batches = {}
+        estimate_keys = (
+            ESTIMATE_KEYS.intersection(ref.key for ref in new_refs)
+            if self.estimate_history is not None and context.trigger in SCHEDULED_RESEARCH_TRIGGERS
+            else frozenset()
+        )
         if context.scope in {"all", "research"}:
             coverage: dict[str, dict] = {}
             for key, ref in refs_by_key.items():
                 if key not in MERGEABLE_RESEARCH_KEYS or key == "research/market_snapshot.json":
                     continue
                 raw = self.artifacts.get_json(ref.artifact_id).payload
+                if key in estimate_keys:
+                    estimate_batches[key] = raw
                 name = key.removeprefix("research/").removesuffix(".json")
                 for ticker, clock in row_clocks(
                     raw, generated_at=ref.generated_at.isoformat()
@@ -843,6 +865,23 @@ class TypedPublishSnapshotStage:
             source=f"{context.trigger}:{context.job_id}",
             artifacts=refs,
         )
+        if self.estimate_history is not None and estimate_batches.keys() == ESTIMATE_KEYS:
+            observed_at = published.manifest.created_at
+            try:
+                self.estimate_history.recover(self.snapshots, before=observed_at)
+            except Exception:
+                LOGGER.exception("estimate history recovery failed")
+            try:
+                self.estimate_history.append(
+                    estimate_observations(
+                        estimate_batches[FUNDAMENTALS_KEY],
+                        estimate_batches[ANALYST_KEY],
+                        observed_at=observed_at,
+                    )
+                )
+            except Exception:
+                # The archive is additive; preserve the complete research publication.
+                LOGGER.exception("estimate history append failed")
         if self.on_snapshot_published is not None and context.trigger != "intraday":
             # Synthesis is additive. A provider or queue outage must not
             # invalidate an otherwise complete portfolio snapshot.

@@ -571,6 +571,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/research/{ticker}/estimate-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Research Estimate History
+         * @description Return the latest observations for an exact ticker, oldest first.
+         */
+        get: operations["research_estimate_history_v1_research__ticker__estimate_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/research/{ticker}/events": {
         parameters: {
             query?: never;
@@ -2547,6 +2567,24 @@ export interface components {
             /** Worstclosegbp */
             worstCloseGbp?: number | null;
         };
+        /** ConsensusEstimate */
+        ConsensusEstimate: {
+            /** Analystcount */
+            analystCount?: number | null;
+            /** Currency */
+            currency?: string | null;
+            /** Growth */
+            growth?: number | null;
+            /** Higheps */
+            highEps?: number | null;
+            /** Loweps */
+            lowEps?: number | null;
+            /** Meaneps */
+            meanEps?: number | null;
+            period: components["schemas"]["EstimatePeriod"];
+            /** Periodend */
+            periodEnd?: string | null;
+        };
         /**
          * DashboardLensSnapshot
          * @description A page-scoped dashboard payload.
@@ -2822,6 +2860,53 @@ export interface components {
             /** Validationtoken */
             validationToken: string;
         };
+        /** EstimateObservation */
+        EstimateObservation: {
+            /** Consensus */
+            consensus?: components["schemas"]["ConsensusEstimate"][];
+            /** Currency */
+            currency?: string | null;
+            /** Forwardeps */
+            forwardEps?: number | null;
+            /** Forwardpe */
+            forwardPE?: number | null;
+            /** Listing */
+            listing?: string | null;
+            /**
+             * Observedat
+             * Format: date-time
+             */
+            observedAt: string;
+            /** Price */
+            price?: number | null;
+            /** Priceasof */
+            priceAsOf?: string | null;
+            /**
+             * Provider
+             * @default yahoo-finance
+             * @constant
+             */
+            provider: "yahoo-finance";
+            /** Providerasof */
+            providerAsOf?: string | null;
+            /** Quoteunit */
+            quoteUnit?: string | null;
+            /**
+             * Recovered
+             * @default false
+             */
+            recovered: boolean;
+            /** Reportingcurrency */
+            reportingCurrency?: string | null;
+            /** Ticker */
+            ticker: string;
+            /** Trailingeps */
+            trailingEps?: number | null;
+            /** Trailingpe */
+            trailingPE?: number | null;
+        };
+        /** @enum {string} */
+        EstimatePeriod: "0q" | "+1q" | "0y" | "+1y";
         /** EvidenceRef */
         EvidenceRef: {
             /** Accession */
@@ -8178,6 +8263,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchAlert"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    research_estimate_history_v1_research__ticker__estimate_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EstimateObservation"][];
                 };
             };
             /** @description Validation Error */
