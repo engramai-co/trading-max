@@ -54,6 +54,7 @@ import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortf
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { useCurrentDay } from "./current-day";
+import { DemoAsOf, useDemonstration } from "./demonstration";
 import { LocalOnboarding } from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
 import { OverviewSectors, useOverviewSectors } from "./overview-sectors";
@@ -102,9 +103,11 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const data = query.data;
   const sectors = useOverviewSectors();
   const runtime = useChartRuntime();
+  const demonstration = useDemonstration();
   const refresh = useQuery({
     queryKey: ["refresh-attention"],
     queryFn: ({ signal }) => api<RefreshAttention>("/refresh/attention", { signal }),
+    enabled: !demonstration,
     staleTime: 30_000,
     refetchInterval: 60_000,
     retry: 1,
@@ -162,7 +165,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const previousDay =
     scope === "total" ? data?.latestModelDayReturn : selected?.dailyReturn;
   // Data problems speak here; a holding's readings are marked in its own row below.
-  const attention = attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
+  const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
     <div className="mx-overview-read">
       {initialWaiting && <LoadingStatus label={t("正在读取组合总览…", "Loading your portfolio overview…")} />}
@@ -187,7 +190,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
             <span className="mx-freshness-group">
-              <Freshness date={data?.brokerAsOf} />
+              {demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
               {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
             </span>
           </div>

@@ -38,7 +38,7 @@ import type { ResearchShell } from "@/lib/types";
 import { BrandMark } from "@/ui/brand-mark";
 import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
-import { useCopy } from "./foundation";
+import { Tag, useCopy } from "./foundation";
 
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
@@ -56,7 +56,7 @@ function SearchRouteObserver({ onChange }: { onChange: (search: string) => void 
   return null;
 }
 
-export function WorkspaceShell({ children, desktop = false, localWorkspace = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean }) {
+export function WorkspaceShell({ children, desktop = false, localWorkspace = false, demonstration = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean; demonstration?: boolean }) {
   const t = useCopy();
   const actualPathname = usePathname();
   const [routeSearch, setRouteSearch] = useState("");
@@ -405,7 +405,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {links([0, 1], true)}
         </nav>
         <div className="mx-sidebar-bottom">
-          {desktop ? <DesktopStatus localWorkspace={localWorkspace} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
+          {desktop ? <DesktopStatus localWorkspace={localWorkspace} demonstration={demonstration} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
             {links([2], true)}
           </nav>}
         </div>
@@ -422,6 +422,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             <strong>{active?.label}</strong>
           </div>
           <Group gap={4} wrap="nowrap">
+            {demonstration && <Tag>{t("演示数据", "Demo data")}</Tag>}
             {searchTrigger("mx-topbar-search", "bottom-end")}
             {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
             {!desktop && <ActionIcon

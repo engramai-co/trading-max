@@ -20,6 +20,7 @@ import {
   flowVerificationText,
   shortRunId,
 } from "@/lib/health";
+import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
 import { api, ApiError, jsonRequest, number } from "@/workspace/data";
@@ -37,6 +38,7 @@ import {
   useCopy,
 } from "./foundation";
 
+import { DemoAsOf } from "./demonstration";
 import { activityState } from "./desktop-status";
 import { collapseRoutineRuns } from "./job-history";
 import { JobOutcomeSummary } from "./job-outcomes";
@@ -51,6 +53,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     refetchInterval: 5000,
     retry: 1,
   });
+  const demoSnapshot = useDashboardLens("overview", undefined, readOnly, { detail: "summary" });
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -85,7 +88,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   // A reachable service is not fresh data: snapshots publish several times a
   // day, so a day without one means updates stopped.
   const snapshotAge = data?.health?.artifactAgeSeconds;
-  const staleHours = tone === "ready" && snapshotAge != null && snapshotAge > 86_400
+  const staleHours = !readOnly && tone === "ready" && snapshotAge != null && snapshotAge > 86_400
     ? Math.floor(snapshotAge / 3600) : null;
   const staleAge = staleHours == null ? "" : formatAge(snapshotAge, locale);
   const job =
@@ -113,7 +116,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     { value: "cfd", label: t("CFD 复盘", "CFD review") },
   ];
   const title =
-    staleHours != null
+    readOnly && tone === "ready"
+      ? t("演示快照", "Demo snapshot")
+      : staleHours != null
       ? locale === "zh" ? `服务在线，但已 ${staleAge}没有完成更新` : `Service online · no completed update for ${staleAge}`
       : tone === "setup"
       ? t("等待首次同步", "Ready for your first sync")
@@ -256,7 +261,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             <div>
               <h2>{title}</h2>
               {subtitle && <p>{subtitle}</p>}
-              {serviceIssue || !lastSuccess ? (
+              {readOnly && tone === "ready" ? (
+                <DemoAsOf date={demoSnapshot.data?.brokerAsOf} />
+              ) : serviceIssue || !lastSuccess ? (
                 <Freshness date={data.checkedAt} label={t("检查时间", "Checked")} />
               ) : (
                 <Freshness date={lastSuccess} label={t("最近成功更新", "Last successful update")} />
@@ -277,7 +284,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               </Tag>
             )}
           </section>
-          {desktop && activity.failures.length > 0 && <Notice tone="warn">
+          {desktop && !readOnly && activity.failures.length > 0 && <Notice tone="warn">
             <div className="mx-toolbar"><span>{t("服务在线不代表所有更新都已完成。以下范围最近一次更新需要检查：", "An online service does not mean every update succeeded. Check the latest update for: ")}{activity.failures.map((job) => scopes.find((item) => item.value === job.scope)?.label ?? job.scope).join(" · ")}</span><Button size="compact-sm" variant="subtle" onClick={() => setSelected(activity.failures[0].jobId)}>{t("查看原因", "View issue")}</Button></div>
           </Notice>}
           <Controls {...controlsProps}>

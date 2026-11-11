@@ -132,7 +132,15 @@ impl Runtime {
     pub fn start(&self, workspace: Option<&Workspace>) -> Result<(), String> {
         self.stop();
         prepare_root(&self.root)?;
-        let root = workspace.map_or(&self.root, |w| &w.path);
+        // A shipped seed stays fixed within this version. On update, open the
+        // new seed in its own marked directory without overwriting earlier data.
+        let demo_root = self.root.join("demo").join(env!("CARGO_PKG_VERSION"));
+        let root = if let Some(workspace) = workspace {
+            &workspace.path
+        } else {
+            prepare_root(&demo_root)?;
+            &demo_root
+        };
         if let Some(workspace) = workspace {
             if self.workspace(root, None)? != *workspace {
                 return Err("工作区已变化，请重新选择。".into());

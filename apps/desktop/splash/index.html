@@ -9,55 +9,54 @@
 <div class="shell">
   <aside class="sidebar">
     <header class="brand"><picture><source srcset="icon-dark.svg" media="(prefers-color-scheme: dark)"><img src="icon.svg" alt="" width="33" height="33"></picture><span>Trading <strong>Max</strong></span></header>
-    <div class="sidebar-copy"><h2>记录有归处，<br>投资有全貌。</h2></div>
-    <div class="ownership"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><strong>你的数据，由你保管</strong></div>
-    <div class="build"><span class="preview-dot"></span> 内部预览 <span id="version"></span></div>
+    <div class="sidebar-copy"><h2><span data-en="Every record in its place,">记录有归处，</span><br><span data-en="your whole portfolio in view.">投资有全貌。</span></h2></div>
+    <div class="ownership"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><strong data-en="Your data stays yours">你的数据，由你保管</strong></div>
   </aside>
   <main>
-    <div class="topline"><button id="back" type="button" class="text-button" hidden>← 返回</button></div>
-    <section class="intro"><h1 id="heading" tabindex="-1">打开你的投资工作台。</h1><p id="subtitle" hidden></p></section>
+    <div class="topline"><button id="back" type="button" class="text-button" hidden><span data-en="← Back">← 返回</span></button></div>
+    <section class="intro"><h1 id="heading" tabindex="-1">打开你的投资工作台。</h1></section>
     <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
     <div id="progress" class="progress" hidden><span></span></div>
     <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
-    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button">在浏览器打开</button><button id="stop-retry" class="text-button" type="button">取消连接</button></div>
-    <details id="diagnostics" class="diagnostics" hidden><summary>查看诊断详情</summary><p id="diagnostic-detail"></p></details>
-    <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden>打开资料文件夹 ↗</button></div>
+    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button"><span data-en="Reconnect">重新连接</span></button><button id="browser" class="secondary" type="button"><span data-en="Open in browser">在浏览器打开</span></button><button id="stop-retry" class="text-button" type="button"><span data-en="Cancel connection">取消连接</span></button></div>
+    <details id="diagnostics" class="diagnostics" hidden><summary><span data-en="View diagnostics">查看诊断详情</span></summary><p id="diagnostic-detail"></p></details>
+    <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden><span data-en="Open data folder ↗">打开资料文件夹 ↗</span></button></div>
     <div id="content">
-      <section id="welcome" aria-label="选择工作区">
-        <section id="recent" class="recent" hidden aria-label="已保存的服务">
-          <div class="recent-top"><span class="tiny-label">已保存的服务</span><button id="edit-remote" class="text-button" type="button">管理连接</button></div>
+      <section id="welcome" aria-label="选择工作区" data-en-aria-label="Choose a workspace">
+        <section id="recent" class="recent" hidden aria-label="已保存的服务" data-en-aria-label="Saved service">
+          <div class="recent-top"><span class="tiny-label"><span data-en="Saved service">已保存的服务</span></span><button id="edit-remote" class="text-button" type="button"><span data-en="Manage connection">管理连接</span></button></div>
           <div class="recent-body"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8M12 16v5"/></svg></span><div class="recent-name"><strong id="recent-name"></strong><span id="recent-host"></span></div><button id="resume" type="button">打开 <span aria-hidden="true">→</span></button></div>
         </section>
-        <section id="local-recents" class="recent" hidden aria-label="最近的本地工作区"></section>
+        <section id="local-recents" class="recent" hidden aria-label="最近的本地工作区" data-en-aria-label="Recent local workspaces"></section>
         <div class="choices">
-          <button class="choice" id="create-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8Z"/><path d="M12 10v7M8.5 13.5h7"/></svg></span><span class="choice-copy"><strong>创建本地工作区</strong></span><span class="arrow" aria-hidden="true">›</span></button>
-          <button class="choice" id="open-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10V5h6l2 3h9v3M3 10h19l-3 10H2Z"/></svg></span><span class="choice-copy"><strong>打开已有工作区</strong></span><span class="arrow" aria-hidden="true">›</span></button>
-          <button class="choice" id="choose-remote" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01M10 6.5h8M10 17.5h8"/></svg></span><span class="choice-copy"><strong>连接已有服务</strong></span><span class="arrow" aria-hidden="true">›</span></button>
+          <button class="choice" id="create-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 8V5a1 1 0 0 1 1-1h5l2 3h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8Z"/><path d="M12 10v7M8.5 13.5h7"/></svg></span><span class="choice-copy"><strong><span data-en="Create a local workspace">创建本地工作区</span></strong></span><span class="arrow" aria-hidden="true">›</span></button>
+          <button class="choice" id="open-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10V5h6l2 3h9v3M3 10h19l-3 10H2Z"/></svg></span><span class="choice-copy"><strong><span data-en="Open an existing workspace">打开已有工作区</span></strong></span><span class="arrow" aria-hidden="true">›</span></button>
+          <button class="choice" id="choose-remote" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01M10 6.5h8M10 17.5h8"/></svg></span><span class="choice-copy"><strong><span data-en="Connect to an existing service">连接已有服务</span></strong></span><span class="arrow" aria-hidden="true">›</span></button>
         </div>
-        <div class="demo-row"><strong>想先看看？</strong><button id="demo" type="button" class="secondary">打开演示 <span aria-hidden="true">↗</span></button></div>
+        <div class="demo-row"><strong data-en="Want a look first?">想先看看？</strong><button id="demo" type="button" class="secondary"><span data-en="Open demo ">打开演示 </span><span aria-hidden="true">↗</span></button></div>
       </section>
-      <form id="form" hidden aria-label="连接已有服务">
-        <div class="form-context"><span class="dot"></span><span>数据保存在服务端，这台 Mac 用来查看。</span></div>
-        <label class="field" for="name">连接名称<input id="name" autocomplete="off" maxlength="60" placeholder="例如：我的 Mac mini" required></label>
-        <label class="field" for="url">服务地址<input id="url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://portfolio.example.com" aria-describedby="address-hint" required></label>
-        <p id="address-hint" class="hint">填写浏览器里使用的 HTTPS 根地址。使用 Tailscale 时，请先连接相应网络。</p>
-        <label class="checkbox"><input id="auto" type="checkbox" checked><span>下次启动时自动打开这个服务</span></label>
-        <div class="actions"><button id="test" type="button" class="secondary">测试连接</button><span class="spacer"></span><button id="save" type="button" class="text-button">仅保存</button><button id="connect" type="submit">保存并打开 <span aria-hidden="true">→</span></button></div>
+      <form id="form" hidden aria-label="连接已有服务" data-en-aria-label="Connect to an existing service">
+        <div class="form-context"><span class="dot"></span><span><span data-en="Your data stays on the service. This Mac displays it.">数据保存在服务端，这台 Mac 用来查看。</span></span></div>
+        <label class="field" for="name"><span data-en="Connection name">连接名称</span><input id="name" autocomplete="off" maxlength="60" placeholder="例如：我的 Mac mini" data-en-placeholder="e.g. My Mac mini" required></label>
+        <label class="field" for="url"><span data-en="Service address">服务地址</span><input id="url" type="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://portfolio.example.com" aria-describedby="address-hint" required></label>
+        <p id="address-hint" class="hint"><span data-en="Enter the HTTPS address you use in your browser. If you use Tailscale, connect to that network first.">填写浏览器里使用的 HTTPS 根地址。使用 Tailscale 时，请先连接相应网络。</span></p>
+        <label class="checkbox"><input id="auto" type="checkbox" checked><span><span data-en="Open this service on startup">下次启动时自动打开这个服务</span></span></label>
+        <div class="actions"><button id="test" type="button" class="secondary"><span data-en="Test connection">测试连接</span></button><span class="spacer"></span><button id="save" type="button" class="text-button"><span data-en="Save only">仅保存</span></button><button id="connect" type="submit"><span data-en="Save and open ">保存并打开 </span><span aria-hidden="true">→</span></button></div>
       </form>
-      <form id="local-form" hidden aria-label="本地工作区">
-        <div class="form-context"><span class="dot"></span><span>资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></div>
-        <label class="field" id="workspace-name-field" for="workspace-name">工作区名称<input id="workspace-name" maxlength="60" value="我的投资记录" autocomplete="off" required></label>
-        <label class="field" for="workspace-path" id="workspace-location-label">保存位置</label>
-        <div class="folder-field"><input id="workspace-path" placeholder="选择文件夹，或粘贴完整路径" autocomplete="off" spellcheck="false" maxlength="4096" required><button id="pick-folder" class="secondary" type="button">选择文件夹…</button></div>
+      <form id="local-form" hidden aria-label="本地工作区" data-en-aria-label="Local workspace">
+        <div class="form-context"><span class="dot"></span><span><span data-en="Data goes in the folder you choose. Credentials go in this Mac’s Keychain.">资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></span></div>
+        <label class="field" id="workspace-name-field" for="workspace-name"><span data-en="Workspace name">工作区名称</span><input id="workspace-name" maxlength="60" value="我的投资记录" data-en-value="My investments" autocomplete="off" required></label>
+        <label class="field" for="workspace-path" id="workspace-location-label"><span data-en="Save location">保存位置</span></label>
+        <div class="folder-field"><input id="workspace-path" placeholder="选择文件夹，或粘贴完整路径" data-en-placeholder="Choose a folder or paste its full path" autocomplete="off" spellcheck="false" maxlength="4096" required><button id="pick-folder" class="secondary" type="button"><span data-en="Choose folder…">选择文件夹…</span></button></div>
         <p id="workspace-hint" class="hint"></p>
         <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong><p id="workspace-description"></p></div>
-        <p class="hint">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</p>
-        <div class="actions"><button id="local-submit" type="submit">创建并连接账户 →</button></div>
+        <p class="hint"><span data-en="Updates pause when you quit the app or your Mac sleeps.">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</span></p>
+        <div class="actions"><button id="local-submit" type="submit"><span data-en="Create and connect an account →">创建并连接账户 →</span></button></div>
       </form>
     </div>
     <div id="feedback" role="status" aria-live="polite" hidden></div>
-    <div id="pending-actions" class="actions" hidden><button id="change" class="secondary" type="button">修改连接</button><button id="cancel" class="text-button" type="button">取消</button></div>
-    <footer><button id="show-settings" class="text-button" type="button">App 设置 <kbd>⌘ ,</kbd></button></footer>
+    <div id="pending-actions" class="actions" hidden><button id="change" class="secondary" type="button"><span data-en="Change connection">修改连接</span></button><button id="cancel" class="text-button" type="button"><span data-en="Cancel">取消</span></button></div>
+    <footer><span id="version"></span><button id="show-settings" class="text-button" type="button"><span data-en="App settings ">App 设置 </span><kbd>⌘ ,</kbd></button></footer>
   </main>
 </div>
 <script src="app.js"></script>

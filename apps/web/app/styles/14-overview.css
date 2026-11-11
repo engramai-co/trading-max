@@ -455,3 +455,13 @@
     transition: none;
   }
 }
+
+.mx-overview-sectors .mx-empty p {
+  max-inline-size: 32ch;
+  text-wrap: balance;
+}
+
+.mx-sector-empty-copy:lang(zh) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}

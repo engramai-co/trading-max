@@ -102,7 +102,8 @@ Keychain uses `com.engram.trading-max.workspace.<uuid>`. A separate confirmation
 receipt records the checked snapshot and connection revisions, not secrets.
 The App does not import or modify an existing source-deployment root.
 The directory must have the preview's identity marker; an unknown existing
-directory is rejected. Synthetic state is seeded once and survives reopening.
+directory is rejected. Synthetic state is seeded once per App version from the
+bundled build-date fixtures and survives reopening that version.
 Deleting the app leaves this independent preview data in place.
 
 In local demo mode, the supervisor clears inherited configuration and secrets, uses a separate

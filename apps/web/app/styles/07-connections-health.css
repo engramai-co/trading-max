@@ -328,3 +328,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.mx-broker-key-help {
+  font-size: 13px;
+}
+.mx-broker-key-help summary {
+  color: var(--mx-brand);
+  cursor: pointer;
+}
+.mx-broker-key-help p {
+  margin: 8px 0;
+  color: var(--mx-muted);
+}
