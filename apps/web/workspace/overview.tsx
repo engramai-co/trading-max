@@ -209,7 +209,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
                 help={t("当前持仓相对买入成本", "Open positions versus cost")}
               />
               <Metric
-                label={t("可用现金", "Cash balance")}
+                label={t("现金", "Cash balance")}
                 value={currency(cash, "GBP", 2)}
               />
               <TodayMetric

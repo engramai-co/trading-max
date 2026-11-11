@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.31.1] - 2026-11-11
+
+### Fixed
+
+- The first account sync no longer fails its balance check when Trading 212
+  holds cash for pending orders or in pies. That cash now counts as account
+  cash, so cash plus holdings matches the broker's account total.
+
 ## [1.31.0] - 2026-11-11
 
 ### Added
