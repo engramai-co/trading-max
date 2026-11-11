@@ -20,6 +20,7 @@
 </p>
 
 <p align="center">
+  <a href="https://tradingmax.engramai.co"><b>Website</b></a> ·
   <a href="https://github.com/engramai-co/trading-max/releases/latest"><b>Download for Mac</b></a> ·
   <a href="#run-from-source"><b>Run from source</b></a> ·
   <a href="docs/README.md"><b>Guides</b></a>
