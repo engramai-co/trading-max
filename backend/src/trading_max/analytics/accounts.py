@@ -133,7 +133,7 @@ def account_snapshot_metrics(
         fetched_at=normalized.fetched_at,
         source=str(source) if source is not None else None,
         total_value_gbp=normalized.account.total_value,
-        cash_gbp=normalized.account.cash_available,
+        cash_gbp=normalized.account.cash_total,
         investments_value_gbp=normalized.account.investments_value,
         position_value_gbp=reconciliation.position_value_gbp.quantize(Decimal("0.01")),
         total_cost_gbp=normalized.account.investments_cost,

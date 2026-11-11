@@ -240,6 +240,52 @@ def test_snapshot_reconciliation_never_allows_invalid_account_total() -> None:
         )
 
 
+def _summary_with_cash(payload: dict[str, object], total: str, **cash: str) -> None:
+    summary = payload["account_summary"]
+    assert isinstance(summary, dict)
+    summary["totalValue"] = total
+    summary["cash"] = cash
+
+
+def test_snapshot_counts_cash_reserved_for_orders_and_in_pies() -> None:
+    # Trading 212's total includes cash held for pending orders and uninvested
+    # pie cash, which availableToTrade leaves out.
+    payload = _snapshot_payload()
+    _summary_with_cash(
+        payload,
+        "113.25",
+        availableToTrade="10.00",
+        reservedForOrders="2.40",
+        inPies="0.85",
+    )
+
+    snapshot = snapshot_from_payload("invest", "live", payload)
+    reconciliation = broker_snapshot_reconciliation(snapshot)
+    metrics = account_snapshot_metrics("invest", snapshot)
+
+    assert snapshot.account.cash_available == Decimal("10.00")
+    assert snapshot.account.cash_total == Decimal("13.25")
+    assert reconciliation.account_total_delta_gbp == Decimal("0")
+    assert reconciliation.cash_plus_investments_matches_total is True
+    assert metrics.cash_gbp == Decimal("13.25")
+
+
+def test_snapshot_still_rejects_total_beyond_every_cash_component() -> None:
+    payload = _snapshot_payload()
+    _summary_with_cash(payload, "115.00", availableToTrade="10.00", reservedForOrders="2.50")
+
+    with pytest.raises(Trading212Error, match=r"account_total_delta_gbp=-2\.50"):
+        snapshot_from_payload("invest", "live", payload)
+
+
+def test_snapshot_rejects_non_numeric_cash_component() -> None:
+    payload = _snapshot_payload()
+    _summary_with_cash(payload, "110.00", availableToTrade="10.00", inPies="n/a")
+
+    with pytest.raises(Trading212Error, match="invalid numeric broker value"):
+        snapshot_from_payload("invest", "live", payload)
+
+
 def test_reconciliation_deduplicates_export_rows_and_uses_isin_identity() -> None:
     rows = [
         {
@@ -912,6 +958,39 @@ def test_broker_sync_use_case_persists_only_verified_export(
     assert Path(result.snapshot_path).is_file()
     assert Path(result.export_path).is_file()
     assert (tmp_path / "invest" / "latest_export.json").is_file()
+
+
+def test_first_strict_sync_accepts_cash_reserved_for_orders_and_in_pies(
+    tmp_path: Path,
+) -> None:
+    payload = _snapshot_payload()
+    _summary_with_cash(
+        payload,
+        "113.25",
+        availableToTrade="10.00",
+        reservedForOrders="2.40",
+        inPies="0.85",
+    )
+    fake = _FakeClient(payload)
+    service = Trading212BrokerSync(
+        credentials_factory=lambda _: _credentials(),
+        client_factory=lambda _credentials, _environment: fake,
+        store_factory=lambda profile: ManagedAccountStore(profile, data_root=tmp_path),
+    )
+    today = datetime.now(UTC).date()
+
+    result = service.sync(
+        BrokerSyncRequest(
+            profile="invest",
+            export_start=today,
+            export_end=today,
+            history_floor=today,
+            strict_reconcile=True,
+        )
+    )
+
+    assert result.reconciliation.status == "verified"
+    assert result.snapshot.account.cash_total == Decimal("13.25")
 
 
 def test_broker_sync_refreshes_mutable_current_day_export(tmp_path: Path) -> None:

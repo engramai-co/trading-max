@@ -295,6 +295,10 @@ class BrokerAccountSummary(DomainModel):
     investments_cost: Decimal
     realized_profit_loss: Decimal
     unrealized_profit_loss: Decimal
+    # Trading 212 counts cash held for pending orders and uninvested pie cash
+    # in the account total, but not in ``availableToTrade``.
+    cash_reserved_for_orders: Decimal = Decimal("0")
+    cash_in_pies: Decimal = Decimal("0")
 
     @field_validator(
         "total_value",
@@ -303,11 +307,19 @@ class BrokerAccountSummary(DomainModel):
         "investments_cost",
         "realized_profit_loss",
         "unrealized_profit_loss",
+        "cash_reserved_for_orders",
+        "cash_in_pies",
         mode="before",
     )
     @classmethod
     def decimalize(cls, value: object) -> Decimal:
         return _decimal(value)
+
+    @property
+    def cash_total(self) -> Decimal:
+        """All uninvested cash: available to trade, reserved for orders and in pies."""
+
+        return self.cash_available + self.cash_reserved_for_orders + self.cash_in_pies
 
 
 class BrokerPosition(DomainModel):
@@ -1034,6 +1046,15 @@ def _required_broker_number(payload: object, field: str, *, context: str) -> Dec
     return _decimal(value)
 
 
+def _optional_cash_component(payload: object, field: str) -> Decimal:
+    """Read a cash component the summary may omit; omission means none is held."""
+
+    value = payload.get(field) if isinstance(payload, Mapping) else None
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return Decimal("0")
+    return _decimal(value)
+
+
 def _position_from_payload(payload: Mapping[str, Any]) -> BrokerPosition:
     instrument = payload.get("instrument") or {}
     wallet = payload.get("walletImpact") or {}
@@ -1075,7 +1096,7 @@ def broker_snapshot_reconciliation(
         abs(snapshot.account.investments_value) * Decimal("0.0005"),
     )
     account_total_delta = (
-        snapshot.account.cash_available
+        snapshot.account.cash_total
         + snapshot.account.investments_value
         - snapshot.account.total_value
     )
@@ -1141,6 +1162,8 @@ def snapshot_from_payload(
         cash_available=_required_broker_number(
             summary.get("cash"), "availableToTrade", context=profile
         ),
+        cash_reserved_for_orders=_optional_cash_component(summary.get("cash"), "reservedForOrders"),
+        cash_in_pies=_optional_cash_component(summary.get("cash"), "inPies"),
         investments_value=_required_broker_number(
             summary.get("investments"), "currentValue", context=profile
         ),
