@@ -24,11 +24,25 @@ import { chartNumber } from "./research-chart-format";
 function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
   axes: T | T[] | undefined,
   colours: ChartColours,
+  horizontal = false,
 ): T | T[] | undefined {
   const theme = (axis: T): T => ({
     ...axis,
     nameTextStyle: { color: colours.axis, ...axis.nameTextStyle },
-    axisLabel: { color: colours.axis, hideOverlap: true, ...axis.axisLabel },
+    axisLabel: {
+      color: colours.axis,
+      hideOverlap: true,
+      // Keep edge ticks inside without shifting labels centred below bars.
+      ...(horizontal && (axis.type !== "category" || axis.boundaryGap === false) && {
+        alignMinLabel: axis.inverse ? "right" : "left",
+        alignMaxLabel: axis.inverse ? "left" : "right",
+      }),
+      ...(horizontal && axis.type === "category" && axis.boundaryGap === false && {
+        showMinLabel: true,
+        showMaxLabel: true,
+      }),
+      ...axis.axisLabel,
+    },
     axisLine: {
       ...axis.axisLine,
       lineStyle: { color: colours.axis, ...axis.axisLine?.lineStyle },
@@ -84,7 +98,7 @@ export function Plot({
       ],
       grid: { top: 20, right: 18, bottom: 30, left: 58 },
       ...custom,
-      xAxis: themeAxes(custom.xAxis, colours),
+      xAxis: themeAxes(custom.xAxis, colours, true),
       yAxis: themeAxes(custom.yAxis, colours),
       legend: Array.isArray(custom.legend)
         ? custom.legend.map((legend) => ({

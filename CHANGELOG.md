@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- The Trading 212 connection form explains how to create a read-only API key
+  for each account and choose the matching account environment.
+
+### Changed
+
+- The desktop demo labels its synthetic data, shows the snapshot date, and
+  includes ten holdings across Invest and Stocks ISA and a US sector board.
+- The desktop welcome screen shows the app version and supports English and
+  Simplified Chinese.
+
+### Fixed
+
+- Chart labels at the ends of the horizontal axis stay inside the plot in
+  smaller windows, and the US sector empty message wraps more evenly.
+
 ## [1.30.2] - 2026-11-11
 
 ### Changed

@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
+
+
+def demo_as_of(root: Path) -> date:
+    marker = json.loads((root / "DESKTOP_SYNTHETIC_DATA.json").read_text(encoding="utf-8"))
+    return date.fromisoformat(marker["as_of"])
 
 
 class PreviewPrices:
+    def __init__(self, as_of: date) -> None:
+        self.end = datetime.combine(as_of, datetime.min.time(), tzinfo=UTC) + timedelta(hours=20)
+
     def get(self, ticker: str, interval: str, *, preview: bool = False):
         from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
 
         if ticker.upper() != "BE" or interval not in {"15m", "60m", "1d", "1wk"}:
             raise ValueError("requested-interval-unavailable")
-        end = datetime(2026, 9, 21, 20, tzinfo=UTC)
         stamps = []
         for i in range(211):
-            day = end - timedelta(days=210 - i)
+            day = self.end - timedelta(days=210 - i)
             if day.weekday() >= 5:
                 continue
             if interval in {"15m", "60m"}:
@@ -55,8 +64,8 @@ class PreviewPrices:
             actual_interval=interval,
             timezone="America/New_York",
             exchange_calendar="XNYS",
-            fetched_at=datetime.now(UTC).isoformat(),
-            coverage_reason="Synthetic desktop preview; not market data",
+            fetched_at=self.end.isoformat(),
+            coverage_reason="Synthetic demo prices",
         )
 
 
@@ -71,7 +80,7 @@ class PreviewSearch:
             results=[
                 SecuritySearchResult(
                     ticker="BE",
-                    name="Bloom Energy · Synthetic preview",
+                    name="Bloom Energy",
                     exchange="NYSE",
                     bloomberg_ticker="BE US Equity",
                     figi="BBG001BBH6X2",

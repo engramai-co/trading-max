@@ -392,7 +392,7 @@ def api(args) -> int:
         sys.addaudithook(offline_only)
     import uvicorn
     from fastapi.responses import JSONResponse
-    from preview_data import PreviewPrices, PreviewSearch
+    from preview_data import PreviewPrices, PreviewSearch, demo_as_of
 
     from services.api.trading_max_api.app import create_app
     from services.api.trading_max_api.config import Settings
@@ -408,11 +408,10 @@ def api(args) -> int:
         def delete(self, reference):
             raise CredentialStoreError("Real connections are disabled in desktop preview")
 
-    app = create_app(
-        Settings.from_env(), credential_store=PreviewCredentials() if is_demo else None
-    )
+    settings = Settings.from_env()
+    app = create_app(settings, credential_store=PreviewCredentials() if is_demo else None)
     if is_demo:
-        app.state.security_prices = PreviewPrices()
+        app.state.security_prices = PreviewPrices(demo_as_of(settings.data_root))
         app.state.security_search = PreviewSearch()
 
     @app.middleware("http")
@@ -421,7 +420,7 @@ def api(args) -> int:
             return JSONResponse(
                 status_code=403,
                 content={
-                    "detail": "这是独立演示资料，真实账户连接和数据更新将在下一阶段开放。",
+                    "detail": "演示工作区为只读。要连接账户，请创建或打开自己的工作区。",
                     "code": "desktop_preview_read_only",
                 },
             )

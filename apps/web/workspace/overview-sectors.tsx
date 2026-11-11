@@ -7,6 +7,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProper
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoardResponse, SectorGroup } from "@/lib/types";
 import { formatDateTime, formatDeltaPercent } from "@/ui/formatters";
+import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api } from "@/workspace/data";
 import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
@@ -209,7 +210,11 @@ export function OverviewSectors({ query, initialWaiting }: {
         <Empty
           title={t("还没有美股板块数据", "No US sector data yet")}
           description={data?.monitor?.enabled === false
-            ? t("开启「证券研究与每日对账」自动更新后，开盘时段每 10 分钟更新一次。", "Turn on Research & daily reconciliation updates to refresh sectors every 10 minutes while the market is open.")
+            ? <span className="mx-sector-empty-copy">
+                <CenteredCopy>{t("开启「证券研究与每日对账」", "Enable Research & daily reconciliation")}</CenteredCopy>
+                <wbr />
+                <CenteredCopy>{t("即可在开盘时段每 10 分钟刷新板块。", " to refresh sectors every 10 minutes during market hours.")}</CenteredCopy>
+              </span>
             : data?.monitor?.nextRunAt
               ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)
               : undefined}

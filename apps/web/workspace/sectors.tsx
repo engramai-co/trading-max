@@ -30,6 +30,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
 import { api } from "@/workspace/data";
+import { useDemonstration } from "./demonstration";
 import { Empty, Page, Pending, QueryError, Segments, useCopy } from "./foundation";
 import Link from "./link";
 import { useRouteState } from "./route-state";
@@ -40,11 +41,12 @@ import { SECTOR_MARKETS, marketPhase, sectorMarket, strongestGroup } from "./sec
 
 export function SectorsWorkspace() {
   const t = useCopy();
+  const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
   const { params, update } = useRouteState();
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const now = useMinute();
-  const requested = sectorMarket(params.get("market"));
+  const requested = sectorMarket(params.get("market")) ?? (demonstration ? "us" : null);
   const client = useQueryClient();
   const query = useQuery({
     queryKey: ["workspace-sectors", requested ?? "default"],
@@ -198,12 +200,14 @@ export function SectorsWorkspace() {
     <section className="mx-panel">
       <Empty
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
-        description={data?.monitor?.enabled === false
+        description={demonstration
+          ? t("演示仅包含美股板块。", "The demo includes US sectors only.")
+          : data?.monitor?.enabled === false
           ? t("开启「证券研究与每日对账」自动更新后，开盘时段每 10 分钟更新一次。", "Turn on Research & daily reconciliation updates to refresh sectors every 10 minutes while the market is open.")
           : data?.monitor?.nextRunAt
             ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)
             : undefined}
-        action={data?.monitor?.enabled === false
+        action={!demonstration && data?.monitor?.enabled === false
           ? <Button component={Link} href="/settings" variant="default">{t("打开设置", "Open settings")}</Button>
           : undefined}
       />

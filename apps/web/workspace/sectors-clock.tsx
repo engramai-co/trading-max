@@ -6,6 +6,7 @@ import type { SectorBoard, SectorBoardResponse, SectorMarketStatus } from "@/lib
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { Help, Tag, useCopy } from "./foundation";
 import type { MarketPhase } from "./sectors-data";
+import { DemoAsOf, useDemonstration } from "./demonstration";
 
 /** Re-reads the clock each minute so session states turn without a refetch. */
 export function useMinute() {
@@ -33,6 +34,8 @@ export function usePhaseNames(): Record<MarketPhase, string> {
 export function SectorSources({ source }: { source: SectorBoard["source"] }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const demonstration = useDemonstration();
+  if (demonstration) return <p>{t("成分股、权重和涨跌均为演示数据。", "Constituents, weights and price moves are synthetic.")}</p>;
   const published = formatCalendarDate(source.asOf, locale);
   return (
     <>
@@ -67,6 +70,11 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const demonstration = useDemonstration();
+  if (demonstration) return board ? <div className="mx-sectors-clock">
+    <DemoAsOf date={board.asOf} />
+    {sources && <Help label={t("板块数据来源", "Sector data sources")}><SectorSources source={board.source} /></Help>}
+  </div> : null;
   // An error at or after the shown board's fetch is current; an earlier one was already overcome.
   const failed = Boolean(status.lastErrorAt && (!board || Date.parse(status.lastErrorAt) >= Date.parse(board.fetchedAt)));
   // After the bell a board can be published before enough official closes arrive: it is not final yet.

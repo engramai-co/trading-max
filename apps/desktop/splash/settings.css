@@ -50,7 +50,6 @@
 .about-product { display:flex; gap:18px; align-items:center; margin:0 0 32px; }
 .about-product h2 { font-size:22px; letter-spacing:-.5px; margin:0 0 4px; }
 .about-product p { display:flex; gap:12px; align-items:center; margin:0; font-size:12px; color:var(--muted); }
-.preview-badge { border:1px solid var(--line); border-radius:4px; padding:1px 6px; font-size:10px; }
 .update-result { margin:16px 0 8px; padding:15px 18px; border:1px solid var(--line); border-radius:7px; background:var(--rail); font-size:12px; line-height:1.8; }
 .quiet-note { margin-top:32px; padding-top:22px; border-top:1px solid var(--line); }
 .quiet-note strong { font-size:12px; font-weight:550; }

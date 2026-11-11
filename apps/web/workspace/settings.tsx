@@ -448,17 +448,16 @@ function ConnectionForm({
       : model.length > 0);
   return (
     <Stack gap="lg">
-      <Notice>
-        {connection.kind === "broker"
-          ? t(
-              "请使用该账户的只读 API 凭据。已有密钥不会回填到表单。",
-              "Use this account’s read-only API credentials. Saved keys are never filled back into the form.",
-            )
-          : t(
-              "证券识别请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
-              "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
-            )}
-      </Notice>
+      {(connection.kind === "model" || connection.existing?.configured) && (
+        <Notice>
+          {connection.kind === "broker"
+            ? t("已有密钥不会回填到表单。", "Saved keys are never filled back into the form.")
+            : t(
+                "证券识别请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
+                "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
+              )}
+        </Notice>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -519,6 +518,26 @@ function ConnectionForm({
               searchable
               disabled={busy}
             />
+          )}
+          {connection.kind === "broker" && (
+            <details className="mx-broker-key-help">
+              <summary>{t("如何创建只读 API 密钥？", "How do I create a read-only API key?")}</summary>
+              <p>{t(
+                "在 Trading\u00a0212 的目标账户中，打开菜单 → 设置 → API\u00a0(Beta) → Generate\u00a0API\u00a0key，确认风险提示。",
+                "In the Trading\u00a0212 account you want to connect, open Menu → Settings → API\u00a0(Beta) → Generate\u00a0API\u00a0key and accept the risk warning.",
+              )}</p>
+              <p>{t(
+                "勾选 Account data、Portfolio 和 History（包括 Dividends、Orders、Transactions）。不要开启 Orders\u00a0-\u00a0Execute 或写入权限。",
+                "Select Account data, Portfolio and History (Dividends, Orders and Transactions). Leave Orders\u00a0-\u00a0Execute and write permissions off.",
+              )}</p>
+              <p>{t(
+                "Invest 和 Stocks\u00a0ISA 各用一组密钥。真实账户选「真实账户」，练习账户选「模拟账户」。Secret 只显示一次。",
+                "Create a separate key pair for Invest and Stocks\u00a0ISA. Match your broker mode: Live account for real money, Demo account for Practice. The secret is shown once.",
+              )}</p>
+              <a href="https://helpcentre.trading212.com/hc/en-us/articles/14584770928157-Trading-212-API-key" target="_blank" rel="noreferrer">
+                {t("Trading\u00a0212 官方指南", "Trading\u00a0212 API key guide")}
+              </a>
+            </details>
           )}
           {connection.kind === "model" && (
             <Checkbox

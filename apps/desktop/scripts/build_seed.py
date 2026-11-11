@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import importlib.util
 import json
@@ -16,13 +17,16 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT), str(ROOT / "backend/src")]
 
 
-def main(destination: Path) -> None:
+def main(destination: Path, end: date) -> None:
     if destination.exists() and any(destination.iterdir()):
         raise SystemExit("Build synthetic fixtures into an empty destination")
 
     from preview_data import PreviewPrices
+    from seed_data import seed_accounts, seed_sector_board
 
     from services.api.trading_max_api.artifacts import ArtifactStore
+    from services.api.trading_max_api.dashboard import build_dashboard_data
+    from services.api.trading_max_api.dashboard_models import DashboardResponse
     from services.api.trading_max_api.models import SecuritySearchResult
     from services.api.trading_max_api.watchlist import WatchlistStore
 
@@ -34,12 +38,15 @@ def main(destination: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="trading-max-desktop-fixture-") as temp:
         research = fixture.research_root.__wrapped__(Path(temp))
         report = research / "accounts/outputs/three-account-report"
-        end = date(2026, 9, 21)
         daily_values = {}
         initial_values = {}
+        today = datetime.now(UTC).date().isoformat()
         for path in research.rglob("*.json"):
             path.write_text(
-                path.read_text().replace("2026-08-01", end.isoformat()), encoding="utf-8"
+                path.read_text()
+                .replace(today, end.isoformat())
+                .replace("2026-08-01", end.isoformat()),
+                encoding="utf-8",
             )
         for path in research.rglob("technical_analysis_*.json"):
             data = json.loads(path.read_text())
@@ -48,10 +55,12 @@ def main(destination: Path) -> None:
                     row["currency"] = "USD"
                     row["price_series"] = [
                         p.model_dump(mode="json", by_alias=True)
-                        for p in PreviewPrices().get("BE", "1d").points
+                        for p in PreviewPrices(end).get("BE", "1d").points
                     ]
             path.write_text(json.dumps(data), encoding="utf-8")
-        for code, final, cash in (("a", 1200, 200), ("b", 800, 100)):
+        as_of = datetime.combine(end, datetime.min.time(), tzinfo=UTC) + timedelta(hours=20)
+        totals = seed_accounts(report, as_of)
+        for code, (final, cash) in totals.items():
             path = report / "yahoo_nav" / f"daily_nav_{code}.csv"
             values = []
             for day in range(211):
@@ -124,8 +133,8 @@ def main(destination: Path) -> None:
                         "invest_value_gbp": invest,
                         "isa_value_gbp": isa,
                         "total_value_gbp": round(invest + isa, 2),
-                        "invest_cash_gbp": 200,
-                        "isa_cash_gbp": 100,
+                        "invest_cash_gbp": totals["a"][1],
+                        "isa_cash_gbp": totals["b"][1],
                         "source": "broker",
                         "cadence_seconds": cadence,
                         "flow_status": "verified",
@@ -172,10 +181,13 @@ def main(destination: Path) -> None:
             source="desktop-synthetic-preview",
             artifacts=[*store.immutable_snapshots.latest().manifest.artifacts, *extra],
         )
+        # Reject a seed that the API could publish but cannot read as a dashboard.
+        DashboardResponse.model_validate(build_dashboard_data(store))
+        seed_sector_board(destination, end)
         WatchlistStore(destination).add(
             SecuritySearchResult(
                 ticker="BE",
-                name="Bloom Energy · Synthetic preview",
+                name="Bloom Energy",
                 exchange="NYSE",
                 bloomberg_ticker="BE US Equity",
                 figi="BBG001BBH6X2",
@@ -199,4 +211,8 @@ def main(destination: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("destination", type=Path)
+    parser.add_argument("--as-of", type=date.fromisoformat, default=datetime.now(UTC).date())
+    args = parser.parse_args()
+    main(args.destination, args.as_of)

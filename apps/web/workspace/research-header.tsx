@@ -10,6 +10,7 @@ import { numeric } from "@/lib/numeric";
 import { currency, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import { Panel, Tag, UpdateFailure, useCopy } from "./foundation";
+import { DemoAsOf, useDemonstration } from "./demonstration";
 import { priceBasis, type PriceTime } from "./research-price-basis";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
@@ -28,6 +29,8 @@ function useMinuteClock() {
 function PriceTimeLabel({ time }: { time: PriceTime }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const demonstration = useDemonstration();
+  if (demonstration) return <DemoAsOf date={time.kind === "close" ? time.date : time.asOf} />;
   const when =
     time.kind === "close"
       ? formatCalendarDate(time.date, locale) + t("收盘", " close")
