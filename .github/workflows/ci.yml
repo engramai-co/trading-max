@@ -234,7 +234,7 @@ jobs:
                   ]
               finally:
                   database.close()
-          assert versions[-1] == "0020_openai_oauth.sql", versions
+          assert versions[-1] == "0021_estimate_history.sql", versions
           PY
 
       - name: Exercise backup and restore safety contracts
