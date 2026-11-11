@@ -4362,6 +4362,98 @@
         "title": "ClosedTradeReview",
         "type": "object"
       },
+      "ConsensusEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "analystCount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analystcount"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "growth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Growth"
+          },
+          "highEps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Higheps"
+          },
+          "lowEps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loweps"
+          },
+          "meanEps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaneps"
+          },
+          "period": {
+            "$ref": "#/components/schemas/EstimatePeriod"
+          },
+          "periodEnd": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodend"
+          }
+        },
+        "required": [
+          "period"
+        ],
+        "title": "ConsensusEstimate",
+        "type": "object"
+      },
       "DashboardLensSnapshot": {
         "description": "A page-scoped dashboard payload.\n\nDashboard routes render a stable shell first and request exactly one lens.\nOptional fields are populated only when the selected interface needs them,\npreventing account history, look-through data, and research tables from\nbeing shipped to unrelated pages.",
         "properties": {
@@ -5307,6 +5399,175 @@
         ],
         "title": "DeepSeekIntegrationRequest",
         "type": "object"
+      },
+      "EstimateObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "consensus": {
+            "items": {
+              "$ref": "#/components/schemas/ConsensusEstimate"
+            },
+            "title": "Consensus",
+            "type": "array"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "forwardEps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwardeps"
+          },
+          "forwardPE": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwardpe"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "priceAsOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceasof"
+          },
+          "provider": {
+            "const": "yahoo-finance",
+            "default": "yahoo-finance",
+            "title": "Provider",
+            "type": "string"
+          },
+          "providerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Providerasof"
+          },
+          "quoteUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteunit"
+          },
+          "recovered": {
+            "default": false,
+            "title": "Recovered",
+            "type": "boolean"
+          },
+          "reportingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportingcurrency"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "trailingEps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailingeps"
+          },
+          "trailingPE": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trailingpe"
+          }
+        },
+        "required": [
+          "ticker",
+          "observedAt"
+        ],
+        "title": "EstimateObservation",
+        "type": "object"
+      },
+      "EstimatePeriod": {
+        "enum": [
+          "0q",
+          "+1q",
+          "0y",
+          "+1y"
+        ],
+        "type": "string"
       },
       "EvidenceRef": {
         "additionalProperties": false,
@@ -17891,7 +18152,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.29.3"
+    "version": "1.29.4"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -19490,6 +19751,65 @@
           }
         },
         "summary": "Research Alerts",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/research/{ticker}/estimate-history": {
+      "get": {
+        "description": "Return the latest observations for an exact ticker, oldest first.",
+        "operationId": "research_estimate_history_v1_research__ticker__estimate_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 504,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EstimateObservation"
+                  },
+                  "title": "Response Research Estimate History V1 Research  Ticker  Estimate History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Estimate History",
         "tags": [
           "research"
         ]

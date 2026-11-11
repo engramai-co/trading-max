@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -122,6 +123,41 @@ def test_status_and_submission_do_not_materialize_completed_job_history(
         assert scheduler.status().next_run_at == datetime(2026, 9, 17, 18, 30, tzinfo=UTC)
         scheduler._tick()
         assert jobs.queue.trigger_summary("nightly")[1] == {"queued": 1}
+    finally:
+        scheduler.close()
+        jobs.close()
+
+
+def test_scheduled_research_covers_held_listings_and_watchlist(
+    tmp_path, monkeypatch, seed_watchlist
+):
+    watchlist = WatchlistStore(tmp_path)
+    seed_watchlist(watchlist, "BE", "TSM")
+    jobs = TypedJobManager(ArtifactStore(tmp_path), watchlist)
+    positions = [
+        SimpleNamespace(broker_ticker=code, ticker=code)
+        for code in ("TSMl_EQ", "TSM_US_EQ", "HELD_US_EQ", "READY.L", "UNKNOWN_MARKET")
+    ]
+    monkeypatch.setattr(
+        jobs,
+        "_latest_account_metrics",
+        lambda profile: SimpleNamespace(positions=positions) if profile == "invest" else None,
+    )
+    now = datetime(2026, 11, 11, 17, 31, tzinfo=UTC)
+    scheduler = NightlyScheduler(
+        jobs,
+        enabled=True,
+        timezone="Europe/London",
+        local_times=("17:30", "22:30"),
+        reconciliation_local_time="22:30",
+        now=lambda: now,
+    )
+    try:
+        scheduler._tick()
+        [job] = jobs.list()
+        assert job.trigger == "research"
+        assert job.tickers == ["BE", "TSM", "TSM.L", "HELD", "READY.L"]
+        assert watchlist.tickers() == ["BE", "TSM"]
     finally:
         scheduler.close()
         jobs.close()

@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.29.4] - 2026-11-11
+
+### Added
+
+- Research now keeps a dated record of analysts' earnings estimates for held and
+  watched securities, so forward P/E history can be charted later.
+
+### Changed
+
+- Scheduled research updates now cover every security held in Invest and Stocks
+  ISA as well as the watchlist. The saved watchlist does not change.
+
 ## [1.29.3] - 2026-11-10
 
 ### Fixed

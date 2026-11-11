@@ -44,6 +44,31 @@ model does not rewrite the older background valuation-assumption configuration.
 The latest saved research inputs initialize the next preview, while the saved
 quote, financial observations, growth references and worksheet remain frozen.
 
+## Earnings estimate history
+
+Successful scheduled research publications record Yahoo Finance valuation
+fields and analyst EPS consensus for held and watched listings in the state
+root's `trading_max.db`. The archive reuses the scheduled research fetches.
+Scheduled research covers the watchlist plus every listing held in Invest and
+Stocks ISA, without changing the saved watchlist. Each UTC
+observation preserves the vendor's `forwardPE`, `forwardEps`, `trailingPE` and
+`trailingEps`, plus any available quote and raw consensus periods (`0q`, `+1q`,
+`0y`, `+1y`). The quote price is in pounds when the vendor quotes in pence;
+vendor EPS and P/E fields keep their original values. The quote is a reference
+price; Yahoo does not identify the calculation price for its P/E fields or
+provide a separate estimate as-of time in these feeds. Fiscal-year estimates
+are distinct from next-twelve-month estimates; the archive does not derive
+either an NTM estimate or a P/E. Unavailable values stay null, and unavailable
+or carried-forward provider results do not create observations.
+
+The ledger appends changes from its first successful scheduled run, skipping
+consecutive identical observations. A one-time pass may also recover fresh
+rows from up to 32 recent research publications among the newest 2,048
+snapshot manifests. Recovered observations are marked and use their original
+publication time; missing or older history cannot be reconstructed from
+current quotes. `GET /v1/research/{ticker}/estimate-history` reads the latest
+observations for that exact listing, oldest first, with at most 2,000 rows.
+
 ## Validation
 
 Synthetic domain tests cover period identity, cash-flow reconciliation,
