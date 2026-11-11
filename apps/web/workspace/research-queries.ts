@@ -1,5 +1,6 @@
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { queryOptions } from "@tanstack/react-query";
+import { previousForIdentity } from "./loading-state";
 import { api } from "@/workspace/data";
 
 export function researchLensQuery(
@@ -18,8 +19,8 @@ export function researchLensQuery(
     // A refresh can retain this security's view; navigation must never borrow
     // another company's numbers or another lens's partial fields.
     placeholderData: (previous, query) =>
-      previous?.ticker === ticker && query?.queryKey[2] === view && query?.queryKey[3] === detail
-        ? previous : undefined,
+      query?.queryKey[2] === view && query?.queryKey[3] === detail
+        ? previousForIdentity(previous, previous?.ticker, ticker) : undefined,
   });
 }
 
@@ -36,6 +37,7 @@ export function researchPriceQuery(
       { signal },
     ),
     staleTime: 300_000,
+    placeholderData: (previous, query) => previousForIdentity(previous, query?.queryKey[1], ticker),
     retry: 1,
   });
 }

@@ -1,0 +1,185 @@
+/* Reserve the content's geometry from the first paint, but skip visible placeholders for fast reads. */
+@keyframes mx-show-loading {
+  to {
+    visibility: visible;
+  }
+}
+.mx-loading {
+  position: relative;
+  min-height: 244px;
+}
+.mx-loading-shape {
+  --mx-placeholder: color-mix(in oklab, var(--mx-border) 55%, var(--mx-soft));
+  min-height: inherit;
+  border-radius: 8px;
+  background: var(--mx-placeholder);
+  visibility: hidden;
+  animation: mx-show-loading 0s 150ms forwards;
+}
+.mx-loading-status {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--mx-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.mx-loading-message {
+  visibility: hidden;
+  animation: mx-show-loading 0s 800ms forwards;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--mx-surface);
+}
+.mx-loading-compact {
+  min-height: 100px;
+}
+.mx-loading-chart > .mx-loading-shape {
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(25% - 1px),
+    var(--mx-placeholder) calc(25% - 1px) 25%
+  );
+}
+.mx-loading-analytics > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 8px / 60% 48px no-repeat,
+    repeating-linear-gradient(to bottom, var(--mx-placeholder) 0 1px, transparent 1px 48px) 0 84px / 100% 90% no-repeat;
+}
+.mx-overview-history .mx-loading-chart > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 0 / 155px 32px no-repeat,
+    repeating-linear-gradient(to bottom, var(--mx-placeholder) 0 1px, transparent 1px 68px) 0 54px / 100% 84% no-repeat;
+}
+.mx-loading-summary {
+  min-height: 114px;
+}
+.mx-loading-summary > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 28px / min(50%, 230px) 48px no-repeat,
+    linear-gradient(var(--mx-placeholder) 0 0) 100% 34px / 32% 34px no-repeat;
+}
+.mx-loading-review {
+  min-height: 330px;
+}
+.mx-loading-review > .mx-loading-shape,
+.mx-loading-holdings > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 8px / 100% 80px no-repeat,
+    repeating-linear-gradient(to bottom, transparent 0 41px, var(--mx-placeholder) 41px 42px) 0 108px / 100% 70% no-repeat;
+}
+.mx-loading-holdings {
+  min-height: 280px;
+}
+.mx-loading-research {
+  min-height: 348px;
+}
+.mx-loading-research > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 0 / 100% 72px no-repeat,
+    linear-gradient(var(--mx-placeholder) 0 0) 0 90px / 85% 28px no-repeat,
+    linear-gradient(var(--mx-placeholder) 0 0) 0 136px / 100% calc(100% - 136px) no-repeat;
+}
+.mx-loading-sectors > .mx-loading-shape {
+  background:
+    linear-gradient(var(--mx-placeholder) 0 0) 0 0 / calc(52% - 2px) 100% no-repeat,
+    linear-gradient(var(--mx-placeholder) 0 0) 100% 0 / calc(48% - 2px) calc(60% - 2px) no-repeat,
+    linear-gradient(var(--mx-placeholder) 0 0) 100% 100% / calc(48% - 2px) calc(40% - 2px) no-repeat;
+}
+.mx-data-body {
+  transition: opacity 150ms ease-out;
+}
+.mx-data-body[aria-busy="true"] {
+  opacity: 0.64;
+}
+.mx-update-failure {
+  border: 0;
+  cursor: pointer;
+}
+.mx-freshness-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-data-body {
+    transition: none;
+  }
+}
+.mx-overview-read {
+  position: relative;
+  display: grid;
+  gap: inherit;
+}
+.mx-overview-read > .mx-loading-status {
+  bottom: auto;
+  height: 175px;
+}
+.mx-period-span-reserved {
+  min-width: 86px;
+}
+.mx-inline-retry {
+  color: var(--mx-brand);
+  font-size: 13px;
+}
+.mx-performance-risk {
+  display: grid;
+  gap: inherit;
+}
+.mx-research-read {
+  display: grid;
+  gap: inherit;
+}
+.mx-quote-as-of {
+  min-height: 18px;
+}
+.mx-security-price {
+  min-width: 12ch;
+}
+.mx-quote-reserved {
+  display: block;
+  width: 9ch;
+  height: 26px;
+  margin: 4px 0 6px auto;
+}
+@media (min-width: 768px) {
+  .mx-security-price {
+    min-width: 220px;
+  }
+}
+.mx-account-read {
+  display: grid;
+  gap: inherit;
+}
+.mx-research-page {
+  position: relative;
+}
+.mx-research-page > .mx-loading-status {
+  top: 244px;
+  bottom: auto;
+  height: 115px;
+}
+.mx-plot > .mx-plot-loading {
+  position: absolute;
+  inset: 0;
+}
+.mx-plot-loading .mx-loading {
+  height: 100%;
+  min-height: 0;
+}
+.mx-plot-loading .mx-loading-shape {
+  height: 100%;
+}
+.mx-plot-loading > .mx-inline-retry {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+}
+/* Loading regions have their own transition; skip the generic tab entrance. */
+.mx-tabs ~ :is(.mx-data-body, .mx-research-wait),
+.mx-toolbar:has(> .mx-tabs) ~ .mx-data-body {
+  animation: none !important;
+}

@@ -1,50 +1,50 @@
 "use client";
-import { researchPriceQuery } from "./research-queries";
 
-import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { inRange } from "@/lib/portfolio/nav";
 import { number } from "@/workspace/data";
 import type { TechnicalScoreSummary } from "@/lib/types";
+import type { useOverviewPrices } from "./research";
 import { TechnicalScoreCard } from "./research-technical";
 import {
   Empty,
   Panel,
   Pending,
   QueryError,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
 
 /** A stable overview; all analytical controls belong to the technical workspace. */
 export function PricePreview({
   ticker,
-  runId,
+  query,
   summary,
   pending = false,
 }: {
   ticker: string;
-  runId: string;
+  query: ReturnType<typeof useOverviewPrices>;
   summary?: TechnicalScoreSummary | null;
   pending?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const query = useQuery(researchPriceQuery(ticker, runId, "1d", "3M"));
   const points = inRange(query.data?.points ?? [], "3M");
   const hasPrices = points.some((p) => Number.isFinite(p.close));
   return (
     <Panel
       title={`${t("价格走势", "Price history")} · 3M`}
       className="mx-price-diagnosis-preview"
+      action={query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
     >
       <div className="mx-tech-preview-grid"><div>
       {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
+        <Pending shape="chart" height={300} label={t("正在读取价格走势…", "Loading price history…")} />
+      ) : query.isError && !query.data ? (
         <QueryError retry={query.refetch} />
-      ) : !hasPrices ? (
+      ) : !query.data || !hasPrices ? (
         <Empty title={t("暂无价格数据", "Price history unavailable")} />
       ) : (
         <Plot

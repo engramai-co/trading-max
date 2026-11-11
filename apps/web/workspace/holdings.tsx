@@ -34,6 +34,7 @@ import {
   QueryError,
   Tabs,
   Tag,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
 import { Lookthrough } from "./look-through";
@@ -139,12 +140,6 @@ function Positions() {
   );
   return (
     <>
-      {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
-        <QueryError retry={query.refetch} />
-      ) : (
-        <>
           <div className="mx-panel mx-holdings-summary">
             <div className="mx-toolbar">
               <Select
@@ -164,9 +159,13 @@ function Positions() {
                   { value: "B", label: accountName(profile, "B") },
                 ]}
               />
-              <Freshness date={query.data?.brokerAsOf} />
+              <span className="mx-freshness-group">
+                <Freshness date={query.data?.brokerAsOf} />
+                {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+              </span>
             </div>
-            <div className="mx-metric-grid mx-metric-lead">
+            {!query.data ? <Pending shape="summary" height={68} quiet />
+              : <div className="mx-metric-grid mx-metric-lead">
               <Metric
                 label={t("已投资市值", "Invested value")}
                 value={currency(invested, "GBP", 2)}
@@ -180,7 +179,7 @@ function Positions() {
                 label={t("盈利持仓", "Profitable positions")}
                 value={`${scoped.filter((h) => h.pnlGbp > 0).length} / ${scoped.length}`}
               />
-            </div>
+            </div>}
           </div>
           <Panel className="mx-holdings-list">
             <div className="mx-toolbar">
@@ -234,7 +233,11 @@ function Positions() {
                 />
               </Group>
             </div>
-            {rows.length ? (
+            {query.isPending ? (
+              <Pending shape="holdings" label={t("正在读取持仓…", "Loading holdings…")} />
+            ) : !query.data ? (
+              <QueryError retry={query.refetch} />
+            ) : rows.length ? (
               <>
                 <div className="mx-table-wrap mx-desktop-holdings">
                   <table className="mx-table">
@@ -470,8 +473,6 @@ function Positions() {
               />
             )}
           </Panel>
-        </>
-      )}
       <Drawer
         opened={selected !== null}
         onClose={() => setSelected(null)}

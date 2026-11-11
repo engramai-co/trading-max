@@ -2,7 +2,7 @@
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Select, TextInput } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Plot } from "./charts";
 import { api, number, object, percent, safeUrl, str } from "@/workspace/data";
@@ -16,10 +16,21 @@ import {
   QueryError,
   Segments,
   TextLink,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
 type Fund = components["schemas"]["FundResearch"];
+
+export function fundQuery(ticker: string, runId: string) {
+  return queryOptions({
+    queryKey: ["research-fund", ticker, runId],
+    queryFn: ({ signal }) => api<Fund>(`/research/${encodeURIComponent(ticker)}/fund`, { signal }),
+    staleTime: 3600000,
+    retry: false,
+  });
+}
+
 export function FundWorkbench({
   data,
   overview = false,
@@ -34,15 +45,9 @@ export function FundWorkbench({
   const [search, setSearch] = useState("");
   const mode = params.get("fundMode") ?? "holdings",
     group = params.get("fundGroup") ?? "industry";
-  const query = useQuery({
-    queryKey: ["research-fund", data.ticker, data.runId],
-    queryFn: () =>
-      api<Fund>(`/research/${encodeURIComponent(data.ticker)}/fund`),
-    staleTime: 3600000,
-    retry: false,
-  });
-  if (query.isPending) return <Pending />;
-  if (query.isError) return <QueryError retry={query.refetch} />;
+  const query = useQuery(fundQuery(data.ticker, data.runId));
+  if (query.isPending) return <Pending shape="holdings" label={t("正在读取基金持仓…", "Loading fund holdings…")} />;
+  if (!query.data) return <QueryError retry={query.refetch} />;
   const fund = query.data,
     snapshot = fund.holdings,
     info = object(object(data.fundamentals).metrics);
@@ -60,6 +65,7 @@ export function FundWorkbench({
   const annual = fund.annualReturns ?? [];
   return (
     <>
+      {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
       {overview && (
         <Panel
           title={t("基金概况", "Fund profile")}

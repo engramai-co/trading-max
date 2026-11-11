@@ -34,6 +34,7 @@ import {
   Facts,
   Freshness,
   Metric,
+  LoadingStatus,
   Notice,
   Page,
   Panel,
@@ -41,6 +42,7 @@ import {
   QueryError,
   Segments,
   TextLink,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
 import { useRouteState } from "./route-state";
@@ -54,7 +56,9 @@ import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { useCurrentDay } from "./current-day";
 import { LocalOnboarding } from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
-import { OverviewSectors } from "./overview-sectors";
+import { OverviewSectors, useOverviewSectors } from "./overview-sectors";
+import { useChartRuntime } from "@/ui/charts/use-echarts";
+import { useRetainedResult } from "./retained-result";
 
 /** The overview chart reopens on the range last chosen on this device; a range in the URL wins. */
 const RANGE_STORAGE_KEY = "trading_max-overview-range";
@@ -83,24 +87,21 @@ function useRememberedRange() {
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
-  const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   return (
     <Page className="mx-overview-page" title={t("组合总览", "Portfolio overview")} titleHidden>
-      {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
-        localWorkspace ? <LocalOnboarding showAccountLink /> : <QueryError retry={query.refetch} />
-      ) : (
-        query.data && <OverviewContent data={query.data} />
-      )}
+      <OverviewContent localWorkspace={localWorkspace} />
     </Page>
   );
 }
-function OverviewContent({ data }: { data: DashboardLens }) {
+function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const { today, now } = useCurrentDay();
+  const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
+  const data = query.data;
+  const sectors = useOverviewSectors();
+  const runtime = useChartRuntime();
   const refresh = useQuery({
     queryKey: ["refresh-attention"],
     queryFn: ({ signal }) => api<RefreshAttention>("/refresh/attention", { signal }),
@@ -114,14 +115,27 @@ function OverviewContent({ data }: { data: DashboardLens }) {
       : params.get("scope") === "isa"
         ? "isa"
         : "total";
-  const accounts = (data.accounts ?? []).filter((a) => a.isInvestable);
+  const [remembered, remember] = useRememberedRange();
+  const range = preferredRange(params.get("range"), remembered);
+  const selection = useMemo(() => ({ range, scope, runId: data?.runId ?? "" }), [range, scope, data?.runId]);
+  const todaySelection = useMemo(() => ({ ...selection, range: "1D" as const }), [selection]);
+  const openings = useMemo(() => driverOpenings(range === "1D" ? data?.dayAttribution : range === "1W" ? data?.windowAttribution : null, scope),
+    [range, scope, data?.dayAttribution, data?.windowAttribution]);
+  const todayOpenings = useMemo(() => driverOpenings(data?.dayAttribution, scope), [data?.dayAttribution, scope]);
+  const history = usePortfolioHistory(selection, Boolean(data?.runId), openings);
+  const todayHistory = usePortfolioHistory(todaySelection, Boolean(data?.runId), todayOpenings);
+  const ready = data && !history.isPending && !todayHistory.isPending && !sectors.isPending && runtime.status !== "loading";
+  const firstResult = useRetainedResult(ready ? true : undefined);
+  const initialWaiting = !firstResult && !query.isError;
+  const accounts = (data?.accounts ?? []).filter((a) => a.isInvestable);
   const selected = accounts.find(
     (a) => a.code === (scope === "invest" ? "A" : scope === "isa" ? "B" : ""),
   );
-  const holdings = (data.holdings ?? []).filter(
+  const holdings = (data?.holdings ?? []).filter(
     (h) => scope === "total" || h.account === (scope === "invest" ? "A" : "B"),
   );
-  if (!accounts.length && data.totalValueGbp == null)
+  if (!data && query.isError) return localWorkspace ? <LocalOnboarding showAccountLink /> : <QueryError retry={query.refetch} />;
+  if (data && !accounts.length && data.totalValueGbp == null)
     return (
       <Panel>
         <Empty
@@ -139,16 +153,17 @@ function OverviewContent({ data }: { data: DashboardLens }) {
       </Panel>
     );
   const pnl =
-    scope === "total" ? data.totalUnrealizedPnlGbp : selected?.unrealizedPnlGbp;
-  const cash = scope === "total" ? data.totalCashGbp : selected?.cashGbp;
+    scope === "total" ? data?.totalUnrealizedPnlGbp : selected?.unrealizedPnlGbp;
+  const cash = scope === "total" ? data?.totalCashGbp : selected?.cashGbp;
   const value =
-    scope === "total" ? data.totalValueGbp : selected?.totalValueGbp;
+    scope === "total" ? data?.totalValueGbp : selected?.totalValueGbp;
   const previousDay =
-    scope === "total" ? data.latestModelDayReturn : selected?.dailyReturn;
+    scope === "total" ? data?.latestModelDayReturn : selected?.dailyReturn;
   // Data problems speak here; a holding's readings are marked in its own row below.
-  const attention = attentionItems({ brokerAsOf: data.brokerAsOf, refresh: refresh.data, now });
+  const attention = attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
-    <>
+    <div className="mx-overview-read">
+      {initialWaiting && <LoadingStatus label={t("正在读取组合总览…", "Loading your portfolio overview…")} />}
       <div className="mx-panel mx-overview-portfolio">
         <section
           className="mx-summary"
@@ -169,8 +184,12 @@ function OverviewContent({ data }: { data: DashboardLens }) {
               value={scope}
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
-            <Freshness date={data.brokerAsOf} />
+            <span className="mx-freshness-group">
+              <Freshness date={data?.brokerAsOf} />
+              {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+            </span>
           </div>
+          {initialWaiting ? <Pending shape="summary" quiet /> : <>
           <div className="mx-overview-totals">
             <Metric
               large
@@ -190,8 +209,8 @@ function OverviewContent({ data }: { data: DashboardLens }) {
               />
               <TodayMetric
                 scope={scope}
-                runId={data.runId}
-                attribution={data.dayAttribution}
+                query={todayHistory}
+                attribution={data?.dayAttribution}
                 previousDay={previousDay}
                 today={today}
                 now={now}
@@ -199,8 +218,9 @@ function OverviewContent({ data }: { data: DashboardLens }) {
             </div>
           </div>
           <Attention items={attention} />
+          </>}
         </section>
-        {scope !== "total" && !selected && (
+        {!initialWaiting && scope !== "total" && !selected && (
           <div className="mx-overview-notice">
             <Notice>
               {t(
@@ -213,16 +233,22 @@ function OverviewContent({ data }: { data: DashboardLens }) {
       </div>
       <div className="mx-overview-row">
         <OverviewHistory
-          scope={scope}
-          runId={data.runId}
-          dayAttribution={data.dayAttribution}
-          windowAttribution={data.windowAttribution}
+          selection={selection}
+          historyQuery={history}
+          initialWaiting={initialWaiting}
+          runtime={runtime}
+          onRange={(value) => {
+            remember(value);
+            update({ range: value });
+          }}
+          windowAttribution={data?.windowAttribution}
         />
-        <OverviewSectors />
+        <OverviewSectors query={sectors} initialWaiting={initialWaiting} />
       </div>
-      <OverviewHoldings holdings={holdings} technical={data.technical} valuations={data.valuations} />
-      <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />
-    </>
+      {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
+        : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations} />}
+      {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
+    </div>
   );
 }
 function Attention({ items }: { items: AttentionItem[] }) {
@@ -260,14 +286,14 @@ function Attention({ items }: { items: AttentionItem[] }) {
 /** What today did to the account, and the positions behind it; the 1D chart's own figure. */
 function TodayMetric({
   scope,
-  runId,
+  query,
   attribution,
   previousDay,
   today,
   now,
 }: {
   scope: Scope;
-  runId: string;
+  query: ReturnType<typeof usePortfolioHistory>;
   attribution?: DashboardLens["dayAttribution"];
   previousDay?: number | null;
   /** Today's calendar day in the display time zone. */
@@ -276,10 +302,6 @@ function TodayMetric({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const selection = useMemo(() => ({ range: "1D" as const, scope, runId }), [scope, runId]);
-  // The history answers with the exact P&L at the attribution's opening.
-  const openings = useMemo(() => driverOpenings(attribution, scope), [attribution, scope]);
-  const query = usePortfolioHistory(selection, true, openings);
   const history = query.data?.history;
   const money = query.data?.money;
   const points = history?.points ?? [];
@@ -303,9 +325,11 @@ function TodayMetric({
   }) : null;
   return (
     <Metric
-      label={<>{label}{history && <CutoffTag history={history} />}</>}
+      label={<>{label}{history && <CutoffTag history={history} />}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</>}
       helpLabel={label}
-      value={pnl == null ? "—" : (
+      value={pnl == null ? (query.isError && !query.data
+        ? <button type="button" className="mx-inline-retry" onClick={() => void query.refetch()}>{t("重试", "Retry")}</button>
+        : "—") : (
         <>
           {signedPounds(pnl)}
           {share != null && <small className="mx-metric-change">{percent(share, true, 2)}</small>}
@@ -342,39 +366,34 @@ function TodayMetric({
   );
 }
 function OverviewHistory({
-  scope,
-  runId,
-  dayAttribution,
-  windowAttribution,
+  selection, historyQuery: query, initialWaiting, runtime, onRange, windowAttribution,
 }: {
-  scope: Scope;
-  runId: string;
-  dayAttribution?: DashboardLens["dayAttribution"];
+  selection: Parameters<typeof usePortfolioHistory>[0];
+  historyQuery: ReturnType<typeof usePortfolioHistory>;
+  initialWaiting: boolean;
+  runtime: ReturnType<typeof useChartRuntime>;
+  onRange: (range: Range) => void;
   windowAttribution?: DashboardLens["windowAttribution"];
 }) {
   const t = useCopy();
-  const { params, update } = useRouteState();
-  const [remembered, remember] = useRememberedRange();
-  const range = preferredRange(params.get("range"), remembered);
-  const selection = useMemo(() => ({ range, scope, runId }), [range, scope, runId]);
-  // 5D names its window's openings; 1D names Today's, so both share one request.
-  const openings = useMemo(
-    () => driverOpenings(range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : null, scope),
-    [range, scope, dayAttribution, windowAttribution],
-  );
-  const query = usePortfolioHistory(selection, true, openings);
-  const history = query.data?.history ?? selectPortfolioHistory({ range, scope });
+  const current = useMemo(() => query.data && { data: query.data, selection, windowAttribution, updatedAt: query.dataUpdatedAt },
+    [query.data, query.dataUpdatedAt, selection, windowAttribution]);
+  const result = useRetainedResult(current);
+  const displayedSelection = result?.selection ?? selection;
+  const { range, scope } = displayedSelection;
+  const history = result?.data.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
-  const money = query.data?.money ?? portfolioMoney([], scope);
+  const money = result?.data.money ?? portfolioMoney([], scope);
+  const attribution = result?.windowAttribution;
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
-  const drivers = range === "1W" && windowAttribution ? dayDrivers({
-    attribution: windowAttribution,
+  const drivers = range === "1W" && attribution ? dayDrivers({
+    attribution,
     scope,
     day: history.endDay,
     dates: points.map((p) => p.date),
     pnls: money.pnls,
-    openings: query.data?.openings,
+    openings: result?.data.openings,
     cutOff: history.pendingCashFlows,
   }) : null;
   return (
@@ -384,14 +403,12 @@ function OverviewHistory({
       help={<HistoryHelp />}
       action={
         <div className="mx-period-control">
-          <PeriodSpan points={points} />
+          <PeriodSpan points={initialWaiting ? [] : points} reserve />
+          {query.isError && result && <UpdateFailure updatedAt={result.updatedAt} retry={query.refetch} />}
           <Segments
             label={t("图表区间", "Chart range")}
-            value={range}
-            onChange={(value) => {
-              remember(value);
-              update({ range: value });
-            }}
+            value={selection.range}
+            onChange={onRange}
             shortcuts
             options={PORTFOLIO_RANGES.map(
               (v) => ({
@@ -403,12 +420,14 @@ function OverviewHistory({
         </div>
       }
     >
-      {query.isPending ? (
-        <Pending compact />
-      ) : query.isError ? (
+      {initialWaiting || !result && !query.isError ? (
+        <Pending shape="chart" height={326} quiet={initialWaiting} label={t("正在读取盈亏记录…", "Loading profit and loss records…")} />
+      ) : runtime.status === "failed" ? (
+        <QueryError retry={runtime.retry} />
+      ) : !result ? (
         <QueryError retry={query.refetch} />
       ) : (
-        <>
+        <div className="mx-data-body" aria-busy={query.isPending || undefined}>
           <div className="mx-period-figure">
             <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
               {currency(money.pnl, "GBP", 2)}
@@ -435,7 +454,7 @@ function OverviewHistory({
             timeline={history.timeline}
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
-            recordSource={selection}
+            recordSource={displayedSelection}
             height={264}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
@@ -444,7 +463,7 @@ function OverviewHistory({
               secondary: [],
             }}
           />
-        </>
+        </div>
       )}
     </Panel>
   );

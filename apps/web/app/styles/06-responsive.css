@@ -1,12 +1,3 @@
-/* Content remains readable if an inactive WebView pauses animation frames. */
-@keyframes mx-appear {
-  from {
-    transform: translateY(4px);
-  }
-  to {
-    transform: none;
-  }
-}
 @media (hover: hover) {
   .mx-nav-link:not([aria-current]):hover {
     background: var(--mx-side-hover);
@@ -442,8 +433,7 @@
   }
   .mx-tabs ~ *,
   .mx-toolbar:has(> .mx-tabs) ~ *,
-  .mx-number-value[data-changed],
-  .mx-status-dot[data-changed] {
+  .mx-number-value[data-changed] {
     animation-name: mx-fade !important;
     animation-duration: 160ms !important;
   }

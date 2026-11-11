@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- The overview, holdings, returns, research and review use quieter loading
+  placeholders. Returns keep the last complete figures and charts in view
+  while a new period or account loads.
+
+### Fixed
+
+- Research no longer flashes a missing price while reading a quote. Charts
+  update in place and respect the system's reduced motion preference.
+- If a refresh fails, the last good readings stay visible with a retry beside
+  the data time.
+
 ## [1.30.0] - 2026-11-11
 
 ### Changed

@@ -4,7 +4,6 @@ import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
 import { formatDate } from "@/ui/formatters";
-import { useReducedMotion } from "@mantine/hooks";
 import type {
   ECharts,
   EChartsOption,
@@ -16,7 +15,7 @@ import { useId, useMemo, useRef, useState, type RefObject } from "react";
 import { compact, number, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, useCopy } from "./foundation";
+import { Empty, Pending, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
@@ -72,7 +71,6 @@ export function Plot({
   const [pinned, setPinned] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const colours = useChartColours();
-  const reduced = useReducedMotion();
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
     return {
@@ -122,15 +120,12 @@ export function Plot({
           : {}),
       },
 
-      animation: !reduced && custom.animation !== false,
-      animationDuration: 350,
-      animationDurationUpdate: 180,
     };
-  }, [colours, option, reduced, research, locale]);
+  }, [colours, option, research, locale]);
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;
-  const ref = useECharts(
+  const { ref, status, retry } = useECharts(
     settings,
     research ? "research" : "core",
     control,
@@ -218,6 +213,10 @@ export function Plot({
         ref={ref}
         style={{ height: "100%", width: "100%" }}
       />
+      {status !== "ready" && <div className="mx-plot-loading">
+        {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
+          : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
+      </div>}
       <span id={description} className="sr-only">
         {t(
           "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点固定读数，再次轻点关闭。",

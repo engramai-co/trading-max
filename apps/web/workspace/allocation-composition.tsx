@@ -59,7 +59,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
     backgroundColor: "transparent",
     animation: !reduced,
     animationDuration: 250,
-    animationDurationUpdate: 150,
+    animationDurationUpdate: 0,
     tooltip: {
       trigger: "item", renderMode: "richText", confine: true,
       backgroundColor: colours.tooltip, borderColor: colours.tooltipBorder,
@@ -87,7 +87,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
       })),
     }],
   }), [activeIndex, colours, palette, reduced, slices, remainder]);
-  const canvas = useECharts(option, "core", undefined, undefined, (event) => {
+  const { ref: canvas } = useECharts(option, "core", undefined, undefined, (event) => {
     if (event.componentType === "series" && event.seriesType === "pie")
       setSelected(event.dataIndex);
   });

@@ -15,12 +15,16 @@ import { EvidenceTable } from "./evidence-table";
 import {
   Empty,
   Facts,
+  Freshness,
   Panel,
   Pending,
   QueryError,
   Segments,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
+import { previousForIdentity } from "./loading-state";
+import { useRetainedResult } from "./retained-result";
 import { useRouteState } from "./route-state";
 import {
   compactPriceRanges,
@@ -70,7 +74,17 @@ export function PriceHistory({
   const chart = useRef<ECharts | null>(null);
   const inlineChart = useRef<HTMLDivElement | null>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
-  const zoomKey = `tm-research-zoom:${ticker}:${range}:${interval}`;
+  const query = useQuery(researchPriceQuery(ticker, runId, interval));
+  const current = query.data && !query.isPlaceholderData
+    ? { data: query.data, ticker, interval, range, updatedAt: query.dataUpdatedAt } : undefined;
+  const retained = useRetainedResult(current, (a, b) => a.data === b.data &&
+    a.ticker === b.ticker && a.interval === b.interval && a.range === b.range && a.updatedAt === b.updatedAt);
+  const shown = previousForIdentity(retained, retained?.ticker, ticker);
+  const priceData = shown?.data;
+  const displayedRange = shown?.range ?? range;
+  const displayedInterval = shown?.interval ?? interval;
+  const updating = Boolean(shown && !current && !query.isError);
+  const zoomKey = `tm-research-zoom:${ticker}:${displayedRange}:${displayedInterval}`;
   const savedZoom = () => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(zoomKey) ?? "null");
@@ -88,33 +102,32 @@ export function PriceHistory({
     }
     return { start: 0, end: 100 };
   };
-  const query = useQuery(researchPriceQuery(ticker, runId, interval));
   const benchmark = useQuery({
     ...researchPriceQuery(comparison, runId, interval),
     enabled: comparison !== "none",
     retry: false,
   });
-  const all = query.data?.points ?? [],
+  const all = priceData?.points ?? [],
     sessions = [...new Set(all.map((p) => p.date.slice(0, 10)))];
   const points =
-    range === "1D" || range === "5D"
+    displayedRange === "1D" || displayedRange === "5D"
       ? all.filter((p) =>
           sessions
-            .slice(range === "1D" ? -1 : -5)
+            .slice(displayedRange === "1D" ? -1 : -5)
             .includes(p.date.slice(0, 10)),
         )
-      : inRange(all, range as Range);
-  const actualInterval = query.data?.actualInterval ?? interval;
+      : inRange(all, displayedRange as Range);
+  const actualInterval = priceData?.actualInterval ?? displayedInterval;
   const isIntraday = actualInterval.endsWith("m"),
     dates = points.map((p) => p.date);
   const intradayDateFormatter = new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
     year: "numeric", month: "short", day: "numeric",
     hour: "2-digit", minute: "2-digit",
-    timeZone: query.data?.timezone ?? "UTC",
+    timeZone: priceData?.timezone ?? "UTC",
   });
   const clockFormatter = new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
     hour: "2-digit", minute: "2-digit",
-    timeZone: query.data?.timezone ?? "UTC",
+    timeZone: priceData?.timezone ?? "UTC",
   });
   const formatDate = (date: string) =>
     isIntraday
@@ -126,8 +139,8 @@ export function PriceHistory({
   const matched = points.filter((p) => benchmarkPoints.has(p.date));
   const comparable =
     comparison !== "none" &&
-    benchmark.data?.currency === query.data?.currency &&
-    benchmark.data?.actualInterval === query.data?.actualInterval &&
+    benchmark.data?.currency === priceData?.currency &&
+    benchmark.data?.actualInterval === priceData?.actualInterval &&
     matched.length > 1;
   const normalized = scale === "percent" || comparable,
     anchor = comparable ? matched[0] : points[0];
@@ -138,10 +151,10 @@ export function PriceHistory({
     points.every((p) => p.open != null && p.high != null && p.low != null);
   const value = (price: number | null | undefined) =>
     price == null ? null : normalized ? price / anchor.close - 1 : price;
-  const markers = (query.data?.tradeMarkers ?? []).filter((m) =>
+  const markers = (priceData?.tradeMarkers ?? []).filter((m) =>
     dates.some((d) => d.slice(0, 10) === m.date.slice(0, 10)),
   );
-  const corporate = (query.data?.events ?? []).filter((e) =>
+  const corporate = (priceData?.events ?? []).filter((e) =>
     dates.some((d) => d.slice(0, 10) === String(e.date).slice(0, 10)),
   );
   const earnings = objects(object(context?.analyst).earningsEvents).filter(
@@ -373,16 +386,21 @@ export function PriceHistory({
           />
         )}
       </div>
-      {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
+      {query.isPending && !priceData ? (
+        <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
+      ) : query.isError && !priceData ? (
         <QueryError retry={query.refetch} />
-      ) : !points.length ? (
+      ) : !priceData || !points.length ? (
         <Empty
           title={t("当前区间没有行情", "No price history in this range")}
         />
       ) : (
         <>
+          {query.isError && shown && <div className="mx-freshness-group">
+            <Freshness date={dates.at(-1)} />
+            <UpdateFailure updatedAt={shown.updatedAt} retry={query.refetch} />
+          </div>}
+          <div className="mx-data-body" aria-busy={updating || undefined}>
           {full && requested && requested !== interval && (
             <p role="status">
               {t(
@@ -399,7 +417,7 @@ export function PriceHistory({
               }
             </p>
           )}
-          {incompletePriceRange(dates, range) && (
+          {incompletePriceRange(dates, displayedRange) && (
             <p role="status">
               {t(
                 "该证券的记录未覆盖整个所选范围",
@@ -408,7 +426,7 @@ export function PriceHistory({
               · {formatDate(points[0].date)} → {formatDate(points.at(-1)!.date)}
             </p>
           )}
-          {query.data.coverageReason && (
+          {priceData.coverageReason && (
             <p role="status">
               {t(
                 "该粒度暂不可用，当前显示已有日线。",
@@ -651,7 +669,7 @@ export function PriceHistory({
                     return !p
                       ? ""
                       : [
-                          formatDate(p.date) + " · " + query.data.currency,
+                          formatDate(p.date) + " · " + priceData.currency,
                           `${t("收盘", "Close")}  ${number(p.close, 2)}`,
                           ...(candle
                             ? [
@@ -666,7 +684,7 @@ export function PriceHistory({
                                 )
                                 .map(
                                   (k) =>
-                                    `${k.toUpperCase()} · ${query.data.actualInterval}  ${number(p[k], 2)}`,
+                                    `${k.toUpperCase()} · ${priceData.actualInterval}  ${number(p[k], 2)}`,
                                 )
                             : []),
                           ...(rsi ? [`RSI 14  ${number(p.rsi14, 2)}`] : []),
@@ -816,7 +834,7 @@ export function PriceHistory({
               {t("行情与指标明细", "Price & indicator records")}
             </summary>
             <EvidenceTable
-              key={range + interval}
+              key={displayedRange + displayedInterval}
               label={t("价格记录", "Price records")}
               rows={[...points].reverse()}
               columns={[
@@ -850,6 +868,7 @@ export function PriceHistory({
               ]}
             />
           </details>
+          </div>
         </>
       )}
     </>

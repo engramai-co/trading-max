@@ -27,6 +27,7 @@ import {
   Segments,
   Tabs,
   TextLink,
+  UpdateFailure,
   useCopy,
 } from "./foundation";
 import { Narrative } from "./narrative";
@@ -38,34 +39,20 @@ import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { MoneyDrawdown, MoneySummary } from "./performance-money";
+import { useChartRuntime } from "@/ui/charts/use-echarts";
+import { useRetainedResult } from "./retained-result";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
-  const { params } = useRouteState();
-  const requested = portfolioRange(params.get("range"));
-  const range = params.get("view") && params.get("view") !== "money" && requested === "1D" ? "3M" : requested;
-  const scope = ["invest", "isa", "household", "cfd"].includes(params.get("scope") ?? "") ? params.get("scope")! : "total";
-  const selection = useMemo(() => ({ range, scope, detail: "summary" as const }), [range, scope]);
-  const query = useDashboardLens("analytics", undefined, true, selection);
-  return (
-    <Page title={t("收益与风险", "Performance & risk")}>
-      {query.isPending ? (
-        <Pending />
-      ) : query.isError ? (
-        <QueryError retry={query.refetch} />
-      ) : (
-        query.data && <PerformanceContent data={query.data} />
-      )}
-    </Page>
-  );
+  return <Page title={t("收益与风险", "Performance & risk")}><PerformanceContent /></Page>;
 }
 export function PerformanceContent({
-  data,
+  data: suppliedData,
   fixedScope,
 }: {
-  data: DashboardLens;
+  data?: DashboardLens;
   fixedScope?: Scope;
-}) {
+} = {}) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
@@ -75,7 +62,7 @@ export function PerformanceContent({
       : params.get("view") === "risk"
         ? "risk"
         : "money";
-  const scope: Scope =
+  const requestedScope: Scope =
     fixedScope ??
     (["invest", "isa", "household", "cfd"].includes(params.get("scope") ?? "")
       ? (params.get("scope") as Scope)
@@ -83,16 +70,35 @@ export function PerformanceContent({
   const range = portfolioRange(params.get("range"));
   const [benchmark, setBenchmark] = useState("ALL");
   const [moneyUnit, setMoneyUnit] = useState("gbp");
-  const daily = useMemo(() => (data.nav ?? []).filter((p) => !p.intraday), [data.nav]);
-  const actualRange = view !== "money" && range === "1D" ? "3M" : range;
-  const historySelection = { runId: data.runId, range: actualRange, scope };
-  const historyQuery = usePortfolioHistory(historySelection, view === "money");
+  const requestedRange = view !== "money" && range === "1D" ? "3M" : range;
+  const selection = useMemo(() => ({ range: requestedRange, scope: requestedScope, detail: "summary" as const }),
+    [requestedRange, requestedScope]);
+  const summary = useDashboardLens("analytics", undefined, !suppliedData, selection);
+  const incoming = suppliedData ?? summary.data;
+  const historyQuery = usePortfolioHistory({ runId: incoming?.runId ?? "", range: requestedRange, scope: requestedScope },
+    view === "money" && Boolean(incoming?.runId));
+  const runtime = useChartRuntime();
+  // A single commit point: figures, dates, records and plots all consume this pair.
+  // Neither half can overwrite a complete prior selection on its own.
+  const current = useMemo(() => incoming && (view !== "money" || historyQuery.data) ? {
+    data: incoming, history: historyQuery.data, range: requestedRange, scope: requestedScope,
+    view, updatedAt: Math.max(summary.dataUpdatedAt, historyQuery.dataUpdatedAt),
+  } : undefined, [incoming, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
+  const retained = useRetainedResult(current);
+  const shown = retained?.view === view ? retained : undefined;
+  const data = shown?.data;
+  const scope = shown?.scope ?? requestedScope;
+  const actualRange = shown?.range ?? requestedRange;
+  const historySelection = { runId: data?.runId ?? "", range: actualRange, scope };
+  const daily = useMemo(() => (data?.nav ?? []).filter((p) => !p.intraday), [data?.nav]);
+  const failure = summary.isError ? summary : view === "money" && historyQuery.isError ? historyQuery : null;
+  const waiting = !failure && !current || runtime.status === "loading";
   const fallbackHistory = useMemo(() => selectPortfolioHistory({
-    daily, intraday: data.intradayNav, range: actualRange, scope,
-    asOf: data.brokerAsOf,
+    daily, intraday: data?.intradayNav, range: actualRange, scope,
+    asOf: data?.brokerAsOf,
     requireCashFlows: view === "money",
-  }), [daily, data.intradayNav, actualRange, scope, data.brokerAsOf, view]);
-  const history = view === "money" ? historyQuery.data?.history ?? fallbackHistory : fallbackHistory;
+  }), [daily, data?.intradayNav, actualRange, scope, data?.brokerAsOf, view]);
+  const history = view === "money" ? shown?.history?.history ?? fallbackHistory : fallbackHistory;
   const isIntraday = view === "money" && history.source === "intraday";
   const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) => navNumber(p, scope) != null);
   const allScope = [
@@ -101,7 +107,7 @@ export function PerformanceContent({
     { value: "isa", label: accountName(profile, "B") },
   ];
   const scopeOptions =
-    view === "money" && data.cfd
+    view === "money" && data?.cfd
       ? [
           ...allScope,
           {
@@ -112,13 +118,13 @@ export function PerformanceContent({
         ]
       : allScope;
   const invalidScope =
-    view !== "money" && (scope === "cfd" || scope === "household");
+    view !== "money" && (requestedScope === "cfd" || requestedScope === "household");
   const requestedBenchmarks =
     benchmark === "ALL" ? ["VOO", "QQQ", "VT"] : [benchmark];
   const benchmarkMaps = requestedBenchmarks.map((name) => ({
     name,
     prices: new Map(
-      (data.benchmarkSeries?.[name] ?? []).map((p) => [
+      (data?.benchmarkSeries?.[name] ?? []).map((p) => [
         p.date.slice(0, 10),
         numeric(object(p).close ?? object(p).price),
       ]),
@@ -144,7 +150,7 @@ export function PerformanceContent({
   const points = view === "returns" ? returnsPoints : availablePoints;
   const first = points[0],
     last = points.at(-1);
-  const money = view === "money" && historyQuery.data ? historyQuery.data.money : portfolioMoney(points, scope);
+  const money = view === "money" && shown?.history ? shown.history.money : portfolioMoney(points, scope);
   const twr =
     points.length > 1
       ? periodReturn(
@@ -274,11 +280,11 @@ export function PerformanceContent({
             update({
               view: v === "money" ? null : v,
               scope:
-                v !== "money" && ["cfd", "household"].includes(scope)
+                v !== "money" && ["cfd", "household"].includes(requestedScope)
                   ? null
-                  : scope === "total"
+                  : requestedScope === "total"
                     ? null
-                    : scope,
+                    : requestedScope,
             })
           }
           options={[
@@ -290,11 +296,15 @@ export function PerformanceContent({
         <Select
           disabled={!!fixedScope}
           aria-label={t("分析账户", "Analysis account")}
-          value={scope}
+          value={requestedScope}
           onChange={(v) => update({ scope: v === "total" ? null : v })}
           data={scopeOptions}
           w={200}
         />
+        <span className="mx-freshness-group">
+          <Freshness date={data?.brokerAsOf} />
+          {failure && shown && <UpdateFailure updatedAt={shown.updatedAt} retry={failure.refetch} />}
+        </span>
       </div>
       {invalidScope ? (
         <Notice>
@@ -303,10 +313,13 @@ export function PerformanceContent({
             "Select Invest, ISA, or all investment accounts to analyze returns and risk.",
           )}
         </Notice>
-      ) : view === "money" && historyQuery.isPending ? <Pending />
-        : view === "money" && historyQuery.isError ? <QueryError retry={historyQuery.refetch} />
-        : view === "risk" ? (
-        <RiskDashboard data={data} scope={scope} />
+      ) : view === "risk" ? (
+        runtime.status === "failed" ? <QueryError retry={runtime.retry} />
+          : data && runtime.status === "ready" ? <div className="mx-data-body mx-performance-risk" aria-busy={waiting || undefined}>
+            <RiskDashboard data={data} scope={scope} />
+          </div>
+          : failure ? <QueryError retry={failure.refetch} />
+          : <Pending shape="analytics" label={t("正在读取风险记录…", "Loading risk records…")} />
       ) : (
         <>
           <Panel>
@@ -349,9 +362,9 @@ export function PerformanceContent({
                 />
               )}
               <div className="mx-period-control">
-                <PeriodSpan points={points} />
+                <PeriodSpan points={points} reserve />
                 <Segments
-                  value={actualRange}
+                  value={requestedRange}
                   onChange={(value) => update({ range: value })}
                   label={t("绩效区间", "Performance range")}
                   shortcuts
@@ -362,6 +375,12 @@ export function PerformanceContent({
                 />
               </div>
             </div>
+            {runtime.status === "failed" ? <QueryError retry={runtime.retry} />
+              : failure && !shown ? <QueryError retry={failure.refetch} />
+              : !shown || runtime.status === "loading" ? (
+                <Pending shape="analytics" height={view === "money" ? 797 : 601}
+                  label={t("正在读取收益记录…", "Loading performance records…")} />
+              ) : <div className="mx-data-body" aria-busy={waiting || undefined}>
             {view === "money" && <HistoryCoverage history={history} />}
             {view === "money" ? (
               <MoneySummary money={money} points={points} />
@@ -456,21 +475,22 @@ export function PerformanceContent({
                   "CFD 使用导入的已实现现金权益代理，不代表当前券商净值。",
                   "CFD values use an imported realized cash equity proxy, not current broker NAV.",
                 )}{" "}
-                {data.cfd?.accountStatus === "retired" &&
+                {data?.cfd?.accountStatus === "retired" &&
                   t("该账户已停用。", "This account is retired.")}
               </Notice>
             )}
+            </div>}
           </Panel>
-          {view === "returns" && (
-            <MonthlyReturns points={daily} scope={scope} />
+          {view === "returns" && shown && runtime.status === "ready" && (
+            <div className="mx-data-body" aria-busy={waiting || undefined}><MonthlyReturns points={daily} scope={scope} /></div>
           )}
         </>
       )}
-      <Narrative
+      {data && runtime.status === "ready" && <Narrative
         snapshot={data.runId}
         lens="return_attribution"
         page="analytics"
-      />
+      />}
     </>
   );
 }
@@ -482,7 +502,6 @@ function RiskDashboard({ data, scope }: { data: DashboardLens; scope: Scope }) {
       <Panel
         title={t("历史收益回撤", "Historical return drawdown")}
         help={t("收益相对历史高点的回落幅度，使用全部可用历史。", "Return decline from the previous high across the full available history.")}
-        action={<Freshness date={data.brokerAsOf} />}
       >
         <HistoryChart
           label={t("收益回撤曲线", "Portfolio return drawdown")}

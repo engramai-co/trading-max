@@ -26,6 +26,7 @@ import { useEffect, useState } from "react";
 import { api, jsonRequest } from "@/workspace/data";
 import {
   Empty,
+  LoadingStatus,
   Notice,
   Page,
   Panel,
@@ -42,7 +43,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { SecurityFinder } from "./research-finder";
-import { FundWorkbench } from "./research-funds";
+import { fundQuery, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
@@ -53,7 +54,10 @@ import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { ValuationWorkbench } from "./research-valuation-workbench";
-import { researchLensQuery } from "./research-queries";
+import { researchLensQuery, researchPriceQuery } from "./research-queries";
+import { useChartRuntime } from "@/ui/charts/use-echarts";
+import { previousForIdentity } from "./loading-state";
+import { useRetainedResult } from "./retained-result";
 import { useRouteState } from "./route-state";
 
 export type ResearchTab =
@@ -75,6 +79,10 @@ const researchTabs: ResearchTab[] = [
   "options",
   "ledger",
 ];
+export function useOverviewPrices(ticker: string, revision: string, enabled: boolean) {
+  return useQuery({ ...researchPriceQuery(ticker, revision, "1d", "3M"), enabled });
+}
+
 export function ResearchWorkspace() {
   const t = useCopy();
   const { params, update } = useRouteState("push");
@@ -89,6 +97,7 @@ export function ResearchWorkspace() {
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
   const client = useQueryClient();
+  const runtime = useChartRuntime("research");
   const shell = useQuery({
     queryKey: ["workspace-research-shell"],
     queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
@@ -136,14 +145,11 @@ export function ResearchWorkspace() {
     ...researchLensQuery(ticker, lensName, revision, detail),
     enabled: Boolean(selected),
   });
-  const quote =
-    lens.data ??
-    client
-      .getQueriesData<ResearchLensSnapshot>({
-        queryKey: ["workspace-research", ticker],
-      })
-      .map(([, data]) => data)
-      .find((data) => data?.ticker === ticker);
+  const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ??
+    client.getQueriesData<ResearchLensSnapshot>({ queryKey: ["workspace-research", ticker] })
+      .map(([key, data]) => ({ data, updatedAt: client.getQueryState(key)?.dataUpdatedAt ?? 0 }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .find(({ data }) => data?.ticker === ticker)?.data;
   const isFund = ["ETF", "MUTUALFUND"].includes(
     quote?.context?.assetType ?? "",
   );
@@ -156,6 +162,32 @@ export function ResearchWorkspace() {
     ...researchLensQuery(ticker, "fundamentals", revision),
     enabled: Boolean(selected) && isFund && tab === "overview",
   });
+  const prices = useOverviewPrices(ticker, revision ?? "", Boolean(selected) && tab === "overview");
+  const fundEnabled = isFund && tab === "overview" && Boolean(context.data ?? lens.data) && !context.isPending;
+  const fund = useQuery({
+    ...fundQuery(ticker, context.data?.runId ?? lens.data?.runId ?? ""),
+    enabled: fundEnabled,
+  });
+  const overviewWaiting = tab === "overview" && (
+    prices.isPending && !prices.data || runtime.status === "loading" ||
+    isFund && (context.isPending || fundEnabled && fund.isPending)
+  );
+  const technicalPrice = tab === "technical" && params.get("technicalView") !== "seasonality";
+  const currentLens = !overviewWaiting && !lens.isPlaceholderData && lens.data ? {
+    ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
+  } : undefined;
+  const lastLens = useRetainedResult(currentLens, (a, b) =>
+    a.ticker === b.ticker && a.tab === b.tab && a.data === b.data &&
+    a.technicalPrice === b.technicalPrice && a.updatedAt === b.updatedAt);
+
+  const shown = previousForIdentity(lastLens, lastLens?.ticker, ticker);
+  const displayTab = shown?.tab ?? tab;
+  const displayData = shown?.data;
+  const switching = Boolean(shown && (!currentLens || lens.isPlaceholderData) && !lens.isError);
+  const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
+  const waitingForResearch = !shown && !technicalPrice && (
+    overviewWaiting || lens.isPending || fetching && !lens.isError
+  );
   useEffect(() => {
     if (isFund && (tab === "valuation" || tab === "analyst"))
       update({ view: "overview" });
@@ -351,9 +383,11 @@ export function ResearchWorkspace() {
         </>
       }
     >
+      {(shell.isPending || Boolean(selected && waitingForResearch)) &&
+        <LoadingStatus label={t("正在读取证券研究…", "Loading security research…")} />}
       {shell.isPending ? (
-        <Pending />
-      ) : shell.isError ? (
+        <Pending shape="research" quiet />
+      ) : !shell.data && shell.isError ? (
         <QueryError retry={shell.refetch} />
       ) : (
         <div
@@ -443,6 +477,11 @@ export function ResearchWorkspace() {
                   ticker={ticker}
                   selected={selected}
                   quote={quote}
+                  quotePending={!quote && lens.isPending}
+                  failure={failure && (failure.dataUpdatedAt || shown?.updatedAt) ? {
+                    updatedAt: failure.dataUpdatedAt || shown!.updatedAt,
+                    retry: failure.refetch,
+                  } : undefined}
                   listOpen={listOpen}
                   onSwitch={openUniverse}
                 />
@@ -489,10 +528,17 @@ export function ResearchWorkspace() {
                     {operation.error.message}
                   </Notice>
                 )}
-                {tab === "overview" && (
-                  <PricePreview ticker={ticker} runId={revision ?? ""} summary={lens.data?.technicalSummary} pending={lens.isPending} />
+                {waitingForResearch ? (
+                  <Panel className="mx-research-wait">
+                    <Pending shape="chart" height={338} quiet />
+                  </Panel>
+                ) : (
+                <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
+                {displayTab === "overview" && shown && (runtime.status === "failed"
+                  ? <QueryError retry={runtime.retry} />
+                  : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
                 )}
-                {tab === "technical" && <>
+                {(tab === "technical" || displayTab === "technical") && <>
                           <Tabs
                             label={t(
                               "价格与技术内容",
@@ -514,23 +560,19 @@ export function ResearchWorkspace() {
                               },
                             ]}
                           />
-                          {params.get("technicalView") !== "seasonality" && (
+                          {(tab === "technical" ? technicalPrice : shown?.technicalPrice) && (
                             <TechnicalWorkspace
                               key={ticker}
                               ticker={ticker}
                               runId={revision ?? ""}
-                              data={lens.data}
+                              data={displayTab === "technical" ? displayData : undefined}
                               pending={lens.isPending}
                               error={lens.isError}
                               retry={() => { void lens.refetch(); }}
                             />
                           )}
                 </>}
-                {tab === "technical" && params.get("technicalView") !== "seasonality" ? null : fetching && !lens.data ? (
-                  <Panel>
-                    <Pending />
-                  </Panel>
-                ) : selected.status === "failed" && !lens.data ? (
+                {displayTab === "technical" && (shown?.technicalPrice ?? technicalPrice) ? null : selected.status === "failed" && !displayData ? (
                   <Panel>
                     <Empty
                       title={t(
@@ -552,64 +594,64 @@ export function ResearchWorkspace() {
                       }
                     />
                   </Panel>
-                ) : lens.isPending ? (
-                  <Pending />
-                ) : lens.isError && !lens.data ? (
+                ) : lens.isError && !displayData ? (
                   <QueryError retry={lens.refetch} />
                 ) : (
-                  lens.data && (
+                  displayData && (
                     <>
-                      {tab === "overview" && (
+                      {displayTab === "overview" && (
                         <>
                           {isFund ? (
                             <FundWorkbench
                               overview
-                              data={context.data ?? lens.data}
+                              data={context.data ?? displayData}
                               onExplore={exploreHolding}
                             />
                           ) : (
                             <CompanyOverview
-                              data={lens.data}
+                              data={displayData}
                               context={context.data}
                               gics={selected.gics}
                             />
                           )}
                         </>
                       )}
-                      {tab === "technical" && params.get("technicalView") === "seasonality" && <Seasonality data={lens.data} revision={revision} />}
-                      {tab === "valuation" && (
-                        <ValuationWorkbench data={lens.data} revision={revision} price={price} />
+                      {displayTab === "technical" && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
+                      {displayTab === "valuation" && (
+                        <ValuationWorkbench data={displayData} revision={revision} price={price} />
                       )}
-                      {tab === "fundamentals" &&
+                      {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
-                            data={lens.data}
+                            data={displayData}
                             onExplore={exploreHolding}
                           />
                         ) : (
-                          <FinancialWorkbench data={lens.data} />
+                          <FinancialWorkbench data={displayData} />
                         ))}
-                      {tab === "financials" &&
+                      {displayTab === "financials" &&
                         (isFund ? (
                           <FundWorkbench
-                            data={lens.data}
+                            data={displayData}
                             onExplore={exploreHolding}
                           />
                         ) : (
                           <FinancialWorkbench
-                            data={lens.data}
+                            data={displayData}
                             initialMode="income"
                           />
                         ))}
-                      {tab === "analyst" && (
-                        <AnalystView data={lens.data} revision={revision} price={price} />
+                      {displayTab === "analyst" && (
+                        <AnalystView data={displayData} revision={revision} price={price} />
                       )}
-                      {tab === "options" && <OptionsView data={lens.data} />}
-                      {tab === "ledger" && (
-                        <ResearchNotebook key={ticker} data={lens.data} />
+                      {displayTab === "options" && <OptionsView data={displayData} />}
+                      {displayTab === "ledger" && (
+                        <ResearchNotebook key={ticker} data={displayData} />
                       )}
                     </>
                   )
+                )}
+                </div>
                 )}
               </>
             )}

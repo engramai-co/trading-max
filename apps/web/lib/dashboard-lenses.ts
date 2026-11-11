@@ -14,13 +14,14 @@ async function fetchDashboardLens(
   view: DashboardLensName,
   account?: AccountCode,
   selection?: DashboardSelection,
+  signal?: AbortSignal,
 ): Promise<DashboardLens> {
   const params = new URLSearchParams();
   if (account) params.set("account", account);
   for (const [key, value] of Object.entries(selection ?? {})) if (value) params.set(key, value);
   const query = params.size ? `?${params}` : "";
   const response = await fetch(`/api/backend/dashboard/lens/${view}${query}`, {
-    cache: "no-store",
+    cache: "no-store", signal,
   });
   if (!response.ok) {
     throw new Error(`dashboard lens returned ${response.status}`);
@@ -37,7 +38,7 @@ export function useDashboardLens(
   const queryClient = useQueryClient();
   const query = useQuery({
     enabled,
-    queryFn: () => fetchDashboardLens(view, account, selection),
+    queryFn: ({ signal }) => fetchDashboardLens(view, account, selection, signal),
     queryKey: dashboardLensLatestKey(view, account, selection),
     retry: 1,
     staleTime: 30_000,
