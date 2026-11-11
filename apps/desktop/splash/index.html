@@ -9,11 +9,12 @@
 <div class="shell">
   <aside class="sidebar">
     <header class="brand"><picture><source srcset="icon-dark.svg" media="(prefers-color-scheme: dark)"><img src="icon.svg" alt="" width="33" height="33"></picture><span>Trading <strong>Max</strong></span></header>
+    <div class="sidebar-copy"><h2><span data-en="Every record in its place,">记录有归处，</span><br><span data-en="your whole portfolio in view.">投资有全貌。</span></h2></div>
     <div class="ownership"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><strong data-en="Your data stays yours">你的数据，由你保管</strong></div>
   </aside>
   <main>
     <div class="topline"><button id="back" type="button" class="text-button" hidden><span data-en="← Back">← 返回</span></button></div>
-    <section class="intro"><h1 id="heading" tabindex="-1">打开投资工作台</h1></section>
+    <section class="intro"><h1 id="heading" tabindex="-1">打开你的投资工作台。</h1></section>
     <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
     <div id="progress" class="progress" hidden><span></span></div>
     <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
@@ -32,7 +33,7 @@
           <button class="choice" id="open-workspace" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10V5h6l2 3h9v3M3 10h19l-3 10H2Z"/></svg></span><span class="choice-copy"><strong><span data-en="Open an existing workspace">打开已有工作区</span></strong></span><span class="arrow" aria-hidden="true">›</span></button>
           <button class="choice" id="choose-remote" type="button"><span class="tile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01M10 6.5h8M10 17.5h8"/></svg></span><span class="choice-copy"><strong><span data-en="Connect to an existing service">连接已有服务</span></strong></span><span class="arrow" aria-hidden="true">›</span></button>
         </div>
-        <div class="demo-row"><button id="demo" type="button" class="secondary"><span data-en="Open demo ">打开演示 </span><span aria-hidden="true">↗</span></button></div>
+        <div class="demo-row"><strong data-en="Want a look first?">想先看看？</strong><button id="demo" type="button" class="secondary"><span data-en="Open demo ">打开演示 </span><span aria-hidden="true">↗</span></button></div>
       </section>
       <form id="form" hidden aria-label="连接已有服务" data-en-aria-label="Connect to an existing service">
         <div class="form-context"><span class="dot"></span><span><span data-en="Your data stays on the service. This Mac displays it.">数据保存在服务端，这台 Mac 用来查看。</span></span></div>

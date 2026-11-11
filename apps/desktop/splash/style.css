@@ -55,11 +55,21 @@ picture {
 picture>source {
   display:none
 }
+.sidebar-copy {
+  padding-top:65px
+}
 .tiny-label {
   font-size:11px;
   letter-spacing:.025em;
   color:var(--muted);
   font-weight:550
+}
+.sidebar h2 {
+  font-size:26px;
+  line-height:1.65;
+  font-weight:600;
+  letter-spacing:-.6px;
+  margin:15px 0
 }
 .ownership {
   display:flex;
@@ -214,7 +224,14 @@ h1:focus {
 .demo-row {
   display:flex;
   align-items:center;
+  gap:16px;
+  justify-content:space-between;
   padding:25px 0 5px
+}
+.demo-row strong {
+  font-size:12px;
+  font-weight:550;
+  display:block
 }
 button,input {
   font:inherit
@@ -485,6 +502,9 @@ body.picker .choice {
   .sidebar {
     padding:30px 20px
   }
+  .sidebar h2 {
+    font-size:22px
+  }
   main {
     padding:28px
   }
@@ -509,7 +529,8 @@ body.picker .choice {
     border-bottom:1px solid var(--line);
     padding:16px 24px
   }
-  .sidebar .ownership {
+  .sidebar .ownership,
+  .sidebar .sidebar-copy {
     display:none
   }
   main,body.picker main {

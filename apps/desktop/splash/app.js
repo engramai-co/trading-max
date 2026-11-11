@@ -24,10 +24,10 @@ if (picker) {
 }
 // Headings only: the choices and form fields below explain themselves.
 const labels = {
-  welcome: picker ? t("工作区", "Workspaces") : t("打开投资工作台", "Open your investment workspace"),
-  remote: t("连接已有服务", "Connect to an existing service"),
-  create: t("创建本地工作区", "Create a local workspace"),
-  open: t("打开已有工作区", "Open an existing workspace"),
+  welcome: picker ? t("工作区", "Workspaces") : t("打开你的投资工作台。", "Open your investment workspace."),
+  remote: t("连接你的服务。", "Connect your service."),
+  create: t("创建本地工作区。", "Create a local workspace."),
+  open: t("继续你的本地记录。", "Continue your local records."),
 };
 function text(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
 function showView(next, focus = true) {
