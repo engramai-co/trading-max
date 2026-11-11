@@ -171,7 +171,9 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       needs.changes.outputs.operations == 'true'
-    runs-on: ubuntu-latest
+    # The deployment scripts target macOS; its runner ships zsh, so this job no
+    # longer depends on an apt mirror being reachable.
+    runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -186,11 +188,6 @@ jobs:
 
       - name: Sync backend dependencies
         run: uv sync --all-packages --group dev --frozen
-
-      - name: Install zsh
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends zsh
 
       - name: Validate macOS shell scripts
         run: for script in deploy/macos/*.sh; do zsh -n "$script"; done
