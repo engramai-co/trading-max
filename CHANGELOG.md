@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.33.0] - 2026-11-12
+
+### Added
+
+- The research desk charts daily trailing P/E for covered US stocks: diluted
+  EPS from SEC filings, effective from the first close after each filing, with
+  split-adjusted Yahoo closes. The chart shows the 25th–75th percentile band and
+  median (or mean ±1σ), plus the latest value and its percentile. The yearly
+  filing points remain.
+- App Settings → General offers 中文 / English for the App's own pages.
+  Simplified Chinese is the default, whatever the macOS language.
+
+### Fixed
+
+- The desktop welcome screen marks recent workspaces whose folders were removed
+  as unavailable, and opening a removed folder no longer recreates it.
+
 ## [1.32.1] - 2026-11-12
 
 ### Changed
