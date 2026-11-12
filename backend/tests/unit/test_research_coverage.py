@@ -33,3 +33,24 @@ def test_an_explicit_empty_result_replaces_old_result_and_exchange_suffixes_rema
         {"ticker": "ABC", "contracts": [1]},
         {"ticker": "ABC.L", "contracts": []},
     ]
+
+
+def test_known_provider_gap_keeps_previous_fundamentals_as_stale():
+    previous = {
+        "generated_at": "2026-06-01T10:00:00Z",
+        "rows": [{"ticker": "GOOGL", "metrics": {"forwardPE": 12.0}}],
+    }
+    current = {
+        "generated_at": "2026-06-02T10:00:00Z",
+        "rows": [],
+        "missing": {"GOOGL": "provider-not-found"},
+    }
+
+    merged = merge_rows(previous, current, ("GOOGL",))
+
+    assert merged["rows"] == previous["rows"]
+    clock = row_clocks(merged)["GOOGL"]
+    assert clock["state"] == "stale"
+    assert clock["reason"] == "provider-not-found-retained"
+    assert clock["lastSuccessfulAt"] == previous["generated_at"]
+    assert clock["lastAttemptAt"] == current["generated_at"]

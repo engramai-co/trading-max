@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -15,12 +16,16 @@ from trading_max.application.research_stages import (
     MarketSnapshotStage,
     OptionsArtifactStage,
     TechnicalArtifactStage,
+    TypedPublishSnapshotStage,
     ValuationArtifactStage,
 )
-from trading_max.infrastructure import ContentAddressedArtifactStore
+from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.research.fundamentals import YFinanceResearchService
 from trading_max.research.market import MarketResearchService
 from trading_max.worker import StageExecutionError
+from yfinance._http import HTTPError
+from yfinance.data import YfData
+from yfinance.exceptions import YFException
 
 
 def _history(ticker: str, _period: str) -> pd.DataFrame:
@@ -168,6 +173,97 @@ def test_fundamentals_valuation_and_earnings_stages_are_dependency_bound(
         technical_result.artifacts[0].artifact_id,
         fundamentals.artifacts[0].artifact_id,
     ]
+
+
+@pytest.mark.parametrize(
+    ("provider_failure", "reason"),
+    [
+        ("http404", "provider-not-found"),
+        ("empty", "provider-no-data"),
+        ("wrapped404", "provider-not-found"),
+    ],
+)
+def test_yahoo_fundamentals_gap_publishes_missing_coverage(
+    tmp_path, monkeypatch, provider_failure, reason
+):
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    snapshots = SnapshotStore(tmp_path)
+    endpoints = []
+
+    def get_raw_json(_self, url, *, params):
+        symbol = params.get("symbol") or params["symbols"]
+        endpoints.append((url, symbol))
+        if symbol == "GOOG":
+            return {"quoteResponse": {"result": [{"symbol": "GOOG", "forwardPE": 12.0}]}}
+        if provider_failure == "empty" and "/quoteSummary/" in url:
+            raise HTTPError(
+                "synthetic quoteSummary 404",
+                response=SimpleNamespace(status_code=404, text="not found"),
+            )
+        return {}
+
+    def cache_get(_self, *, url):
+        endpoints.append((url, None))
+        if provider_failure == "http404":
+            raise HTTPError("synthetic provider 404", response=SimpleNamespace(status_code=404))
+        if provider_failure == "wrapped404":
+            return SimpleNamespace(
+                text='{"finance":{"error":{"code":"Not Found","description":"synthetic"}}}'
+            )
+        return SimpleNamespace(text='{"timeseries":{"result":[]}}')
+
+    monkeypatch.setattr(YfData, "get_raw_json", get_raw_json)
+    monkeypatch.setattr(YfData, "cache_get", cache_get)
+    service = YFinanceResearchService()
+    stage = FundamentalsArtifactStage(artifacts, service)
+    if provider_failure == "empty":
+        # Both share classes must keep their own provider symbol and result.
+        mixed = service.fundamentals(["GOOG", " googl "])
+        assert [(row["ticker"], row["metrics"]["forwardPE"]) for row in mixed.rows] == [
+            ("GOOG", 12.0),
+        ]
+        assert mixed.missing == {"GOOGL": reason}
+        endpoints.clear()
+
+    result = stage.run(StageContext(job_id="404", scope="research", tickers=("GOOGL",)))
+    ref = result.artifacts[0]
+    assert ref.quality.coverage == "0/1"
+    assert ref.quality.status == "warning"
+    assert artifacts.get_json(ref.artifact_id).payload["rows"] == []
+    TypedPublishSnapshotStage(artifacts, snapshots).run(
+        StageContext(
+            job_id="404",
+            scope="research",
+            tickers=("GOOGL",),
+            upstream_artifact_ids=(ref.artifact_id,),
+        )
+    )
+    coverage = next(
+        r for r in snapshots.latest().manifest.artifacts if r.key == "research/coverage.json"
+    )
+    row = artifacts.get_json(coverage.artifact_id).payload["rows"][0]
+    assert row["ticker"] == "GOOGL"
+    assert row["datasets"]["fundamentals"]["state"] == "missing"
+    assert row["datasets"]["fundamentals"]["reason"] == reason
+    assert endpoints[0] == (
+        "https://query2.finance.yahoo.com/v10/finance/quoteSummary/GOOGL",
+        "GOOGL",
+    )
+    assert endpoints[1][1] == "GOOGL"
+    assert "/timeseries/GOOGL?" in endpoints[2][0]
+
+
+def test_unavailable_fundamentals_transport_still_fails_refresh(tmp_path):
+    def load(_ticker):
+        raise YFException("synthetic upstream failure")
+
+    stage = FundamentalsArtifactStage(
+        ContentAddressedArtifactStore(tmp_path / "artifacts"),
+        YFinanceResearchService(info_loader=load),
+    )
+    with pytest.raises(StageExecutionError, match="no usable rows") as caught:
+        stage.run(_context())
+    assert caught.value.retryable
 
 
 def test_analyst_stage_publishes_consensus_artifact(tmp_path) -> None:
