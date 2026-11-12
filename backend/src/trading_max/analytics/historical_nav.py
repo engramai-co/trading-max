@@ -21,14 +21,14 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 
 from trading_max.analytics.cash_flow_history import AccountCashFlow, AccountCashFlowHistory
-from trading_max.analytics.ledger import load_transactions
+from trading_max.analytics.ledger import is_buy, is_sell, load_transactions
 from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.reference.historical_listings import historical_listing_symbols
 
@@ -155,6 +155,8 @@ class LedgerEvent:
     currency: str
     cash: float
     external: bool
+    fill_side: Literal["buy", "sell"] | None = None
+    fill_ticker: str | None = None
 
 
 def ledger_events(
@@ -189,6 +191,8 @@ def ledger_events(
                 currency=str(row.TotalCurrency),
                 cash=cash,
                 external=action in EXTERNAL_FLOW_ACTIONS,
+                fill_side="buy" if is_buy(action) else "sell" if is_sell(action) else None,
+                fill_ticker=_identifier(row.Ticker) or None,
             )
         )
     events.extend(

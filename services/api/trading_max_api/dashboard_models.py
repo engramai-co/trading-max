@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
+from trading_max.analytics.review_evidence import InvestmentReviewEvidence
 from trading_max.research.facts import FinancialFacts, ResearchContext
 from trading_max.research.trailing_pe import TrailingPeHistory
 
@@ -1462,6 +1463,7 @@ class DashboardLensSnapshot(ApiModel):
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None
     decision_reviews: dict[InvestableAccountCode, AccountDecisions] = Field(default_factory=dict)
+    review_evidence: InvestmentReviewEvidence | None = None
     selected_risk: RiskMetrics | None = None
     cfd: CfdSummary | None = None
     cfd_review: CfdAccountReview | None = None

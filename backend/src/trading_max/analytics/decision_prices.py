@@ -95,6 +95,10 @@ class SecurityPrices:
     #: ``GAP_SESSIONS`` sessions old; ``None`` when there are none. They still
     #: count as sessions, so counting closes does not shift when they arrive.
     pending_days: pd.DatetimeIndex | None = None
+    #: The raw marks and accepted unit used to resolve this listing. The
+    #: evidence review needs actual closes rather than carried GBP returns.
+    listing_currency: str | None = None
+    market_frame: pd.DataFrame | None = field(default=None, compare=False, repr=False)
 
     @property
     def quoted(self) -> pd.DatetimeIndex:
@@ -261,6 +265,16 @@ class CachedDailyHistory:
         exchange = str(frame.attrs.get("exchange") or exchange)
         frame.attrs["exchange"] = exchange
         return self._rows(completed_daily_bars(frame, now=_utc(now))), exchange
+
+    def read_cached(self, symbol: str, start: date, end: date) -> pd.DataFrame:
+        """Read only completed bars already stored locally, with no fetch path."""
+        with suppress(FileNotFoundError, ValueError):
+            cached = json.loads(self._path(symbol).read_text(encoding="utf-8"))
+            if cached.get("format") == CACHE_FORMAT:
+                frame = self._frame(cached.get("rows", []))
+                frame.attrs["exchange"] = str(cached.get("exchange") or "")
+                return frame.loc[pd.Timestamp(start) : pd.Timestamp(end)]
+        return self._frame([])
 
     def __call__(self, symbol: str, start: date, end: date) -> pd.DataFrame:
         path = self._path(symbol)
@@ -474,6 +488,7 @@ def resolve_decision_prices(
     history_loader: HistoryLoader,
     memo: dict[str, str] | None = None,
     now: pd.Timestamp | None = None,
+    allow_missing_usd: bool = False,
 ) -> tuple[dict[str, SecurityPrices], list[str]]:
     """Resolve adjusted GBP closes per identity; return them and unpriced tickers.
 
@@ -500,7 +515,7 @@ def resolve_decision_prices(
     days = pd.bdate_range(start_day, end_day)
     usd_rates = final_rates(history_loader, "GBPUSD=X", start_day, end_day, now)
     gbpusd = usd_rates.reindex(days).ffill().bfill()
-    if gbpusd.isna().any():
+    if not allow_missing_usd and gbpusd.isna().all():
         raise HistoricalNavError("GBPUSD history is unavailable")
     currencies = {"GBP", "USD"} | {
         value
@@ -573,6 +588,10 @@ def resolve_decision_prices(
             adjusted = pd.to_numeric(frame.get("Close"), errors="coerce").dropna()
             adjusted.index = pd.to_datetime(adjusted.index).tz_localize(None).normalize()
             modes = ["GBP", "GBX", *[c for c in cash_fx.columns if c != "GBP"]]
+            if allow_missing_usd and gbpusd.isna().all() and currency not in {"GBP", "GBX"}:
+                # An unavailable dollar cross does not erase sterling results,
+                # but a foreign listing still needs its own conversion to match.
+                modes = [mode for mode in modes if mode == currency]
             for mode in dict.fromkeys(modes):
                 candidate = _converted(nominal, mode, cash_fx, gbpusd)
                 fills_at = candidate.reindex(rows["BusinessDate"], method="ffill").to_numpy(float)
@@ -617,6 +636,8 @@ def resolve_decision_prices(
             lows=extras["Low"],
             quote_days=closes.index[closes.index.isin(values.index)],
             pending_days=pending if len(pending) else None,
+            listing_currency=mode,
+            market_frame=frame,
         )
         if memo is not None:
             memo[identity] = best[1]

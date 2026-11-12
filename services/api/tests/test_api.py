@@ -1042,3 +1042,61 @@ def test_valuation_assumptions_api_requires_auth_and_upserts(
         assert entries
         assert entries[0]["ticker"] == "BE"
         assert "base.revenueCagr" in entries[0]["changes"]
+
+
+def test_review_evidence_is_typed_scoped_and_tied_to_snapshot(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    from trading_max.analytics.review_evidence import ReviewRules
+    from trading_max.application.decision_stages import REVIEW_EVIDENCE_KEY
+
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    old = store.immutable_snapshots.latest()
+    assert old is not None
+    evidence = store.immutable_artifacts.put_json(
+        key=REVIEW_EVIDENCE_KEY,
+        payload={
+            "rules": ReviewRules.current().model_dump(),
+            "accounts": {
+                "A": {
+                    "coverage": "complete",
+                    "asOf": "2026-11-09T10:01:00Z",
+                    "holdingMoves": [
+                        {
+                            "date": "2026-11-06",
+                            "ticker": "SYN",
+                            "quoteCurrency": "GBP",
+                            "change": 0.056,
+                        }
+                    ],
+                },
+                "B": {"coverage": "partial"},
+            },
+        },
+        kind="account_review_evidence",
+        producer_version="test",
+    )
+    settings = Settings(data_root=tmp_path / "runtime", embedded_worker=False)
+    with TestClient(create_app(settings)) as client:
+        path = "/v1/dashboard/lens/"
+        before = client.get(path + "review?detail=summary").json()
+        assert before["reviewEvidence"]["accounts"]["A"] == {"coverage": "partial"}
+        published = store.immutable_snapshots.publish(
+            scope="accounts", source="test", artifacts=[*old.manifest.artifacts, evidence]
+        )
+        review = client.get(path + "review?detail=summary").json()
+        assert review["runId"] == published.manifest.run_id
+        assert review["reviewAsOf"] == "2026-11-09T10:01:00+00:00"
+        assert review["reviewEvidence"]["rules"]["sessionMoveShare"] == 0.05
+        assert review["reviewEvidence"]["accounts"]["A"]["holdingMoves"][0]["ticker"] == "SYN"
+        assert review["reviewEvidence"]["accounts"]["B"] == {"coverage": "partial"}
+        for code in ("A", "B"):
+            account = client.get(path + f"account-analysis?account={code}&detail=summary").json()
+            assert set(account["reviewEvidence"]["accounts"]) == {code}
+        cfd = client.get(path + "account-analysis?account=C&detail=summary").json()
+        assert "reviewEvidence" not in cfd
+        overview = client.get(path + "overview?detail=summary").json()
+        assert "reviewEvidence" not in overview
