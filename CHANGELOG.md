@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.33.1] - 2026-11-12
+
+### Changed
+
+- A newer web version loads on your next move to another page, never in the
+  middle of an edit: unsaved drafts and saves in progress keep the current
+  version until they finish.
+- Reopening the dashboard shows the latest portfolio and research figures at
+  once, each with its original data time, and refreshes them in the
+  background. Only read-only figures from the past 24 hours are kept,
+  separately for each connection or workspace; credentials and settings are
+  never stored.
+
+### Fixed
+
+- Account review keeps its amounts on screen on phones; wide evidence tables
+  scroll inside their own panel instead of widening the page.
+- When Data Status fails to load, its retry checks again in place instead of
+  reopening the same page.
+
 ## [1.33.0] - 2026-11-12
 
 ### Added
