@@ -207,3 +207,19 @@ def test_unavailable_option_gex_does_not_become_positive_gamma(monkeypatch) -> N
 
     assert result.aggregate["net_gex_1pct_proxy"] is None
     assert result.gamma_proxy["gamma_regime"] is None
+
+
+def test_fund_producer_skips_stock_score_but_keeps_raw_indicators(monkeypatch):
+    def unexpected_score(*_args):
+        pytest.fail("an ETF must not call stock scoring")
+
+    monkeypatch.setattr("trading_max.research.technical.technical_score", unexpected_score)
+    frame = synthetic_bars()
+    frame.attrs["asset_type"] = "ETF"
+    benchmarks = dict.fromkeys(("SPY", "QQQ", "SOXX"), frame["Close"])
+    result = analyze_ticker("SYNTHETIC", "SYNTHETIC", frame, benchmarks)
+    assert result.technical_score is None
+    assert result.technical_state is None
+    assert result.momentum["rsi14"] is not None
+    assert result.moving_averages["sma200"] is not None
+    assert result.price_series

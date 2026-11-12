@@ -56,10 +56,10 @@ silently inherit a different fund's holdings.
 
 All caches remain in the selected external state directory:
 
-- `raw/fund-holdings/v3/`: normalized constituent snapshots and retry timestamps;
+- `raw/fund-holdings/v4/`: normalized constituent snapshots keyed by share-class ISIN, with retry timestamps;
 - `reference/fund-catalogs/`: issuer product identities and download links.
 
-Upgrades can read the previous `raw/fund-holdings/*.json` cache but leave those
+Upgrades can read the previous v3 or ticker-only cache but leave those
 files untouched. Older releases therefore retain their compatible snapshots
 on rollback. The API keeps its existing source-status values; missing weights
 are reported through an additive count and warning.
@@ -72,6 +72,33 @@ download routes and never decides whether a broker instrument is an ETF.
 Issuer websites may change their schemas or block requests. Validation fails
 explicitly in those cases; a missing download is not permission to substitute a
 similar fund, another share class, an index preview or fabricated holdings.
+
+## Tracking and portfolio overlap
+
+The account refresh publishes a compact ETF reading by share-class ISIN. Listing
+quotes have their own ticker, market identifier and quote unit. EQQQ
+(IE0032077012) and the GBP-hedged EQGB (IE00BYVTMW98) remain distinct. An issuer
+may publish valid holdings without sector or country distributions; those
+breakdowns remain unavailable. The fund view distinguishes unavailable
+holdings, a failed refresh and an old disclosure.
+
+The one-year tracking difference is share-class NAV total return minus the
+documented benchmark total return for the same period, currency and hedging
+basis. Issuer tracking error is a separate observation. When the issuer's
+benchmark and share class have different bases, Trading Max reports them as
+incomparable. The research desk displays the original issuer period; values
+over 120 days old are marked stale.
+
+Overlap adds the smaller of the two weights for each exact security ID. The
+other side includes direct and look-through Invest and ISA positions after
+excluding every listing of the fund's share class, cash and CFDs. Unidentified
+weights remain in their original denominators. Both coverage readings and all
+holdings dates are available with the number. Holdings dates must be within 45
+days to qualify for an overview warning.
+
+The overview reads only the compact publication, after the table loads. The
+position drawer and fund research use the same observations. The drawer reads
+the account snapshot without making issuer requests.
 
 ## Official source entry points
 

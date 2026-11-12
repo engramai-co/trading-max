@@ -215,7 +215,8 @@ def test_failed_download_is_backed_off_between_stages(tmp_path):
     provider = OfficialFundHoldingsProvider(tmp_path, fetcher=fail)
     with pytest.raises(httpx.ReadTimeout):
         provider.fetch("SMGB")
-    assert provider.fetch("SMGB") is None
+    with pytest.raises(RuntimeError, match="prior issuer request failed"):
+        provider.fetch("SMGB")
     assert calls == ["SMGB"]
 
 
@@ -260,3 +261,41 @@ def test_invesco_reads_fund_not_index_and_preserves_cash_and_share_class():
     assert result.weight_total_pct() == 100
     assert not result.holdings[-1].is_security
     assert len(requests) == 4
+
+
+def test_eqqq_retains_102_holdings_when_distributions_are_empty():
+    from trading_max.infrastructure.fund_specs import BUILTIN_FUND_ADAPTERS
+
+    spec = BUILTIN_FUND_ADAPTERS["EQQQ"]
+
+    def handler(request):
+        assert "IE0032077012" in request.url.path
+        assert "IE00BYVTMW98" not in request.url.path
+        if request.url.path.endswith("IE0032077012"):
+            return httpx.Response(
+                200, json={"aliases": {"isin": spec.isin}, "replicationMethod": "Physical"}
+            )
+        if request.url.path.endswith("/holdings/fund"):
+            return httpx.Response(
+                200,
+                json={
+                    "effectiveDate": "2026-11-11",
+                    "numberOfHoldings": 101,
+                    "holdings": [
+                        {"isin": f"US{i:010d}", "name": f"Security {i}", "weight": 0.99}
+                        for i in range(101)
+                    ]
+                    + [{"name": "Cash and/or Derivatives", "weight": 0.01}],
+                },
+            )
+        assert request.url.path.endswith("/weightedHoldings/fund")
+        return httpx.Response(200, json={})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        snapshot = fetch_invesco(client, spec)
+    assert len(snapshot.holdings) == 102
+    assert snapshot.holdings_state(datetime(2026, 11, 12, tzinfo=UTC).date()) == "available"
+    assert snapshot.holdings_state(datetime(2027, 1, 1, tzinfo=UTC).date()) == "holdings-stale"
+    assert snapshot.country_weights == snapshot.industry_weights == {}
+    assert snapshot.evidence["country_weights"].coverage == "missing"
+    assert snapshot.evidence["industry_weights"].coverage == "missing"

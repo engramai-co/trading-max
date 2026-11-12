@@ -192,6 +192,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboard/etfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Etfs */
+        get: operations["dashboard_etfs_v1_dashboard_etfs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboard/etfs/{isin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Etf Detail */
+        get: operations["dashboard_etf_detail_v1_dashboard_etfs__isin__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboard/history": {
         parameters: {
             query?: never;
@@ -2860,6 +2894,147 @@ export interface components {
             /** Validationtoken */
             validationToken: string;
         };
+        /** ETFDetail */
+        ETFDetail: {
+            holdings?: components["schemas"]["FundSnapshot"] | null;
+            /** Matches */
+            matches?: components["schemas"]["ETFMatch"][];
+            reading: components["schemas"]["ETFReading"];
+            /**
+             * Runid
+             * @default
+             */
+            runId: string;
+        };
+        /** ETFDisclosure */
+        ETFDisclosure: {
+            /** Effectiveat */
+            effectiveAt?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "holdings" | "index-change";
+            /** Observedat */
+            observedAt: string;
+            /** Previousvalue */
+            previousValue?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Value */
+            value: string;
+        };
+        /** ETFMatch */
+        ETFMatch: {
+            /** Fundweight */
+            fundWeight: number;
+            /** Name */
+            name: string;
+            /** Overlap */
+            overlap: number;
+            /** Restdirectweight */
+            restDirectWeight: number;
+            /** Restviafund */
+            restViaFund: {
+                [key: string]: number;
+            };
+            /** Securityid */
+            securityId: string;
+        };
+        /** ETFOverlap */
+        ETFOverlap: {
+            /**
+             * Datesvalid
+             * @default false
+             */
+            datesValid: boolean;
+            /** Fundcoverage */
+            fundCoverage?: number | null;
+            /** Fundholdingsdate */
+            fundHoldingsDate?: string | null;
+            /** Portfolioasof */
+            portfolioAsOf?: string | null;
+            /** Restcoverage */
+            restCoverage?: number | null;
+            /** Restholdingsdates */
+            restHoldingsDates?: string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "stale" | "missing";
+            /** Value */
+            value?: number | null;
+        };
+        /** ETFPortfolio */
+        ETFPortfolio: {
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Funds */
+            funds?: components["schemas"]["ETFReading"][];
+            /**
+             * Runid
+             * @default
+             */
+            runId: string;
+        };
+        /** ETFReading */
+        ETFReading: {
+            /** Domicile */
+            domicile?: string | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
+            };
+            /** Expenseratio */
+            expenseRatio?: number | null;
+            /** Feebasis */
+            feeBasis?: string | null;
+            fundSize?: components["schemas"]["FundSize"] | null;
+            /** Hedging */
+            hedging?: string | null;
+            /**
+             * Holdingsstate
+             * @enum {string}
+             */
+            holdingsState: "available" | "holdings-stale" | "no-holdings" | "data-failed";
+            /** Incomeuse */
+            incomeUse?: string | null;
+            /** Indexname */
+            indexName?: string | null;
+            /** Isin */
+            isin?: string | null;
+            /** Issuer */
+            issuer?: string | null;
+            /** Name */
+            name?: string | null;
+            overlap: components["schemas"]["ETFOverlap"];
+            shareClassSize?: components["schemas"]["FundSize"] | null;
+            /** Tickers */
+            tickers: string[];
+            tracking: components["schemas"]["ETFTracking"];
+        };
+        /** ETFTracking */
+        ETFTracking: {
+            /** Benchmarkcurrency */
+            benchmarkCurrency?: string | null;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Differencepp */
+            differencePp?: number | null;
+            evidence?: components["schemas"]["FundEvidence"] | null;
+            /** Navhedging */
+            navHedging?: string | null;
+            /** Periodend */
+            periodEnd?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "stale" | "incomparable" | "missing";
+        };
         /** EstimateObservation */
         EstimateObservation: {
             /** Consensus */
@@ -3012,6 +3187,22 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** FundEvidence */
+        FundEvidence: {
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "available" | "missing" | "failed";
+            /** Effectiveat */
+            effectiveAt?: string | null;
+            /** Fetchedat */
+            fetchedAt: string;
+            /** Parserversion */
+            parserVersion: string;
+            /** Sourceurl */
+            sourceUrl: string;
+        };
         /** FundHolding */
         FundHolding: {
             /**
@@ -3026,6 +3217,8 @@ export interface components {
             compositeFigi: string;
             /** Country */
             country?: string | null;
+            /** Currency */
+            currency?: string | null;
             /**
              * Figi
              * @default
@@ -3056,12 +3249,61 @@ export interface components {
             /** Weightpct */
             weightPct: number;
         };
+        /** FundListing */
+        FundListing: {
+            /**
+             * Asof
+             * @default
+             */
+            asOf: string;
+            /**
+             * Compositefigi
+             * @default
+             */
+            compositeFigi: string;
+            evidence: components["schemas"]["FundEvidence"];
+            /**
+             * Exchange
+             * @default
+             */
+            exchange: string;
+            /**
+             * Figi
+             * @default
+             */
+            figi: string;
+            /**
+             * Isin
+             * @default
+             */
+            isin: string;
+            /**
+             * Mic
+             * @default
+             */
+            mic: string;
+            /** Quotecurrency */
+            quoteCurrency?: string | null;
+            /** Quoteunit */
+            quoteUnit?: string | null;
+            /**
+             * Shareclassfigi
+             * @default
+             */
+            shareClassFigi: string;
+            /** Source */
+            source: string;
+            /** Ticker */
+            ticker: string;
+        };
         /** FundResearch */
         FundResearch: {
             /** Annualreturns */
             annualReturns?: components["schemas"]["FundReturnYear"][];
             /** Basecurrency */
             baseCurrency?: string | null;
+            /** Disclosures */
+            disclosures?: components["schemas"]["ETFDisclosure"][];
             /** Domicile */
             domicile?: string | null;
             /** Expenseratio */
@@ -3071,6 +3313,11 @@ export interface components {
             /** Hedging */
             hedging?: string | null;
             holdings?: components["schemas"]["FundSnapshot"] | null;
+            /**
+             * Holdingsstate
+             * @default no-holdings
+             */
+            holdingsState: string;
             /** Inception */
             inception?: string | null;
             /** Incomeuse */
@@ -3081,8 +3328,13 @@ export interface components {
             isin?: string | null;
             /** Issuer */
             issuer?: string | null;
+            /** Matches */
+            matches?: components["schemas"]["ETFMatch"][];
             /** Methodology */
             methodology?: string | null;
+            oneYearTracking?: components["schemas"]["ETFTracking"] | null;
+            profile?: components["schemas"]["FundShareClass"] | null;
+            reading?: components["schemas"]["ETFReading"] | null;
             /** Replication */
             replication?: string | null;
             /** Returnbasis */
@@ -3114,6 +3366,27 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /**
+         * FundReturnPair
+         * @description Issuer-published total returns, as fractions, for one stated period.
+         */
+        FundReturnPair: {
+            /** Benchmarkcurrency */
+            benchmarkCurrency: string;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Benchmarkreturn */
+            benchmarkReturn: number;
+            evidence: components["schemas"]["FundEvidence"];
+            /** Navcurrency */
+            navCurrency: string;
+            /** Navhedging */
+            navHedging?: string | null;
+            /** Navreturn */
+            navReturn: number;
+            /** Periodend */
+            periodEnd: string;
+        };
         /** FundReturnYear */
         FundReturnYear: {
             /** Benchmarkreturn */
@@ -3124,6 +3397,69 @@ export interface components {
             trackingDifference: number;
             /** Year */
             year: number;
+        };
+        /** FundShareClass */
+        FundShareClass: {
+            /** Annualreturns */
+            annualReturns?: components["schemas"]["FundReturnYear"][];
+            /** Basecurrency */
+            baseCurrency?: string | null;
+            /** Benchmarkcurrency */
+            benchmarkCurrency?: string | null;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Domicile */
+            domicile?: string | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
+            };
+            /** Expenseratio */
+            expenseRatio?: number | null;
+            /** Feebasis */
+            feeBasis?: string | null;
+            fundSize?: components["schemas"]["FundSize"] | null;
+            /** Hedging */
+            hedging?: string | null;
+            /** Inception */
+            inception?: string | null;
+            /** Incomeuse */
+            incomeUse?: string | null;
+            /** Indexname */
+            indexName?: string | null;
+            /** Indexrules */
+            indexRules?: string | null;
+            /** Isin */
+            isin: string;
+            /** Issuer */
+            issuer: string;
+            /** Listings */
+            listings?: components["schemas"]["FundListing"][];
+            /** Methodology */
+            methodology?: string | null;
+            /** Name */
+            name?: string | null;
+            oneYear?: components["schemas"]["FundReturnPair"] | null;
+            /** Rebalancefrequency */
+            rebalanceFrequency?: string | null;
+            /** Replication */
+            replication?: string | null;
+            /** Returnbasis */
+            returnBasis?: string | null;
+            /** Returncurrency */
+            returnCurrency?: string | null;
+            shareClassSize?: components["schemas"]["FundSize"] | null;
+            /** Sharecurrency */
+            shareCurrency?: string | null;
+            /** Trackingerror */
+            trackingError?: number | null;
+        };
+        /** FundSize */
+        FundSize: {
+            /** Amount */
+            amount: number;
+            /** Currency */
+            currency: string;
         };
         /** FundSnapshot */
         FundSnapshot: {
@@ -3137,6 +3473,14 @@ export interface components {
             /** Countryweights */
             countryWeights?: {
                 [key: string]: number;
+            };
+            /** Currencyweights */
+            currencyWeights?: {
+                [key: string]: number;
+            };
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
             };
             /**
              * Fetchedat
@@ -3164,11 +3508,18 @@ export interface components {
              * @default
              */
             issuer: string;
+            profile?: components["schemas"]["FundShareClass"] | null;
             /**
              * Sourceurl
              * @default
              */
             sourceUrl: string;
+            /**
+             * State
+             * @default available
+             * @enum {string}
+             */
+            state: "available" | "holdings-stale" | "no-holdings" | "data-failed";
             /** Ticker */
             ticker: string;
             /**
@@ -3316,6 +3667,8 @@ export interface components {
             dilutedCostPerShareGbp: number | null;
             /** Dilutedcostpersharenative */
             dilutedCostPerShareNative: number | null;
+            /** Fundisin */
+            fundIsin?: string | null;
             /** Fximpactgbp */
             fxImpactGbp: number | null;
             /** Isfund */
@@ -4774,6 +5127,11 @@ export interface components {
              * @default false
              */
             held: boolean;
+            /**
+             * Isfund
+             * @default false
+             */
+            isFund: boolean;
             /** Lasterror */
             lastError?: string | null;
             /** Lastrunid */
@@ -7664,6 +8022,70 @@ export interface operations {
             };
         };
     };
+    dashboard_etfs_v1_dashboard_etfs_get: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ETFPortfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_etf_detail_v1_dashboard_etfs__isin__get: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ETFDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dashboard_history_v1_dashboard_history_get: {
         parameters: {
             query?: {
@@ -8410,7 +8832,10 @@ export interface operations {
     };
     research_fund_v1_research__ticker__fund_get: {
         parameters: {
-            query?: never;
+            query?: {
+                run_id?: string | null;
+                detail?: "profile" | "full" | "journal";
+            };
             header?: never;
             path: {
                 ticker: string;

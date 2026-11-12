@@ -17,12 +17,25 @@ from typing import Any
 import httpx
 import pandas as pd
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from trading_max.analytics.lookthrough import FundHolding, FundSnapshot
 from trading_max.reference import SecurityDescriptor
 
 from .fund_catalogs import FundCatalog
 from .fund_downloads import as_of_date, percentage
+from .fund_downloads import isin as valid_isin
+from .fund_profiles import (
+    apply_invesco_factsheet,
+    apply_vanguard_factsheet,
+    empty_profile,
+    evidence,
+    optional_date,
+    parse_invesco_profile,
+    parse_ishares_one_year,
+    parse_ishares_profile,
+    parse_vanguard_profile,
+)
 from .fund_specs import BUILTIN_FUND_ADAPTERS, FundSpec
 
 ISHARES_API = (
@@ -202,21 +215,40 @@ def _get_json(
 def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     if not spec.product_id:
         raise ValueError(f"{spec.ticker}: missing iShares product id")
-    payload = _get_json(
-        client,
-        ISHARES_API,
-        params={
-            "appSubType": "ISHARES",
-            "appType": "PRODUCT_PAGE",
-            "component": "holdings.all",
-            "locale": "en_GB",
-            "portfolioId": spec.product_id,
-            "targetSite": "ishares-uk",
-            "userType": "individual",
-            "excludeContent": "true",
-            "includeConfig": "true",
-        },
-    )
+    params = {
+        "appSubType": "ISHARES",
+        "appType": "PRODUCT_PAGE",
+        "locale": "en_GB",
+        "portfolioId": spec.product_id,
+        "targetSite": "ishares-uk",
+        "userType": "individual",
+        "excludeContent": "true",
+        "includeConfig": "true",
+    }
+    payload = _get_json(client, ISHARES_API, params={**params, "component": "holdings.all"})
+    if str(payload.get("productId")) != spec.product_id:
+        raise ValueError(f"{spec.ticker}: iShares holdings product mismatch")
+    profile = None
+    try:
+        response = client.get(spec.source_url, params={"siteEntryPassthrough": "true"})
+        response.raise_for_status()
+        profile = parse_ishares_profile(response.text, str(response.url))
+    except httpx.HTTPError:
+        pass
+    if profile is not None:
+        if profile.isin != spec.isin:
+            raise ValueError(f"{spec.ticker}: iShares share-class ISIN mismatch")
+        try:
+            performance_params = {**params, "component": "performance.returns.average"}
+            payload_performance = _get_json(client, ISHARES_API, params=performance_params)
+            source = str(httpx.URL(ISHARES_API, params=performance_params))
+            profile.one_year = parse_ishares_one_year(
+                payload_performance, profile, spec.product_id, source
+            )
+        except (KeyError, TypeError, ValueError, RuntimeError):
+            profile.evidence["one_year"] = evidence(
+                ISHARES_API, "ishares-facts-v2", None, False, failed=True
+            )
     try:
         points = payload["componentsByNameMap"]["holdings"]["containersByNameMap"]["all"][
             "dataPointsByNameMap"
@@ -224,6 +256,8 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     except (KeyError, TypeError) as exc:
         raise ValueError(f"{spec.ticker}: iShares holdings schema changed") from exc
 
+    if not isinstance((points.get("holdingPercent") or {}).get("value"), list):
+        raise ValueError(f"{spec.ticker}: iShares holdings weights are absent")
     fields = {
         field: list((points.get(field) or {}).get("value") or [])
         for field in (
@@ -237,12 +271,15 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
         )
     }
     length = len(fields["holdingPercent"])
-    if length == 0 or any(len(items) != length for items in fields.values()):
+    if any(len(items) != length for items in fields.values()):
         raise ValueError(f"{spec.ticker}: iShares holdings arrays are incomplete")
 
+    stamp = _iso_date((points.get("asOfDate") or {}).get("value"))
+    currencies = list((points.get("marketCurrencyCode") or {}).get("value") or [])
     holdings = [
         FundHolding(
             isin=_string(fields["isin"][index]),
+            currency=_string(currencies[index]) or None if len(currencies) == length else None,
             ticker=_string(fields["ticker"][index]),
             name=_string(fields["issueName"][index]),
             country=(
@@ -262,7 +299,10 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     ]
     country_weights: defaultdict[str, float] = defaultdict(float)
     industry_weights: defaultdict[str, float] = defaultdict(float)
+    currency_weights: defaultdict[str, float] = defaultdict(float)
     for holding in holdings:
+        if holding.currency:
+            currency_weights[holding.currency] += holding.weight_pct
         country = (
             holding.country or "Other markets" if holding.is_security else "Cash & derivatives"
         )
@@ -271,14 +311,31 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
         )
         country_weights[country] += holding.weight_pct
         industry_weights[industry] += holding.weight_pct
-    _check_total(spec.ticker, holdings)
-    _check_total(f"{spec.ticker} country", country_weights)
-    _check_total(f"{spec.ticker} industry", industry_weights)
+    if holdings:
+        _check_total(spec.ticker, holdings)
     return FundSnapshot(
         ticker=spec.ticker,
-        as_of=_iso_date((points.get("asOfDate") or {}).get("value")),
+        as_of=stamp,
         fetched_at=datetime.now(UTC).isoformat(),
-        industry_as_of=_iso_date((points.get("asOfDate") or {}).get("value")),
+        industry_as_of=stamp,
+        profile=profile,
+        state="available" if holdings else "no-holdings",
+        currency_weights=dict(currency_weights),
+        evidence={
+            field: evidence(
+                str(httpx.URL(ISHARES_API, params={**params, "component": "holdings.all"})),
+                "ishares-holdings-v3",
+                stamp or None,
+                bool(rows),
+            )
+            for field, rows in (
+                ("holdings", holdings),
+                ("holdings_date", stamp),
+                ("country_weights", country_weights),
+                ("industry_weights", industry_weights),
+                ("currency_weights", currency_weights),
+            )
+        },
         cache_schema_version=2,
         holdings=holdings,
         country_weights=dict(country_weights),
@@ -291,8 +348,20 @@ def fetch_ishares(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
 def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     base = f"{INVESCO_API}/{spec.isin}"
     profile = _get_json(client, base, params={"idType": "isin", "loadType": "initial"})
-    if (profile.get("aliases") or {}).get("isin") != spec.isin:
-        raise ValueError(f"{spec.ticker}: Invesco share-class ISIN mismatch")
+    share_class = parse_invesco_profile(profile, spec.isin, spec.source_url)
+    if share_class.name:
+        source = (
+            "https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/"
+            f"share-class/factsheet/{spec.isin}_factsheet_en.pdf"
+        )
+        try:
+            response = client.get(source)
+            response.raise_for_status()
+            share_class = apply_invesco_factsheet(share_class, response.content, source)
+        except (httpx.HTTPError, ValueError, KeyError, PdfReadError):
+            share_class.evidence["one_year"] = evidence(
+                source, "invesco-facts-v1", None, False, failed=True
+            )
     if profile.get("replicationMethod") != "Physical":
         raise ValueError(f"{spec.ticker}: a swap/substitute basket is not economic look-through")
     holdings_payload = _get_json(
@@ -300,19 +369,35 @@ def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
         f"{base}/holdings/fund",
         params={"idType": "isin", "loadType": "initial"},
     )
-    country_payload = _get_json(
-        client,
-        f"{base}/weightedHoldings/fund",
-        params={"idType": "isin", "breakdown": "country"},
-    )
-    industry_payload = _get_json(
-        client,
-        f"{base}/weightedHoldings/fund",
-        params={"idType": "isin", "breakdown": "sector"},
-    )
+    breakdown_url = f"{base}/weightedHoldings/fund"
+
+    def breakdown(kind, normalize):
+        params = {"idType": "isin", "breakdown": kind}
+        weights: defaultdict[str, float] = defaultdict(float)
+        source = str(httpx.URL(breakdown_url, params=params))
+        stamp = None
+        failed = False
+        try:
+            payload = _get_json(client, breakdown_url, params=params)
+            stamp = optional_date(payload.get("effectiveDate"))
+            for item in payload.get("holdingWeights") or []:
+                if isinstance(item, dict) and _string(item.get("name")):
+                    weights[normalize(item["name"])] += percentage(item["value"])
+            if weights:
+                _check_total(f"{spec.ticker} {kind}", weights)
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            weights.clear()
+            failed = True
+        return dict(weights), evidence(
+            source, "invesco-holdings-v3", stamp, bool(weights), failed=failed
+        )
+
+    country_weights, country_evidence = breakdown("country", _country)
+    industry_weights, industry_evidence = breakdown("sector", _industry)
     holdings = [
         FundHolding(
             isin=_string(item.get("isin")),
+            currency=_string(item.get("currency")) or None,
             ticker="",
             name=_string(item.get("name")),
             country=None,
@@ -329,24 +414,33 @@ def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     ]
     if sum(bool(holding.isin) for holding in holdings) != int(holdings_payload["numberOfHoldings"]):
         raise ValueError(f"{spec.ticker}: incomplete Invesco holdings")
-    country_weights: defaultdict[str, float] = defaultdict(float)
-    for item in country_payload.get("holdingWeights") or []:
-        if isinstance(item, dict) and _string(item.get("name")):
-            country_weights[_country(item.get("name"))] += _number(item.get("value"))
-    industry_weights: defaultdict[str, float] = defaultdict(float)
-    for item in industry_payload.get("holdingWeights") or []:
-        if isinstance(item, dict) and _string(item.get("name")):
-            industry_weights[_industry(item.get("name"))] += _number(item.get("value"))
-    if not holdings:
-        raise ValueError(f"{spec.ticker}: Invesco returned no holdings")
-    _check_total(spec.ticker, holdings)
-    _check_total(f"{spec.ticker} country", country_weights)
-    _check_total(f"{spec.ticker} industry", industry_weights)
+    if holdings:
+        _check_total(spec.ticker, holdings)
+    stamp = _iso_date(holdings_payload.get("effectiveDate"))
+    currency_weights: defaultdict[str, float] = defaultdict(float)
+    for holding in holdings:
+        if holding.currency:
+            currency_weights[holding.currency] += holding.weight_pct
+    source = str(
+        httpx.URL(f"{base}/holdings/fund", params={"idType": "isin", "loadType": "initial"})
+    )
     return FundSnapshot(
         ticker=spec.ticker,
-        as_of=_iso_date(holdings_payload.get("effectiveDate")),
+        as_of=stamp,
         fetched_at=datetime.now(UTC).isoformat(),
-        industry_as_of=_iso_date(holdings_payload.get("effectiveDate")),
+        industry_as_of=industry_evidence.effective_at or "",
+        profile=share_class,
+        state="available" if holdings else "no-holdings",
+        currency_weights=dict(currency_weights),
+        evidence={
+            "holdings": evidence(source, "invesco-holdings-v3", stamp or None, bool(holdings)),
+            "holdings_date": evidence(source, "invesco-holdings-v3", stamp or None, bool(stamp)),
+            "currency_weights": evidence(
+                source, "invesco-holdings-v3", stamp or None, bool(currency_weights)
+            ),
+            "country_weights": country_evidence,
+            "industry_weights": industry_evidence,
+        },
         cache_schema_version=2,
         holdings=holdings,
         country_weights=dict(country_weights),
@@ -447,7 +541,7 @@ def fetch_vanguard(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
       borHoldings(portIds: $portIds) {
         holdings(limit: 1500, lastItemKey: $lastItemKey) {
           items { issuerName securityLongDescription gicsSectorDescription
-                  marketValuePercentage ticker securityType effectiveDate bloombergIsoCountry }
+                  marketValuePercentage ticker isin securityType effectiveDate bloombergIsoCountry }
           totalHoldings lastItemKey
         }
       }
@@ -495,6 +589,7 @@ def fetch_vanguard(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
             holdings.append(
                 FundHolding(
                     ticker=str(row.get("ticker") or ""),
+                    isin=valid_isin(row.get("isin")),
                     name=str(row.get("securityLongDescription") or row.get("issuerName") or ""),
                     weight_pct=float(row["marketValuePercentage"]),
                     country=ISIN_PREFIX_COUNTRIES.get(code, code or None),
@@ -524,9 +619,30 @@ def fetch_vanguard(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
             if holding.is_security
             else "Cash & derivatives"
         ] += holding.weight_pct
+    profile = None
+    if spec.product_id and "/product/" in spec.source_url:
+        try:
+            response = client.get(spec.source_url)
+            response.raise_for_status()
+            profile, factsheet = parse_vanguard_profile(
+                response.text, spec.source_url, spec.isin, spec.product_id
+            )
+        except (httpx.HTTPError, KeyError, TypeError, ValueError):
+            pass
+        else:
+            if factsheet:
+                try:
+                    response = client.get(factsheet)
+                    response.raise_for_status()
+                    profile = apply_vanguard_factsheet(profile, response.content, factsheet)
+                except (httpx.HTTPError, KeyError, ValueError, PdfReadError):
+                    profile.evidence["one_year"] = evidence(
+                        factsheet, "vanguard-facts-v1", None, False, failed=True
+                    )
     return FundSnapshot(
         ticker=spec.ticker,
         as_of=next(iter(dates)),
+        profile=profile,
         industry_as_of=next(iter(dates)),
         fetched_at=datetime.now(UTC).isoformat(),
         cache_schema_version=2,
@@ -571,11 +687,28 @@ def fetch_official_snapshot(
         if spec.issuer not in adapters:
             raise ValueError(f"unsupported issuer: {spec.issuer}")
         snapshot = adapters[spec.issuer](active_client, spec)
+        stamp = as_of_date(snapshot.as_of) if snapshot.holdings or snapshot.as_of else ""
+        fetched = snapshot.fetched_at or datetime.now(UTC).isoformat()
+        facts = {
+            field: evidence(
+                spec.source_url, "issuer-holdings-v4", stamp or None, bool(value), fetched=fetched
+            )
+            for field, value in (
+                ("holdings", snapshot.holdings),
+                ("holdings_date", stamp),
+                ("country_weights", snapshot.country_weights),
+                ("industry_weights", snapshot.industry_weights),
+                ("currency_weights", snapshot.currency_weights),
+            )
+        }
         return snapshot.model_copy(
             update={
                 "fund_isin": spec.isin,
-                "cache_schema_version": 3,
-                "as_of": as_of_date(snapshot.as_of),
+                "cache_schema_version": 4,
+                "as_of": stamp,
+                "evidence": {**facts, **snapshot.evidence},
+                "profile": snapshot.profile
+                or empty_profile(spec.isin, spec.issuer, spec.source_url, spec.name),
             }
         )
     finally:
@@ -604,6 +737,10 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+class FundFetchBackoff(RuntimeError):
+    """An issuer failed and the next refresh is already rate limited."""
+
+
 class OfficialFundHoldingsProvider:
     """Use a daily official snapshot cache with stale-on-error resilience."""
 
@@ -616,14 +753,16 @@ class OfficialFundHoldingsProvider:
         client: httpx.Client | None = None,
     ) -> None:
         self.legacy_root = state_root.expanduser().resolve() / "raw" / "fund-holdings"
-        self.root = self.legacy_root / "v3"
+        self.root = self.legacy_root / "v4"
         self.max_age = max_age
         self.fetcher = fetcher
         self.client = client
         self.catalog = FundCatalog(state_root.expanduser().resolve())
 
-    def _read(self, ticker: str) -> FundSnapshot | None:
-        path = self.root / f"{ticker}.json"
+    def _read(self, ticker: str, fund_isin: str) -> FundSnapshot | None:
+        path = self.root / f"{fund_isin}.json" if fund_isin else self.root
+        if not path.is_file():
+            path = self.legacy_root / "v3" / f"{ticker}.json"
         if not path.is_file():
             path = self.legacy_root / f"{ticker}.json"
         if not path.is_file():
@@ -634,7 +773,7 @@ class OfficialFundHoldingsProvider:
         return FundSnapshot.model_validate(payload)
 
     def _is_fresh(self, snapshot: FundSnapshot) -> bool:
-        if snapshot.cache_schema_version != 3 or not snapshot.fetched_at:
+        if snapshot.cache_schema_version != 4 or not snapshot.fetched_at:
             return False
         try:
             fetched_at = datetime.fromisoformat(snapshot.fetched_at.replace("Z", "+00:00"))
@@ -651,12 +790,15 @@ class OfficialFundHoldingsProvider:
         normalized = security.ticker.strip().upper()
         if not re.fullmatch(r"[A-Z0-9][A-Z0-9._^-]{0,63}", normalized):
             raise ValueError("invalid fund ticker")
+        legacy = BUILTIN_FUND_ADAPTERS.get(normalized.removesuffix(".L"))
+        expected_isin = valid_isin(security.isin)
+        if security.isin and not expected_isin:
+            raise ValueError("invalid fund ISIN")
+        cache_isin = expected_isin or (legacy.isin if legacy else "")
         try:
-            cached = self._read(normalized)
+            cached = self._read(normalized, cache_isin)
         except (ValueError, OSError):
             cached = None
-        expected_isin = security.isin.strip().upper()
-        legacy = BUILTIN_FUND_ADAPTERS.get(normalized.removesuffix(".L"))
         if cached is not None and expected_isin:
             cached_isin = cached.fund_isin or (legacy.isin if legacy else "")
             if cached_isin and cached_isin != expected_isin:
@@ -665,16 +807,27 @@ class OfficialFundHoldingsProvider:
                 # A ticker-only file cannot establish an observed ISIN.
                 cached = None
         if cached is not None and self._is_fresh(cached):
-            return cached
-        retry_path = self.root / ".retry" / f"{normalized}.json"
+            return cached.model_copy(update={"ticker": normalized})
+        retry_path = self.root / ".retry" / f"{cache_isin or normalized}.json"
+
+        def stale_cache():
+            if cached is None:
+                return None
+            state = "holdings-stale" if cached.holdings else "data-failed"
+            return cached.model_copy(update={"ticker": normalized, "state": state})
+
         try:
             retry = json.loads(retry_path.read_text())
             if (
                 retry.get("isin") == expected_isin
-                and retry.get("version") == "issuer-adapters-v1"
+                and retry.get("version") == "issuer-adapters-v2"
                 and datetime.now(UTC) < datetime.fromisoformat(retry["retryAfter"])
             ):
-                return cached
+                if cached is None:
+                    raise FundFetchBackoff(
+                        f"{normalized}: prior issuer request failed; retry deferred"
+                    )
+                return stale_cache()
         except (OSError, ValueError, KeyError, TypeError):
             pass
         owns_client = self.client is None
@@ -686,7 +839,11 @@ class OfficialFundHoldingsProvider:
         try:
             spec = self.catalog.resolve(security, client)
             if spec is None:
-                return cached
+                return stale_cache()
+            if not cache_isin:
+                discovered = self._read(normalized, spec.isin)
+                if discovered and discovered.fund_isin == spec.isin and self._is_fresh(discovered):
+                    return discovered.model_copy(update={"ticker": normalized})
             snapshot = (
                 self.fetcher(normalized.removesuffix(".L"))
                 if self.fetcher is not None
@@ -695,25 +852,25 @@ class OfficialFundHoldingsProvider:
             if snapshot.fund_isin and snapshot.fund_isin != spec.isin:
                 raise ValueError(f"{normalized}: holdings snapshot ISIN mismatch")
             snapshot = snapshot.model_copy(
-                update={"ticker": normalized, "fund_isin": spec.isin, "cache_schema_version": 3}
+                update={"ticker": normalized, "fund_isin": spec.isin, "cache_schema_version": 4}
             )
         except Exception:
             _atomic_json(
                 retry_path,
                 {
                     "isin": expected_isin,
-                    "version": "issuer-adapters-v1",
+                    "version": "issuer-adapters-v2",
                     "retryAfter": (datetime.now(UTC) + timedelta(hours=1)).isoformat(),
                 },
             )
             if cached is not None:
-                return cached
+                return stale_cache()
             raise
         finally:
             if owns_client:
                 client.close()
         _atomic_json(
-            self.root / f"{normalized}.json",
+            self.root / f"{spec.isin}.json",
             snapshot.model_dump(mode="json", by_alias=True),
         )
         retry_path.unlink(missing_ok=True)

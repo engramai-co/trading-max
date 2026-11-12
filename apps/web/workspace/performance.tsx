@@ -400,6 +400,7 @@ export function PerformanceContent({
             )}
               {view === "returns" && <Legend items={returnLines.map((line) => ({ label: line.name }))} />}
               <TimelineChart
+                emptyHeadingLevel={2}
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
                 drawdownHeading={view === "money" ? <MoneyDrawdown money={money} /> : undefined}

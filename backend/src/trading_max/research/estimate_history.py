@@ -17,6 +17,7 @@ from trading_max.infrastructure import (
     SnapshotStore,
     SqliteDatabase,
 )
+from trading_max.reference.quote_units import major_quote_unit
 
 from .facts import number
 from .listing import quote_listing
@@ -181,7 +182,7 @@ def estimate_observations(
         ):
             continue
         unit = _text(row.get("currency"))
-        in_pence = unit in {"GBp", "GBX", "GBx"}
+        currency, divisor = major_quote_unit(unit)
         price = number(metrics.get("regularMarketPrice"))
         price = price if price is not None and price > 0 and unit else None
         yield EstimateObservation(
@@ -191,13 +192,13 @@ def estimate_observations(
                 _text(metrics.get("fullExchangeName")),
                 _text(metrics.get("exchangeTimezoneName")),
             ),
-            currency="GBP" if in_pence else unit,
+            currency=currency,
             quote_unit=unit,
             reporting_currency=_text(metrics.get("financialCurrency"))
             or _text(estimates.get("reportingCurrency")),
             observed_at=observed_at,
             provider_as_of=_text(estimates.get("providerAsOf")),
-            price=price / 100 if in_pence and price is not None else price,
+            price=price / divisor if price is not None else None,
             price_as_of=_timestamp(metrics.get("regularMarketTime")) if price is not None else None,
             consensus=consensus,
             recovered=recovered,

@@ -677,6 +677,7 @@ class Holding(ApiModel):
     # A fund the look-through resolves through its issuer's holdings, whether or not
     # those holdings are available yet. Company research scores do not apply to it.
     is_fund: bool
+    fund_isin: str | None = None
 
 
 class NavPoint(ApiModel):
@@ -1071,6 +1072,7 @@ class ResearchDirectoryInstrument(ApiModel):
     status: Literal["pending", "running", "ready", "partial", "failed"] = "pending"
     last_run_id: str | None = None
     last_error: str | None = None
+    is_fund: bool = False
     # Capability flags are intentionally unknown in the lightweight shell.
     # They remain false until a scoped lens is requested.
     has_market: bool = False

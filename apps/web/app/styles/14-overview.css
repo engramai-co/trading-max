@@ -465,3 +465,40 @@
   word-break: keep-all;
   overflow-wrap: break-word;
 }
+
+.mx-ledger-etf {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+}
+.mx-ledger-etf > span {
+  color: var(--mx-muted);
+  font-size: var(--mx-text-label);
+}
+.mx-ledger-etf > strong {
+  font-weight: 550;
+  white-space: nowrap;
+}
+.mx-ledger-etf[data-stale] > strong {
+  color: var(--mx-warning);
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .mx-ledger-table[data-etfs] :is(th, td):nth-child(n + 5) {
+    width: 98px;
+  }
+}
+@media (max-width: 767px) {
+  .mx-ledger-list[data-etfs] :is(.mx-ledger-list-head, .mx-ledger-item dl) {
+    grid-template-columns: .85fr .9fr 1.17fr 1.08fr;
+  }
+  .mx-ledger-item .mx-ledger-flag {
+    margin-right: 0;
+  }
+  .mx-ledger-etf .mx-ledger-flag {
+    margin-right: 4px;
+  }
+  .mx-ledger-etf {
+    white-space: normal;
+  }
+}

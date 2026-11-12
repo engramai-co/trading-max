@@ -6,6 +6,8 @@ import logging
 from collections.abc import Callable
 from contextlib import suppress
 
+from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, update_etf_journal
+from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -132,7 +134,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v8"
+    version = "market-snapshot-v9"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -257,7 +259,7 @@ class TechnicalArtifactStage:
     """Project technical rows from the immutable market input."""
 
     name = "research.technical"
-    version = "technical-v8"
+    version = "technical-v9"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -827,6 +829,40 @@ class TypedPublishSnapshotStage:
             previous=previous,
             context=context,
         )
+        current_etf = next((ref for ref in new_refs if ref.key == ETF_SUMMARY_KEY), None)
+        if current_etf:
+            old_summary = refs_by_key.get(ETF_SUMMARY_KEY)
+            old_journal = refs_by_key.get(ETF_JOURNAL_KEY)
+            journal = (
+                self.artifacts.get_json(old_journal.artifact_id).payload if old_journal else {}
+            )
+            old = (
+                ETFPortfolio.model_validate(
+                    self.artifacts.get_json(old_summary.artifact_id).payload
+                )
+                if old_summary
+                else ETFPortfolio()
+            )
+            current = ETFPortfolio.model_validate(
+                self.artifacts.get_json(current_etf.artifact_id).payload
+            )
+            updated = update_etf_journal(
+                journal, old, current, current_etf.generated_at.isoformat()
+            )
+            if updated != journal:
+                refs_by_key[ETF_JOURNAL_KEY] = self.artifacts.put_json(
+                    key=ETF_JOURNAL_KEY,
+                    kind="etf-journal",
+                    payload=updated,
+                    producer_version="etf-journal-v1",
+                    dependency_artifact_ids=[current_etf.artifact_id],
+                ).ref
+            # ETF evidence is a complete set for the current account selection.
+            refs_by_key = {
+                key: ref
+                for key, ref in refs_by_key.items()
+                if not key.startswith(("account/etfs/", "account/etf_holdings/"))
+            }
         refs_by_key.update({ref.key: ref for ref in new_refs})
         estimate_batches = {}
         estimate_keys = (

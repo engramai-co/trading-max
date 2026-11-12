@@ -279,7 +279,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         <OverviewSectors query={sectors} initialWaiting={initialWaiting} />
       </div>
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
-        : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations} />}
+        : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
+          runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
+          account={requestedScope} />}
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
     </div></ReadingBoundary.Provider>
   );

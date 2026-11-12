@@ -61,7 +61,7 @@ export function MoneyDrawdown({ money }: { money: Money }) {
   );
   return (
     <div className="mx-money-drawdown">
-      <h3>{t("最大盈亏回撤", "Maximum P&L drawdown")}</h3>
+      <h2>{t("最大盈亏回撤", "Maximum P&L drawdown")}</h2>
       <strong className={tone ? "mx-" + tone : undefined}>{amount}</strong>
       {episode && (
         <div className="mx-money-drawdown-dates">
