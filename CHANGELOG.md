@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.34.1] - 2026-11-12
+
+### Changed
+
+- The overview holdings table groups stocks and funds, each under its own
+  column headings (technical score and model upside for stocks; tracking
+  difference and overlap for funds), so cells hold figures only. Missing
+  readings show a dash, and signals mark at most four holdings.
+- Holding previews on the overview show today's move; the holdings page keeps
+  its three-month chart.
+- The overview's period P&L opens on 1D on every visit; a link that names a
+  range still opens that range.
+- The overview's period P&L drops its estimate legend and exact-records table;
+  the help explains the dashed line, and Returns & Risk keeps the full detail.
+
 ## [1.34.0] - 2026-11-12
 
 ### Added
