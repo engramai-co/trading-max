@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.32.0] - 2026-11-12
+
+### Added
+
+- Pages refresh by themselves. While a page is open, Trading Max checks for a
+  newly published snapshot about once a minute, and right away when you return
+  to the window or reconnect. The page then updates in the background: the
+  previous figures stay until matching new ones arrive, and numbers, charts and
+  times change together. A chart you are reading and unsaved valuation edits are
+  left alone. When two checks in a row fail, the existing "update failed · last
+  success" note appears.
+
 ## [1.31.2] - 2026-11-12
 
 ### Fixed
