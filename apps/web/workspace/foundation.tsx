@@ -335,19 +335,22 @@ export function Notice({
 }
 export function Empty({
   title,
+  headingLevel = 3,
   description,
   action,
 }: {
   title: ReactNode;
+  headingLevel?: 2 | 3;
   description?: ReactNode;
   action?: ReactNode;
 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
     <div className="mx-empty">
       <div className="mx-empty-mark">
         <Info size={24} />
       </div>
-      <h3><CenteredCopy>{title}</CenteredCopy></h3>
+      <Heading><CenteredCopy>{title}</CenteredCopy></Heading>
       {description && <p><CenteredCopy>{description}</CenteredCopy></p>}
       {action}
     </div>

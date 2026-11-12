@@ -93,8 +93,8 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   </Panel></div>;
 }
 
-export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry }: {
-  ticker: string; runId: string; data?: ResearchLensSnapshot; pending: boolean; error: boolean; retry: () => void;
+export function TechnicalWorkspace({ ticker, runId, data, fund = false, pending, error, retry }: {
+  ticker: string; runId: string; data?: ResearchLensSnapshot; fund?: boolean; pending: boolean; error: boolean; retry: () => void;
 }) {
   const { params } = useRouteState("push");
   const focused = useRef(false);
@@ -108,6 +108,10 @@ export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry 
     }
     if (!focusDiagnosis) focused.current = false;
   }, [data, focusDiagnosis]);
+  if (fund) return <div className="mx-tech-main">
+    <PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} />
+    {data ? <TechnicalView data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : <Pending />}</Panel>}
+  </div>;
   return <div className="mx-tech-workspace">
     <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
     <div className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} />

@@ -370,6 +370,7 @@ class CatalogSecurityMaster:
             "share-class-figi": {},
             "composite-figi": {},
         }
+        self._isin_by_listing_figi: dict[tuple[str, str], set[str]] = {}
         self._ticker_index: dict[str, list[SecurityEntityRecord]] = {}
         self._listing_index: dict[tuple[str, str], list[SecurityEntityRecord]] = {}
         self._name_index: dict[str, list[SecurityEntityRecord]] = {}
@@ -397,6 +398,15 @@ class CatalogSecurityMaster:
             for value in record.composite_figis:
                 self._register_exact("composite-figi", value, record)
             for listing in record.listings:
+                if listing.isin:
+                    for kind, figi in (
+                        ("figi", listing.figi),
+                        ("share-class-figi", listing.share_class_figi),
+                    ):
+                        if figi:
+                            self._isin_by_listing_figi.setdefault(
+                                (kind, _identifier(figi)), set()
+                            ).add(_identifier(listing.isin))
                 self._register_weak(self._ticker_index, listing.ticker, record)
                 for market in (listing.exchange, listing.mic):
                     normalized_market = _identifier(market)
@@ -413,6 +423,21 @@ class CatalogSecurityMaster:
                     ("composite-figi", listing.composite_figi),
                 ):
                     self._register_exact(dimension, value, record)
+
+    def exact_security_id(self, security: SecurityDescriptor) -> str | None:
+        """Exact instrument identity, never an issuer, name, or ticker match."""
+        isin = _identifier(security.isin)
+        if re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", isin):
+            return "ISIN:" + isin
+        for kind, raw in (("share-class-figi", security.share_class_figi), ("figi", security.figi)):
+            figi = _identifier(raw)
+            if re.fullmatch(r"[A-Z0-9]{12}", figi):
+                linked = self._isin_by_listing_figi.get((kind, figi), set())
+                if len(linked) == 1:
+                    return "ISIN:" + next(iter(linked))
+                if not linked:
+                    return "FIGI:" + figi
+        return None
 
     @staticmethod
     def _register_weak(

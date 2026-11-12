@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { DashboardLens, Holding } from "@/lib/types";
@@ -9,6 +10,7 @@ import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
 import { useCurrentDay } from "./current-day";
 import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
+import { etfPortfolioQuery, overlapDisplay, signedPoints, trackingDisplay, type Copy } from "./etf-data";
 import Link from "./link";
 import { holdingsLedger, type HoldingsLedger, type LedgerRow } from "./overview-holdings-data";
 import { SecurityPeek } from "./security-peek";
@@ -48,6 +50,8 @@ function factText(fact: AttentionFact, zh: boolean) {
     return `RSI ${fact.value} ${stretched}`;
   }
   if (fact.kind === "upside") return zh ? `模型空间 ${percent(fact.value, true, 0)}` : `Model upside ${percent(fact.value, true, 0)}`;
+  if (fact.kind === "tracking") return zh ? `一年跟踪差 ${signedPoints(fact.value)} pp` : `1-year tracking difference ${signedPoints(fact.value)} pp`;
+  if (fact.kind === "overlap") return zh ? `组合重叠 ${percent(fact.value, false, 0)}` : `Portfolio overlap ${percent(fact.value, false, 0)}`;
   return zh ? `浮亏 ${percent(Math.abs(fact.value), false, 0)}` : `${percent(fact.value, true, 0)} vs cost`;
 }
 
@@ -70,7 +74,19 @@ function Flag({ facts, kinds }: { facts: AttentionFact[]; kinds: AttentionFact["
 }
 
 /** The four figures of a row, each with its flag; a stretched RSI shows its reading beside the score. */
-function figures(row: LedgerRow) {
+function FundCell({ label, display, description, status, facts, kind }: {
+  label: string; display: string; description: string; status?: string; facts: AttentionFact[]; kind: "tracking" | "overlap";
+}) {
+  return <span className="mx-ledger-etf" role="group" aria-label={description} title={description} data-stale={status ? "" : undefined}>
+    <span aria-hidden="true">{label}</span>
+    <strong><Flag facts={facts} kinds={[kind]} /><span aria-hidden="true">{display}{status && <sup>*</sup>}</span></strong>
+  </span>;
+}
+
+function figures(row: LedgerRow, t: Copy, etfLoading: boolean) {
+  const tracking = trackingDisplay(row.etf, t, true);
+  const overlap = overlapDisplay(row.etf, t);
+  const loading = etfLoading && !row.etf;
   const rsi = row.facts.find((fact) => fact.kind === "rsi");
   return {
     day: <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
@@ -80,14 +96,18 @@ function figures(row: LedgerRow) {
         <span className={changeClass(row.pnl, 1)}>{percent(row.pnl, true, 1)}</span>
       </>
     ),
-    score: (
+    score: row.fund ? <>
+      <FundCell label={t("跟踪差", "Track")} facts={row.facts} kind="tracking" {...tracking} display={loading ? "—" : tracking.display} />
+    </> : (
       <>
         <Flag facts={row.facts} kinds={["score", "rsi"]} />
         {row.score ?? "—"}
         {rsi && <span className="mx-ledger-note" aria-hidden="true">RSI {rsi.value}</span>}
       </>
     ),
-    upside: (
+    upside: row.fund ? <>
+      <FundCell label={t("重叠", "Overlap")} facts={row.facts} kind="overlap" {...overlap} display={loading ? "—" : overlap.display} />
+    </> : (
       <>
         <Flag facts={row.facts} kinds={["upside"]} />
         {percent(row.upside, true, 0)}
@@ -96,19 +116,23 @@ function figures(row: LedgerRow) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations }: {
+export function OverviewHoldings({ holdings, technical, valuations, runId, account }: {
   holdings: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
+  runId?: string;
+  account: string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const { today, now } = useCurrentDay();
   const palette = useAllocationChartColours();
   const [focus, setFocus] = useState<Focus | null>(null);
+  const portfolio = useQuery({ ...etfPortfolioQuery(runId ?? "", account), enabled: Boolean(runId && holdings.some((row) => row.isFund)) });
+  const etfs = runId && portfolio.data?.runId === runId ? portfolio.data?.funds : undefined;
   const ledger = useMemo(
-    () => holdingsLedger({ holdings, technical, valuations, signals: holdingSignals({ holdings, technical, valuations }) }),
-    [holdings, technical, valuations],
+    () => holdingsLedger({ holdings, technical, valuations, etfs, signals: holdingSignals({ holdings, technical, valuations, etfs }) }),
+    [holdings, technical, valuations, etfs],
   );
   const dayLabel = (date: string | null) => (!date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now));
   const columns = [dayLabel(ledger.columnDay), t("浮动盈亏", "Unrealized"), t("技术", "Technical"), t("模型空间", "Model upside")];
@@ -137,8 +161,8 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
       className="mx-overview-holdings"
       title={t("持仓", "Holdings")}
       help={locale === "zh"
-        ? `占比按已投资市值计算，不含现金。技术分和模型空间来自研究台，基金暂不评分。圆点标出越过阈值的读数，最多 ${SIGNAL_LIMIT} 只：红色是浮亏 ${percent(-THRESHOLD.loss, false, 0)} 以上；黄色是技术分 ${THRESHOLD.score} 以下、RSI ${THRESHOLD.rsiHigh} 以上或 ${THRESHOLD.rsiLow} 以下、模型空间 ${percent(THRESHOLD.upside, true, 0)} 以下。`
-        : `Weights are shares of invested value; cash is excluded. Technical scores and model upside come from research; funds are not scored yet. A dot marks a reading past its threshold, for up to ${SIGNAL_LIMIT} holdings: red for a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost; amber for a technical score of ${THRESHOLD.score} or below, an RSI of ${THRESHOLD.rsiHigh} or above or ${THRESHOLD.rsiLow} or below, or model upside of ${percent(THRESHOLD.upside, true, 0)} or below.`}
+        ? `占比按已投资市值计算，不含现金。圆点最多 ${SIGNAL_LIMIT} 个。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。ETF 显示一年跟踪差和组合重叠。跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记；重叠 ≥ ${percent(THRESHOLD.overlap, false, 0)}、双方覆盖率 ≥ ${percent(THRESHOLD.coverage, false, 0)} 且日期有效时标记。星号表示已过期或日期未验证。`
+        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} dots. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. ETFs show 1-year tracking difference and portfolio overlap. Amber marks a fresh, comparable tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp, or overlap ≥ ${percent(THRESHOLD.overlap, false, 0)} when both sides have ≥ ${percent(THRESHOLD.coverage, false, 0)} coverage and valid dates. An asterisk marks stale or unverified dates.`}
       action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
     >
       {ledger.count === 0 ? (
@@ -148,7 +172,7 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
           <Donut ledger={ledger} palette={palette} focus={focus} setFocus={setFocus} restLabel={restLabel}
             countLabel={countLabel}
             title={locale === "zh" ? countLabel : <>{ledger.count}<small>{ledger.count === 1 ? "holding" : "holdings"}</small></>} />
-          <table className="mx-ledger-table">
+          <table className="mx-ledger-table" data-etfs={holdings.some((row) => row.isFund) ? "" : undefined}>
             <thead>
               <tr>
                 <th scope="col">{t("持仓", "Holding")}</th>
@@ -158,7 +182,7 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
             </thead>
             <tbody>
               {ledger.rows.map((row) => {
-                const cells = figures(row);
+                const cells = figures(row, t, !runId || portfolio.isPending);
                 return (
                   <tr key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row.ticker)}>
                     <th scope="row">
@@ -195,13 +219,13 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
             </tbody>
           </table>
           {/* Phones: each holding over one row of its figures; the columns are named once above them. */}
-          <div className="mx-ledger-list">
+          <div className="mx-ledger-list" data-etfs={holdings.some((row) => row.isFund) ? "" : undefined}>
             <div className="mx-ledger-list-head" aria-hidden="true">
               {phoneColumns.map((column) => <span key={column}>{column}</span>)}
             </div>
             <ol>
               {ledger.rows.map((row) => {
-                const cells = figures(row);
+                const cells = figures(row, t, !runId || portfolio.isPending);
                 return (
                   <li key={row.ticker}>
                     <Link className="mx-ledger-item" href={row.href}>
@@ -223,11 +247,11 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
                           <dd>{cells.pnl}</dd>
                         </div>
                         <div>
-                          <dt className="sr-only">{columns[2]}</dt>
+                          <dt className="sr-only">{row.fund ? t("一年跟踪差", "1-year tracking difference") : columns[2]}</dt>
                           <dd>{cells.score}</dd>
                         </div>
                         <div>
-                          <dt className="sr-only">{columns[3]}</dt>
+                          <dt className="sr-only">{row.fund ? t("组合重叠", "Portfolio overlap") : columns[3]}</dt>
                           <dd>{cells.upside}</dd>
                         </div>
                       </dl>

@@ -329,6 +329,10 @@ def build_dashboard_data(
                 else None
             )
             day_change = account_day_changes[index] if index < len(account_day_changes) else None
+            identity = _identity(position.get("ticker"), position.get("isin"))
+            fund = next(
+                (known for known in fund_identities if _same_security(identity, known)), None
+            )
             holdings.append(
                 {
                     "account": account,
@@ -352,12 +356,8 @@ def build_dashboard_data(
                     "dayChangeGbp": day_change.gbp if day_change else None,
                     "dayChangePct": day_change.share if day_change else None,
                     "dayChangeDate": day_change.date if day_change else None,
-                    "isFund": any(
-                        _same_security(
-                            _identity(position.get("ticker"), position.get("isin")), fund
-                        )
-                        for fund in fund_identities
-                    ),
+                    "isFund": fund is not None,
+                    "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }
             )
     holdings.sort(key=lambda item: item["currentValueGbp"], reverse=True)

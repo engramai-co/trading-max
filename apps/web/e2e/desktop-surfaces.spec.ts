@@ -12,16 +12,35 @@ async function capture(page: Page, name: string) {
 test.describe("desktop surfaces", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Use an isolated synthetic local service.");
 
-  test("the investment workspace keeps reports together and opens management separately", async ({ page }) => {
+  test("the investment workspace keeps reports together and opens management separately", async ({ page }, testInfo) => {
     await page.goto("/desktop");
     await expect(page.locator(".mx-desktop-app")).toBeVisible();
-    await expect(page.locator(".mx-desktop-tools")).toBeVisible();
-    expect((await page.locator(".mx-sidebar").boundingBox())!.width).toBeLessThanOrEqual(80);
     await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
     await capture(page, "workspace");
-    await expect(page.locator('.mx-desktop-tools a[href="/desktop/settings"]')).toHaveAttribute("target", "_blank");
-    await expect(page.locator('.mx-desktop-tools a[href="/desktop/activity"]')).toHaveAttribute("target", "_blank");
-    const holdings = page.getByRole("navigation", { name: /主导航|Primary navigation/ }).getByRole("link", { name: /持仓与穿透|Holdings/ });
+
+    const sidebar = page.locator(".mx-sidebar");
+    const tools = page.locator(".mx-desktop-tools");
+    let holdings;
+    if (testInfo.project.name === "mobile") {
+      await expect(sidebar).toBeHidden();
+      const more = page.getByRole("button", { name: /^(更多|More)$/ });
+      await more.tap();
+      const menu = page.getByRole("menu");
+      for (const path of ["/desktop/settings", "/desktop/activity"]) {
+        const item = menu.getByRole("menuitem").and(menu.locator(`[href="${path}"]`));
+        await expect(item).toBeVisible();
+        await expect(item).toHaveAttribute("target", "_blank");
+      }
+      await page.keyboard.press("Escape");
+      holdings = page.getByRole("navigation", { name: /快捷导航|Quick navigation/ }).getByRole("link", { name: /^(持仓|Assets)$/ });
+    } else {
+      await expect(tools).toBeVisible();
+      expect((await sidebar.boundingBox())!.width).toBeLessThanOrEqual(80);
+      for (const path of ["/desktop/settings", "/desktop/activity"]) {
+        await expect(tools.locator(`a[href="${path}"]`)).toHaveAttribute("target", "_blank");
+      }
+      holdings = page.getByRole("navigation", { name: /主导航|Primary navigation/ }).getByRole("link", { name: /持仓与穿透|Holdings/ });
+    }
     await expect(holdings).toHaveAttribute("href", "/desktop/holdings");
     await holdings.click();
     await expect(page).toHaveURL(/\/desktop\/holdings/);
@@ -32,9 +51,13 @@ test.describe("desktop surfaces", () => {
     test(`${route} has focused, accessible controls without the investment sidebar`, async ({ page }) => {
       await page.goto("/desktop/" + route);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
+      await expect(page.locator("main :is(.mx-loading, [aria-busy=true])")).toHaveCount(0);
       await expect(page.locator(".mx-sidebar")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      // Colour contrast is only meaningful once entrance transitions have settled.
+      await page.evaluate(() => Promise.all(document.getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined))));
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
       await capture(page, route);
     });
@@ -55,11 +78,13 @@ test.describe("desktop surfaces", () => {
   });
 
   test("the isolated demo makes import restrictions visible before choosing a file", async ({ page }) => {
-    await page.goto("/desktop/imports");
+    const demo = process.env.DESKTOP_DEMO_QA_URL;
+    test.skip(!demo?.startsWith("http://127.0.0.1:"), "Set DESKTOP_DEMO_QA_URL to a local server started with TRADING_MAX_ENV=desktop-preview.");
+    await page.goto(new URL("/desktop/imports", demo).href);
     await expect(page.getByText(/这是只读演示|This demonstration is read-only/)).toBeVisible();
     await expect(page.getByRole("button", { name: /CFD 活动 CSV 文件|CFD activity CSV file/ })).toBeDisabled();
     await expect(page.getByRole("button", { name: /导入账本|Import ledger/ })).toBeDisabled();
-    await page.goto("/desktop/activity");
+    await page.goto(new URL("/desktop/activity", demo).href);
     await page.getByRole("button", { name: /查看服务详情|Service details/, exact: true }).click();
     await expect(page.getByRole("button", { name: /开始更新|Start update/ })).toBeDisabled();
   });

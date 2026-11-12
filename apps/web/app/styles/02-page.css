@@ -549,7 +549,7 @@ html[data-scrolled] .mx-topbar-title strong {
   color: var(--mx-muted);
   margin-bottom: 16px;
 }
-.mx-empty h3 {
+.mx-empty > :is(h2, h3) {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.8;
@@ -568,7 +568,7 @@ html[data-scrolled] .mx-topbar-title strong {
     text-wrap: pretty;
   }
 }
-.mx-empty h3:lang(zh),
+.mx-empty > :is(h2, h3):lang(zh),
 .mx-not-found .mx-empty p:lang(zh) {
   text-wrap: balance;
 }

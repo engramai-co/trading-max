@@ -41,12 +41,12 @@ const blank: NoteInput = {
   modelId: null,
 };
 
-export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
+export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSnapshot; fund?: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const client = useQueryClient();
   const { params, update } = useRouteState("push");
-  const section = params.get("notebook") ?? "notes";
+  const section = fund ? "notes" : params.get("notebook") ?? "notes";
   const [archived, setArchived] = useState(false);
   const [editing, setEditing] = useState<Note | "new" | null>(null);
   useBuildNavigationGuard(Boolean(editing));
@@ -86,7 +86,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
     .reverse();
   return (
     <>
-      <Segments
+      {!fund && <Segments
         label={t("研究记录内容", "Research record contents")}
         value={section}
         onChange={(v) => update({ notebook: v })}
@@ -96,7 +96,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
           { value: "filings", label: t("公司披露", "Disclosures") },
           { value: "news", label: t("新闻", "News") },
         ]}
-      />
+      />}
       {section === "filings" || section === "news" ? (
         <ResearchDocuments data={data} news={section === "news"} />
       ) : query.isPending ? (
@@ -156,7 +156,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
                         <time>{content.reviewDate}</time>
                       </p>
                     )}
-                    {content.modelId && (
+                    {content.modelId && !fund && (
                       <button
                         className="mx-text-link"
                         onClick={() =>

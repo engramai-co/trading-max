@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
+from trading_max.analytics.etf_details import ETFDetail, etf_detail_key, etf_holdings_key
+from trading_max.analytics.etf_projection import (
+    ETF_PROJECTION_VERSION,
+    ETF_SUMMARY_KEY,
+    ETFExposure,
+    ETFPortfolio,
+)
 from trading_max.analytics.lookthrough import LookthroughService
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
@@ -54,7 +62,7 @@ class PortfolioLookthroughStage:
     """Publish direct and ETF-underlying exposure with explicit coverage."""
 
     name = "portfolio.lookthrough"
-    version = "lookthrough-v11"
+    version = "lookthrough-v12"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot", "reference.security_master")
 
@@ -96,12 +104,57 @@ class PortfolioLookthroughStage:
             )
         else:
             security_master = None
+        etf_artifacts = []
+
+        def publish_etfs(exposure: ETFExposure, as_of: str | None) -> None:
+            today = datetime.now(UTC).date()
+            portfolio = ETFPortfolio(broker_as_of=as_of)
+            evidence_ids = []
+            for reading, matches, snapshot in exposure.project(today, as_of):
+                portfolio.funds.append(reading)
+                if reading.isin:
+                    detail = ETFDetail(reading=reading, matches=matches)
+                    input_ids = list(dependency_ids)
+                    if snapshot:
+                        holdings = self.artifacts.put_json(
+                            key=etf_holdings_key(reading.isin),
+                            payload=snapshot.model_copy(update={"ticker": reading.isin}).model_dump(
+                                mode="json"
+                            ),
+                            kind="etf-issuer-holdings",
+                            as_of=snapshot.as_of or None,
+                            producer_version=ETF_PROJECTION_VERSION,
+                        ).ref
+                        input_ids.append(holdings.artifact_id)
+                        evidence_ids.append(holdings.artifact_id)
+                        etf_artifacts.append(holdings)
+                    etf_artifacts.append(
+                        self.artifacts.put_json(
+                            key=etf_detail_key(reading.isin),
+                            payload=detail.model_dump(mode="json"),
+                            kind="etf-evidence",
+                            as_of=as_of,
+                            producer_version=ETF_PROJECTION_VERSION,
+                            dependency_artifact_ids=input_ids,
+                        ).ref
+                    )
+            etf_artifacts.append(
+                self.artifacts.put_json(
+                    key=ETF_SUMMARY_KEY,
+                    payload=portfolio.model_dump(mode="json"),
+                    kind="etf-summary",
+                    as_of=as_of,
+                    producer_version=ETF_PROJECTION_VERSION,
+                    dependency_artifact_ids=[*dependency_ids, *evidence_ids],
+                ).ref
+            )
+
         try:
             service = self.service or LookthroughService(
                 OfficialFundHoldingsProvider(self.state_root),
                 security_master,
             )
-            payload = service.run(accounts)
+            payload = service.run(accounts, publish_etfs=publish_etfs)
         except Exception as exc:
             raise StageExecutionError(
                 "portfolio.lookthrough_failed",
@@ -122,7 +175,7 @@ class PortfolioLookthroughStage:
                 warnings=warnings,
             ),
         )
-        return StageResult(artifacts=(artifact.ref,), warnings=tuple(warnings))
+        return StageResult(artifacts=(artifact.ref, *etf_artifacts), warnings=tuple(warnings))
 
 
 __all__ = ["PortfolioLookthroughStage"]

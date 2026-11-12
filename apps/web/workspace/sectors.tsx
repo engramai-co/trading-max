@@ -199,6 +199,7 @@ export function SectorsWorkspace() {
   ) : !board || !groups.length ? (
     <section className="mx-panel">
       <Empty
+        headingLevel={2}
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
         description={demonstration
           ? t("演示仅包含美股板块。", "The demo includes US sectors only.")

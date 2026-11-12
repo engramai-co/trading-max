@@ -19,6 +19,7 @@ from pydantic import Field
 from yfinance.exceptions import YFException
 
 from trading_max.domain import DomainModel
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.facts import build_financial_facts
 
 JsonObject = dict[str, Any]
@@ -564,7 +565,7 @@ def build_valuation(
         if shares is None and market_cap is not None and spot:
             shares = market_cap / spot
         quote_currency = str(fundamental.get("currency") or "")
-        quote_currency = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
+        quote_currency, _ = major_quote_unit(quote_currency)
         report_currency = str(
             metrics.get("financialCurrency")
             or fundamental.get("financialCurrency")

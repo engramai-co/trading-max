@@ -79,21 +79,17 @@ function Positions() {
     : "all";
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
-  const [selected, setSelected] = useState<{ holding: Holding; accountAsOf?: string | null } | null>(null);
-  function selectHolding(holding: Holding) {
-    // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
-    const accountAsOf = query.data?.accounts?.find((item) => item.code === holding.account)?.asOf;
-    setSelected({ holding, accountAsOf });
-  }
+  const [selected, setSelected] = useState<{ holding: Holding; runId?: string; accountAsOf?: string | null; scope: string } | null>(null);
+  const positionData = query.data;
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
   const { today, now } = useCurrentDay();
   const scoped = useMemo(
     () =>
-      (query.data?.holdings ?? []).filter(
+      (positionData?.holdings ?? []).filter(
         (h) => account === "all" || h.account === account,
       ),
-    [query.data, account],
+    [positionData, account],
   );
   // Today's change appears once the day's attribution covers any position;
   // until then a link sorted by it falls back to market value.
@@ -112,6 +108,11 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
+  function selectHolding(holding: Holding) {
+    // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
+    const accountAsOf = positionData?.accounts?.find((item) => item.code === holding.account)?.asOf;
+    setSelected({ holding, accountAsOf, runId: positionData?.runId, scope: account });
+  }
   // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
   const summary = account === "all" ? null : query.data?.accounts?.find((item) => item.code === account);
   const invested = (account === "all" ? query.data?.totalInvestedGbp : summary?.investedGbp)
@@ -483,7 +484,7 @@ function Positions() {
             )}
           </Panel>
       <Drawer
-        opened={selected !== null}
+        opened={selected !== null && selected.scope === account}
         onClose={() => setSelected(null)}
         title={t("持仓明细", "Position detail")}
         closeButtonProps={{ "aria-label": t("关闭持仓明细", "Close position detail") }}
@@ -494,6 +495,7 @@ function Positions() {
             holding={selected.holding}
             account={accountName(profile, selected.holding.account)}
             accountAsOf={selected.accountAsOf}
+            runId={selected.runId}
             today={today}
             now={now}
           />

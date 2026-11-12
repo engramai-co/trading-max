@@ -29,9 +29,10 @@ test.describe("overview update attention", () => {
       const path = new URL(route.request().url()).pathname;
       const json = path.includes("/dashboard/lens/") ? fixture
         : path.endsWith("/dashboard/history") ? history
-          : path.endsWith("/refresh/attention") ? failing
-            : path.endsWith("/health/details") ? { checkedAt, health: null, readiness: null, refresh: null, jobs: [], errors: [] }
-            : path.endsWith("/profile") ? { accountLabels: {} } : {};
+          : path.endsWith("/health") ? { service: "trading_max-api", status: "ok", latestRunId: fixture.runId }
+            : path.endsWith("/refresh/attention") ? failing
+              : path.endsWith("/health/details") ? { checkedAt, health: null, readiness: null, refresh: null, jobs: [], errors: [] }
+                : path.endsWith("/profile") ? { accountLabels: {} } : {};
       return route.fulfill({ json });
     });
   });
@@ -48,11 +49,21 @@ test.describe("overview update attention", () => {
     await page.locator(".mx-attention").evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
     await page.screenshot({ path: test.info().outputPath("overview-update-attention.png") });
 
+    const attentionResponse = (status: number) => page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/backend/refresh/attention" && response.status() === status);
     await page.route("**/api/backend/refresh/attention", (route) => route.fulfill({ status: 503, json: {} }));
-    await page.clock.runFor(65_000);
+    const failure = attentionResponse(503);
+    await page.clock.fastForward(61_000);
+    await failure;
+    const retry = attentionResponse(503);
+    await page.clock.fastForward(2_000);
+    await retry;
     await expect(page.locator(".mx-attention")).toContainText("Account updates failing");
+
     await page.route("**/api/backend/refresh/attention", (route) => route.fulfill({ json: { checkedAt, issues: [] } }));
-    await page.clock.runFor(65_000);
+    const recovered = attentionResponse(200);
+    await page.clock.fastForward(61_000);
+    await recovered;
     await expect(page.locator(".mx-attention")).toHaveCount(0);
   });
 

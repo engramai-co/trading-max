@@ -24,15 +24,16 @@ test.describe("portfolio workspace", () => {
     }) => {
       await page.goto(route);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
+      // The shell heading appears before its data. Wait for both the skeleton and
+      // a retained busy result to finish before measuring or scanning the page.
+      await expect(page.locator("main :is(.mx-loading, [aria-busy=true])")).toHaveCount(0);
       await expect(page.locator("main")).not.toContainText(
         /This page could not be displayed|这一页暂时无法显示/,
       );
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-        ),
-      ).toBe(true);
+      expect.soft(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+        "horizontal overflow in pixels",
+      ).toBeLessThanOrEqual(1);
       await page.evaluate(async () => {
         await Promise.all(
           document

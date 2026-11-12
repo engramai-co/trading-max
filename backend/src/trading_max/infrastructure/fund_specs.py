@@ -89,6 +89,25 @@ BUILTIN_FUND_ADAPTERS: dict[str, FundSpec] = {
         product_id="285208",
         source_url="https://www.ishares.com/uk/individual/en/products/285208",
     ),
+    "SWDA": FundSpec(
+        ticker="SWDA",
+        isin="IE00B4L5Y983",
+        name="iShares Core MSCI World UCITS ETF",
+        issuer="iShares",
+        product_id="251882",
+        source_url="https://www.ishares.com/uk/individual/en/products/251882",
+    ),
+    "EQQQ": FundSpec(
+        ticker="EQQQ",
+        isin="IE0032077012",
+        name="Invesco EQQQ Nasdaq-100 UCITS ETF Dist",
+        issuer="Invesco",
+        data_isin="IE0032077012",
+        source_url=(
+            "https://dng-api.invesco.com/cache/v1/accounts/en_GB/"
+            "shareclasses/IE0032077012?idType=isin"
+        ),
+    ),
     "EQGB": FundSpec(
         ticker="EQGB",
         isin="IE00BYVTMW98",
