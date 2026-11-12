@@ -21,8 +21,9 @@ from .facts import number
 from .trailing_pe import DilutedEps, EpsFiling
 
 TICKER_MAP = "https://www.sec.gov/files/company_tickers.json"
-USER_AGENT = "Trading Max research (contact@ingramai.co)"
+USER_AGENT = "TradingMax research https://github.com/engramai-co/trading-max"
 MAX_BYTES = 32_000_000
+FILINGS_TTL_SECONDS = 86400
 FORMS = {"10-Q", "10-K", "10-Q/A", "10-K/A"}
 SYMBOL = re.compile(r"[A-Z][A-Z0-9]{0,8}(?:-[A-Z0-9]{1,3})?")
 ACCESSION = re.compile(r"[0-9]{10}-[0-9]{2}-[0-9]{6}")
@@ -140,6 +141,25 @@ class SecCompanyFacts:
         cik = self._ticker_map().get(ticker)
         if not cik:
             return []
+        # Filings change a few times a quarter. Reuse a day's result instead of
+        # downloading the full companyfacts document on every research run.
+        cache = self.root / f"sec-eps-{cik:010d}-{ticker}.json"
+        with suppress(OSError, ValueError, KeyError, TypeError):
+            if time.time() - cache.stat().st_mtime < FILINGS_TTL_SECONDS:
+                saved = json.loads(cache.read_bytes())
+                if saved["since"] == since.isoformat():
+                    return _decode_filings(saved["filings"])
+        result = self._fetch_filings(cik, ticker, since=since)
+        with suppress(OSError):
+            atomic_bytes(
+                cache,
+                json.dumps(
+                    {"since": since.isoformat(), "filings": _encode_filings(result)}
+                ).encode(),
+            )
+        return result
+
+    def _fetch_filings(self, cik: int, ticker: str, *, since: date) -> list[EpsFiling]:
         stem = f"CIK{cik:010d}"
         data = _get_json(f"https://data.sec.gov/submissions/{stem}.json")
         # Require an exact listed symbol: never equate a US receipt with foreign
@@ -164,3 +184,37 @@ class SecCompanyFacts:
         for name in archives:
             submissions.append(_get_json(f"https://data.sec.gov/submissions/{name}"))
         return eps_filings(facts, submissions, since=since)
+
+
+def _encode_filings(filings: list[EpsFiling]) -> list[dict[str, Any]]:
+    return [
+        {
+            "accepted_at": filing.accepted_at.isoformat(),
+            "report_end": filing.report_end.isoformat(),
+            "annual": filing.annual,
+            "observations": [
+                [item.start.isoformat(), item.end.isoformat(), item.value]
+                for item in filing.observations
+            ],
+        }
+        for filing in filings
+    ]
+
+
+def _decode_filings(rows: list[dict[str, Any]]) -> list[EpsFiling]:
+    return [
+        EpsFiling(
+            accepted_at=datetime.fromisoformat(row["accepted_at"]),
+            report_end=date.fromisoformat(row["report_end"]),
+            annual=bool(row["annual"]),
+            observations=tuple(
+                DilutedEps(
+                    start=date.fromisoformat(start),
+                    end=date.fromisoformat(end),
+                    value=None if value is None else float(value),
+                )
+                for start, end, value in row["observations"]
+            ),
+        )
+        for row in rows
+    ]

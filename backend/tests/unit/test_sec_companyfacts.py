@@ -81,3 +81,11 @@ def test_companyfacts_resolves_ticker_and_joins_archived_acceptances_without_dat
     assert [f.observations[0].value for f in filings] == [8, 7.5]
     assert not provider.filings("SYNT.L", since=date(2024, 1, 1))
     assert len(visited) == 4
+
+    # A later run the same day, even in a new process, reuses the parsed filings.
+    again = sec_companyfacts.SecCompanyFacts(tmp_path).filings("SYNT", since=date(2024, 1, 1))
+    assert sorted(again, key=lambda f: f.accepted_at) == filings
+    assert len(visited) == 4
+    # A different history window reads EDGAR again.
+    provider.filings("SYNT", since=date(2023, 6, 1))
+    assert len(visited) > 4
