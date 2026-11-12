@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod connection;
+mod preferences;
 mod recovery;
 mod runtime;
 mod sparkle;
@@ -8,6 +9,7 @@ mod surfaces;
 mod updates;
 
 use connection::{Mode, Probe, Profile};
+use preferences::AppLanguage;
 use runtime::{Runtime, Workspace};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -22,7 +24,7 @@ use std::{
 };
 use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
-    Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -50,7 +52,10 @@ extern "C" {
 #[derive(Clone, Serialize)]
 struct Session {
     app_version: &'static str,
+    #[serde(skip)]
+    app_language: AppLanguage,
     profile: Profile,
+    #[serde(skip)]
     workspaces: Vec<Workspace>,
     generation: u64,
     stage: String,
@@ -537,6 +542,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                             .workspace
                             .as_ref()
                             .filter(|_| profile.mode == Mode::Local),
+                        snapshot.app_language,
                     ) {
                         failed(&app, &desktop, generation, error);
                     }
@@ -617,28 +623,17 @@ fn show_workspaces(app: &tauri::AppHandle) -> tauri::Result<()> {
     show_auxiliary(app, true)
 }
 fn show_auxiliary(app: &tauri::AppHandle, picker: bool) -> tauri::Result<()> {
-    let (label, path, title, width, height) = if picker {
-        (
-            "workspaces",
-            "index.html?picker=1",
-            "Trading Max · 工作区",
-            760.0,
-            800.0,
-        )
+    let (label, path, width, height) = if picker {
+        ("workspaces", "index.html?picker=1", 760.0, 800.0)
     } else {
-        (
-            "settings",
-            "settings.html",
-            "Trading Max · 设置",
-            860.0,
-            640.0,
-        )
+        ("settings", "settings.html", 860.0, 640.0)
     };
     if let Some(window) = app.get_webview_window(label) {
         return reveal_window(&window);
     }
+    let language = app.state::<Arc<Desktop>>().snapshot().app_language;
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(path.into()))
-        .title(title)
+        .title(language.window_title(label))
         .inner_size(width, height)
         .min_inner_size(640.0, 540.0)
         .center()
@@ -683,22 +678,34 @@ fn read_workspaces(root: &std::path::Path) -> Vec<Workspace> {
 async fn choose_workspace_folder(
     window: WebviewWindow,
     app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<Option<PathBuf>, String> {
     local_command(&window)?;
+    let language = desktop.snapshot().app_language;
     tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("选择本机文件夹")
+            .set_title(language.text("选择本机文件夹", "Choose a local folder"))
             .blocking_pick_folder()
             .map(|file| {
-                file.into_path()
-                    .map_err(|_| "请选择本机文件夹。".to_string())
+                file.into_path().map_err(|_| {
+                    language
+                        .text("请选择本机文件夹。", "Choose a local folder.")
+                        .to_string()
+                })
             })
             .transpose()
     })
     .await
-    .map_err(|_| "未能打开文件夹选择器。".to_string())?
+    .map_err(|_| {
+        language
+            .text(
+                "未能打开文件夹选择器。",
+                "Could not open the folder picker.",
+            )
+            .to_string()
+    })?
 }
 #[tauri::command]
 async fn prepare_workspace(
@@ -709,9 +716,19 @@ async fn prepare_workspace(
 ) -> Result<Workspace, String> {
     local_command(&window)?;
     let desktop = desktop.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || desktop.runtime.workspace(&path, name.as_deref()))
-        .await
-        .map_err(|_| "工作区检查没有完成。".to_string())?
+    let language = desktop.snapshot().app_language;
+    tauri::async_runtime::spawn_blocking(move || {
+        desktop.runtime.workspace(&path, name.as_deref(), language)
+    })
+    .await
+    .map_err(|_| {
+        language
+            .text(
+                "工作区检查没有完成。",
+                "The workspace check did not finish.",
+            )
+            .to_string()
+    })?
 }
 #[tauri::command]
 async fn open_local_workspace(
@@ -722,10 +739,16 @@ async fn open_local_workspace(
 ) -> Result<(), String> {
     local_command(&window)?;
     let desktop = desktop.inner().clone();
+    let language = desktop.snapshot().app_language;
     tauri::async_runtime::spawn_blocking(move || {
-        let checked = desktop.runtime.workspace(&workspace.path, None)?;
+        let checked = desktop.runtime.workspace(&workspace.path, None, language)?;
         if checked != workspace {
-            return Err("工作区已变化，请重新选择。".into());
+            return Err(language
+                .text(
+                    "工作区已变化，请重新选择。",
+                    "The workspace has changed. Select it again.",
+                )
+                .into());
         }
         {
             let mut session = desktop.session.lock().unwrap();
@@ -747,15 +770,57 @@ async fn open_local_workspace(
         request_connection(&app, &desktop, Some(profile), false)
     })
     .await
-    .map_err(|_| "工作区没有打开。".to_string())?
+    .map_err(|_| {
+        language
+            .text("工作区没有打开。", "Could not open the workspace.")
+            .to_string()
+    })?
 }
+#[derive(Serialize)]
+struct RecentWorkspace {
+    #[serde(flatten)]
+    workspace: Workspace,
+    available: bool,
+}
+
+fn recent_workspaces(workspaces: Vec<Workspace>) -> Vec<RecentWorkspace> {
+    workspaces
+        .into_iter()
+        .map(|workspace| RecentWorkspace {
+            available: runtime::workspace_folder_available(&workspace.path),
+            workspace,
+        })
+        .collect()
+}
+
 #[tauri::command]
-fn desktop_status(
+async fn desktop_status(
     window: WebviewWindow,
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<DesktopStatus, String> {
     local_command(&window)?;
-    let mut snapshot = desktop.snapshot();
+    let desktop = desktop.inner().clone();
+    let show_recents = window.label() != "settings";
+    // A remembered folder can live on an unavailable volume. Do not stat
+    // those paths on the UI thread or while holding the session lock.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut snapshot = desktop.snapshot();
+        let workspaces = if show_recents {
+            recent_workspaces(std::mem::take(&mut snapshot.workspaces))
+        } else {
+            Vec::new()
+        };
+        status_response(snapshot, &desktop.root, workspaces)
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
+fn status_response(
+    mut snapshot: Session,
+    root: &std::path::Path,
+    workspaces: Vec<RecentWorkspace>,
+) -> DesktopStatus {
     let mode = snapshot
         .desired
         .as_ref()
@@ -773,23 +838,27 @@ fn desktop_status(
         .desired
         .as_ref()
         .and_then(|profile| (profile.mode == Mode::Remote).then(|| profile.url.clone()));
-    if let Ok(Some(saved)) = connection::read_profile(&desktop.root) {
+    if let Ok(Some(saved)) = connection::read_profile(root) {
         snapshot.profile = saved;
     }
-    Ok(DesktopStatus {
+    DesktopStatus {
+        app_language: snapshot.app_language,
         session: snapshot,
+        workspaces,
         mode,
         workspace,
         source_name,
         source_address,
         can_open_browser,
-    })
+    }
 }
 
 #[derive(Serialize)]
 struct DesktopStatus {
     #[serde(flatten)]
     session: Session,
+    app_language: AppLanguage,
+    workspaces: Vec<RecentWorkspace>,
     mode: Option<Mode>,
     workspace: Option<Workspace>,
     source_name: Option<String>,
@@ -1094,6 +1163,39 @@ fn set_auto_connect(
     update_auto_connect(&desktop.root, enabled)
 }
 #[tauri::command]
+fn set_app_language(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    language: AppLanguage,
+) -> Result<AppLanguage, String> {
+    local_command(&window)?;
+    {
+        let mut session = desktop.session.lock().unwrap();
+        language.save(&desktop.root).map_err(|_| {
+            session
+                .app_language
+                .text("无法保存语言设置。", "Could not save the language setting.")
+                .to_string()
+        })?;
+        session.app_language = language;
+    }
+    for label in ["main", "settings", "workspaces"] {
+        if let Some(surface) = app.get_webview_window(label) {
+            if local_command(&surface).is_ok() {
+                let _ = surface.set_title(language.window_title(label));
+                let _ = app.emit_to(
+                    EventTarget::webview_window(label),
+                    "app-language-changed",
+                    language,
+                );
+            }
+        }
+    }
+    Ok(language)
+}
+
+#[tauri::command]
 fn open_demo(
     window: WebviewWindow,
     app: tauri::AppHandle,
@@ -1244,6 +1346,7 @@ fn main() {
             forget_workspace,
             open_workspace_page,
             set_auto_connect,
+            set_app_language,
             open_demo,
             open_in_browser,
             choose_workspace_folder,
@@ -1265,6 +1368,7 @@ fn main() {
                 Ok(None) => (Profile::default(), None),
                 Err(error) => (Profile::default(), Some(error)),
             };
+            let app_language = AppLanguage::read(&root);
             let reopen = sparkle::take_reopen(&root);
             let autostart = if config_error.is_none() {
                 reopen.or_else(|| {
@@ -1279,6 +1383,7 @@ fn main() {
                 root: root.clone(),
                 session: Mutex::new(Session {
                     app_version: env!("CARGO_PKG_VERSION"),
+                    app_language,
                     profile: profile.clone(),
                     workspaces: read_workspaces(&root),
                     generation: 0,
@@ -1307,7 +1412,7 @@ fn main() {
             // recovery surface even if the portfolio WebView loses its service.
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("Trading Max · 工作区与连接")
+                    .title(app_language.window_title("main"))
                     .inner_size(1280.0, 840.0)
                     .min_inner_size(900.0, 640.0)
                     .center()
@@ -1353,6 +1458,7 @@ mod tests {
         };
         Session {
             app_version: env!("CARGO_PKG_VERSION"),
+            app_language: AppLanguage::default(),
             profile: profile.clone(),
             workspaces: vec![],
             generation: 1,
@@ -1552,6 +1658,58 @@ mod tests {
         ));
     }
     #[test]
+    fn recent_workspace_availability_reflects_folder_deletion_without_changing_history() {
+        let root = std::env::temp_dir().join(format!(
+            "tm-recent-workspaces-{}-{}",
+            std::process::id(),
+            connection::now_ms()
+        ));
+        let workspace = Workspace {
+            path: root.join("workspace"),
+            id: "synthetic-workspace-id".into(),
+            name: "Synthetic workspace".into(),
+        };
+        std::fs::create_dir_all(&workspace.path).unwrap();
+        connection::write_private_json(&root, "workspaces.json", &[&workspace]).unwrap();
+        let initial = recent_workspaces(read_workspaces(&root));
+        assert!(initial[0].available);
+        std::fs::remove_dir(&workspace.path).unwrap();
+        let missing = recent_workspaces(read_workspaces(&root));
+        assert!(!missing[0].available);
+        assert_eq!(missing[0].workspace, workspace);
+        assert_eq!(read_workspaces(&root), vec![workspace.clone()]);
+        std::fs::write(&workspace.path, "not a directory").unwrap();
+        assert!(!recent_workspaces(read_workspaces(&root))[0].available);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opening_a_deleted_workspace_fails_before_writing_or_starting_a_runtime() {
+        let root = std::env::temp_dir().join(format!(
+            "tm-open-deleted-workspace-{}-{}",
+            std::process::id(),
+            connection::now_ms()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let workspace = Workspace {
+            path: root.join("deleted"),
+            id: "synthetic-workspace-id".into(),
+            name: "Synthetic workspace".into(),
+        };
+        let runtime = Runtime::new(root.join("app-state"), root.join("resources"));
+        let error = runtime
+            .workspace(&workspace.path, None, AppLanguage::English)
+            .unwrap_err();
+        assert!(error.contains("workspace folder is unavailable"));
+        let error = runtime
+            .start(Some(&workspace), AppLanguage::Chinese)
+            .unwrap_err();
+        assert!(error.contains("工作区文件夹不可用"));
+        assert!(root.read_dir().unwrap().next().is_none());
+        std::fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
     fn temporary_demo_keeps_saved_server_and_auto_open_preference() {
         let root = std::env::temp_dir().join(format!(
             "tm-demo-profile-{}-{}",
@@ -1570,6 +1728,7 @@ mod tests {
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
+                app_language: AppLanguage::default(),
                 profile: profile.clone(),
                 workspaces: vec![],
                 generation: 0,
@@ -1618,6 +1777,7 @@ mod tests {
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
+                app_language: AppLanguage::default(),
                 profile: Profile::default(),
                 workspaces: vec![],
                 generation: 0,

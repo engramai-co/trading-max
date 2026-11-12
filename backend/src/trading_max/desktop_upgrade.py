@@ -47,7 +47,8 @@ def recover_interrupted(root: Path, recovery: Path) -> None:
         upgrade = WorkspaceUpgrade(root, recovery, matches[0])
         value = upgrade.read()
         if value and value["phase"] not in _TERMINAL:
-            with exclusive_lock(root / "runtime.lock"):
+            # A folder removed after the initial check must not be recreated.
+            with exclusive_lock(root / "runtime.lock", create_parent=False):
                 upgrade.rollback()
 
 

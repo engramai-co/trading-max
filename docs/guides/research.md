@@ -97,6 +97,22 @@ Banks and other unsupported businesses can be unavailable. Analyst price
 targets do not fill missing scenario values. See the
 [model contract](../architecture/valuation-model.md) for the exact method.
 
+For covered US listings, **Trailing P/E** pairs the Yahoo daily close (adjusted
+for splits, excluding dividends) with SEC Companyfacts diluted EPS on the same
+share basis. A filing enters the series at the first regular close after EDGAR
+acceptance. The denominator uses filed annual EPS at fiscal year end when
+available; otherwise it adds four consecutive quarters. An unreported fourth
+quarter is inferred from annual EPS minus the first three quarters. Later
+restatements apply from their own acceptance times. Missing closes, incomplete
+earnings windows, and nonpositive EPS leave gaps.
+
+The shaded band shows the 25th to 75th percentiles with the median dashed.
+Switch to **Mean ±1σ** for the mean and one population standard deviation.
+The rank beside the latest close counts valid daily observations at or below
+that multiple. Both references require 60 valid closes. Hover, tap, or use the
+arrow keys on the chart to read its dated inputs. The annual P/E filing points
+remain available under the historical valuation reference.
+
 ## Read options without confusing observations and estimates
 
 Select captured expirations, then use the chain or one of the structure views.

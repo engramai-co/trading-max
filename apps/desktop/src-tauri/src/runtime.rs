@@ -1,3 +1,4 @@
+use crate::preferences::AppLanguage;
 use serde::{Deserialize, Serialize};
 use std::os::unix::process::CommandExt;
 use std::{
@@ -15,6 +16,15 @@ pub struct Workspace {
     pub path: PathBuf,
     pub id: String,
     pub name: String,
+}
+
+// The picker only checks the folder; opening still runs full compatibility
+// and recovery checks. Like the supervisor, do not follow a workspace symlink.
+pub fn workspace_folder_available(path: &Path) -> bool {
+    path.is_absolute()
+        && path
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.is_dir())
 }
 
 struct OwnedRuntime {
@@ -99,7 +109,20 @@ impl Runtime {
             last: Mutex::new(Status::starting()),
         }
     }
-    pub fn workspace(&self, path: &Path, name: Option<&str>) -> Result<Workspace, String> {
+    pub fn workspace(
+        &self,
+        path: &Path,
+        name: Option<&str>,
+        language: AppLanguage,
+    ) -> Result<Workspace, String> {
+        if name.is_none() && !workspace_folder_available(path) {
+            return Err(language
+                .text(
+                    "工作区文件夹不可用，请重新选择位置。",
+                    "The workspace folder is unavailable. Choose its location again.",
+                )
+                .into());
+        }
         let mut command = Command::new(self.resources.join("python/bin/python3.12"));
         command
             .args(["-I", "-B", "-u"])
@@ -129,8 +152,22 @@ impl Runtime {
         }
         serde_json::from_value(value).map_err(|_| "工作区标记无法识别。".into())
     }
-    pub fn start(&self, workspace: Option<&Workspace>) -> Result<(), String> {
+    pub fn start(
+        &self,
+        workspace: Option<&Workspace>,
+        language: AppLanguage,
+    ) -> Result<(), String> {
         self.stop();
+        if let Some(workspace) = workspace {
+            if self.workspace(&workspace.path, None, language)? != *workspace {
+                return Err(language
+                    .text(
+                        "工作区已变化，请重新选择。",
+                        "The workspace has changed. Select it again.",
+                    )
+                    .into());
+            }
+        }
         prepare_root(&self.root)?;
         // A shipped seed stays fixed within this version. On update, open the
         // new seed in its own marked directory without overwriting earlier data.
@@ -141,11 +178,6 @@ impl Runtime {
             prepare_root(&demo_root)?;
             &demo_root
         };
-        if let Some(workspace) = workspace {
-            if self.workspace(root, None)? != *workspace {
-                return Err("工作区已变化，请重新选择。".into());
-            }
-        }
         *self.last.lock().unwrap() = Status::starting();
         let log = fs::OpenOptions::new()
             .create(true)

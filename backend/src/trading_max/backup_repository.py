@@ -42,9 +42,10 @@ _BLOCK = 1024 * 1024
 
 
 @contextmanager
-def exclusive_lock(path: Path):
+def exclusive_lock(path: Path, *, create_parent: bool = True):
     """Fail instead of racing another backup, cleanup or deployment."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if create_parent:
+        path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise ValueError("lock path must not be a symlink")
     with path.open("a+b") as handle:

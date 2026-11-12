@@ -27,7 +27,10 @@ import yfinance as yf
 from trading_max.infrastructure import compressed_json
 from trading_max.infrastructure.history_chunks import atomic_bytes
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.research.calendar import listing_calendar
 from trading_max.research.facts import fingerprint, number
+from trading_max.research.sec_companyfacts import SYMBOL, SecCompanyFacts
+from trading_max.research.trailing_pe import DailyClose, trailing_pe_history
 
 logger = logging.getLogger(__name__)
 
@@ -394,6 +397,7 @@ def match_periods(raw: dict[str, Any], periods: list[dict[str, Any]]) -> list[di
 class ResearchEvidenceProvider:
     def __init__(self, cache_root: Path) -> None:
         self.root = cache_root
+        self.sec = SecCompanyFacts(cache_root)
         self.documents: SingleFlightCache[str, str] = SingleFlightCache(4)
         self.parsed_filings: SingleFlightCache[str, dict[str, Any]] = SingleFlightCache(32)
         self.document_slots = threading.BoundedSemaphore(3)
@@ -474,7 +478,7 @@ class ResearchEvidenceProvider:
             return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v8"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v9"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(self._read_cache(cache))
         proxy = yf.Ticker(ticker)
@@ -487,6 +491,7 @@ class ResearchEvidenceProvider:
             "periodEvidence": [],
             "status": {},
         }
+        releases = []
         try:
             filings = proxy.get_sec_filings() or []
             result["filings"] = [
@@ -516,7 +521,6 @@ class ResearchEvidenceProvider:
                 counts[form] = counts.get(form, 0) + 1
                 selected.append(filing)
             periods, segments = [], {}
-            releases = []
             started = time.perf_counter()
             for parsed in self._filings(selected):
                 if isinstance(parsed, Exception):
@@ -562,44 +566,87 @@ class ResearchEvidenceProvider:
                             "publishedAt": release["publishedAt"],
                         }
             result["annualRevenue"] = list(annual_revenue.values())
-            if releases:
+            result["periodEvidence"] = match_periods(financials, periods)
+            result["status"]["filings"] = {"state": "available" if filings else "missing"}
+        except Exception as exc:
+            result["status"]["filings"] = {"state": "missing", "reason": type(exc).__name__}
+        # The same Yahoo history supports both lenses. SEC coverage is independent
+        # of Yahoo's filing feed and is computed only during research publication.
+        us_candidate = SYMBOL.fullmatch(ticker) is not None
+        if releases or us_candidate:
+            try:
+                # A request started during the session may include a partial bar
+                # even if the later SEC requests finish after the close.
+                history_requested_at = datetime.now(UTC)
+                history = proxy.history(period="10y", auto_adjust=False, actions=True)
+                metadata = proxy.get_history_metadata() or {}
+                code = metadata.get("currency")
+                bars = [
+                    DailyClose(
+                        day.date(), number(row.get("Close")), number(row.get("Stock Splits")) or 0
+                    )
+                    for day, row in history.iterrows()
+                ]
+            except Exception as exc:
+                bars, metadata, code = [], {}, None
+                result["status"]["releaseMultiples"] = {
+                    "state": "missing",
+                    "reason": type(exc).__name__,
+                }
+            if releases and bars:
                 try:
                     from trading_max.research.filing_multiples import (
                         release_multiples,
                         release_sales_multiples,
                     )
 
-                    history = proxy.history(period="10y", auto_adjust=False, actions=True)
-                    metadata = proxy.get_history_metadata() or {}
-                    code = metadata.get("currency")
                     scale = 0.01 if code in {"GBp", "GBX"} else 1
-                    code = "GBP" if scale == 0.01 else code
-                    # Yahoo Close is split-adjusted. Undo splits after each
-                    # historical date before pairing with originally filed EPS.
-                    reverse_splits = (
-                        history.get("Stock Splits").replace(0, 1).iloc[::-1].cumprod().iloc[::-1]
+                    release_currency = "GBP" if scale == 0.01 else code
+                    # Yahoo Close is split-adjusted. Restore the historical share
+                    # basis for the existing filing-date observations.
+                    rows = []
+                    future_splits = 1.0
+                    for bar in reversed(bars):
+                        if bar.close is not None:
+                            rows.append(
+                                {
+                                    "date": bar.date.isoformat(),
+                                    "split": bar.split,
+                                    "close": bar.close * future_splits * scale,
+                                }
+                            )
+                        if bar.split > 0:
+                            future_splits *= bar.split
+                    rows.reverse()
+                    result["releaseMultiples"] = release_multiples(releases, rows, release_currency)
+                    result["releaseSalesMultiples"] = release_sales_multiples(
+                        releases, rows, release_currency
                     )
-                    rows = [
-                        {
-                            "date": str(day.date()),
-                            "split": float(row.get("Stock Splits") or 0),
-                            "close": float(row["Close"])
-                            * float(reverse_splits.loc[day] / (row.get("Stock Splits") or 1))
-                            * scale,
-                        }
-                        for day, row in history.iterrows()
-                    ]
-                    result["releaseMultiples"] = release_multiples(releases, rows, code)
-                    result["releaseSalesMultiples"] = release_sales_multiples(releases, rows, code)
                 except Exception as exc:
                     result["status"]["releaseMultiples"] = {
                         "state": "missing",
                         "reason": type(exc).__name__,
                     }
-            result["periodEvidence"] = match_periods(financials, periods)
-            result["status"]["filings"] = {"state": "available" if filings else "missing"}
-        except Exception as exc:
-            result["status"]["filings"] = {"state": "missing", "reason": type(exc).__name__}
+            if (
+                bars
+                and "Stock Splits" in history
+                and us_candidate
+                and code == "USD"
+                and metadata.get("instrumentType") == "EQUITY"
+                and listing_calendar(
+                    ticker, metadata.get("exchangeName"), metadata.get("exchangeTimezoneName")
+                )
+                == "XNYS"
+            ):
+                try:
+                    filings = self.sec.filings(ticker, since=min(bar.date for bar in bars))
+                    series = trailing_pe_history(filings, bars, now=history_requested_at)
+                    if series:
+                        result["trailingPeHistory"] = series.model_dump(mode="json")
+                except Exception as exc:
+                    logger.info(
+                        "research_trailing_pe ticker=%s reason=%s", ticker, type(exc).__name__
+                    )
         try:
             dividends = proxy.get_dividends(period="max")
             dividend_code = (proxy.get_history_metadata() or {}).get("currency")

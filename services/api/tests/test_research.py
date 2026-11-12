@@ -1008,3 +1008,50 @@ def test_typed_earnings_rows_create_a_research_event(tmp_path: Path) -> None:
 
     assert len(events) == 1
     assert events[0].event_type == "earnings"
+
+
+def test_trailing_pe_is_scoped_to_the_valuation_lens_and_keeps_its_research_revision(tmp_path):
+    store = ArtifactStore(tmp_path)
+    data = {
+        "currency": "USD",
+        "points": [{"date": "2026-05-01", "close": 75, "pe": 15, "earningsIndex": 0}],
+        "earnings": [
+            {
+                "effectiveDate": "2026-04-30",
+                "periodEnd": "2026-03-31",
+                "eps": 5,
+                "method": "fourQuarters",
+            }
+        ],
+        "distribution": None,
+    }
+    financials = store.immutable_artifacts.put_json(
+        key="research/financials.json",
+        payload={
+            "rows": [
+                {"ticker": "SYNTH", "financials": {}, "trailingPeHistory": data},
+            ]
+        },
+    )
+    store.immutable_snapshots.publish(
+        scope="research", source="synthetic", artifacts=[financials.ref]
+    )
+    manifest = store.latest_manifest()
+    ledger = ResearchLedger(store, WatchlistStore(tmp_path))
+    lens = ledger.lens_snapshot("SYNTH", "valuation", manifest)
+    assert lens.model_dump(mode="json")["trailingPeHistory"] == data
+    assert ledger.lens_snapshot("SYNTH", "fundamentals", manifest).trailing_pe_history is None
+    assert ledger.lens_snapshot("SYNTH.L", "valuation", manifest).trailing_pe_history is None
+
+    account = store.immutable_artifacts.put_json(key="account/other.json", payload={"synthetic": 1})
+    store.immutable_snapshots.publish(
+        scope="live", source="synthetic", artifacts=[financials.ref, account.ref]
+    )
+    after = store.latest_manifest()
+    assert ledger.lens_revision(after, "valuation", "full") == ledger.lens_revision(
+        manifest, "valuation", "full"
+    )
+    assert (
+        ledger.lens_snapshot("SYNTH", "valuation", after).trailing_pe_history
+        == lens.trailing_pe_history
+    )

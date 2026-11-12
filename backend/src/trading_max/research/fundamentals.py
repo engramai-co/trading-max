@@ -445,9 +445,11 @@ class YFinanceResearchService:
         for ticker in universe:
             try:
                 payload = dict(self.financials_loader(ticker))
+                trailing_pe = None
                 if self.evidence_loader is not None:
                     try:
-                        evidence = self.evidence_loader(ticker, payload)
+                        evidence = dict(self.evidence_loader(ticker, payload))
+                        trailing_pe = evidence.pop("trailingPeHistory", None)
                         payload.update(
                             {
                                 "evidence": evidence,
@@ -466,6 +468,7 @@ class YFinanceResearchService:
                         "ticker": ticker,
                         "financials": payload,
                         "source": "yahoo-finance-financials",
+                        **({"trailingPeHistory": trailing_pe} if trailing_pe is not None else {}),
                     }
                 )
             except Exception as exc:

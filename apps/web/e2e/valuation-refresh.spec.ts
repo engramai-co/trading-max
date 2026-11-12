@@ -1,4 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { join } from "node:path";
+import type { ResearchLensSnapshot } from "../lib/types";
 
 // Synthetic research desk: a held security whose broker price moves from 100 to
 // 120 while its assumptions are being edited, and a second, unheld security.
@@ -71,12 +73,48 @@ function lens(ticker: string, view: string, price: number) {
   };
 }
 
+function peHistory(short = false): ResearchLensSnapshot["trailingPeHistory"] {
+  const dates = Array.from({ length: 549 }, (_, index) => new Date(Date.UTC(2024, 0, 2 + index)))
+    .filter((date) => date.getUTCDay() % 6 !== 0)
+    .map((date) => date.toISOString().slice(0, 10));
+  const earnings = [
+    { effectiveDate: dates[0], periodEnd: "2023-09-30", eps: 4, method: "annual" as const },
+    { effectiveDate: dates[132], periodEnd: "2024-03-31", eps: -0.25, method: "fourQuarters" as const },
+    { effectiveDate: dates[152], periodEnd: "2024-06-30", eps: 5, method: "derivedFourthQuarter" as const },
+  ];
+  const points = (short ? dates.slice(0, 12) : dates).map((date, i, all) => {
+    const earningsIndex = i < 132 ? 0 : i < 152 ? 1 : 2;
+    const pe = earningsIndex === 1 ? null : i === all.length - 1 ? 28.4
+      : 22 + i * 0.02 + Math.sin(i * 0.052) * 4 + Math.sin(i * 0.56) + Math.cos(i * 2.5) * 0.35;
+    return { date, pe, close: pe === null ? 105 : pe * earnings[earningsIndex].eps, earningsIndex };
+  });
+  const values = points.flatMap(({ pe }) => pe === null ? [] : [pe]).sort((a, b) => a - b);
+  const quantile = (q: number) => {
+    const rank = (values.length - 1) * q;
+    const i = Math.floor(rank);
+    return values[i] + (values[i + 1] - values[i]) * (rank - i);
+  };
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return {
+    currency: "USD",
+    points,
+    earnings,
+    distribution: short ? null : {
+      samples: values.length, lowerQuartile: quantile(0.25), median: quantile(0.5),
+      upperQuartile: quantile(0.75), mean,
+      standardDeviation: Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length),
+      latestPercentile: values.filter((value) => value <= 28.4).length / values.length,
+    },
+  };
+}
+
 async function synthetic(page: Page, running = true) {
   const state = {
     broker: { price: 100, asOf: "2026-11-04T15:40:00Z" },
     defaultsDown: false,
     publication: "synthetic-run",
     newResearch: false,
+    trailingPe: null as ResearchLensSnapshot["trailingPeHistory"],
     posts: [] as { ticker: string; scenarios: Record<string, Inputs> }[],
     releaseOther: () => {},
   };
@@ -93,7 +131,10 @@ async function synthetic(page: Page, running = true) {
   } }));
   await page.route(/\/api\/backend\/research\/(SYNT|OTHR)\/lens\/(\w+)/, (route) => {
     const [, ticker, view] = /research\/(SYNT|OTHR)\/lens\/(\w+)/.exec(route.request().url())!;
-    const data = lens(ticker, view, ticker === "SYNT" ? 101 : 55);
+    const data = {
+      ...lens(ticker, view, ticker === "SYNT" ? 101 : 55),
+      trailingPeHistory: ticker === "SYNT" && view === "valuation" ? state.trailingPe : null,
+    };
     return route.fulfill({ json: state.newResearch && ticker === "SYNT" ? {
       ...data, runId: state.publication, financialFacts: { ...data.financialFacts, version: "new-facts" },
     } : data });
@@ -180,6 +221,58 @@ test.describe("valuation refresh", () => {
     await expect(growth).toHaveValue("20%");
     await expect(growth).toBeFocused();
     await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
+  });
+
+  test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page }, testInfo) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory();
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-trailing-pe");
+    const chart = section.getByRole("group", { name: /^Trailing P\/E history/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await expect(chart).toHaveAccessibleName(/28\.4×.*Historical percentile/);
+    await expect(section.getByRole("button", { name: "P25–P75" })).toHaveAttribute("aria-pressed", "true");
+
+    if (process.env.PE_QA_SCREENSHOTS_DIR) {
+      for (const scheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+        // Wait for the next frame so the theme change also reaches the canvas.
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+        await section.screenshot({ path: join(process.env.PE_QA_SCREENSHOTS_DIR, `${testInfo.project.name}-${scheme}.png`) });
+      }
+    }
+
+    const deviation = section.getByRole("button", { name: "Mean ±1σ" });
+    await deviation.click();
+    await expect(deviation).toHaveAttribute("aria-pressed", "true");
+    await chart.focus();
+    await chart.press("End");
+    const reading = section.getByRole("status");
+    await expect(reading).toContainText("Close 142 USD · Yahoo");
+    await expect(reading).toContainText("EPS (TTM) 5 USD · SEC Companyfacts");
+    await expect(reading).toContainText("Includes inferred Q4");
+    await expect(reading).toContainText("Effective");
+    await chart.press("Escape");
+    await expect(reading).toHaveText("");
+    await expect(page.getByText("Historical valuation reference", { exact: true })).toBeVisible();
+  });
+
+  test("trailing P/E omits distribution for short histories and stays absent without SEC data", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory(true);
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const chart = page.getByRole("group", { name: /^Trailing P\/E history/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await expect(chart).not.toHaveAccessibleName(/percentile/);
+    await expect(page.getByRole("button", { name: "P25–P75" })).toHaveCount(0);
+    state.releaseOther();
+    await page.getByRole("button", { name: "Next security" }).click();
+    await expect(page).toHaveURL(/ticker=OTHR/);
+    await expect(page.locator(".mx-scenario-spot")).toContainText("55.00");
+    await expect(chart).toHaveCount(0);
   });
 
 });

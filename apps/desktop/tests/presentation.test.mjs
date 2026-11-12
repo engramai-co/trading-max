@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { workspacePresentation, savedRemote } from "../splash/presentation.mjs";
+import { workspacePresentation, savedRemote, recentWorkspacePresentation } from "../splash/presentation.mjs";
 
 test("an active local workspace never inherits the saved remote service identity", () => {
   const view = workspacePresentation({
@@ -63,4 +63,35 @@ test("a retained offline page is accessible without claiming current connectivit
     assert.equal(view.name, "Selected server");
   }
   assert.equal(workspacePresentation({ mode: "remote", stage: "error" }).available, false);
+});
+
+test("the saved English preference localizes a retained offline workspace", () => {
+  const view = workspacePresentation({
+    app_language: "en", mode: "remote", stage: "reconnecting",
+    active_url: "https://selected.example.test/", active_name: "Selected server",
+  });
+  assert.equal(view.kind, "Remote service");
+  assert.equal(view.name, "Selected server");
+  assert.equal(view.status, "Disconnected · Reconnecting");
+  assert.match(view.detail, /Data may be out of date/);
+  assert.equal(view.available, true);
+  assert.equal(view.ready, false);
+});
+
+
+test("deleted recents are unavailable and removable even when their page is still open", () => {
+  const workspace = { name: "Synthetic local", path: "/tmp/synthetic workspace" };
+  const state = { stage: "ready", workspace };
+  assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: true }, state, "en"), {
+    action: "return", label: "Back to workspace", canForget: false,
+  });
+  assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: false }, state, "en"), {
+    action: null, label: "Unavailable", canForget: true,
+  });
+  assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: false }, {}, "zh-CN"), {
+    action: null, label: "不可用", canForget: true,
+  });
+  assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: true }, {}, "zh-CN"), {
+    action: "open", label: "打开", canForget: true,
+  });
 });

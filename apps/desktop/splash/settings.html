@@ -10,56 +10,59 @@
   <div class="preferences-shell">
     <aside class="preferences-sidebar">
       <header class="brand"><picture><source srcset="icon-dark.svg" media="(prefers-color-scheme: dark)"><img src="icon.svg" alt="" width="30" height="30"></picture><span>Trading <strong>Max</strong></span></header>
-      <p class="nav-caption">APP 设置</p>
-      <nav aria-label="App 设置分类">
-        <button class="nav-item" data-page="general" aria-current="page" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg>通用</button>
-        <button class="nav-item" data-page="workspace" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h6l2 3h10v12H3Z"/></svg>当前工作区</button>
-        <button class="nav-item" data-page="updates" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg>关于与更新</button>
-        <button class="nav-item" data-page="support" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 16v1"/></svg>帮助与恢复</button>
+      <p class="nav-caption" data-en="APP SETTINGS">APP 设置</p>
+      <nav aria-label="App 设置分类" data-en-aria-label="App settings categories">
+        <button class="nav-item" data-page="general" aria-current="page" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg><span data-en="General">通用</span></button>
+        <button class="nav-item" data-page="workspace" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5h6l2 3h10v12H3Z"/></svg><span data-en="Current workspace">当前工作区</span></button>
+        <button class="nav-item" data-page="updates" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg><span data-en="About &amp; updates">关于与更新</span></button>
+        <button class="nav-item" data-page="support" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 16v1"/></svg><span data-en="Help &amp; recovery">帮助与恢复</span></button>
       </nav>
     </aside>
     <main class="preferences-main">
       <header class="preferences-header"><h1 id="page-title" tabindex="-1">通用</h1></header>
       <section id="general" aria-labelledby="page-title">
-        <h2 class="section-label">启动</h2>
         <div class="preference-group">
-          <label class="preference-row toggle-row" for="auto-connect"><span><strong>自动打开已保存的服务</strong><span class="row-description">下次启动 App 时直接进入这份资料。</span></span><input id="auto-connect" type="checkbox" role="switch" disabled></label>
-          <div class="preference-row"><div class="row-copy"><span class="row-description">已保存的服务</span><strong id="startup-name">尚未保存</strong><span id="startup-address" class="row-description address"></span></div><button id="manage-workspaces" class="secondary" type="button">管理连接…</button></div>
+          <label class="preference-row" for="app-language"><strong data-en="Language">语言</strong><select id="app-language" class="secondary" disabled><option value="zh-CN" lang="zh-CN">中文</option><option value="en" lang="en">English</option></select></label>
         </div>
-        <h2 class="section-label spaced">工作区</h2>
-        <button id="choose-workspace" type="button" class="preference-group destination-row"><span><strong>打开另一份投资记录</strong><span class="row-description">最近的工作区、本地文件夹或已有服务。</span></span><span class="shortcut">⇧⌘O <span aria-hidden="true">›</span></span></button>
+        <h2 class="section-label spaced" data-en="Startup">启动</h2>
+        <div class="preference-group">
+          <label class="preference-row toggle-row" for="auto-connect"><span><strong data-en="Open the saved service automatically">自动打开已保存的服务</strong><span class="row-description" data-en="Open this workspace when the app starts.">下次启动 App 时直接进入这份资料。</span></span><input id="auto-connect" type="checkbox" role="switch" disabled></label>
+          <div class="preference-row"><div class="row-copy"><span class="row-description" data-en="Saved service">已保存的服务</span><strong id="startup-name">尚未保存</strong><span id="startup-address" class="row-description address"></span></div><button id="manage-workspaces" class="secondary" type="button" data-en="Manage connections…">管理连接…</button></div>
+        </div>
+        <h2 class="section-label spaced" data-en="Workspaces">工作区</h2>
+        <button id="choose-workspace" type="button" class="preference-group destination-row"><span><strong data-en="Open another workspace">打开另一份投资记录</strong><span class="row-description" data-en="Recent workspaces, local folders, or an existing service.">最近的工作区、本地文件夹或已有服务。</span></span><span class="shortcut">⇧⌘O <span aria-hidden="true">›</span></span></button>
       </section>
       <section id="workspace" aria-labelledby="page-title" hidden>
         <div class="workspace-card">
           <div class="workspace-card-top"><span id="source-kind" class="scope-label">尚未连接</span><span id="connection-state" class="connection-state">未连接</span></div>
           <h2 id="active-name">尚未打开工作区</h2><p id="active-address" class="address"></p>
           <p id="connection-detail" class="row-description"></p>
-          <div class="workspace-card-actions"><button id="return-workspace" type="button" disabled>回到工作台</button><button id="switch-workspace" class="secondary" type="button">切换工作区…</button></div>
+          <div class="workspace-card-actions"><button id="return-workspace" type="button" disabled data-en="Back to workspace">回到工作台</button><button id="switch-workspace" class="secondary" type="button" data-en="Switch workspace…">切换工作区…</button></div>
         </div>
-        <h2 class="section-label spaced">这份资料</h2>
+        <h2 class="section-label spaced" data-en="Workspace data">这份资料</h2>
         <div class="preference-group">
-          <button id="workspace-settings" type="button" class="preference-row destination-row" disabled><span><strong id="workspace-settings-label">工作区设置</strong><span class="row-description">账户、行情来源、模型与更新计划。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
-          <button id="workspace-health" type="button" class="preference-row destination-row" disabled><span><strong>同步与活动</strong><span class="row-description">查看更新时间、采集任务与需要处理的问题。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
-          <button id="data-folder" type="button" class="preference-row destination-row" hidden><span><strong>在 Finder 中显示资料</strong><span class="row-description">打开当前本地工作区的文件夹。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+          <button id="workspace-settings" type="button" class="preference-row destination-row" disabled><span><strong id="workspace-settings-label">工作区设置</strong><span class="row-description" data-en="Accounts, market data sources, models, and update schedules.">账户、行情来源、模型与更新计划。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+          <button id="workspace-health" type="button" class="preference-row destination-row" disabled><span><strong data-en="Sync &amp; activity">同步与活动</strong><span class="row-description" data-en="See when data updated, what ran, and what needs attention.">查看更新时间、采集任务与需要处理的问题。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
+          <button id="data-folder" type="button" class="preference-row destination-row" hidden><span><strong data-en="Show data in Finder">在 Finder 中显示资料</strong><span class="row-description" data-en="Open the folder for this local workspace.">打开当前本地工作区的文件夹。</span></span><span class="row-arrow" aria-hidden="true">↗</span></button>
         </div>
         <p id="ownership-hint" class="section-note"></p>
       </section>
       <section id="updates" aria-labelledby="page-title" hidden>
         <div class="about-product"><picture><source srcset="icon-dark.svg" media="(prefers-color-scheme: dark)"><img src="icon.svg" width="56" height="56" alt=""></picture><div><h2>Trading&nbsp;Max</h2><p><span id="installed-version"></span></p></div></div>
-        <div class="preference-group"><div class="preference-row"><span><strong>检查官方版本</strong><span class="row-description">分别检查桌面安装包和仓库版本。</span></span><button id="check-updates" class="secondary" type="button">检查版本</button></div></div>
+        <div class="preference-group"><div class="preference-row"><span><strong data-en="Check for official releases">检查官方版本</strong><span class="row-description" data-en="Check desktop installers and repository releases separately.">分别检查桌面安装包和仓库版本。</span></span><button id="check-updates" class="secondary" type="button" data-en="Check for updates">检查版本</button></div></div>
         <div id="update-result" class="update-result" role="status" hidden></div>
-        <button id="release-notes" type="button" class="text-button" hidden>查看仓库版本说明 ↗</button>
-        <div class="update-actions"><button id="install-update" type="button" hidden>在 App 内更新…</button><button id="download-desktop" class="secondary" type="button" hidden>下载 Mac 安装包 ↗</button><button id="update-help" class="secondary" type="button">安装与升级说明</button></div>
-        <details id="package-details" class="support-details" hidden><summary>安装包信息与校验值</summary><p id="package-checksum" class="checksum"></p><p>App 内更新会验证更新说明和安装包签名；使用浏览器下载时，macOS 仍会检查签名与公证。</p></details>
+        <button id="release-notes" type="button" class="text-button" hidden data-en="Repository release notes ↗">查看仓库版本说明 ↗</button>
+        <div class="update-actions"><button id="install-update" type="button" hidden data-en="Update in the app…">在 App 内更新…</button><button id="download-desktop" class="secondary" type="button" hidden>下载 Mac 安装包 ↗</button><button id="update-help" class="secondary" type="button" data-en="Installation and upgrade help">安装与升级说明</button></div>
+        <details id="package-details" class="support-details" hidden><summary data-en="Installer details and checksum">安装包信息与校验值</summary><p id="package-checksum" class="checksum"></p><p data-en="In-app updates verify the update feed and installer signatures. When you download in a browser, macOS still checks the signature and notarization.">App 内更新会验证更新说明和安装包签名；使用浏览器下载时，macOS 仍会检查签名与公证。</p></details>
       </section>
       <section id="support" aria-labelledby="page-title" hidden>
-        <div class="quiet-note support-intro"><strong>资料保存在应用之外</strong><p>更换或移除 App 不会删除你选择的工作区、Keychain 中的账户凭据，或远程服务器上的记录。</p></div>
-        <details class="support-details" open><summary>安装与升级</summary><ol><li>在“关于与更新”检查版本。可用时点击“在 App 内更新”，按原生窗口完成下载、验证、安装和重启；取消或下载失败时可以继续使用当前 App。</li><li>选择手动下载安装包时，下载完成后用 ⌘Q 退出 App，打开 DMG，将应用拖到原来的安装位置并选择替换。通常是“应用程序”文件夹；不要从 DMG 内长期运行。</li><li>重新打开 App，选择原来的服务或工作区。连接与凭据会保留。本地旧工作区首次升级会先准备恢复点，请等待启动完成。</li></ol><p>如果 macOS 提示签名、开发者或文件损坏问题，请停止安装，重新获取官方安装包并反馈；无需关闭系统安全检查。</p></details>
-        <details class="support-details"><summary>升级后打不开，或中途退出</summary><p>先重新打开 App，并选择原来的工作区。未完成的本地升级会尝试恢复升级前的资料；失败时产生的资料也会保留。恢复尚未完成时，按界面提示腾出空间或重新尝试。</p><p>恢复保护覆盖本地工作区的首次启动事务，不会自动换回旧 App。已经成功升级并继续写入的资料不会自动倒退。不要直接用更老版本打开这些资料。</p><p>仍然失败时保留原工作区和恢复目录，记录 App 版本、错误提示、发生时间与本地／远程模式，再联系维护者。不要上传密钥、账户导出或完整工作区。</p><button id="recovery-folder" class="secondary" type="button" disabled>在 Finder 中显示恢复资料</button><p class="section-note">只适用于选中的本地工作区；没有升级记录时会提示，不会创建或删除资料。</p></details>
-        <details class="support-details"><summary>远程服务连接失败</summary><p>确认服务在线、网络可用；Tailscale 地址需要本机已连接对应网络。可在连接页重试或在浏览器打开。更换本机 App 不会升级、迁移或重启远程服务器。</p></details>
-        <details class="support-details"><summary>卸载与资料保留</summary><p>用 ⌘Q 退出后，将 App 移到废纸篓即可。工作区和凭据保留，重新安装后可重新打开原文件夹。远程服务仍独立运行。</p><p>彻底移除资料是另一个操作：确认已有可恢复的备份后，再分别处理工作区、App 偏好和升级恢复副本；账户密钥通过工作区设置或“钥匙串访问”管理。不要让清理工具一并删除这些资料。</p></details>
-        <details class="support-details"><summary>睡眠、关机与记录更新</summary><p>本地工作区在 App 运行、Mac 清醒且联网时采集。退出、睡眠或关机会暂停本地采集；回来后重新打开并检查同步结果。远程服务由服务端的计划负责，本机 App 退出不影响服务器采集。</p></details>
-        <div class="quiet-note"><button id="support-issues" class="secondary" type="button">打开问题反馈 ↗</button><p>前往 GitHub 的公开页面，只填写已脱敏的信息。App 不会自动附带日志、账户数据或密钥。</p></div>
+        <div class="quiet-note support-intro"><strong data-en="Data is stored outside the app">资料保存在应用之外</strong><p data-en="Replacing or removing the app keeps your workspace, Keychain credentials, and records on remote servers.">更换或移除 App 不会删除你选择的工作区、Keychain 中的账户凭据，或远程服务器上的记录。</p></div>
+        <details class="support-details" open><summary data-en="Installation and upgrades">安装与升级</summary><ol><li data-en="Check for updates under About &amp; updates. When available, choose Update in the app and follow the prompts to download, verify, install, and restart. If you cancel or the download fails, you can keep using the current app.">在“关于与更新”检查版本。可用时点击“在 App 内更新”，按原生窗口完成下载、验证、安装和重启；取消或下载失败时可以继续使用当前 App。</li><li data-en="For a manual update, wait for the download, quit with ⌘Q, open the DMG, and drag the app to its original location, usually Applications. Choose Replace, then run the installed copy.">选择手动下载安装包时，下载完成后用 ⌘Q 退出 App，打开 DMG，将应用拖到原来的安装位置并选择替换。通常是“应用程序”文件夹；不要从 DMG 内长期运行。</li><li data-en="Reopen the app and choose the same service or workspace. Connections and credentials are retained. Wait for startup while the app prepares a recovery point for an older local workspace.">重新打开 App，选择原来的服务或工作区。连接与凭据会保留。本地旧工作区首次升级会先准备恢复点，请等待启动完成。</li></ol><p data-en="If macOS reports a signature, developer, or damaged file problem, stop the installation, download the official installer again, and report the issue. Keep system security checks enabled.">如果 macOS 提示签名、开发者或文件损坏问题，请停止安装，重新获取官方安装包并反馈；无需关闭系统安全检查。</p></details>
+        <details class="support-details"><summary data-en="App will not open after an upgrade">升级后打不开，或中途退出</summary><p data-en="Reopen the app and choose the same workspace. An interrupted local upgrade tries to restore the previous data and preserves data written by the failed upgrade. If recovery is incomplete, follow the prompts to free up space or try again.">先重新打开 App，并选择原来的工作区。未完成的本地升级会尝试恢复升级前的资料；失败时产生的资料也会保留。恢复尚未完成时，按界面提示腾出空间或重新尝试。</p><p data-en="Recovery covers the first launch of an upgraded local workspace. It does not reinstall the old app or roll back a successful upgrade. Do not open upgraded data with an older app.">恢复保护覆盖本地工作区的首次启动事务，不会自动换回旧 App。已经成功升级并继续写入的资料不会自动倒退。不要直接用更老版本打开这些资料。</p><p data-en="If the problem persists, keep the original workspace and recovery folder. Note the app version, error, time, and whether the workspace was local or remote, then contact the maintainers. Keep keys, account exports, and complete workspaces private.">仍然失败时保留原工作区和恢复目录，记录 App 版本、错误提示、发生时间与本地／远程模式，再联系维护者。不要上传密钥、账户导出或完整工作区。</p><button id="recovery-folder" class="secondary" type="button" disabled data-en="Show recovery data in Finder">在 Finder 中显示恢复资料</button><p class="section-note" data-en="Only available for the selected local workspace. The app will let you know if there is no recovery record.">只适用于选中的本地工作区；没有升级记录时会提示，不会创建或删除资料。</p></details>
+        <details class="support-details"><summary data-en="Cannot connect to a remote service">远程服务连接失败</summary><p data-en="Check that the service is online and the network is available. For a Tailscale address, join its network first. Retry from the connection screen or open the service in a browser. Replacing the app does not change the remote server.">确认服务在线、网络可用；Tailscale 地址需要本机已连接对应网络。可在连接页重试或在浏览器打开。更换本机 App 不会升级、迁移或重启远程服务器。</p></details>
+        <details class="support-details"><summary data-en="Uninstall and keep data">卸载与资料保留</summary><p data-en="Quit with ⌘Q and move the app to the Trash. The workspace and credentials are retained. After reinstalling, you can reopen the same folder. Remote services keep running independently.">用 ⌘Q 退出后，将 App 移到废纸篓即可。工作区和凭据保留，重新安装后可重新打开原文件夹。远程服务仍独立运行。</p><p data-en="To remove data permanently, first verify you have a restorable backup, then handle workspaces, app preferences, and recovery copies separately. Manage account keys in workspace settings or Keychain Access. Keep cleanup tools from removing these together.">彻底移除资料是另一个操作：确认已有可恢复的备份后，再分别处理工作区、App 偏好和升级恢复副本；账户密钥通过工作区设置或“钥匙串访问”管理。不要让清理工具一并删除这些资料。</p></details>
+        <details class="support-details"><summary data-en="Sleep, shutdown, and updates">睡眠、关机与记录更新</summary><p data-en="A local workspace collects data while the app is running and the Mac is awake and online. Quitting, sleep, and shutdown pause collection. Reopen the app and check sync status when you return. Remote services collect on their own schedule.">本地工作区在 App 运行、Mac 清醒且联网时采集。退出、睡眠或关机会暂停本地采集；回来后重新打开并检查同步结果。远程服务由服务端的计划负责，本机 App 退出不影响服务器采集。</p></details>
+        <div class="quiet-note"><button id="support-issues" class="secondary" type="button" data-en="Report an issue ↗">打开问题反馈 ↗</button><p data-en="GitHub issues are public. Share only redacted information. The app does not attach logs, account data, or keys.">前往 GitHub 的公开页面，只填写已脱敏的信息。App 不会自动附带日志、账户数据或密钥。</p></div>
       </section>
       <div id="feedback" role="status" aria-live="polite" hidden></div>
     </main>

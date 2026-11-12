@@ -11819,6 +11819,16 @@
             "title": "Timeline",
             "type": "array"
           },
+          "trailingPeHistory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrailingPeHistory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "valuation": {
             "anyOf": [
               {
@@ -16728,6 +16738,186 @@
         "title": "Trading212IntegrationRequest",
         "type": "object"
       },
+      "TrailingPeDistribution": {
+        "additionalProperties": false,
+        "properties": {
+          "latestPercentile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latestpercentile"
+          },
+          "lowerQuartile": {
+            "title": "Lowerquartile",
+            "type": "number"
+          },
+          "mean": {
+            "title": "Mean",
+            "type": "number"
+          },
+          "median": {
+            "title": "Median",
+            "type": "number"
+          },
+          "samples": {
+            "title": "Samples",
+            "type": "integer"
+          },
+          "standardDeviation": {
+            "title": "Standarddeviation",
+            "type": "number"
+          },
+          "upperQuartile": {
+            "title": "Upperquartile",
+            "type": "number"
+          }
+        },
+        "required": [
+          "samples",
+          "lowerQuartile",
+          "median",
+          "upperQuartile",
+          "mean",
+          "standardDeviation",
+          "latestPercentile"
+        ],
+        "title": "TrailingPeDistribution",
+        "type": "object"
+      },
+      "TrailingPeEarnings": {
+        "additionalProperties": false,
+        "properties": {
+          "effectiveDate": {
+            "format": "date",
+            "title": "Effectivedate",
+            "type": "string"
+          },
+          "eps": {
+            "title": "Eps",
+            "type": "number"
+          },
+          "method": {
+            "enum": [
+              "annual",
+              "fourQuarters",
+              "derivedFourthQuarter"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "periodEnd": {
+            "format": "date",
+            "title": "Periodend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effectiveDate",
+          "periodEnd",
+          "eps",
+          "method"
+        ],
+        "title": "TrailingPeEarnings",
+        "type": "object"
+      },
+      "TrailingPeHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "const": "USD",
+            "default": "USD",
+            "title": "Currency",
+            "type": "string"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrailingPeDistribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "earnings": {
+            "items": {
+              "$ref": "#/components/schemas/TrailingPeEarnings"
+            },
+            "title": "Earnings",
+            "type": "array"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrailingPePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points",
+          "earnings",
+          "distribution"
+        ],
+        "title": "TrailingPeHistory",
+        "type": "object"
+      },
+      "TrailingPePoint": {
+        "additionalProperties": false,
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Close"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "earningsIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earningsindex"
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pe"
+          }
+        },
+        "required": [
+          "date",
+          "close",
+          "pe",
+          "earningsIndex"
+        ],
+        "title": "TrailingPePoint",
+        "type": "object"
+      },
       "UserProfile": {
         "properties": {
           "accountLabels": {
@@ -18167,7 +18357,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.32.1"
+    "version": "1.33.0"
   },
   "openapi": "3.1.0",
   "paths": {

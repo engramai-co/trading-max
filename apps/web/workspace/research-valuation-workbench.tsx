@@ -42,6 +42,7 @@ import {
 import { GrowthContext, ValuationSensitivity, ValuationWorksheet } from "./research-valuation-detail";
 import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
+import { TrailingPeChart } from "./research-trailing-pe";
 import {
   editorIdentity,
   loadedValuationQuery,
@@ -81,10 +82,12 @@ export function ValuationWorkbench({
     return (
       <>
         <ModelAlternatives data={data} financial />
+        <TrailingPeChart history={data.trailingPeHistory} />
         <FilingMultiples data={data} price={price} />
       </>
     );
-  if (!preview && state.view !== "error") return <Pending />;
+  if (!preview && state.view !== "error")
+    return <><Pending /><TrailingPeChart history={data.trailingPeHistory} /></>;
   if (!preview)
     return (
       <>
@@ -98,6 +101,7 @@ export function ValuationWorkbench({
           />
           <QueryError retry={query.refetch} />
         </Panel>
+        <TrailingPeChart history={data.trailingPeHistory} />
         <FilingMultiples data={data} price={price} />
       </>
     );
@@ -112,6 +116,7 @@ export function ValuationWorkbench({
         refreshing={query.isFetching}
         onRetry={query.isError ? () => void query.refetch() : undefined}
       />
+      <TrailingPeChart history={data.trailingPeHistory} />
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
         <FilingMultiples data={data} price={price} />

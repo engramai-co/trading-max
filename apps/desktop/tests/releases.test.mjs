@@ -26,3 +26,13 @@ test("in-app installation needs a newer signed-feed release; old DMGs remain man
     }
   }
 });
+
+test("the English release view preserves the distinction between desktop and repository versions", () => {
+  const view = releasePresentation({
+    version: "1.12.0", desktop: { version: "1.11.0", relation: "same", size: 104857600, sha256: "a".repeat(64) },
+  }, "en");
+  assert.match(view.message, /Desktop v1.11.0.*Repository release v1.12.0/);
+  assert.match(view.label, /Download the installer again/);
+  assert.match(view.details, /macOS 13 or later.*100.0 MB/);
+  assert.equal(view.inApp, false);
+});
