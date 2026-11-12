@@ -5400,6 +5400,457 @@
         "title": "DeepSeekIntegrationRequest",
         "type": "object"
       },
+      "ETFDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "holdings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/ETFMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "reading": {
+            "$ref": "#/components/schemas/ETFReading"
+          },
+          "runId": {
+            "default": "",
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reading"
+        ],
+        "title": "ETFDetail",
+        "type": "object"
+      },
+      "ETFMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "fundWeight": {
+            "title": "Fundweight",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overlap": {
+            "title": "Overlap",
+            "type": "number"
+          },
+          "restDirectWeight": {
+            "title": "Restdirectweight",
+            "type": "number"
+          },
+          "restViaFund": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Restviafund",
+            "type": "object"
+          },
+          "securityId": {
+            "title": "Securityid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "securityId",
+          "name",
+          "fundWeight",
+          "restDirectWeight",
+          "restViaFund",
+          "overlap"
+        ],
+        "title": "ETFMatch",
+        "type": "object"
+      },
+      "ETFOverlap": {
+        "additionalProperties": false,
+        "properties": {
+          "datesValid": {
+            "default": false,
+            "title": "Datesvalid",
+            "type": "boolean"
+          },
+          "fundCoverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundcoverage"
+          },
+          "fundHoldingsDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundholdingsdate"
+          },
+          "portfolioAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portfolioasof"
+          },
+          "restCoverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restcoverage"
+          },
+          "restHoldingsDates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restholdingsdates",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "stale",
+              "missing"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ETFOverlap",
+        "type": "object"
+      },
+      "ETFPortfolio": {
+        "additionalProperties": false,
+        "properties": {
+          "brokerAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brokerasof"
+          },
+          "funds": {
+            "items": {
+              "$ref": "#/components/schemas/ETFReading"
+            },
+            "title": "Funds",
+            "type": "array"
+          },
+          "runId": {
+            "default": "",
+            "title": "Runid",
+            "type": "string"
+          }
+        },
+        "title": "ETFPortfolio",
+        "type": "object"
+      },
+      "ETFReading": {
+        "additionalProperties": false,
+        "properties": {
+          "domicile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domicile"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FundEvidence"
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "expenseRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expenseratio"
+          },
+          "feeBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feebasis"
+          },
+          "fundSize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedging"
+          },
+          "holdingsState": {
+            "enum": [
+              "available",
+              "holdings-stale",
+              "no-holdings",
+              "data-failed"
+            ],
+            "title": "Holdingsstate",
+            "type": "string"
+          },
+          "incomeUse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incomeuse"
+          },
+          "indexName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexname"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "overlap": {
+            "$ref": "#/components/schemas/ETFOverlap"
+          },
+          "shareClassSize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tickers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tickers",
+            "type": "array"
+          },
+          "tracking": {
+            "$ref": "#/components/schemas/ETFTracking"
+          }
+        },
+        "required": [
+          "tickers",
+          "holdingsState",
+          "tracking",
+          "overlap"
+        ],
+        "title": "ETFReading",
+        "type": "object"
+      },
+      "ETFTracking": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmarkCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarkcurrency"
+          },
+          "benchmarkHedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarkhedging"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "differencePp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Differencepp"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "navHedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Navhedging"
+          },
+          "periodEnd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodend"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "stale",
+              "incomparable",
+              "missing"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ETFTracking",
+        "type": "object"
+      },
       "EstimateObservation": {
         "additionalProperties": false,
         "properties": {
@@ -6233,6 +6684,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/FundShareClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFReading"
               },
               {
                 "type": "null"
@@ -7233,6 +7694,17 @@
               }
             ],
             "title": "Dilutedcostpersharenative"
+          },
+          "fundIsin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundisin"
           },
           "fxImpactGbp": {
             "anyOf": [
@@ -19399,6 +19871,95 @@
           }
         },
         "summary": "Dashboard"
+      }
+    },
+    "/v1/dashboard/etfs": {
+      "get": {
+        "operationId": "dashboard_etfs_v1_dashboard_etfs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ETFPortfolio"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Etfs"
+      }
+    },
+    "/v1/dashboard/etfs/{isin}": {
+      "get": {
+        "operationId": "dashboard_etf_detail_v1_dashboard_etfs__isin__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "isin",
+            "required": true,
+            "schema": {
+              "title": "Isin",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ETFDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Etf Detail"
       }
     },
     "/v1/dashboard/history": {

@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable
 from contextlib import suppress
 
+from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -827,6 +828,13 @@ class TypedPublishSnapshotStage:
             previous=previous,
             context=context,
         )
+        if any(ref.key == ETF_SUMMARY_KEY for ref in new_refs):
+            # ETF evidence is a complete set for the current account selection.
+            refs_by_key = {
+                key: ref
+                for key, ref in refs_by_key.items()
+                if not key.startswith(("account/etfs/", "account/etf_holdings/"))
+            }
         refs_by_key.update({ref.key: ref for ref in new_refs})
         estimate_batches = {}
         estimate_keys = (

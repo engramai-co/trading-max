@@ -192,6 +192,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboard/etfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Etfs */
+        get: operations["dashboard_etfs_v1_dashboard_etfs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboard/etfs/{isin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Etf Detail */
+        get: operations["dashboard_etf_detail_v1_dashboard_etfs__isin__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboard/history": {
         parameters: {
             query?: never;
@@ -2860,6 +2894,129 @@ export interface components {
             /** Validationtoken */
             validationToken: string;
         };
+        /** ETFDetail */
+        ETFDetail: {
+            holdings?: components["schemas"]["FundSnapshot"] | null;
+            /** Matches */
+            matches?: components["schemas"]["ETFMatch"][];
+            reading: components["schemas"]["ETFReading"];
+            /**
+             * Runid
+             * @default
+             */
+            runId: string;
+        };
+        /** ETFMatch */
+        ETFMatch: {
+            /** Fundweight */
+            fundWeight: number;
+            /** Name */
+            name: string;
+            /** Overlap */
+            overlap: number;
+            /** Restdirectweight */
+            restDirectWeight: number;
+            /** Restviafund */
+            restViaFund: {
+                [key: string]: number;
+            };
+            /** Securityid */
+            securityId: string;
+        };
+        /** ETFOverlap */
+        ETFOverlap: {
+            /**
+             * Datesvalid
+             * @default false
+             */
+            datesValid: boolean;
+            /** Fundcoverage */
+            fundCoverage?: number | null;
+            /** Fundholdingsdate */
+            fundHoldingsDate?: string | null;
+            /** Portfolioasof */
+            portfolioAsOf?: string | null;
+            /** Restcoverage */
+            restCoverage?: number | null;
+            /** Restholdingsdates */
+            restHoldingsDates?: string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "stale" | "missing";
+            /** Value */
+            value?: number | null;
+        };
+        /** ETFPortfolio */
+        ETFPortfolio: {
+            /** Brokerasof */
+            brokerAsOf?: string | null;
+            /** Funds */
+            funds?: components["schemas"]["ETFReading"][];
+            /**
+             * Runid
+             * @default
+             */
+            runId: string;
+        };
+        /** ETFReading */
+        ETFReading: {
+            /** Domicile */
+            domicile?: string | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
+            };
+            /** Expenseratio */
+            expenseRatio?: number | null;
+            /** Feebasis */
+            feeBasis?: string | null;
+            fundSize?: components["schemas"]["FundSize"] | null;
+            /** Hedging */
+            hedging?: string | null;
+            /**
+             * Holdingsstate
+             * @enum {string}
+             */
+            holdingsState: "available" | "holdings-stale" | "no-holdings" | "data-failed";
+            /** Incomeuse */
+            incomeUse?: string | null;
+            /** Indexname */
+            indexName?: string | null;
+            /** Isin */
+            isin?: string | null;
+            /** Issuer */
+            issuer?: string | null;
+            /** Name */
+            name?: string | null;
+            overlap: components["schemas"]["ETFOverlap"];
+            shareClassSize?: components["schemas"]["FundSize"] | null;
+            /** Tickers */
+            tickers: string[];
+            tracking: components["schemas"]["ETFTracking"];
+        };
+        /** ETFTracking */
+        ETFTracking: {
+            /** Benchmarkcurrency */
+            benchmarkCurrency?: string | null;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Differencepp */
+            differencePp?: number | null;
+            evidence?: components["schemas"]["FundEvidence"] | null;
+            /** Navhedging */
+            navHedging?: string | null;
+            /** Periodend */
+            periodEnd?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "stale" | "incomparable" | "missing";
+        };
         /** EstimateObservation */
         EstimateObservation: {
             /** Consensus */
@@ -3154,6 +3311,7 @@ export interface components {
             /** Methodology */
             methodology?: string | null;
             profile?: components["schemas"]["FundShareClass"] | null;
+            reading?: components["schemas"]["ETFReading"] | null;
             /** Replication */
             replication?: string | null;
             /** Returnbasis */
@@ -3486,6 +3644,8 @@ export interface components {
             dilutedCostPerShareGbp: number | null;
             /** Dilutedcostpersharenative */
             dilutedCostPerShareNative: number | null;
+            /** Fundisin */
+            fundIsin?: string | null;
             /** Fximpactgbp */
             fxImpactGbp: number | null;
             /** Isfund */
@@ -7830,6 +7990,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+        };
+    };
+    dashboard_etfs_v1_dashboard_etfs_get: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ETFPortfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_etf_detail_v1_dashboard_etfs__isin__get: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path: {
+                isin: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ETFDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

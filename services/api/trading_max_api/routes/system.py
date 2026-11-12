@@ -8,6 +8,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
+from trading_max.analytics.etf_details import ETFDetail
+from trading_max.analytics.etf_projection import ETFPortfolio
 
 from ..dashboard_models import (
     AccountCode,
@@ -22,6 +24,7 @@ from ..dashboard_models import (
     TradeDecision,
     WindowAttribution,
 )
+from ..etf_snapshot import read_etf_detail, read_etf_portfolio
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
 from ..history_reader import HistorySnapshot
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
@@ -209,6 +212,35 @@ def readiness(request: Request) -> ReadinessResponse:
 @router.get("/v1/dashboard", response_model=DashboardResponse)
 def dashboard(request: Request) -> DashboardResponse:
     return request.app.state.cached_dashboard(latest_or_503(request))
+
+
+@router.get("/v1/dashboard/etfs", response_model=ETFPortfolio, response_model_exclude_none=True)
+def dashboard_etfs(
+    request: Request,
+    run_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,100}$"),
+) -> ETFPortfolio:
+    store = app_service(request, "store")
+    try:
+        store.load_manifest(run_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    return read_etf_portfolio(store, run_id)
+
+
+@router.get("/v1/dashboard/etfs/{isin}", response_model=ETFDetail, response_model_exclude_none=True)
+def dashboard_etf_detail(
+    request: Request,
+    isin: str,
+    run_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,100}$"),
+) -> ETFDetail:
+    import re
+
+    if not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", isin):
+        raise HTTPException(status_code=404, detail="ETF evidence not found")
+    try:
+        return read_etf_detail(app_service(request, "store"), run_id, isin)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="ETF evidence not found") from None
 
 
 @router.get(

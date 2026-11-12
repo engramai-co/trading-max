@@ -529,8 +529,13 @@ def test_lookthrough_stage_reads_account_artifacts_and_publishes_dependencies(
         )
     )
 
-    assert len(result.artifacts) == 1
-    stored = artifacts.get_json(result.artifacts[0].artifact_id)
+    refs = {ref.key: ref for ref in result.artifacts}
+    summary = artifacts.get_json(refs["account/etf_summary.json"].artifact_id)
+    assert summary.payload["funds"][0]["isin"] == "IE000R4ZNTN3"
+    assert "holdings" not in summary.payload["funds"][0]
+    assert "account/etf_holdings/IE000R4ZNTN3.json" in refs
+    assert "account/etfs/IE000R4ZNTN3.json" in refs
+    stored = artifacts.get_json(refs["account/lookthrough_metrics.json"].artifact_id)
     assert stored.ref.key == "account/lookthrough_metrics.json"
     assert stored.ref.dependency_artifact_ids == [
         invest.ref.artifact_id,

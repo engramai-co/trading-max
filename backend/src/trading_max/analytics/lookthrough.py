@@ -9,14 +9,16 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from pydantic import Field
 
+from trading_max.analytics.etf_projection import ETFExposure
 from trading_max.domain import DomainModel
 from trading_max.domain.etf import FundEvidence, FundShareClass
 from trading_max.reference import (
@@ -242,7 +244,12 @@ class LookthroughService:
         self.provider = provider
         self.security_master = security_master or CatalogSecurityMaster.default()
 
-    def run(self, accounts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    def run(
+        self,
+        accounts: Mapping[str, Mapping[str, Any]],
+        *,
+        publish_etfs: Callable[[ETFExposure, str | None], None] | None = None,
+    ) -> dict[str, Any]:
         positions = [
             (profile, position)
             for profile in ("invest", "isa")
@@ -274,6 +281,20 @@ class LookthroughService:
         warnings: list[str] = []
         fund_snapshots: dict[tuple[str, str], FundSnapshot | None] = {}
         fund_position_keys: set[tuple[str, str]] = set()
+        fund_failures: set[tuple[str, str]] = set()
+        by_isin: dict[str, FundSnapshot | None] = {}
+        failed_isins: set[str] = set()
+        etfs = (
+            ETFExposure(
+                getattr(
+                    self.security_master,
+                    "exact_security_id",
+                    CatalogSecurityMaster.default().exact_security_id,
+                )
+            )
+            if publish_etfs
+            else None
+        )
 
         for _, position in positions:
             ticker = str(position.get("ticker") or "").strip().upper()
@@ -291,6 +312,17 @@ class LookthroughService:
                 provider_security_type2=resolved.provider_security_type2,
             ):
                 continue
+            if (ticker, isin) in fund_position_keys:
+                continue
+            fund_position_keys.add((ticker, isin))
+            if isin and isin in by_isin:
+                prior = by_isin[isin]
+                fund_snapshots[(ticker, isin)] = (
+                    prior.model_copy(update={"ticker": ticker}) if prior else None
+                )
+                if isin in failed_isins:
+                    fund_failures.add((ticker, isin))
+                continue
             try:
                 snapshot = fetch_fund_snapshot(
                     self.provider,
@@ -305,8 +337,12 @@ class LookthroughService:
                 # direct positions in the portfolio's look-through result.
                 warnings.append(f"{ticker}: constituent fetch failed: {type(exc).__name__}")
                 snapshot = None
-            fund_position_keys.add((ticker, isin))
+                fund_failures.add((ticker, isin))
+                if isin:
+                    failed_isins.add(isin)
             fund_snapshots[(ticker, isin)] = snapshot
+            if isin:
+                by_isin[isin] = snapshot
 
         def add_exposure(
             *,
@@ -422,6 +458,17 @@ class LookthroughService:
                 if resolved.gics is not None
                 else _industry(position.get("industry"))
             )
+            if etfs:
+                etfs.add_direct(
+                    SecurityDescriptor(
+                        isin=isin,
+                        ticker=ticker,
+                        name=str(position.get("name") or ticker),
+                        figi=str(position.get("figi") or ""),
+                        share_class_figi=str(position.get("share_class_figi") or ""),
+                    ),
+                    value,
+                )
             direct_value += value
             country_values[country] += value
             industry_values[industry] += value
@@ -450,6 +497,20 @@ class LookthroughService:
                 etf_positions[(ticker, isin)] += value
         for (ticker, isin), fund_value in etf_positions.items():
             snapshot = fund_snapshots.get((ticker, isin))
+            if etfs:
+                identity = (snapshot.fund_isin if snapshot else "") or isin
+                share_class = (
+                    identity
+                    if re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", identity)
+                    else "listing:" + ticker
+                )
+                etfs.add_fund(
+                    share_class,
+                    ticker,
+                    fund_value,
+                    snapshot,
+                    failed=(ticker, isin) in fund_failures,
+                )
             if snapshot is None:
                 warning = f"{ticker}: official fund holdings are unavailable"
                 warnings.append(warning)
@@ -637,6 +698,8 @@ class LookthroughService:
         as_of_values = [
             str(accounts.get(profile, {}).get("fetched_at") or "") for profile in ("invest", "isa")
         ]
+        if etfs and publish_etfs:
+            publish_etfs(etfs, max(as_of_values, default="") or None)
         return {
             "schemaVersion": 5,
             "available": True,

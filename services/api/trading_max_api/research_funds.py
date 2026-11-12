@@ -8,6 +8,8 @@ from pathlib import Path
 
 import httpx
 from pydantic import Field
+from trading_max.analytics.etf_details import ETFDetail
+from trading_max.analytics.etf_projection import ETFReading
 from trading_max.analytics.lookthrough import FundSnapshot, fetch_fund_snapshot
 from trading_max.domain.etf import FundReturnYear, FundShareClass
 from trading_max.infrastructure.fund_holdings import (
@@ -43,6 +45,7 @@ class FundResearch(ApiModel):
     hedging: str | None = None
     holdings: FundSnapshot | None = None
     profile: FundShareClass | None = None
+    reading: ETFReading | None = None
     holdings_state: str = "no-holdings"
     return_currency: str | None = None
     return_basis: str | None = None
@@ -64,6 +67,30 @@ def _profile_fields(profile: FundShareClass) -> dict:
 
 def parse_ishares_page(html: str) -> dict:
     return _profile_fields(parse_ishares_profile(html, ""))
+
+
+def fund_research_from_snapshot(ticker: str, detail: ETFDetail) -> FundResearch:
+    reading, holdings = detail.reading, detail.holdings
+    profile = holdings.profile if holdings else None
+    return FundResearch(
+        **{
+            "ticker": ticker,
+            "fetched_at": holdings.fetched_at if holdings else "",
+            "source_url": holdings.source_url if holdings else None,
+            "issuer": reading.issuer,
+            "isin": reading.isin,
+            "holdings": holdings,
+            "profile": profile,
+            "reading": reading,
+            "holdings_state": reading.holdings_state,
+            "state": "stale"
+            if reading.holdings_state == "holdings-stale"
+            else "missing"
+            if not profile
+            else "available",
+            **(_profile_fields(profile) if profile else {}),
+        },
+    )
 
 
 class FundResearchService:

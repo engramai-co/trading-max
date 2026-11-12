@@ -677,6 +677,7 @@ class Holding(ApiModel):
     # A fund the look-through resolves through its issuer's holdings, whether or not
     # those holdings are available yet. Company research scores do not apply to it.
     is_fund: bool
+    fund_isin: str | None = None
 
 
 class NavPoint(ApiModel):

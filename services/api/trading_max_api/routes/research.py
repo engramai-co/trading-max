@@ -23,6 +23,7 @@ from ..dashboard_models import (
     ResearchPriceSeries,
     ResearchShell,
 )
+from ..etf_snapshot import read_etf_detail, read_etf_portfolio
 from ..job_errors import JobConflict
 from ..models import (
     PortfolioImpact,
@@ -41,7 +42,7 @@ from ..models import (
     WatchlistMutation,
     WatchlistState,
 )
-from ..research_funds import FundResearch
+from ..research_funds import FundResearch, fund_research_from_snapshot
 from ..research_journal import ResearchJournal, ResearchModelSaveRequest, ResearchNoteInput
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
@@ -628,9 +629,22 @@ def research_ticker(
 
 @router.get("/v1/research/{ticker}/fund", response_model=FundResearch)
 def research_fund(ticker: str, request: Request) -> FundResearch:
-    lens = app_service(request, "research").lens_snapshot(
-        ticker, "fundamentals", latest_or_503(request)
-    )
+    manifest = latest_or_503(request)
+    store = app_service(request, "store")
+    normal = ticker.strip().upper()
+    portfolio = read_etf_portfolio(store, manifest.run_id)
+    matches = [fund for fund in portfolio.funds if normal in fund.tickers]
+    if not matches:
+        matches = [
+            fund
+            for fund in portfolio.funds
+            if any(
+                normal.removesuffix(".L") == symbol.removesuffix(".L") for symbol in fund.tickers
+            )
+        ]
+    if len(matches) == 1 and (isin := matches[0].isin):
+        return fund_research_from_snapshot(ticker, read_etf_detail(store, manifest.run_id, isin))
+    lens = app_service(request, "research").lens_snapshot(ticker, "fundamentals", manifest)
     if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
         raise HTTPException(status_code=422, detail="fund-research-not-applicable")
     info = (lens.fundamentals or {}).get("metrics") or {}
