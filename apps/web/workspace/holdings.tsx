@@ -11,6 +11,7 @@ import {
 } from "@mantine/core";
 import { ArrowDown, MagnifyingGlass } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
@@ -69,6 +70,8 @@ function Positions() {
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const query = useDashboardLens("holdings-positions");
+  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
+  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const account = ["A", "B"].includes(params.get("account") ?? "")
     ? params.get("account")!
     : "all";
@@ -164,7 +167,7 @@ function Positions() {
               />
               <span className="mx-freshness-group">
                 <Freshness date={query.data?.brokerAsOf} />
-                {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+                {failure && <UpdateFailure {...failure} />}
               </span>
             </div>
             {!query.data ? <Pending shape="summary" height={68} quiet />

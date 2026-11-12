@@ -7,6 +7,7 @@ import Link from "./link";
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useEffectEvent, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { PerformanceContent } from "./performance";
@@ -61,6 +62,8 @@ export function ReviewWorkspace() {
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const query = useDashboardLens("review");
+  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
+  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   // Decisions without a close after them yet say nothing on their own; they share one line.
   const { watching, watchingCount, watchingMore, recent } = latestDecisions(query.data?.decisionReviews);
   // Two securities can share a day, a side and a ticker: their rows keep keys of their own.
@@ -71,7 +74,7 @@ export function ReviewWorkspace() {
     <Page title={t("投资复盘", "Investment review")} actions={
       <span className="mx-freshness-group">
         <Freshness date={query.data?.reviewAsOf ?? query.data?.brokerAsOf} />
-        {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+        {failure && <UpdateFailure {...failure} />}
       </span>
     }>
       {query.isPending ? (
@@ -218,6 +221,7 @@ export function AccountReviewWorkspace() {
   const query = useDashboardLens("account-analysis", code, true, ACCOUNT_REVIEW_SELECTION);
   const current = useMemo(() => query.data && { code, data: query.data, updatedAt: query.dataUpdatedAt }, [code, query.data, query.dataUpdatedAt]);
   const result = useRetainedResult(current);
+  const accountPublicationFailure = usePublicationFailure(result?.updatedAt ?? 0);
   // A link that names a decision lands on it once, with the first review the page draws. A review
   // drawn again, after a failed refetch or for another account, leaves focus where the reader put it.
   const [landing, setLanding] = useState(true);
@@ -255,7 +259,7 @@ export function AccountReviewWorkspace() {
             key={result.code}
             data={result.data}
             code={result.code}
-            failure={query.isError ? { updatedAt: result.updatedAt, retry: query.refetch } : undefined}
+            failure={query.isError ? { updatedAt: result.updatedAt, retry: query.refetch } : accountPublicationFailure}
             landing={landing}
             onLanded={() => setLanding(false)}
             horizons={horizons}

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
+import { historyPage, pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
 import type { NavPoint } from "../lib/types";
 
 /**
@@ -108,7 +108,8 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
       const openings = url.searchParams.getAll("opening");
       return route.fulfill({ json: openings.length ? { ...history.chart, openings: pnlsAt(history, openings) } : history.chart });
     }
-    const json = url.pathname.includes("/dashboard/lens/overview") ? lens(large)
+    const json = url.pathname.endsWith("/health") ? { service: "trading_max-api", status: "ok", latestRunId: "synthetic-phone" }
+      : url.pathname.includes("/dashboard/lens/overview") ? lens(large)
       : url.pathname.endsWith("/refresh/attention") ? failing
         : url.pathname.endsWith("/sectors") ? sectors
           : url.pathname.endsWith("/profile") ? { accountLabels: {} } : {};
@@ -272,4 +273,99 @@ test.describe("overview on phones", () => {
       expect(Math.abs(pnl.figureBottom - cash.figureBottom), `one baseline at ${width}px`).toBeLessThan(1);
     }
   });
+});
+
+test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Use an isolated local web build.");
+  await page.clock.install({ time: new Date(brokerAsOf) });
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
+  let latestRunId = "synthetic-phone";
+  const next = "synthetic-next";
+  const third = "synthetic-third";
+  const nextTime = new Date(Date.parse(brokerAsOf) + 600_000).toISOString();
+  let failRange = true;
+  let rangeAttempts = 0;
+  let dayLoaded = false;
+  let heldRangeLoaded = false;
+  let thirdRangeLoaded = false;
+  await page.route("**/api/backend/**", (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    if (path.endsWith("/health")) return route.fulfill({ json: { service: "trading_max-api", status: "ok", latestRunId } });
+    if (path.endsWith("/dashboard/lens/overview")) return route.fulfill({ json: {
+      ...lens(latestRunId === next), runId: latestRunId, brokerAsOf: latestRunId === "synthetic-phone" ? brokerAsOf : nextTime,
+    } });
+    if (path.endsWith("/dashboard/history")) {
+      const run = url.searchParams.get("runId");
+      const range = url.searchParams.get("range") === "1W" ? "1W" : "1D";
+      if (run === next && range === "1W") {
+        rangeAttempts++;
+        if (failRange) return route.fulfill({ status: 503, json: {} });
+        heldRangeLoaded = true;
+      }
+      if (run === next && range === "1D") dayLoaded = true;
+      if (run === third && range === "1W") thirdRangeLoaded = true;
+      const history = prepared(range);
+      const page = url.searchParams.get("page");
+      if (page) return route.fulfill({ json: historyPage(history, Number(page)) });
+      return route.fulfill({ json: { ...history.chart, openings: pnlsAt(history, url.searchParams.getAll("opening")) } });
+    }
+    if (path.endsWith("/sectors")) return route.fulfill({ json: sectors });
+    if (path.endsWith("/profile")) return route.fulfill({ json: { accountLabels: {} } });
+    return route.fulfill({ status: 404, json: {} });
+  });
+  await page.goto("/?scope=invest&range=1W");
+  const summary = page.locator(".mx-overview-portfolio");
+  const chart = page.locator(".mx-overview-history [data-tm-chart-ready=true]");
+  await expect(summary).toContainText("£56,160.00");
+  const oldTime = await summary.locator(".mx-freshness").textContent();
+  await expect(chart).toBeVisible();
+
+  latestRunId = next;
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => dayLoaded && rangeAttempts > 0).toBe(true);
+  await expect(summary).toContainText("£56,160.00");
+  await expect(summary.locator(".mx-freshness")).toHaveText(oldTime!);
+  await expect(chart).toBeVisible();
+  await page.clock.runFor(1_100);
+  await expect(page.getByRole("button", { name: /Update failed · last success.*Retry/ })).toBeVisible();
+
+  // Catch up with the same marker after the failed history, without disturbing a reading.
+  failRange = false;
+  await chart.evaluate((element) => element.focus({ preventScroll: true }));
+  await page.keyboard.press("End");
+  await expect(chart).toBeFocused();
+  const scroll = await page.evaluate(() => scrollY);
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => heldRangeLoaded).toBe(true);
+  await expect(summary).toContainText("£56,160.00");
+  await expect(chart).toBeFocused();
+  expect(await page.evaluate(() => scrollY)).toBe(scroll);
+  await page.keyboard.press("Escape");
+  await expect(summary).toContainText("£12,345,678.90");
+  await expect(summary.locator(".mx-freshness")).not.toHaveText(oldTime!);
+  await expect(page.getByRole("button", { name: "5D", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/scope=invest&range=1W$/);
+
+  const records = page.locator(".mx-overview-history .mx-chart-data");
+  await records.locator("summary").click();
+  await expect(records.getByRole("table")).toBeVisible();
+  latestRunId = third;
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => thirdRangeLoaded).toBe(true);
+  await expect(summary).toContainText("£12,345,678.90");
+  await expect(records.getByRole("table")).toBeVisible();
+  if (isMobile) {
+    await records.locator("summary").click();
+  } else {
+    // Close the record without moving the pointer out of the chart.
+    await chart.hover();
+    await records.locator("summary").evaluate((element: HTMLElement) => element.click());
+    await expect(records.getByRole("table")).toBeHidden();
+    await page.clock.runFor(100);
+    await expect(summary).toContainText("£12,345,678.90");
+    await page.mouse.move(0, 0);
+  }
+  await expect(summary).toContainText("£56,160.00");
 });

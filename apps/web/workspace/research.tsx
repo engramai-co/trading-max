@@ -55,6 +55,7 @@ import { Seasonality } from "./research-seasonality";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { ValuationWorkbench } from "./research-valuation-workbench";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { previousForIdentity } from "./loading-state";
 import { useRetainedResult } from "./retained-result";
@@ -112,11 +113,10 @@ export function ResearchWorkspace() {
   const universeState = useResearchUniverse(instruments);
   const { displayed } = universeState;
   const requestedTicker = params.get("ticker");
-  const requested =
-    requestedTicker?.trim() ||
-    instruments.find((i) => i.held)?.ticker ||
-    instruments[0]?.ticker ||
-    "";
+  const firstTicker = instruments.find((i) => i.held)?.ticker ?? instruments[0]?.ticker ?? "";
+  const [defaultTicker, setDefaultTicker] = useState("");
+  if (!defaultTicker && firstTicker) setDefaultTicker(firstTicker);
+  const requested = requestedTicker?.trim() || defaultTicker || firstTicker;
   const { selected, candidates } = resolveResearchIdentity(
     instruments,
     requested,
@@ -185,6 +185,7 @@ export function ResearchWorkspace() {
   const displayData = shown?.data;
   const switching = Boolean(shown && (!currentLens || lens.isPlaceholderData) && !lens.isError);
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
+  const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const waitingForResearch = !shown && !technicalPrice && (
     overviewWaiting || lens.isPending || fetching && !lens.isError
   );
@@ -214,6 +215,8 @@ export function ResearchWorkspace() {
       ),
     onSuccess: async (_, variables) => {
       if (variables.action === "remove") {
+        const rest = instruments.filter((item) => item.ticker !== ticker);
+        setDefaultTicker(rest.find((item) => item.held)?.ticker ?? rest[0]?.ticker ?? "");
         update({ ticker: null });
         setRemoveConfirm(false);
       }
@@ -481,7 +484,7 @@ export function ResearchWorkspace() {
                   failure={failure && (failure.dataUpdatedAt || shown?.updatedAt) ? {
                     updatedAt: failure.dataUpdatedAt || shown!.updatedAt,
                     retry: failure.refetch,
-                  } : undefined}
+                  } : publicationFailure}
                   listOpen={listOpen}
                   onSwitch={openUniverse}
                 />

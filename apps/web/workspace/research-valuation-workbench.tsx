@@ -16,7 +16,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
@@ -72,15 +73,19 @@ export function ValuationWorkbench({
   // Once this research has a preview, a failed refresh keeps it and its editor.
   const loaded = useQuery(loadedValuationQuery(data));
   const state = workbenchState(query, loaded.data);
-  if (financial)
+  const [dirty, setDirty] = useState(false);
+  const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
+    (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
+  const preview = retained?.basis.ticker === data.ticker ? retained : undefined;
+  if (financial && !dirty)
     return (
       <>
         <ModelAlternatives data={data} financial />
         <FilingMultiples data={data} price={price} />
       </>
     );
-  if (state.view === "pending") return <Pending />;
-  if (state.view === "error")
+  if (!preview && state.view !== "error") return <Pending />;
+  if (!preview)
     return (
       <>
         <ModelAlternatives data={data} financial={false} />
@@ -99,12 +104,13 @@ export function ValuationWorkbench({
   return (
     <>
       <ModelEditor
-        key={editorIdentity(state.preview)}
-        initial={state.preview}
+        key={editorIdentity(preview)}
+        initial={preview}
+        onDirty={setDirty}
         data={data}
         revision={revision}
         refreshing={query.isFetching}
-        onRetry={state.refreshFailed ? () => void query.refetch() : undefined}
+        onRetry={query.isError ? () => void query.refetch() : undefined}
       />
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
@@ -116,12 +122,14 @@ export function ValuationWorkbench({
 
 function ModelEditor({
   initial,
+  onDirty,
   data,
   revision,
   refreshing,
   onRetry,
 }: {
   initial: Preview;
+  onDirty: (dirty: boolean) => void;
   data: ResearchLensSnapshot;
   revision?: string | null;
   /** The default preview is being refetched, as after a broker refresh. */
@@ -188,6 +196,12 @@ function ModelEditor({
     invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
   const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const saved = savedFingerprint === liveFingerprint;
+  const dirty = saveOpen || invalidInput || !saved && (
+    draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
+  useLayoutEffect(() => {
+    onDirty(dirty);
+    return () => onDirty(false);
+  }, [dirty, onDirty]);
   const save = useMutation({
     mutationFn: (payload: typeof liveRequest & { reason: string }) =>
       api(

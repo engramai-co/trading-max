@@ -6,8 +6,10 @@ import { useState } from "react";
 export function useRetainedResult<T>(
   current: T | undefined,
   same: (current: T, previous: T) => boolean = Object.is,
+  accept: (current: T, previous: T) => boolean = () => true,
 ) {
   const [last, setLast] = useState(current);
-  if (current !== undefined && (last === undefined || !same(current, last))) setLast(current);
-  return current ?? last;
+  if (current === undefined || last !== undefined && !accept(current, last)) return last;
+  if (last === undefined || !same(current, last)) setLast(current);
+  return current;
 }

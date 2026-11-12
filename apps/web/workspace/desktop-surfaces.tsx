@@ -14,7 +14,7 @@ import Link from "./link";
 import { useWorkspaceProfile } from "./profile";
 
 export function useActivity(enabled = true) {
-  return useQuery({ queryKey: ["workspace-health"], enabled, queryFn: () => api<HealthDetails>("/health/details"), refetchInterval: 15_000, retry: 1 });
+  return useQuery({ queryKey: ["workspace-health"], enabled, queryFn: ({ signal }) => api<HealthDetails>("/health/details", { signal }), refetchInterval: 15_000, retry: 1 });
 }
 
 export function DesktopStatus({ localWorkspace = false, demonstration = false }: { localWorkspace?: boolean; demonstration?: boolean }) {

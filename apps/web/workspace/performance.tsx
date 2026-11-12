@@ -39,6 +39,8 @@ import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { MoneyDrawdown, MoneySummary } from "./performance-money";
+import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
 
@@ -84,7 +86,9 @@ export function PerformanceContent({
     data: incoming, history: historyQuery.data, range: requestedRange, scope: requestedScope,
     view, updatedAt: Math.max(summary.dataUpdatedAt, historyQuery.dataUpdatedAt),
   } : undefined, [incoming, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
-  const retained = useRetainedResult(current);
+  const reading = useReadingBoundary();
+  const retained = useRetainedResult(current, Object.is, (next, previous) => !reading.active ||
+    next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope);
   const shown = retained?.view === view ? retained : undefined;
   const data = shown?.data;
   const scope = shown?.scope ?? requestedScope;
@@ -92,6 +96,8 @@ export function PerformanceContent({
   const historySelection = { runId: data?.runId ?? "", range: actualRange, scope };
   const daily = useMemo(() => (data?.nav ?? []).filter((p) => !p.intraday), [data?.nav]);
   const failure = summary.isError ? summary : view === "money" && historyQuery.isError ? historyQuery : null;
+  const publicationFailure = usePublicationFailure(suppliedData ? 0 : shown?.updatedAt ?? 0);
+  const inlineFailure = failure && shown ? { updatedAt: shown.updatedAt, retry: failure.refetch } : publicationFailure;
   const waiting = !failure && !current || runtime.status === "loading";
   const fallbackHistory = useMemo(() => selectPortfolioHistory({
     daily, intraday: data?.intradayNav, range: actualRange, scope,
@@ -271,7 +277,7 @@ export function PerformanceContent({
         ],
   };
   return (
-    <>
+    <ReadingBoundary.Provider value={reading.report}>
       <div className="mx-toolbar mx-analytics-toolbar">
         <Tabs
           label={t("绩效分析方式", "Performance perspective")}
@@ -295,7 +301,7 @@ export function PerformanceContent({
         />
         <span className="mx-freshness-group">
           <Freshness date={data?.brokerAsOf} />
-          {failure && shown && <UpdateFailure updatedAt={shown.updatedAt} retry={failure.refetch} />}
+          {inlineFailure && <UpdateFailure {...inlineFailure} />}
         </span>
         <Select
           disabled={!!fixedScope}
@@ -492,7 +498,7 @@ export function PerformanceContent({
         lens="return_attribution"
         page="analytics"
       />}
-    </>
+    </ReadingBoundary.Provider>
   );
 }
 function RiskDashboard({ data, scope }: { data: DashboardLens; scope: Scope }) {
