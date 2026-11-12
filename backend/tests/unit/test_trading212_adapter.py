@@ -247,9 +247,44 @@ def _summary_with_cash(payload: dict[str, object], total: str, **cash: str) -> N
     summary["cash"] = cash
 
 
-def test_snapshot_counts_cash_reserved_for_orders_and_in_pies() -> None:
-    # Trading 212's total includes cash held for pending orders and uninvested
-    # pie cash, which availableToTrade leaves out.
+def test_snapshot_counts_reserved_cash_but_not_pie_cash() -> None:
+    # Trading 212's total includes cash held for pending orders, which
+    # availableToTrade leaves out. Pie cash is reported but not added again.
+    payload = _snapshot_payload()
+    _summary_with_cash(
+        payload,
+        "112.40",
+        availableToTrade="10.00",
+        reservedForOrders="2.40",
+        inPies="0.85",
+    )
+
+    snapshot = snapshot_from_payload("invest", "live", payload)
+    reconciliation = broker_snapshot_reconciliation(snapshot)
+    metrics = account_snapshot_metrics("invest", snapshot)
+
+    assert snapshot.account.cash_available == Decimal("10.00")
+    assert snapshot.account.cash_in_pies == Decimal("0.85")
+    assert snapshot.account.cash_total == Decimal("12.40")
+    assert reconciliation.account_total_delta_gbp == Decimal("0")
+    assert reconciliation.cash_plus_investments_matches_total is True
+    assert metrics.cash_gbp == Decimal("12.40")
+
+
+def test_pie_cash_is_not_counted_twice_against_the_total() -> None:
+    # The broker's total equals available cash plus investments while a few
+    # pence of uninvested pie cash are reported beside them.
+    payload = _snapshot_payload()
+    _summary_with_cash(payload, "110.00", availableToTrade="10.00", inPies="0.03")
+
+    snapshot = snapshot_from_payload("invest", "live", payload)
+    reconciliation = broker_snapshot_reconciliation(snapshot)
+
+    assert snapshot.account.cash_total == Decimal("10.00")
+    assert reconciliation.account_total_delta_gbp == Decimal("0")
+
+
+def test_pie_cash_counts_when_the_total_includes_it() -> None:
     payload = _snapshot_payload()
     _summary_with_cash(
         payload,
@@ -261,13 +296,10 @@ def test_snapshot_counts_cash_reserved_for_orders_and_in_pies() -> None:
 
     snapshot = snapshot_from_payload("invest", "live", payload)
     reconciliation = broker_snapshot_reconciliation(snapshot)
-    metrics = account_snapshot_metrics("invest", snapshot)
 
-    assert snapshot.account.cash_available == Decimal("10.00")
     assert snapshot.account.cash_total == Decimal("13.25")
     assert reconciliation.account_total_delta_gbp == Decimal("0")
     assert reconciliation.cash_plus_investments_matches_total is True
-    assert metrics.cash_gbp == Decimal("13.25")
 
 
 def test_snapshot_still_rejects_total_beyond_every_cash_component() -> None:
@@ -960,13 +992,13 @@ def test_broker_sync_use_case_persists_only_verified_export(
     assert (tmp_path / "invest" / "latest_export.json").is_file()
 
 
-def test_first_strict_sync_accepts_cash_reserved_for_orders_and_in_pies(
+def test_first_strict_sync_accepts_cash_reserved_for_orders(
     tmp_path: Path,
 ) -> None:
     payload = _snapshot_payload()
     _summary_with_cash(
         payload,
-        "113.25",
+        "112.40",
         availableToTrade="10.00",
         reservedForOrders="2.40",
         inPies="0.85",
@@ -990,7 +1022,7 @@ def test_first_strict_sync_accepts_cash_reserved_for_orders_and_in_pies(
     )
 
     assert result.reconciliation.status == "verified"
-    assert result.snapshot.account.cash_total == Decimal("13.25")
+    assert result.snapshot.account.cash_total == Decimal("12.40")
 
 
 def test_broker_sync_refreshes_mutable_current_day_export(tmp_path: Path) -> None:

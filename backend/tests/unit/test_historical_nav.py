@@ -292,6 +292,48 @@ def test_reconstruction_preserves_weekend_broker_dates(tmp_path: Path) -> None:
     assert rows["2026-01-09"]["ValuationSource"] == "synthetic_reconstruction"
 
 
+def _replay_retained_row(tmp_path: Path, *, cash: float) -> dict[str, dict[str, str]]:
+    from trading_max.analytics.nav import append_valuation
+
+    export = _export(tmp_path / "ledger.csv")
+    first = reconstruct_historical_nav(
+        export_path=export, account=_account(), history_loader=_history
+    )
+    retained = append_valuation(
+        first.content.decode(), date="2026-01-10", value=113, cash=cash, invested=63
+    )
+    result = reconstruct_historical_nav(
+        export_path=export,
+        account={
+            **_account(),
+            "fetched_at": "2026-01-11T12:00:00Z",
+            "total_value_gbp": 114,
+            "investments_value_gbp": 64,
+        },
+        history_loader=_history,
+        previous_nav=retained,
+    )
+    return {row["Date"]: row for row in csv.DictReader(io.StringIO(result.content.decode()))}
+
+
+def test_replay_keeps_broker_total_when_a_retained_row_counted_pie_cash(tmp_path: Path) -> None:
+    # 1.31.1 added pie cash that Trading 212 leaves out of its total, so the
+    # retained row's parts exceed its total by 3p.
+    rows = _replay_retained_row(tmp_path, cash=50.03)
+
+    assert float(rows["2026-01-10"]["SyntheticNAVGBP"]) == 113
+    assert float(rows["2026-01-10"]["MarketValueGBP"]) == 63
+    assert float(rows["2026-01-10"]["CashGBP"]) == pytest.approx(50.0)
+    assert rows["2026-01-10"]["ValuationSource"] == "broker_native"
+
+
+def test_replay_still_rejects_a_retained_row_beyond_the_broker_tolerance(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(HistoricalNavError, match="previous broker valuation does not reconcile"):
+        _replay_retained_row(tmp_path, cash=55.0)
+
+
 @pytest.mark.parametrize("event_time", ["2026-01-10T12:00:00Z", "2026-01-09T22:00:00Z"])
 @pytest.mark.parametrize("amount", [100.0, -40.0])
 def test_later_cash_flow_belongs_after_retained_broker_observation(
