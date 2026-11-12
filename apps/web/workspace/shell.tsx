@@ -40,6 +40,8 @@ import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
 import { Tag, useCopy } from "./foundation";
 
+import { researchShellKey } from "@/lib/dashboard-query";
+import { useBuildNavigation } from "@/ui/publication-provider";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
 import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
@@ -64,6 +66,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
   const profile = useWorkspaceProfile();
   const router = useRouter();
+  const navigateBuild = useBuildNavigation();
   const { locale, setLocale } = useLocale();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const os = useOs();
@@ -196,7 +199,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     setSearchOpen(false);
   }
   const directory = useQuery({
-    queryKey: ["workspace-research-shell"],
+    queryKey: researchShellKey,
     queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
     enabled: searchOpen,
     staleTime: 60_000,
@@ -246,7 +249,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     setSearchOpen(false);
     const route = presentationLink(actualPathname, href);
     if (route.separate) window.open(route.href, "_blank", "noopener");
-    else router.push(route.href);
+    else if (!navigateBuild?.(route.href)) router.push(route.href);
   }
   const brand = (
     <Link

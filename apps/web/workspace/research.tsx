@@ -1,5 +1,6 @@
 "use client";
 
+import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
   ResearchShell,
@@ -100,7 +101,7 @@ export function ResearchWorkspace() {
   const client = useQueryClient();
   const runtime = useChartRuntime("research");
   const shell = useQuery({
-    queryKey: ["workspace-research-shell"],
+    queryKey: researchShellKey,
     queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
     refetchInterval: (q) =>
       q.state.data?.instruments.some(

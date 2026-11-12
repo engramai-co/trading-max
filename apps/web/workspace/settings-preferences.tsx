@@ -1,5 +1,6 @@
 "use client";
 
+import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
   Button,
   FileInput,
@@ -165,6 +166,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
     retry: 1,
   });
   const [file, setFile] = useState<File | null>(null);
+  useBuildNavigationGuard(Boolean(file));
   const [imported, setImported] = useState<"imported" | "duplicate" | null>(
     null,
   );
@@ -414,6 +416,8 @@ export function PersonalPreferences({
   const saved = mutation.isSuccess &&
     mutation.variables.timeZonePreference === zone &&
     JSON.stringify(mutation.variables.values) === JSON.stringify(draft);
+  useBuildNavigationGuard(!saved && (name !== profile.displayName || zone !== timeZonePreference ||
+    locale !== profile.locale || JSON.stringify(labels) !== JSON.stringify(profile.accountLabels)));
   return (
     <Panel title={t("让工作台更适合你", "A workspace that feels like yours")}>
       <form

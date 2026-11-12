@@ -228,7 +228,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       {query.isPending ? (
         <Pending />
       ) : query.isError || !data ? (
-        <QueryError retry={query.refetch} />
+        <QueryError retry={query.refetch} showDataStatusLink={false} />
       ) : (
         <>
           <section

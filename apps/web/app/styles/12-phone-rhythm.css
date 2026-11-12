@@ -250,7 +250,24 @@
     margin-top: var(--mx-space-tight);
     gap: var(--mx-space-tight) var(--mx-space-group);
   }
-  /* Review */
+  /* Evidence tables and tabs scroll within their own regions, without widening the review grid. */
+  .mx-account-review-page .mx-account-read {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Pair metrics when their amounts fit. A wider amount takes a row before it can overlap its neighbor. */
+  .mx-page .mx-review-bento .mx-metric-grid {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .mx-review-bento .mx-metric {
+    flex: 1 1 40%;
+  }
+  .mx-review-bento .mx-metric-label {
+    overflow-wrap: anywhere;
+  }
+  .mx-review-bento .mx-number {
+    white-space: nowrap;
+  }
   .mx-page .mx-review-evidence {
     gap: var(--mx-space-section);
   }

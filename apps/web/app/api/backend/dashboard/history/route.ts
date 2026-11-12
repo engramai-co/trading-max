@@ -1,3 +1,5 @@
+import { portfolioHistoryKey } from "@/lib/dashboard-query";
+import { rememberDesktopSnapshot } from "@/lib/snapshot-cache-server";
 import { privateJsonResponse } from "@/lib/backend-proxy";
 import { HistoryRequestError, readPreparedHistory } from "@/lib/history-server";
 import { PORTFOLIO_RANGES } from "@/lib/portfolio/history";
@@ -26,9 +28,12 @@ export async function GET(request: Request) {
     return privateJsonResponse(request, { detail: "Invalid history selection" }, { status: 400 });
   }
   try {
-    const prepared = await readPreparedHistory({ runId, range, scope } as HistorySelection);
-    return privateJsonResponse(request, page != null ? historyPage(prepared, Number(page))
-      : openings.length ? { ...prepared.chart, openings: pnlsAt(prepared, openings) } : prepared.chart);
+    const selection = { runId, range, scope } as HistorySelection;
+    const prepared = await readPreparedHistory(selection);
+    if (page != null) return privateJsonResponse(request, historyPage(prepared, Number(page)));
+    const chart = openings.length ? { ...prepared.chart, openings: pnlsAt(prepared, openings) } : prepared.chart;
+    rememberDesktopSnapshot(portfolioHistoryKey(selection, openings), chart);
+    return privateJsonResponse(request, chart);
   } catch (error) {
     return privateJsonResponse(request, { detail: "History could not be loaded. Please retry." },
       { status: error instanceof HistoryRequestError ? error.status : 503 });

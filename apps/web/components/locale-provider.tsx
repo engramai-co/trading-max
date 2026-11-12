@@ -70,17 +70,33 @@ function applyTimeZonePreference(preference: DisplayTimeZonePreference) {
     : DEFAULT_DISPLAY_TIME_ZONE;
 }
 
+function storedPreference(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function rememberPreference(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // The preference still applies to this document.
+  }
+}
+
 function subscribe(listener: () => void) {
   listeners.add(listener);
 
   if (!storageLoaded && typeof window !== "undefined") {
     storageLoaded = true;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = storedPreference(STORAGE_KEY);
     const nextLocale: Locale = stored === "en" ? "en" : "zh";
     applyLocale(nextLocale);
     currentBrowserTimeZone = readBrowserTimeZone();
     applyTimeZonePreference(
-      window.localStorage.getItem(TIME_ZONE_STORAGE_KEY) || DEFAULT_DISPLAY_TIME_ZONE,
+      storedPreference(TIME_ZONE_STORAGE_KEY) || DEFAULT_DISPLAY_TIME_ZONE,
     );
     queueMicrotask(emitChange);
   }
@@ -114,7 +130,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   );
   const setLocale = useCallback((nextLocale: Locale) => {
     applyLocale(nextLocale);
-    window.localStorage.setItem(STORAGE_KEY, nextLocale);
+    rememberPreference(STORAGE_KEY, nextLocale);
     emitChange();
   }, []);
   const timeZonePreference = useSyncExternalStore(
@@ -124,7 +140,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   );
   const setTimeZonePreference = useCallback((nextTimeZone: DisplayTimeZonePreference) => {
     applyTimeZonePreference(nextTimeZone);
-    window.localStorage.setItem(TIME_ZONE_STORAGE_KEY, currentTimeZonePreference);
+    rememberPreference(TIME_ZONE_STORAGE_KEY, currentTimeZonePreference);
     emitChange();
   }, []);
   const timeZone = timeZonePreference === "browser"

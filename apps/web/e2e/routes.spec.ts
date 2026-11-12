@@ -114,6 +114,29 @@ test.describe("portfolio workspace", () => {
     ).toHaveCount(0);
   });
 
+  test("data status retries in place after an error", async ({ page }) => {
+    let unavailable = true;
+    await page.route("**/api/backend/health/details", (route) =>
+      unavailable
+        ? route.fulfill({ status: 503, json: {} })
+        : route.fulfill({ json: { checkedAt: "2026-10-20T12:00:00Z", health: null, readiness: null, refresh: null, jobs: [], errors: [] } }),
+    );
+    await page.goto("/health");
+    const main = page.getByRole("main");
+    const retry = main.getByRole("button", { name: /重新加载|Try again/ });
+    await expect(retry).toBeVisible();
+    await expect(main.getByRole("link", { name: /查看数据状态|Data status/ })).toHaveCount(0);
+    const documentNavigations: string[] = [];
+    page.on("request", (request) => {
+      if (request.isNavigationRequest()) documentNavigations.push(request.url());
+    });
+    unavailable = false;
+    await retry.click();
+    await expect(main.getByRole("heading", { name: /更新记录|Update history/ })).toBeVisible();
+    await expect(page).toHaveURL(/\/health$/);
+    expect(documentNavigations).toEqual([]);
+  });
+
   test("command search supports keyboard selection and closes after navigation", async ({
     page,
   }) => {
