@@ -6406,7 +6406,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /**
              * Membercount
              * @default 0
@@ -6432,7 +6432,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /** Markets */
             markets?: components["schemas"]["SectorMarketStatus"][];
             /** @description Refresh schedule, so an empty board can say when the next update runs. */
@@ -6561,7 +6561,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /** Sessiondate */
             sessionDate?: string | null;
             /** Sessions */
@@ -9249,7 +9249,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Market to show; defaults to the one trading now. */
-                market?: ("us" | "uk" | "hk" | "kr") | null;
+                market?: ("us" | "uk" | "hk" | "kr" | "jp") | null;
             };
             header?: never;
             path?: never;

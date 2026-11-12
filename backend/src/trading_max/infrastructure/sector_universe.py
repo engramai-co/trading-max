@@ -99,6 +99,14 @@ UNIVERSES: dict[str, UniverseSpec] = {
         exchanges={"Hong Kong Exchanges And Clearing Ltd": ".HK"},
         regional=True,
     ),
+    "jp": UniverseSpec(
+        market="jp",
+        universe="MSCI Japan",
+        fund="iShares MSCI Japan UCITS ETF",
+        fund_ticker="IJPN",
+        product_id="251866",
+        exchanges={"Tokyo Stock Exchange": ".T"},
+    ),
     "kr": UniverseSpec(
         market="kr",
         universe="MSCI Korea",
@@ -160,6 +168,9 @@ def provider_symbol(spec: UniverseSpec, ticker: str | None, exchange: str | None
         return f"{int(raw):04d}.HK" if raw.isdigit() else None
     if suffix in {".KS", ".KQ"}:
         return f"{raw.zfill(6)}{suffix}" if raw.isdigit() and len(raw) <= 6 else None
+    if suffix == ".T":
+        # TSE codes can also carry a letter (e.g. 130A); do not strip it.
+        return raw + suffix if re.fullmatch(r"[0-9][0-9A-Z]{3}", raw) else None
     base = re.sub(r"[ .]+", "-", raw.rstrip(".")).strip("-")
     return base + suffix if _TICKER.fullmatch(base) else None
 

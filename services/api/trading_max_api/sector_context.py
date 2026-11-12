@@ -53,18 +53,19 @@ VENUES: dict[str, frozenset[str]] = {
     ),
     "uk": _codes("LSE LON LONDON XLON IOB LN"),
     "hk": _codes("HKG HKEX HKSE XHKG HK"),
+    "jp": _codes("JPX TYO XTKS TOKYOSTOCKEXCHANGE JP JT"),
     "kr": _codes("KSC KOE KRX KSE KOSPI KOSDAQ XKRX XKOS KS KQ"),
 }
 # Venues of markets without a board. Naming one keeps a listing off every board.
 FOREIGN_VENUES = _codes(
     """
     AMS PAR BRU LIS GER FRA XETRA ETR MIL MCE VIE SWX EBS STO CPH HEL OSL ISE TOR TSX CNQ
-    NEO JPX TYO OSA ASX SES SGX TAI TWO SHH SHZ NSE BSE JNB SAO MEX XAMS XPAR XETR XFRA
-    XMIL XSWX XTSE XTKS XASX NA FP GY GR IM SM SW SE SS DC FH NO CN CT JP JT AU SP TT CH
+    NEO OSA ASX SES SGX TAI TWO SHH SHZ NSE BSE JNB SAO MEX XAMS XPAR XETR XFRA
+    XMIL XSWX XTSE XASX NA FP GY GR IM SM SW SE SS DC FH NO CN CT AU SP TT CH
     IN IB SJ BZ MM
     """
 )
-SUFFIX_MARKETS = {".L": "uk", ".HK": "hk", ".KS": "kr", ".KQ": "kr"}
+SUFFIX_MARKETS = {".L": "uk", ".HK": "hk", ".KS": "kr", ".KQ": "kr", ".T": "jp"}
 # Exchange values that name no venue. Only these let a Bloomberg exchange code
 # stand in, since watchlist items default to a generic "<ticker> US Equity".
 UNNAMED_EXCHANGES = frozenset({"", "UNKNOWN", "N/A", "-"})
@@ -122,6 +123,8 @@ def _local_code(market: str, value: str) -> str | None:
         return f"{int(base):04d}" if base.isdigit() else None
     if market == "kr":
         return base if base.isdigit() else None
+    if market == "jp":
+        return base if len(base) == 4 and base[0].isdigit() and base.isalnum() else None
     return base.replace(".", "-") or None
 
 

@@ -220,7 +220,7 @@ def window(day: str, opened: str, closed: str, **breaks: str) -> SectorSessionWi
         ("XYZ.L", "AMS", "", None),
         ("0700.HK", "LSE", "", None),
         ("SEMI.AS", "US", "", None),
-        ("7203.T", "", "", None),
+        ("7203.T", "", "", ("jp", "7203")),
         ("", "", "", None),
         # A named exchange decides alone; only an unnamed one lets the Bloomberg
         # code (often a generic "<ticker> US Equity") stand in.
@@ -612,7 +612,7 @@ def test_backfill_without_prices_is_reported_and_bounded(tmp_path: Path) -> None
         assert "US: No prices for the 2026-11-06 session" in state.last_error
         clock["now"] += timedelta(minutes=10)
 
-    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr"))
+    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp"))
     requests = len(prices.intraday_requests)
     sectors.run_once()
     assert len(prices.intraday_requests) == requests
@@ -1028,7 +1028,7 @@ def test_rate_limiting_pauses_every_market(tmp_path: Path) -> None:
 
     assert state.phase == "error"
     assert len(prices.intraday_requests) == 1
-    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr"))
+    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp"))
     assert state.next_run_at == datetime(2026, 11, 6, 16, 30, tzinfo=UTC)
     clock["now"] = datetime(2026, 11, 6, 16, 31, tzinfo=UTC)
     assert sectors.due("us", clock["now"])
@@ -1175,7 +1175,7 @@ def test_status_reports_schedule_and_switches(tmp_path: Path) -> None:
     assert (starting.enabled, starting.phase, starting.interval_seconds) == (True, "starting", 600)
     assert starting.next_run_at == datetime(2026, 11, 6, 16, 10, tzinfo=UTC)
 
-    for market in ("us", "uk", "hk", "kr"):
+    for market in ("us", "uk", "hk", "kr", "jp"):
         sectors.boards.save(complete_board(market, SESSION))
     clock["now"] = datetime(2026, 11, 7, 12, tzinfo=UTC)
     assert sectors.status().next_run_at == datetime(2026, 11, 9, tzinfo=UTC)
@@ -1232,3 +1232,13 @@ def test_hong_kong_needs_the_exact_dated_previous_close(tmp_path: Path, has_prio
     assert board.groupings[0].groups[0].change == pytest.approx(0.01)
     assert sectors.refresh("hk", clock["now"]).published
     assert prices.daily_requests == [[symbol]]
+
+
+def test_tokyo_clock_has_a_lunch_break_and_japanese_listing_identity() -> None:
+    day = datetime(2026, 11, 6, 3, tzinfo=UTC)
+    session = latest_session("jp", day)
+    assert session == window(SESSION, "00:00", "06:30", break_start="02:30", break_end="03:30")
+    assert in_break(session, day)
+    assert not in_break(session, datetime(2026, 11, 6, 3, 30, tzinfo=UTC))
+    assert market_key("130A.T", "JPX") == ("jp", "130A")
+    assert market_key("130A.T", "HKG") is None

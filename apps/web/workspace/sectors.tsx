@@ -37,6 +37,7 @@ import { useRouteState } from "./route-state";
 import { SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
 import { SectorDetail, SectorList } from "./sectors-detail";
 import { SectorMap } from "./sectors-map";
+import { SectorMarketSwitch } from "./sectors-market-switch";
 import { SECTOR_MARKETS, marketPhase, sectorMarket, strongestGroup } from "./sectors-data";
 
 export function SectorsWorkspace() {
@@ -102,13 +103,15 @@ export function SectorsWorkspace() {
     uk: t("英股", "UK"),
     hk: t("港股", "Hong Kong"),
     kr: t("韩股", "Korea"),
+    jp: t("日股", "Japan"),
   };
-  // Phone labels, so four markets keep one row at 320px in English too.
+  // Phone labels, so five markets keep one row at 320px in English too.
   const shortNames: Record<SectorMarketCode, string> = {
     us: t("美股", "US"),
     uk: t("英股", "UK"),
     hk: t("港股", "HK"),
     kr: t("韩股", "KR"),
+    jp: t("日股", "JP"),
   };
   const phases = Object.fromEntries((shown?.markets ?? []).map((item) => [item.market, marketPhase(item.sessions, item.timezone, now)]));
   const phaseName = usePhaseNames();
@@ -130,10 +133,9 @@ export function SectorsWorkspace() {
     window.history.pushState({ sectorDrill: true }, "", window.location.pathname + "?" + next.toString());
   };
   const marketSwitch = (
-    <Segments
-      label={t("市场", "Market")}
+    <SectorMarketSwitch
       value={market}
-      shortcuts
+      phone={phone}
       onChange={(value) => {
         // Asking again for the market that just failed retries it, once at a time.
         if (value === requested && (query.isError || rejected)) {

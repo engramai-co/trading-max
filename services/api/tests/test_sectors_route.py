@@ -38,7 +38,7 @@ def test_sector_route_serves_an_empty_state_then_a_stored_board(tmp_path: Path) 
         assert empty.status_code == 200
         payload = empty.json()
         assert payload["board"] is None
-        assert [market["market"] for market in payload["markets"]] == ["us", "uk", "hk", "kr"]
+        assert [market["market"] for market in payload["markets"]] == ["us", "uk", "hk", "kr", "jp"]
         assert all(market["sessions"] for market in payload["markets"])
         assert payload["markets"][2]["calendar"] == "XHKG"
         assert payload["markets"][2]["timezone"] == "Asia/Hong_Kong"

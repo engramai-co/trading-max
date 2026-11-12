@@ -15872,7 +15872,8 @@
               "us",
               "uk",
               "hk",
-              "kr"
+              "kr",
+              "jp"
             ],
             "title": "Market",
             "type": "string"
@@ -15937,7 +15938,8 @@
               "us",
               "uk",
               "hk",
-              "kr"
+              "kr",
+              "jp"
             ],
             "title": "Market",
             "type": "string"
@@ -16225,7 +16227,8 @@
               "us",
               "uk",
               "hk",
-              "kr"
+              "kr",
+              "jp"
             ],
             "title": "Market",
             "type": "string"
@@ -22042,7 +22045,8 @@
                     "us",
                     "uk",
                     "hk",
-                    "kr"
+                    "kr",
+                    "jp"
                   ],
                   "type": "string"
                 },

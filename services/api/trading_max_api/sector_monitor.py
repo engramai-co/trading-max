@@ -266,6 +266,7 @@ class SectorMonitor:
         self._state = self._read_state()
         self._phase = "starting"
         self._paused_until: datetime | None = None
+        self._start_after: SectorMarketCode | None = None
         self._backfill: dict[str, tuple[str, int]] = {}
         self._daily: dict[str, _DailyCloses] = {}
         self._portfolio: tuple[str | None, PortfolioExposure] | None = None
@@ -668,7 +669,20 @@ class SectorMonitor:
         """Refresh every market that is due now."""
 
         now = self._now()
-        due = [market for market in MARKETS if self.due(market, now)]
+        order = list(MARKETS)
+        if self._start_after is not None:
+            pivot = order.index(self._start_after) + 1
+            order = order[pivot:] + order[:pivot]
+
+        def priority(market: SectorMarketCode) -> int:
+            session = latest_session(market, now)
+            if session is None or now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER:
+                return 2
+            if now < session.open + OPEN_GRACE or now >= session.close + COMPLETE_AFTER:
+                return 0
+            return 1
+
+        due = sorted((market for market in order if self.due(market, now)), key=priority)
         if not due:
             with self._lock:
                 if self._phase in {"starting", "refreshing"}:
@@ -700,6 +714,7 @@ class SectorMonitor:
                 entry.update(lastError=message, lastErrorAt=self._now().isoformat())
                 if isinstance(exc, SparkRateLimited):
                     self._paused_until = self._now() + RATE_LIMIT_PAUSE
+                    self._start_after = market
                 LOGGER.warning(
                     "sector board refresh failed", extra={"market": market, "error": message}
                 )

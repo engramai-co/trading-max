@@ -2,7 +2,7 @@ import { privateJsonResponse, proxyToBackend } from "@/lib/backend-proxy";
 
 export const dynamic = "force-dynamic";
 
-const MARKETS = new Set(["us", "uk", "hk", "kr"]);
+const MARKETS = new Set(["us", "uk", "hk", "kr", "jp"]);
 
 export async function GET(request: Request) {
   const market = new URL(request.url).searchParams.get("market");
