@@ -189,7 +189,9 @@ class BrokerSyncStage:
             if not reconciliation.positions_match_investments:
                 warning = (
                     f"{profile}: live position detail differs from the broker account summary "
-                    f"by GBP {reconciliation.position_delta_gbp}; the intraday total remains "
+                    f"by GBP {reconciliation.position_delta_gbp} after a "
+                    f"GBP {reconciliation.pie_cash_in_investments_gbp} pie cash adjustment; "
+                    "the intraday total remains "
                     "broker-summary authoritative and position-dependent analysis is unchanged"
                 )
                 warnings.append(warning)

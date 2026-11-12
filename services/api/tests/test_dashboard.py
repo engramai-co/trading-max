@@ -520,8 +520,9 @@ def test_dashboard_overlays_live_totals_and_only_reconciled_positions(
                     "cash_gbp": 200,
                     "investments_value_gbp": 1100,
                     "position_value_gbp": 1100,
+                    "pie_cash_in_investments_gbp": 150,
                     "position_delta_gbp": 0,
-                    "position_tolerance_gbp": 0.55,
+                    "position_tolerance_gbp": 0.625,
                     "positions_status": "verified",
                     "checks": {"positions_match_investments": True},
                     "positions": [

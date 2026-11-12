@@ -100,10 +100,11 @@ class AccountSnapshotStage:
             if latest.fetched_at - candidate.fetched_at > RECONCILED_FALLBACK_WINDOW:
                 return None
             if candidate.checks.get("positions_match_investments") is True:
-                delta = latest.position_value_gbp - latest.investments_value_gbp
                 return candidate, (
                     f"{profile}: position detail at {latest.fetched_at:%H:%M} UTC differs from "
-                    f"the account summary by GBP {delta}; using the reconciled snapshot from "
+                    f"the account summary by GBP {latest.position_delta_gbp} after a "
+                    f"GBP {latest.pie_cash_in_investments_gbp} pie cash adjustment; "
+                    "using the reconciled snapshot from "
                     f"{candidate.fetched_at:%H:%M} UTC"
                 )
         return None
@@ -160,7 +161,7 @@ class AccountSnapshotStage:
             if intraday:
                 observation = intraday_account_value(metrics)
                 # Position detail is publishable only when it reconciles to
-                # the broker-authoritative Account Summary investment value.
+                # the account summary investment value excluding unfilled pie cash.
                 # Excluding ``None`` keeps older summary-only consumers and
                 # unreconciled payloads on the existing wire shape.
                 payload = observation.model_dump(
@@ -174,7 +175,9 @@ class AccountSnapshotStage:
                 if observation.positions_status == "unreconciled":
                     warning = (
                         f"{profile}: broker position detail differs from the account summary "
-                        f"by GBP {observation.position_delta_gbp}; total_value_gbp remains "
+                        f"by GBP {observation.position_delta_gbp} after a "
+                        f"GBP {observation.pie_cash_in_investments_gbp} pie cash adjustment; "
+                        "total_value_gbp remains "
                         "broker-summary authoritative and prior verified position detail "
                         "must be retained"
                     )
