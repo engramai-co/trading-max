@@ -15,7 +15,7 @@ const positions = Array.from({ length: 60 }, (_, i) => ({
   etfContributors: [],
 }));
 
-async function open(page: Page, locale: "zh" | "en" = "en") {
+async function open(page: Page, locale: "zh" | "en" = "en", state = { runId: "synthetic-lookthrough", brokerAsOf: "2026-11-04T15:00:00Z" }) {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   // No write leaves the page.
@@ -23,8 +23,12 @@ async function open(page: Page, locale: "zh" | "en" = "en") {
   // Every backend request is answered here, so no real service is reached.
   await page.route("**/api/backend/**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/health")) return route.fulfill({ json: {
+      service: "trading_max-api", status: "ok", latestRunId: state.runId,
+    } });
     if (path.endsWith("/dashboard/lens/holdings-lookthrough")) return route.fulfill({ json: {
-      runId: "synthetic-lookthrough", lookthrough: {
+      runId: state.runId, lookthrough: {
+        brokerAsOf: state.brokerAsOf,
         available: true, positions, underlyingCount: positions.length, sources: [],
         countryAllocation: [], industryAllocation: [], gicsSubIndustryAllocation: [],
         lookthroughCoveragePct: 1, gicsCoveragePct: 1, etfValueGbp: 30000,
@@ -78,6 +82,30 @@ test.describe("look-through companies", () => {
     await expect(above).toContainText("1 / 3");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+
+  test("new snapshots leave the company drawer and its filter in place", async ({ page, isMobile }) => {
+    await page.clock.install();
+    const state = { runId: "synthetic-first", brokerAsOf: "2026-11-04T15:00:00Z" };
+    await open(page, "en", state);
+    if (isMobile) await page.getByRole("button", { name: /^Filters/ }).click();
+    const country = page.getByRole("combobox", { name: "Filter country" });
+    await country.click();
+    await page.getByRole("option", { name: "United Kingdom", exact: true }).click();
+    await page.getByRole("button", { name: /SYN01/ }).first().click();
+    const drawer = page.getByRole("dialog", { name: "Underlying exposure" });
+    await expect(drawer).toContainText("Synthetic Holding 1");
+
+    const freshness = page.locator(".mx-freshness").first();
+    const first = await freshness.textContent();
+    state.runId = "synthetic-second";
+    state.brokerAsOf = "2026-11-04T15:10:00Z";
+    await page.clock.fastForward(60_000);
+    await expect(freshness).not.toHaveText(first!);
+    await expect(drawer).toContainText("Synthetic Holding 1");
+    await page.keyboard.press("Escape");
+    await expect(country).toHaveValue("United Kingdom");
+    await expect(page).toHaveURL(/holdings\?view=lookthrough$/);
   });
 
   test("wider screens keep every filter inline", async ({ page, isMobile }) => {

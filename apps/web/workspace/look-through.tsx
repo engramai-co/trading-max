@@ -14,6 +14,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import Link from "./link";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
@@ -178,13 +179,14 @@ function CompanyToolbar({
 export function Lookthrough() {
   const t = useCopy();
   const query = useDashboardLens("holdings-lookthrough");
+  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
   return query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
   ) : query.isError && !query.data ? (
     <QueryError retry={query.refetch} />
   ) : query.data?.lookthrough ? (
     <Exposure data={query.data.lookthrough} snapshot={query.data.runId}
-      failure={query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : undefined} />
+      failure={query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure} />
   ) : (
     <Empty title={t("暂无穿透记录", "No look-through records")} />
   );

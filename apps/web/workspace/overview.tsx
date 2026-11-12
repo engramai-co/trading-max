@@ -53,6 +53,8 @@ import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-driv
 import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
+import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
+import { usePublicationFailure } from "@/ui/publication-provider";
 import { useCurrentDay } from "./current-day";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 import { LocalOnboarding } from "./local-onboarding";
@@ -100,7 +102,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const { params, update } = useRouteState();
   const { today, now } = useCurrentDay();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
-  const data = query.data;
+  const incoming = query.data;
+  const reading = useReadingBoundary();
   const sectors = useOverviewSectors();
   const runtime = useChartRuntime();
   const demonstration = useDemonstration();
@@ -112,7 +115,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     refetchInterval: 60_000,
     retry: 1,
   });
-  const scope: Scope =
+  const requestedScope: Scope =
     params.get("scope") === "invest"
       ? "invest"
       : params.get("scope") === "isa"
@@ -120,18 +123,35 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         : "total";
   const [remembered, remember] = useRememberedRange();
   const range = preferredRange(params.get("range"), remembered);
-  const selection = useMemo(() => ({ range, scope, runId: data?.runId ?? "" }), [range, scope, data?.runId]);
+  const selection = useMemo(() => ({ range, scope: requestedScope, runId: incoming?.runId ?? "" }), [range, requestedScope, incoming?.runId]);
   const todaySelection = useMemo(() => ({ ...selection, range: "1D" as const }), [selection]);
-  const openings = useMemo(() => driverOpenings(range === "1D" ? data?.dayAttribution : range === "1W" ? data?.windowAttribution : null, scope),
-    [range, scope, data?.dayAttribution, data?.windowAttribution]);
-  const todayOpenings = useMemo(() => driverOpenings(data?.dayAttribution, scope), [data?.dayAttribution, scope]);
-  const history = usePortfolioHistory(selection, Boolean(data?.runId), openings);
-  const todayHistory = usePortfolioHistory(todaySelection, Boolean(data?.runId), todayOpenings);
-  // The summary, today's figure and the P&L chart share one snapshot and arrive together. Sectors come
-  // from their own live monitor and keep their own placeholder, so a slow board never holds the portfolio.
-  const ready = data && !history.isPending && !todayHistory.isPending && runtime.status !== "loading";
-  const firstResult = useRetainedResult(ready ? true : undefined);
-  const initialWaiting = !firstResult && !query.isError;
+  const openings = useMemo(() => driverOpenings(range === "1D" ? incoming?.dayAttribution : range === "1W" ? incoming?.windowAttribution : null, requestedScope),
+    [range, requestedScope, incoming?.dayAttribution, incoming?.windowAttribution]);
+  const todayOpenings = useMemo(() => driverOpenings(incoming?.dayAttribution, requestedScope), [incoming?.dayAttribution, requestedScope]);
+  const history = usePortfolioHistory(selection, Boolean(incoming?.runId), openings);
+  const todayHistory = usePortfolioHistory(todaySelection, Boolean(incoming?.runId), todayOpenings);
+  // Only publish matching figures, attributions and history together. An open chart reading
+  // or exact record stays on its own run. An explicit range or account choice still proceeds.
+  const candidate = useMemo(() => incoming && {
+    lens: incoming, selection, history: history.data, today: todayHistory.data,
+    updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt),
+  }, [incoming, selection, history.data, todayHistory.data, query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt]);
+  const complete = candidate?.history && candidate.today && runtime.status !== "loading" ? candidate : undefined;
+  const shown = useRetainedResult(complete, Object.is, (next, previous) =>
+    !reading.active || next.selection.range !== previous.selection.range || next.selection.scope !== previous.selection.scope);
+  const initialWaiting = !shown && !query.isError && (
+    !incoming || history.isPending || todayHistory.isPending || runtime.status === "loading");
+  const displayed = shown ?? candidate;
+  const data = displayed?.lens;
+  const scope = displayed?.selection.scope ?? requestedScope;
+  const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
+  const summaryFailure = query.isRefetchError
+    ? { updatedAt: shown?.updatedAt ?? query.dataUpdatedAt, retry: query.refetch }
+    : publicationFailure;
+  const todayFailure = todayHistory.isError && shown
+    ? { updatedAt: shown.updatedAt, retry: todayHistory.refetch } : undefined;
+  const historyFailure = history.isError && shown
+    ? { updatedAt: shown.updatedAt, retry: history.refetch } : undefined;
   const accounts = (data?.accounts ?? []).filter((a) => a.isInvestable);
   const selected = accounts.find(
     (a) => a.code === (scope === "invest" ? "A" : scope === "isa" ? "B" : ""),
@@ -167,7 +187,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   // Data problems speak here; a holding's readings are marked in its own row below.
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
-    <div className="mx-overview-read">
+    <ReadingBoundary.Provider value={reading.report}><div className="mx-overview-read">
       {initialWaiting && <LoadingStatus label={t("正在读取组合总览…", "Loading your portfolio overview…")} />}
       <div className="mx-panel mx-overview-portfolio">
         <section
@@ -186,12 +206,12 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
                 { value: "invest", label: accountName(profile, "A") },
                 { value: "isa", label: accountName(profile, "B") },
               ]}
-              value={scope}
+              value={requestedScope}
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
             <span className="mx-freshness-group">
               {demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
-              {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+              {summaryFailure && <UpdateFailure {...summaryFailure} />}
             </span>
           </div>
           {initialWaiting ? <Pending shape="summary" quiet /> : <>
@@ -214,7 +234,10 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               />
               <TodayMetric
                 scope={scope}
-                query={todayHistory}
+                data={displayed?.today}
+                failed={todayHistory.isError}
+                retry={todayHistory.refetch}
+                failure={todayFailure}
                 attribution={data?.dayAttribution}
                 previousDay={previousDay}
                 today={today}
@@ -238,8 +261,13 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       </div>
       <div className="mx-overview-row">
         <OverviewHistory
-          selection={selection}
-          historyQuery={history}
+          range={range}
+          selection={displayed?.selection ?? selection}
+          data={displayed?.history}
+          failed={history.isError}
+          retry={history.refetch}
+          failure={historyFailure}
+          waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
           runtime={runtime}
           onRange={(value) => {
@@ -253,7 +281,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations} />}
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
-    </div>
+    </div></ReadingBoundary.Provider>
   );
 }
 function Attention({ items }: { items: AttentionItem[] }) {
@@ -291,14 +319,20 @@ function Attention({ items }: { items: AttentionItem[] }) {
 /** What today did to the account, and the positions behind it; the 1D chart's own figure. */
 function TodayMetric({
   scope,
-  query,
+  data,
+  failed,
+  retry,
+  failure,
   attribution,
   previousDay,
   today,
   now,
 }: {
   scope: Scope;
-  query: ReturnType<typeof usePortfolioHistory>;
+  data?: ReturnType<typeof usePortfolioHistory>["data"];
+  failed: boolean;
+  retry: () => unknown;
+  failure?: { updatedAt: number; retry: () => unknown };
   attribution?: DashboardLens["dayAttribution"];
   previousDay?: number | null;
   /** Today's calendar day in the display time zone. */
@@ -307,8 +341,8 @@ function TodayMetric({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const history = query.data?.history;
-  const money = query.data?.money;
+  const history = data?.history;
+  const money = data?.money;
   const points = history?.points ?? [];
   const day = history?.endDay;
   const pnl = money?.pnl ?? null;
@@ -325,15 +359,15 @@ function TodayMetric({
     day,
     dates: points.map((p) => p.date),
     pnls: money.pnls,
-    openings: query.data?.openings,
+    openings: data?.openings,
     cutOff: history.pendingCashFlows,
   }) : null;
   return (
     <Metric
-      label={<>{label}{history && <CutoffTag history={history} />}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</>}
+      label={<>{label}{history && <CutoffTag history={history} />}{failure && <UpdateFailure {...failure} />}</>}
       helpLabel={label}
-      value={pnl == null ? (query.isError && !query.data
-        ? <button type="button" className="mx-inline-retry" onClick={() => void query.refetch()}>{t("重试", "Retry")}</button>
+      value={pnl == null ? (failed && !data
+        ? <button type="button" className="mx-inline-retry" onClick={() => void retry()}>{t("重试", "Retry")}</button>
         : "—") : (
         <>
           {signedPounds(pnl)}
@@ -371,26 +405,27 @@ function TodayMetric({
   );
 }
 function OverviewHistory({
-  selection, historyQuery: query, initialWaiting, runtime, onRange, windowAttribution,
+  range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange, windowAttribution,
 }: {
+  range: Range;
   selection: Parameters<typeof usePortfolioHistory>[0];
-  historyQuery: ReturnType<typeof usePortfolioHistory>;
+  data?: ReturnType<typeof usePortfolioHistory>["data"];
+  failed: boolean;
+  retry: () => unknown;
+  failure?: { updatedAt: number; retry: () => unknown };
+  waiting: boolean;
   initialWaiting: boolean;
   runtime: ReturnType<typeof useChartRuntime>;
   onRange: (range: Range) => void;
   windowAttribution?: DashboardLens["windowAttribution"];
 }) {
   const t = useCopy();
-  const current = useMemo(() => query.data && { data: query.data, selection, windowAttribution, updatedAt: query.dataUpdatedAt },
-    [query.data, query.dataUpdatedAt, selection, windowAttribution]);
-  const result = useRetainedResult(current);
-  const displayedSelection = result?.selection ?? selection;
-  const { range, scope } = displayedSelection;
-  const history = result?.data.history ?? selectPortfolioHistory({ range, scope });
+  const { range, scope } = selection;
+  const history = data?.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
-  const money = result?.data.money ?? portfolioMoney([], scope);
-  const attribution = result?.windowAttribution;
+  const money = data?.money ?? portfolioMoney([], scope);
+  const attribution = windowAttribution;
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
   const drivers = range === "1W" && attribution ? dayDrivers({
     attribution,
@@ -398,7 +433,7 @@ function OverviewHistory({
     day: history.endDay,
     dates: points.map((p) => p.date),
     pnls: money.pnls,
-    openings: result?.data.openings,
+    openings: data?.openings,
     cutOff: history.pendingCashFlows,
   }) : null;
   return (
@@ -409,10 +444,10 @@ function OverviewHistory({
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
-          {query.isError && result && <UpdateFailure updatedAt={result.updatedAt} retry={query.refetch} />}
+          {failure && <UpdateFailure {...failure} />}
           <Segments
             label={t("图表区间", "Chart range")}
-            value={selection.range}
+            value={requestedRange}
             onChange={onRange}
             shortcuts
             options={PORTFOLIO_RANGES.map(
@@ -425,14 +460,14 @@ function OverviewHistory({
         </div>
       }
     >
-      {initialWaiting || !result && !query.isError ? (
+      {initialWaiting || !data && !failed ? (
         <Pending shape="chart" height={326} quiet={initialWaiting} label={t("正在读取盈亏记录…", "Loading profit and loss records…")} />
       ) : runtime.status === "failed" ? (
         <QueryError retry={runtime.retry} />
-      ) : !result ? (
-        <QueryError retry={query.refetch} />
+      ) : !data ? (
+        <QueryError retry={retry} />
       ) : (
-        <div className="mx-data-body" aria-busy={query.isPending || undefined}>
+        <div className="mx-data-body" aria-busy={waiting && !failed || undefined}>
           <div className="mx-period-figure">
             <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
               {currency(money.pnl, "GBP", 2)}
@@ -459,7 +494,7 @@ function OverviewHistory({
             timeline={history.timeline}
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
-            recordSource={displayedSelection}
+            recordSource={selection}
             height={264}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,

@@ -131,7 +131,7 @@ export function TimelineChart({
           ))}
         </div>
       )}
-      {recordSource ? <HistoryRecords key={JSON.stringify(recordSource)} selection={recordSource} label={label} /> : <details className="mx-chart-data">
+      {recordSource ? <HistoryRecords key={recordSource.range + ":" + recordSource.scope} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable
           label={label}

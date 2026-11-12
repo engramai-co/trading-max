@@ -139,11 +139,13 @@ export function Plot({
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;
-  const { ref, status, retry } = useECharts(
+  const { ref, status, retry, applied } = useECharts(
     settings,
     research ? "research" : "core",
     control,
     onZoom,
+    undefined,
+    pinned || Boolean(reading),
   );
   const dismiss = () => {
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
@@ -185,6 +187,7 @@ export function Plot({
           });
           setPinned(true);
         }}
+        onBlur={() => { if (!pinned && reading) dismiss(); }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             if (pinned || reading) {
@@ -197,9 +200,8 @@ export function Plot({
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
             return;
           event.preventDefault();
-          const series = Array.isArray(settings.series)
-            ? settings.series[0]
-            : settings.series;
+          const option = applied.current ?? settings;
+          const series = Array.isArray(option.series) ? option.series[0] : option.series;
           const count =
             series && "data" in series && Array.isArray(series.data)
               ? series.data.length
@@ -222,7 +224,7 @@ export function Plot({
             seriesIndex: 0,
             dataIndex: selected.current,
           });
-          setReading(chartReading(settings, selected.current, locale, t));
+          setReading(chartReading(option, selected.current, locale, t));
         }}
         ref={ref}
         style={{ height: "100%", width: "100%" }}

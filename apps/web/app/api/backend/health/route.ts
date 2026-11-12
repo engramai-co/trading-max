@@ -3,7 +3,7 @@ import { proxyToBackend } from "@/lib/backend-proxy";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!backendUrl()) {
     return Response.json(
       {
@@ -13,5 +13,5 @@ export async function GET() {
       { status: 200 },
     );
   }
-  return proxyToBackend("/health");
+  return proxyToBackend("/health", { signal: request.signal });
 }

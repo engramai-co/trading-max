@@ -71,24 +71,32 @@ function lens(ticker: string, view: string, price: number) {
   };
 }
 
-async function synthetic(page: Page) {
+async function synthetic(page: Page, running = true) {
   const state = {
     broker: { price: 100, asOf: "2026-11-04T15:40:00Z" },
     defaultsDown: false,
+    publication: "synthetic-run",
+    newResearch: false,
     posts: [] as { ticker: string; scenarios: Record<string, Inputs> }[],
     releaseOther: () => {},
   };
   const otherDefaults = new Promise<void>((resolve) => { state.releaseOther = resolve; });
   await page.route("**/api/backend/**", (route) => route.fulfill({ status: 404, json: { detail: "synthetic" } }));
+  await page.route("**/api/backend/health", (route) => route.fulfill({ json: {
+    service: "trading_max-api", status: "ok", latestRunId: state.publication,
+  } }));
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
   await page.route("**/api/backend/research/shell", (route) => route.fulfill({ json: {
-    status: { runId: "synthetic-run", overall: "fresh", artifacts: [] },
+    status: { runId: state.publication, overall: "fresh", artifacts: [] },
     watchlistCategories: [],
-    instruments: [instrument("SYNT", 1, true, state.broker), instrument("OTHR", 2, false, state.broker)],
+    instruments: [{ ...instrument("SYNT", 1, true, state.broker), lastRunId: state.publication, status: running ? "running" : "ready" }, instrument("OTHR", 2, false, state.broker)],
   } }));
   await page.route(/\/api\/backend\/research\/(SYNT|OTHR)\/lens\/(\w+)/, (route) => {
     const [, ticker, view] = /research\/(SYNT|OTHR)\/lens\/(\w+)/.exec(route.request().url())!;
-    return route.fulfill({ json: lens(ticker, view, ticker === "SYNT" ? 101 : 55) });
+    const data = lens(ticker, view, ticker === "SYNT" ? 101 : 55);
+    return route.fulfill({ json: state.newResearch && ticker === "SYNT" ? {
+      ...data, runId: state.publication, financialFacts: { ...data.financialFacts, version: "new-facts" },
+    } : data });
   });
   await page.route(/\/api\/backend\/research\/(SYNT|OTHR)\/valuation-preview/, async (route: Route) => {
     const request = route.request();
@@ -102,7 +110,9 @@ async function synthetic(page: Page) {
     }
     if (!held) await otherDefaults;
     if (held && state.defaultsDown) return route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
-    return route.fulfill({ json: preview(ticker, spot.price, spot.asOf, held, {}) });
+    const newDefaults = Object.fromEntries(scenarios.map((key) => [key, { ...defaults, revenueCagr: 0.33 }]));
+    const data = preview(ticker, spot.price, spot.asOf, held, state.newResearch ? newDefaults : {});
+    return route.fulfill({ json: state.newResearch ? { ...data, basis: { ...data.basis, dataVersion: "new-research" } } : data });
   });
   return state;
 }
@@ -149,4 +159,27 @@ test.describe("valuation refresh", () => {
     await expect(spot).toContainText("55.00");
     await expect(spot).not.toContainText("120.00");
   });
+
+  test("new research defaults do not rebase dirty assumptions", async ({ page }) => {
+    await page.clock.install();
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const growth = page.getByLabel("Revenue growth · years 1–5");
+    await expect(growth).toHaveValue("10%");
+    await growth.fill("20");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(0.2);
+
+    state.newResearch = true;
+    state.publication = "synthetic-research-two";
+    const fresh = page.waitForResponse((response) => response.url().endsWith("/SYNT/valuation-preview") &&
+      response.request().method() === "GET" && response.ok());
+    await page.clock.fastForward(60_000);
+    const response = await (await fresh).json();
+    expect(response.basis.dataVersion).toBe("new-research");
+    await expect(growth).toHaveValue("20%");
+    await expect(growth).toBeFocused();
+    await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
+  });
+
 });

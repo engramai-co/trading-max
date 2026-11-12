@@ -9,9 +9,9 @@ import {
   Pulse,
   WarningCircle,
 } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "./link";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
   deriveHealthTone,
@@ -46,10 +46,9 @@ import { JobOutcomeSummary } from "./job-outcomes";
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const client = useQueryClient();
   const query = useQuery({
     queryKey: ["workspace-health"],
-    queryFn: () => api<HealthDetails>("/health/details"),
+    queryFn: ({ signal }) => api<HealthDetails>("/health/details", { signal }),
     refetchInterval: 5000,
     retry: 1,
   });
@@ -68,7 +67,6 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     onSuccess: (job) => {
       setSelected(job.jobId);
       void query.refetch();
-      void client.invalidateQueries({ queryKey: ["dashboard-lens", "latest"] });
     },
   });
   const Controls = desktop ? "details" : Fragment;
@@ -76,13 +74,6 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const controlsProps = desktop ? { className: "mx-activity-controls", open: controlsOpen, onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => setControlsOpen(event.currentTarget.open) } : {};
   const data = query.data;
   const latestRunId = data?.health?.latestRunId;
-  useEffect(() => {
-    if (latestRunId) {
-      void client.invalidateQueries({ queryKey: ["dashboard-lens", "latest"] });
-      void client.invalidateQueries({ queryKey: ["workspace-research"] });
-      void client.invalidateQueries({ queryKey: ["workspace-research-shell"] });
-    }
-  }, [client, latestRunId]);
   const activity = activityState(data ?? null, localWorkspace);
   const tone = desktop ? activity.tone : deriveHealthTone(data ?? null, localWorkspace);
   // A reachable service is not fresh data: snapshots publish several times a

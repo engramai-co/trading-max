@@ -6,6 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { tradingMaxTheme } from "@/ui/theme";
+import { PublicationProvider } from "@/ui/publication-provider";
 import { FinePointerProvider } from "@/ui/pointer";
 import { createQueryClient } from "@/ui/query-client";
 
@@ -21,7 +22,7 @@ export function TradingMaxProvider({
     >
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
-        <FinePointerProvider>{children}</FinePointerProvider>
+        <PublicationProvider><FinePointerProvider>{children}</FinePointerProvider></PublicationProvider>
       </QueryClientProvider>
     </MantineProvider>
   );

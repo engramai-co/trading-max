@@ -1,5 +1,6 @@
 "use client";
 
+import { useReadingLock } from "@/ui/charts/reading";
 import { useState } from "react";
 import { Pagination } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ import type { HistoryPage, HistorySelection } from "@/lib/portfolio/prepared";
 export function HistoryRecords({ selection, label }: { selection: HistorySelection; label: string }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
+  useReadingLock(open);
   const [page, setPage] = useState(1);
   const labels = usePaginationLabels();
   const query = useQuery({

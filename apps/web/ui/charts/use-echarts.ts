@@ -3,7 +3,8 @@
 import { useComputedColorScheme } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
 import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
-import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useReadingLock } from "@/ui/charts/reading";
 import { FONT_STACK } from "@/ui/theme";
 
 type EChartsRuntime = typeof import("@/ui/charts/echarts-runtime");
@@ -70,6 +71,7 @@ export function useECharts(
   controller?: RefObject<ECharts | null>,
   onZoom?: (chart: ECharts) => void,
   onClick?: (event: ECElementEvent) => void,
+  pinned = false,
 ) {
   const callbacks = useRef({ onZoom, onClick });
   useLayoutEffect(() => { callbacks.current = { onZoom, onClick }; }, [onZoom, onClick]);
@@ -96,6 +98,40 @@ export function useECharts(
   const lastApplied = useRef<EChartsOption | null>(null);
   const latest = useRef(themedOption);
   const hasOption = themedOption !== null;
+  const [interacting, setInteracting] = useState(false);
+  const locked = interacting || pinned;
+  useReadingLock(locked);
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let hovering = false;
+    const pressed = new Set<number>();
+    const report = () => setInteracting(hovering || pressed.size > 0);
+    const hover = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" && !hovering) { hovering = true; report(); }
+    };
+    const leave = () => { hovering = false; report(); };
+    const press = (event: PointerEvent) => { pressed.add(event.pointerId); report(); };
+    const release = (event: PointerEvent) => { if (pressed.delete(event.pointerId)) report(); };
+    const clear = () => { pressed.clear(); leave(); };
+    canvas.addEventListener("pointerenter", hover);
+    canvas.addEventListener("pointermove", hover);
+    canvas.addEventListener("pointerleave", leave);
+    canvas.addEventListener("pointerdown", press);
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", clear);
+    return () => {
+      canvas.removeEventListener("pointerenter", hover);
+      canvas.removeEventListener("pointermove", hover);
+      canvas.removeEventListener("pointerleave", leave);
+      canvas.removeEventListener("pointerdown", press);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+      window.removeEventListener("blur", clear);
+    };
+  }, [hasOption]);
 
   useLayoutEffect(() => { latest.current = themedOption; }, [themedOption]);
 
@@ -135,13 +171,13 @@ export function useECharts(
   }, [hasOption, profile, controller, status]);
 
   useLayoutEffect(() => {
-    if (themedOption && chartRef.current && lastApplied.current !== themedOption) {
+    if (!locked && themedOption && chartRef.current && lastApplied.current !== themedOption) {
       // Replace the option on the existing canvas. ECharts treats notMerge as a
       // new model, so animationDurationUpdate alone wouldn't prevent replay.
       chartRef.current.setOption({ ...themedOption, animation: false }, { notMerge: true });
       lastApplied.current = themedOption;
     }
-  }, [themedOption]);
+  }, [locked, themedOption]);
 
-  return { ref: canvasRef, status, retry };
+  return { ref: canvasRef, status, retry, applied: lastApplied };
 }
