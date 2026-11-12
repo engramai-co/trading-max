@@ -406,7 +406,13 @@ export function UpdateFailure({ updatedAt, retry }: { updatedAt: number; retry: 
     title={detail} aria-label={label + " · " + t("重试", "Retry")} onClick={() => void retry()}>{label}</button>;
 }
 
-export function QueryError({ retry }: { retry: () => unknown }) {
+export function QueryError({
+  retry,
+  showDataStatusLink = true,
+}: {
+  retry: () => unknown;
+  showDataStatusLink?: boolean;
+}) {
   const t = useCopy();
   const detail = useReadErrorCopy();
   return (
@@ -422,9 +428,11 @@ export function QueryError({ retry }: { retry: () => unknown }) {
             >
               {t("重新加载", "Try again")}
             </Button>
-            <Button component={Link} href="/health" variant="default">
-              {t("查看数据状态", "Data status")}
-            </Button>
+            {showDataStatusLink && (
+              <Button component={Link} href="/health" variant="default">
+                {t("查看数据状态", "Data status")}
+              </Button>
+            )}
           </Group>
         }
       />
