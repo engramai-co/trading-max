@@ -14,6 +14,7 @@ from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
 from trading_max.ingestion.brokers.trading212 import (
     Trading212Error,
+    Trading212RateLimitError,
     broker_snapshot_reconciliation,
     snapshot_from_payload,
 )
@@ -109,7 +110,9 @@ class BrokerSyncStage:
                     else not isinstance(exc, ValueError)
                 )
                 raise StageExecutionError(
-                    "broker.sync_failed",
+                    "broker.rate_limited"
+                    if isinstance(exc, Trading212RateLimitError)
+                    else "broker.sync_failed",
                     f"{profile}: {exc}",
                     retryable=retryable,
                 ) from exc
@@ -175,7 +178,9 @@ class BrokerSyncStage:
                     else not isinstance(exc, ValueError)
                 )
                 raise StageExecutionError(
-                    "broker.intraday_snapshot_failed",
+                    "broker.rate_limited"
+                    if isinstance(exc, Trading212RateLimitError)
+                    else "broker.intraday_snapshot_failed",
                     f"{profile}: {exc}",
                     retryable=retryable,
                 ) from exc
