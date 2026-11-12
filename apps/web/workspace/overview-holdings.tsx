@@ -112,11 +112,12 @@ function figures(row: LedgerRow, t: Copy) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, account }: {
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account }: {
   holdings: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
   runId?: string;
+  brokerAsOf?: string | null;
   account: string;
 }) {
   const t = useCopy();
@@ -200,7 +201,12 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, accou
                       <th scope="row" id={rowId} headers={groupId}>
                         <Link className="mx-ledger-link" href={row.href} {...keys(rowFocus(row))}>
                           {dot(row)}
-                          <SecurityPeek ticker={row.ticker} position={{ valueGbp: row.value, weightPct: row.weight }}>
+                          <SecurityPeek ticker={row.ticker} position={{ valueGbp: row.value, weightPct: row.weight }}
+                            session={{
+                              label: !ledger.columnDay || (row.dayDate ?? ledger.columnDay) === today
+                                ? t("今日涨跌", "Today’s move") : dayLabel(row.dayDate ?? ledger.columnDay),
+                              share: row.day, price: row.quotePrice, currency: row.quoteCurrency, asOf: brokerAsOf,
+                            }}>
                             <Instrument ticker={row.ticker} name={row.name} small />
                           </SecurityPeek>
                         </Link>

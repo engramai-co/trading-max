@@ -19,6 +19,7 @@ const holding = {
   ticker: "EQQQ", name: "Synthetic Nasdaq ETF", isFund: true, fundIsin: isin, listingMarket: "LSE", account: "A",
   quantity: 25, currentPrice: 60_000, priceCurrency: "GBX", currentValueGbp: 15_000, costGbp: 20_000,
   pnlGbp: -5_000, pnlPct: -0.25, allocationPct: 0.375,
+  dayChangeGbp: 150, dayChangePct: 0.01, dayChangeDate: date,
 };
 const stock = { ...holding, ticker: "TEST", name: "Synthetic stock", isFund: false, fundIsin: null, account: "B", pnlPct: 0.25, pnlGbp: 5_000 };
 const accounts = ["A", "B"].map((code) => ({ code, name: code === "A" ? "Invest" : "ISA", isInvestable: true, totalValueGbp: 20_000, cashGbp: 1_000, asOf: stamp }));
@@ -176,6 +177,23 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     const funds = ledger.locator('[data-asset-class="funds"]');
     await expect(funds).toBeVisible();
     await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—", "—"]);
+  });
+
+  test("overview previews the ledger’s session move; holdings retains its price history", async ({ page }) => {
+    test.skip(!await page.evaluate(() => matchMedia("(hover: hover) and (pointer: fine)").matches), "Hover is pointer-only.");
+    const requests = await synthetic(page);
+    await page.goto("/?range=1D");
+    await page.locator(".mx-ledger-table [data-asset-class=funds] .mx-peek-target").hover();
+    const peek = page.locator(".mx-peek:visible");
+    await expect(peek).toContainText("今日涨跌");
+    await expect(peek).toContainText("+1.00%");
+    await expect(peek.locator("svg.mx-sparkline")).toHaveCount(0);
+    expect(requests.some((path) => path.endsWith("/prices"))).toBe(false);
+
+    await page.goto("/holdings");
+    await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
+    await expect(peek).toContainText("3M");
+    await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
   });
 
   test("drawer uses published ETF holdings and shows a stock event", async ({ page }, info) => {

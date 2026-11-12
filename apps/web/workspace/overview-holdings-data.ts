@@ -12,6 +12,8 @@ export const COLOURED_HOLDINGS = 8;
 export type LedgerRow = {
   ticker: string;
   name: string;
+  quotePrice: number | null;
+  quoteCurrency: string;
   value: number;
   /** Share of invested value; cash is excluded. */
   weight: number;
@@ -101,6 +103,8 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
     return {
       ticker,
       name: positions[0].name,
+      quotePrice: finite(positions[0].currentPrice),
+      quoteCurrency: positions[0].priceCurrency,
       value,
       weight: share(value),
       day: move.share,
