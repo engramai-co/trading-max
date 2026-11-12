@@ -14,6 +14,7 @@ describe("overview holdings ledger", () => {
     const holdings = [...tickers.map((ticker, index) => holding(ticker, 1000 - index * 50)), holding("A", 100, { account: "B" })];
     const ledger = holdingsLedger({ holdings, signals: [] });
     expect(ledger.count).toBe(10);
+    expect(ledger.groups).toEqual([{ kind: "stocks", rows: ledger.rows }]);
     expect(ledger.rows.map((row) => row.ticker)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H"]);
     expect(ledger.rows[0]).toMatchObject({ value: 1100, colour: 0 });
     expect(ledger.rows.map((row) => row.colour)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
@@ -35,6 +36,23 @@ describe("overview holdings ledger", () => {
     // The neutral segment and the closing row are the same holdings.
     expect(ledger.rest).toMatchObject({ count: 1, value: 600 });
     expect(ledger.rows.reduce((sum, row) => sum + row.weight, 0) + ledger.rest.weight).toBeCloseTo(1);
+  });
+
+  it("orders groups by total class weight and keeps the mixed tail outside both", () => {
+    const holdings = [
+      ...[95, 90, 85, 80, 20].map((value, index) => holding("S" + index, value)),
+      ...[100, 88, 82, 77, 40, 15].map((value, index) => holding("F" + index, value, { isFund: true })),
+    ];
+    const before = holdingsLedger({ holdings, signals: [] });
+    expect(before.groups.map(({ kind }) => kind)).toEqual(["funds", "stocks"]);
+    const after = holdingsLedger({ holdings, signals: [{ ticker: "F4", facts: [], href: "/holdings", severity: 45 }] });
+    expect(after.groups.map(({ kind, rows }) => [kind, rows.map((row) => row.ticker)])).toEqual([
+      ["funds", ["F0", "F1", "F2", "F3", "F4"]],
+      ["stocks", ["S0", "S1", "S2", "S3"]],
+    ]);
+    expect(after.rows.slice(0, 8)).toEqual(before.rows);
+    expect(after.rows.at(-1)).toMatchObject({ ticker: "F4", colour: 8 });
+    expect(after.rest).toMatchObject({ count: 2, value: 35 });
   });
 
   it("has a palette colour for every row the signal cap can list", () => {
@@ -106,6 +124,6 @@ describe("overview holdings ledger", () => {
   });
 
   it("stays empty without positions", () => {
-    expect(holdingsLedger({ holdings: [], signals: [] })).toMatchObject({ rows: [], count: 0, total: 0, rest: { count: 0, value: 0, weight: 0 } });
+    expect(holdingsLedger({ holdings: [], signals: [] })).toMatchObject({ rows: [], groups: [], count: 0, total: 0, rest: { count: 0, value: 0, weight: 0 } });
   });
 });

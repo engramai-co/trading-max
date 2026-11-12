@@ -19,7 +19,7 @@
 import { Button, Select } from "@mantine/core";
 import { ChartLine } from "@phosphor-icons/react";
 import Link from "./link";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
@@ -50,7 +50,7 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-drivers";
-import { PORTFOLIO_RANGES, portfolioPerformanceHref, preferredRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
@@ -62,31 +62,6 @@ import { OverviewHoldings } from "./overview-holdings";
 import { OverviewSectors, useOverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
-
-/** The overview chart reopens on the range last chosen on this device; a range in the URL wins. */
-const RANGE_STORAGE_KEY = "trading_max-overview-range";
-function subscribeToStorage(notify: () => void) {
-  window.addEventListener("storage", notify);
-  return () => window.removeEventListener("storage", notify);
-}
-function storedRange() {
-  try {
-    return window.localStorage.getItem(RANGE_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-function useRememberedRange() {
-  const remembered = useSyncExternalStore(subscribeToStorage, storedRange, () => null);
-  const remember = useCallback((range: Range) => {
-    try {
-      window.localStorage.setItem(RANGE_STORAGE_KEY, range);
-    } catch {
-      // Private browsing without storage still switches the range for this view.
-    }
-  }, []);
-  return [remembered, remember] as const;
-}
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
@@ -121,8 +96,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       : params.get("scope") === "isa"
         ? "isa"
         : "total";
-  const [remembered, remember] = useRememberedRange();
-  const range = preferredRange(params.get("range"), remembered);
+  const range = portfolioRange(params.get("range"), "1D");
   const selection = useMemo(() => ({ range, scope: requestedScope, runId: incoming?.runId ?? "" }), [range, requestedScope, incoming?.runId]);
   const todaySelection = useMemo(() => ({ ...selection, range: "1D" as const }), [selection]);
   const openings = useMemo(() => driverOpenings(range === "1D" ? incoming?.dayAttribution : range === "1W" ? incoming?.windowAttribution : null, requestedScope),
@@ -131,7 +105,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const history = usePortfolioHistory(selection, Boolean(incoming?.runId), openings);
   const todayHistory = usePortfolioHistory(todaySelection, Boolean(incoming?.runId), todayOpenings);
   // Only publish matching figures, attributions and history together. An open chart reading
-  // or exact record stays on its own run. An explicit range or account choice still proceeds.
+  // stays on its own run. An explicit range or account choice still proceeds.
   const candidate = useMemo(() => incoming && {
     lens: incoming, selection, history: history.data, today: todayHistory.data,
     updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt),
@@ -270,10 +244,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
           runtime={runtime}
-          onRange={(value) => {
-            remember(value);
-            update({ range: value });
-          }}
+          onRange={(value) => update({ range: value })}
           windowAttribution={data?.windowAttribution}
         />
         <OverviewSectors query={sectors} initialWaiting={initialWaiting} />
@@ -281,7 +252,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
           runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
-          account={requestedScope} />}
+          brokerAsOf={data?.brokerAsOf} account={requestedScope} />}
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
     </div></ReadingBoundary.Provider>
   );
@@ -479,7 +450,6 @@ function OverviewHistory({
                 {percent(money.pnlPercents.at(-1), true, 2)}
               </span>
             )}
-            <EstimateTag points={points} />
             <TextLink href={portfolioPerformanceHref(scope, range)}>
               <ChartLine size={14} />
               {t("收益分析", "View performance")}
@@ -496,7 +466,7 @@ function OverviewHistory({
             timeline={history.timeline}
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
-            recordSource={selection}
+            showHistoryEvidence={false}
             height={264}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,

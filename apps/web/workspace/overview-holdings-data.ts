@@ -12,6 +12,8 @@ export const COLOURED_HOLDINGS = 8;
 export type LedgerRow = {
   ticker: string;
   name: string;
+  quotePrice: number | null;
+  quoteCurrency: string;
   value: number;
   /** Share of invested value; cash is excluded. */
   weight: number;
@@ -31,8 +33,13 @@ export type LedgerRow = {
   href: string;
 };
 
+export type LedgerGroup = { kind: "stocks" | "funds"; rows: LedgerRow[] };
+
 export type HoldingsLedger = {
+  /** Overall rank still determines the donut order and palette. */
   rows: LedgerRow[];
+  /** The table and phone list read by class, then by weight. */
+  groups: LedgerGroup[];
   /** Holdings without a row of their own: the closing row and the donut's neutral segment. */
   rest: { count: number; value: number; weight: number };
   /** The newest session among the day moves, which the column is named for. */
@@ -79,6 +86,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
   const securities = [...groupHoldings(holdings)].map(([ticker, positions]) => ({
     ticker,
     positions,
+    fund: isFundHolding(positions),
     value: positions.reduce((sum, h) => sum + (finite(h.currentValueGbp) ?? 0), 0),
   })).sort((a, b) => b.value - a.value || a.ticker.localeCompare(b.ticker));
   const total = securities.reduce((sum, security) => sum + security.value, 0);
@@ -89,13 +97,14 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
   const shown = securities.filter((security, index) => index < COLOURED_HOLDINGS || flagged.has(security.ticker));
   const hidden = securities.filter((security, index) => index >= COLOURED_HOLDINGS && !flagged.has(security.ticker));
   const rows = shown.map((security, index): LedgerRow => {
-    const { ticker, positions, value } = security;
+    const { ticker, positions, value, fund } = security;
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
-    const fund = isFundHolding(positions);
     return {
       ticker,
       name: positions[0].name,
+      quotePrice: finite(positions[0].currentPrice),
+      quoteCurrency: positions[0].priceCurrency,
       value,
       weight: share(value),
       day: move.share,
@@ -110,9 +119,21 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       href: signal?.href ?? "/research?ticker=" + encodeURIComponent(ticker),
     };
   });
+  const groups: LedgerGroup[] = [
+    { kind: "stocks", rows: rows.filter((row) => !row.fund) },
+    { kind: "funds", rows: rows.filter((row) => row.fund) },
+  ];
+  // Rank by total class value, including the unlisted tail. A late signal can
+  // reveal a row without swapping the groups under the reader.
+  const classValue = securities.reduce((value, security) => {
+    value[security.fund ? "funds" : "stocks"] += security.value;
+    return value;
+  }, { stocks: 0, funds: 0 });
+  groups.sort((a, b) => classValue[b.kind] - classValue[a.kind]);
   const restValue = hidden.reduce((sum, security) => sum + security.value, 0);
   return {
     rows,
+    groups: groups.filter((group) => group.rows.length > 0),
     rest: { count: hidden.length, value: restValue, weight: share(restValue) },
     columnDay,
     count: securities.length,

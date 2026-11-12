@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { DashboardLens, Holding } from "@/lib/types";
 import { useAllocationChartColours } from "@/ui/charts/palette";
@@ -12,7 +12,7 @@ import { useCurrentDay } from "./current-day";
 import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
 import { etfPortfolioQuery, overlapDisplay, signedPoints, trackingDisplay, type Copy } from "./etf-data";
 import Link from "./link";
-import { holdingsLedger, type HoldingsLedger, type LedgerRow } from "./overview-holdings-data";
+import { holdingsLedger, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
 import { SecurityPeek } from "./security-peek";
 
 /**
@@ -73,21 +73,18 @@ function Flag({ facts, kinds }: { facts: AttentionFact[]; kinds: AttentionFact["
   );
 }
 
-/** The four figures of a row, each with its flag; a stretched RSI shows its reading beside the score. */
-function FundCell({ label, display, description, status, facts, kind }: {
-  label: string; display: string; description: string; status?: string; facts: AttentionFact[]; kind: "tracking" | "overlap";
+function FundCell({ display, description, status, facts, kind }: {
+  display: string; description: string; status?: string; facts: AttentionFact[]; kind: "tracking" | "overlap";
 }) {
   return <span className="mx-ledger-etf" role="group" aria-label={description} title={description} data-stale={status ? "" : undefined}>
-    <span aria-hidden="true">{label}</span>
-    <strong><Flag facts={facts} kinds={[kind]} /><span aria-hidden="true">{display}{status && <sup>*</sup>}</span></strong>
+    <Flag facts={facts} kinds={[kind]} /><span aria-hidden="true">{display}</span>
   </span>;
 }
 
-function figures(row: LedgerRow, t: Copy, etfLoading: boolean) {
-  const tracking = trackingDisplay(row.etf, t, true);
-  const overlap = overlapDisplay(row.etf, t);
-  const loading = etfLoading && !row.etf;
-  const rsi = row.facts.find((fact) => fact.kind === "rsi");
+function figures(row: LedgerRow, t: Copy) {
+  const tracking = row.fund ? trackingDisplay(row.etf, t, true) : undefined;
+  const overlap = row.fund ? overlapDisplay(row.etf, t) : undefined;
+  const hasTracking = row.etf?.tracking.differencePp != null && row.etf.tracking.state !== "incomparable";
   return {
     day: <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
     pnl: (
@@ -96,18 +93,17 @@ function figures(row: LedgerRow, t: Copy, etfLoading: boolean) {
         <span className={changeClass(row.pnl, 1)}>{percent(row.pnl, true, 1)}</span>
       </>
     ),
-    score: row.fund ? <>
-      <FundCell label={t("跟踪差", "Track")} facts={row.facts} kind="tracking" {...tracking} display={loading ? "—" : tracking.display} />
-    </> : (
+    score: tracking ? (
+      <FundCell facts={row.facts} kind="tracking" {...tracking} display={hasTracking ? tracking.display : "—"} />
+    ) : (
       <>
         <Flag facts={row.facts} kinds={["score", "rsi"]} />
         {row.score ?? "—"}
-        {rsi && <span className="mx-ledger-note" aria-hidden="true">RSI {rsi.value}</span>}
       </>
     ),
-    upside: row.fund ? <>
-      <FundCell label={t("重叠", "Overlap")} facts={row.facts} kind="overlap" {...overlap} display={loading ? "—" : overlap.display} />
-    </> : (
+    upside: overlap ? (
+      <FundCell facts={row.facts} kind="overlap" {...overlap} display={row.etf?.overlap.value == null ? "—" : overlap.display} />
+    ) : (
       <>
         <Flag facts={row.facts} kinds={["upside"]} />
         {percent(row.upside, true, 0)}
@@ -116,17 +112,19 @@ function figures(row: LedgerRow, t: Copy, etfLoading: boolean) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, account }: {
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account }: {
   holdings: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
   runId?: string;
+  brokerAsOf?: string | null;
   account: string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const { today, now } = useCurrentDay();
   const palette = useAllocationChartColours();
+  const ledgerId = useId();
   const [focus, setFocus] = useState<Focus | null>(null);
   const portfolio = useQuery({ ...etfPortfolioQuery(runId ?? "", account), enabled: Boolean(runId && holdings.some((row) => row.isFund)) });
   const etfs = runId && portfolio.data?.runId === runId ? portfolio.data?.funds : undefined;
@@ -135,9 +133,21 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, accou
     [holdings, technical, valuations, etfs],
   );
   const dayLabel = (date: string | null) => (!date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now));
-  const columns = [dayLabel(ledger.columnDay), t("浮动盈亏", "Unrealized"), t("技术", "Technical"), t("模型空间", "Model upside")];
-  // Phones name the columns once over every row, in words that fit a quarter of 320px.
-  const phoneColumns = [columns[0], t("浮动盈亏", "P&L"), columns[2], t("模型空间", "Upside")];
+  const weightLabel = t("占比", "Weight");
+  const day = dayLabel(ledger.columnDay);
+  const pnl = t("浮动盈亏", "Unrealized");
+  const groupLabel = (kind: LedgerGroup["kind"]) => kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks");
+  const readingColumns = (kind: LedgerGroup["kind"]) => [
+    { key: "day", label: day, short: day } as const,
+    { key: "pnl", label: pnl, short: t("浮动盈亏", "P&L") } as const,
+    ...(kind === "funds" ? [
+      { key: "score", label: t("跟踪差", "Tracking diff."), short: t("跟踪差", "Tracking") },
+      { key: "upside", label: t("重叠", "Overlap"), short: t("重叠", "Overlap") },
+    ] as const : [
+      { key: "score", label: t("技术", "Technical"), short: t("技术", "Technical") },
+      { key: "upside", label: t("模型空间", "Model upside"), short: t("模型空间", "Upside") },
+    ] as const),
+  ] as const;
   const restLabel = locale === "zh" ? `其余 ${ledger.rest.count} 只` : `${ledger.rest.count} more`;
   const countLabel = locale === "zh" ? `${ledger.count} 只` : `${ledger.count} ${ledger.count === 1 ? "holding" : "holdings"}`;
   const rowFocus = (row: LedgerRow): Focus => ({ segment: row.ticker, label: row.ticker, weight: row.weight });
@@ -161,8 +171,8 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, accou
       className="mx-overview-holdings"
       title={t("持仓", "Holdings")}
       help={locale === "zh"
-        ? `占比按已投资市值计算，不含现金。圆点最多 ${SIGNAL_LIMIT} 个。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。ETF 显示一年跟踪差和组合重叠。跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记；重叠 ≥ ${percent(THRESHOLD.overlap, false, 0)}、双方覆盖率 ≥ ${percent(THRESHOLD.coverage, false, 0)} 且日期有效时标记。星号表示已过期或日期未验证。`
-        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} dots. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. ETFs show 1-year tracking difference and portfolio overlap. Amber marks a fresh, comparable tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp, or overlap ≥ ${percent(THRESHOLD.overlap, false, 0)} when both sides have ≥ ${percent(THRESHOLD.coverage, false, 0)} coverage and valid dates. An asterisk marks stale or unverified dates.`}
+        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。ETF 显示一年跟踪差和组合重叠。跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记；重叠 ≥ ${percent(THRESHOLD.overlap, false, 0)}、双方覆盖率 ≥ ${percent(THRESHOLD.coverage, false, 0)} 且日期有效时标记。黄色数字表示已过期或日期未验证。`
+        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. ETFs show 1-year tracking difference and portfolio overlap. Amber marks a fresh, comparable tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp, or overlap ≥ ${percent(THRESHOLD.overlap, false, 0)} when both sides have ≥ ${percent(THRESHOLD.coverage, false, 0)} coverage and valid dates. Amber fund figures indicate stale data or unverified dates.`}
       action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
     >
       {ledger.count === 0 ? (
@@ -172,105 +182,107 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, accou
           <Donut ledger={ledger} palette={palette} focus={focus} setFocus={setFocus} restLabel={restLabel}
             countLabel={countLabel}
             title={locale === "zh" ? countLabel : <>{ledger.count}<small>{ledger.count === 1 ? "holding" : "holdings"}</small></>} />
-          <table className="mx-ledger-table" data-etfs={holdings.some((row) => row.isFund) ? "" : undefined}>
-            <thead>
-              <tr>
-                <th scope="col">{t("持仓", "Holding")}</th>
-                <th scope="col">{t("占比", "Weight")}</th>
-                {columns.map((column) => <th scope="col" key={column}>{column}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {ledger.rows.map((row) => {
-                const cells = figures(row, t, !runId || portfolio.isPending);
-                return (
-                  <tr key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row.ticker)}>
-                    <th scope="row">
-                      <Link className="mx-ledger-link" href={row.href} {...keys(rowFocus(row))}>
-                        {dot(row)}
-                        <SecurityPeek ticker={row.ticker} position={{ valueGbp: row.value, weightPct: row.weight }}>
-                          <Instrument ticker={row.ticker} name={row.name} small />
-                        </SecurityPeek>
-                      </Link>
-                    </th>
-                    <td>{percent(row.weight)}</td>
-                    <td>
-                      {row.dayDate && <Tag tone="warn">{dayLabel(row.dayDate)}</Tag>}
-                      {cells.day}
-                    </td>
-                    <td>{cells.pnl}</td>
-                    <td>{cells.score}</td>
-                    <td>{cells.upside}</td>
-                  </tr>
-                );
-              })}
-              {ledger.rest.count > 0 && (
-                <tr className="mx-ledger-rest" {...pointer(restFocus)} onClick={open} data-focus={lit(REST)}>
-                  <th scope="row">
-                    <Link className="mx-ledger-link" href="/holdings" {...keys(restFocus)}>
-                      {dot(null)}
-                      <span>{restLabel}</span>
-                    </Link>
-                  </th>
-                  <td>{percent(ledger.rest.weight)}</td>
-                  <td colSpan={4} />
+          <table className="mx-ledger-table">
+            {ledger.groups.map(({ kind, rows }) => {
+              const groupId = ledgerId + "-" + kind;
+              const columns = readingColumns(kind);
+              return <tbody key={kind} data-asset-class={kind}>
+                <tr className="mx-ledger-head">
+                  <th scope="col" id={groupId}>{groupLabel(kind)}</th>
+                  <th scope="col" id={groupId + "-weight"}>{weightLabel}</th>
+                  {columns.map((column) => <th scope="col" key={column.key} id={groupId + "-" + column.key}>{column.label}</th>)}
                 </tr>
-              )}
-            </tbody>
-          </table>
-          {/* Phones: each holding over one row of its figures; the columns are named once above them. */}
-          <div className="mx-ledger-list" data-etfs={holdings.some((row) => row.isFund) ? "" : undefined}>
-            <div className="mx-ledger-list-head" aria-hidden="true">
-              {phoneColumns.map((column) => <span key={column}>{column}</span>)}
-            </div>
-            <ol>
-              {ledger.rows.map((row) => {
-                const cells = figures(row, t, !runId || portfolio.isPending);
-                return (
-                  <li key={row.ticker}>
-                    <Link className="mx-ledger-item" href={row.href}>
-                      <span className="mx-ledger-item-head">
-                        {dot(row)}
-                        <Instrument ticker={row.ticker} name={row.name} small />
-                        <strong>{percent(row.weight)}</strong>
-                      </span>
-                      <dl>
-                        <div>
-                          <dt className="sr-only">{dayLabel(row.dayDate ?? ledger.columnDay)}</dt>
-                          <dd>
-                            {row.dayDate && <Tag tone="warn">{dayLabel(row.dayDate)}</Tag>}
-                            {cells.day}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="sr-only">{columns[1]}</dt>
-                          <dd>{cells.pnl}</dd>
-                        </div>
-                        <div>
-                          <dt className="sr-only">{row.fund ? t("一年跟踪差", "1-year tracking difference") : columns[2]}</dt>
-                          <dd>{cells.score}</dd>
-                        </div>
-                        <div>
-                          <dt className="sr-only">{row.fund ? t("组合重叠", "Portfolio overlap") : columns[3]}</dt>
-                          <dd>{cells.upside}</dd>
-                        </div>
-                      </dl>
-                    </Link>
-                  </li>
-                );
-              })}
-              {ledger.rest.count > 0 && (
-                <li>
-                  <Link className="mx-ledger-item mx-ledger-item-rest" href="/holdings">
-                    <span className="mx-ledger-item-head">
-                      {dot(null)}
-                      <span>{restLabel}</span>
-                      <strong>{percent(ledger.rest.weight)}</strong>
-                    </span>
+                {rows.map((row, index) => {
+                  const cells = figures(row, t);
+                  const rowId = groupId + "-row-" + index;
+                  const headers = (column: string) => rowId + " " + groupId + "-" + column;
+                  return (
+                    <tr className="mx-ledger-row" key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row.ticker)}>
+                      <th scope="row" id={rowId} headers={groupId}>
+                        <Link className="mx-ledger-link" href={row.href} {...keys(rowFocus(row))}>
+                          {dot(row)}
+                          <SecurityPeek ticker={row.ticker} position={{ valueGbp: row.value, weightPct: row.weight }}
+                            session={{
+                              label: !ledger.columnDay || (row.dayDate ?? ledger.columnDay) === today
+                                ? t("今日涨跌", "Today’s move") : dayLabel(row.dayDate ?? ledger.columnDay),
+                              share: row.day, price: row.quotePrice, currency: row.quoteCurrency, asOf: brokerAsOf,
+                            }}>
+                            <Instrument ticker={row.ticker} name={row.name} small />
+                          </SecurityPeek>
+                        </Link>
+                      </th>
+                      <td headers={headers("weight")}>{percent(row.weight)}</td>
+                      {columns.map(({ key }) => <td key={key} headers={headers(key)}>
+                        {key === "day" && row.dayDate && <Tag tone="warn">{dayLabel(row.dayDate)}</Tag>}
+                        {cells[key]}
+                      </td>)}
+                    </tr>
+                  );
+                })}
+              </tbody>;
+            })}
+            {ledger.rest.count > 0 && <tbody>
+              <tr className="mx-ledger-row mx-ledger-rest" {...pointer(restFocus)} onClick={open} data-focus={lit(REST)}>
+                <th scope="row">
+                  <Link className="mx-ledger-link" href="/holdings" {...keys(restFocus)}>
+                    {dot(null)}
+                    <span>{restLabel}</span>
                   </Link>
-                </li>
-              )}
-            </ol>
+                </th>
+                <td><span className="sr-only">{weightLabel} </span>{percent(ledger.rest.weight)}</td>
+                <td colSpan={4} />
+              </tr>
+            </tbody>}
+          </table>
+          {/* Phones keep name and weight above the figures; each group introduces its own columns. */}
+          <div className="mx-ledger-list">
+            {ledger.groups.map(({ kind, rows }) => {
+              const headingId = ledgerId + "-phone-" + kind;
+              const columns = readingColumns(kind);
+              return <section key={kind} className="mx-ledger-phone-group" aria-labelledby={headingId} data-asset-class={kind}>
+                <div className="mx-ledger-list-heading">
+                  <h3 id={headingId}>{groupLabel(kind)}</h3>
+                  <span aria-hidden="true">{weightLabel}</span>
+                </div>
+                <div className="mx-ledger-list-head" aria-hidden="true">
+                  {columns.map((column) => <span key={column.key}>{column.short}</span>)}
+                </div>
+                <ol>
+                  {rows.map((row) => {
+                    const cells = figures(row, t);
+                    return (
+                      <li key={row.ticker}>
+                        <Link className="mx-ledger-item" href={row.href} {...keys(rowFocus(row))}>
+                          <span className="mx-ledger-item-head">
+                            {dot(row)}
+                            <Instrument ticker={row.ticker} name={row.name} small />
+                            <strong><span className="sr-only">{weightLabel} </span>{percent(row.weight)}</strong>
+                          </span>
+                          <dl>
+                            {columns.map(({ key, label }) => <div key={key}>
+                              <dt className="sr-only">{key === "day" ? dayLabel(row.dayDate ?? ledger.columnDay) : label}</dt>
+                              <dd>
+                                {key === "day" && row.dayDate && <Tag tone="warn">{dayLabel(row.dayDate)}</Tag>}
+                                {cells[key]}
+                              </dd>
+                            </div>)}
+                          </dl>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </section>;
+            })}
+            {ledger.rest.count > 0 && (
+              <Link className="mx-ledger-item mx-ledger-item-rest" href="/holdings" {...keys(restFocus)}>
+                <span className="mx-ledger-item-head">
+                  {dot(null)}
+                  <span>{restLabel}</span>
+                  <strong><span className="sr-only">{weightLabel} </span>{percent(ledger.rest.weight)}</strong>
+                </span>
+              </Link>
+            )}
           </div>
         </div>
       )}

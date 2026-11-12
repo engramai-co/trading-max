@@ -12,6 +12,7 @@ import { researchPriceQuery } from "./research-queries";
 import { Sparkline } from "./sparks";
 
 export type PeekPosition = { valueGbp?: number | null; weightPct?: number | null; label?: string };
+type PeekSession = { label: string; share: number | null; price: number | null; currency: string; asOf?: string | null };
 
 /**
  * A pointer-only preview of a security's recent price path and the reader's position.
@@ -20,10 +21,12 @@ export type PeekPosition = { valueGbp?: number | null; weightPct?: number | null
 export function SecurityPeek({
   ticker,
   position,
+  session,
   children,
 }: {
   ticker?: string | null;
   position?: PeekPosition;
+  session?: PeekSession;
   children: ReactNode;
 }) {
   const pointer = useFinePointer();
@@ -37,9 +40,36 @@ export function SecurityPeek({
       </HoverCard.Target>
       {/* The card renders in a portal but still bubbles through its trigger's link in React: a click on it stays here. */}
       <HoverCard.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}>
-        <PeekBody ticker={ticker} position={position} />
+        {session ? <SessionPeek ticker={ticker} position={position} session={session} /> :
+          <PeekBody ticker={ticker} position={position} />}
       </HoverCard.Dropdown>
     </HoverCard>
+  );
+}
+
+function positionFact(position: PeekPosition | undefined, label: string): Array<[string, ReactNode]> {
+  if (position?.valueGbp == null || position.valueGbp <= 0) return [];
+  return [[position.label ?? label, currency(position.valueGbp) + (position.weightPct != null ? " · " + percent(position.weightPct) : "")]];
+}
+
+function SessionPeek({ ticker, session, position }: { ticker: string; session: PeekSession; position?: PeekPosition }) {
+  const t = useCopy();
+  return (
+    <>
+      <div className="mx-peek-head">
+        <span>{ticker}</span>
+        <strong title={t("券商持仓快照", "Broker position snapshot") + (session.asOf ? " · " + session.asOf : "")}>
+          {quoteValue(session.price, session.currency, "")}
+        </strong>
+      </div>
+      <Facts rows={[
+        [session.label, <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}
+          title={t("券商日内持仓变动，以当日首次观测为基准", "Broker position move since the session’s first observation")}>
+          {percent(session.share, true, 2)}
+        </span>],
+        ...positionFact(position, t("持仓", "Position")),
+      ]} />
+    </>
   );
 }
 
@@ -52,7 +82,6 @@ function PeekBody({ ticker, position }: { ticker: string; position?: PeekPositio
   const first = closes[0];
   const last = closes.at(-1);
   const change = first && last != null ? last / first - 1 : null;
-  const held = position?.valueGbp != null && position.valueGbp > 0;
   return (
     <>
       <div className="mx-peek-head">
@@ -69,7 +98,7 @@ function PeekBody({ ticker, position }: { ticker: string; position?: PeekPositio
       <Facts
         rows={[
           ...(change != null ? [["3M", <span key="change" className={"mx-" + tone(change)}>{percent(change, true, 1)}</span>] as [string, ReactNode]] : []),
-          ...(held ? [[position?.label ?? t("持仓", "Position"), currency(position?.valueGbp) + (position?.weightPct != null ? " · " + percent(position.weightPct) : "")] as [string, ReactNode]] : []),
+          ...positionFact(position, t("持仓", "Position")),
         ]}
       />
     </>

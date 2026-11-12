@@ -13,7 +13,7 @@ export type AttentionItem =
 /** A held security whose readings crossed a threshold; the holdings table marks the affected cells. */
 export type HoldingSignal = { ticker: string; facts: AttentionFact[]; href: string; severity: number };
 
-/** Cap the number of flagged cells across the holdings table. */
+/** Cap flagged holdings across both asset classes; keep all their crossed readings. */
 export const SIGNAL_LIMIT = 4;
 /** Where a reading starts to deserve a flag, inclusive. Score and RSI are points; upside and loss are shares. */
 export const THRESHOLD = { score: 30, rsiHigh: 75, rsiLow: 25, upside: -0.2, loss: -0.2, trackingPp: -0.50, overlap: 0.50, coverage: 0.90 } as const;
@@ -96,10 +96,9 @@ export function attentionItems({
 }
 
 /**
- * Held securities that deserve a look, worst first: weak technicals, stretched
- * RSI, negative model upside or a deep loss against cost. Readings merge per
- * ticker across accounts and all of them are kept; each link opens the lens of
- * the strongest reading. At most four holdings are flagged.
+ * Rank securities by signal severity across both asset classes. Readings merge
+ * per ticker across accounts; each flagged holding keeps every crossed reading.
+ * Its link opens the lens for its strongest reading.
  */
 export function holdingSignals({
   holdings,
@@ -125,15 +124,5 @@ export function holdingSignals({
       severity: facts[0].severity + 5 * (facts.length - 1),
     });
   }
-  let remaining = limit;
-  const cell = (kind: AttentionFact["kind"]) => kind === "rsi" || kind === "tracking" ? "score" : kind === "overlap" ? "upside" : kind;
-  return signals.sort((a, b) => b.severity - a.severity).flatMap((signal) => {
-    if (remaining <= 0) return [];
-    // A loss stays visible alongside an ETF warning, including when one slot remains.
-    const candidates = [...signal.facts].sort((a, b) => Number(b.kind === "loss") - Number(a.kind === "loss"));
-    const cells = [...new Set(candidates.map((fact) => cell(fact.kind)))].slice(0, remaining);
-    remaining -= cells.length;
-    const facts = signal.facts.filter((fact) => cells.includes(cell(fact.kind)));
-    return [{ ...signal, facts, href: hrefFor(signal.ticker, facts[0]) }];
-  });
+  return signals.sort((a, b) => b.severity - a.severity).slice(0, limit);
 }

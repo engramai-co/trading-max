@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { historyPage, pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
+import { pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
 import type { NavPoint } from "../lib/types";
 
 /**
@@ -275,7 +275,7 @@ test.describe("overview on phones", () => {
   });
 });
 
-test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page, isMobile }) => {
+test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Use an isolated local web build.");
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -307,8 +307,6 @@ test("publishes an Overview run only after both histories arrive and the chart r
       if (run === next && range === "1D") dayLoaded = true;
       if (run === third && range === "1W") thirdRangeLoaded = true;
       const history = prepared(range);
-      const page = url.searchParams.get("page");
-      if (page) return route.fulfill({ json: historyPage(history, Number(page)) });
       return route.fulfill({ json: { ...history.chart, openings: pnlsAt(history, url.searchParams.getAll("opening")) } });
     }
     if (path.endsWith("/sectors")) return route.fulfill({ json: sectors });
@@ -348,24 +346,9 @@ test("publishes an Overview run only after both histories arrive and the chart r
   await expect(page.getByRole("button", { name: "5D", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page).toHaveURL(/scope=invest&range=1W$/);
 
-  const records = page.locator(".mx-overview-history .mx-chart-data");
-  await records.locator("summary").click();
-  await expect(records.getByRole("table")).toBeVisible();
+  await expect(page.locator(".mx-overview-history .mx-chart-data")).toHaveCount(0);
   latestRunId = third;
   await page.clock.fastForward(60_000);
   await expect.poll(() => thirdRangeLoaded).toBe(true);
-  await expect(summary).toContainText("£12,345,678.90");
-  await expect(records.getByRole("table")).toBeVisible();
-  if (isMobile) {
-    await records.locator("summary").click();
-  } else {
-    // Close the record without moving the pointer out of the chart.
-    await chart.hover();
-    await records.locator("summary").evaluate((element: HTMLElement) => element.click());
-    await expect(records.getByRole("table")).toBeHidden();
-    await page.clock.runFor(100);
-    await expect(summary).toContainText("£12,345,678.90");
-    await page.mouse.move(0, 0);
-  }
   await expect(summary).toContainText("£56,160.00");
 });

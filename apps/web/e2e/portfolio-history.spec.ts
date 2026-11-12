@@ -44,13 +44,16 @@ async function observations(disclosure: Locator) {
 test.describe("overview to performance", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale", "en");
+      localStorage.setItem("trading_max-overview-range", "6M");
+    });
     await page.route("**/api/backend/**", (route) => {
       const { pathname, searchParams } = new URL(route.request().url());
       if (pathname.endsWith("/dashboard/history")) {
         const range = PORTFOLIO_RANGES.find((value) => value === searchParams.get("range"));
         const scope = searchParams.get("scope");
-        if (!range || (scope !== "invest" && scope !== "isa") || searchParams.get("runId") !== fixture.runId) {
+        if (!range || (scope !== "invest" && scope !== "isa" && scope !== "total") || searchParams.get("runId") !== fixture.runId) {
           return route.fulfill({ status: 400, json: {} });
         }
         const prepared = prepareHistory(fixture, { range, scope });
@@ -86,16 +89,21 @@ test.describe("overview to performance", () => {
       await expect(overview).not.toContainText("Some periods have no observations");
       await expect(overview.locator(".mx-period-figure")).toContainText("£10.00");
       await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
-      const original = await observations(overview.locator(".mx-chart-data"));
-      expect(original.at(-1)).toEqual([intraday[2].date, "£190.00", "£10.00"]);
-      if (short) expect(original.map((row) => row.at(-1))).toEqual(["£0.00", "£0.00", "£10.00"]);
+      await expect(overview.locator(".mx-chart-data, .mx-source-legend, .mx-tag-help")).toHaveCount(0);
+      if (range === "1D") {
+        await overview.locator(".mx-info").click();
+        await expect(page.getByText(/Dashed lines show estimates reconstructed/)).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
       await overview.getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
       await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
       await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
-      expect(await observations(page.locator(".mx-chart-data").first())).toEqual(original);
+      const exact = await observations(page.locator(".mx-chart-data").first());
+      expect(exact.at(-1)).toEqual([intraday[2].date, "£190.00", "£10.00"]);
+      if (short) expect(exact.map((row) => row.at(-1))).toEqual(["£0.00", "£0.00", "£10.00"]);
       expect(await page.locator(".mx-history-coverage").allTextContents()).toEqual(coverage);
       await expect(page.getByText("Some periods have no observations", { exact: true })).toHaveCount(0);
       await expect(page.locator(".mx-money-summary")).toContainText("£10.00");
@@ -105,10 +113,26 @@ test.describe("overview to performance", () => {
       await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
     });
   }
+  test("bare overview and its home links always start on 1D", async ({ page, isMobile }) => {
+    const overview = page.locator(".mx-overview-history");
+    const activeRange = (range: string) => expect(overview.getByRole("button", { name: range, exact: true }))
+      .toHaveAttribute("aria-pressed", "true");
+    await page.goto("/");
+    await activeRange("1D");
+    await overview.getByRole("button", { name: "6M", exact: true }).click();
+    await activeRange("6M");
+    await overview.getByRole("link", { name: "View performance" }).click();
+    await expect(page).toHaveURL(/view=money&range=6M/);
+    const home = page.getByRole("link", { name: isMobile ? "Home" : "Overview", exact: true });
+    await expect(home).toHaveAttribute("href", "/");
+    await home.click();
+    await expect(page).toHaveURL(/\/$/);
+    await activeRange("1D");
+  });
   test("range changes survive reload and invalid links use the default", async ({ page }) => {
     await page.goto("/?scope=invest&range=invalid");
     const overview = page.locator(".mx-overview-history");
-    await expect(overview.getByRole("button", { name: "3M", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(overview.getByRole("button", { name: "1D", exact: true })).toHaveAttribute("aria-pressed", "true");
     await overview.getByRole("button", { name: "6M", exact: true }).click();
     await page.reload();
     await expect(overview.getByRole("button", { name: "6M", exact: true })).toHaveAttribute("aria-pressed", "true");

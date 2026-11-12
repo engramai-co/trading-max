@@ -19,6 +19,7 @@ const holding = {
   ticker: "EQQQ", name: "Synthetic Nasdaq ETF", isFund: true, fundIsin: isin, listingMarket: "LSE", account: "A",
   quantity: 25, currentPrice: 60_000, priceCurrency: "GBX", currentValueGbp: 15_000, costGbp: 20_000,
   pnlGbp: -5_000, pnlPct: -0.25, allocationPct: 0.375,
+  dayChangeGbp: 150, dayChangePct: 0.01, dayChangeDate: date,
 };
 const stock = { ...holding, ticker: "TEST", name: "Synthetic stock", isFund: false, fundIsin: null, account: "B", pnlPct: 0.25, pnlGbp: 5_000 };
 const accounts = ["A", "B"].map((code) => ({ code, name: code === "A" ? "Invest" : "ISA", isInvestable: true, totalValueGbp: 20_000, cashGbp: 1_000, asOf: stamp }));
@@ -48,7 +49,7 @@ const points = Array.from({ length: 12 }, (_, index) => ({
 }));
 const markers = [{ ticker: "EQQQ", date: points[3].date, kind: "B", accounts: ["invest"], buyOrders: 1, buyQuantity: 1, sellOrders: 0, sellQuantity: 0, buyAveragePrice: 110, sellAveragePrice: null }];
 
-async function synthetic(page: Page, late?: Promise<void>) {
+async function synthetic(page: Page, late?: Promise<void>, fixture = summary, publishReadings = true) {
   const requests: string[] = [];
   const origin = new URL(process.env.PLAYWRIGHT_BASE_URL!).origin;
   await page.clock.install({ time: new Date(stamp) });
@@ -62,14 +63,14 @@ async function synthetic(page: Page, late?: Promise<void>) {
     requests.push(path);
     if (path === "/dashboard/etfs") {
       if (late) await late;
-      return route.fulfill({ json: { runId, funds: [reading, {
+      return route.fulfill({ json: { runId, funds: publishReadings ? [reading, {
         ...reading, isin: "IE00BYVTMW98", tickers: ["EQGB"], hedging: "GBP",
         tracking: { state: "incomparable", currency: "GBP", benchmarkCurrency: "USD" },
-      }] } });
+      }] : [] } });
     }
     if (path === "/dashboard/etfs/" + isin) return route.fulfill({ json: { runId, reading, holdings, matches } });
     if (path === "/dashboard/history") return route.fulfill({ json: history });
-    if (path.startsWith("/dashboard/lens/")) return route.fulfill({ json: summary });
+    if (path.startsWith("/dashboard/lens/")) return route.fulfill({ json: fixture });
     if (path === "/research/shell") return route.fulfill({ json: {
       status: { runId, overall: "fresh", artifacts: [] }, watchlistCategories: [],
       instruments: [holding, stock].map((item, order) => ({
@@ -111,15 +112,30 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await synthetic(page, late);
     await page.goto("/?range=1D");
     const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");
-    const etf = ledger.locator(".mx-ledger-etf");
+    const stocks = ledger.locator('[data-asset-class="stocks"]');
+    const funds = ledger.locator('[data-asset-class="funds"]');
+    await expect(stocks).toContainText("股票");
+    await expect(funds).toContainText("基金");
+    const headings = ".mx-ledger-head, .mx-ledger-list-head";
+    await expect(stocks.locator(headings)).toContainText("技术");
+    await expect(stocks.locator(headings)).toContainText("模型空间");
+    await expect(funds.locator(headings)).toContainText("跟踪差");
+    await expect(funds.locator(headings)).toContainText("重叠");
+    const etf = funds.locator(".mx-ledger-etf");
+    const figures = etf.locator('> span[aria-hidden="true"]');
     try {
       await expect(etf).toHaveCount(2);
-      await expect(etf.first()).toContainText("—");
+      await expect(figures).toHaveText(["—", "—"]);
     } finally {
       release();
     }
-    await expect(etf.first()).toContainText("−0.50");
-    await expect(etf.last()).toContainText("51%");
+    await expect(figures).toHaveText(["−0.50", "51%"]);
+    const associatedHeadings = await etf.evaluateAll((cells) => cells.map((cell) => {
+      const ids = cell.closest("td")?.getAttribute("headers");
+      return ids ? document.getElementById(ids.split(" ").at(-1)!)?.textContent
+        : cell.closest("dd")?.previousElementSibling?.textContent;
+    }));
+    expect(associatedHeadings).toEqual(["跟踪差", "重叠"]);
     await expect(etf.first()).toHaveAttribute("aria-label", /2026-10-31/);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=warning]")).toHaveCount(2);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=down]")).toHaveCount(1);
@@ -146,7 +162,38 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
       release();
     }
     await expect(ledger).toContainText("Synthetic stock");
+    await expect(ledger.locator("[data-asset-class]")).toHaveCount(1);
+    await expect(ledger.locator('[data-asset-class="stocks"]')).toBeVisible();
     await expect(ledger.locator(".mx-ledger-etf")).toHaveCount(0);
+  });
+
+  test("fund-only ledgers omit an empty group and keep unavailable readings as dashes", async ({ page }) => {
+    await synthetic(page, undefined, { ...summary, holdings: [holding] }, false);
+    const readings = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/dashboard/etfs"));
+    await page.goto("/?range=1D");
+    expect(await (await readings).json()).toEqual({ runId, funds: [] });
+    const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");
+    await expect(ledger.locator("[data-asset-class]")).toHaveCount(1);
+    const funds = ledger.locator('[data-asset-class="funds"]');
+    await expect(funds).toBeVisible();
+    await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—", "—"]);
+  });
+
+  test("overview previews the ledger’s session move; holdings retains its price history", async ({ page }) => {
+    test.skip(!await page.evaluate(() => matchMedia("(hover: hover) and (pointer: fine)").matches), "Hover is pointer-only.");
+    const requests = await synthetic(page);
+    await page.goto("/?range=1D");
+    await page.locator(".mx-ledger-table [data-asset-class=funds] .mx-peek-target").hover();
+    const peek = page.locator(".mx-peek:visible");
+    await expect(peek).toContainText("今日涨跌");
+    await expect(peek).toContainText("+1.00%");
+    await expect(peek.locator("svg.mx-sparkline")).toHaveCount(0);
+    expect(requests.some((path) => path.endsWith("/prices"))).toBe(false);
+
+    await page.goto("/holdings");
+    await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
+    await expect(peek).toContainText("3M");
+    await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
   });
 
   test("drawer uses published ETF holdings and shows a stock event", async ({ page }, info) => {
