@@ -187,9 +187,13 @@ class _DailyCloses:
     names: dict[str, str] = field(default_factory=dict)
     misses: dict[str, int] = field(default_factory=dict)
 
-    def satisfied(self, symbol: str) -> bool:
+    def satisfied(self, symbol: str, required_date: str | None) -> bool:
         closes = self.closes.get(symbol)
-        return closes is not None and (not self.final or self.session in closes)
+        return (
+            closes is not None
+            and (not self.final or self.session in closes)
+            and (required_date is None or required_date in closes)
+        )
 
 
 def default_market(statuses: Iterable[SectorMarketStatus], now: datetime) -> SectorMarketCode:
@@ -385,6 +389,7 @@ class SectorMonitor:
         *,
         final: bool,
         late: bool = False,
+        required_date: str | None = None,
     ) -> _DailyCloses:
         """Daily closes for ranks, names, and after the close the official closes.
 
@@ -409,7 +414,8 @@ class SectorMonitor:
         wanted = [
             symbol
             for symbol in symbols
-            if not cached.satisfied(symbol) and cached.misses.get(symbol, 0) < DAILY_ATTEMPTS
+            if not cached.satisfied(symbol, required_date)
+            and cached.misses.get(symbol, 0) < DAILY_ATTEMPTS
         ]
         if not wanted:
             return cached
@@ -435,7 +441,7 @@ class SectorMonitor:
                 }
                 if item.name:
                     cached.names[symbol] = item.name
-            if not cached.satisfied(symbol):
+            if not cached.satisfied(symbol, required_date):
                 cached.misses[symbol] = cached.misses.get(symbol, 0) + 1
         return cached
 
@@ -486,12 +492,33 @@ class SectorMonitor:
         series = self.prices.intraday(symbols)
         fetched_at = self._now()
         self._check_active()
+        after_close = board_complete(session, fetched_at)
+        late = now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER
+        daily_sessions = prior_session_dates(market, session.date, RANK_SESSIONS + 1)
+        previous_date = daily_sessions[-1] if daily_sessions else ""
+        # HK Spark's undated previousClose can belong to a different session.
+        # Reuse the daily rank feed, requiring the calendar's exact prior close.
+        validated_daily = (
+            self._daily_closes(
+                market,
+                session.date,
+                symbols,
+                final=after_close,
+                late=late,
+                required_date=previous_date,
+            )
+            if market == "hk"
+            else None
+        )
+        self._check_active()
         sessions: dict[str, MemberSession] = {}
         for symbol, item in series.items():
             priced = member_session(
                 item.timestamps,
                 item.closes,
-                item.previous_close,
+                validated_daily.closes.get(symbol, {}).get(previous_date)
+                if validated_daily is not None
+                else item.previous_close,
                 session_open=session.open,
                 session_close=session.close,
             )
@@ -501,9 +528,6 @@ class SectorMonitor:
         def coverage() -> float:
             return sum(c.weight for c in universe.constituents if c.symbol in sessions)
 
-        after_close = board_complete(session, fetched_at)
-        # Past the refresh window: a late fill, as after a restart or an outage.
-        late = now > session.close + COMPLETE_AFTER + GIVE_UP_AFTER
         if not after_close and coverage() < MIN_COVERAGE:
             if now < session.open + OPEN_GRACE:
                 return RefreshResult(published=False)
@@ -513,11 +537,11 @@ class SectorMonitor:
                 f"Prices cover {coverage():.0%} of the {universe.universe} weight for {session.date}"
             )
 
-        daily_sessions = prior_session_dates(market, session.date, RANK_SESSIONS + 1)
-        daily = self._daily_closes(market, session.date, symbols, final=after_close, late=late)
+        daily = validated_daily or self._daily_closes(
+            market, session.date, symbols, final=after_close, late=late
+        )
         self._check_active()
         if after_close:
-            previous_date = daily_sessions[-1] if daily_sessions else ""
             for symbol in symbols:
                 closes = daily.closes.get(symbol) or {}
                 settled = settle(

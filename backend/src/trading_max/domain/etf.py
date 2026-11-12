@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field
 
 from trading_max.domain.contracts import DomainModel
+from trading_max.reference.indices import issuer_benchmark_id
 from trading_max.reference.security_master import SecurityListingRecord
 
 
@@ -79,3 +80,10 @@ class FundShareClass(DomainModel):
     tracking_error: float | None = None
     listings: list[FundListing] = Field(default_factory=list)
     evidence: dict[str, FundEvidence] = Field(default_factory=dict)
+
+    @property
+    def benchmark_id(self) -> str | None:
+        evidence = self.evidence.get("index_name")
+        if evidence is None or evidence.coverage != "available":
+            return None
+        return issuer_benchmark_id(self.index_name)

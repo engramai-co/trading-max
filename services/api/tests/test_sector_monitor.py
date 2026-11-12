@@ -1195,3 +1195,40 @@ def test_configure_switches_the_monitor_and_reruns_the_current_slot(tmp_path: Pa
     requests = len(prices.intraday_requests)
     sectors._tick()
     assert len(prices.intraday_requests) == requests
+
+
+@pytest.mark.parametrize("has_prior", [True, False])
+def test_hong_kong_needs_the_exact_dated_previous_close(tmp_path: Path, has_prior: bool) -> None:
+    symbol = "0123.HK"
+    session = latest_session("hk", datetime(2026, 11, 6, 3, tzinfo=UTC))
+    assert session is not None
+    days = {"2026-11-04": 95, "2026-11-06": 103}
+    if has_prior:
+        days["2026-11-05"] = 100
+    prices = FakePrices(
+        {symbol: series(symbol, 200, [(5, 101)], opened=session.open)},
+        {
+            symbol: SparkSeries(
+                symbol,
+                tuple(
+                    int(datetime.fromisoformat(f"{day}T01:30:00+00:00").timestamp()) for day in days
+                ),
+                tuple(days.values()),
+            )
+        },
+    )
+    clock = {"now": datetime(2026, 11, 6, 3, tzinfo=UTC)}
+    sectors = monitor(
+        tmp_path, FakeUniverses(hk=universe("hk", constituent(symbol, 1))), prices, clock
+    )
+    if not has_prior:
+        with pytest.raises(SectorRefreshError, match="No prices yet"):
+            sectors.refresh("hk", clock["now"])
+        assert sectors.boards.load("hk") is None
+        return
+    assert sectors.refresh("hk", clock["now"]).published
+    board = sectors.boards.load("hk")
+    assert board is not None
+    assert board.groupings[0].groups[0].change == pytest.approx(0.01)
+    assert sectors.refresh("hk", clock["now"]).published
+    assert prices.daily_requests == [[symbol]]
