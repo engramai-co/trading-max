@@ -18,6 +18,7 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
 from trading_max.research.technical_scoring import technical_score
@@ -75,7 +76,6 @@ class OptionsResearchArtifact(DomainModel):
 
 OPTION_CONTRACT_MULTIPLIER = 100
 RISK_FREE_RATE = 0.04
-PRICE_SCALE = {"EQGB.L": 0.01, "IUMF.L": 0.01}
 TECHNICAL_CURRENCY = {"SKHY": "USD"}
 ADR_CONFIG: dict[str, dict[str, Any]] = {
     "TSM": {
@@ -272,14 +272,14 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     metadata = security.get_history_metadata() or {}
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
-    scale = 0.01 if quote_currency in {"GBp", "GBX"} else PRICE_SCALE.get(ticker, 1.0)
+    currency, divisor = major_quote_unit(quote_currency)
     frame.attrs["exchange"] = str(metadata.get("exchangeName") or "")
     frame.attrs["timezone"] = str(metadata.get("exchangeTimezoneName") or "")
-    frame.attrs["currency"] = "GBP" if quote_currency in {"GBp", "GBX"} else quote_currency
-    if scale != 1.0:
-        frame[["Open", "High", "Low", "Close"]] *= scale
+    frame.attrs["currency"] = currency
+    if divisor != 1:
+        frame[["Open", "High", "Low", "Close"]] /= divisor
         if "Dividends" in frame:
-            frame["Dividends"] *= scale
+            frame["Dividends"] /= divisor
     frame = frame.dropna(subset=["Open", "High", "Low", "Close"])
     if len(frame) < minimum_rows:
         raise MarketDataError(

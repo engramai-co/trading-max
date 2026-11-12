@@ -5883,6 +5883,51 @@
         "title": "FrozenValuationBasis",
         "type": "object"
       },
+      "FundEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "enum": [
+              "available",
+              "missing",
+              "failed"
+            ],
+            "title": "Coverage",
+            "type": "string"
+          },
+          "effectiveAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveat"
+          },
+          "fetchedAt": {
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "parserVersion": {
+            "title": "Parserversion",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceUrl",
+          "fetchedAt",
+          "parserVersion",
+          "coverage"
+        ],
+        "title": "FundEvidence",
+        "type": "object"
+      },
       "FundHolding": {
         "additionalProperties": false,
         "properties": {
@@ -5906,6 +5951,17 @@
               }
             ],
             "title": "Country"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "figi": {
             "default": "",
@@ -5952,6 +6008,87 @@
           "weightPct"
         ],
         "title": "FundHolding",
+        "type": "object"
+      },
+      "FundListing": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "default": "",
+            "title": "Asof",
+            "type": "string"
+          },
+          "compositeFigi": {
+            "default": "",
+            "title": "Compositefigi",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/FundEvidence"
+          },
+          "exchange": {
+            "default": "",
+            "title": "Exchange",
+            "type": "string"
+          },
+          "figi": {
+            "default": "",
+            "title": "Figi",
+            "type": "string"
+          },
+          "isin": {
+            "default": "",
+            "title": "Isin",
+            "type": "string"
+          },
+          "mic": {
+            "default": "",
+            "title": "Mic",
+            "type": "string"
+          },
+          "quoteCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quotecurrency"
+          },
+          "quoteUnit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteunit"
+          },
+          "shareClassFigi": {
+            "default": "",
+            "title": "Shareclassfigi",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "ticker": {
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "source",
+          "evidence"
+        ],
+        "title": "FundListing",
         "type": "object"
       },
       "FundResearch": {
@@ -6021,6 +6158,11 @@
               }
             ]
           },
+          "holdingsState": {
+            "default": "no-holdings",
+            "title": "Holdingsstate",
+            "type": "string"
+          },
           "inception": {
             "anyOf": [
               {
@@ -6086,6 +6228,16 @@
               }
             ],
             "title": "Methodology"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundShareClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "replication": {
             "anyOf": [
@@ -6204,7 +6356,69 @@
         "title": "FundResearch",
         "type": "object"
       },
+      "FundReturnPair": {
+        "additionalProperties": false,
+        "description": "Issuer-published total returns, as fractions, for one stated period.",
+        "properties": {
+          "benchmarkCurrency": {
+            "title": "Benchmarkcurrency",
+            "type": "string"
+          },
+          "benchmarkHedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarkhedging"
+          },
+          "benchmarkReturn": {
+            "title": "Benchmarkreturn",
+            "type": "number"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/FundEvidence"
+          },
+          "navCurrency": {
+            "title": "Navcurrency",
+            "type": "string"
+          },
+          "navHedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Navhedging"
+          },
+          "navReturn": {
+            "title": "Navreturn",
+            "type": "number"
+          },
+          "periodEnd": {
+            "title": "Periodend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "periodEnd",
+          "navReturn",
+          "benchmarkReturn",
+          "navCurrency",
+          "benchmarkCurrency",
+          "evidence"
+        ],
+        "title": "FundReturnPair",
+        "type": "object"
+      },
       "FundReturnYear": {
+        "additionalProperties": false,
         "properties": {
           "benchmarkReturn": {
             "title": "Benchmarkreturn",
@@ -6232,6 +6446,304 @@
         "title": "FundReturnYear",
         "type": "object"
       },
+      "FundShareClass": {
+        "additionalProperties": false,
+        "properties": {
+          "annualReturns": {
+            "items": {
+              "$ref": "#/components/schemas/FundReturnYear"
+            },
+            "title": "Annualreturns",
+            "type": "array"
+          },
+          "baseCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basecurrency"
+          },
+          "benchmarkCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarkcurrency"
+          },
+          "benchmarkHedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarkhedging"
+          },
+          "domicile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domicile"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FundEvidence"
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "expenseRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expenseratio"
+          },
+          "feeBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feebasis"
+          },
+          "fundSize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hedging": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedging"
+          },
+          "inception": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inception"
+          },
+          "incomeUse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incomeuse"
+          },
+          "indexName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexname"
+          },
+          "indexRules": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexrules"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "issuer": {
+            "title": "Issuer",
+            "type": "string"
+          },
+          "listings": {
+            "items": {
+              "$ref": "#/components/schemas/FundListing"
+            },
+            "title": "Listings",
+            "type": "array"
+          },
+          "methodology": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Methodology"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "oneYear": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundReturnPair"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rebalanceFrequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rebalancefrequency"
+          },
+          "replication": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replication"
+          },
+          "returnBasis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnbasis"
+          },
+          "returnCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returncurrency"
+          },
+          "shareClassSize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundSize"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shareCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharecurrency"
+          },
+          "trackingError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingerror"
+          }
+        },
+        "required": [
+          "isin",
+          "issuer"
+        ],
+        "title": "FundShareClass",
+        "type": "object"
+      },
+      "FundSize": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "FundSize",
+        "type": "object"
+      },
       "FundSnapshot": {
         "additionalProperties": false,
         "properties": {
@@ -6249,6 +6761,20 @@
               "type": "number"
             },
             "title": "Countryweights",
+            "type": "object"
+          },
+          "currencyWeights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Currencyweights",
+            "type": "object"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FundEvidence"
+            },
+            "title": "Evidence",
             "type": "object"
           },
           "fetchedAt": {
@@ -6285,9 +6811,30 @@
             "title": "Issuer",
             "type": "string"
           },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundShareClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sourceUrl": {
             "default": "",
             "title": "Sourceurl",
+            "type": "string"
+          },
+          "state": {
+            "default": "available",
+            "enum": [
+              "available",
+              "holdings-stale",
+              "no-holdings",
+              "data-failed"
+            ],
+            "title": "State",
             "type": "string"
           },
           "ticker": {

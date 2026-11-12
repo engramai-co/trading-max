@@ -17,6 +17,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import SessionSchedule
 from trading_max.research.listing import quote_listing
 
@@ -512,20 +513,20 @@ def make_quote(
 ) -> QuoteSnapshot:
     metrics = fundamental.get("metrics") or {}
     raw_unit = str(fundamental.get("currency") or market.get("currency") or "") or None
-    currency = "GBP" if raw_unit in {"GBp", "GBX"} else raw_unit
+    currency, divisor = major_quote_unit(raw_unit or "")
     price = number(market.get("spot", market.get("price")))
     timestamp = metrics.get("regularMarketTime")
     regular_price = number(metrics.get("regularMarketPrice"))
     if regular_price is not None and isinstance(timestamp, (int, float)):
-        price = regular_price / 100 if raw_unit in {"GBp", "GBX"} else regular_price
+        price = regular_price / divisor
     as_of = (
         datetime.fromtimestamp(timestamp, UTC).isoformat()
         if isinstance(timestamp, (float, int))
         else str(market.get("asOf") or "") or None
     )
     previous = number(metrics.get("regularMarketPreviousClose"))
-    if previous is not None and raw_unit in {"GBp", "GBX"}:
-        previous /= 100
+    if previous is not None:
+        previous /= divisor
     change = price - previous if price is not None and previous is not None else None
     session = (
         "regular"
@@ -536,7 +537,7 @@ def make_quote(
         id=fingerprint([ticker, currency, price, as_of]),
         ticker=ticker,
         price=price,
-        currency=currency,
+        currency=currency or None,
         quote_unit=raw_unit,
         reporting_currency=metrics.get("financialCurrency"),
         fund_base_currency=metrics.get("fundCurrency"),

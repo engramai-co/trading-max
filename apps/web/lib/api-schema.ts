@@ -3012,6 +3012,22 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** FundEvidence */
+        FundEvidence: {
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "available" | "missing" | "failed";
+            /** Effectiveat */
+            effectiveAt?: string | null;
+            /** Fetchedat */
+            fetchedAt: string;
+            /** Parserversion */
+            parserVersion: string;
+            /** Sourceurl */
+            sourceUrl: string;
+        };
         /** FundHolding */
         FundHolding: {
             /**
@@ -3026,6 +3042,8 @@ export interface components {
             compositeFigi: string;
             /** Country */
             country?: string | null;
+            /** Currency */
+            currency?: string | null;
             /**
              * Figi
              * @default
@@ -3056,6 +3074,53 @@ export interface components {
             /** Weightpct */
             weightPct: number;
         };
+        /** FundListing */
+        FundListing: {
+            /**
+             * Asof
+             * @default
+             */
+            asOf: string;
+            /**
+             * Compositefigi
+             * @default
+             */
+            compositeFigi: string;
+            evidence: components["schemas"]["FundEvidence"];
+            /**
+             * Exchange
+             * @default
+             */
+            exchange: string;
+            /**
+             * Figi
+             * @default
+             */
+            figi: string;
+            /**
+             * Isin
+             * @default
+             */
+            isin: string;
+            /**
+             * Mic
+             * @default
+             */
+            mic: string;
+            /** Quotecurrency */
+            quoteCurrency?: string | null;
+            /** Quoteunit */
+            quoteUnit?: string | null;
+            /**
+             * Shareclassfigi
+             * @default
+             */
+            shareClassFigi: string;
+            /** Source */
+            source: string;
+            /** Ticker */
+            ticker: string;
+        };
         /** FundResearch */
         FundResearch: {
             /** Annualreturns */
@@ -3071,6 +3136,11 @@ export interface components {
             /** Hedging */
             hedging?: string | null;
             holdings?: components["schemas"]["FundSnapshot"] | null;
+            /**
+             * Holdingsstate
+             * @default no-holdings
+             */
+            holdingsState: string;
             /** Inception */
             inception?: string | null;
             /** Incomeuse */
@@ -3083,6 +3153,7 @@ export interface components {
             issuer?: string | null;
             /** Methodology */
             methodology?: string | null;
+            profile?: components["schemas"]["FundShareClass"] | null;
             /** Replication */
             replication?: string | null;
             /** Returnbasis */
@@ -3114,6 +3185,27 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /**
+         * FundReturnPair
+         * @description Issuer-published total returns, as fractions, for one stated period.
+         */
+        FundReturnPair: {
+            /** Benchmarkcurrency */
+            benchmarkCurrency: string;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Benchmarkreturn */
+            benchmarkReturn: number;
+            evidence: components["schemas"]["FundEvidence"];
+            /** Navcurrency */
+            navCurrency: string;
+            /** Navhedging */
+            navHedging?: string | null;
+            /** Navreturn */
+            navReturn: number;
+            /** Periodend */
+            periodEnd: string;
+        };
         /** FundReturnYear */
         FundReturnYear: {
             /** Benchmarkreturn */
@@ -3124,6 +3216,69 @@ export interface components {
             trackingDifference: number;
             /** Year */
             year: number;
+        };
+        /** FundShareClass */
+        FundShareClass: {
+            /** Annualreturns */
+            annualReturns?: components["schemas"]["FundReturnYear"][];
+            /** Basecurrency */
+            baseCurrency?: string | null;
+            /** Benchmarkcurrency */
+            benchmarkCurrency?: string | null;
+            /** Benchmarkhedging */
+            benchmarkHedging?: string | null;
+            /** Domicile */
+            domicile?: string | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
+            };
+            /** Expenseratio */
+            expenseRatio?: number | null;
+            /** Feebasis */
+            feeBasis?: string | null;
+            fundSize?: components["schemas"]["FundSize"] | null;
+            /** Hedging */
+            hedging?: string | null;
+            /** Inception */
+            inception?: string | null;
+            /** Incomeuse */
+            incomeUse?: string | null;
+            /** Indexname */
+            indexName?: string | null;
+            /** Indexrules */
+            indexRules?: string | null;
+            /** Isin */
+            isin: string;
+            /** Issuer */
+            issuer: string;
+            /** Listings */
+            listings?: components["schemas"]["FundListing"][];
+            /** Methodology */
+            methodology?: string | null;
+            /** Name */
+            name?: string | null;
+            oneYear?: components["schemas"]["FundReturnPair"] | null;
+            /** Rebalancefrequency */
+            rebalanceFrequency?: string | null;
+            /** Replication */
+            replication?: string | null;
+            /** Returnbasis */
+            returnBasis?: string | null;
+            /** Returncurrency */
+            returnCurrency?: string | null;
+            shareClassSize?: components["schemas"]["FundSize"] | null;
+            /** Sharecurrency */
+            shareCurrency?: string | null;
+            /** Trackingerror */
+            trackingError?: number | null;
+        };
+        /** FundSize */
+        FundSize: {
+            /** Amount */
+            amount: number;
+            /** Currency */
+            currency: string;
         };
         /** FundSnapshot */
         FundSnapshot: {
@@ -3137,6 +3292,14 @@ export interface components {
             /** Countryweights */
             countryWeights?: {
                 [key: string]: number;
+            };
+            /** Currencyweights */
+            currencyWeights?: {
+                [key: string]: number;
+            };
+            /** Evidence */
+            evidence?: {
+                [key: string]: components["schemas"]["FundEvidence"];
             };
             /**
              * Fetchedat
@@ -3164,11 +3327,18 @@ export interface components {
              * @default
              */
             issuer: string;
+            profile?: components["schemas"]["FundShareClass"] | null;
             /**
              * Sourceurl
              * @default
              */
             sourceUrl: string;
+            /**
+             * State
+             * @default available
+             * @enum {string}
+             */
+            state: "available" | "holdings-stale" | "no-holdings" | "data-failed";
             /** Ticker */
             ticker: string;
             /**

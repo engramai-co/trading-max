@@ -42,3 +42,26 @@ def test_profile_fields_survive_api_alias_normalization(tmp_path, monkeypatch):
     assert result.return_currency == "USD"
     assert len(result.annual_returns) == 1
     assert service.get("TEST", {}).model_dump() == result.model_dump()
+
+
+def test_current_ishares_facts_keep_share_class_identity_and_separate_asset_sizes():
+    from trading_max.infrastructure.fund_profiles import parse_ishares_profile
+
+    for isin in ("IE00B4L5Y983", "IE00BKM4GZ66"):
+        html = f"""<h1>Test iShares UCITS ETF</h1><table><tbody>
+        <tr data-id="keyFundFacts-row-isin"><th class="caption"><div class="caption-wrapper">
+        <span class="oneds-body-m-compact" data-id="keyFundFacts-isin-label">ISIN</span></div>
+        </th><td data-id="keyFundFacts-isin-data"><span>{isin}</span></td></tr>
+        <tr><th><span data-id="keyFundFacts-totalNetAssets-label">Net Assets of Share Class</span>
+        <div data-id="keyFundFacts-totalNetAssets-asOf">as of 11/Nov/2026</div>
+        </th><td>USD <span>23,440</span></td></tr>
+        <tr><th><span data-id="keyFundFacts-totalNetAssetsFundLevel-label">Net Assets of Fund</span>
+        </th><td>USD <span>33,440</span></td></tr>
+        </tbody></table>"""
+        fund = parse_ishares_profile(html, "https://issuer.example/fund")
+        assert fund.isin == isin
+        assert fund.share_class_size.amount == 23440
+        assert fund.share_class_size.currency == "USD"
+        assert fund.fund_size.amount == 33440
+        assert fund.evidence["share_class_size"].effective_at == "2026-11-11"
+        assert fund.evidence["replication"].coverage == "missing"

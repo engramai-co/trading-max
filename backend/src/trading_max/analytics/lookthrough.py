@@ -11,13 +11,14 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.domain.etf import FundEvidence, FundShareClass
 from trading_max.reference import (
     CatalogSecurityMaster,
     SecurityDescriptor,
@@ -53,6 +54,7 @@ class FundHolding(DomainModel):
     figi: str = ""
     composite_figi: str = ""
     share_class_figi: str = ""
+    currency: str | None = None
     country: str | None = None
     industry: str | None = None
     weight_pct: float
@@ -105,6 +107,21 @@ class FundSnapshot(DomainModel):
     source_url: str = ""
     issuer: str = ""
     unweighted_holdings_count: int = Field(default=0, ge=0)
+    state: Literal["available", "holdings-stale", "no-holdings", "data-failed"] = "available"
+    profile: FundShareClass | None = None
+    evidence: dict[str, FundEvidence] = Field(default_factory=dict)
+    currency_weights: dict[str, float] = Field(default_factory=dict)
+
+    def holdings_state(self, today: date) -> str:
+        if self.state == "data-failed":
+            return "data-failed"
+        if not self.holdings:
+            return "no-holdings"
+        try:
+            age = (today - date.fromisoformat(self.as_of)).days
+        except ValueError:
+            return "holdings-stale"
+        return "available" if self.state == "available" and 0 <= age <= 45 else "holdings-stale"
 
     def weight_total_pct(self) -> float:
         return sum(item.weight_pct for item in self.holdings)
@@ -127,7 +144,7 @@ class FundHoldingsProvider(Protocol):
 class RawFundHoldingsProvider:
     """Read normalized fund files from the private state root.
 
-    Network adapters write the current schema under ``raw/fund-holdings/v3``;
+    Network adapters write the current schema by ISIN;
     legacy files remain readable without being overwritten during an upgrade.
     The calculation layer remains deterministic and never depends on mtime.
     """
@@ -136,7 +153,12 @@ class RawFundHoldingsProvider:
         self.root = state_root.expanduser().resolve() / "raw" / "fund-holdings"
 
     def fetch(self, ticker: str) -> FundSnapshot | None:
-        path = self.root / "v3" / f"{ticker.upper()}.json"
+        from trading_max.infrastructure.fund_specs import BUILTIN_FUND_ADAPTERS
+
+        spec = BUILTIN_FUND_ADAPTERS.get(ticker.upper().removesuffix(".L"))
+        path = self.root / "v4" / f"{spec.isin}.json" if spec else self.root
+        if not path.is_file():
+            path = self.root / "v3" / f"{ticker.upper()}.json"
         if not path.is_file():
             path = self.root / f"{ticker.upper()}.json"
         if not path.is_file():

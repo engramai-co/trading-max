@@ -27,6 +27,7 @@ import yfinance as yf
 from trading_max.infrastructure import compressed_json
 from trading_max.infrastructure.history_chunks import atomic_bytes
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import listing_calendar
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.sec_companyfacts import SYMBOL, SecCompanyFacts
@@ -600,8 +601,7 @@ class ResearchEvidenceProvider:
                         release_sales_multiples,
                     )
 
-                    scale = 0.01 if code in {"GBp", "GBX"} else 1
-                    release_currency = "GBP" if scale == 0.01 else code
+                    release_currency, divisor = major_quote_unit(code or "")
                     # Yahoo Close is split-adjusted. Restore the historical share
                     # basis for the existing filing-date observations.
                     rows = []
@@ -612,7 +612,7 @@ class ResearchEvidenceProvider:
                                 {
                                     "date": bar.date.isoformat(),
                                     "split": bar.split,
-                                    "close": bar.close * future_splits * scale,
+                                    "close": bar.close * future_splits / divisor,
                                 }
                             )
                         if bar.split > 0:
@@ -650,13 +650,12 @@ class ResearchEvidenceProvider:
         try:
             dividends = proxy.get_dividends(period="max")
             dividend_code = (proxy.get_history_metadata() or {}).get("currency")
-            dividend_scale = 0.01 if dividend_code in {"GBp", "GBX"} else 1
-            dividend_code = "GBP" if dividend_scale == 0.01 else dividend_code
+            dividend_currency, dividend_divisor = major_quote_unit(dividend_code or "")
             result["dividends"] = [
                 {
                     "date": str(day.date()),
-                    "amount": float(value) * dividend_scale,
-                    "currency": dividend_code,
+                    "amount": float(value) / dividend_divisor,
+                    "currency": dividend_currency or None,
                     "kind": "unspecified",
                     "basis": "provider-adjusted-per-share",
                 }

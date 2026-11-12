@@ -2,32 +2,25 @@
 
 from __future__ import annotations
 
-import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-from bs4 import BeautifulSoup
 from pydantic import Field
 from trading_max.analytics.lookthrough import FundSnapshot, fetch_fund_snapshot
+from trading_max.domain.etf import FundReturnYear, FundShareClass
 from trading_max.infrastructure.fund_holdings import (
     BUILTIN_FUND_ADAPTERS,
     USER_AGENT,
     OfficialFundHoldingsProvider,
 )
+from trading_max.infrastructure.fund_profiles import parse_ishares_profile
 from trading_max.reference import SecurityDescriptor
 from trading_max.research.facts import fingerprint, number
 
 from .models import ApiModel
 from .valuation_assumptions import _atomic_write
-
-
-class FundReturnYear(ApiModel):
-    year: int
-    nav_return: float
-    benchmark_return: float
-    tracking_difference: float
 
 
 class FundResearch(ApiModel):
@@ -49,6 +42,8 @@ class FundResearch(ApiModel):
     expense_ratio: float | None = None
     hedging: str | None = None
     holdings: FundSnapshot | None = None
+    profile: FundShareClass | None = None
+    holdings_state: str = "no-holdings"
     return_currency: str | None = None
     return_basis: str | None = None
     annual_returns: list[FundReturnYear] = Field(default_factory=list)
@@ -58,70 +53,17 @@ class FundResearch(ApiModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+def _profile_fields(profile: FundShareClass) -> dict:
+    fields = profile.model_dump(by_alias=False, exclude_none=True)
+    size = profile.share_class_size
+    if size is not None:
+        fields["total_assets_label"] = f"{size.currency} {size.amount:,.0f}"
+        fields["total_assets_as_of"] = profile.evidence["share_class_size"].effective_at
+    return fields
+
+
 def parse_ishares_page(html: str) -> dict:
-    soup = BeautifulSoup(html, "html.parser")
-    facts, dates = {}, {}
-    for label in soup.select('span.label[data-id^="keyFundFacts-"]'):
-        row = label.find_parent("tr")
-        value = row.select_one("td") if row else None
-        key = str(label.get("data-id")).removeprefix("keyFundFacts-").removesuffix("-label")
-        if value:
-            facts[key] = value.get_text(" ", strip=True)
-            as_of = row.select_one(".as-of-date")
-            if as_of:
-                dates[key] = as_of.get_text(" ", strip=True).removeprefix("as of ")
-    mapping = {
-        "isin": "isin",
-        "index_name": "indexSeriesName",
-        "share_currency": "seriesBaseCurrencyCode",
-        "base_currency": "baseCurrencyCode",
-        "income_use": "useOfProfitsCode",
-        "replication": "productStructure",
-        "methodology": "fundMethodologyTypeCode",
-        "domicile": "domicile",
-        "inception": "inceptionDate",
-        "total_assets_label": "totalNetAssets",
-    }
-    result = {key: facts.get(field) for key, field in mapping.items()}
-    expense = number(str(facts.get("emeaMgt") or "").replace("%", ""))
-    result["expense_ratio"] = expense / 100 if expense is not None else None
-    result["total_assets_as_of"] = dates.get("totalNetAssets")
-    rows = []
-    nav = soup.select_one('tr[webqc-datapoint="annualNav"]')
-    benchmark = soup.select_one('tr[webqc-datapoint="benchmarkAnnual"]')
-    if nav and benchmark and nav.find_parent("table") is benchmark.find_parent("table"):
-        years = [cell.get_text(strip=True) for cell in nav.find_parent("table").select("thead th")]
-        nav_header = nav.select_one("th").get_text(" ", strip=True)
-        benchmark_header = benchmark.select_one("th").get_text(" ", strip=True)
-        currency = re.search(r"\b([A-Z]{3})\b", nav_header)
-        benchmark_currency = re.search(r"\b([A-Z]{3})\b", benchmark_header)
-        nums = [number(cell.get_text(strip=True)) for cell in nav.select("td")]
-        refs = [number(cell.get_text(strip=True)) for cell in benchmark.select("td")]
-        if (
-            currency
-            and benchmark_currency
-            and currency[1] == benchmark_currency[1]
-            and len(years) == len(nums) == len(refs)
-        ):
-            for year, value, ref in zip(years, nums, refs, strict=True):
-                if re.fullmatch(r"\d{4}", year) and value is not None and ref is not None:
-                    rows.append(
-                        {
-                            "year": int(year),
-                            "nav_return": value / 100,
-                            "benchmark_return": ref / 100,
-                            "tracking_difference": (value - ref) / 100,
-                        }
-                    )
-            result["return_currency"] = currency[1]
-            hint = benchmark.select_one("button[title]")
-            if hint:
-                result["index_name"] = str(hint.get("title", "")).removeprefix("Index: ")
-            result["return_basis"] = (
-                "NAV total return, income reinvested; issuer-published annual returns rounded to 0.1 percentage point"
-            )
-    result["annual_returns"] = rows
-    return result
+    return _profile_fields(parse_ishares_profile(html, ""))
 
 
 class FundResearchService:
@@ -133,17 +75,27 @@ class FundResearchService:
     def get(self, ticker: str, metrics: dict) -> FundResearch:
         with self.lock:
             reported_isin = str(metrics.get("isin") or "").strip().upper()
-            path = self.root / (fingerprint([ticker, reported_isin, "fund-research-v3"]) + ".json")
+            spec = (
+                next(
+                    (
+                        value
+                        for value in BUILTIN_FUND_ADAPTERS.values()
+                        if value.isin == reported_isin
+                    ),
+                    None,
+                )
+                if reported_isin
+                else BUILTIN_FUND_ADAPTERS.get(ticker.removesuffix(".L"))
+            )
+            share_isin = reported_isin or (spec.isin if spec else "")
+            path = self.root / (fingerprint([share_isin or ticker, "fund-research-v4"]) + ".json")
             previous = None
             if path.exists():
                 previous = FundResearch.model_validate_json(path.read_text())
                 if (
                     datetime.now(UTC) - datetime.fromisoformat(previous.fetched_at)
                 ).total_seconds() < 64800:
-                    return previous
-            spec = BUILTIN_FUND_ADAPTERS.get(ticker.removesuffix(".L"))
-            if spec and reported_isin and spec.isin != reported_isin:
-                spec = None
+                    return previous.model_copy(update={"ticker": ticker})
             result = FundResearch(
                 ticker=ticker,
                 fetched_at=datetime.now(UTC).isoformat(),
@@ -169,25 +121,34 @@ class FundResearchService:
                     result.isin = result.holdings.fund_isin or result.isin
                     result.source_url = result.holdings.source_url or result.source_url
                     result.issuer = result.holdings.issuer or result.issuer
+                    result.holdings_state = result.holdings.holdings_state(datetime.now(UTC).date())
+                    result.profile = result.holdings.profile
             except Exception as exc:
                 result.warnings.append("holdings: " + type(exc).__name__)
-                if previous:
+                result.holdings_state = "data-failed"
+                if previous and previous.holdings:
                     result.holdings = previous.holdings
-            if spec and spec.issuer == "iShares":
+                    result.holdings_state = "holdings-stale"
+                    result.profile = previous.profile
+            if (
+                not result.profile
+                and spec
+                and spec.issuer == "iShares"
+                and result.holdings_state != "data-failed"
+            ):
                 try:
                     response = httpx.get(
                         spec.source_url,
+                        params={"siteEntryPassthrough": "true"},
                         headers={"User-Agent": USER_AGENT},
                         follow_redirects=True,
                         timeout=25,
                     )
                     response.raise_for_status()
-                    parsed = parse_ishares_page(response.text)
-                    if parsed.get("isin") != spec.isin:
+                    profile = parse_ishares_profile(response.text, spec.source_url)
+                    if profile.isin != spec.isin:
                         raise ValueError("share-class-mismatch")
-                    result = FundResearch.model_validate(
-                        {**result.model_dump(by_alias=False), **parsed}
-                    )
+                    result.profile = profile
                 except Exception as exc:
                     if previous:
                         result = previous.model_copy(
@@ -198,7 +159,13 @@ class FundResearchService:
                         )
                     else:
                         result.warnings.append("issuer-profile: " + type(exc).__name__)
-            if result.holdings is None and not result.annual_returns and not result.expense_ratio:
+            if result.profile:
+                result = FundResearch.model_validate(
+                    {**result.model_dump(by_alias=False), **_profile_fields(result.profile)}
+                )
+            if result.holdings_state == "holdings-stale":
+                result.state = "stale"
+            elif result.holdings is None and not result.profile and result.expense_ratio is None:
                 result.state = "missing"
             _atomic_write(path, result.model_dump(mode="json"))
             return result
