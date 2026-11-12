@@ -242,7 +242,6 @@
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--mx-brand);
 }
 .mx-allocation-ranking__value {
   display: grid;
