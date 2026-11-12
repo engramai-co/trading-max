@@ -37,12 +37,13 @@ export function SectorSources({ source }: { source: SectorBoard["source"] }) {
   const demonstration = useDemonstration();
   if (demonstration) return <p>{t("成分股、权重和涨跌均为演示数据。", "Constituents, weights and price moves are synthetic.")}</p>;
   const published = formatCalendarDate(source.asOf, locale);
+  const basket = source.fundTicker === "IJPN" ? "IJPN" : source.fund;
   return (
     <>
       <p>
         {locale === "zh"
-          ? `成分股与权重来自 ${source.fund}（${source.universe}）${published} 公布的持仓；行情来自 ${source.prices}，以截至时间为准。`
-          : `Constituents and weights: ${source.fund} (${source.universe}) holdings published ${published}. Prices: ${source.prices}, as of the time shown.`}
+          ? `成分股与权重来自 ${basket}（${source.universe}）${published} 公布的持仓；行情来自 ${source.prices}，以截至时间为准。`
+          : `Constituents and weights: ${basket} (${source.universe}) holdings published ${published}. Prices: ${source.prices}, as of the time shown.`}
       </p>
       <p>
         {t(

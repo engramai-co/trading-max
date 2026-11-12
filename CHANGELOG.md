@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-11-12
+
+### Added
+
+- Sectors opens with a row of market index cards. A card opens the index in the
+  same tab, with a shareable link: 1D–5Y history in local currency or GBP,
+  comparisons rebased to 100, drawdown and volatility, today's breadth and
+  contributions where the constituents are known, and the tracking ETFs you
+  hold. Research search opens indices too. Indices and sector boards load
+  separately, and missing prices stay blank.
+- Japanese sectors, built from the holdings of iShares MSCI Japan (IJPN), with
+  Tokyo trading hours and the midday break. TOPIX is shown through the 1306.T
+  ETF price and labelled as such. Markets beyond the first five move under
+  More.
+
+### Fixed
+
+- Hong Kong sector moves are measured against the previous trading session's
+  dated close.
+
 ## [1.34.2] - 2026-11-12
 
 ### Changed

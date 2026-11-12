@@ -28,6 +28,7 @@ MARKETS: dict[SectorMarketCode, MarketCalendar] = {
     "uk": MarketCalendar("XLON", "Europe/London"),
     "hk": MarketCalendar("XHKG", "Asia/Hong_Kong"),
     "kr": MarketCalendar("XKRX", "Asia/Seoul"),
+    "jp": MarketCalendar("XTKS", "Asia/Tokyo"),
 }
 
 # Closing auctions finish within minutes; a board fetched this long after the
@@ -56,7 +57,12 @@ def sessions_between(
 ) -> tuple[SectorSessionWindow, ...]:
     """Regular sessions whose dates fall from `start` to `end`, in UTC."""
 
-    calendar = market_calendar(MARKETS[market].calendar, start.year, end.year)
+    return exchange_sessions(MARKETS[market].calendar, start, end)
+
+
+@lru_cache(maxsize=256)
+def exchange_sessions(name: str, start: date, end: date) -> tuple[SectorSessionWindow, ...]:
+    calendar = market_calendar(name, start.year, end.year)
     schedule = calendar.schedule.loc[pd.Timestamp(start) : pd.Timestamp(end)]
     windows = []
     for label, row in schedule.iterrows():

@@ -633,3 +633,15 @@ a.mx-sector-symbol:hover {
     display: none;
   }
 }
+
+.mx-sector-market-overflow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mx-sector-market-overflow [data-selected-market] {
+  color: var(--mx-brand);
+}
+.mx-sector-market-picker {
+  width: 100%;
+}

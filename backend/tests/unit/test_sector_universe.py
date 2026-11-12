@@ -191,3 +191,22 @@ def test_universe_provider_keeps_a_stale_cache_when_the_issuer_fails(tmp_path: P
     assert SectorUniverseProvider(tmp_path, fetcher=fail, now=lambda: later).get("hk") == seeded
     with pytest.raises(RuntimeError, match="issuer unavailable"):
         SectorUniverseProvider(tmp_path, fetcher=fail, now=lambda: later).get("kr")
+
+
+def test_japan_basket_uses_tokyo_listings_only() -> None:
+    universe = parse_universe(
+        UNIVERSES["jp"],
+        points(
+            [
+                holding("7203", 3.0, exchange="Tokyo Stock Exchange"),
+                holding("130A", 1.0, exchange="Tokyo Stock Exchange"),
+                holding("7203", 5.0, exchange="Osaka Exchange"),
+                holding("JPY", 0.4, exchange=None, asset="Cash"),
+            ]
+        ),
+        fetched_at=NOW,
+    )
+    assert universe.universe == "MSCI Japan"
+    assert universe.fund_ticker == "IJPN"
+    assert [c.symbol for c in universe.constituents] == ["7203.T", "130A.T"]
+    assert [c.weight for c in universe.constituents] == [0.75, 0.25]

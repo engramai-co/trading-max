@@ -27,6 +27,7 @@ contracts.
 - [Desktop build and tests](../apps/desktop/README.md) and
   [desktop runtime boundaries](architecture/desktop-preview-rfc.md)
 - [API and generated contracts](api/README.md)
+- [Market indices and benchmarks](architecture/market-indices.md)
 - [Interface lenses](architecture/interface-lenses.md) and
   [UI experience](architecture/ui-experience.md)
 - [Research workspace](architecture/research-workspace.md),

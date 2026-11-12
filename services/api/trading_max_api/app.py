@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 from trading_max import __version__ as trading_max_version
+from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportStore
 from trading_max.reference import CatalogSecurityMaster
@@ -40,6 +41,7 @@ from .dashboard_models import (
 )
 from .flow_diagnostics import SnapshotFlowDiagnostics
 from .history_reader import HistoryReader
+from .indices import IndexService
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
 from .market_data_runtime import reconstruction_loader_factory
@@ -52,6 +54,7 @@ from .research_journal import ResearchJournalStore
 from .research_prices import SecurityPriceHistory
 from .routes.analysis import router as analysis_router
 from .routes.imports import router as imports_router
+from .routes.indices import router as indices_router
 from .routes.local_workspace import router as local_workspace_router
 from .routes.operations import router as operations_router
 from .routes.research import router as research_router
@@ -336,12 +339,14 @@ def create_app(
         held_interval_seconds=settings.alert_held_interval_seconds,
         watchlist_interval_seconds=settings.alert_watchlist_interval_seconds,
     )
+    market_prices = SharedMarketPrices()
     sector_monitor = SectorMonitor(
         settings.data_root,
         store,
         watchlist,
         available=settings.sector_monitor_enabled,
         enabled=automation_preferences.research_enabled,
+        prices=market_prices,
     )
 
     @asynccontextmanager
@@ -455,6 +460,9 @@ def create_app(
     app.state.analysis = analysis
     app.state.alert_monitor = alert_monitor
     app.state.sector_monitor = sector_monitor
+    app.state.indices = IndexService(
+        settings.data_root, store, sector_monitor.boards, market_prices
+    )
     app.state.research = research
     app.state.estimate_history = jobs.estimate_history
     app.state.security_search = security_search
@@ -485,6 +493,7 @@ def create_app(
     app.include_router(operations_router)
     app.include_router(research_router)
     app.include_router(sectors_router)
+    app.include_router(indices_router)
     return app
 
 

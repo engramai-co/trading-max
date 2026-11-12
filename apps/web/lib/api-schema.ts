@@ -278,6 +278,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/indices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Index Market */
+        get: operations["index_market_v1_indices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/indices/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Index Catalog */
+        get: operations["index_catalog_v1_indices_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/indices/{index_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Index Context */
+        get: operations["index_context_v1_indices__index_id__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/indices/{index_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Index History */
+        get: operations["index_history_v1_indices__index_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs": {
         parameters: {
             query?: never;
@@ -3302,6 +3370,7 @@ export interface components {
             annualReturns?: components["schemas"]["FundReturnYear"][];
             /** Basecurrency */
             baseCurrency?: string | null;
+            benchmark?: components["schemas"]["IndexIdentity"] | null;
             /** Disclosures */
             disclosures?: components["schemas"]["ETFDisclosure"][];
             /** Domicile */
@@ -3694,6 +3763,183 @@ export interface components {
             snapshotFxRateNativePerGbp: number | null;
             /** Ticker */
             ticker: string;
+        };
+        /** IndexBasket */
+        IndexBasket: {
+            /** Asof */
+            asOf: string | null;
+            breadth: components["schemas"]["SectorBreadth"];
+            /** Coverage */
+            coverage: number;
+            /** Estimatedmove */
+            estimatedMove: number | null;
+            /** Fund */
+            fund: string;
+            /** Holdingsdate */
+            holdingsDate: string;
+            /** Laggards */
+            laggards: components["schemas"]["IndexContribution"][];
+            /** Leaders */
+            leaders: components["schemas"]["IndexContribution"][];
+            /** Residual */
+            residual: number | null;
+            /** Sectors */
+            sectors: components["schemas"]["IndexContribution"][];
+            /** Sessiondate */
+            sessionDate: string;
+            /** Topholdings */
+            topHoldings: components["schemas"]["IndexContribution"][];
+        };
+        /** IndexContext */
+        IndexContext: {
+            basket?: components["schemas"]["IndexBasket"] | null;
+            /** Exposuregbp */
+            exposureGbp?: number | null;
+            /** Funds */
+            funds?: components["schemas"]["IndexFundHolding"][];
+            /** Portfolioasof */
+            portfolioAsOf?: string | null;
+        };
+        /** IndexContribution */
+        IndexContribution: {
+            /** Contribution */
+            contribution: number | null;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+        };
+        /** IndexFundHolding */
+        IndexFundHolding: {
+            /** Isin */
+            isin: string;
+            /** Name */
+            name?: string | null;
+            /** Shares */
+            shares?: number | null;
+            /** Ticker */
+            ticker: string;
+            /** Valuegbp */
+            valueGbp: number;
+        };
+        /** IndexHistory */
+        IndexHistory: {
+            /** Asof */
+            asOf?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Gaps */
+            gaps?: string[];
+            index: components["schemas"]["IndexIdentity"];
+            /** Maxdrawdown */
+            maxDrawdown?: number | null;
+            /** Points */
+            points?: components["schemas"]["IndexPoint"][];
+            /**
+             * Range
+             * @enum {string}
+             */
+            range: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y";
+            /**
+             * State
+             * @default unavailable
+             * @enum {string}
+             */
+            state: "available" | "partial" | "unavailable" | "stale";
+            /** Volatility */
+            volatility?: number | null;
+        };
+        /** IndexIdentity */
+        IndexIdentity: {
+            /** Aliases */
+            aliases: string[];
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "price" | "net-return" | "total-return" | "implied-volatility";
+            /** Calendar */
+            calendar: string;
+            /** Compiler */
+            compiler: string;
+            /** Compilerid */
+            compilerId: string;
+            /** Currency */
+            currency: string | null;
+            /** Historyyears */
+            historyYears: number;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "index" | "etf-price" | "volatility";
+            /** Name */
+            name: string;
+            /** Namezh */
+            nameZh: string;
+            /**
+             * Rights
+             * @enum {string}
+             */
+            rights: "provider-terms" | "licensed-source-required";
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+            /** Source */
+            source: string | null;
+            /** Symbol */
+            symbol: string | null;
+        };
+        /** IndexMarket */
+        IndexMarket: {
+            /** Quotes */
+            quotes: components["schemas"]["IndexQuote"][];
+            /**
+             * Refreshfailed
+             * @default false
+             */
+            refreshFailed: boolean;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+        };
+        /** IndexPoint */
+        IndexPoint: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Value */
+            value: number;
+        };
+        /** IndexQuote */
+        IndexQuote: {
+            /** Asof */
+            asOf?: string | null;
+            /** Change */
+            change?: number | null;
+            index: components["schemas"]["IndexIdentity"];
+            /** Level */
+            level?: number | null;
+            /** Points */
+            points?: components["schemas"]["IndexPoint"][];
+            /** Sessiondate */
+            sessionDate?: string | null;
+            /**
+             * State
+             * @default unavailable
+             * @enum {string}
+             */
+            state: "unavailable" | "observed" | "live" | "closed" | "stale";
         };
         /** IntegrationOverview */
         IntegrationOverview: {
@@ -6406,7 +6652,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /**
              * Membercount
              * @default 0
@@ -6432,7 +6678,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /** Markets */
             markets?: components["schemas"]["SectorMarketStatus"][];
             /** @description Refresh schedule, so an empty board can say when the next update runs. */
@@ -6561,7 +6807,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr";
+            market: "us" | "uk" | "hk" | "kr" | "jp";
             /** Sessiondate */
             sessionDate?: string | null;
             /** Sessions */
@@ -8213,6 +8459,122 @@ export interface operations {
             };
         };
     };
+    index_market_v1_indices_get: {
+        parameters: {
+            query: {
+                scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexMarket"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index_catalog_v1_indices_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexIdentity"][];
+                };
+            };
+        };
+    };
+    index_context_v1_indices__index_id__context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                index_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    index_history_v1_indices__index_id__history_get: {
+        parameters: {
+            query?: {
+                range?: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y";
+                currency?: "local" | "GBP";
+            };
+            header?: never;
+            path: {
+                index_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_jobs_v1_jobs_get: {
         parameters: {
             query?: {
@@ -9249,7 +9611,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Market to show; defaults to the one trading now. */
-                market?: ("us" | "uk" | "hk" | "kr") | null;
+                market?: ("us" | "uk" | "hk" | "kr" | "jp") | null;
             };
             header?: never;
             path?: never;

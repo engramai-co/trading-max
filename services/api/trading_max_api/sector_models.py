@@ -16,7 +16,7 @@ from pydantic import Field
 
 from .models import ApiModel, SectorMonitorState
 
-SectorMarketCode = Literal["us", "uk", "hk", "kr"]
+SectorMarketCode = Literal["us", "uk", "hk", "kr", "jp"]
 SectorGroupingKind = Literal["gics", "themes"]
 
 
