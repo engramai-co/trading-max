@@ -4,6 +4,20 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-11-12
+
+### Added
+
+- Investment Review highlights large price moves without a trade, cash that
+  stayed high, and changes in holding weights.
+- Recent trades show the largest holding, cash share, and share of assets
+  quoted in US dollars before and after the trade.
+
+### Changed
+
+- Investment Review opens with the latest buy and sell decisions. Its evidence
+  is prepared during account refresh and saved with the account snapshot.
+
 ## [1.37.0] - 2026-11-12
 
 ### Changed
