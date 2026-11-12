@@ -9,9 +9,10 @@ import type { CSSProperties, MouseEvent } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
-import { formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
+import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { useGlobalContribution } from "./global-markets-data";
 import Link from "./link";
 import {
   alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
@@ -73,6 +74,7 @@ export function IndexStrip({ market, open, selected, marketName }: {
     staleTime: 60_000,
     retry: 0,
   });
+  const global = useGlobalContribution(market === "global" && !selected).data;
   const newest = (query.data?.quotes ?? []).map((quote) => quote.asOf ?? "").sort().at(-1);
   const error = query.isError || query.data?.refreshFailed;
   const card = (quote: IndexQuote) => <IndexCard key={quote.index.id} quote={quote} selected={selected === quote.index.id} open={open}
@@ -81,12 +83,24 @@ export function IndexStrip({ market, open, selected, marketName }: {
   if (market === "global") {
     const quotes = new Map(query.data?.quotes.map((quote) => [quote.index.id, quote]));
     const acwi = quotes.get("msci-acwi");
-    const stamp = acwi?.asOf ?? newest;
-    const phase = acwi?.state === "closed" ? t("已收盘", "Closed")
-      : acwi?.state === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
+    const stamp = global?.asOf ?? acwi?.asOf ?? newest;
+    const phase = global?.phase === "completed" ? t("已收盘", "Closed")
+      : global?.phase === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
+    const day = global?.referenceDate;
+    if (acwi && global?.acwiMove != null) {
+      quotes.set(acwi.index.id, {
+        ...acwi, change: global.acwiMove, level: global.acwiLevel, asOf: global.asOf,
+        state: global.phase === "completed" ? "closed" : "live",
+        points: acwi.points?.filter(({ at }) => global.asOf != null && Date.parse(at) <= Date.parse(global.asOf)),
+      });
+    }
     return <section className="mx-index-strip mx-index-global" aria-label={t("市场指数", "Market indices")}>
       {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
-        {stamp && <><span>{phase}</span><span><time dateTime={stamp}>{t("截至 ", "As of ")}{formatDateTime(stamp, locale, timeZone)}</time></span></>}
+        {stamp && <>
+          <span>{phase}</span>
+          {day && <span><time dateTime={day}>{formatCalendarDate(day, locale)}</time></span>}
+          {global?.phase !== "completed" && <span><time dateTime={stamp}>{t("截至 ", "As of ")}{formatDateTime(stamp, locale, timeZone)}</time></span>}
+        </>}
         {error && <><span>{stamp ? t("部分指数未更新", "Some indices haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
           <RetryIndices busy={query.isFetching} retry={() => void query.refetch()} /></>}
       </div>}

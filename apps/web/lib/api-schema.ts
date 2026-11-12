@@ -3739,6 +3739,8 @@ export interface components {
             market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "em";
             /** Move */
             move: number;
+            /** Notopen */
+            notOpen: boolean;
             /** Weight */
             weight: number;
         };
@@ -3747,12 +3749,18 @@ export interface components {
          * @description Moves and contributions are fractions; multiply by 100 for percent or pp.
          */
         GlobalMarketContribution: {
+            /** Acwilevel */
+            acwiLevel: number | null;
             /** Acwimove */
             acwiMove: number | null;
             /** Asof */
             asOf: string | null;
             /** Markets */
             markets: components["schemas"]["GlobalMarketMove"][];
+            /** Phase */
+            phase: ("live" | "completed") | null;
+            /** Referencedate */
+            referenceDate: string | null;
             /** Residual */
             residual: number | null;
             /** Rows */
@@ -3776,6 +3784,8 @@ export interface components {
             market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "kr" | "tw" | "in";
             /** Move */
             move: number | null;
+            /** Notopen */
+            notOpen: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

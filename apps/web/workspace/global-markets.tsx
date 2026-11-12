@@ -1,21 +1,18 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { useState, type MouseEvent } from "react";
 import type { components } from "@/lib/api-schema";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/formatters";
-import { api } from "@/workspace/data";
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
-import { globalHeatStyle } from "./global-markets-data";
+import { globalHeatStyle, useGlobalContribution } from "./global-markets-data";
 import { MARKET_PATHS, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
 import Link from "./link";
 
 type MapMarket = components["schemas"]["GlobalMarketMove"]["market"];
 type Market = MapMarket | "em";
-export type GlobalMarketContribution = components["schemas"]["GlobalMarketContribution"];
 
 type Label = {
   name: [string, string];
@@ -62,22 +59,16 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const [focused, setFocused] = useState<Market | null>(null);
   const active = hovered ?? focused;
   const title = t("对 MSCI 全球的贡献", "Contribution to MSCI ACWI");
-  const query = useQuery({
-    queryKey: ["global-market-contribution"],
-    queryFn: ({ signal }) => api<GlobalMarketContribution>("/indices/global-contribution", { signal }),
-    enabled: !demo,
-    refetchInterval: 60_000,
-    staleTime: 60_000,
-    retry: 0,
-  });
+  const query = useGlobalContribution(!demo);
   const answer = query.data;
   const change = (value: number | null | undefined) => formatDeltaPercent(value, locale, 2);
   const pp = (value: number) => formatNumber(value * 100, locale, {
     minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero",
   }) + " pp";
   const name = (market: Market) => market === "em" ? t("新兴市场", "Emerging markets") : t(...MAP[market].name);
-  const accessible = (market: Market, move?: number | null, contribution?: number) => {
-    const parts = [name(market), t("涨跌 ", "Move ") + change(move), t("贡献 ", "Contribution ") +
+  const preOpen = t("未开盘", "Not open");
+  const accessible = (market: Market, move?: number | null, contribution?: number, notOpen = false) => {
+    const parts = [name(market), notOpen ? preOpen : t("涨跌 ", "Move ") + change(move), t("贡献 ", "Contribution ") +
       (contribution == null ? t("未单列", "not shown separately") : pp(contribution))];
     return parts.join(t("，", ", "));
   };
@@ -108,7 +99,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         <svg viewBox={WORLD_VIEWBOX} preserveAspectRatio="none" role="group" aria-label={t("全球市场地图", "World market map")}>
           <path className="mx-global-land" d={WORLD_LAND} fillRule="evenodd" />
           {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, point }]) => {
-            const move = answer?.markets.find((item) => item.market === market)?.move;
+            const reading = answer?.markets.find((item) => item.market === market);
+            const move = reading?.move;
             const row = rows.find((item) => item.market === market);
             // EM is an aggregate, so its three markets share a row but only an individually
             // pointed market gets a border. Focusing the aggregate outlines all three.
@@ -116,7 +108,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             const style = globalHeatStyle(move);
             return <a key={market} href={presentationLink(pathname, url(market)).href}
               className="mx-global-region" data-market={market} data-neutral={style["--mx-world-heat-light"] === "0%" || undefined} data-linked={selected || undefined}
-              aria-label={accessible(market, move, row?.contribution)} style={style}
+              aria-label={accessible(market, move, row?.contribution, reading?.notOpen)} style={style}
               onClick={(event) => open(event, market)} {...bindings(market)}>
               {market !== "hk" && <path className="mx-global-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
               {point && <circle className="mx-global-pin" cx={point[0]} cy={point[1]} r={market === "hk" ? 4.5 : 3.4} />}
@@ -133,7 +125,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             <p>{t("权重来自 iShares MSCI ACWI UCITS ETF（SSAC）持仓，按所在地汇总。", "Weights come from iShares MSCI ACWI UCITS ETF (SSAC) holdings, grouped by location.")}
               {answer?.weightsAsOf && <> {t("持仓截至 ", "Holdings as of ")}{formatCalendarDate(answer.weightsAsOf, locale)}.</>}
             </p>
-            <p>{t("已单列的发达市场：权重 × 主要指数的本币涨跌。新兴市场：合计权重 × MSCI EM 的美元涨跌。市场尚未开盘时，已知的本日涨跌为零。", "For each listed developed market: weight × local-currency move in its main index. For emerging markets: combined weight × the USD move in MSCI EM. A market that hasn’t opened has a zero move when its prior close is known.")}</p>
+            <p>{t("已单列的发达市场：权重 × 主要指数的本币涨跌。新兴市场：合计权重 × MSCI EM 的美元涨跌。以 MSCI 全球的最近一次收盘划分交易日。新一轮尚未开盘的市场贡献为零。", "For each listed developed market: weight × local-currency move in its main index. For emerging markets: combined weight × the USD move in MSCI EM. The latest MSCI ACWI close separates global sessions. Markets yet to open in the current session contribute zero.")}</p>
             <p>{t("汇率与其他 = MSCI 全球涨跌减去已列贡献，包含汇率、未覆盖市场和估算误差。", "Currency and other is the MSCI ACWI move less the listed contributions. It includes currency effects, markets outside the estimate and approximation error.")}</p>
           </Help>
         </div>
@@ -153,18 +145,18 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         </div>}
         {priced && <>
           <ul className="mx-global-rows">
-            {rows.map(({ market, indexId, move, contribution }) => {
+            {rows.map(({ market, indexId, move, contribution, notOpen }) => {
               const selected = active === market || (market === "em" && active != null && ["kr", "tw", "in"].includes(active));
               const index = INDEX_NAMES[indexId];
               const label = <span className="mx-global-row-label">
-                <strong>{name(market)} · {index ? t(...index) : indexId}</strong><small>{change(move)}</small>
+                <strong>{name(market)} · {index ? t(...index) : indexId}</strong><small>{notOpen ? preOpen : change(move)}</small>
               </span>;
               const content = <>{label}<ContributionBar value={contribution} limit={limit} /><span className="mx-global-pp">{pp(contribution)}</span></>;
               return <li key={market}>
                 {market === "em" ? <Link className="mx-global-row" href="/sectors?market=global&index=msci-em" prefetch={false}
-                  data-linked={selected || undefined} {...bindings(market)} aria-label={accessible(market, move, contribution)}>{content}</Link>
+                  data-linked={selected || undefined} {...bindings(market)} aria-label={accessible(market, move, contribution, notOpen)}>{content}</Link>
                 : <Link className="mx-global-row" href={url(market)} prefetch={false} data-linked={selected || undefined}
-                  onClick={(event) => open(event, market)} aria-label={accessible(market, move, contribution)} {...bindings(market)}>
+                  onClick={(event) => open(event, market)} aria-label={accessible(market, move, contribution, notOpen)} {...bindings(market)}>
                   {content}
                 </Link>}
               </li>;

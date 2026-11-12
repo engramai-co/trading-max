@@ -57,6 +57,7 @@ GlobalRowMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "em"]
 class GlobalMarketMove(ApiModel):
     market: GlobalMapMarket
     move: float | None
+    not_open: bool
 
 
 class GlobalContributionRow(ApiModel):
@@ -65,12 +66,16 @@ class GlobalContributionRow(ApiModel):
     weight: float
     move: float
     contribution: float
+    not_open: bool
 
 
 class GlobalMarketContribution(ApiModel):
     """Moves and contributions are fractions; multiply by 100 for percent or pp."""
 
     acwi_move: float | None
+    acwi_level: float | None
+    reference_date: date | None
+    phase: Literal["live", "completed"] | None
     as_of: datetime | None
     weights_as_of: date | None
     weights_stale: bool

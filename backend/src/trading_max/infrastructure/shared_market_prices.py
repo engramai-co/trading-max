@@ -12,7 +12,14 @@ from urllib.parse import quote
 
 from yfinance.exceptions import YFRateLimitError
 
-from .sector_prices import SparkRateLimited, SparkSeries, YahooSparkPrices, _points, _yahoo_get
+from .sector_prices import (
+    SparkRateLimited,
+    SparkSeries,
+    YahooSparkPrices,
+    _points,
+    _price,
+    _yahoo_get,
+)
 
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
 RATE_LIMIT_SECONDS = 30 * 60
@@ -69,6 +76,10 @@ class SharedMarketPrices:
     def daily(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         return self._read("daily", symbols, 240, self.source.daily)
 
+    def benchmark_intraday(self, symbol: str) -> SparkSeries | None:
+        """Keep enough five-minute history to timestamp benchmark closes across a weekend."""
+        return self._chart("benchmark-5m", symbol, {"range": "5d", "interval": "5m"}, 240)
+
     def history(self, symbol: str) -> SparkSeries | None:
         return self._chart("5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60)
 
@@ -121,7 +132,12 @@ class SharedMarketPrices:
             return (
                 {
                     symbol: SparkSeries(
-                        symbol, timestamps, closes, timezone=meta.get("exchangeTimezoneName")
+                        symbol,
+                        timestamps,
+                        closes,
+                        # chartPreviousClose refers to the beginning of the whole range.
+                        previous_close=_price(meta.get("previousClose")),
+                        timezone=meta.get("exchangeTimezoneName"),
                     )
                 }
                 if timestamps

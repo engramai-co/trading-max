@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { GlobalMarketContribution } from "../workspace/global-markets";
+import type { GlobalMarketContribution } from "../workspace/global-markets-data";
 import type { IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -311,12 +311,13 @@ const indices: IndexIdentity[] = [
 ];
 
 const globalFixture: GlobalMarketContribution = {
-  acwiMove: -0.0044, asOf: "2026-11-12T19:00:00Z", weightsAsOf: "2026-11-11",
+  acwiMove: -0.0044, acwiLevel: 1116.27, phase: "completed", referenceDate: "2026-11-12", asOf: "2026-11-12T19:00:00Z", weightsAsOf: "2026-11-11",
   weightsStale: false, state: "partial", residual: -0.0018,
-  markets: [{ market: "us", move: -0.0035 }, { market: "jp", move: -0.007 }, { market: "ch", move: null }],
+  markets: [{ market: "us", move: -0.0035, notOpen: false }, { market: "jp", move: -0.007, notOpen: false }, { market: "ch", move: null, notOpen: false }, { market: "uk", move: 0, notOpen: true }],
   rows: [
-    { market: "us", indexId: "sp-500", weight: 0.63, move: -0.0035, contribution: -0.0022 },
-    { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004 },
+    { market: "us", indexId: "sp-500", weight: 0.63, move: -0.0035, contribution: -0.0022, notOpen: false },
+    { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004, notOpen: false },
+    { market: "uk", indexId: "ftse-100", weight: 0.03, move: 0, contribution: 0, notOpen: true },
   ],
 };
 
@@ -451,6 +452,10 @@ test.describe("market index layer", () => {
     const row = ranking.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
     await expect(ranking).toContainText(/部分报价不可用|Partial quote coverage/);
     await expect(ranking).toContainText(/汇率与其他|Currency and other/);
+    await expect(page.locator(".mx-index-global .mx-index-stamp")).toContainText(/已收盘|Closed/);
+    await expect(page.locator('.mx-index-global time[datetime="2026-11-12"]')).toBeVisible();
+    await expect(ranking.getByRole("link", { name: /英国.*未开盘.*0.00 pp|UK.*Not open.*0.00 pp/ })).toBeVisible();
+    await expect(map.getByRole("link", { name: /英国.*未开盘|UK.*Not open/ })).toHaveAttribute("data-neutral", "true");
     await expect(ranking.locator(".mx-global-total")).toContainText("-0.44%");
     if (testInfo.project.name === "desktop") {
       await row.hover();

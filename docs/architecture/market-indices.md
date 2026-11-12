@@ -86,12 +86,19 @@ lens opens the look-through.
 ## Global contribution
 
 `GET /v1/indices/global-contribution` returns public, portfolio-independent
-market moves and an estimate of each market's contribution to the latest
-same-day MSCI ACWI move. The view uses the same index quote service and price
-cache as the market tabs. A scheduled exchange that has not opened contributes
-zero when its previous close is known. Missing or stale quotes do not
-contribute and are disclosed as partial coverage. The response is cached for
-four minutes.
+market moves and an estimate of each market's contribution to MSCI ACWI.
+The latest official close is identified from the benchmark's five-minute
+history, checked against the dated daily series and the provider's previous
+close. Its observed timestamp, not a fixed hour, separates global trading days.
+Before any tracked exchange opens after that close, the page shows the most
+recent completed day, including on weekends. Once a tracked exchange opens,
+ACWI is measured from that close, and markets with no session in the window
+show zero and remain neutral on the map. The page names the reference day.
+
+The endpoint reads the main indices in batches through the price cache shared
+with market tabs. A quote that cannot be matched to the reference session is
+omitted and disclosed as partial coverage. The response is cached for four
+minutes.
 
 Country weights are aggregated from the equity locations in the
 [iShares MSCI ACWI UCITS ETF (SSAC)](https://www.ishares.com/uk/individual/en/products/251850/ishares-msci-acwi-ucits-etf)

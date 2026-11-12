@@ -7708,6 +7708,10 @@
             "title": "Move",
             "type": "number"
           },
+          "notOpen": {
+            "title": "Notopen",
+            "type": "boolean"
+          },
           "weight": {
             "title": "Weight",
             "type": "number"
@@ -7718,7 +7722,8 @@
           "indexId",
           "weight",
           "move",
-          "contribution"
+          "contribution",
+          "notOpen"
         ],
         "title": "GlobalContributionRow",
         "type": "object"
@@ -7726,6 +7731,17 @@
       "GlobalMarketContribution": {
         "description": "Moves and contributions are fractions; multiply by 100 for percent or pp.",
         "properties": {
+          "acwiLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acwilevel"
+          },
           "acwiMove": {
             "anyOf": [
               {
@@ -7755,6 +7771,33 @@
             },
             "title": "Markets",
             "type": "array"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "completed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "referenceDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencedate"
           },
           "residual": {
             "anyOf": [
@@ -7802,6 +7845,9 @@
         },
         "required": [
           "acwiMove",
+          "acwiLevel",
+          "referenceDate",
+          "phase",
           "asOf",
           "weightsAsOf",
           "weightsStale",
@@ -7842,11 +7888,16 @@
               }
             ],
             "title": "Move"
+          },
+          "notOpen": {
+            "title": "Notopen",
+            "type": "boolean"
           }
         },
         "required": [
           "market",
-          "move"
+          "move",
+          "notOpen"
         ],
         "title": "GlobalMarketMove",
         "type": "object"
