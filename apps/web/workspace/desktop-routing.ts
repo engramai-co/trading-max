@@ -6,6 +6,10 @@ export function desktopPage(pathname: string): string | null {
   const page = pathname.slice("/desktop".length).replace(/^\//, "");
   return pages.has(page) ? page : null;
 }
+export function isWorkspacePath(pathname: string) {
+  const path = pathname.replace(/\/$/, "");
+  return desktopPage(path) !== null || pages.has(path.slice(1)) || path === "/health";
+}
 export function auxiliaryPage(pathname: string): string | null {
   const page = desktopPage(pathname);
   return page && ["settings", "activity", "imports"].includes(page) ? page : null;

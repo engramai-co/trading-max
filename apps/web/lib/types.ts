@@ -260,6 +260,7 @@ export type JobListResponse = {
 export type JobOutcomes = ApiSchemas["JobOutcomes"];
 
 export type HealthDetails = {
+  buildId?: string;
   checkedAt: string;
   health: HealthResponse | null;
   readiness: ReadinessResponse | null;

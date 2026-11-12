@@ -1,5 +1,6 @@
 "use client";
 
+import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
   Button,
   Checkbox,
@@ -82,6 +83,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
     retry: 1,
   });
   const [connection, setConnection] = useState<Connection | null>(null);
+  useBuildNavigationGuard(Boolean(connection));
   const [saved, setSaved] = useState<"saved" | "disconnected" | null>(null);
   const [offerModelConnection, setOfferModelConnection] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState("openai");
@@ -698,6 +700,8 @@ function ModelRouting({
   const saved = mutation.isSuccess &&
     mutation.variables.defaultRoute === defaultRoute &&
     JSON.stringify(mutation.variables.overrides) === JSON.stringify(overrides);
+  useBuildNavigationGuard(!saved && (defaultRoute !== policy.defaultRoute ||
+    JSON.stringify(overrides) !== JSON.stringify(policy.overrides)));
   return (
     <Panel
       title={t("模型分配", "Model assignments")}

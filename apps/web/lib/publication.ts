@@ -1,4 +1,4 @@
-export type Publication = { runId: string | null };
+export type Publication = { runId: string | null; buildId?: string | null };
 
 const interval = 60_000;
 const wakeInterval = 10_000;

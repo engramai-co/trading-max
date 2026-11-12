@@ -1,5 +1,6 @@
 "use client";
 
+import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import { Button, Group, Loader, Modal, PasswordInput, Stack, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -36,6 +37,7 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
   const client = useQueryClient();
   const [opened, setOpened] = useState(false);
   const [removing, setRemoving] = useState(false);
+  useBuildNavigationGuard(opened || removing);
   // What the latest write came to. Starting another write clears it, so no notice outlives its action.
   const [outcome, setOutcome] = useState<"saved" | "failed" | null>(null);
   const toggle = useMutation({

@@ -1,5 +1,6 @@
 "use client";
 
+import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   Button,
@@ -203,6 +204,7 @@ function ModelEditor({
   const saved = savedFingerprint === liveFingerprint;
   const dirty = saveOpen || invalidInput || !saved && (
     draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
+  useBuildNavigationGuard(dirty);
   useLayoutEffect(() => {
     onDirty(dirty);
     return () => onDirty(false);

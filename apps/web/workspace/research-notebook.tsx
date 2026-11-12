@@ -1,5 +1,6 @@
 "use client";
 
+import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
@@ -48,6 +49,7 @@ export function ResearchNotebook({ data }: { data: ResearchLensSnapshot }) {
   const section = params.get("notebook") ?? "notes";
   const [archived, setArchived] = useState(false);
   const [editing, setEditing] = useState<Note | "new" | null>(null);
+  useBuildNavigationGuard(Boolean(editing));
   const [input, setInput] = useState<NoteInput>(blank);
   const [urls, setUrls] = useState("");
   const [history, setHistory] = useState<Note | null>(null);
