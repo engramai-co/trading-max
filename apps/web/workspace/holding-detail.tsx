@@ -2,13 +2,17 @@
 
 import { Button } from "@mantine/core";
 import { ArrowRight } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { Holding } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { currency, number, percent, tone } from "./data";
 import { signedPounds } from "./day-drivers";
-import { Facts, Help, Instrument, Metric, useCopy } from "./foundation";
+import { Facts, Help, Instrument, Metric, Tag, useCopy } from "./foundation";
+import { etfDetailQuery, etfPortfolioQuery, fieldEvidence, findETF, overlapDisplay, trackingDisplay } from "./etf-data";
+import { researchLensQuery } from "./research-queries";
+import { EvidenceReading } from "./etf-reading";
 import { holdingQuantityUnit, holdingQuote } from "./holding-detail-data";
 import Link from "./link";
 
@@ -34,10 +38,11 @@ function PositionMove({ label, amount, ratio }: {
   );
 }
 
-export function HoldingDetail({ holding, account, accountAsOf, today, now }: {
+export function HoldingDetail({ holding, account, accountAsOf, runId, today, now }: {
   holding: Holding;
   account: string;
   accountAsOf?: string | null;
+  runId?: string;
   today: string;
   now: number;
 }) {
@@ -104,6 +109,8 @@ export function HoldingDetail({ holding, account, accountAsOf, today, now }: {
           quote.dilutedCost,
         ],
       ]} />
+      {holding.isFund && runId ? <FundPosition holding={holding} runId={runId} />
+        : !holding.isFund && <NextStockEvent ticker={holding.ticker} runId={runId} today={today} now={now} />}
       <details className="mx-position-calculation">
         <summary>{t("报价与计算", "Quote and calculation")}</summary>
         <Facts rows={calculation} />
@@ -113,11 +120,68 @@ export function HoldingDetail({ holding, account, accountAsOf, today, now }: {
           {t("研究这项投资", "Research this investment")}
         </Button>
         {holding.isFund && (
-          <Button component={Link} variant="default" href="/holdings?view=lookthrough">
+          <Button component={Link} variant="default" href={`/research?ticker=${encodeURIComponent(holding.ticker)}&view=fundamentals`}>
             {t("查看底层资产", "View look-through")}
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+
+function NextStockEvent({ ticker, runId, today, now }: { ticker: string; runId?: string; today: string; now: number }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const { data } = useQuery(researchLensQuery(ticker, "overview", runId, "summary"));
+  const date = data?.nextEarningsDate;
+  if (!date || date < today) return null;
+  const label = t("下次财报", "Next earnings");
+  return <Facts rows={[[label, <time key="earnings" dateTime={date} title={t("研究快照", "Research snapshot") + " · " + data.generatedAt}>{formatCalendarDate(date, locale, now)}</time>]]} />;
+}
+
+function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
+  const t = useCopy();
+  const portfolio = useQuery({ ...etfPortfolioQuery(runId), enabled: !holding.fundIsin });
+  const summary = portfolio.data?.runId === runId ? findETF(portfolio.data.funds, holding.ticker) : undefined;
+  const isin = holding.fundIsin || summary?.isin || "";
+  const detail = useQuery({ ...etfDetailQuery(runId, isin), enabled: Boolean(isin) });
+  const current = detail.data?.runId === runId ? detail.data : undefined;
+  const reading = current?.reading ?? summary;
+  const tracking = trackingDisplay(reading, t);
+  const overlap = overlapDisplay(reading, t);
+  const missing = t("暂无", "Unavailable");
+  const fee = reading?.expenseRatio == null ? missing : percent(reading.expenseRatio, false, 2);
+  const feeLabel = reading?.feeBasis === "OCF" ? t("持续费用率", "Ongoing charge") : t("总费用率", "Total expense ratio");
+  const feeEvidence = fieldEvidence(feeLabel, fee, reading?.evidence?.expense_ratio, t);
+  const holdings = current?.holdings;
+  const top = [...(holdings?.holdings ?? [])].filter((item) => item.weightPct > 0)
+    .sort((a, b) => b.weightPct - a.weightPct).slice(0, 10);
+  return (
+    <>
+      <Facts rows={[
+        [t("跟踪指数", "Tracked index"), reading?.indexName || missing],
+        [feeLabel, <span key="fee" role="group" title={feeEvidence} aria-label={feeEvidence}>{fee}</span>],
+        [t("收益分配", "Income use"), reading?.incomeUse === "Accumulating" ? t("累积", "Accumulating")
+          : reading?.incomeUse === "Distributing" ? t("派息", "Distributing") : reading?.incomeUse ?? missing],
+        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...tracking} />],
+        [t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" {...overlap} />],
+      ]} />
+      <details className="mx-position-calculation">
+        <summary>{t("基金底层持仓", "Underlying holdings")}</summary>
+        {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓已过期", "Holdings stale")}</Tag>}
+        {top.length ? <Facts rows={top.map((item) => {
+          const weight = percent(item.weightPct / 100, false, 2);
+          const basis = [reading?.issuer, holdings?.evidence?.holdings?.sourceUrl,
+            t("发行商持仓权重", "Issuer holdings weight") + " " + weight, holdings?.asOf].filter(Boolean).join(" · ");
+          return [item.name || item.ticker || item.isin,
+            <span key={item.isin || item.name} role="group" title={basis} aria-label={basis}>{weight}</span>];
+        })} /> : <p role="status">{
+          detail.isFetching || portfolio.isFetching ? t("正在读取已发布持仓…", "Loading published holdings…")
+            : reading?.holdingsState === "data-failed" || detail.isError ? t("持仓数据读取失败", "Holdings data failed")
+            : t("暂无持仓披露", "No holdings disclosure")
+        }</p>}
+      </details>
+    </>
   );
 }
