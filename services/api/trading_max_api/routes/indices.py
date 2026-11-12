@@ -5,7 +5,13 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from trading_max.reference.indices import IndexRange, IndexScope, IndexSpec
 
-from ..index_models import IndexContext, IndexHistory, IndexIdentity, IndexMarket
+from ..index_models import (
+    GlobalMarketContribution,
+    IndexContext,
+    IndexHistory,
+    IndexIdentity,
+    IndexMarket,
+)
 from ..indices import active_indices, index_identity
 from .dependencies import app_service
 
@@ -28,6 +34,11 @@ def index_catalog() -> list[IndexIdentity]:
 @router.get("/v1/indices", response_model=IndexMarket)
 def index_market(request: Request, scope: IndexScope) -> IndexMarket:
     return app_service(request, "indices").market(scope)
+
+
+@router.get("/v1/indices/global-contribution", response_model=GlobalMarketContribution)
+def global_contribution(request: Request) -> GlobalMarketContribution:
+    return app_service(request, "indices").global_contribution()
 
 
 @router.get("/v1/indices/{index_id}/history", response_model=IndexHistory)

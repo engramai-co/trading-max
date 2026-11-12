@@ -59,3 +59,8 @@ Users must review the current terms, permissions, rate limits, and
 redistribution rules of every provider they enable. A provider being reachable
 or free of charge does not make its downloaded data open source. If a provider
 does not permit the intended use, leave that integration disabled.
+
+The Global Markets map includes projected SVG geometry from Natural Earth
+[1:110m land and admin-0 countries, version 5.1.2](https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2/geojson).
+Natural Earth dedicates the data to the [public domain](https://www.naturalearthdata.com/about/terms-of-use/).
+The build-time generator is `tools/generate_global_market_map.py`.

@@ -264,8 +264,16 @@ def parse_universe(
     )
 
 
-def fetch_universe(spec: UniverseSpec, client: httpx.Client, *, now: datetime) -> SectorUniverse:
-    """Download one market's universe from the issuer's product data."""
+def ishares_holdings_client(*, timeout: float = 30.0) -> httpx.Client:
+    return httpx.Client(
+        timeout=httpx.Timeout(timeout),
+        follow_redirects=True,
+        headers={"User-Agent": USER_AGENT, "Accept-Language": "en-GB,en;q=0.9"},
+    )
+
+
+def fetch_ishares_holdings(product_id: str, client: httpx.Client) -> dict[str, Any]:
+    """Read the issuer's holdings fields shared by sector and global markets."""
 
     payload = _get_json(
         client,
@@ -275,7 +283,7 @@ def fetch_universe(spec: UniverseSpec, client: httpx.Client, *, now: datetime) -
             "appType": "PRODUCT_PAGE",
             "component": "holdings.all",
             "locale": "en_GB",
-            "portfolioId": spec.product_id,
+            "portfolioId": product_id,
             "targetSite": "ishares-uk",
             "userType": "individual",
             "excludeContent": "true",
@@ -287,8 +295,15 @@ def fetch_universe(spec: UniverseSpec, client: httpx.Client, *, now: datetime) -
             "dataPointsByNameMap"
         ]
     except (KeyError, TypeError) as exc:
-        raise ValueError(f"{spec.fund_ticker}: iShares holdings schema changed") from exc
-    return parse_universe(spec, points, fetched_at=now)
+        raise ValueError(f"{product_id}: iShares holdings schema changed") from exc
+    if not isinstance(points, dict) or str(payload.get("productId", product_id)) != product_id:
+        raise ValueError(f"{product_id}: iShares holdings product mismatch")
+    return points
+
+
+def fetch_universe(spec: UniverseSpec, client: httpx.Client, *, now: datetime) -> SectorUniverse:
+    """Download one market's universe from the issuer's product data."""
+    return parse_universe(spec, fetch_ishares_holdings(spec.product_id, client), fetched_at=now)
 
 
 class SectorUniverseProvider:
@@ -333,11 +348,7 @@ class SectorUniverseProvider:
     def _fetch(self, spec: UniverseSpec) -> SectorUniverse:
         if self.fetcher is not None:
             return self.fetcher(spec)
-        with httpx.Client(
-            timeout=httpx.Timeout(30.0),
-            follow_redirects=True,
-            headers={"User-Agent": USER_AGENT, "Accept-Language": "en-GB,en;q=0.9"},
-        ) as client:
+        with ishares_holdings_client() as client:
             return fetch_universe(spec, client, now=self._now())
 
     def get(self, market: str) -> SectorUniverse:

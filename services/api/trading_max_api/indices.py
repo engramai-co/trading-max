@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from trading_max.analytics.accounts import AccountPositionMetrics
 from trading_max.analytics.sector_board import FLAT_BAND, member_session, settle
 from trading_max.domain.etf import evidenced_benchmark_id
+from trading_max.infrastructure.acwi_weights import AcwiWeightsProvider
 from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
@@ -27,7 +28,9 @@ from trading_max.reference.indices import INDEX_REGISTRY, IndexRange, IndexScope
 
 from .artifacts import ArtifactStore
 from .etf_snapshot import read_etf_portfolio
+from .global_markets import MAIN_INDEX, estimate_contribution
 from .index_models import (
+    GlobalMarketContribution,
     IndexBasket,
     IndexContext,
     IndexContribution,
@@ -117,6 +120,32 @@ def _index_clock(
         if window.open <= now
     ]
     return zone, started[-1] if started else None, started[-2].date if len(started) > 1 else None
+
+
+def _attribution_move(
+    quote: IndexQuote | None, spec: IndexSpec, day: date, now: datetime
+) -> float | None:
+    if quote is None or quote.state in {"unavailable", "stale"}:
+        return None
+    if quote.session_date == day.isoformat():
+        return quote.change
+    calendar, _ = _CLOCKS.get(spec.calendar, (None, "UTC"))
+    if calendar and quote.level is not None:
+        # Before the open the value is still yesterday's known close, but the
+        # day's change is zero. A missing quote after the open is never zero.
+        windows = exchange_sessions(calendar, day - timedelta(days=10), day)
+        prior = next(
+            (window for window in reversed(windows) if window.date < day.isoformat()), None
+        )
+        today = next((window for window in windows if window.date == day.isoformat()), None)
+        if (
+            prior
+            and quote.session_date == prior.date
+            and quote.state == "closed"
+            and (today is None or now < today.open)
+        ):
+            return 0.0
+    return None
 
 
 def _points(series: SparkSeries | None) -> list[IndexPoint]:
@@ -247,6 +276,9 @@ class IndexService:
         self.boards = boards
         self.prices = prices
         self.universes = SectorUniverseProvider(root)
+        self.acwi_weights = AcwiWeightsProvider(root)
+        self._contribution_lock = threading.Lock()
+        self._contribution: tuple[datetime, GlobalMarketContribution] | None = None
         self.root = root / "state" / "indices"
         self.now = now or (lambda: datetime.now(UTC))
         self._lock = threading.RLock()
@@ -258,6 +290,38 @@ class IndexService:
         self._ndx_late_attempts: tuple[str, int] | None = None
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
         self._histories: dict[tuple[str, str, bool], tuple[datetime, IndexHistory]] = {}
+
+    def global_contribution(self) -> GlobalMarketContribution:
+        with self._contribution_lock:
+            now = self.now()
+            cached = self._contribution
+            if cached and now - cached[0] < timedelta(minutes=4):
+                return cached[1]
+            benchmarks = {quote.index.id: quote for quote in self.market("global").quotes}
+            acwi = benchmarks.get("msci-acwi")
+            em = benchmarks.get("msci-em")
+            # ACWI is USD based. Give its two component reads the same dated cut;
+            # an earlier EM print must never be subtracted from today's ACWI.
+            day = now.astimezone(MSCI_ZONE).date()
+            while day.weekday() >= 5:
+                day -= timedelta(days=1)
+            moves = {}
+            for market, identifier in MAIN_INDEX.items():
+                quote = next(
+                    (item for item in self.market(market).quotes if item.index.id == identifier),
+                    None,
+                )
+                moves[market] = _attribution_move(quote, INDEX_REGISTRY[identifier], day, now)
+            weights, stale = self.acwi_weights.get(now)
+            valid = (
+                acwi
+                if acwi and acwi.session_date == day.isoformat() and acwi.state != "stale"
+                else None
+            )
+            em_move = _attribution_move(em, INDEX_REGISTRY["msci-em"], day, now)
+            answer = estimate_contribution(valid, weights, stale, moves, em_move)
+            self._contribution = (now, answer)
+            return answer
 
     def market(self, scope: IndexScope) -> IndexMarket:
         with self._market_locks[scope]:

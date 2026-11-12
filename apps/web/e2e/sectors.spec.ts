@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { GlobalMarketContribution } from "../workspace/global-markets";
 import type { IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -291,7 +292,7 @@ const fakeIndex = (
   calendar: "SYNTH", historyYears: 5, ranges: ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"], rights: "provider-terms", aliases: [],
   source: "Synthetic fixture",
 });
-const indices = [
+const indices: IndexIdentity[] = [
   fakeIndex("sp-500", "us", "S&P 500", "标普 500", "^GSPC", "USD"),
   fakeIndex("nasdaq-100", "us", "Nasdaq 100", "纳斯达克 100", "^NDX", "USD"),
   fakeIndex("dow-jones", "us", "Dow Jones Industrial Average", "道琼斯工业平均指数", "^DJI", "USD"),
@@ -300,8 +301,24 @@ const indices = [
   fakeIndex("nikkei-225", "jp", "Nikkei 225", "日经 225", "^N225", "JPY"),
   fakeIndex("topix", "jp", "TOPIX ETF price", "TOPIX ETF 价格", "1306.T", "JPY", "etf-price"),
   fakeIndex("msci-world", "global", "MSCI World", "MSCI 世界", "^SYN-WORLD", "USD"),
+  fakeIndex("msci-acwi", "global", "MSCI ACWI", "MSCI 全球", "^SYN-ACWI", "USD"),
+  fakeIndex("msci-world-ex-usa", "global", "MSCI World ex USA", "MSCI 世界（除美国）", "^SYN-WORLD-XUS", "USD"),
+  fakeIndex("msci-em", "global", "MSCI Emerging Markets", "MSCI 新兴市场", "^SYN-EM", "USD"),
+  fakeIndex("msci-em-imi", "global", "MSCI Emerging Markets IMI", "MSCI 新兴市场 IMI", "^SYN-IMI", "USD"),
+  fakeIndex("ftse-all-world-etf", "global", "FTSE All-World ETF price", "富时全球 ETF 价格", "SYN.L", "GBP", "etf-price"),
+  { ...fakeIndex("ftse-all-world", "global", "FTSE All-World", "富时全球指数", "", "USD"), symbol: null, rights: "licensed-source-required" },
   fakeIndex("smi", "ch", "SMI", "瑞士市场指数", "^SYN-SMI", "CHF"),
 ];
+
+const globalFixture: GlobalMarketContribution = {
+  acwiMove: -0.0044, asOf: "2026-11-12T19:00:00Z", weightsAsOf: "2026-11-11",
+  weightsStale: false, state: "partial", residual: -0.0018,
+  markets: [{ market: "us", move: -0.0035 }, { market: "jp", move: -0.007 }, { market: "ch", move: null }],
+  rows: [
+    { market: "us", indexId: "sp-500", weight: 0.63, move: -0.0035, contribution: -0.0022 },
+    { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004 },
+  ],
+};
 
 async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}) {
   const base = Date.now() - 3600_000;
@@ -317,6 +334,7 @@ async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}
   await page.route("**/api/backend/indices**", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/");
+    if (parts.at(-1) === "global-contribution") return route.fulfill({ json: globalFixture });
     if (parts.at(-1) === "catalog") return route.fulfill({ json: indices });
     if (parts.at(-1) === "history") {
       const index = indices.find((item) => item.id === parts.at(-2));
@@ -411,13 +429,61 @@ test.describe("market index layer", () => {
       if (new URL(request.url()).pathname === "/api/backend/sectors") requests += 1;
     });
     await page.goto("/sectors?market=global");
-    await expect(page.getByRole("link", { name: /MSCI 世界|MSCI World/ })).toBeVisible();
+    await expect(page.locator("#index-card-msci-world")).toBeVisible();
     await selectMarket(page, /瑞士|Switzerland/, true);
     await expect(page).toHaveURL(/market=ch/);
     await page.getByRole("link", { name: /瑞士市场指数|SMI/ }).click();
     await expect(page).toHaveURL(/market=ch&index=smi/);
     await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
     expect(requests).toBe(0);
+  });
+
+  test("Global groups benchmarks and links the map to contribution rows", async ({ page }, testInfo) => {
+    await mockIndices(page);
+    await page.goto("/sectors?market=global");
+    const benchmarks = page.locator(".mx-global-benchmark");
+    await expect(benchmarks).toHaveCount(3);
+    await expect(benchmarks.getByRole("link")).toHaveCount(6);
+    await expect(page.locator("#index-card-ftse-all-world")).toHaveCount(0);
+    const map = page.getByRole("group", { name: /全球市场地图|World market map/ });
+    const shape = map.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
+    const ranking = page.getByRole("region", { name: /对 MSCI 全球的贡献|Contribution to MSCI ACWI/ });
+    const row = ranking.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
+    await expect(ranking).toContainText(/部分报价不可用|Partial quote coverage/);
+    await expect(ranking).toContainText(/汇率与其他|Currency and other/);
+    await expect(ranking.locator(".mx-global-total")).toContainText("-0.44%");
+    if (testInfo.project.name === "desktop") {
+      await row.hover();
+      await expect(shape).toHaveAttribute("data-linked", "true");
+      await expect(shape.locator(".mx-global-shape")).toHaveCSS("stroke-width", "1.5px");
+      await map.getByRole("link", { name: /^美国|^US,/ }).focus();
+      await page.mouse.move(1, 1);
+      await page.keyboard.press("Tab");
+      await expect(map.locator("a:focus")).toHaveCount(1);
+      await shape.focus();
+      await expect(row).toHaveAttribute("data-linked", "true");
+    } else {
+      const mapBox = await map.boundingBox();
+      const rankingBox = await ranking.boundingBox();
+      expect(mapBox && rankingBox && mapBox.y + mapBox.height < rankingBox.y).toBe(true);
+      expect(await row.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+    }
+    await ranking.getByRole("button", { name: /对 MSCI 全球的贡献说明|Contribution to MSCI ACWI explained/ }).click();
+    await expect(page.getByText(/权重来自 iShares|Weights come from iShares/)).toBeVisible();
+    await page.keyboard.press("Escape");
+    if (testInfo.project.name === "desktop") {
+      await shape.focus();
+      await page.keyboard.press("Enter");
+    } else await row.tap();
+    await expect(page).toHaveURL(/market=jp/);
+  });
+
+  test("Global discloses the desktop demo’s missing quote data", async ({ page }) => {
+    const demo = process.env.DESKTOP_DEMO_QA_URL;
+    test.skip(!demo?.startsWith("http://127.0.0.1:"), "Requires the isolated desktop demo.");
+    await page.goto(new URL("/desktop/sectors?market=global", demo).href);
+    await expect(page.getByRole("heading", { name: /演示不包含全球行情|Global quotes aren’t included in the demo/ })).toBeVisible();
+    await expect(page.locator(".mx-global-rows")).toHaveCount(0);
   });
 
   test("research can open an index by its provider ticker", async ({ page }) => {

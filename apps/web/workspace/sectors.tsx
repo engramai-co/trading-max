@@ -32,6 +32,7 @@ import { formatDateTime } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
 import { Empty, Page, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { GlobalMarkets } from "./global-markets";
 import Link from "./link";
 import { IndexDetail, IndexStrip } from "./market-indices";
 import { INDEX_MARKETS, INDEX_RANGES, indexHref, indexMarket, type IndexScope } from "./market-indices-data";
@@ -65,7 +66,8 @@ export function SectorsWorkspace() {
   const openedIndex = demonstration ? null : params.get("index");
   const range = INDEX_RANGES.find((item) => item === params.get("range")) ?? "1Y";
   const indexReturn = useRef<{ id: string; scroll: number; left: number } | null>(null);
-  const requested = demonstration ? sectorMarket(params.get("market")) ?? "us" : indexMarket(params.get("market"));
+  const requested = demonstration && params.get("market") !== "global"
+    ? sectorMarket(params.get("market")) ?? "us" : indexMarket(params.get("market"));
   const requestedBoard = sectorMarket(requested);
   const indicesOnly = requested !== null && requestedBoard === null;
   const client = useQueryClient();
@@ -170,7 +172,7 @@ export function SectorsWorkspace() {
           if (!query.isFetching) void query.refetch();
         } else update({ market: value, sector: null, index: null, range: null, currency: null, compare: null });
       }}
-      options={(demonstration ? SECTOR_MARKETS : INDEX_MARKETS).map((value) => {
+      options={(demonstration ? ["global" as const, ...SECTOR_MARKETS] : INDEX_MARKETS).map((value) => {
         const boardMarket = sectorMarket(value);
         const short = boardMarket ? shortNames[boardMarket] : undefined;
         return {
@@ -308,7 +310,7 @@ export function SectorsWorkspace() {
     <Page
       title={t("市场", "Markets")}
       titleHidden
-      className="mx-sectors-page"
+      className={`mx-sectors-page${market === "global" && !openedIndex ? " mx-global-page" : ""}`}
       actions={
         openedIndex && phone ? (
           <div className="mx-sectors-bar">{indexBack}</div>
@@ -362,7 +364,8 @@ export function SectorsWorkspace() {
           {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
             <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
           )}
-          {body}
+          {market === "global" ? <GlobalMarkets demo={demonstration} onMarket={(value) =>
+            update({ market: value, sector: null, index: null, range: null, currency: null, compare: null })} /> : body}
         </>
       )}
     </Page>

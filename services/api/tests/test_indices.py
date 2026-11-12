@@ -428,3 +428,98 @@ def test_chart_windows_cache_separately_and_share_the_rate_limit(monkeypatch):
     with pytest.raises(SparkRateLimited, match="paused"):
         prices.history("ANOTHER")
     assert len(requests) == 4
+
+
+def test_global_attribution_accounts_for_pre_open_missing_quotes_and_residual(api, monkeypatch):
+    from trading_max.infrastructure.acwi_weights import AcwiWeights
+    from trading_max.reference.indices import INDEX_REGISTRY
+
+    from services.api.trading_max_api.global_markets import MAIN_INDEX
+    from services.api.trading_max_api.index_models import IndexMarket, IndexQuote
+    from services.api.trading_max_api.indices import index_identity
+
+    client, _, clock = api
+    service = client.app.state.indices
+    clock[0] = NOW + timedelta(hours=7)
+    day = NOW.date().isoformat()
+
+    def quote(identifier, change, *, session=day, state="observed"):
+        return IndexQuote(
+            index=index_identity(INDEX_REGISTRY[identifier]),
+            change=change,
+            level=100,
+            as_of=NOW,
+            session_date=session,
+            state=state,
+        )
+
+    acwi = quote("msci-acwi", -0.0044)
+    em = quote("msci-em", -0.0134)
+    moves = {market: quote(identifier, 0.01) for market, identifier in MAIN_INDEX.items()}
+    moves["us"] = quote("sp-500", -0.02, session="2026-11-05", state="closed")
+    moves["ca"] = quote("sp-tsx", None)
+    moves["jp"] = quote("nikkei-225", -0.007)
+    moves["hk"] = quote("hang-seng", 0.005)
+    calls = []
+
+    def market(scope):
+        calls.append(scope)
+        return IndexMarket(scope=scope, quotes=[acwi, em] if scope == "global" else [moves[scope]])
+
+    monkeypatch.setattr(service, "market", market)
+    weights = AcwiWeights(
+        as_of=NOW.date(),
+        fetched_at=NOW,
+        locations={
+            "United States": 0.60,
+            "Canada": 0.03,
+            "Japan": 0.05,
+            "Hong Kong": 0.04,
+            "China": 0.04,
+            "India": 0.03,
+            "South Korea": 0.02,
+            "Taiwan": 0.01,
+            "France": 0.05,
+            "Sweden": 0.05,
+            "Israel": 0.04,
+        },
+    )
+    monkeypatch.setattr(service.acwi_weights, "get", lambda _: (weights, False))
+
+    response = client.get("/v1/indices/global-contribution")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["weightsAsOf"] == day
+    assert result["state"] == "partial"
+    rows = {row["market"]: row for row in result["rows"]}
+    assert next(iter(rows)) == "em"
+    assert rows["us"]["move"] == rows["us"]["contribution"] == 0
+    assert rows["em"]["weight"] == pytest.approx(0.10)
+    assert rows["em"]["contribution"] == pytest.approx(-0.00134)
+    assert rows["eu"]["weight"] == pytest.approx(0.1)
+    assert rows["hk"]["contribution"] == pytest.approx(0.0002)
+    assert rows["jp"]["contribution"] == pytest.approx(-0.00035)
+    assert "ca" not in rows and "kr" not in rows
+    assert result["residual"] == pytest.approx(-0.00391)
+    assert result["residual"] + sum(row["contribution"] for row in rows.values()) == pytest.approx(
+        result["acwiMove"]
+    )
+    assert {item["market"]: item["move"] for item in result["markets"]}["kr"] == 0.01
+    assert client.get("/v1/indices/global-contribution").json() == result
+    assert calls.count("global") == 1
+
+    clock[0] += timedelta(hours=6)
+    moves["ca"] = quote("sp-tsx", -0.01)
+    moves["us"] = quote("sp-500", -0.0035)
+    result = client.get("/v1/indices/global-contribution").json()
+    assert result["state"] == "ready"
+    assert next(
+        row["contribution"] for row in result["rows"] if row["market"] == "us"
+    ) == pytest.approx(-0.0021)
+
+    clock[0] += timedelta(minutes=5)
+    monkeypatch.setattr(service.acwi_weights, "get", lambda _: (None, False))
+    result = client.get("/v1/indices/global-contribution").json()
+    assert result["state"] == "unavailable"
+    assert result["rows"] == []
+    assert result["residual"] is None
