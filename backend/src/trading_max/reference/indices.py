@@ -359,10 +359,11 @@ INDEX_REGISTRY = {
             "富时全球指数",
             "FTSE Russell",
             "AW01",
-            "FGI",
+            None,
             "USD",
             "FTSE-global",
             history_years=0,
+            rights="licensed-source-required",
         ),
         IndexSpec(
             "ftse-all-world-etf",

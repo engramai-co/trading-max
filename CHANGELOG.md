@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.35.1] - 2026-11-12
+
+### Fixed
+
+- The FTSE All-World index card no longer shows another listing's price. No
+  licensed index quote is configured, so the card shows none; the FTSE
+  All-World ETF price card is unchanged.
+
 ## [1.35.0] - 2026-11-12
 
 ### Added
