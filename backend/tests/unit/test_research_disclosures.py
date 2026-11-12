@@ -169,3 +169,82 @@ def test_amendment_links_require_a_verified_matching_report_period():
     assert rows[0]["amendments"][0]["id"] == "amended"
     assert "amendsId" not in rows[2]
     assert "amendments" not in filings[0]
+
+
+@pytest.mark.parametrize(
+    ("ticker", "exchange", "expect_series"),
+    [
+        ("SYNT", "NMS", True),
+        ("SYNT.L", "LSE", False),
+    ],
+)
+def test_trailing_pe_is_published_from_completed_us_closes_and_reused(
+    tmp_path, monkeypatch, ticker, exchange, expect_series
+):
+    from datetime import UTC, date, datetime
+
+    import pandas as pd
+    from trading_max.research import disclosures
+    from trading_max.research.fundamentals import YFinanceResearchService
+    from trading_max.research.trailing_pe import DilutedEps, EpsFiling
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2024, 2, 9, 19, tzinfo=tz)
+
+    class Yahoo:
+        news = ()
+
+        def get_sec_filings(self):
+            raise ValueError("synthetic Yahoo filing feed unavailable")
+
+        def history(self, *, period, auto_adjust, actions):
+            calls.append("history")
+            assert (period, auto_adjust, actions) == ("10y", False, True)
+            return pd.DataFrame(
+                {"Close": [40, 50], "Stock Splits": [0, 0]},
+                index=pd.to_datetime(["2024-02-08", "2024-02-09"]),
+            )
+
+        def get_history_metadata(self):
+            return {
+                "exchangeName": exchange,
+                "currency": "USD",
+                "instrumentType": "EQUITY",
+            }
+
+        def get_dividends(self, **kwargs):
+            return pd.Series(dtype=float)
+
+    def sec(symbol, *, since):
+        calls.append("SEC")
+        assert (symbol, since) == ("SYNT", date(2024, 2, 8))
+        end = date(2023, 12, 31)
+        return [
+            EpsFiling(
+                datetime(2024, 2, 8, 18, tzinfo=UTC),
+                end,
+                True,
+                (DilutedEps(date(2023, 1, 1), end, 4),),
+            )
+        ]
+
+    calls = []
+    monkeypatch.setattr(disclosures, "datetime", Clock)
+    monkeypatch.setattr(disclosures.yf, "Ticker", lambda symbol: Yahoo())
+    provider = disclosures.ResearchEvidenceProvider(tmp_path)
+    monkeypatch.setattr(provider.sec, "filings", sec)
+    service = YFinanceResearchService(financials_loader=lambda ticker: {}, evidence_loader=provider)
+    first = service.financials([ticker]).rows[0]
+    second = service.financials([ticker]).rows[0]
+    assert first == second
+    assert "trailingPeHistory" not in first["financials"]["evidence"]
+    if expect_series:
+        assert calls == ["history", "SEC"]
+        assert first["trailingPeHistory"]["points"] == [
+            {"date": "2024-02-08", "close": 40, "pe": 10, "earningsIndex": 0}
+        ]
+    else:
+        assert not calls
+        assert "trailingPeHistory" not in first

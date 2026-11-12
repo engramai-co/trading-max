@@ -5027,6 +5027,7 @@ export interface components {
             ticker: string;
             /** Timeline */
             timeline?: components["schemas"]["ResearchTimelinePoint"][];
+            trailingPeHistory?: components["schemas"]["TrailingPeHistory"] | null;
             valuation?: components["schemas"]["ValuationRow"] | null;
             /**
              * View
@@ -6761,6 +6762,71 @@ export interface components {
             secretKey: string;
             /** Validationtoken */
             validationToken: string;
+        };
+        /** TrailingPeDistribution */
+        TrailingPeDistribution: {
+            /** Latestpercentile */
+            latestPercentile: number | null;
+            /** Lowerquartile */
+            lowerQuartile: number;
+            /** Mean */
+            mean: number;
+            /** Median */
+            median: number;
+            /** Samples */
+            samples: number;
+            /** Standarddeviation */
+            standardDeviation: number;
+            /** Upperquartile */
+            upperQuartile: number;
+        };
+        /** TrailingPeEarnings */
+        TrailingPeEarnings: {
+            /**
+             * Effectivedate
+             * Format: date
+             */
+            effectiveDate: string;
+            /** Eps */
+            eps: number;
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "annual" | "fourQuarters" | "derivedFourthQuarter";
+            /**
+             * Periodend
+             * Format: date
+             */
+            periodEnd: string;
+        };
+        /** TrailingPeHistory */
+        TrailingPeHistory: {
+            /**
+             * Currency
+             * @default USD
+             * @constant
+             */
+            currency: "USD";
+            distribution: components["schemas"]["TrailingPeDistribution"] | null;
+            /** Earnings */
+            earnings: components["schemas"]["TrailingPeEarnings"][];
+            /** Points */
+            points: components["schemas"]["TrailingPePoint"][];
+        };
+        /** TrailingPePoint */
+        TrailingPePoint: {
+            /** Close */
+            close: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Earningsindex */
+            earningsIndex: number | null;
+            /** Pe */
+            pe: number | null;
         };
         /** UserProfile */
         UserProfile: {

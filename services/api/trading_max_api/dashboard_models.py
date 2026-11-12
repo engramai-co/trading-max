@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 from trading_max.research.facts import FinancialFacts, ResearchContext
+from trading_max.research.trailing_pe import TrailingPeHistory
 
 from .models import (
     ApiModel,
@@ -1114,6 +1115,7 @@ class ResearchLensSnapshot(ApiModel):
     context: ResearchContext | None = None
     financial_facts: FinancialFacts | None = None
     research_evidence: dict[str, Any] = Field(default_factory=dict)
+    trailing_pe_history: TrailingPeHistory | None = None
     market: dict[str, Any] | None = None
     technical: TechnicalRow | None = None
     technical_summary: TechnicalScoreSummary | None = None

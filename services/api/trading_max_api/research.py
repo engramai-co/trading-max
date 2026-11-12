@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import ValidationError
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
@@ -21,6 +23,7 @@ from trading_max.research.facts import (
 )
 from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
+from trading_max.research.trailing_pe import TrailingPeHistory
 
 from .artifacts import ArtifactStore
 from .dashboard_models import (
@@ -1281,6 +1284,14 @@ class ResearchLedger:
                 ),
             )
             payload.research_evidence = raw.get("evidence") or {}
+            trailing_pe = financial_row.get("trailingPeHistory")
+            if (
+                view == "valuation"
+                and trailing_pe is not None
+                and str(financial_row.get("ticker")).upper() == ticker
+            ):
+                with suppress(ValidationError):
+                    payload.trailing_pe_history = TrailingPeHistory.model_validate(trailing_pe)
 
         if view == "technical" or (view == "overview" and detail != "summary"):
             payload.technical = _find(

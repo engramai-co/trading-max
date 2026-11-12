@@ -8,6 +8,7 @@ import {
 import {
   DataZoomInsideComponent,
   DataZoomSliderComponent,
+  MarkAreaComponent,
   MarkPointComponent,
   VisualMapComponent,
 } from "echarts/components";
@@ -20,6 +21,7 @@ registerModules([
   DataZoomSliderComponent,
   GaugeChart,
   HeatmapChart,
+  MarkAreaComponent,
   MarkPointComponent,
   ScatterChart,
   VisualMapComponent,

@@ -70,6 +70,7 @@ export function Plot({
   research = false,
   controller,
   onZoom,
+  readPoint,
 }: {
   label: string;
   option: (colours: ChartColours) => EChartsOption;
@@ -77,6 +78,7 @@ export function Plot({
   research?: boolean;
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
+  readPoint?: (index: number) => string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -224,7 +226,7 @@ export function Plot({
             seriesIndex: 0,
             dataIndex: selected.current,
           });
-          setReading(chartReading(option, selected.current, locale, t));
+          setReading(readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t));
         }}
         ref={ref}
         style={{ height: "100%", width: "100%" }}
