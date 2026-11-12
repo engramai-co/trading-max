@@ -22,6 +22,7 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212Client,
     Trading212Credentials,
     Trading212Error,
+    Trading212RateLimiter,
     broker_snapshot_reconciliation,
     export_window,
     inspect_export_csv,
@@ -99,11 +100,20 @@ class Trading212BrokerSync:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.credentials_factory = credentials_factory
-        self.client_factory = client_factory or (
-            lambda credentials, environment: Trading212Client(credentials, environment=environment)
-        )
+        self.client_factory = client_factory or self._new_client
         self.store_factory = store_factory
         self.sleep = sleep
+        self._rate_limits: dict[tuple[str, str], Trading212RateLimiter] = {}
+
+    def _new_client(self, credentials: Trading212Credentials, environment: str) -> Trading212Client:
+        # Each job opens a new HTTP client; retain broker cooldowns and pacing
+        # across manual retries and scheduled syncs in the same worker.
+        limiter = self._rate_limits.setdefault(
+            (environment, credentials.profile), Trading212RateLimiter()
+        )
+        return Trading212Client(
+            credentials, environment=environment, sleep=self.sleep, rate_limiter=limiter
+        )
 
     @staticmethod
     def _existing_export(

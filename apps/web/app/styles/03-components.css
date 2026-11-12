@@ -360,7 +360,6 @@
 .mx-mini-bar i {
   display: block;
   height: 100%;
-  background: var(--mx-brand);
   border-radius: inherit;
 }
 .mx-chart-legend {
@@ -796,6 +795,10 @@
   position: absolute;
   inset-inline: 0;
   pointer-events: none;
+}
+.mx-money-timeline-heading > .mx-chart-legend {
+  padding: 0;
+  gap: 4px 12px;
 }
 .mx-money-drawdown,
 .mx-money-drawdown-dates,

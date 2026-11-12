@@ -2,8 +2,9 @@ import base64
 import csv
 import json
 import subprocess
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from email.utils import format_datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -42,6 +43,34 @@ CSV_HEADER = (
     "Action,Time (UTC),ISIN,Ticker,Name,ID,No. of shares,Price / share,"
     "Exchange rate,Total,Currency conversion fee\n"
 )
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.elapsed = 0.0
+        self.delays: list[float] = []
+        self.epoch = datetime(2026, 1, 1, tzinfo=UTC).timestamp()
+
+    def monotonic(self) -> float:
+        return self.elapsed
+
+    def wall_clock(self) -> float:
+        return self.epoch + self.elapsed
+
+    def sleep(self, seconds: float) -> None:
+        self.delays.append(seconds)
+        self.elapsed += seconds
+
+    def client(self, http_client: httpx.Client, **kwargs) -> Trading212Client:
+        return Trading212Client(
+            kwargs.pop("credentials", _credentials()),
+            http_client=http_client,
+            sleep=self.sleep,
+            monotonic=self.monotonic,
+            wall_clock=self.wall_clock,
+            jitter=lambda: 0.5,
+            **kwargs,
+        )
 
 
 def test_cash_only_export_merges_with_trade_history_without_inventing_fields(
@@ -107,21 +136,15 @@ def test_narrow_export_cannot_hide_securities_or_unknown_actions(
     ],
 )
 def test_broker_http_errors_keep_their_category(status: int, code: str, retryable: bool) -> None:
-    client = Trading212Client(
-        Trading212Credentials(profile="invest", api_key="test", api_secret="test"),
-        http_client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda _: httpx.Response(status, json={"error": "rejected"})
-            )
-        ),
-        sleep=lambda _: None,
-    )
-    with pytest.raises(Trading212HTTPError) as caught:
-        client.account_summary()
+    transport = httpx.MockTransport(lambda _: httpx.Response(status, json={"error": "rejected"}))
+    with (
+        httpx.Client(transport=transport) as http_client,
+        pytest.raises(Trading212HTTPError) as caught,
+    ):
+        FakeClock().client(http_client).account_summary()
     assert caught.value.status_code == status
     assert caught.value.code == code
     assert caught.value.retryable == retryable
-    client.close()
 
 
 def _position_payload(
@@ -502,7 +525,7 @@ def test_client_blocks_order_methods_before_network_request() -> None:
 
 def test_client_recovers_from_headerless_rate_limit_with_documented_backoff() -> None:
     calls = 0
-    delays: list[float] = []
+    clock = FakeClock()
 
     def handler(_: httpx.Request) -> httpx.Response:
         nonlocal calls
@@ -518,21 +541,26 @@ def test_client_recovers_from_headerless_rate_limit_with_documented_backoff() ->
         return httpx.Response(200, json={"currency": "GBP"})
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = Trading212Client(
-        _credentials(),
-        http_client=http_client,
-        sleep=delays.append,
-    )
+    client = clock.client(http_client)
 
     assert client.account_summary()["currency"] == "GBP"
     assert calls == 3
-    assert delays == [5.0, 10.0]
+    assert clock.delays == [5.5, 11.0]
     http_client.close()
 
 
-def test_client_honours_rate_limit_reset_header() -> None:
+@pytest.mark.parametrize("header", ["seconds", "date", "broker-reset", "broker-reset-ms"])
+def test_client_honours_rate_limit_reset_headers(header: str) -> None:
     calls = 0
-    delays: list[float] = []
+    clock = FakeClock()
+
+    retry_at = datetime.fromtimestamp(clock.epoch, UTC) + timedelta(seconds=12)
+    headers = {
+        "seconds": {"Retry-After": "12", "x-ratelimit-reset": str(int(clock.epoch) + 50)},
+        "date": {"Retry-After": format_datetime(retry_at, usegmt=True)},
+        "broker-reset": {"x-ratelimit-reset": str(int(retry_at.timestamp()))},
+        "broker-reset-ms": {"x-ratelimit-reset": str(int(retry_at.timestamp() * 1000))},
+    }[header]
 
     def handler(_: httpx.Request) -> httpx.Response:
         nonlocal calls
@@ -540,26 +568,125 @@ def test_client_honours_rate_limit_reset_header() -> None:
         if calls == 1:
             return httpx.Response(
                 429,
-                headers={"x-ratelimit-reset": "12"},
+                headers=headers,
                 json={"code": "BusinessException"},
             )
         return httpx.Response(200, json={"currency": "GBP"})
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = Trading212Client(
-        _credentials(),
-        http_client=http_client,
-        sleep=delays.append,
-    )
+    client = clock.client(http_client)
 
     assert client.account_summary()["currency"] == "GBP"
-    assert delays == [12.0]
+    assert clock.delays == [12.0]
     http_client.close()
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "attempts", "elapsed"),
+    [("20", 4, 60.0), ("35", 2, 35.0), ("120", 1, 0.0), ("invalid", 4, 38.5)],
+)
+def test_rate_limit_attempts_and_total_wait_are_bounded(retry_after, attempts, elapsed) -> None:
+    clock = FakeClock()
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(429, headers={"Retry-After": retry_after}, text="raw broker details")
+
+    with (
+        httpx.Client(transport=httpx.MockTransport(handler)) as http_client,
+        pytest.raises(Trading212HTTPError, match=r"rate limit reached .* Retry in") as caught,
+    ):
+        clock.client(http_client).account_summary()
+    assert len(calls) == attempts
+    assert clock.elapsed == elapsed
+    assert caught.value.retryable
+    assert caught.value.code == "provider_rate_limited"
+    assert "raw broker details" not in str(caught.value)
+
+
+def test_client_adapts_to_stricter_endpoint_limit_and_reset_after_success() -> None:
+    clock = FakeClock()
+    call_times = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_times.append((request.url.path, clock.elapsed))
+        return httpx.Response(
+            200,
+            json=[],
+            headers={
+                "x-ratelimit-limit": "1",
+                "x-ratelimit-period": "5",
+                "x-ratelimit-remaining": "0",
+                "x-ratelimit-reset": str(clock.wall_clock() + 6),
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = clock.client(http_client)
+        client.positions()
+        client.pending_orders()
+        client.positions()
+
+    assert call_times == [
+        ("/api/v0/equity/positions", 0.0),
+        ("/api/v0/equity/orders", 0.0),
+        ("/api/v0/equity/positions", 6.0),
+    ]
+
+
+def test_immediate_manual_sync_retry_respects_cash_cooldown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = FakeClock()
+    paths = []
+    raw = _snapshot_payload()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        match request.url.path:
+            case "/api/v0/equity/account/summary":
+                return httpx.Response(200, json=raw["account_summary"])
+            case "/api/v0/equity/positions":
+                return httpx.Response(200, json=raw["positions"])
+            case "/api/v0/equity/history/transactions":
+                return httpx.Response(429, headers={"Retry-After": "120"})
+            case _:
+                raise AssertionError(f"Unexpected request: {request.url.path}")
+
+    store = ManagedAccountStore("invest", data_root=tmp_path)
+    sync = Trading212BrokerSync(
+        credentials_factory=lambda _: _credentials(), store_factory=lambda _: store
+    )
+    request = BrokerSyncRequest(
+        profile="invest",
+        environment="demo",
+        export_start=date(2025, 1, 1),
+        export_end=date(2025, 1, 3),
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        monkeypatch.setattr(
+            "trading_max.application.broker_sync.Trading212Client",
+            lambda credentials, *, sleep, **kwargs: clock.client(
+                http_client, credentials=credentials, **kwargs
+            ),
+        )
+        with pytest.raises(Trading212HTTPError, match=r"rate limit reached .*120 seconds"):
+            sync.sync(request)
+        with pytest.raises(Trading212HTTPError, match=r"rate limit reached .*120 seconds"):
+            sync.sync(request)
+    assert paths == [
+        "/api/v0/equity/account/summary",
+        "/api/v0/equity/positions",
+        "/api/v0/equity/history/transactions",
+    ]
+    assert clock.delays == []
+    assert store.read_cash_transactions() == []
 
 
 def test_cash_transactions_follow_query_only_cursor_and_stop_at_overlap() -> None:
     requests: list[str] = []
-    delays: list[float] = []
+    clock = FakeClock()
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(str(request.url))
@@ -579,6 +706,8 @@ def test_cash_transactions_follow_query_only_cursor_and_stop_at_overlap() -> Non
                     "nextPagePath": "limit=50&cursor=older&time=2026-01-02T10:00:00Z",
                 },
             )
+        if len(requests) == 2:
+            return httpx.Response(429, headers={"Retry-After": "7"})
         return httpx.Response(
             200,
             json={
@@ -596,17 +725,14 @@ def test_cash_transactions_follow_query_only_cursor_and_stop_at_overlap() -> Non
         )
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = Trading212Client(
-        _credentials(),
-        http_client=http_client,
-        sleep=delays.append,
-    )
+    client = clock.client(http_client)
 
     items = client.cash_transactions(stop_references=frozenset({"known"}))
 
     assert [item["reference"] for item in items] == ["new"]
     assert "cursor=older" in requests[1]
-    assert delays == [10.1]
+    assert requests[1] == requests[2]
+    assert clock.delays == [3.0, 7.0]
     http_client.close()
 
 
@@ -620,11 +746,7 @@ def test_cash_transactions_fail_on_repeated_pagination_cursor() -> None:
         )
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = Trading212Client(
-        _credentials(),
-        http_client=http_client,
-        sleep=lambda _seconds: None,
-    )
+    client = FakeClock().client(http_client)
 
     with pytest.raises(Trading212Error, match="repeated a cursor"):
         client.cash_transactions()
@@ -634,7 +756,7 @@ def test_cash_transactions_fail_on_repeated_pagination_cursor() -> None:
 
 def test_export_creation_retries_only_an_explicit_rate_limit() -> None:
     calls = 0
-    delays: list[float] = []
+    clock = FakeClock()
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
@@ -651,11 +773,7 @@ def test_export_creation_retries_only_an_explicit_rate_limit() -> None:
         return httpx.Response(200, json={"reportId": 123})
 
     http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    client = Trading212Client(
-        _credentials(),
-        http_client=http_client,
-        sleep=delays.append,
-    )
+    client = clock.client(http_client)
 
     report_id = client.request_export(
         datetime(2025, 1, 1, tzinfo=UTC),
@@ -664,7 +782,7 @@ def test_export_creation_retries_only_an_explicit_rate_limit() -> None:
 
     assert report_id == 123
     assert calls == 2
-    assert delays == [5.0]
+    assert clock.delays == [33.0]
     http_client.close()
 
 
@@ -1101,12 +1219,12 @@ def test_broker_snapshot_only_retries_then_persists_summary_only_value(
     fake = _SequenceSnapshotClient(
         [_snapshot_payload(position_value="96.00"), _snapshot_payload(position_value="96.00")]
     )
-    delays: list[float] = []
+    clock = FakeClock()
     service = Trading212BrokerSync(
         credentials_factory=lambda _: _credentials(),
         client_factory=lambda _credentials, _environment: fake,
         store_factory=lambda profile: ManagedAccountStore(profile, data_root=tmp_path),
-        sleep=delays.append,
+        sleep=clock.sleep,
     )
 
     payload = service.snapshot_only(
@@ -1117,7 +1235,7 @@ def test_broker_snapshot_only_retries_then_persists_summary_only_value(
 
     assert payload["account_summary"]["totalValue"] == "110.00"  # type: ignore[index]
     assert fake.snapshot_calls == 2
-    assert delays == [5.0]
+    assert clock.delays == [5.0]
     assert list((tmp_path / "invest" / "snapshots").glob("snapshot_*.json"))
 
 

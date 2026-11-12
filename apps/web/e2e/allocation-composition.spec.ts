@@ -13,6 +13,10 @@ test.describe("allocation composition", () => {
     // Hit-test the final ring geometry rather than its entrance animation.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/health", (route) => route.fulfill({ json: {
+      service: "trading_max-api", status: "ok", latestRunId: null,
+    } }));
+    await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
     await page.route("**/api/backend/dashboard/lens/holdings-lookthrough", (route) => route.fulfill({ json: {
       runId: "synthetic-allocation",
       lookthrough: {
@@ -27,6 +31,20 @@ test.describe("allocation composition", () => {
     await page.getByRole("tab", { name: "Countries", exact: true }).click();
     // Phones label the same choice "Mix".
     await page.getByRole("group", { name: "Allocation chart" }).getByRole("button", { name: /^(Composition|Mix)$/ }).click();
+  });
+
+  test("uses the same blue slate for the lead slice and ranked bars in both appearances", async ({ page }) => {
+    const controls = page.getByRole("group", { name: "Allocation chart" });
+    const leadKey = page.getByRole("button", { name: "United States 70.0%" }).locator("i");
+    const leadBar = page.locator(".mx-allocation-ranking__track > span").first();
+    for (const [colorScheme, colour] of [["light", "rgb(52, 70, 93)"], ["dark", "rgb(133, 149, 169)"]] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
+      await expect(leadKey).toHaveCSS("background-color", colour);
+      await controls.getByRole("button", { name: "Rank", exact: true }).click();
+      await expect(leadBar).toHaveCSS("background-color", colour);
+      await controls.getByRole("button", { name: /^(Composition|Mix)$/ }).click();
+    }
   });
 
   test("clicking or tapping a slice fixes accurate details, including small and grouped categories", async ({ page, isMobile }) => {
@@ -89,6 +107,10 @@ test.describe("company composition", () => {
   async function openCompanies(page: Page, rows: typeof positions) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/health", (route) => route.fulfill({ json: {
+      service: "trading_max-api", status: "ok", latestRunId: null,
+    } }));
+    await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
     await page.route("**/api/backend/dashboard/lens/holdings-lookthrough", (route) => route.fulfill({ json: {
       runId: "synthetic-companies", lookthrough: {
         available: true, positions: rows, underlyingCount: rows.length, sources: [],

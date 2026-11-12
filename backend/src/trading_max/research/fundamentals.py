@@ -12,10 +12,11 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from numbers import Number
-from typing import Any
+from typing import Any, Literal
 
 import yfinance as yf
 from pydantic import Field
+from yfinance.exceptions import YFException
 
 from trading_max.domain import DomainModel
 from trading_max.research.facts import build_financial_facts
@@ -144,6 +145,9 @@ class FundamentalsBatch(DomainModel):
     generated_at: datetime
     tickers: list[str]
     rows: list[JsonObject]
+    missing: dict[str, Literal["provider-not-found", "provider-no-data"]] = Field(
+        default_factory=dict
+    )
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -209,6 +213,16 @@ def _json_safe(value: Any) -> Any:
 
 def _default_info(ticker: str) -> Mapping[str, Any]:
     return yf.Ticker(ticker).get_info()
+
+
+def _provider_not_found(exc: Exception) -> bool:
+    if getattr(getattr(exc, "response", None), "status_code", None) == 404:
+        return True
+    # yfinance's supplementary timeseries lookup wraps Yahoo's structured
+    # error in a YFException without preserving its HTTP response.
+    return isinstance(exc, YFException) and str(exc).startswith(
+        "Failed to parse json response from Yahoo Finance: {'code': 'Not Found'"
+    )
 
 
 def _default_calendar(ticker: str) -> Any:
@@ -312,9 +326,17 @@ class YFinanceResearchService:
         universe = _universe(tickers)
         rows: list[JsonObject] = []
         warnings: list[str] = []
+        missing: dict[str, Literal["provider-not-found", "provider-no-data"]] = {}
         for ticker in universe:
             try:
-                info = dict(self.info_loader(ticker))
+                info = dict(self.info_loader(ticker) or {})
+                metrics = {key: _json_safe(info.get(key)) for key in FUNDAMENTAL_KEYS}
+                # yfinance can log and swallow quoteSummary/quote errors. An
+                # empty payload (possibly with a null PEG field) is not coverage.
+                if all(value is None for value in metrics.values()):
+                    missing[ticker] = "provider-no-data"
+                    warnings.append(f"{ticker}: Yahoo Finance returned no fundamentals")
+                    continue
                 rows.append(
                     {
                         "ticker": ticker,
@@ -323,19 +345,26 @@ class YFinanceResearchService:
                         "country": str(info.get("country") or ""),
                         "sector": str(info.get("sector") or ""),
                         "industry": str(info.get("industry") or ""),
-                        "metrics": {key: _json_safe(info.get(key)) for key in FUNDAMENTAL_KEYS},
+                        "metrics": metrics,
                         "source": "yahoo-finance",
                     }
                 )
             except Exception as exc:
-                warnings.append(f"{ticker}: fundamentals unavailable ({type(exc).__name__}: {exc})")
-        if not rows:
+                if _provider_not_found(exc):
+                    missing[ticker] = "provider-not-found"
+                    warnings.append(f"{ticker}: Yahoo Finance fundamentals not found")
+                else:
+                    warnings.append(
+                        f"{ticker}: fundamentals unavailable ({type(exc).__name__}: {exc})"
+                    )
+        if not rows and len(missing) != len(universe):
             raise ResearchDataError("fundamentals returned no usable rows")
         return FundamentalsBatch(
             as_of=as_of or datetime.now(UTC).date().isoformat(),
             generated_at=datetime.now(UTC),
             tickers=universe,
             rows=rows,
+            missing=missing,
             warnings=warnings,
         )
 

@@ -2,7 +2,7 @@ import type { NavPoint } from "@/lib/types";
 import type { ChartLine } from "./charts";
 import { navNumber, type Scope } from "@/lib/portfolio/nav";
 
-/** Overview is the first performance layer, including its cash-flow baseline. */
+/** Account value and its cash-flow baseline, in pounds or relative to opening value. */
 export function portfolioValueLines(
   points: NavPoint[], scope: Scope, t: (zh: string, en: string) => string,
   percentage = false,

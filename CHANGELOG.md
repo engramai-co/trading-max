@@ -4,6 +4,35 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.32.1] - 2026-11-12
+
+### Changed
+
+- Returns & Risk leads with period net P&L, then account value and net
+  contributions, then drawdown, matching the figures above the chart.
+- The lead colour in holdings allocation is blue slate; cobalt stays reserved
+  for controls and selection.
+
+### Fixed
+
+- History legends list only the estimates and gaps actually drawn, and shaded
+  areas stop at real gaps instead of bridging them.
+- Trading 212 sync paces requests to the broker's documented limits, honours
+  Retry-After and retries rate-limited cash history pages, so a sync started
+  right after a failure no longer runs into "too many requests".
+- Account value rebuilds reuse a confirmed market listing instead of
+  downloading other listings again; London fallbacks still work.
+- Unavailable Yahoo fundamentals are reported as missing instead of failing,
+  and another share class is never substituted.
+- The desktop demo's history covers whole weekdays, so its charts no longer
+  show a gap every night.
+
+### Added
+
+- A read-only backend foundation for a future valuation agent: listing-scoped
+  public evidence, citation checks and deterministic replay of the research
+  desk's valuation. No visible change.
+
 ## [1.32.0] - 2026-11-12
 
 ### Added

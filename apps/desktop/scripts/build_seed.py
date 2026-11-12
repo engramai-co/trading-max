@@ -10,11 +10,15 @@ import math
 import sqlite3
 import sys
 import tempfile
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path[:0] = [str(ROOT), str(ROOT / "backend/src")]
+LONDON = ZoneInfo("Europe/London")
+CLOSE = time(20)
+CLOSE_SECONDS = 20 * 3600
 
 
 def main(destination: Path, end: date) -> None:
@@ -58,7 +62,7 @@ def main(destination: Path, end: date) -> None:
                         for p in PreviewPrices(end).get("BE", "1d").points
                     ]
             path.write_text(json.dumps(data), encoding="utf-8")
-        as_of = datetime.combine(end, datetime.min.time(), tzinfo=UTC) + timedelta(hours=20)
+        as_of = datetime.combine(end, CLOSE, tzinfo=LONDON).astimezone(UTC)
         totals = seed_accounts(report, as_of)
         for code, (final, cash) in totals.items():
             path = report / "yahoo_nav" / f"daily_nav_{code}.csv"
@@ -113,16 +117,19 @@ def main(destination: Path, end: date) -> None:
         fixture.seed_typed_snapshot_from_fixture(research, store)
         # These are explicitly generated observations, not interpolated real records.
         points = []
+        last_day = daily_values["a"][-1][0]
         for index, (day, invest_end) in enumerate(daily_values["a"]):
             isa_end = daily_values["b"][index][1]
             invest_start = daily_values["a"][max(0, index - 1)][1]
             isa_start = daily_values["b"][max(0, index - 1)][1]
             cadence = 600 if (end - day).days < 21 else 3600
-            for seconds in range(0, 14 * 3600 + 1, cadence):
-                fraction = seconds / (14 * 3600)
-                stamp = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(
-                    hours=6, seconds=seconds
-                )
+            day_start = datetime.combine(day, time.min, tzinfo=LONDON)
+            # Carry the close through midnight on finished weekdays. The
+            # latest observation still ends at 20:00 London time.
+            stop = CLOSE_SECONDS + 1 if day == last_day else 24 * 3600
+            for seconds in range(0, stop, cadence):
+                fraction = min(seconds / CLOSE_SECONDS, 1)
+                stamp = (day_start + timedelta(seconds=seconds)).astimezone(UTC)
                 wave = math.sin(fraction * math.pi * 4) * 2
                 invest = round(invest_start + (invest_end - invest_start) * fraction + wave, 2)
                 isa = round(isa_start + (isa_end - isa_start) * fraction + wave * 0.5, 2)
@@ -151,7 +158,7 @@ def main(destination: Path, end: date) -> None:
                     "points": points,
                 },
                 kind="intraday_nav",
-                producer_version="desktop-synthetic-v1",
+                producer_version="desktop-synthetic-v2",
             )
         ]
         first = points[0]["observed_at"]
@@ -167,13 +174,13 @@ def main(destination: Path, end: date) -> None:
                         "events": [
                             {
                                 "occurred_at": first,
-                                "accounting_date": first[:10],
+                                "accounting_date": daily_values["a"][0][0].isoformat(),
                                 "amount_gbp": initial_values[code],
                             }
                         ],
                     },
                     kind="cash_flows",
-                    producer_version="desktop-synthetic-v1",
+                    producer_version="desktop-synthetic-v2",
                 )
             )
         store.immutable_snapshots.publish(

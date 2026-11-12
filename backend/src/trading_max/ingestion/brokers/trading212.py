@@ -10,7 +10,9 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import math
 import os
+import random
 import re
 import subprocess
 import time
@@ -19,7 +21,9 @@ from contextlib import suppress
 from datetime import UTC, date, datetime
 from datetime import time as datetime_time
 from decimal import Decimal, InvalidOperation
+from email.utils import parsedate_to_datetime
 from pathlib import Path
+from threading import Lock
 from typing import Any, Literal, Self
 from urllib.parse import urlparse
 
@@ -37,18 +41,22 @@ API_BASE_URLS = {
     "demo": "https://demo.trading212.com/api/v0",
     "live": "https://live.trading212.com/api/v0",
 }
-READ_ONLY_GET_PATHS = frozenset(
-    {
-        "/equity/account/summary",
-        "/equity/positions",
-        "/equity/orders",
-        "/equity/history/dividends",
-        "/equity/history/exports",
-        "/equity/history/orders",
-        "/equity/history/transactions",
-    }
-)
 EXPORT_POST_PATH = "/equity/history/exports"
+# Even pacing from the Trading 212 public API (v0) per-endpoint quotas:
+# https://docs.trading212.com/_bundle/api.json?download=
+# Stricter runtime headers can override these minimum intervals.
+_REQUEST_INTERVALS = {
+    ("GET", "/equity/account/summary"): 5.0,  # 1 / 5s
+    ("GET", "/equity/positions"): 1.0,  # 1 / 1s
+    ("GET", "/equity/orders"): 5.0,  # 1 / 5s
+    ("GET", "/equity/history/dividends"): 3.0,  # 20 / minute
+    ("GET", "/equity/history/orders"): 3.0,  # 20 / minute
+    ("GET", "/equity/history/transactions"): 3.0,  # 20 / minute
+    ("GET", EXPORT_POST_PATH): 60.0,  # 1 / minute
+    ("POST", EXPORT_POST_PATH): 30.0,  # 1 / 30s
+}
+_MAX_REQUEST_ATTEMPTS = 4
+_MAX_REQUEST_WAIT = 65.0
 FINISHED_EXPORT_STATUSES = frozenset({"Canceled", "Failed", "Finished"})
 REQUIRED_EXPORT_COLUMNS = frozenset(
     {
@@ -114,6 +122,17 @@ class Trading212HTTPError(Trading212Error):
             else "provider_unavailable"
             if self.retryable
             else "provider_request_rejected"
+        )
+
+
+class Trading212RateLimitError(Trading212HTTPError):
+    """Retryable throttling after the request's attempt or wait budget is exhausted."""
+
+    def __init__(self, path: str, wait: float) -> None:
+        super().__init__(
+            429,
+            f"Trading 212 rate limit reached for {path} (HTTP 429). "
+            f"Retry in at least {max(1, math.ceil(wait))} seconds.",
         )
 
 
@@ -426,6 +445,65 @@ def _utc(value: object) -> datetime:
     return result.astimezone(UTC)
 
 
+def _nonnegative_header_number(value: str | None) -> float | None:
+    try:
+        number = float(value) if value is not None else math.nan
+    except ValueError:
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
+class Trading212RateLimiter:
+    """In-memory request pacing and cooldown for one broker account."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._next_request: dict[tuple[str, str], float] = {}
+        self._stricter_interval: dict[tuple[str, str], float] = {}
+        self._cooldown_until = 0.0
+
+    def reserve(self, endpoint: tuple[str, str], now: float, not_before: float) -> float:
+        """Reserve the slot if due; otherwise return how long to wait."""
+        with self._lock:
+            ready = max(self._next_request.get(endpoint, 0.0), self._cooldown_until, not_before)
+            if now < ready:
+                return ready - now
+            self._next_request[endpoint] = now + self.interval(endpoint)
+            return 0.0
+
+    def interval(self, endpoint: tuple[str, str]) -> float:
+        return max(_REQUEST_INTERVALS[endpoint], self._stricter_interval.get(endpoint, 0.0))
+
+    def observe(
+        self,
+        endpoint: tuple[str, str],
+        *,
+        sent_at: float,
+        now: float,
+        headers: httpx.Headers,
+        reset_delay: float | None,
+        cooldown: float | None,
+    ) -> None:
+        with self._lock:
+            limit = _nonnegative_header_number(headers.get("x-ratelimit-limit"))
+            period = _nonnegative_header_number(headers.get("x-ratelimit-period"))
+            if limit and period is not None:
+                self._stricter_interval[endpoint] = period / limit
+                self._next_request[endpoint] = max(
+                    self._next_request[endpoint], sent_at + self.interval(endpoint)
+                )
+            if reset_delay is not None and headers.get("x-ratelimit-remaining") == "0":
+                self._next_request[endpoint] = max(self._next_request[endpoint], now + reset_delay)
+            if cooldown is not None:
+                # Treat a broker 429 as account-wide for the cooldown: a fresh
+                # sync must not replay its earlier endpoints during that window.
+                self._cooldown_until = max(self._cooldown_until, now + cooldown)
+
+    def retry_wait(self, endpoint: tuple[str, str], now: float) -> float:
+        with self._lock:
+            return max(self._cooldown_until, self._next_request.get(endpoint, 0.0)) - now
+
+
 class Trading212Client:
     """Allowlisted Trading 212 client.
 
@@ -444,6 +522,9 @@ class Trading212Client:
         http_client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+        jitter: Callable[[], float] = random.random,
+        rate_limiter: Trading212RateLimiter | None = None,
     ) -> None:
         if environment not in API_BASE_URLS:
             raise ValueError(f"environment must be one of {sorted(API_BASE_URLS)}")
@@ -459,6 +540,9 @@ class Trading212Client:
         self._auth = httpx.BasicAuth(credentials.api_key, credentials.api_secret)
         self._sleep = sleep
         self._monotonic = monotonic
+        self._wall_clock = wall_clock
+        self._jitter = jitter
+        self._rate_limiter = rate_limiter or Trading212RateLimiter()
         self._origin = self.base_url.removesuffix("/api/v0")
 
     def __enter__(self) -> Self:
@@ -493,39 +577,37 @@ class Trading212Client:
     def _assert_allowed(cls, method: str, path: str) -> None:
         canonical = cls._canonical_path(path)
         method = method.upper()
-        allowed = (method == "GET" and canonical in READ_ONLY_GET_PATHS) or (
-            method == "POST" and canonical == EXPORT_POST_PATH
-        )
-        if not allowed:
+        if (method, canonical) not in _REQUEST_INTERVALS:
             raise Trading212Error(
                 f"blocked non-read-only Trading 212 request: {method} {canonical}"
             )
 
-    @staticmethod
-    def _retry_delay(response: httpx.Response, attempt: int) -> float:
-        retry_after = response.headers.get("retry-after")
-        if retry_after:
-            try:
-                return min(max(float(retry_after), 0.0), 65.0)
-            except ValueError:
-                pass
-        reset = response.headers.get("x-ratelimit-reset")
-        if reset:
-            try:
-                reset_value = float(reset)
-                if reset_value > 1_000_000_000_000:
-                    reset_value /= 1000
-                if reset_value > 1_000_000_000:
-                    return min(max(reset_value - time.time(), 0.0), 65.0)
-                return min(max(reset_value, 0.0), 65.0)
-            except ValueError:
-                pass
-        # The account-summary endpoint is limited to one request every five
-        # seconds. When Trading 212 omits its reset headers, a one-second first
-        # retry simply burns through the remaining attempts inside the same
-        # rate-limit window. Start at the documented five-second floor and
-        # back off from there.
-        return min(5 * (2**attempt), 30.0)
+    def _reset_delay(self, headers: httpx.Headers) -> float | None:
+        reset = _nonnegative_header_number(headers.get("x-ratelimit-reset"))
+        if reset is None:
+            return None
+        # The documented value is a Unix timestamp; accept milliseconds too.
+        if reset >= 1_000_000_000_000:
+            reset /= 1000
+        return max(0.0, reset - self._wall_clock())
+
+    def _retry_after(self, headers: httpx.Headers) -> float | None:
+        value = headers.get("retry-after")
+        if not value:
+            return None
+        delay = _nonnegative_header_number(value)
+        if delay is not None:
+            return delay
+        try:
+            stamp = parsedate_to_datetime(value)
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=UTC)
+            return max(0.0, stamp.timestamp() - self._wall_clock())
+        except (ValueError, OverflowError):
+            return None
+
+    def _backoff(self, attempt: int, *, floor: float) -> float:
+        return min(floor * (2**attempt), 60.0) * (1.0 + 0.2 * self._jitter())
 
     @staticmethod
     def _error_message(response: httpx.Response) -> str:
@@ -542,19 +624,31 @@ class Trading212Client:
         path: str,
         *,
         json_body: dict[str, Any] | None = None,
-        max_attempts: int = 6,
     ) -> Any:
         method = method.upper()
         self._assert_allowed(method, path)
+        canonical = self._canonical_path(path)
+        endpoint = (method, canonical)
         url = self._api_url(path)
         # The only allowlisted POST creates a read-only CSV export. A 429
-        # explicitly means the broker did not accept that operation, so it is
-        # safe to retry after the rate-limit window. Network failures and 5xx
-        # responses remain single-attempt for POST because their acceptance
-        # state is ambiguous.
-        attempts = max_attempts
+        # means the broker rejected it; a transport error or 5xx could mean
+        # it was accepted, so those outcomes are never replayed here.
         retryable_statuses = {429} if method == "POST" else {408, 429, 500, 502, 503, 504}
-        for attempt in range(attempts):
+        remaining_wait = _MAX_REQUEST_WAIT
+        not_before = 0.0
+        failure: Trading212Error | None = None
+        for attempt in range(_MAX_REQUEST_ATTEMPTS):
+            while True:
+                sent_at = self._monotonic()
+                wait = self._rate_limiter.reserve(endpoint, sent_at, not_before)
+                if wait <= 0:
+                    break
+                if wait > remaining_wait:
+                    if failure is not None:
+                        raise failure
+                    raise Trading212RateLimitError(canonical, wait)
+                self._sleep(wait)
+                remaining_wait -= wait
             try:
                 response = self._http.request(
                     method,
@@ -564,27 +658,65 @@ class Trading212Client:
                     follow_redirects=False,
                 )
             except httpx.RequestError as exc:
-                if method == "POST" or attempt + 1 >= attempts:
-                    raise Trading212Error(
-                        f"Trading 212 request failed: {method} "
-                        f"{self._canonical_path(path)} ({type(exc).__name__})"
-                    ) from exc
-                self._sleep(min(2**attempt, 30.0))
+                failure = Trading212Error(
+                    f"Trading 212 request failed: {method} {canonical} ({type(exc).__name__})"
+                )
+                if method == "POST" or attempt + 1 >= _MAX_REQUEST_ATTEMPTS:
+                    raise failure from exc
+                not_before = self._monotonic() + self._backoff(attempt, floor=1.0)
                 continue
-            if response.status_code in retryable_statuses and attempt + 1 < attempts:
-                self._sleep(self._retry_delay(response, attempt))
-                continue
+
+            now = self._monotonic()
+            reset = self._reset_delay(response.headers)
+            cooldown = None
+            if response.status_code == 429:
+                cooldown = self._retry_after(response.headers)
+                if cooldown is None:
+                    cooldown = (
+                        reset
+                        if reset
+                        else self._backoff(
+                            attempt,
+                            floor=max(5.0, min(30.0, self._rate_limiter.interval(endpoint))),
+                        )
+                    )
+                # Even Retry-After: 0 cannot bypass endpoint pacing.
+                cooldown = max(cooldown, sent_at + self._rate_limiter.interval(endpoint) - now)
+
+            self._rate_limiter.observe(
+                endpoint,
+                sent_at=sent_at,
+                now=now,
+                headers=response.headers,
+                reset_delay=reset,
+                cooldown=cooldown,
+            )
             if response.is_error:
-                raise Trading212HTTPError(response.status_code, self._error_message(response))
+                if response.status_code == 429:
+                    failure = Trading212RateLimitError(
+                        canonical, self._rate_limiter.retry_wait(endpoint, now)
+                    )
+                else:
+                    failure = Trading212HTTPError(
+                        response.status_code, self._error_message(response)
+                    )
+                if response.status_code not in retryable_statuses or (
+                    attempt + 1 >= _MAX_REQUEST_ATTEMPTS
+                ):
+                    raise failure
+                if cooldown is None:
+                    delay = self._retry_after(response.headers)
+                    not_before = now + (
+                        self._backoff(attempt, floor=1.0) if delay is None else delay
+                    )
+                continue
             try:
                 return response.json()
             except ValueError as exc:
                 raise Trading212Error(
-                    f"Trading 212 returned non-JSON data for {method} {self._canonical_path(path)}"
+                    f"Trading 212 returned non-JSON data for {method} {canonical}"
                 ) from exc
-        raise Trading212Error(
-            f"Trading 212 request exhausted retries: {method} {self._canonical_path(path)}"
-        )
+        raise AssertionError("unreachable retry state")
 
     def account_summary(self) -> dict[str, Any]:
         payload = self._request_json("GET", "/equity/account/summary")
@@ -611,9 +743,8 @@ class Trading212Client:
     ) -> list[dict[str, Any]]:
         """Fetch cash movements missing from the richer CSV ledger.
 
-        Trading 212 paginates this endpoint newest-first and limits it to six
-        requests per minute.  Existing references let routine syncs stop on
-        the first overlapping page; a first installation intentionally walks
+        Trading 212 paginates this endpoint newest-first. Existing references
+        let routine syncs stop on the first overlapping page; a first installation walks
         the complete history so transfers to and from the card wallet are not
         lost from NAV reconstruction.
         """
@@ -621,13 +752,11 @@ class Trading212Client:
         path = "/equity/history/transactions?limit=50"
         items: list[dict[str, Any]] = []
         visited_paths: set[str] = set()
-        for page in range(500):
+        for _ in range(500):
             if path in visited_paths:
                 raise Trading212Error("cash transaction pagination repeated a cursor")
             visited_paths.add(path)
-            if page:
-                self._sleep(10.1)
-            payload = self._request_json("GET", path, max_attempts=1)
+            payload = self._request_json("GET", path)
             if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
                 raise Trading212Error("cash transactions response was not a paginated object")
             page_items = [item for item in payload["items"] if isinstance(item, dict)]

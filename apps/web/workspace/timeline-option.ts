@@ -57,7 +57,7 @@ export function timelineOption(
   display?: TimelineDisplay,
   provenance?: Array<{ estimated: boolean; note: string }>,
   moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
-): EChartsOption {
+): EChartsOption & { series: SeriesOption[] } {
   const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
   const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : times.indexOf(position);
@@ -127,9 +127,8 @@ export function timelineOption(
       top: top(index),
       height: moneyLayout?.grids[index]?.height ?? (index === 0 ? 210 : 150),
     })),
-    // The legend above names the first plot; plots stacked under it name
-    // themselves. Units live on the ticks.
-    graphic: layers.slice(1, moneyLayout ? -1 : undefined).map((layer, index) => ({
+    // Money pane labels are HTML; the return comparison still labels its lower plot here.
+    graphic: moneyLayout ? [] : layers.slice(1).map((layer, index) => ({
       type: "text",
       left: 0,
       top: top(index + 1) - 28,
@@ -174,15 +173,17 @@ export function timelineOption(
       const observed = layer.lines
         .flatMap((line) => line.values)
         .filter((v): v is number => v != null);
-      const range = moneyLayout && index > 0 ? moneyAxis(observed, !!layer.drawdown, !!layer.percentage) : undefined;
+      const range = moneyLayout && (layer.zeroBaseline || layer.drawdown)
+        ? moneyAxis(observed, !!layer.drawdown, !!layer.percentage) : undefined;
+      const autoScale = moneyLayout ? !range : index === 0;
       const allZero =
         observed.length > 0 && observed.every((value) => value === 0);
       return {
         type: "value",
         gridIndex: index,
         scale: true,
-        boundaryGap: index === 0 ? ["8%", "8%"] : [0, 0],
-        splitNumber: index === 0 ? 4 : 2,
+        boundaryGap: autoScale ? ["8%", "8%"] : [0, 0],
+        splitNumber: autoScale ? 4 : 2,
         ...(range ?? (layer.drawdown
           ? {
               max: 0,
@@ -316,8 +317,8 @@ export function timelineOption(
           tooltip: { show: false },
           symbol: "none",
           showSymbol: false,
-          // Gaps stay bridged: the fill continues under the dotted bridge.
-          connectNulls: true,
+          // Only the dotted connector crosses a gap.
+          connectNulls: false,
           step: line.step,
           lineStyle: { width: 0, opacity: 0 },
           areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
@@ -339,7 +340,10 @@ export function timelineOption(
           data: strokes.observed,
           lineStyle: { color: colour, width: line.dashed ? 1.5 : 2.5, type: line.dashed ? "dashed" as const : "solid" as const },
         } satisfies SeriesOption] : [];
-        const reconstructed = strokes.reconstructed.some((point) => point.value[1] != null) ? [{
+        // A lone reconstructed point has no visible dashed stroke.
+        const reconstructed = strokes.reconstructed.some((point, index, points) =>
+          point.value[1] != null && points[index - 1]?.value[1] != null,
+        ) ? [{
           ...sourceStroke,
           id: `history-estimate:${axis}:${index}`,
           data: strokes.reconstructed,

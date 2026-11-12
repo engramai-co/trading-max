@@ -405,7 +405,7 @@ class FundamentalsArtifactStage:
     """Fetch and normalize fundamentals for the current watchlist."""
 
     name = "research.fundamentals"
-    version = "fundamentals-v7"
+    version = "fundamentals-v8"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 

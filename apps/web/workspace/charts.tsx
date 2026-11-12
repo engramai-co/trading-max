@@ -599,15 +599,17 @@ export function HistoryChart({
 export function Legend({
   items,
 }: {
-  items: Array<{ label: string; colour?: string }>;
+  items: Array<{ label: string; colour?: string; dashed?: boolean }>;
 }) {
   return (
     <div className="mx-chart-legend">
       {items.map((item, i) => (
         <span key={item.label}>
-          <i
-            style={{ background: item.colour ?? "var(--mx-chart-" + i + ")" }}
-          />
+          {item.dashed ? (
+            <svg width="15" height="4" aria-hidden="true">
+              <path d="M0 2h15" stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray="4 3" />
+            </svg>
+          ) : <i style={{ background: item.colour ?? `var(--mx-chart-${i})` }} />}
           {item.label}
         </span>
       ))}

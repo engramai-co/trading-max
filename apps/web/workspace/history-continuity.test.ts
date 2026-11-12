@@ -113,7 +113,7 @@ describe("observable gaps and one accounting cutoff", () => {
     const tooltip = option.tooltip as { formatter: (input: unknown) => string };
     expect(tooltip.formatter([{ seriesId: gap?.id, value: [4, 104] }])).toBe("");
   });
-  it("bridges the area without changing observations, adding zero values, or extending past either endpoint", () => {
+  it("breaks the area at missing observations without inventing values or extending past either endpoint", () => {
     const values = [null, 0, null, null, -4, 5, null, 7, null];
     const original = [...values];
     const option = timelineOption(dates, [{ label: "P&L", zeroBaseline: true, lines: [{ name: "Net P&L", values, area: true }] }], {} as ChartColours, String,
@@ -123,7 +123,7 @@ describe("observable gaps and one accounting cutoff", () => {
     const fill = series.find((line) => line.id?.startsWith("history-area:"))!;
     expect(observed.connectNulls).toBe(false);
     expect(observed.areaStyle).toBeUndefined();
-    expect(fill).toMatchObject({ connectNulls: true, silent: true, tooltip: { show: false }, areaStyle: { origin: 0 } });
+    expect(fill).toMatchObject({ connectNulls: false, silent: true, tooltip: { show: false }, areaStyle: { origin: 0 } });
     expect(fill.data).toEqual(observed.data);
     expect(fill.data[0].value).toEqual([0, null]);
     expect(fill.data.at(-1)?.value).toEqual([8, null]);

@@ -11,6 +11,7 @@ import {
 } from "@mantine/core";
 import { ArrowDown, MagnifyingGlass } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { useAllocationChartColours } from "@/ui/charts/palette";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
@@ -66,6 +67,7 @@ export function HoldingsWorkspace() {
 }
 function Positions() {
   const t = useCopy();
+  const [barColour] = useAllocationChartColours();
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
@@ -374,6 +376,7 @@ function Positions() {
                               <div className="mx-mini-bar" aria-hidden="true">
                                 <i
                                   style={{
+                                    backgroundColor: barColour,
                                     width: percent(
                                       largestAllocation > 0
                                         ? Math.min(1, Math.max(0, h.allocationPct / largestAllocation))
@@ -424,7 +427,7 @@ function Positions() {
                         </span>
                         <span className="mx-weight">
                           <span className="mx-mini-bar" aria-hidden="true">
-                            <i style={{ width: `${largestAllocation > 0 ? (h.allocationPct / largestAllocation) * 100 : 0}%` }} />
+                            <i style={{ width: `${largestAllocation > 0 ? (h.allocationPct / largestAllocation) * 100 : 0}%`, backgroundColor: barColour }} />
                           </span>
                           <span className="sr-only">{t("组合权重", "Weight")} </span>
                           {percent(h.allocationPct)}

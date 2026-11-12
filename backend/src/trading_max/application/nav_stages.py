@@ -19,6 +19,7 @@ from trading_max.analytics.day_attribution import (
     window_days,
 )
 from trading_max.analytics.historical_nav import (
+    HistoricalListingCache,
     HistoricalNavError,
     HistoryLoader,
     reconstruct_historical_nav,
@@ -120,6 +121,11 @@ class AccountNavStage:
         self.snapshots = snapshots
         self.state_root = state_root.expanduser().resolve() if state_root is not None else None
         self.history_loader = history_loader
+        self.listing_cache = (
+            HistoricalListingCache(self.state_root / "cache" / "nav-listings-v1")
+            if self.state_root is not None
+            else None
+        )
 
     def _historical_export(self, profile: str) -> Path | None:
         if self.state_root is None:
@@ -280,6 +286,7 @@ class AccountNavStage:
                         account=account.payload,
                         cash_transactions_path=self._cash_transactions(profile),
                         previous_nav=previous.path.read_bytes() if previous is not None else None,
+                        listing_cache=self.listing_cache,
                         **kwargs,
                     )
                     content = reconstruction.content

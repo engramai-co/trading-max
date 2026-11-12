@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from trading_max.analytics.historical_nav import (
+    HistoricalListingCache,
     HistoricalNavError,
     _candidate_symbols,
     _resolve_price_series,
@@ -168,6 +169,73 @@ def test_nav_refresh_reuses_reconciled_cash_flows_but_rechecks_changed_cash(tmp_
     checked = refresh({**marked, "cash_gbp": 75, "total_value_gbp": 145})
     assert calls
     assert all(not flow["verified"] for flow in checked)
+
+
+def test_confirmed_listing_survives_next_rebuild_and_is_rediscovered_after_expiry(tmp_path):
+    export = _export(tmp_path / "ledger.csv")
+    calls = []
+    now = 100.0
+
+    def prices(symbol, start, end):
+        calls.append(symbol)
+        return _history(symbol, start, end)
+
+    def rebuild():
+        return reconstruct_historical_nav(
+            export_path=export,
+            account=_account(),
+            history_loader=prices,
+            listing_cache=HistoricalListingCache(tmp_path / "listings", clock=lambda: now),
+        )
+
+    original = rebuild()
+    assert original.symbols == {"isin:US0000000001": "AAA"}
+    assert calls == ["GBPUSD=X", "AAA", "AAA.L"]
+
+    calls.clear()
+    assert rebuild().content == original.content
+    assert calls == ["GBPUSD=X", "AAA"]
+
+    now += HistoricalListingCache.max_age_seconds
+    calls.clear()
+    assert rebuild().content == original.content
+    assert calls == ["GBPUSD=X", "AAA", "AAA.L"]
+
+
+@pytest.mark.parametrize("failure", ["empty", "mismatch"])
+def test_unusable_cached_listing_rediscovers_london_usd_listing(tmp_path, failure):
+    export = _export(tmp_path / "ledger.csv")
+    cache = HistoricalListingCache(tmp_path / "listings")
+    calls = []
+    use_london = False
+
+    def prices(symbol, start, end):
+        calls.append(symbol)
+        if not use_london:
+            return _history(symbol, start, end)
+        if symbol == "AAA":
+            return pd.DataFrame() if failure == "empty" else _history("AAA", start, end) * 10
+        return _history("AAA" if symbol == "AAA.L" else symbol, start, end)
+
+    def rebuild():
+        return reconstruct_historical_nav(
+            export_path=export,
+            account=_account(),
+            history_loader=prices,
+            listing_cache=cache,
+        )
+
+    original = rebuild()
+    use_london = True
+    calls.clear()
+    london = rebuild()
+    assert london.symbols == {"isin:US0000000001": "AAA.L"}
+    assert london.content == original.content
+    assert calls == ["GBPUSD=X", "AAA", "AAA.L"]
+
+    calls.clear()
+    assert rebuild().symbols == london.symbols
+    assert calls == ["GBPUSD=X", "AAA.L"]
 
 
 def test_usd_quote_currency_still_discovers_london_listing() -> None:

@@ -13,13 +13,19 @@ def row_identity(row: dict[str, Any]) -> str:
 
 def row_clocks(payload: dict[str, Any], *, generated_at: str | None = None) -> dict[str, dict]:
     existing = payload.get("rowClocks") or {}
-    result = {}
+    result = {
+        ticker: {
+            "state": "missing",
+            "reason": reason,
+            "lastAttemptAt": payload.get("generated_at") or generated_at,
+        }
+        for ticker, reason in (payload.get("missing") or {}).items()
+    }
     for row in payload.get("rows") or []:
         ticker = row_identity(row)
         if not ticker:
             continue
-        clock = existing.get(ticker)
-        result[ticker] = clock or {
+        result[ticker] = {
             "state": "available",
             "asOf": row.get("asOf")
             or row.get("as_of")
@@ -29,7 +35,7 @@ def row_clocks(payload: dict[str, Any], *, generated_at: str | None = None) -> d
             "lastSuccessfulAt": payload.get("generated_at") or generated_at,
             "version": fingerprint(row),
         }
-    return result
+    return {**result, **existing}
 
 
 def merge_rows(
@@ -45,14 +51,19 @@ def merge_rows(
         return payload
     old = {row_identity(r): r for r in old_rows if isinstance(r, dict)}
     new = {row_identity(r): r for r in new_rows if isinstance(r, dict)}
-    clocks = row_clocks(previous)
-    clocks.update(row_clocks(payload))
+    previous_clocks = row_clocks(previous)
+    fresh_clocks = row_clocks(payload)
+    clocks = {**previous_clocks, **fresh_clocks}
     attempted = {s.upper() for s in refreshed}
     for ticker in attempted - new.keys():
+        fresh = fresh_clocks.get(ticker, {})
+        reason = fresh.get("reason") if fresh.get("state") == "missing" else None
+        reason = reason or "refresh-failed"
+        retained = ticker in old
         clocks[ticker] = {
-            **clocks.get(ticker, {}),
-            "state": "stale" if ticker in old else "missing",
-            "reason": "refresh-failed-retained" if ticker in old else "refresh-failed",
+            **(previous_clocks.get(ticker, {}) if retained else {}),
+            "state": "stale" if retained else "missing",
+            "reason": f"{reason}-retained" if retained else reason,
             "lastAttemptAt": payload.get("generated_at"),
         }
     return {

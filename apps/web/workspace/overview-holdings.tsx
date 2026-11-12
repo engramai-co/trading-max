@@ -1,10 +1,9 @@
 "use client";
 
-import { useComputedColorScheme } from "@mantine/core";
 import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { DashboardLens, Holding } from "@/lib/types";
-import { allocationChartColours } from "@/ui/charts/palette";
+import { useAllocationChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate } from "@/ui/formatters";
 import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
@@ -105,8 +104,7 @@ export function OverviewHoldings({ holdings, technical, valuations }: {
   const t = useCopy();
   const { locale } = useLocale();
   const { today, now } = useCurrentDay();
-  const scheme = useComputedColorScheme("light");
-  const palette = allocationChartColours[scheme];
+  const palette = useAllocationChartColours();
   const [focus, setFocus] = useState<Focus | null>(null);
   const ledger = useMemo(
     () => holdingsLedger({ holdings, technical, valuations, signals: holdingSignals({ holdings, technical, valuations }) }),
