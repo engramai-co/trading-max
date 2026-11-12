@@ -1,37 +1,52 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.31.2 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.34.0 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.31.2).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.34.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.31.2
+## Verified scope for 1.34.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
 
 Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
 older-version fixture built from the 1.31.0 source with its updater unchanged;
-1.31.2 changes no updater code.
+1.34.0 changes no updater code.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.31.2 DMG and reached **Ready to Install**;
+downloaded the exact final 1.34.0 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
-connection and disabled auto-open preference were unchanged. All 20,313
+connection and disabled auto-open preference were unchanged. All 20,335
 installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
 with Cmd-Q stopped its owned services.
 
+On an English-first Mac the updated App opened in Simplified Chinese. Switching
+the App language in **Settings → General** changed open App windows at once,
+kept an unsaved connection form, and persisted across a relaunch. A recent
+workspace whose folder no longer exists was listed as unavailable, could be
+removed from the list, and was never recreated.
+
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-An installed 1.31.0 App discovered and downloaded the public 1.31.2 update
+An installed 1.31.2 App discovered and downloaded the public 1.34.0 update
 through App Settings, reached **Ready to Install** and installed it through
 **Install and Relaunch**. Its connection and startup preferences were unchanged,
 the installed bundle matched the accepted package exactly, and it reconnected to
 its saved HTTPS service.
 
+Version 1.34.0 brings the workspace's changes since 1.31.2 to the App. Pages
+refresh when a new snapshot is published and pick up a newer web version on the
+next move to another page; reopening shows the latest figures with their
+original data times while they refresh. Returns & Risk leads with period net
+P&L. Trading 212 sync paces its requests to the broker's limits. The research
+desk charts trailing P/E for US stocks and gives ETFs their own lenses, with
+tracking and overlap readings in the overview and holdings details. App
+Settings → General chooses the App language (Simplified Chinese by default),
+and removed workspaces are marked unavailable.
 Version 1.31.2 brings the workspace's changes since 1.31.0 to the App: a first
 account sync accepts cash reserved for pending orders; uninvested pie cash
 counts only when Trading 212's account total includes it, so account updates no

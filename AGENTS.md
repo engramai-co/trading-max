@@ -128,6 +128,21 @@ break any existing feature.
   `Content-Encoding` and show a data error.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
 
+## Web release pitfalls
+
+- CI does not run Playwright. Run the end-to-end suite before a release pull
+  request against the seeded synthetic broker preview
+  ([guide](docs/operations/broker-mock-preview.md)), not an unreachable backend:
+  without a backend about 70 specs fail for environmental reasons. Read the
+  summary's failed count; the tail of its output lists failures, not skips.
+- Dispatch the ops deployment only after the Release workflow has published
+  the version tag. An earlier dispatch fails without touching production.
+- A running backup holds the deployment lock. The deployment then fails and
+  production keeps the previous release; retry once the backup finishes.
+- A new worktree needs `uv sync --frozen --all-packages`. Desktop Rust checks
+  also need `apps/desktop/scripts/prepare_sparkle.py` and an
+  `apps/desktop/payload` directory, as in CI.
+
 ## Trading 212 balances
 
 - The account summary's `totalValue` leaves out uninvested pie cash
