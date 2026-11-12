@@ -10,11 +10,14 @@ history is never presented as a broker-native observation.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import math
+import time
 from bisect import bisect_left
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -26,6 +29,7 @@ import yfinance as yf
 
 from trading_max.analytics.cash_flow_history import AccountCashFlow, AccountCashFlowHistory
 from trading_max.analytics.ledger import load_transactions
+from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.reference.historical_listings import historical_listing_symbols
 
 EXTERNAL_FLOW_ACTIONS = frozenset({"deposit", "withdrawal", "card debit", "spending cashback"})
@@ -72,6 +76,45 @@ class HistoricalNavError(ValueError):
 
 
 HistoryLoader = Callable[[str, date, date], pd.DataFrame]
+
+
+class HistoricalListingCache:
+    """Disposable Yahoo symbol hints, scoped to one workspace."""
+
+    max_age_seconds = 7 * 24 * 3600
+
+    def __init__(self, directory: Path, *, clock: Callable[[], float] = time.time) -> None:
+        self.directory = directory
+        self.clock = clock
+
+    def path(self, isin: str, currency: str, candidates: tuple[str, ...]) -> Path:
+        # ISIN prevents same-ticker cross-listing collisions. Changes to aliases,
+        # broker ticker, quote currency or the historical candidate list miss the cache.
+        key = json.dumps((isin, currency, candidates)).encode()
+        return self.directory / (hashlib.sha256(key).hexdigest() + ".json")
+
+    def get(self, path: Path) -> str | None:
+        try:
+            if path.is_symlink():
+                return None
+            cached = json.loads(path.read_bytes())
+            if 0 <= self.clock() - cached["confirmed_at"] < self.max_age_seconds:
+                symbol = cached["symbol"]
+                return symbol if isinstance(symbol, str) else None
+        except (OSError, KeyError, ValueError, TypeError):
+            pass
+        return None
+
+    def discard(self, path: Path) -> None:
+        with suppress(OSError):
+            path.unlink(missing_ok=True)
+
+    def put(self, path: Path, symbol: str) -> None:
+        with suppress(OSError, ValueError):
+            atomic_bytes(
+                path,
+                json.dumps({"symbol": symbol, "confirmed_at": self.clock()}).encode(),
+            )
 
 
 @dataclass(frozen=True)
@@ -529,28 +572,26 @@ def _resolve_price_series(
     cash_fx: pd.DataFrame,
     history_loader: HistoryLoader,
     allow_trade_only: bool,
+    listing_cache: HistoricalListingCache | None = None,
 ) -> tuple[str, pd.Series]:
     trades = rows[
         rows["TradePrice"].notna()
         & rows["Action"].astype(str).str.contains("buy|sell", case=False, regex=True)
     ].copy()
     observed = _observed_trade_gbp(trades, cash_fx)
-    best: tuple[float, str, pd.Series] | None = None
     failures: list[str] = []
-    for symbol in _candidate_symbols_from_ledger(
-        ticker,
-        currency,
-        isin=isin,
-        rows=rows,
-    ):
+    left = observed.to_numpy(dtype=float)
+    comparable = np.isfinite(left) & (left > 0)
+
+    def evaluate(symbol: str) -> tuple[float, str, pd.Series, bool] | None:
         try:
             nominal = _nominal_close(history_loader(symbol, start, end))
         except Exception as exc:
             failures.append(f"{symbol}: {type(exc).__name__}")
-            continue
+            return None
         if nominal.empty:
             failures.append(f"{symbol}: empty")
-            continue
+            return None
         quote_modes: dict[str, pd.Series] = {
             "GBP": nominal,
             "GBX": nominal / 100.0,
@@ -561,28 +602,53 @@ def _resolve_price_series(
             rate = cash_fx[quote_currency].reindex(nominal.index).ffill().bfill()
             if rate.notna().all() and (rate > 0).all():
                 quote_modes[quote_currency] = nominal / rate
-        # ``gbpusd`` remains an explicit input because it is the mandatory FX
-        # bootstrap series.  It also covers USD quote currencies when no USD
-        # wallet happens to exist in the broker export.
+        # GBP/USD also covers USD quotes when there is no USD wallet.
         quote_modes.setdefault(
             "USD",
             nominal / gbpusd.reindex(nominal.index).ffill().bfill(),
         )
+        best = None
         for mode, converted in quote_modes.items():
+            confirmed = False
             if trades.empty or observed.dropna().empty:
-                mode_score = 0.0 if mode == currency else 1.0
-                candidate = (mode_score, symbol, converted)
+                score = 0.0 if mode == currency else 1.0
             else:
                 candidate_prices = converted.reindex(trades["BusinessDate"], method="ffill")
-                left = observed.to_numpy(dtype=float)
                 right = candidate_prices.to_numpy(dtype=float)
-                valid = np.isfinite(left) & np.isfinite(right) & (left > 0) & (right > 0)
+                valid = comparable & np.isfinite(right) & (right > 0)
                 if not valid.any():
                     continue
                 score = float(np.median(np.abs(np.log(left[valid] / right[valid]))))
-                candidate = (score, symbol, converted)
-            if best is None or candidate[0] < best[0]:
-                best = candidate
+                # Skipping fresh discovery requires all comparable trades to
+                # be covered and a stronger price match than initial selection.
+                confirmed = (
+                    valid.sum() == comparable.sum()
+                    and converted.index.max() >= trades.loc[valid, "BusinessDate"].max()
+                    and score <= math.log(1.10)
+                )
+            if best is None or score < best[0]:
+                best = (score, symbol, converted, confirmed)
+        return best
+
+    candidates = _candidate_symbols_from_ledger(ticker, currency, isin=isin, rows=rows)
+    cache_path = None
+    cached_symbol = None
+    cached = None
+    if listing_cache is not None and isin and len(candidates) > 1:
+        cache_path = listing_cache.path(isin, currency, candidates)
+        cached_symbol = listing_cache.get(cache_path)
+        if cached_symbol in candidates:
+            cached = evaluate(cached_symbol)
+            if cached is None or not cached[3]:
+                listing_cache.discard(cache_path)
+    if cached is not None and cached[3]:
+        best = cached
+    else:
+        # Retain the original comparison order (including ties) on a miss.
+        results = (cached if symbol == cached_symbol else evaluate(symbol) for symbol in candidates)
+        best = min(
+            (result for result in results if result is not None), key=lambda r: r[0], default=None
+        )
     if best is None:
         observed_by_day = observed.groupby(trades["BusinessDate"]).median().dropna()
         if observed_by_day.empty or not allow_trade_only:
@@ -592,7 +658,7 @@ def _resolve_price_series(
         # broker's own transaction prices between trades instead. This keeps
         # realized economics without inventing an ADR/NAV conversion.
         return f"broker-trades:{ticker}", observed_by_day
-    score, symbol, series = best
+    score, symbol, series, confirmed = best
     if score > math.log(1.35):
         observed_by_day = observed.groupby(trades["BusinessDate"]).median().dropna()
         if allow_trade_only and not observed_by_day.empty:
@@ -600,6 +666,13 @@ def _resolve_price_series(
         raise HistoricalNavError(
             f"{ticker}: market history does not reconcile to broker trade prices"
         )
+    if (
+        confirmed
+        and symbol != cached_symbol
+        and listing_cache is not None
+        and cache_path is not None
+    ):
+        listing_cache.put(cache_path, symbol)
     observed_by_day = observed.groupby(trades["BusinessDate"]).median().dropna()
     series = series.reindex(series.index.union(observed_by_day.index)).sort_index()
     series.loc[observed_by_day.index] = series.loc[observed_by_day.index].fillna(observed_by_day)
@@ -613,6 +686,7 @@ def reconstruct_historical_nav(
     history_loader: HistoryLoader = _default_history,
     cash_transactions_path: Path | None = None,
     previous_nav: bytes | None = None,
+    listing_cache: HistoricalListingCache | None = None,
 ) -> ReconstructionResult:
     """Replay one verified account ledger into a broker-anchored daily NAV.
 
@@ -789,6 +863,7 @@ def reconstruct_historical_nav(
             cash_fx=cash_fx,
             history_loader=history_loader,
             allow_trade_only=identity not in current_positions,
+            listing_cache=listing_cache,
         )
         if (
             identity not in current_positions
@@ -811,6 +886,7 @@ def reconstruct_historical_nav(
                 cash_fx=cash_fx,
                 history_loader=history_loader,
                 allow_trade_only=True,
+                listing_cache=listing_cache,
             )
             if not full_symbol.startswith("broker-trades:"):
                 symbol, series = full_symbol, full_series
