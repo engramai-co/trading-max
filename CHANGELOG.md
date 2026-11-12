@@ -4,6 +4,37 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.34.0] - 2026-11-12
+
+### Added
+
+- The research desk gives ETFs six lenses: overview, price and technicals,
+  index and tracking, holdings and overlap, peers, and journal. Tracking
+  quality, trading cost and portfolio overlap lead the overview, and ETFs show
+  no 0–100 technical score. Earlier ETF links still open.
+- The holdings drawer shows an ETF's tracked index, ongoing charge,
+  distribution policy, one-year tracking difference, portfolio overlap and
+  published holdings without contacting the issuer; stocks show their next
+  known earnings date.
+- In the overview holdings table, ETFs show one-year tracking difference and
+  portfolio overlap in place of the stock-only technical score and model
+  upside. A signal dot appears when tracking lags by 0.50 pp or more, or when
+  overlap reaches 50% with at least 90% coverage on both sides. These readings
+  load after the table, so the overview does not wait for them.
+
+### Changed
+
+- The holdings table shows at most four signal dots in total, so each one
+  still stands out.
+
+### Fixed
+
+- Issuer data for EQQQ, SWDA and EIMI keeps each share class separate, records
+  missing distributions as missing, and converts pence prices once. Stale,
+  failed and missing fund holdings are labelled as such.
+- Returns & Risk and the Sectors empty state use headings in order, so screen
+  readers can move through them.
+
 ## [1.33.1] - 2026-11-12
 
 ### Changed
