@@ -3,6 +3,8 @@ import "@mantine/notifications/styles.css";
 
 import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
+import { desktopSnapshotCache, snapshotCacheScope } from "@/lib/snapshot-cache-server";
 
 import { PresentationShell } from "@/workspace/presentation-shell";
 import { LocaleProvider } from "@/components/locale-provider";
@@ -29,9 +31,12 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  await connection();
+  const scope = snapshotCacheScope();
+  const desktopCache = await desktopSnapshotCache(scope);
   return (
     <html
       lang="zh-CN"
@@ -43,7 +48,7 @@ export default function RootLayout({
         <ColorSchemeScript defaultColorScheme="auto" />
       </head>
       <body>
-        <TradingMaxProvider>
+        <TradingMaxProvider key={scope} scope={scope} desktopCache={desktopCache}>
           <LocaleProvider>
             <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
           </LocaleProvider>

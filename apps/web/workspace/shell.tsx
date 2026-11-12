@@ -40,6 +40,7 @@ import { api } from "@/workspace/data";
 import { useWorkspaceProfile } from "./profile";
 import { Tag, useCopy } from "./foundation";
 
+import { researchShellKey } from "@/lib/dashboard-query";
 import { useBuildNavigation } from "@/ui/publication-provider";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
@@ -198,7 +199,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     setSearchOpen(false);
   }
   const directory = useQuery({
-    queryKey: ["workspace-research-shell"],
+    queryKey: researchShellKey,
     queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
     enabled: searchOpen,
     staleTime: 60_000,

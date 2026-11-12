@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { portfolioHistoryKey } from "@/lib/dashboard-query";
 import { decodeTimeline, type HistorySelection, type PreparedHistory } from "@/lib/portfolio/prepared";
 
 export async function fetchHistory<T>(
@@ -17,7 +18,7 @@ export async function fetchHistory<T>(
 /** Openings name the attributions a "what moved" strip explains; the answer carries their exact P&L. */
 export function usePortfolioHistory(selection: HistorySelection, enabled = true, openings: readonly string[] = []) {
   return useQuery({
-    queryKey: openings.length ? ["portfolio-history", selection, openings] : ["portfolio-history", selection], enabled,
+    queryKey: portfolioHistoryKey(selection, openings), enabled,
     queryFn: ({ signal }) => fetchHistory<PreparedHistory>(selection, signal, undefined, openings),
     select: (data) => ({ ...data, history: { ...data.history, timeline: decodeTimeline(data.history.timeline) } }),
     retry: 1, staleTime: Infinity, gcTime: 120_000,

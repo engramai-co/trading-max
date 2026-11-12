@@ -118,11 +118,13 @@ export async function proxyToBackend(
   pathname: string,
   init?: RequestInit,
   acceptEncoding?: string | null,
+  observe?: (response: Response) => void,
 ): Promise<Response> {
   if (!backendUrl()) return backendUnavailable();
   try {
     const startedAt = performance.now();
     const response = await backendFetch(pathname, init);
+    observe?.(response);
     return proxyBackendResponse(
       response,
       "application/json",

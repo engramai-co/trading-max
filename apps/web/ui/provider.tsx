@@ -8,11 +8,13 @@ import { useState } from "react";
 import { tradingMaxTheme } from "@/ui/theme";
 import { PublicationProvider } from "@/ui/publication-provider";
 import { FinePointerProvider } from "@/ui/pointer";
+import type { SnapshotCacheEntry } from "@/lib/snapshot-cache";
+import { SnapshotCacheProvider } from "@/ui/snapshot-cache-provider";
 import { createQueryClient } from "@/ui/query-client";
 
 export function TradingMaxProvider({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+  children, scope, desktopCache,
+}: Readonly<{ children: React.ReactNode; scope: string; desktopCache: { entries: SnapshotCacheEntry[] } | null }>) {
   const [queryClient] = useState(createQueryClient);
 
   return (
@@ -22,7 +24,9 @@ export function TradingMaxProvider({
     >
       <QueryClientProvider client={queryClient}>
         <Notifications position="top-right" />
-        <PublicationProvider><FinePointerProvider>{children}</FinePointerProvider></PublicationProvider>
+        <SnapshotCacheProvider scope={scope} desktop={desktopCache}>
+          <PublicationProvider><FinePointerProvider>{children}</FinePointerProvider></PublicationProvider>
+        </SnapshotCacheProvider>
       </QueryClientProvider>
     </MantineProvider>
   );

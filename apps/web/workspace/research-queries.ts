@@ -1,3 +1,4 @@
+import { researchLensKey } from "@/lib/dashboard-query";
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { queryOptions } from "@tanstack/react-query";
 import { previousForIdentity } from "./loading-state";
@@ -10,9 +11,9 @@ export function researchLensQuery(
   detail = "full",
 ) {
   return queryOptions({
-    queryKey: ["workspace-research", ticker, view, detail, revision],
+    queryKey: researchLensKey(ticker, view, detail, revision),
     queryFn: ({ signal }) => api<ResearchLensSnapshot>(
-      `/research/${encodeURIComponent(ticker)}/lens/${view}?limit=30&detail=${detail}`,
+      `/research/${encodeURIComponent(ticker)}/lens/${view}?limit=30&detail=${detail}${revision ? "&revision=" + encodeURIComponent(revision) : ""}`,
       { signal },
     ),
     staleTime: 60_000,
