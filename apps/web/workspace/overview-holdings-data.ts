@@ -1,5 +1,6 @@
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
+import { findETF, type ETFReading } from "./etf-data";
 import { combinedHoldingPnl, finite, groupHoldings, isFundHolding } from "./holding-groups";
 
 /**
@@ -20,8 +21,8 @@ export type LedgerRow = {
   dayDate: string | null;
   /** Unrealized P&L against combined cost. */
   pnl: number | null;
-  /** Funds carry no company research scores yet. */
   fund: boolean;
+  etf?: ETFReading;
   score: number | null;
   upside: number | null;
   /** Index into the allocation palette for this row's own donut segment. */
@@ -68,10 +69,11 @@ function dayMove(positions: Holding[]) {
  * always listed; a flagged holding beyond them gets its row too, every listed row owns a donut segment,
  * and everything else closes as one row and one neutral segment. Signals arrive ranked and capped.
  */
-export function holdingsLedger({ holdings, technical, valuations, signals }: {
+export function holdingsLedger({ holdings, technical, valuations, etfs, signals }: {
   holdings: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
+  etfs?: ETFReading[];
   signals: HoldingSignal[];
 }): HoldingsLedger {
   const securities = [...groupHoldings(holdings)].map(([ticker, positions]) => ({
@@ -100,6 +102,7 @@ export function holdingsLedger({ holdings, technical, valuations, signals }: {
       dayDate: move.date && move.date !== columnDay ? move.date : null,
       pnl: combinedHoldingPnl(positions),
       fund,
+      etf: fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined,
       score: fund ? null : finite(technical?.find((row) => row.ticker === ticker)?.score),
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
       colour: index,

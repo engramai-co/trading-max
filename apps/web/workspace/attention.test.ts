@@ -84,3 +84,21 @@ describe("overview attention", () => {
     expect(item).toMatchObject({ href: "/research?ticker=ARM&view=valuation" });
   });
 });
+
+it("ETF dots require comparable fresh tracking or overlap with dated coverage", () => {
+  const fund = { ...holding("EQQQ", 100, -20), isFund: true };
+  const reading = {
+    isin: "IE0032077012", tickers: ["EQQQ"], holdingsState: "available" as const,
+    tracking: { state: "available" as const, differencePp: -0.50 },
+    overlap: { state: "available" as const, value: 0.50, datesValid: true, fundCoverage: 0.90, restCoverage: 0.90 },
+  };
+  const [signal] = holdingSignals({ holdings: [fund], etfs: [reading] });
+  expect(signal.facts.map((fact) => fact.kind)).toEqual(["tracking", "overlap", "loss"]);
+  const [lossOnly] = holdingSignals({
+    holdings: [fund],
+    etfs: [{ ...reading, tracking: { ...reading.tracking, state: "stale" }, overlap: { ...reading.overlap, fundCoverage: 0.89 } }],
+  });
+  expect(lossOnly.facts.map((fact) => fact.kind)).toEqual(["loss"]);
+  const limited = holdingSignals({ holdings: [fund], etfs: [reading], limit: 1 });
+  expect(limited[0].facts.map((fact) => fact.kind)).toEqual(["loss"]);
+});
