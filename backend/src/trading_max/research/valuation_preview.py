@@ -10,6 +10,9 @@ from trading_max.domain import DomainModel
 from trading_max.research.facts import EvidenceRef, fingerprint
 from trading_max.research.fundamentals import _growth_for_year
 
+VALUATION_FORMULA_VERSION = "equity-proxy-projection-v1"
+REVERSE_GROWTH_BOUNDS = (-0.3, 0.8)
+
 
 class ScenarioInputs(DomainModel):
     revenue_cagr: float = Field(ge=-0.8, le=2)
@@ -92,7 +95,7 @@ class SensitivityCell(DomainModel):
 
 class ValuationPreview(DomainModel):
     id: str
-    formula_version: str = "equity-proxy-projection-v1"
+    formula_version: str = VALUATION_FORMULA_VERSION
     basis: FrozenValuationBasis
     horizon: Literal[5, 10]
     scenarios: dict[str, ScenarioProjection]
@@ -177,7 +180,7 @@ def preview(basis: FrozenValuationBasis, request: ValuationPreviewRequest) -> Va
                     upside=result.upside,
                 )
             )
-    low, high = -0.3, 0.8
+    low, high = REVERSE_GROWTH_BOUNDS
 
     def value(growth: float) -> float:
         return project(

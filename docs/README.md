@@ -32,7 +32,8 @@ contracts.
 - [Research workspace](architecture/research-workspace.md),
   [presentation](architecture/research-presentation.md), and
   [latency boundaries](architecture/research-latency.md)
-- [Valuation model](architecture/valuation-model.md) and
+- [Valuation model](architecture/valuation-model.md),
+  [valuation agent evidence](architecture/valuation-agent.md), and
   [technical/options research](architecture/technical-research.md)
 - [Unified NAV history](architecture/unified-nav-history.md) and
   [performance calculations](architecture/performance-metrics.md)

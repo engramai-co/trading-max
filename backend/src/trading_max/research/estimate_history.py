@@ -251,6 +251,26 @@ class EstimateHistory:
             for row in reversed(rows)
         ]
 
+    def valuation_window(
+        self, ticker: str, listing: str, *, cutoff: datetime
+    ) -> list[EstimateObservation]:
+        """Read a small exact-listing window without recovering or appending rows."""
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT observed_at, observation_json FROM research_estimate_history "
+                "WHERE ticker = ? AND observed_at <= ? "
+                "AND json_extract(observation_json, '$.listing') = ? "
+                "AND length(CAST(observation_json AS BLOB)) <= 16384 "
+                "ORDER BY observed_at DESC, id DESC LIMIT 16",
+                (ticker, _utc_iso(cutoff), listing),
+            ).fetchall()
+        return [
+            EstimateObservation.model_validate(
+                {**json.loads(row["observation_json"]), "observedAt": row["observed_at"]}
+            )
+            for row in rows
+        ]
+
     def recover(self, snapshots: SnapshotStore, *, before: datetime) -> int:
         """Seed once from recent immutable publications without touching their files."""
         with self.database.read() as connection:
