@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.38.1] - 2026-11-12
+
+### Fixed
+
+- Trading 212 account updates now handle cash waiting to be invested in a
+  pie. It appears as cash without changing the account total.
+
 ## [1.38.0] - 2026-11-12
 
 ### Added
