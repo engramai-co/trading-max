@@ -18,12 +18,16 @@ export function holdingSortDirection(sort: string, direction: string | null) {
  * column names the latest one; a change from an earlier day reports that day.
  */
 export function dayChangeColumn(holdings: Holding[]) {
+  const readingDate = (h: Holding) => h.dayChangeClosedOn ?? (h.dayChangeGbp != null ? h.dayChangeDate : null);
   const latest = holdings
-    .flatMap((h) => (h.dayChangeGbp != null && h.dayChangeDate ? [h.dayChangeDate] : []))
+    .map(readingDate)
+    .filter((date): date is string => Boolean(date))
     .sort()
     .at(-1) ?? null;
-  const earlier = (h: Holding) =>
-    h.dayChangeGbp != null && h.dayChangeDate && latest && h.dayChangeDate !== latest ? h.dayChangeDate : null;
+  const earlier = (h: Holding) => {
+    const date = readingDate(h);
+    return date && latest && date !== latest ? date : null;
+  };
   return { latest, earlier };
 }
 

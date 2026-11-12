@@ -8,12 +8,13 @@ within its own trading days.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from trading_max.analytics.day_attribution import trading_day
+from trading_max.research.calendar import listing_closure_date
 
 from .values import JsonObject, nullable_number
 
@@ -22,9 +23,10 @@ from .values import JsonObject, nullable_number
 class DayChange:
     """A holding's change since the day's first observation and the trading day it covers."""
 
-    gbp: float
+    gbp: float | None
     share: float | None
-    date: str
+    date: str | None
+    closed_on: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,8 @@ def _match(
 def holding_day_changes(
     attribution: Any,
     accounts: Mapping[str, JsonObject],
+    *,
+    listing_calendar: Callable[[Mapping[str, Any]], str | None] | None = None,
 ) -> dict[str, list[DayChange | None]]:
     """Each account's positions, in order, with their change in GBP and as a share
     of the opening value of the shares held all day.
@@ -141,6 +145,8 @@ def holding_day_changes(
     Positions join on the broker instrument, so listings that share a display
     ticker keep their own change. Positions opened during the day have none;
     attributions written before the opening value existed give pounds only.
+    A missing or zero change can still be known to cover a closed market when
+    the account's window and the position's listing are both known.
     """
 
     if not isinstance(attribution, Mapping):
@@ -159,6 +165,10 @@ def holding_day_changes(
             or _moment(entry.get("as_of")) != observed
         ):
             continue
+        since = _moment(entry.get("since"))
+        # A fresh totals overlay may retain earlier positions after a broker
+        # reconciliation failure. Its new timestamp cannot date those prices.
+        positions_observed = _moment(account.get("positions_observed_at") or observed)
         rows = _contributions(entry)
         by_instrument: defaultdict[str, list[_Contribution]] = defaultdict(list)
         by_ticker: defaultdict[str, list[_Contribution]] = defaultdict(list)
@@ -179,15 +189,28 @@ def holding_day_changes(
                 if isinstance(position, Mapping)
                 else None
             )
-            changes.append(
-                None
-                if row is None
-                else DayChange(
-                    gbp=round(row.amount, 2),
-                    share=row.amount / row.opening if row.opening else None,
-                    date=day,
+            closed_on = None
+            if (
+                listing_calendar is not None
+                and since is not None
+                and positions_observed == observed
+                and isinstance(position, Mapping)
+                and (row is None or row.amount == 0)
+                and (name := listing_calendar(position)) is not None
+            ):
+                closed = listing_closure_date(name, since, observed)
+                closed_on = closed.isoformat() if closed else None
+            if row is None and closed_on is None:
+                changes.append(None)
+            else:
+                changes.append(
+                    DayChange(
+                        gbp=round(row.amount, 2) if row is not None else None,
+                        share=row.amount / row.opening if row is not None and row.opening else None,
+                        date=day if row is not None else None,
+                        closed_on=closed_on,
+                    )
                 )
-            )
         result[str(code)] = changes
     return result
 

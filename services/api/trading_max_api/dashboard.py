@@ -10,6 +10,7 @@ from .artifacts import ArtifactStore
 from .models import SnapshotManifest
 from .projections.broker import overlay_live_broker_snapshot
 from .projections.day_change import holding_day_changes
+from .projections.listings import HoldingListingCalendars
 from .projections.nav import intraday_nav_points, latest_daily_return, latest_twr, nav_series
 from .projections.research import option_rows, technical_rows, valuation_rows
 from .projections.values import JsonObject, nullable_number, number_value
@@ -290,8 +291,13 @@ def build_dashboard_data(
         day_attribution = store.read_json(run_id, "account/attribution/day.json")
     except (FileNotFoundError, TypeError, ValueError):
         day_attribution = None
+    listing_calendars = HoldingListingCalendars(
+        lambda key: store.read_json(run_id, key), {isin for _, isin in fund_identities}
+    )
     day_changes = holding_day_changes(
-        day_attribution, {code: broker["accounts"][code] for code in account_codes}
+        day_attribution,
+        {code: broker["accounts"][code] for code in account_codes},
+        listing_calendar=listing_calendars.name,
     )
     holdings: list[JsonObject] = []
     for account in account_codes:
@@ -356,6 +362,7 @@ def build_dashboard_data(
                     "dayChangeGbp": day_change.gbp if day_change else None,
                     "dayChangePct": day_change.share if day_change else None,
                     "dayChangeDate": day_change.date if day_change else None,
+                    "dayChangeClosedOn": day_change.closed_on if day_change else None,
                     "isFund": fund is not None,
                     "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }

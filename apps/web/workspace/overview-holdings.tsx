@@ -8,6 +8,7 @@ import { useAllocationChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate } from "@/ui/formatters";
 import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
+import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
 import { etfPortfolioQuery, overlapDisplay, signedPoints, trackingDisplay, type Copy } from "./etf-data";
@@ -86,7 +87,7 @@ function figures(row: LedgerRow, t: Copy) {
   const overlap = row.fund ? overlapDisplay(row.etf, t) : undefined;
   const hasTracking = row.etf?.tracking.differencePp != null && row.etf.tracking.state !== "incomparable";
   return {
-    day: <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
+    day: row.dayClosed ? <ClosedMarket /> : <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
     pnl: (
       <>
         <Flag facts={row.facts} kinds={["loss"]} />
@@ -205,7 +206,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                             session={{
                               label: !ledger.columnDay || (row.dayDate ?? ledger.columnDay) === today
                                 ? t("今日涨跌", "Today’s move") : dayLabel(row.dayDate ?? ledger.columnDay),
-                              share: row.day, price: row.quotePrice, currency: row.quoteCurrency, asOf: brokerAsOf,
+                              share: row.day, closed: row.dayClosed, price: row.quotePrice, currency: row.quoteCurrency, asOf: brokerAsOf,
                             }}>
                             <Instrument ticker={row.ticker} name={row.name} small />
                           </SecurityPeek>

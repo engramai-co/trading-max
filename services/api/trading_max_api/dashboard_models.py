@@ -674,6 +674,13 @@ class Holding(ApiModel):
     day_change_gbp: float | None = None
     day_change_pct: float | None = None
     day_change_date: str | None = None
+    day_change_closed_on: str | None = Field(
+        default=None,
+        description=(
+            "Exchange-local date (YYYY-MM-DD) when no scheduled session covered this zero or "
+            "missing day change."
+        ),
+    )
     # A fund the look-through resolves through its issuer's holdings, whether or not
     # those holdings are available yet. Company research scores do not apply to it.
     is_fund: bool

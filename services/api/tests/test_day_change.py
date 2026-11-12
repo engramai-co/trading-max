@@ -203,3 +203,17 @@ def test_pounds_only_without_an_opening_value_and_no_share_of_a_zero_opening():
         DayChange(0.0, None, "2026-11-04"),
         None,
     ]
+
+
+def test_new_totals_do_not_mark_earlier_retained_positions_closed():
+    observed = "2026-11-26T17:30:00Z"
+    account = {
+        **_account(_position("SYN", "SYN_US_EQ"), fetched_at=observed),
+        "positions_observed_at": "2026-11-25T21:00:00Z",
+    }
+    changes = holding_day_changes(
+        _attribution(day="2026-11-26", since="2026-11-26T13:00:00Z", as_of=observed),
+        {"A": account},
+        listing_calendar=lambda _: "XNYS",
+    )
+    assert changes["A"] == [None]

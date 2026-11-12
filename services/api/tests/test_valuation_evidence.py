@@ -519,7 +519,8 @@ def test_exact_listing_and_point_in_time_source_guards(tmp_path):
         or row.state == "missing"
         for row in tools.get_operating_evidence().items
     )
-    assert "2099" not in tools.get_operating_evidence().model_dump_json()
+    # Match the injected date, not "2099": evidence IDs are hex digests and may contain those digits.
+    assert "2099-01-01" not in tools.get_operating_evidence().model_dump_json()
 
 
 def test_private_marks_and_legacy_market_projection_are_not_read(tmp_path):

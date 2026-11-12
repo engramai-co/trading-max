@@ -956,3 +956,84 @@ def test_technical_readings_expose_real_observations_and_preserve_missing():
     assert row["bollingerPosition"] == 0.8
     assert row["bollingerWidth"] == 0.2
     assert row["low52w"] is None
+
+
+@pytest.mark.parametrize(
+    ("opening", "observed", "closed_markets"),
+    [
+        # A whole weekend window, and a Saturday that is still Friday in New York.
+        ("2026-11-28T13:00:00Z", "2026-11-28T17:30:00Z", {"US", "LSE"}),
+        ("2026-11-28T00:15:00Z", "2026-11-28T01:00:00Z", {"LSE"}),
+        # Friday's actual session remains part of the carried-forward weekend day.
+        ("2026-11-27T16:00:00Z", "2026-11-28T17:30:00Z", set()),
+        # London is ahead of New York, but the prior NY regular session had ended.
+        ("2026-11-26T00:15:00Z", "2026-11-26T17:30:00Z", {"US"}),
+        ("2026-08-31T00:15:00Z", "2026-08-31T17:30:00Z", {"LSE"}),
+        ("2026-11-25T10:00:00Z", "2026-11-25T10:00:00Z", set()),
+    ],
+)
+def test_holdings_mark_a_sessionless_listing_window_only(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+    opening: str,
+    observed: str,
+    closed_markets: set[str],
+) -> None:
+    report = research_root / "accounts" / "outputs" / "three-account-report"
+    path = report / "broker_snapshot_metrics.json"
+    snapshot = json.loads(path.read_text())
+    row = {
+        "quantity": "2",
+        "current_value_gbp": "40",
+        "total_cost_gbp": "30",
+        "unrealized_profit_loss_gbp": "10",
+    }
+    positions = [
+        {**row, "name": "US stock", "ticker": "SYN", "broker_ticker": "SYN_US_EQ"},
+        {**row, "name": "UK stock", "ticker": "SYN", "broker_ticker": "SYNl_EQ"},
+        {**row, "name": "Unknown stock", "ticker": "UNK", "price_currency": "USD"},
+        {**row, "name": "New US stock", "ticker": "NEW", "broker_ticker": "NEW_US_EQ"},
+        {**row, "name": "FX move", "ticker": "FX", "broker_ticker": "FX_US_EQ"},
+    ]
+    snapshot["accounts"]["A"].update(fetched_at=observed, positions=positions)
+    path.write_text(json.dumps(snapshot))
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    baseline, _ = update_day_attribution(
+        None,
+        {
+            "A": {
+                "fetched_at": opening,
+                "positions": [
+                    {**position, "current_value_gbp": "39"}
+                    if position["ticker"] == "FX"
+                    else position
+                    for position in positions
+                    if position["ticker"] != "NEW"
+                ],
+            }
+        },
+    )
+    _, attribution = update_day_attribution(
+        baseline.model_dump(mode="json"), {"A": snapshot["accounts"]["A"]}
+    )
+    _publish_day_attribution(store, attribution.model_dump(mode="json", by_alias=False))
+
+    payload = DashboardResponse.model_validate(build_dashboard_data(store))
+    holdings = {holding.name: holding for holding in payload.holdings if holding.account == "A"}
+    for market, name in (("US", "US stock"), ("LSE", "UK stock")):
+        assert holdings[name].day_change_closed_on == (
+            observed[:10] if market in closed_markets else None
+        )
+        assert holdings[name].day_change_date == attribution.day.isoformat()
+        assert holdings[name].day_change_gbp == holdings[name].day_change_pct == 0
+    assert holdings["New US stock"].day_change_closed_on == (
+        observed[:10] if "US" in closed_markets else None
+    )
+    assert holdings["New US stock"].day_change_gbp is None
+    assert holdings["New US stock"].day_change_date is None
+    assert holdings["Unknown stock"].day_change_closed_on is None
+    assert holdings["Unknown stock"].day_change_gbp == 0
+    assert holdings["FX move"].day_change_closed_on is None
+    assert holdings["FX move"].day_change_gbp == 1
