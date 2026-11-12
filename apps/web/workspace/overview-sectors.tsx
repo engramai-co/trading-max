@@ -167,7 +167,7 @@ function labels(names: { full: string; short: string; tiny: string }, change: st
 
 /**
  * Today's US sectors on the overview: one flat block per GICS sector, area by index weight and a wash by
- * the session's move. The board is the 板块 page's own US answer, so opening a block reuses it.
+ * the session's move. The board is the Markets page's own US answer, so opening a block reuses it.
  */
 export function useOverviewSectors() {
   return useQuery({

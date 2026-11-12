@@ -4,15 +4,17 @@ import { Select } from "@mantine/core";
 import { ArrowClockwise, CaretRight } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
 import Link from "./link";
 import {
-  INDEX_RANGES, alignIndices, comparable, indexHref, useIndexCatalog,
+  alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
@@ -152,7 +154,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const lastFocused = useRef<string | null>(null);
   const catalog = useIndexCatalog();
   const index = catalog.data?.find((item) => item.id === id && item.scope === market);
-  const period = index?.historyYears === 0 ? "1D" : requestedPeriod;
+  const period = !index?.ranges.length || index.ranges.includes(requestedPeriod)
+    ? requestedPeriod : index.ranges.at(-1)!;
   const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, period));
   const peer = peers.find((item) => item.id === comparison);
   const historyQuery = (identifier?: string) => ({
@@ -191,22 +194,45 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   if (catalog.isError) return <QueryError retry={catalog.refetch} showDataStatusLink={false} />;
   if (!index) return <Empty title={t("没有这个市场指数", "Index not found in this market")} />;
   const history = query.data;
+  const peerHistory = peerQuery.data;
   const points = history?.points ?? [];
-  const matched = peer ? alignIndices(points, peerQuery.data?.points ?? [], [
-    ...(history?.gaps ?? []), ...(peerQuery.data?.gaps ?? []),
-  ]) : [];
-  const plotRows = matched.length ? matched : [
-    ...points.map(({ at, value }) => ({ at, left: value, right: null })),
-    ...(history?.gaps ?? []).map((at) => ({ at, left: null, right: null })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
-  const dateOptions: Intl.DateTimeFormatOptions = period === "1D"
-    ? { hour: "2-digit", minute: "2-digit", timeZone }
-    : { month: "short", day: "numeric", ...(period.endsWith("Y") ? { year: "2-digit" } : {}), timeZone: "UTC" };
+  const matched = history && peerHistory ? alignIndices(history, peerHistory, period) : [];
+  const plotRows = matched.length ? matched : history ? indexHistoryRows(history) : [];
+  const shortRange = period === "1W" || period === "1M";
+  const intraday = period === "1D" || shortRange;
+  const axisDateOptions: Intl.DateTimeFormatOptions = period === "MAX" ? { year: "numeric", timeZone: "UTC" }
+    : period === "1D" ? { hour: "2-digit", minute: "2-digit", timeZone }
+      : { month: "short", day: "numeric", ...(period.endsWith("Y") ? { year: "2-digit" } : {}), timeZone: intraday ? timeZone : "UTC" };
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    year: "numeric", month: "short", day: "numeric",
+    ...(intraday ? { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone } : { timeZone: "UTC" }),
+  };
   const chartName = name(index);
   const peerName = peer ? name(peer) : "";
+  const sparseAxis = shortRange || period === "MAX";
+  const axisLabels = plotRows.map(({ at }) => formatDate(new Date(at), locale, axisDateOptions));
+  const firstInPeriod = axisLabels.flatMap((label, i) => i === 0 || label !== axisLabels[i - 1] ? [i] : []);
+  const labelStep = Math.ceil(firstInPeriod.length / (phone ? 5 : 8));
+  const ticks = new Set(firstInPeriod.filter((_, i) => i % labelStep === 0));
+  if (sparseAxis && firstInPeriod.length > 1) {
+    // Pin the final date to the end without printing that date twice.
+    ticks.delete(firstInPeriod.at(-1)!);
+    ticks.add(plotRows.length - 1);
+  }
+  const readPoint = (position: number) => {
+    const row = plotRows[position];
+    if (!row || (row.left == null && row.right == null)) return "";
+    const reading = (label: string, value: number) => `${label}: ${formatNumber(value, locale, { maximumFractionDigits: 2 })}`;
+    return [
+      formatDate(new Date(row.at), locale, dateOptions),
+      ...(row.left == null ? [] : [reading(chartName, row.left)]),
+      ...(row.right == null ? [] : [reading(peerName, row.right)]),
+    ].join("\n");
+  };
   const chartLabel = matched.length
     ? locale === "zh" ? `${chartName} 与 ${peerName}，起点归 100` : `${chartName} and ${peerName}, rebased to 100`
     : chartName;
+  const primaryPositions = plotRows.flatMap((row, position) => row.left === undefined ? [] : [position]);
   const retry = () => {
     void query.refetch();
     if (peer) void peerQuery.refetch();
@@ -216,17 +242,28 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       <section className="mx-panel mx-index-history">
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
-          <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : index.currency} · {index.symbol ?? index.compiler}</span>
-          <Help label={t("指数数据与口径", "Index data and basis")}>
-            <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
-            {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
-            {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
-            <p>{t("最大回撤和年化实现波动率使用所选期间的完整日线计算。英镑日线使用此前已完成的汇率日线。", "Drawdown and annualised realised volatility use the full daily series in the selected range. GBP daily values use the most recent prior FX close.")}</p>
-          </Help>
+          <div className="mx-index-provenance">
+            <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : index.currency} · {index.symbol ?? index.compiler}</span>
+            <Help label={t("指数数据与口径", "Index data and basis")}>
+              <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
+              {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
+              {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {shortRange && <p>{period === "1W"
+                ? t("显示近 7 天的 30 分钟线。", "30-minute bars over the last seven days.")
+                : t("显示近一个月的小时线。", "Hourly bars over the last calendar month.")} {t("回撤使用图中价格，年化波动率使用已结束工作日的最后一个价格。英镑换算使用同频率的汇率。", "Drawdown uses the plotted bars. Annualised volatility uses the last reading of each completed weekday. GBP conversion uses FX bars at the same interval.")}</p>}
+              {period === "MAX" && <p>{t("图中显示已结束周线的期末日期。回撤和年化波动率按周线计算；英镑换算使用此前已完成的汇率周线。", "Dates mark the end of completed weekly bars. Drawdown and annualised volatility use weekly bars. GBP conversion uses the most recent prior weekly FX close.")}</p>}
+              {!intraday && period !== "MAX" && <p>{history?.hourlyClose
+                ? t("日线取自纽约时间 17:00 的小时线。", "Daily values come from the 17:00 New York hourly bar.")
+                : null} {t("回撤和年化波动率使用完整日线。英镑换算使用此前已完成的汇率日线。", "Drawdown and annualised volatility use completed daily bars. GBP conversion uses the most recent prior daily FX close.")}</p>}
+              {matched.length > 0 && (intraday || period === "MAX") && <p>{period === "MAX"
+                ? t("对比使用同一日历周内的读数，周线的结束日可能不同。", "Comparison uses readings from the same calendar week; bar end dates can differ.")
+                : t("对比使用同一时间段内的读数。", "Comparison uses readings within the same time slot.")}</p>}
+            </Help>
+          </div>
         </div>
         {index.symbol && <div className="mx-index-controls">
-          {index.historyYears > 0 && <Segments label={t("时间范围", "Range")} value={period}
-            options={INDEX_RANGES.filter((range) => range === "1D" || index.historyYears > 0).map((value) => ({ value, label: value }))}
+          {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={period}
+            options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
             onChange={(value) => update({ range: value === "1Y" ? null : value })} />}
           {index.currency && index.currency !== "GBP" && <Segments label={t("币种", "Currency")} value={gbp ? "GBP" : "local"}
             options={[{ value: "local", label: index.currency }, { value: "GBP", label: "GBP" }]}
@@ -247,34 +284,54 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         {!points.length && (!query.isPending || !index.symbol) &&
           <Empty title={t("暂无此范围的走势", "No history for this range")} />}
         {points.length > 0 && <Plot label={chartLabel} height={phone ? 235 : 300}
-          readPoint={(position) => {
-            const point = plotRows[position];
-            return point ? `${formatDate(new Date(point.at), locale, dateOptions)} · ${formatNumber(point.left, locale, { maximumFractionDigits: 2 })}` : "";
-          }}
-          option={(colours) => ({
-            animation: false,
-            grid: { top: 17, right: 18, bottom: 31, left: 58 },
-            xAxis: { type: "category", boundaryGap: false, data: plotRows.map(({ at }) => formatDate(new Date(at), locale, dateOptions)) },
-            yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5 },
-            tooltip: { trigger: "axis" },
-            series: [
-              { name: chartName, type: "line", showSymbol: plotRows.length < 2, data: plotRows.map(({ left }) => left),
-                lineStyle: { width: 2, color: colours.text }, itemStyle: { color: colours.text } },
-              ...(matched.length && peer ? [{
-                name: name(peer), type: "line" as const, showSymbol: false, data: plotRows.map(({ right }) => right),
-                lineStyle: { width: 2, type: "dashed" as const, color: colours.axis }, itemStyle: { color: colours.axis },
-              }] : []),
-            ],
-          })} />}
+          readPoint={(position) => readPoint(primaryPositions[position])}
+          option={(colours) => {
+            const lines = [{ key: "left" as const, label: chartName, colour: colours.text, dashed: false }];
+            const compared = matched.length ? [{ key: "right" as const, label: peerName, colour: colours.axis, dashed: true }] : [];
+            return {
+              animation: false,
+              grid: { top: 17, right: 18, bottom: 31, left: 58 },
+              xAxis: {
+                type: "category", boundaryGap: false, data: plotRows.map(({ at }) => at),
+                axisLabel: {
+                  formatter: (_at, position) => !sparseAxis || ticks.has(position) ? axisLabels[position] : "",
+                  ...(sparseAxis ? { interval: (position: number) => ticks.has(position) } : {}),
+                },
+              },
+              yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5 },
+              tooltip: { trigger: "axis", formatter: (input) => {
+                const rows = Array.isArray(input) ? input : [input];
+                const row = rows.find((entry) => !String(entry.seriesId).startsWith("history-gap:"));
+                const position = Array.isArray(row?.value) ? row.value[0] : undefined;
+                return typeof position === "number" ? readPoint(position) : "";
+              } },
+              series: [...lines, ...compared].flatMap(({ key, label, colour, dashed }): SeriesOption[] => {
+                const data = plotRows.flatMap((row, position) => row[key] === undefined
+                  ? [] : [{ value: [position, row[key]], symbolSize: 4 }]);
+                const gaps = historyGapSeries(data);
+                return [{
+                  id: key, name: label, type: "line", data, connectNulls: false,
+                  showSymbol: data.filter(({ value }) => value[1] != null).length === 1,
+                  lineStyle: { width: 2, color: colour, type: dashed ? "dashed" : "solid" },
+                  itemStyle: { color: colour },
+                }, ...(gaps.length ? [{
+                  id: `history-gap:${key}`, type: "line" as const, data: gaps,
+                  silent: true, tooltip: { show: false }, showSymbol: false, connectNulls: false,
+                  lineStyle: { color: colour, width: 1.5, type: "dotted" as const, opacity: 0.65 },
+                  emphasis: { disabled: true },
+                }] : [])];
+              }),
+            };
+          }} />}
         {matched.length > 0 && peer && <div className="mx-index-legend">
           <span>{chartName}</span><span>{name(peer)}</span><span>{t("起点归 100", "Rebased to 100")}</span>
         </div>}
         {peer && !matched.length && !peerQuery.isPending && <p className="mx-index-note">{t("没有可比较的共同日期。", "No common observations to compare.")}</p>}
         <div className="mx-index-stamp">
-          {history?.asOf && <time dateTime={history.asOf}>{t("截至 ", "Through ")}{period === "1D"
+          {history?.asOf && <time dateTime={history.asOf}>{t("截至 ", "Through ")}{intraday
             ? formatDateTime(history.asOf, locale, timeZone)
             : formatDate(new Date(history.asOf), locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</time>}
-          {history?.state === "partial" && <span>{t("历史数据不完整", "Partial history")}</span>}
+          {(!!history?.gaps?.length || (matched.length > 0 && !!peerHistory?.gaps?.length)) && <span>{t("历史数据不完整", "Partial history")}</span>}
           {(query.isError || peerQuery.isError || history?.state === "stale" || (index.symbol && history?.state === "unavailable")) &&
             <><span>{t("走势未能更新", "History did not update")}</span><RetryIndices retry={retry} busy={query.isFetching || peerQuery.isFetching} /></>}
         </div>

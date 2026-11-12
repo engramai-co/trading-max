@@ -8161,6 +8161,11 @@
             "title": "Gaps",
             "type": "array"
           },
+          "hourlyClose": {
+            "default": false,
+            "title": "Hourlyclose",
+            "type": "boolean"
+          },
           "index": {
             "$ref": "#/components/schemas/IndexIdentity"
           },
@@ -8191,7 +8196,8 @@
               "6M",
               "1Y",
               "3Y",
-              "5Y"
+              "5Y",
+              "MAX"
             ],
             "title": "Range",
             "type": "string"
@@ -8293,6 +8299,24 @@
             "title": "Namezh",
             "type": "string"
           },
+          "ranges": {
+            "items": {
+              "enum": [
+                "1D",
+                "1W",
+                "1M",
+                "3M",
+                "6M",
+                "1Y",
+                "3Y",
+                "5Y",
+                "MAX"
+              ],
+              "type": "string"
+            },
+            "title": "Ranges",
+            "type": "array"
+          },
           "rights": {
             "enum": [
               "provider-terms",
@@ -8355,6 +8379,7 @@
           "basis",
           "kind",
           "historyYears",
+          "ranges",
           "rights",
           "aliases",
           "source"
@@ -21129,7 +21154,8 @@
                 "6M",
                 "1Y",
                 "3Y",
-                "5Y"
+                "5Y",
+                "MAX"
               ],
               "title": "Range",
               "type": "string"

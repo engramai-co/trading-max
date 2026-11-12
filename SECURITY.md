@@ -22,7 +22,7 @@ URLs, browser storage, or screenshots.
 ## Reporting
 
 Do not open a normal issue. Use GitHub private vulnerability reporting in the
-canonical organization repository or email `contact@ingramai.co`.
+canonical organization repository or email `contact@engramai.co`.
 
 Include reproduction steps, affected version/tag, impact, and whether real
 credentials or portfolio data were involved. Never include the secret itself.

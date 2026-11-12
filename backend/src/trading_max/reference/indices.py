@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 IndexScope = Literal["global", "us", "eu", "uk", "jp", "hk", "kr", "tw", "in", "ca", "au", "ch"]
+IndexRange = Literal["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"]
 IndexBasis = Literal["price", "net-return", "total-return", "implied-volatility"]
 IndexKind = Literal["index", "etf-price", "volatility"]
 UsageRights = Literal["provider-terms", "licensed-source-required"]
@@ -33,6 +34,17 @@ class IndexSpec:
     benchmark_id: str | None = None
     basket: str | None = None
     aliases: tuple[str, ...] = ()
+    hourly_close: bool = False
+
+    @property
+    def ranges(self) -> tuple[IndexRange, ...]:
+        if not self.symbol:
+            return ()
+        if self.history_years:
+            return ("1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX")
+        if self.hourly_close:
+            return ("1D", "1W", "1M", "3M", "6M", "1Y")
+        return ("1D", "1W", "1M")
 
     @property
     def benchmark(self) -> str:
@@ -320,6 +332,7 @@ INDEX_REGISTRY = {
             "USD",
             "MSCI-global",
             history_years=0,
+            hourly_close=True,
             aliases=("MSCI World ex USA Index (Net)",),
         ),
         IndexSpec(
@@ -333,6 +346,7 @@ INDEX_REGISTRY = {
             "USD",
             "MSCI-global",
             history_years=0,
+            hourly_close=True,
             aliases=("MSCI EM",),
         ),
         IndexSpec(
@@ -346,6 +360,7 @@ INDEX_REGISTRY = {
             "USD",
             "MSCI-global",
             history_years=0,
+            hourly_close=True,
             aliases=(
                 "MSCI Emerging Markets Investable Market Index",
                 "MSCI Emerging Markets Investable Market Index (USD) (Net)",

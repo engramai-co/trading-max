@@ -16,6 +16,7 @@ typed snapshots, and provider boundaries support the interface independently.
 | Overview | Account value, cash, unrealized P&L, period history, today's US sectors, holdings with allocation and research readings |
 | Holdings | Account filters, search and sort, position details; companies, countries, industries and ETF source coverage |
 | Performance | Money and contributions, rebased portfolio and benchmark returns, monthly TWR, drawdown and risk statistics |
+| Markets | Global and regional indices, index history and comparisons, and sector moves where a sector board is available |
 | Review | Account selection, money reconciliation, realized attribution, trade quality, phases and ending risk |
 | Research | A searchable list and seven views: overview, financials/business, price/technicals, estimates/events, valuation, options and journal |
 | Data status | Readiness, worker and snapshot status, queued updates, task history and stage details |

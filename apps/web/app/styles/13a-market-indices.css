@@ -149,9 +149,15 @@
 .mx-index-title h3 {
   font-size: 16px;
 }
-.mx-index-title > span {
+.mx-index-title > span,
+.mx-index-provenance > span {
   color: var(--mx-muted);
   font-size: 12px;
+}
+.mx-index-provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
 }
 .mx-index-controls,
 .mx-index-legend {
@@ -261,6 +267,13 @@
   }
   .mx-index-controls > .mx-segments:first-child {
     flex: 1 1 100%;
+  }
+  .mx-index-controls > .mx-segments:has(> button:nth-of-type(9)) {
+    gap: 0;
+  }
+  .mx-index-controls > .mx-segments:has(> button:nth-of-type(9)) > button {
+    flex: 1 0 20%;
+    min-width: 44px;
   }
   .mx-index-compare {
     flex: 1 1 150px;

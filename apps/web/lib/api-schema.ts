@@ -3832,6 +3832,11 @@ export interface components {
             currency?: string | null;
             /** Gaps */
             gaps?: string[];
+            /**
+             * Hourlyclose
+             * @default false
+             */
+            hourlyClose: boolean;
             index: components["schemas"]["IndexIdentity"];
             /** Maxdrawdown */
             maxDrawdown?: number | null;
@@ -3841,7 +3846,7 @@ export interface components {
              * Range
              * @enum {string}
              */
-            range: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y";
+            range: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX";
             /**
              * State
              * @default unavailable
@@ -3881,6 +3886,8 @@ export interface components {
             name: string;
             /** Namezh */
             nameZh: string;
+            /** Ranges */
+            ranges: ("1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX")[];
             /**
              * Rights
              * @enum {string}
@@ -8544,7 +8551,7 @@ export interface operations {
     index_history_v1_indices__index_id__history_get: {
         parameters: {
             query?: {
-                range?: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y";
+                range?: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX";
                 currency?: "local" | "GBP";
             };
             header?: never;

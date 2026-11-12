@@ -35,7 +35,7 @@ Hong Kong session moves require a daily close dated to the previous
 exchange session. The monitor reuses the daily bars it fetches for sector ranks.
 When that exact close is missing, the constituent remains unpriced.
 
-## Index page reads
+## Markets page reads
 
 The US, UK, Hong Kong, Korea and Japan have index cards and sector boards.
 Global, Europe, Taiwan, India, Canada, Australia and Switzerland show indices
@@ -53,13 +53,22 @@ dated observations without claiming a verified session or official close;
 those reads are limited to once every 30 minutes unless a listed index in
 the same scope is trading. A shared listing cache coalesces overlapping basket
 and card reads and pauses all those requests on a provider rate limit. The
-full daily series is cached by symbol, so range changes slice existing data.
-Daily GBP conversion uses the last FX close from before the index date;
-intraday conversion uses the latest observed FX bar at each point. Comparison
-starts at the first shared observation and requires the same basis and
-currency. The history reports missing observations as gaps. Drawdown and annualised
-realised volatility use completed daily bars before presentation; volatility
-does not treat a return across a gap as a daily move.
+catalog advertises each index's available ranges. One day uses five-minute
+quotes, one week uses half-hour bars over seven days, and one month uses hourly
+bars over a calendar month. Longer windows reuse the cached daily series.
+MSCI World ex USA, EM and EM IMI use the 17:00 New York hourly bar for daily
+values up to one year. All uses completed weekly bars across the available
+history and dates each bar at the end of its provider period.
+
+Intraday GBP conversion matches the latest FX bar at the same frequency.
+Daily and weekly conversion uses the most recent prior FX close at that
+frequency. Comparisons require the same kind, return basis and displayed
+currency. They rebase to 100 at the first shared time slot, day or calendar week.
+Unreported prices remain empty; a dotted line bridges known gaps. Weekend
+placeholders do not count as gaps for daily composite indices. Drawdown and
+annualised volatility use daily bars for daily ranges and weekly bars for All.
+For one week and one month, drawdown uses the chart bars and annualised
+volatility uses the last reading of each completed weekday.
 
 The S&P 500 and FTSE 100 details reuse the published sector board as a
 constituent basket. The Nasdaq 100 uses [CNDX](https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf-cndx);

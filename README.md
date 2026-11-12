@@ -34,7 +34,7 @@
 
 - **Results, not deposits.** Investment results stay separate from money moving
   in and out, for Invest and Stocks ISA together or one account at a time.
-- **Today's sectors.** Sector maps for the US, UK, Hong Kong and Korea, sized by
+- **Markets.** Global and regional index histories, plus sector maps sized by
   index weight and coloured by the session's move, with your own exposure beside
   each sector.
 - **Look-through.** Your direct shares combined with the constituents ETF issuers

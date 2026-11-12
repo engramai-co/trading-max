@@ -104,8 +104,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     },
     {
       href: "/sectors",
-      label: t("板块行情", "Sectors"),
-      mobileLabel: t("板块", "Sectors"),
+      label: t("市场", "Markets"),
+      mobileLabel: t("市场", "Markets"),
       icon: Layout,
       group: 1,
     },

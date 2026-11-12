@@ -90,9 +90,9 @@ unrealized position P&L, and a cash-flow-adjusted return are distinct measures.
 
 ## Watch today's sectors
 
-**Sectors** shows how far each sector has moved in the current session for the
-US, UK, Hong Kong and Korea. Block area follows index weight and colour follows
-the session's move. Each sector shows how many members are up and down and,
+**Markets** shows global and regional index histories, plus sector moves for the
+US, UK, Hong Kong, Korea and Japan. Block area follows index weight and colour
+follows the session's move. Each sector shows how many members are up and down and,
 while it keeps ranking in the top three, for how many sessions. Select a sector
 for its intraday path, leader, ranks over the last five sessions and your
 look-through exposure, then open an industry group to reach its companies.
