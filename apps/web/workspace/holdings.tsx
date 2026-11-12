@@ -18,6 +18,7 @@ import type { Holding } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
+import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { signedPounds } from "./day-drivers";
@@ -91,9 +92,8 @@ function Positions() {
       ),
     [positionData, account],
   );
-  // Today's change appears once the day's attribution covers any position;
-  // until then a link sorted by it falls back to market value.
-  const hasDay = scoped.some((h) => h.dayChangeGbp != null);
+  // The day column appears when a position has a reading or a known closure.
+  const hasDay = scoped.some((h) => h.dayChangeGbp != null || h.dayChangeClosedOn);
   const sort = requestedSort === "day" && !hasDay ? "value" : requestedSort;
   const direction = holdingSortDirection(sort, params.get("direction"));
   const ascending = direction === "asc";
@@ -343,7 +343,12 @@ function Positions() {
                           </td>
                           {hasDay && (
                             <td className="mx-align-right">
-                              {h.dayChangeGbp == null ? "—" : (
+                              {h.dayChangeClosedOn ? (
+                                <>
+                                  <ClosedMarket />
+                                  {otherDay(h) && <small><Tag tone="warn">{otherDay(h)}</Tag></small>}
+                                </>
+                              ) : h.dayChangeGbp == null ? "—" : (
                                 <>
                                   <strong className={"mx-" + tone(h.dayChangeGbp)}>
                                     {signedPounds(h.dayChangeGbp)}
@@ -410,13 +415,15 @@ function Positions() {
                               {currency(h.pnlGbp, "GBP", 2)} · {percent(h.pnlPct, true)}
                             </span>
                           </small>
-                          {h.dayChangeGbp != null && (
+                          {(h.dayChangeGbp != null || h.dayChangeClosedOn) && (
                             <small className="mx-holding-day">
-                              {dayLabel(h.dayChangeDate ?? columnDay)}{" "}
-                              <span className={"mx-" + tone(h.dayChangeGbp)}>
-                                {signedPounds(h.dayChangeGbp)}
-                                {h.dayChangePct != null && " " + percent(h.dayChangePct, true, 2)}
-                              </span>
+                              {dayLabel(h.dayChangeClosedOn ?? h.dayChangeDate ?? columnDay)}{" "}
+                              {h.dayChangeClosedOn ? <ClosedMarket /> : h.dayChangeGbp != null && (
+                                <span className={"mx-" + tone(h.dayChangeGbp)}>
+                                  {signedPounds(h.dayChangeGbp)}
+                                  {h.dayChangePct != null && " " + percent(h.dayChangePct, true, 2)}
+                                </span>
+                              )}
                             </small>
                           )}
                         </span>

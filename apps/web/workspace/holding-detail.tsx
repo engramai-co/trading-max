@@ -8,6 +8,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { Holding } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { currency, number, percent, tone } from "./data";
+import { ClosedMarket } from "./closed-market";
 import { signedPounds } from "./day-drivers";
 import { Facts, Help, Instrument, Metric, Tag, useCopy } from "./foundation";
 import { etfDetailQuery, etfPortfolioQuery, fieldEvidence, findETF, overlapDisplay, trackingDisplay } from "./etf-data";
@@ -16,10 +17,11 @@ import { EvidenceReading } from "./etf-reading";
 import { holdingQuantityUnit, holdingQuote } from "./holding-detail-data";
 import Link from "./link";
 
-function PositionMove({ label, amount, ratio }: {
+function PositionMove({ label, amount, ratio, closed }: {
   label: string;
   amount: number | null | undefined;
   ratio: number | null | undefined;
+  closed?: boolean;
 }) {
   const amountTone = tone(amount);
   const ratioTone = tone(ratio);
@@ -27,10 +29,10 @@ function PositionMove({ label, amount, ratio }: {
     <div>
       <dt>{label}</dt>
       <dd>
-        <strong className={amountTone && "mx-" + amountTone}>
-          {amount == null ? "—" : signedPounds(amount)}
+        <strong className={!closed && amountTone ? "mx-" + amountTone : undefined}>
+          {closed ? <ClosedMarket /> : amount == null ? "—" : signedPounds(amount)}
         </strong>
-        {ratio != null && (
+        {!closed && ratio != null && (
           <small>{" · "}<span className={ratioTone && "mx-" + ratioTone}>{percent(ratio, true, 2)}</span></small>
         )}
       </dd>
@@ -66,9 +68,9 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
     t("账户快照", "Account snapshot"),
     accountAsOf ? <time dateTime={accountAsOf}>{formatDateTime(accountAsOf, locale, timeZone, now)}</time> : "—",
   ]);
-  const day = holding.dayChangeDate;
+  const day = holding.dayChangeClosedOn ?? holding.dayChangeDate;
   const dayDate = day && formatCalendarDate(day, locale, now);
-  // This is the account's attribution date, not the listing's closing date.
+  // The numeric move uses the account's date; a closure uses the exchange's date.
   const dayLabel = !dayDate ? t("当日变动", "Day change") : day === today
     ? t("今日", "Today")
     : locale === "zh" ? `${dayDate}变动` : `${dayDate} change`;
@@ -91,7 +93,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
           <span className="mx-position-weight">{locale === "zh" ? `占组合 ${weight}` : `${weight} of portfolio`}</span>
         </div>
         <dl className="mx-position-moves">
-          <PositionMove label={dayLabel} amount={holding.dayChangeGbp} ratio={holding.dayChangePct} />
+          <PositionMove label={dayLabel} amount={holding.dayChangeGbp} ratio={holding.dayChangePct} closed={Boolean(holding.dayChangeClosedOn)} />
           <PositionMove label={t("浮动盈亏", "Unrealized P&L")} amount={holding.pnlGbp} ratio={holding.pnlPct} />
         </dl>
       </div>

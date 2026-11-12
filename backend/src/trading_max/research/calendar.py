@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
@@ -101,8 +101,36 @@ def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | N
 
 
 @lru_cache(maxsize=64)
-def market_calendar(name: str, first_year: int, last_year: int):
-    return xcals.get_calendar(name, start=f"{first_year - 1}-01-01", end=f"{last_year + 1}-12-31")
+def market_calendar(name: str, first_year: int, last_year: int, *, buffer_years: int = 1):
+    return xcals.get_calendar(
+        name, start=f"{first_year - buffer_years}-01-01", end=f"{last_year + buffer_years}-12-31"
+    )
+
+
+@lru_cache(maxsize=256)
+def listing_closure_date(name: str, since: datetime, observed: datetime) -> date | None:
+    """The exchange-local date when the measured window covers no scheduled trading.
+
+    The observation's exchange-local day must itself be sessionless, so a zero
+    from the first broker poll before the open stays a zero. Check for any
+    earlier session in the measured window as well: a London Friday baseline
+    can carry that Friday's trading into a weekend observation.
+    """
+    # A UTC year boundary can also cross the exchange's local year boundary.
+    try:
+        cal = market_calendar(name, since.year, observed.year, buffer_years=0)
+        first = since.astimezone(cal.tz).date()
+        last = observed.astimezone(cal.tz).date()
+        if first.year != since.year or last.year != observed.year:
+            cal = market_calendar(name, first.year, last.year, buffer_years=0)
+    except (CalendarError, ValueError):
+        return None
+
+    sessions = cal.schedule.loc[first.isoformat() : last.isoformat()]
+    if not sessions.empty and sessions.index[-1].date() == last:
+        return None
+    overlaps = ((sessions["close"] >= since) & (sessions["open"] <= observed)).any()
+    return None if overlaps else last
 
 
 def _utc(value: pd.Timestamp) -> str:

@@ -3653,6 +3653,11 @@ export interface components {
             currentPrice: number;
             /** Currentvaluegbp */
             currentValueGbp: number;
+            /**
+             * Daychangeclosedon
+             * @description Exchange-local date (YYYY-MM-DD) when no scheduled session covered this zero or missing day change.
+             */
+            dayChangeClosedOn?: string | null;
             /** Daychangedate */
             dayChangeDate?: string | null;
             /** Daychangegbp */

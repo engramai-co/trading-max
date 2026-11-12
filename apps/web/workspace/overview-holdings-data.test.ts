@@ -127,3 +127,24 @@ describe("overview holdings ledger", () => {
     expect(holdingsLedger({ holdings: [], signals: [] })).toMatchObject({ rows: [], groups: [], count: 0, total: 0, rest: { count: 0, value: 0, weight: 0 } });
   });
 });
+
+it("only marks a combined row closed if all of its positions were closed", () => {
+  const closed = { dayChangeClosedOn: "2026-11-28", dayChangeDate: "2026-11-27" };
+  const { rows, columnDay } = holdingsLedger({
+    holdings: [
+      holding("CLOSED", 100, closed),
+      holding("CLOSED", 120, { ...closed, account: "B", dayChangeGbp: 0, dayChangePct: 0 }),
+      holding("MIXED", 100, closed),
+      holding("MIXED", 70, { account: "B", dayChangeDate: "2026-11-26", dayChangeGbp: 0, dayChangePct: 0 }),
+      holding("UNKNOWN", 100, closed),
+      holding("UNKNOWN", 40, { account: "B" }),
+    ],
+    signals: [],
+  });
+  expect(columnDay).toBe("2026-11-28");
+  expect(rows).toMatchObject([
+    { ticker: "CLOSED", dayClosed: true, day: null },
+    { ticker: "MIXED", dayClosed: false, day: 0 },
+    { ticker: "UNKNOWN", dayClosed: false, day: null },
+  ]);
+});

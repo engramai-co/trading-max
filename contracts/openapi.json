@@ -7710,6 +7710,18 @@
             "title": "Currentvaluegbp",
             "type": "number"
           },
+          "dayChangeClosedOn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exchange-local date (YYYY-MM-DD) when no scheduled session covered this zero or missing day change.",
+            "title": "Daychangeclosedon"
+          },
           "dayChangeDate": {
             "anyOf": [
               {

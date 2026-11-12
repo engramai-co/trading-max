@@ -6,13 +6,14 @@ import type { ReactNode } from "react";
 import { inRange } from "@/lib/portfolio/nav";
 import { useFinePointer } from "@/ui/pointer";
 import { currency, percent, tone } from "@/workspace/data";
+import { ClosedMarket } from "./closed-market";
 import { quoteValue } from "./financial-values";
 import { Facts, useCopy } from "./foundation";
 import { researchPriceQuery } from "./research-queries";
 import { Sparkline } from "./sparks";
 
 export type PeekPosition = { valueGbp?: number | null; weightPct?: number | null; label?: string };
-type PeekSession = { label: string; share: number | null; price: number | null; currency: string; asOf?: string | null };
+type PeekSession = { label: string; share: number | null; closed?: boolean; price: number | null; currency: string; asOf?: string | null };
 
 /**
  * A pointer-only preview of a security's recent price path and the reader's position.
@@ -63,7 +64,7 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
         </strong>
       </div>
       <Facts rows={[
-        [session.label, <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}
+        [session.label, session.closed ? <ClosedMarket /> : <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}
           title={t("券商日内持仓变动，以当日首次观测为基准", "Broker position move since the session’s first observation")}>
           {percent(session.share, true, 2)}
         </span>],

@@ -19,6 +19,7 @@ export type LedgerRow = {
   weight: number;
   /** The latest session's move in the security, across accounts. */
   day: number | null;
+  dayClosed: boolean;
   /** The session that move belongs to, when it is older than the table's column. */
   dayDate: string | null;
   /** Unrealized P&L against combined cost. */
@@ -55,6 +56,12 @@ export type HoldingsLedger = {
  * share stands for the security rather than an estimate.
  */
 function dayMove(positions: Holding[]) {
+  // The overview merges by display ticker, which can include different listings.
+  // A closed position cannot stand in for an open or unidentified one.
+  if (positions.every((h) => h.dayChangeClosedOn)) {
+    const date = positions.map((h) => h.dayChangeClosedOn!).sort().at(-1)!;
+    return { share: null, date, closed: true };
+  }
   const dated = positions.filter((h) => finite(h.dayChangeGbp) != null && h.dayChangeDate);
   if (!dated.length) return { share: null, date: null };
   const date = dated.map((h) => h.dayChangeDate!).sort().at(-1)!;
@@ -108,6 +115,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       value,
       weight: share(value),
       day: move.share,
+      dayClosed: move.closed === true,
       dayDate: move.date && move.date !== columnDay ? move.date : null,
       pnl: combinedHoldingPnl(positions),
       fund,
