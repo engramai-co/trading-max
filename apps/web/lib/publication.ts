@@ -19,7 +19,8 @@ export function publicationFromHealth(value: unknown): Publication {
 export function watchPublications(
   read: (signal: AbortSignal) => Promise<Publication>,
   onResult: (value: Publication) => void,
-  onFailure: () => void,
+  /** Receives the number of consecutive failed checks. */
+  onFailure: (failures: number) => void,
   visible: () => boolean,
 ) {
   let stopped = false;
@@ -64,7 +65,7 @@ export function watchPublications(
       if (!stopped && visible() && (timedOut || !controller.signal.aborted)) {
         failures = Math.min(failures + 1, 4);
         retryAt = Date.now() + Math.min(maxBackoff, interval * 2 ** (failures - 1));
-        onFailure();
+        onFailure(failures);
       }
     } finally {
       clearTimeout(timeout);

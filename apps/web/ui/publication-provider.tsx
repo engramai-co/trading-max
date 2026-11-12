@@ -30,8 +30,9 @@ export function PublicationProvider({ children }: { children: ReactNode }) {
     }, (publication) => {
       setFailed(false);
       if (publication.runId) void refreshPublicationQueries(client, publication.runId);
-    }, () => {
-      setFailed(true);
+    }, (failures) => {
+      // One dropped check on a flaky network isn't news; a second in a row is.
+      if (failures >= 2) setFailed(true);
     }, () => document.visibilityState === "visible");
     retry.current = watcher.retry;
     const wake = watcher.wake;

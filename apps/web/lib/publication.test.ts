@@ -53,6 +53,26 @@ describe("publication watcher", () => {
     watcher.dispose();
   });
 
+  it("counts consecutive failed checks and resets after a success", async () => {
+    let healthy = false;
+    const read = vi.fn<(signal: AbortSignal) => Promise<Publication>>(async () => {
+      if (!healthy) throw new Error("offline");
+      return { runId: "one" };
+    });
+    const watcher = setup(read);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(watcher.fail).toHaveBeenLastCalledWith(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(watcher.fail).toHaveBeenLastCalledWith(2);
+    healthy = true;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(watcher.success).toHaveBeenCalledTimes(1);
+    healthy = false;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(watcher.fail).toHaveBeenLastCalledWith(1);
+    watcher.dispose();
+  });
+
   it("aborts and discards a late response after hiding or disposal", async () => {
     const resolve: Array<(value: Publication) => void> = [];
     const read = vi.fn<(signal: AbortSignal) => Promise<Publication>>(() => new Promise<Publication>((done) => { resolve.push(done); }));
