@@ -44,13 +44,16 @@ async function observations(disclosure: Locator) {
 test.describe("overview to performance", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale", "en");
+      localStorage.setItem("trading_max-overview-range", "6M");
+    });
     await page.route("**/api/backend/**", (route) => {
       const { pathname, searchParams } = new URL(route.request().url());
       if (pathname.endsWith("/dashboard/history")) {
         const range = PORTFOLIO_RANGES.find((value) => value === searchParams.get("range"));
         const scope = searchParams.get("scope");
-        if (!range || (scope !== "invest" && scope !== "isa") || searchParams.get("runId") !== fixture.runId) {
+        if (!range || (scope !== "invest" && scope !== "isa" && scope !== "total") || searchParams.get("runId") !== fixture.runId) {
           return route.fulfill({ status: 400, json: {} });
         }
         const prepared = prepareHistory(fixture, { range, scope });
@@ -105,10 +108,26 @@ test.describe("overview to performance", () => {
       await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
     });
   }
+  test("bare overview and its home links always start on 1D", async ({ page, isMobile }) => {
+    const overview = page.locator(".mx-overview-history");
+    const activeRange = (range: string) => expect(overview.getByRole("button", { name: range, exact: true }))
+      .toHaveAttribute("aria-pressed", "true");
+    await page.goto("/");
+    await activeRange("1D");
+    await overview.getByRole("button", { name: "6M", exact: true }).click();
+    await activeRange("6M");
+    await overview.getByRole("link", { name: "View performance" }).click();
+    await expect(page).toHaveURL(/view=money&range=6M/);
+    const home = page.getByRole("link", { name: isMobile ? "Home" : "Overview", exact: true });
+    await expect(home).toHaveAttribute("href", "/");
+    await home.click();
+    await expect(page).toHaveURL(/\/$/);
+    await activeRange("1D");
+  });
   test("range changes survive reload and invalid links use the default", async ({ page }) => {
     await page.goto("/?scope=invest&range=invalid");
     const overview = page.locator(".mx-overview-history");
-    await expect(overview.getByRole("button", { name: "3M", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(overview.getByRole("button", { name: "1D", exact: true })).toHaveAttribute("aria-pressed", "true");
     await overview.getByRole("button", { name: "6M", exact: true }).click();
     await page.reload();
     await expect(overview.getByRole("button", { name: "6M", exact: true })).toHaveAttribute("aria-pressed", "true");

@@ -19,12 +19,8 @@ const DAY = 86_400_000;
 const CALENDAR_ZONE = "Europe/London";
 
 export const PORTFOLIO_RANGES = ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"] as const;
-export function portfolioRange(value: string | null): Range {
-  return PORTFOLIO_RANGES.find((range) => range === value) ?? "3M";
-}
-/** A range in the URL wins; otherwise the range last chosen on this device, then 3M. */
-export function preferredRange(requested: string | null, remembered: string | null): Range {
-  return portfolioRange(PORTFOLIO_RANGES.some((range) => range === requested) ? requested : remembered);
+export function portfolioRange(value: string | null, fallback: Range = "3M"): Range {
+  return PORTFOLIO_RANGES.find((range) => range === value) ?? fallback;
 }
 export function portfolioPerformanceHref(scope: Scope, range: Range) {
   const params = new URLSearchParams({ view: "money", range });

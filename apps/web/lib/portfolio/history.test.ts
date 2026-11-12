@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NavPoint } from "@/lib/types";
-import { historyDisplayInterval, preferredRange, selectPortfolioHistory, tradingDay } from "@/lib/portfolio/history";
+import { historyDisplayInterval, portfolioRange, selectPortfolioHistory, tradingDay } from "@/lib/portfolio/history";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
 import { portfolioMoney } from "@/lib/portfolio/money";
 
@@ -17,11 +17,11 @@ const intraday = [point("2026-09-04T13:30:00Z", true), point("2026-09-04T13:40:0
 const input = { daily, intraday, scope: "total" as const, asOf: "2026-09-04T20:00:00Z" };
 
 describe("range and trading-day helpers", () => {
-  it("lets a range in the URL win over the one remembered on this device", () => {
-    expect(preferredRange("1M", "1D")).toBe("1M");
-    expect(preferredRange(null, "1D")).toBe("1D");
-    expect(preferredRange("2Y", "YTD")).toBe("YTD");
-    expect(preferredRange(null, "bogus")).toBe("3M");
+  it("uses an explicit range or the default for its surface", () => {
+    expect(portfolioRange("1M", "1D")).toBe("1M");
+    expect(portfolioRange(null, "1D")).toBe("1D");
+    expect(portfolioRange("2Y", "1D")).toBe("1D");
+    expect(portfolioRange(null)).toBe("3M");
   });
   it("keeps weekends on Friday and follows the London calendar", () => {
     expect(tradingDay("2026-11-07T10:00:00Z")).toBe("2026-11-06");

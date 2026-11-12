@@ -43,7 +43,8 @@ test.describe("persistent snapshot cache", () => {
   test("cold reopen shows the old number and source time while revalidating all restored reads", async ({ context, page }) => {
     await context.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await mockReads(page, async () => {}, () => 456);
-    await page.goto("/");
+    // Choose a range distinct from Today so the reopen has two independent history reads.
+    await page.goto("/?range=3M");
     await expect(page.locator(".mx-metric-large")).toContainText("£456.00");
     const asOf = await page.locator(".mx-summary .mx-freshness").innerText();
     expect(asOf).toContain("Data as of");
@@ -61,7 +62,7 @@ test.describe("persistent snapshot cache", () => {
     const held = new Promise<void>((resolve) => { release = resolve; });
     const calls = await mockReads(reopened, () => held, () => 789);
     try {
-      await reopened.goto("/");
+      await reopened.goto("/?range=3M");
       await expect(reopened.locator(".mx-metric-large")).toContainText("£456.00");
       await expect(reopened.locator(".mx-summary .mx-freshness")).toHaveText(asOf);
       await expect.poll(() => calls).toEqual({ lens: 1, history: 2 });
