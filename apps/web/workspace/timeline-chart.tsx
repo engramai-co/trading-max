@@ -32,6 +32,7 @@ export function TimelineChart({
   pendingCashFlows = false,
   height,
   drawdownHeading,
+  emptyHeadingLevel,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -47,6 +48,7 @@ export function TimelineChart({
   /** A single-layer chart's height where a surface needs it shorter than the default. */
   height?: number;
   drawdownHeading?: ReactNode;
+  emptyHeadingLevel?: 2 | 3;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -67,6 +69,7 @@ export function TimelineChart({
     return (
       <>
         <Empty
+          headingLevel={emptyHeadingLevel}
           title={pendingCashFlows && dates.length
             ? t("估值已记录，净盈亏待核对", "Valuations recorded; P&L awaits reconciliation")
             : t("还没有可展示的观测记录", "No observations to chart yet")}
