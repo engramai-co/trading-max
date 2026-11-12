@@ -43,10 +43,27 @@ describe("shared performance timeline", () => {
     expect(series[0].data).toEqual([0, 1, 2, 3, 4, 5].map((i) => ({ value: [i, i === 4 ? null : values[i]], symbolSize: 0 })));
     expect(estimate).toMatchObject({ silent: true, tooltip: { show: false } });
     expect(series.find((s) => s.id === "history-gap:0:0")?.lineStyle.type).toBe("dotted");
+    expect(series.find((s) => s.id === "history-area:0:0")).toMatchObject({
+      connectNulls: false,
+      data: series[0].data,
+    });
     const tooltip = option.tooltip as { formatter: (input: unknown) => string };
     expect(tooltip.formatter([{ seriesId: estimate.id, value: [2, 95] }, { value: [2, 95] }])).toContain("Reconstructed estimate");
     expect(tooltip.formatter([{ value: [0, 100] }])).toContain("Broker observation");
     expect(tooltip.formatter([{ seriesId: "history-gap:0:0", value: [5, 101] }])).toBe("");
+  });
+  it("does not draw gap or estimate strokes for missing and unsampled ten-minute slots within populated buckets", () => {
+    const dates = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, 9, 14, 12, i * 10)).toISOString());
+    const values = dates.map((_, i) => 100 + i);
+    const calendar = { categories: dates, rowIndexes: dates.map((_, i) => i === 2 || i === 7 ? null : i), displayIntervalMinutes: 60 };
+    const provenance = dates.map((_, i) => ({ estimated: i === 3, note: "" }));
+    const option = timelineOption(dates, [{ label: "Value", lines: [{ name: "NAV", values, area: true }] }], colours,
+      String, calendar, [], String, undefined, undefined, provenance);
+    expect(option.series.map((series) => series.id)).not.toContain("history-gap:0:0");
+    expect(option.series.map((series) => series.id)).not.toContain("history-estimate:0:0");
+    expect(option.series.find((series) => series.id === "history-area:0:0")).toMatchObject({
+      data: [0, 5, 11].map((i) => ({ value: [i, values[i]], symbolSize: 0 })),
+    });
   });
   it("changes only short-view labels, keeping every series and panel aligned", () => {
     const categories = Array.from({ length: 62 }, (_, i) =>

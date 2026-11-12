@@ -4,6 +4,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
 import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
@@ -49,20 +50,13 @@ export function TimelineChart({
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 767px)");
   const narrow = useMediaQuery("(max-width: 375px)");
   const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined;
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
-  // A solid line is the plain record; only the exceptions get a key, and only when they occur.
-  const rows = timeline?.rowIndexes ?? [];
-  const firstRow = rows.findIndex((row) => row != null);
-  const lastRow = rows.length - 1 - [...rows].reverse().findIndex((row) => row != null);
-  const sourceKeys = observations ? [
-    observations.some((point) => point.valuationSource === "reconstructed") && { dash: "4 3", label: t("重建估算", "Estimate") },
-    firstRow >= 0 && rows.slice(firstRow, lastRow + 1).some((row) => row == null) && { dash: "1 4", label: t("缺失", "Missing") },
-  ].filter((key): key is { dash: string; label: string } => Boolean(key)) : [];
   if (
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
@@ -84,30 +78,35 @@ export function TimelineChart({
       </>
     );
   }
+  const option = timelineOption(dates, layers, colours, (time) => {
+    const zone = intraday ? timeZone : "UTC";
+    // One line per date; the year appears only on dates outside the
+    // latest year shown, so it marks the boundary instead of repeating.
+    const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
+    const year = formatDate(time, locale, { year: "numeric", timeZone: zone });
+    return year === formatDate(Date.parse(dates.at(-1)!), locale, { year: "numeric", timeZone: zone })
+      ? day
+      : day + "\n" + year;
+  },
+    timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
+      ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
+      : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
+    tooltip,
+    display,
+    observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
+    moneyLayout,
+  );
+  // Solid is the default. Key only the source exceptions that produced a
+  // visible stroke after sampling, using the same series as the chart.
+  const sourceKeys = observations ? [
+    { type: "estimate", dash: "4 3", label: t("重建估算", "Estimate") },
+    { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
+  ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
   const plot = (
     <Plot
       label={label}
       height={(moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510)) - (shortRange ? 24 : 0)}
-      option={(colours) =>
-        timelineOption(dates, layers, colours, (time) => {
-          const zone = intraday ? timeZone : "UTC";
-          // One line per date; the year appears only on dates outside the
-          // latest year shown, so it marks the boundary instead of repeating.
-          const day = formatDate(time, locale, { day: "numeric", month: "short", timeZone: zone });
-          const year = formatDate(time, locale, { year: "numeric", timeZone: zone });
-          return year === formatDate(Date.parse(dates.at(-1)!), locale, { year: "numeric", timeZone: zone })
-            ? day
-            : day + "\n" + year;
-        },
-          timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
-            ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
-            : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
-          tooltip,
-          display,
-          observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
-          moneyLayout,
-        )
-      }
+      option={() => option}
     />
   );
   return (
