@@ -124,3 +124,15 @@ break any existing feature.
   without that header can pass while browsers receive compressed bytes without
   `Content-Encoding` and show a data error.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
+
+## Trading 212 balances
+
+- The account summary's `totalValue` leaves out uninvested pie cash
+  (`cash.inPies`), which the summary still reports. Count pie cash only when
+  the total includes it. Treat `reservedForOrders` as part of the total until
+  real data shows otherwise.
+- The Settings connection test reads a snapshot without the strict balance
+  check, so it can pass while the first sync fails.
+- Rebuilding daily values replays the retained broker rows. Keep that check's
+  tolerance equal to the snapshot check's; a stricter replay turns a few pence
+  of drift into a failure of every account update.

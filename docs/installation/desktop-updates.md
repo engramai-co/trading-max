@@ -1,21 +1,22 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.31.0 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.31.2 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.31.0).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.31.2).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.31.0
+## Verified scope for 1.31.2
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
 
 Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
-older-version fixture built from the release source with its updater unchanged.
+older-version fixture built from the 1.31.0 source with its updater unchanged;
+1.31.2 changes no updater code.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.31.0 DMG and reached **Ready to Install**;
+downloaded the exact final 1.31.2 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
 connection and disabled auto-open preference were unchanged. All 20,313
@@ -25,12 +26,17 @@ with Cmd-Q stopped its owned services.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
 the accepted local bytes; both the update feed and archive signatures verified.
-An installed 1.29.3 App discovered and downloaded the public 1.31.0 update
+An installed 1.31.0 App discovered and downloaded the public 1.31.2 update
 through App Settings, reached **Ready to Install** and installed it through
 **Install and Relaunch**. Its connection and startup preferences were unchanged,
 the installed bundle matched the accepted package exactly, and it reconnected to
 its saved HTTPS service.
 
+Version 1.31.2 brings the workspace's changes since 1.31.0 to the App: a first
+account sync accepts cash reserved for pending orders; uninvested pie cash
+counts only when Trading 212's account total includes it, so account updates no
+longer stop on pie cash; and the overview labels account cash 现金 (Cash).
+It replaces 1.31.1, whose pie-cash handling could stop account updates.
 Version 1.31.0 brings the workspace's changes since 1.29.3 to the App: the
 Trading 212 connection form explains how to create a read-only API key for each
 account; the demo labels its synthetic data and shows its snapshot date; the
