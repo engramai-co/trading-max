@@ -900,9 +900,17 @@ def reconstruct_historical_nav(
                 math.isfinite(value) for value in (observed_cash, observed_invested, observed_total)
             ):
                 raise HistoricalNavError("previous broker valuation is not finite")
-            if not math.isclose(observed_cash + observed_invested, observed_total, abs_tol=0.02):
+            # Accept the same gap the broker snapshot check allowed when the row
+            # was written. Rows from 1.31.1 also counted pie cash that Trading 212
+            # leaves out of its total; the broker's total and investments stand,
+            # and cash is what remains.
+            tolerance = max(
+                CASH_RECONCILIATION_TOLERANCE_GBP,
+                abs(observed_total) * CASH_RECONCILIATION_RELATIVE_TOLERANCE,
+            )
+            if abs(observed_cash + observed_invested - observed_total) > tolerance:
                 raise HistoricalNavError("previous broker valuation does not reconcile")
-            cash.loc[day] = observed_cash
+            cash.loc[day] = observed_total - observed_invested
             market_value.loc[day] = observed_invested
             native_days.add(day)
     nav = cash + market_value

@@ -295,8 +295,9 @@ class BrokerAccountSummary(DomainModel):
     investments_cost: Decimal
     realized_profit_loss: Decimal
     unrealized_profit_loss: Decimal
-    # Trading 212 counts cash held for pending orders and uninvested pie cash
-    # in the account total, but not in ``availableToTrade``.
+    # Trading 212's total includes cash held for pending orders, which
+    # ``availableToTrade`` leaves out. Uninvested pie cash is reported
+    # separately; it counts only when the total already includes it.
     cash_reserved_for_orders: Decimal = Decimal("0")
     cash_in_pies: Decimal = Decimal("0")
 
@@ -317,9 +318,19 @@ class BrokerAccountSummary(DomainModel):
 
     @property
     def cash_total(self) -> Decimal:
-        """All uninvested cash: available to trade, reserved for orders and in pies."""
+        """Account cash as the broker's total counts it.
 
-        return self.cash_available + self.cash_reserved_for_orders + self.cash_in_pies
+        Available and reserved cash always count. Pie cash is added only when
+        it brings cash plus investments closer to the total, so it is never
+        counted twice.
+        """
+
+        cash = self.cash_available + self.cash_reserved_for_orders
+        if not self.cash_in_pies:
+            return cash
+        gap = abs(cash + self.investments_value - self.total_value)
+        gap_with_pies = abs(cash + self.cash_in_pies + self.investments_value - self.total_value)
+        return cash + self.cash_in_pies if gap_with_pies < gap else cash
 
 
 class BrokerPosition(DomainModel):

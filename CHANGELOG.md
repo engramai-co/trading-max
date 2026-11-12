@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.31.2] - 2026-11-12
+
+### Fixed
+
+- Account updates no longer fail after 1.31.1 counted uninvested pie cash
+  that Trading 212 leaves out of the account total. Cash reserved for pending
+  orders still counts; pie cash counts only when the total includes it. Daily
+  values saved by 1.31.1 reconcile on the next update.
+
 ## [1.31.1] - 2026-11-11
 
 ### Fixed
