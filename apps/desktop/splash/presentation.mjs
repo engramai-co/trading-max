@@ -46,3 +46,14 @@ export function workspacePresentation(state, language = state.app_language) {
 export function savedRemote(profile) {
   return profile?.mode === "remote" && Boolean(profile.url);
 }
+
+export function recentWorkspacePresentation(workspace, state, language) {
+  const active = workspace.available && state.stage === "ready" && state.workspace?.path === workspace.path;
+  return {
+    action: !workspace.available ? null : active ? "return" : "open",
+    label: !workspace.available ? translate(language, "不可用", "Unavailable")
+      : active ? translate(language, "回到工作台", "Back to workspace")
+      : translate(language, "打开", "Open"),
+    canForget: !active,
+  };
+}

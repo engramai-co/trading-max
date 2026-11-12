@@ -122,6 +122,25 @@ def test_interrupted_upgrade_does_not_touch_an_active_workspace(older):
     assert amount(older.root) == 123
 
 
+def test_interrupted_upgrade_never_recreates_a_workspace_removed_during_inspection(older):
+    older.prepare()
+    read = WorkspaceUpgrade.read
+    moved = older.root.with_name("moved-workspace")
+
+    def read_then_move(upgrade):
+        journal = read(upgrade)
+        upgrade.root.rename(moved)
+        return journal
+
+    with (
+        patch.object(WorkspaceUpgrade, "read", read_then_move),
+        pytest.raises(FileNotFoundError),
+    ):
+        recover_interrupted(older.root, older.home.parent)
+    assert not older.root.exists()
+    assert amount(moved) == 123
+
+
 def test_capture_failure_never_starts_a_transaction_or_changes_original(older):
     original = (older.root / MANIFEST).read_bytes()
     with (

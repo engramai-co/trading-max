@@ -55,6 +55,7 @@ struct Session {
     #[serde(skip)]
     app_language: AppLanguage,
     profile: Profile,
+    #[serde(skip)]
     workspaces: Vec<Workspace>,
     generation: u64,
     stage: String,
@@ -541,6 +542,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                             .workspace
                             .as_ref()
                             .filter(|_| profile.mode == Mode::Local),
+                        snapshot.app_language,
                     ) {
                         failed(&app, &desktop, generation, error);
                     }
@@ -714,9 +716,19 @@ async fn prepare_workspace(
 ) -> Result<Workspace, String> {
     local_command(&window)?;
     let desktop = desktop.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || desktop.runtime.workspace(&path, name.as_deref()))
-        .await
-        .map_err(|_| "工作区检查没有完成。".to_string())?
+    let language = desktop.snapshot().app_language;
+    tauri::async_runtime::spawn_blocking(move || {
+        desktop.runtime.workspace(&path, name.as_deref(), language)
+    })
+    .await
+    .map_err(|_| {
+        language
+            .text(
+                "工作区检查没有完成。",
+                "The workspace check did not finish.",
+            )
+            .to_string()
+    })?
 }
 #[tauri::command]
 async fn open_local_workspace(
@@ -727,10 +739,16 @@ async fn open_local_workspace(
 ) -> Result<(), String> {
     local_command(&window)?;
     let desktop = desktop.inner().clone();
+    let language = desktop.snapshot().app_language;
     tauri::async_runtime::spawn_blocking(move || {
-        let checked = desktop.runtime.workspace(&workspace.path, None)?;
+        let checked = desktop.runtime.workspace(&workspace.path, None, language)?;
         if checked != workspace {
-            return Err("工作区已变化，请重新选择。".into());
+            return Err(language
+                .text(
+                    "工作区已变化，请重新选择。",
+                    "The workspace has changed. Select it again.",
+                )
+                .into());
         }
         {
             let mut session = desktop.session.lock().unwrap();
@@ -752,15 +770,57 @@ async fn open_local_workspace(
         request_connection(&app, &desktop, Some(profile), false)
     })
     .await
-    .map_err(|_| "工作区没有打开。".to_string())?
+    .map_err(|_| {
+        language
+            .text("工作区没有打开。", "Could not open the workspace.")
+            .to_string()
+    })?
 }
+#[derive(Serialize)]
+struct RecentWorkspace {
+    #[serde(flatten)]
+    workspace: Workspace,
+    available: bool,
+}
+
+fn recent_workspaces(workspaces: Vec<Workspace>) -> Vec<RecentWorkspace> {
+    workspaces
+        .into_iter()
+        .map(|workspace| RecentWorkspace {
+            available: runtime::workspace_folder_available(&workspace.path),
+            workspace,
+        })
+        .collect()
+}
+
 #[tauri::command]
-fn desktop_status(
+async fn desktop_status(
     window: WebviewWindow,
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<DesktopStatus, String> {
     local_command(&window)?;
-    let mut snapshot = desktop.snapshot();
+    let desktop = desktop.inner().clone();
+    let show_recents = window.label() != "settings";
+    // A remembered folder can live on an unavailable volume. Do not stat
+    // those paths on the UI thread or while holding the session lock.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut snapshot = desktop.snapshot();
+        let workspaces = if show_recents {
+            recent_workspaces(std::mem::take(&mut snapshot.workspaces))
+        } else {
+            Vec::new()
+        };
+        status_response(snapshot, &desktop.root, workspaces)
+    })
+    .await
+    .map_err(|err| err.to_string())
+}
+
+fn status_response(
+    mut snapshot: Session,
+    root: &std::path::Path,
+    workspaces: Vec<RecentWorkspace>,
+) -> DesktopStatus {
     let mode = snapshot
         .desired
         .as_ref()
@@ -778,18 +838,19 @@ fn desktop_status(
         .desired
         .as_ref()
         .and_then(|profile| (profile.mode == Mode::Remote).then(|| profile.url.clone()));
-    if let Ok(Some(saved)) = connection::read_profile(&desktop.root) {
+    if let Ok(Some(saved)) = connection::read_profile(root) {
         snapshot.profile = saved;
     }
-    Ok(DesktopStatus {
+    DesktopStatus {
         app_language: snapshot.app_language,
         session: snapshot,
+        workspaces,
         mode,
         workspace,
         source_name,
         source_address,
         can_open_browser,
-    })
+    }
 }
 
 #[derive(Serialize)]
@@ -797,6 +858,7 @@ struct DesktopStatus {
     #[serde(flatten)]
     session: Session,
     app_language: AppLanguage,
+    workspaces: Vec<RecentWorkspace>,
     mode: Option<Mode>,
     workspace: Option<Workspace>,
     source_name: Option<String>,
@@ -1595,6 +1657,58 @@ mod tests {
             None
         ));
     }
+    #[test]
+    fn recent_workspace_availability_reflects_folder_deletion_without_changing_history() {
+        let root = std::env::temp_dir().join(format!(
+            "tm-recent-workspaces-{}-{}",
+            std::process::id(),
+            connection::now_ms()
+        ));
+        let workspace = Workspace {
+            path: root.join("workspace"),
+            id: "synthetic-workspace-id".into(),
+            name: "Synthetic workspace".into(),
+        };
+        std::fs::create_dir_all(&workspace.path).unwrap();
+        connection::write_private_json(&root, "workspaces.json", &[&workspace]).unwrap();
+        let initial = recent_workspaces(read_workspaces(&root));
+        assert!(initial[0].available);
+        std::fs::remove_dir(&workspace.path).unwrap();
+        let missing = recent_workspaces(read_workspaces(&root));
+        assert!(!missing[0].available);
+        assert_eq!(missing[0].workspace, workspace);
+        assert_eq!(read_workspaces(&root), vec![workspace.clone()]);
+        std::fs::write(&workspace.path, "not a directory").unwrap();
+        assert!(!recent_workspaces(read_workspaces(&root))[0].available);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn opening_a_deleted_workspace_fails_before_writing_or_starting_a_runtime() {
+        let root = std::env::temp_dir().join(format!(
+            "tm-open-deleted-workspace-{}-{}",
+            std::process::id(),
+            connection::now_ms()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let workspace = Workspace {
+            path: root.join("deleted"),
+            id: "synthetic-workspace-id".into(),
+            name: "Synthetic workspace".into(),
+        };
+        let runtime = Runtime::new(root.join("app-state"), root.join("resources"));
+        let error = runtime
+            .workspace(&workspace.path, None, AppLanguage::English)
+            .unwrap_err();
+        assert!(error.contains("workspace folder is unavailable"));
+        let error = runtime
+            .start(Some(&workspace), AppLanguage::Chinese)
+            .unwrap_err();
+        assert!(error.contains("工作区文件夹不可用"));
+        assert!(root.read_dir().unwrap().next().is_none());
+        std::fs::remove_dir(root).unwrap();
+    }
+
     #[test]
     fn temporary_demo_keeps_saved_server_and_auto_open_preference() {
         let root = std::env::temp_dir().join(format!(

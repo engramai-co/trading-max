@@ -604,6 +604,7 @@ body.picker .choice {
 .folder-field input { min-width:0; flex:1; background:var(--rail); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:11px; font-size:12px; }
 .local-recent + .local-recent { margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
 .local-recent { gap:8px; }
+.local-recent-status { flex:none; color:var(--muted); font-size:12px; }
 .icon-button { flex:none; width:32px; height:32px; min-height:32px !important; padding:0; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:18px; line-height:1; }
 .icon-button:disabled { visibility:hidden; }
 @media (hover:hover) { .icon-button:hover:not(:disabled) { background:var(--bg); color:var(--ink); } }

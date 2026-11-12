@@ -1,4 +1,5 @@
 import { pageLanguage } from "./language.mjs";
+import { recentWorkspacePresentation } from "./presentation.mjs";
 
 const { core: { invoke }, webviewWindow: { getCurrentWebviewWindow } } = window.__TAURI__;
 const $ = (id) => document.getElementById(id);
@@ -169,26 +170,34 @@ async function refresh() {
       const container = $("local-recents");
       container.hidden = !state.workspaces?.length;
       container.replaceChildren();
-      for (const workspace of state.workspaces ?? []) {
+      for (const recent of state.workspaces ?? []) {
+        const { available, ...workspace } = recent;
+        const entry = recentWorkspacePresentation(recent, state, language.value);
         const row = document.createElement("div"); row.className = "recent-body local-recent"; row.title = workspace.path;
         const labels = document.createElement("div"); labels.className = "recent-name";
         const title = document.createElement("strong"); title.textContent = workspace.name;
-        const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; const active = state.stage === "ready" && state.workspace?.path === workspace.path;
-        button.textContent = active ? t("回到工作台", "Back to workspace") : t("打开", "Open");
-        button.addEventListener("click", () => action(async () => {
-          if (active) await invoke("open_workspace_page", { page: "current" });
-          else await invoke("open_local_workspace", { workspace });
-          await refresh();
-        }));
+        const affordance = document.createElement(entry.action ? "button" : "span");
+        affordance.textContent = entry.label;
+        if (entry.action) {
+          affordance.type = "button";
+          affordance.className = "secondary";
+          affordance.addEventListener("click", () => action(async () => {
+            if (entry.action === "return") await invoke("open_workspace_page", { page: "current" });
+            else await invoke("open_local_workspace", { workspace });
+            await refresh();
+          }));
+        } else {
+          affordance.className = "local-recent-status";
+        }
         // Forgetting only shortens the list; the workspace folder stays intact.
         const forget = document.createElement("button"); forget.type = "button"; forget.className = "icon-button";
-        forget.textContent = "×"; forget.disabled = active;
+        forget.textContent = "×"; forget.disabled = !entry.canForget;
         forget.setAttribute("aria-label", t("从最近列表移除 ", "Remove from recents: ") + workspace.name);
         forget.addEventListener("click", () => action(async () => {
           await invoke("forget_workspace", { path: workspace.path });
           await refresh();
         }));
-        labels.append(title); row.append(labels, button, forget); container.append(row);
+        labels.append(title); row.append(labels, affordance, forget); container.append(row);
       }
     }
     if (!initialized || view !== "remote") applyProfile(state.profile);
