@@ -46,6 +46,12 @@ if changed, keep `--web-port`, `PORT`, and the backend URL aligned. Stop each
 foreground process with `Ctrl-C` in its own terminal. The preview does not
 load the ordinary installation's bootstrap or credentials.
 
+Run the web end-to-end suite from `apps/web` with `PLAYWRIGHT_BASE_URL`
+pointing to this preview. To include the desktop demo restrictions test,
+start a second standalone web process on a free loopback port with
+`TRADING_MAX_ENV=desktop-preview`, using the same synthetic backend, and
+point `DESKTOP_DEMO_QA_URL` at that process.
+
 Use `--resume` on the builder to retry an interrupted build with its existing
 inputs. Completed provider artifacts are retained; retried dependencies
 invalidate their dependent stages even when a retry fails. Failed or removed

@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // A synthetic account with two scored decisions and three that a link can open; between fetches
 // only their context changes.
 const asOf = "2026-10-20T12:00:00Z";
-type Context = { benchmark: number; events: boolean; failing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean };
+type Context = { benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
 // A twin is another security sold the same day under the same ticker; settled, the sale's 20 days are done.
@@ -65,6 +65,9 @@ async function serve(page: Page, context: () => Context) {
       selectedAccountDecisions: { status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: decisions(context()) },
       decisionReviews: { A: { status: "available", horizonDays: 20, observingCount: 1, decisions: linked(context()) } },
     } });
+    if (path.endsWith("/health")) return context().healthFailing
+      ? route.fulfill({ status: 503, json: {} })
+      : route.fulfill({ json: { service: "trading_max-api", status: "ok", latestRunId: "synthetic-decision-context" } });
     if (path.endsWith("/analysis")) return route.fulfill({ status: 404, json: {} });
     return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {} } : {} });
   });
@@ -175,11 +178,44 @@ test.describe("a link to one decision", () => {
     await expect(failure).toBeVisible();
     await expect(row).toBeFocused();
     await expect(twenty).toHaveAttribute("aria-pressed", "true");
-    context = { ...context, failing: false };
+    context = { ...context, failing: false, benchmark: 0.034 };
+    // Retry the failed lens itself, without moving focus to the retry button.
+    const recovered = page.waitForResponse((response) =>
+      response.ok() && new URL(response.url()).pathname.endsWith("/dashboard/lens/account-analysis"));
     await reconnect(page);
+    await recovered;
     await expect(failure).toHaveCount(0);
     await expect(row).toBeFocused();
     await expect(twenty).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("two failed publication checks show a warning that clears when the same run is reachable", async ({ page }) => {
+    const health = (status: number) => page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/backend/health" && response.status() === status);
+    const first = health(200);
+    await page.goto(sale);
+    await first;
+    const row = page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ });
+    const failure = page.getByRole("button", { name: /更新失败 · 上次成功 \d{2}:\d{2} · 重试/ });
+    await expect(row).toBeFocused();
+    context = { ...context, healthFailing: true };
+    const dropped = health(503);
+    await page.clock.fastForward(61_000);
+    await dropped;
+    await expect(failure).toHaveCount(0);
+    const outage = health(503);
+    await page.clock.fastForward(61_000);
+    await outage;
+    await expect(failure).toBeVisible();
+    await expect(row).toBeFocused();
+
+    // The service can recover without publishing another snapshot.
+    context = { ...context, healthFailing: false };
+    const recovery = health(200);
+    await page.clock.fastForward(121_000);
+    await recovery;
+    await expect(failure).toHaveCount(0);
+    await expect(row).toBeFocused();
   });
 
   test("an observing decision says so rather than showing £0, and a T names its net side", async ({ page }) => {

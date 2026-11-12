@@ -175,7 +175,8 @@ test.describe("workspace navigation refinements", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.getByRole("button", { name: "More", exact: true }).tap();
       const menu = page.getByRole("menu");
-      await expect(menu).toBeVisible();
+      // Mantine exposes the menu while it fades in; measure and scan it when fully painted.
+      await expect(menu).toHaveCSS("opacity", "1");
       await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Connections", "中文", "Light", "Dark", "System"]);
       const box = (await menu.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
