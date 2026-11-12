@@ -1,0 +1,165 @@
+/* Reconcile the period's P&L, then show the curves on one timeline. */
+.mx-money-equation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: 56rem;
+  border-block: 1px solid var(--mx-border);
+  padding-block: 12px;
+  margin: 12px 0 0;
+  gap: 16px;
+  text-align: end;
+}
+.mx-money-equation dt,
+.mx-money-history-failure,
+.mx-return-comparator,
+.mx-comparison-basis,
+.mx-risk-basis,
+.mx-risk-drawdown-episode {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-money-equation dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-money-history-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.mx-equation-placeholder .mx-reading-placeholder {
+  width: min(100%, 9ch);
+  margin: 8px 0 8px auto;
+}
+.mx-plot-placeholder {
+  position: relative;
+}
+.mx-plot-placeholder > div {
+  position: absolute;
+  inset-inline: 48px 8px;
+}
+.mx-plot-placeholder .mx-loading {
+  min-height: 0;
+}
+.mx-performance-unavailable {
+  display: grid;
+  align-content: center;
+  min-height: 260px;
+}
+
+/* Dates carry the comparison basis. The benchmark remains quieter than the portfolio. */
+.mx-comparison-basis,
+.mx-risk-basis {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+}
+.mx-return-reading {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: end;
+}
+.mx-return-reading > :is(.mx-return-comparator, .mx-retry-reading) {
+  padding-bottom: 8px;
+}
+.mx-return-comparator {
+  display: flex;
+  gap: 6px 16px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.mx-return-comparator strong {
+  color: var(--mx-ink);
+}
+.mx-monthly-returns > summary {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  gap: 8px;
+  color: var(--mx-brand);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.mx-monthly-returns > summary::-webkit-details-marker {
+  display: none;
+}
+.mx-monthly-returns[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.mx-monthly-returns > p {
+  color: var(--mx-muted);
+  font-size: 12px;
+  margin-block: 8px 16px;
+}
+
+.mx-performance-risk {
+  display: grid;
+  gap: inherit;
+}
+.mx-risk-readings {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+  margin-bottom: 16px;
+}
+.mx-risk-readings .mx-metric:not(.mx-metric-large) .mx-number {
+  font-size: 24px;
+}
+.mx-risk-drawdown-episode time {
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .mx-chart-toolbar :is(.mx-period-control, .mx-dashboard-ranges) {
+    width: 100%;
+  }
+  .mx-money-equation {
+    grid-template-columns: 1fr;
+    gap: var(--mx-space-tight);
+    padding-block: var(--mx-space-group);
+    margin-top: var(--mx-space-items);
+  }
+  .mx-money-equation > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--mx-space-group);
+    text-align: start;
+  }
+  .mx-money-equation dd {
+    margin: 0;
+    font-size: 14px;
+    text-align: end;
+  }
+  .mx-equation-placeholder .mx-reading-placeholder {
+    margin-block: 2px;
+  }
+  .mx-page .mx-return-reading {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--mx-space-group);
+  }
+  .mx-return-reading > :is(.mx-return-comparator, .mx-retry-reading) {
+    padding-bottom: 0;
+  }
+  .mx-monthly-returns > summary {
+    min-height: 44px;
+  }
+  .mx-risk-readings {
+    gap: var(--mx-space-items);
+  }
+  .mx-risk-readings .mx-metric:not(.mx-metric-large) .mx-number {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-money-history-failure .mx-update-failure {
+    min-height: 44px;
+  }
+  .mx-performance-risk .mx-panel-heading:has(.mx-risk-basis) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

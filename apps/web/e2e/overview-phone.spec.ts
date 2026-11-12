@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
 import type { NavPoint } from "../lib/types";
+import { selectedRange } from "./dashboard-ranges";
 
 /**
  * Phones: the overview's day drivers wrap at every phone width and its statistics share rows, so each control needs
@@ -117,13 +118,13 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
   });
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
   await page.goto("/?scope=invest&range=1W");
-  await expect(page.locator(".mx-overview-statistics .mx-day-drivers a")).toHaveCount(3);
+  await expect(page.locator(".mx-overview-today .mx-day-drivers a")).toHaveCount(3);
   await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
   await expect(page.locator(".mx-attention a")).toHaveCount(1);
   await expect(page.locator(".mx-overview-holdings .mx-ledger-item")).toHaveCount(1);
   await expect(page.locator(".mx-overview-sector-grid a")).toHaveCount(SECTORS.length);
   await expect(page.locator(".mx-overview-sector-map")).toHaveCount(0);
-  if (estimated) await expect(page.locator(".mx-overview-statistics .mx-number .mx-tag-help")).toHaveCount(1);
+  if (estimated) await expect(page.locator(".mx-overview-today .mx-number .mx-tag-help")).toHaveCount(1);
 }
 
 async function resize(page: Page, width: number) {
@@ -262,20 +263,19 @@ test.describe("overview on phones", () => {
     });
   }
 
-  test("ordinary statistics share a row in two equal columns", async ({ page, isMobile }) => {
+  test("supporting figures are stacked and right-aligned", async ({ page, isMobile }) => {
     test.skip(!isMobile, "The phone layout");
     await open(page, "zh");
     for (const width of [375, 390]) {
       await resize(page, width);
       const [pnl, cash] = (await page.evaluate(statistics)).cells;
-      expect(cash.left, `one row at ${width}px`).toBeGreaterThan(pnl.right);
-      expect(Math.abs(pnl.right - pnl.left - (cash.right - cash.left)), `equal columns at ${width}px`).toBeLessThan(1);
-      expect(Math.abs(pnl.figureBottom - cash.figureBottom), `one baseline at ${width}px`).toBeLessThan(1);
+      expect(cash.top, `two rows at ${width}px`).toBeGreaterThanOrEqual(pnl.bottom);
+      expect(Math.abs(pnl.figureRight - cash.figureRight), `aligned figures at ${width}px`).toBeLessThan(1);
     }
   });
 });
 
-test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page }) => {
+test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page, isMobile }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Use an isolated local web build.");
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -343,7 +343,7 @@ test("publishes an Overview run only after both histories arrive and the chart r
   await page.keyboard.press("Escape");
   await expect(summary).toContainText("£12,345,678.90");
   await expect(summary.locator(".mx-freshness")).not.toHaveText(oldTime!);
-  await expect(page.getByRole("button", { name: "5D", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await selectedRange(page.locator(".mx-overview-history .mx-dashboard-ranges"), "5D", isMobile);
   await expect(page).toHaveURL(/scope=invest&range=1W$/);
 
   await expect(page.locator(".mx-overview-history .mx-chart-data")).toHaveCount(0);

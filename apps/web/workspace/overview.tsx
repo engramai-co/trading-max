@@ -34,13 +34,11 @@ import {
   Facts,
   Freshness,
   Metric,
-  LoadingStatus,
   Notice,
   Page,
   Panel,
   Pending,
   QueryError,
-  Segments,
   TextLink,
   UpdateFailure,
   useCopy,
@@ -50,7 +48,7 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
 import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-drivers";
-import { PORTFOLIO_RANGES, portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
+import { portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
@@ -62,6 +60,7 @@ import { OverviewHoldings } from "./overview-holdings";
 import { OverviewSectors, useOverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
+import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
@@ -111,8 +110,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt),
   }, [incoming, selection, history.data, todayHistory.data, query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt]);
   const complete = candidate?.history && candidate.today && runtime.status !== "loading" ? candidate : undefined;
-  const shown = useRetainedResult(complete, Object.is, (next, previous) =>
+  const retained = useRetainedResult(complete, Object.is, (next, previous) =>
     !reading.active || next.selection.range !== previous.selection.range || next.selection.scope !== previous.selection.scope);
+  const shown = retained?.selection.scope === requestedScope ? retained : undefined;
   const initialWaiting = !shown && !query.isError && (
     !incoming || history.isPending || todayHistory.isPending || runtime.status === "loading");
   const displayed = shown ?? candidate;
@@ -133,7 +133,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const holdings = (data?.holdings ?? []).filter(
     (h) => scope === "total" || h.account === (scope === "invest" ? "A" : "B"),
   );
-  if (!data && query.isError) return localWorkspace ? <LocalOnboarding showAccountLink /> : <QueryError retry={query.refetch} />;
+  if (!data && query.isError && localWorkspace) return <LocalOnboarding showAccountLink />;
   if (data && !accounts.length && data.totalValueGbp == null)
     return (
       <Panel>
@@ -162,7 +162,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
     <ReadingBoundary.Provider value={reading.report}><div className="mx-overview-read">
-      {initialWaiting && <LoadingStatus label={t("正在读取组合总览…", "Loading your portfolio overview…")} />}
       <div className="mx-panel mx-overview-portfolio">
         <section
           className="mx-summary"
@@ -184,28 +183,24 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
             <span className="mx-freshness-group">
-              {demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
+              {initialWaiting ? <WaitingAsOf label={t("正在读取资产记录…", "Loading portfolio assets…")} />
+                : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
               {summaryFailure && <UpdateFailure {...summaryFailure} />}
             </span>
           </div>
-          {initialWaiting ? <Pending shape="summary" quiet /> : <>
+          {initialWaiting ? <Pending shape="summary" quiet /> : !data && query.isError ? (
+            <div className="mx-overview-summary-failure">
+              <InlineRetry label={t("资产记录暂不可用", "Portfolio assets unavailable")} retry={query.refetch} />
+              <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
+            </div>
+          ) : <>
           <div className="mx-overview-totals">
             <Metric
               large
               label={t("总资产", "Portfolio value")}
               value={currency(value, "GBP", 2)}
             />
-            <div className="mx-overview-statistics">
-              <Metric
-                label={t("浮动盈亏", "Unrealized P&L")}
-                value={currency(pnl, "GBP", 2)}
-                tone={tone(pnl)}
-                help={t("当前持仓相对买入成本", "Open positions versus cost")}
-              />
-              <Metric
-                label={t("现金", "Cash balance")}
-                value={currency(cash, "GBP", 2)}
-              />
+            <div className="mx-overview-today">
               <TodayMetric
                 scope={scope}
                 data={displayed?.today}
@@ -216,6 +211,18 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
                 previousDay={previousDay}
                 today={today}
                 now={now}
+              />
+            </div>
+            <div className="mx-overview-statistics">
+              <Metric
+                label={t("浮动盈亏", "Unrealized P&L")}
+                value={currency(pnl, "GBP", 2)}
+                tone={tone(pnl)}
+                help={t("当前持仓相对买入成本", "Open positions versus cost")}
+              />
+              <Metric
+                label={t("现金", "Cash balance")}
+                value={currency(cash, "GBP", 2)}
               />
             </div>
           </div>
@@ -238,8 +245,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           range={range}
           selection={displayed?.selection ?? selection}
           data={displayed?.history}
-          failed={history.isError}
-          retry={history.refetch}
+          failed={history.isError || !data && query.isError}
+          retry={!data && query.isError ? query.refetch : history.refetch}
           failure={historyFailure}
           waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
@@ -247,7 +254,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           onRange={(value) => update({ range: value })}
           windowAttribution={data?.windowAttribution}
         />
-        <OverviewSectors query={sectors} initialWaiting={initialWaiting} />
+        <OverviewSectors query={sectors} />
       </div>
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
@@ -418,29 +425,24 @@ function OverviewHistory({
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
           {failure && <UpdateFailure {...failure} />}
-          <Segments
-            label={t("图表区间", "Chart range")}
-            value={requestedRange}
-            onChange={onRange}
-            shortcuts
-            options={PORTFOLIO_RANGES.map(
-              (v) => ({
-                value: v,
-                label: v === "ALL" ? t("全部", "All") : v === "1W" ? "5D" : v,
-              }),
-            )}
-          />
+          <DashboardRanges label={t("图表区间", "Chart range")} value={requestedRange} onChange={onRange} />
         </div>
       }
     >
       {initialWaiting || !data && !failed ? (
-        <Pending shape="chart" height={326} quiet={initialWaiting} label={t("正在读取盈亏记录…", "Loading profit and loss records…")} />
+        <Pending shape="chart" height={326} quiet={initialWaiting} label={t("正在读取 ", "Loading ") +
+          rangeName(requestedRange, t("全部", "all")) + t(" 盈亏记录…", " P&L history…")} />
       ) : runtime.status === "failed" ? (
         <QueryError retry={runtime.retry} />
       ) : !data ? (
-        <QueryError retry={retry} />
+        <div className="mx-overview-unavailable mx-overview-unavailable-history">
+          <InlineRetry label={t("盈亏记录暂不可用", "P&L history unavailable")} retry={retry} />
+        </div>
       ) : (
         <div className="mx-data-body" aria-busy={waiting && !failed || undefined}>
+          {range !== requestedRange && <p className="mx-prior-range">
+            {t("当前显示 ", "Showing ")}{rangeName(range, t("全部", "all"))}
+          </p>}
           <div className="mx-period-figure">
             <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
               {currency(money.pnl, "GBP", 2)}

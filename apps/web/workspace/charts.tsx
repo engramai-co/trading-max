@@ -361,7 +361,7 @@ function chartReading(
 export type ChartLine = {
   name: string;
   values: Array<number | null>;
-  colour?: "brand" | "accent" | "secondary" | "negative";
+  colour?: "brand" | "accent" | "secondary" | "negative" | "text" | "axis";
   dashed?: boolean;
   area?: boolean;
   type?: "line" | "bar";

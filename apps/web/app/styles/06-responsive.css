@@ -59,14 +59,6 @@
   .mx-universe-toggle {
     display: inline-flex;
   }
-  .mx-overview-totals {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 22px;
-  }
-  .mx-overview-statistics {
-    padding-left: 0;
-    border-left: 0;
-  }
 }
 @media (max-width: 959px) {
   .mx-grid-three {
@@ -273,28 +265,6 @@
   .mx-overview-totals > .mx-metric .mx-number {
     font-size: clamp(32px, 10vw, 42px);
     letter-spacing: -1.3px;
-  }
-  .mx-overview-statistics {
-    display: block;
-  }
-  .mx-overview-statistics > .mx-metric {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 0;
-    border-top: 1px solid var(--mx-border);
-  }
-  .mx-overview-statistics .mx-number {
-    font-size: 21px;
-    margin: 0;
-  }
-  .mx-overview-statistics > .mx-metric > .mx-metric-note {
-    grid-column: 1 / -1;
-    margin-top: -4px;
-  }
-  .mx-overview-statistics .mx-day-drivers {
-    margin: 0;
   }
   .mx-overview-notice {
     padding: 0 18px 20px;

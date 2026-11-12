@@ -256,33 +256,9 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-overview-portfolio.mx-panel {
   padding: 0;
 }
-.mx-overview-totals {
-  display: grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(0, 2fr);
-  align-items: center;
-  gap: 28px;
-}
 .mx-overview-totals > .mx-metric .mx-number {
   font-size: clamp(40px, 4vw, 54px);
   letter-spacing: -1.8px;
-}
-.mx-overview-statistics {
-  display: grid;
-  /* Today carries its drivers, so it gets the widest cell. */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 24px;
-  padding-left: 28px;
-  border-left: 1px solid var(--mx-border);
-}
-.mx-overview-statistics .mx-number {
-  font-size: clamp(20px, 1.8vw, 27px);
-  /* The figure and its change stay together; an estimate tag wraps below them when the cell runs out. */
-  white-space: normal;
-}
-.mx-overview-statistics .mx-day-drivers {
-  gap: 4px 14px;
-  margin: 8px 0 0;
-  font-size: 12px;
 }
 .mx-attention {
   display: flex;

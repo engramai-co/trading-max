@@ -773,21 +773,6 @@
   gap: 8px;
   margin-bottom: 27px;
 }
-.mx-money-equation {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 8px;
-  margin: 0;
-  color: var(--mx-muted);
-  font-size: 13px;
-}
-.mx-money-equation > span {
-  white-space: nowrap;
-}
-.mx-money-equation strong {
-  color: var(--mx-ink);
-  font-weight: 550;
-}
 .mx-money-timeline {
   position: relative;
 }
@@ -841,13 +826,74 @@
     line-height: 1.12;
     letter-spacing: -0.035em;
   }
-  .mx-money-equation {
-    font-size: var(--mx-text-label);
-  }
   .mx-money-drawdown {
     justify-content: space-between;
   }
   .mx-money-drawdown-dates {
     flex-basis: 100%;
+  }
+}
+
+/* One set of segments retains its shortcut order across widths. */
+.mx-dashboard-ranges {
+  display: contents;
+}
+.mx-range-more {
+  display: none;
+}
+.mx-retry-reading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--mx-warning);
+  font-size: 13px;
+}
+.mx-retry-reading .mx-inline-retry {
+  padding: 0 8px;
+  min-height: 32px;
+}
+.mx-prior-range {
+  margin: 0 0 8px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+@media (max-width: 767px) {
+  .mx-dashboard-ranges {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-width: 0;
+  }
+  .mx-dashboard-ranges > .mx-segments {
+    flex: 1;
+    min-width: 0;
+  }
+  .mx-dashboard-ranges > .mx-segments > button {
+    flex: 1;
+    min-height: 44px;
+  }
+  .mx-dashboard-ranges > .mx-segments > button:not([data-compact-option="true"]) {
+    display: none;
+  }
+  .mx-range-more {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding-inline: 12px;
+    border: 1px solid var(--mx-border);
+    border-radius: 7px;
+    background: var(--mx-surface);
+    color: var(--mx-muted);
+    font-size: 12px;
+  }
+  .mx-range-more[data-selected="true"] {
+    color: var(--mx-brand);
+    background: var(--mx-brand-soft);
+  }
+  .mx-retry-reading .mx-inline-retry {
+    min-height: 44px;
   }
 }

@@ -4,6 +4,24 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-11-12
+
+### Changed
+
+- The portfolio overview shows today's move beside the total value, with
+  unrealised profit and loss and cash below.
+- Money & P&L shows net profit and loss for the selected period first, then
+  explains how opening value, net deposits, and profit or loss add up to the
+  closing value.
+- Returns compare against VOO by default. The comparison shows the dates
+  both series cover and their difference in percentage points.
+- Risk shows both current and maximum drawdown across the full available
+  history.
+
+### Fixed
+
+- Money & P&L keeps the last complete figures visible when a refresh fails.
+
 ## [1.36.0] - 2026-11-12
 
 ### Added
