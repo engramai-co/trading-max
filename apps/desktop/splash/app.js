@@ -1,34 +1,49 @@
-"use strict";
-const { invoke } = window.__TAURI__.core;
+import { pageLanguage } from "./language.mjs";
+
+const { core: { invoke }, webviewWindow: { getCurrentWebviewWindow } } = window.__TAURI__;
 const $ = (id) => document.getElementById(id);
-// The native entry uses the system language before a workspace preference exists.
-const english = /^en(?:-|$)/i.test(navigator.language);
-const t = (zh, en) => english ? en : zh;
-if (english) {
-  document.documentElement.lang = "en";
-  document.title = "Trading Max · Workspaces and connections";
-  document.querySelectorAll("[data-en]").forEach((node) => { node.textContent = node.dataset.en; });
-  for (const attribute of ["aria-label", "placeholder", "value"]) {
-    document.querySelectorAll("[data-en-" + attribute + "]").forEach((node) => {
-      node.setAttribute(attribute, node.getAttribute("data-en-" + attribute));
-    });
-  }
-}
+const language = pageLanguage(document);
+const { t } = language;
 const picker = new URLSearchParams(location.search).has("picker");
-let selectedWorkspace = null, localRecentsKey = "";
+let selectedWorkspace = null, localRecentsKey = "", createdWorkspace = false;
 let initialized = false, busy = false, savedProfile = null, current = null, view = "welcome";
-let lastReadyGeneration = null;
-if (picker) {
-  document.body.classList.add("picker");
-  document.title = t("Trading Max · 工作区", "Trading Max · Workspaces");
+let lastReadyGeneration = null, languageRevision = 0, feedbackCopy, defaultServiceName;
+if (picker) document.body.classList.add("picker");
+
+function renderViewCopy() {
+  text("heading", {
+    welcome: picker ? t("工作区", "Workspaces") : t("打开你的投资工作台。", "Open your investment workspace."),
+    remote: t("连接你的服务。", "Connect your service."),
+    create: t("创建本地工作区。", "Create a local workspace."),
+    open: t("继续你的本地记录。", "Continue your local records."),
+  }[view]);
+  if (view !== "create" && view !== "open") return;
+  const creating = view === "create";
+  text("workspace-location-label", creating ? t("保存位置", "Save location") : t("工作区文件夹", "Workspace folder"));
+  text("workspace-hint", creating
+    ? t("将在这里新建同名文件夹。已有文件夹不会被覆盖。", "A new folder takes the workspace name. Existing folders stay as they are.")
+    : createdWorkspace ? t("工作区已创建。可以直接打开，继续连接账户。", "Workspace created. Open it to connect your accounts.")
+    : t("选择由桌面 App 创建的工作区。App 会先检查格式。", "Choose a folder created by the desktop app. The app checks it before opening."));
+  text("local-submit", creating ? t("创建并连接账户 →", "Create and connect an account →") : t("打开工作区 →", "Open workspace →"));
+  text("workspace-description", t("工作区格式兼容。打开后会检查账户连接和首次同步状态。", "This workspace is compatible. Open it to check account connections and first sync."));
 }
-// Headings only: the choices and form fields below explain themselves.
-const labels = {
-  welcome: picker ? t("工作区", "Workspaces") : t("打开你的投资工作台。", "Open your investment workspace."),
-  remote: t("连接你的服务。", "Connect your service."),
-  create: t("创建本地工作区。", "Create a local workspace."),
-  open: t("继续你的本地记录。", "Continue your local records."),
-};
+function applyLanguage(choice) {
+  const changed = language.apply(choice);
+  if (!changed && initialized) return;
+  document.title = picker ? t("Trading Max · 工作区", "Trading Max · Workspaces")
+    : t("Trading Max · 工作区与连接", "Trading Max · Workspaces and connections");
+  renderViewCopy();
+  if (!$("feedback").hidden && feedbackCopy) text("feedback", feedbackCopy());
+  if (view === "remote" && !savedProfile?.url && $("name").value === defaultServiceName) {
+    $("name").value = defaultServiceName = t("我的工作台", "My workspace");
+  }
+  if (current) renderStatus(current);
+}
+getCurrentWebviewWindow().listen("app-language-changed", ({ payload }) => {
+  languageRevision++;
+  applyLanguage(payload);
+  refresh();
+}).catch(() => { /* The status poll also carries the saved language. */ });
 function text(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
 function showView(next, focus = true) {
   view = next;
@@ -37,25 +52,24 @@ function showView(next, focus = true) {
   $("form").hidden = view !== "remote";
   $("local-form").hidden = !["create", "open"].includes(view);
   $("back").hidden = view === "welcome";
-  text("heading", labels[view]);
   $("feedback").hidden = true;
   if (view === "create" || view === "open") {
     selectedWorkspace = null;
+    createdWorkspace = false;
     $("workspace-name-field").hidden = view !== "create";
     $("workspace-name").required = view === "create";
     $("workspace-path").value = "";
     $("workspace-summary").hidden = true;
-    text("workspace-location-label", view === "create" ? t("保存位置", "Save location") : t("工作区文件夹", "Workspace folder"));
-    text("workspace-hint", view === "create" ? t("将在这里新建同名文件夹。已有文件夹不会被覆盖。", "A new folder takes the workspace name. Existing folders stay as they are.") : t("选择由桌面 App 创建的工作区。App 会先检查格式。", "Choose a folder created by the desktop app. The app checks it before opening."));
-    text("local-submit", view === "create" ? t("创建并连接账户 →", "Create and connect an account →") : t("打开工作区 →", "Open workspace →"));
   }
+  renderViewCopy();
   if (focus) $("heading").focus({ preventScroll: true });
   if (current) renderStatus(current);
 }
 function profile() { return { schema: 1, mode: "remote", name: $("name").value, url: $("url").value, auto_connect: $("auto").checked }; }
 function applyProfile(value) {
   savedProfile = value;
-  $("name").value = value.name;
+  defaultServiceName = t("我的工作台", "My workspace");
+  $("name").value = value.url ? value.name : defaultServiceName;
   $("url").value = value.url;
   $("auto").checked = value.auto_connect;
   $("recent").hidden = !value.url;
@@ -65,7 +79,8 @@ function applyProfile(value) {
   text("recent-host", host);
 }
 function feedback(message, tone = "") {
-  text("feedback", message);
+  feedbackCopy = typeof message === "function" ? message : () => message;
+  text("feedback", feedbackCopy());
   $("feedback").className = tone;
   $("feedback").hidden = false;
 }
@@ -95,6 +110,19 @@ function savedServiceActive(state) {
       new URL(state.active_url).origin === new URL(savedProfile.url).origin;
   } catch { return false; }
 }
+function connectionMessage(state) {
+  const name = state.mode === "demo" ? "the demo" : state.active_name || state.source_name || "the workspace";
+  switch (state.stage) {
+    case "connecting": return state.mode === "remote" ? `Connecting to ${name}…` : `Opening ${name}…`;
+    case "loading": return `Opening ${name}…`;
+    case "ready": return `Connected to ${name}`;
+    case "reconnecting":
+    case "offline": return "Connection lost. The current page is still open.";
+    case "error": return state.mode && state.mode !== "remote"
+      ? "The local service needs to restart." : "Could not connect to the workspace.";
+    default: return "Choose a data source.";
+  }
+}
 let refreshing = false;
 function renderStatus(state) {
   const working = ["connecting", "loading"].includes(state.stage);
@@ -104,7 +132,7 @@ function renderStatus(state) {
   const localError = error && state.mode && state.mode !== "remote";
   $("status").hidden = (state.stage === "idle" && !state.detail) || (picker && connected && !warning);
   $("status").className = "status " + (error || warning ? "error" : connected ? "good" : "working");
-  text("message", state.message);
+  text("message", t(state.message, connectionMessage(state)));
   text("detail", localError ? t("重新打开会继续使用这份工作区。已保存的资料和连接不会被清空。", "Reopen to keep using this workspace and its saved data and connections.") : state.detail || (warning ? t("主机可访问，后台更新状态需要检查。可在数据状态页查看。", "The service is reachable. See Data status to check background updates.") : ""));
   text("freshness", age(state.probe));
   $("diagnostics").hidden = !localError || !state.detail;
@@ -127,13 +155,15 @@ async function refresh() {
   if (refreshing) return;
   refreshing = true;
   try {
+    const revision = languageRevision;
     const state = await invoke("desktop_status");
     current = state;
+    if (revision === languageRevision) applyLanguage(state.app_language);
     if (state.stage === "ready") {
       if (picker && initialized && lastReadyGeneration !== state.generation) showView("welcome", false);
       lastReadyGeneration = state.generation;
     }
-    const localKey = JSON.stringify([state.workspaces ?? [], state.stage, state.workspace?.path]);
+    const localKey = JSON.stringify([state.workspaces ?? [], state.stage, state.workspace?.path, language.value]);
     if (localKey !== localRecentsKey) {
       localRecentsKey = localKey;
       const container = $("local-recents");
@@ -187,17 +217,17 @@ document.addEventListener("keydown", (event) => { if (event.key === "Escape" && 
 $("test").addEventListener("click", () => action(async () => {
   if (!$("form").reportValidity()) return;
   const tested = profile();
-  feedback(t("正在检查连接…", "Checking the connection…"));
+  feedback(() => t("正在检查连接…", "Checking the connection…"));
   const result = await invoke("test_connection", { profile: tested });
-  if (JSON.stringify(profile()) !== JSON.stringify(tested)) { feedback(t("地址已修改，请重新测试。", "The address changed. Test again.")); return; }
-  feedback(result.healthy && result.worker_healthy !== false ? t("连接成功，Trading Max 服务可访问。", "Connected to the Trading Max service.") : t("已连接，后台更新状态需要检查。", "Connected. Check background updates."), result.healthy && result.worker_healthy !== false ? "good" : "");
+  if (JSON.stringify(profile()) !== JSON.stringify(tested)) { feedback(() => t("地址已修改，请重新测试。", "The address changed. Test again.")); return; }
+  feedback(() => result.healthy && result.worker_healthy !== false ? t("连接成功，Trading Max 服务可访问。", "Connected to the Trading Max service.") : t("已连接，后台更新状态需要检查。", "Connected. Check background updates."), result.healthy && result.worker_healthy !== false ? "good" : "");
 }));
 $("save").addEventListener("click", () => action(async () => {
   if (!$("form").reportValidity()) return;
   const value = profile();
   await invoke("save_profile", { profile: value });
   applyProfile(value);
-  feedback(t("连接已保存。", "Connection saved."), "good");
+  feedback(() => t("连接已保存。", "Connection saved."), "good");
 }));
 $("form").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -232,7 +262,6 @@ $("pick-folder").addEventListener("click", () => action(async () => {
   if (view === "open") {
     selectedWorkspace = await invoke("prepare_workspace", { path, name: null });
     text("workspace-title", selectedWorkspace.name);
-    text("workspace-description", t("工作区格式兼容。打开后会检查账户连接和首次同步状态。", "This workspace is compatible. Open it to check account connections and first sync."));
     $("workspace-summary").hidden = false;
   }
 }));
@@ -240,17 +269,16 @@ $("local-form").addEventListener("submit", (event) => {
   event.preventDefault();
   action(async () => {
     const path = $("workspace-path").value;
-    if (!path) { feedback(t("请先选择保存位置。", "Choose a save location first."), "error"); return; }
+    if (!path) { feedback(() => t("请先选择保存位置。", "Choose a save location first."), "error"); return; }
     if (view === "create") {
       selectedWorkspace = await invoke("prepare_workspace", { path, name: $("workspace-name").value });
       // If launch fails, retry opens the created directory rather than recreating it.
       view = "open";
-      text("heading", labels.open);
-      text("workspace-location-label", t("工作区文件夹", "Workspace folder"));
-      text("workspace-hint", t("工作区已创建。可以直接打开，继续连接账户。", "Workspace created. Open it to connect your accounts."));
+      createdWorkspace = true;
+      renderViewCopy();
       $("workspace-path").value = selectedWorkspace.path;
       $("workspace-name-field").hidden = true;
-      text("local-submit", t("打开工作区 →", "Open workspace →"));
+      $("workspace-name").required = false;
     }
     if (!selectedWorkspace) selectedWorkspace = await invoke("prepare_workspace", { path, name: null });
     await invoke("open_local_workspace", { workspace: selectedWorkspace });

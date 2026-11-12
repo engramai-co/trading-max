@@ -18,7 +18,7 @@
     <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
     <div id="progress" class="progress" hidden><span></span></div>
     <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
-    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button"><span data-en="Reconnect">重新连接</span></button><button id="browser" class="secondary" type="button"><span data-en="Open in browser">在浏览器打开</span></button><button id="stop-retry" class="text-button" type="button"><span data-en="Cancel connection">取消连接</span></button></div>
+    <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button"><span data-en="Open in browser">在浏览器打开</span></button><button id="stop-retry" class="text-button" type="button"><span data-en="Cancel connection">取消连接</span></button></div>
     <details id="diagnostics" class="diagnostics" hidden><summary><span data-en="View diagnostics">查看诊断详情</span></summary><p id="diagnostic-detail"></p></details>
     <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden><span data-en="Open data folder ↗">打开资料文件夹 ↗</span></button></div>
     <div id="content">
@@ -46,12 +46,12 @@
       <form id="local-form" hidden aria-label="本地工作区" data-en-aria-label="Local workspace">
         <div class="form-context"><span class="dot"></span><span><span data-en="Data goes in the folder you choose. Credentials go in this Mac’s Keychain.">资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></span></div>
         <label class="field" id="workspace-name-field" for="workspace-name"><span data-en="Workspace name">工作区名称</span><input id="workspace-name" maxlength="60" value="我的投资记录" data-en-value="My investments" autocomplete="off" required></label>
-        <label class="field" for="workspace-path" id="workspace-location-label"><span data-en="Save location">保存位置</span></label>
+        <label class="field" for="workspace-path" id="workspace-location-label">保存位置</label>
         <div class="folder-field"><input id="workspace-path" placeholder="选择文件夹，或粘贴完整路径" data-en-placeholder="Choose a folder or paste its full path" autocomplete="off" spellcheck="false" maxlength="4096" required><button id="pick-folder" class="secondary" type="button"><span data-en="Choose folder…">选择文件夹…</span></button></div>
         <p id="workspace-hint" class="hint"></p>
         <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong><p id="workspace-description"></p></div>
         <p class="hint"><span data-en="Updates pause when you quit the app or your Mac sleeps.">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</span></p>
-        <div class="actions"><button id="local-submit" type="submit"><span data-en="Create and connect an account →">创建并连接账户 →</span></button></div>
+        <div class="actions"><button id="local-submit" type="submit">创建并连接账户 →</button></div>
       </form>
     </div>
     <div id="feedback" role="status" aria-live="polite" hidden></div>
@@ -59,5 +59,5 @@
     <footer><span id="version"></span><button id="show-settings" class="text-button" type="button"><span data-en="App settings ">App 设置 </span><kbd>⌘ ,</kbd></button></footer>
   </main>
 </div>
-<script src="app.js"></script>
+<script type="module" src="app.js"></script>
 </body></html>

@@ -64,3 +64,16 @@ test("a retained offline page is accessible without claiming current connectivit
   }
   assert.equal(workspacePresentation({ mode: "remote", stage: "error" }).available, false);
 });
+
+test("the saved English preference localizes a retained offline workspace", () => {
+  const view = workspacePresentation({
+    app_language: "en", mode: "remote", stage: "reconnecting",
+    active_url: "https://selected.example.test/", active_name: "Selected server",
+  });
+  assert.equal(view.kind, "Remote service");
+  assert.equal(view.name, "Selected server");
+  assert.equal(view.status, "Disconnected · Reconnecting");
+  assert.match(view.detail, /Data may be out of date/);
+  assert.equal(view.available, true);
+  assert.equal(view.ready, false);
+});

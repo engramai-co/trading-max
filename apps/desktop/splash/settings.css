@@ -74,3 +74,5 @@
   .preference-row,.destination-row { padding:15px; gap:12px; }
   .workspace-card-actions { flex-wrap:wrap; }
 }
+#app-language { color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; }
+#app-language:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }

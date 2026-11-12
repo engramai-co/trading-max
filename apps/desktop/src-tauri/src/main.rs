@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod connection;
+mod preferences;
 mod recovery;
 mod runtime;
 mod sparkle;
@@ -8,6 +9,7 @@ mod surfaces;
 mod updates;
 
 use connection::{Mode, Probe, Profile};
+use preferences::AppLanguage;
 use runtime::{Runtime, Workspace};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -22,7 +24,7 @@ use std::{
 };
 use tauri::{
     menu::{MenuBuilder, MenuItem, SubmenuBuilder},
-    Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    Emitter, EventTarget, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -50,6 +52,8 @@ extern "C" {
 #[derive(Clone, Serialize)]
 struct Session {
     app_version: &'static str,
+    #[serde(skip)]
+    app_language: AppLanguage,
     profile: Profile,
     workspaces: Vec<Workspace>,
     generation: u64,
@@ -617,28 +621,17 @@ fn show_workspaces(app: &tauri::AppHandle) -> tauri::Result<()> {
     show_auxiliary(app, true)
 }
 fn show_auxiliary(app: &tauri::AppHandle, picker: bool) -> tauri::Result<()> {
-    let (label, path, title, width, height) = if picker {
-        (
-            "workspaces",
-            "index.html?picker=1",
-            "Trading Max · 工作区",
-            760.0,
-            800.0,
-        )
+    let (label, path, width, height) = if picker {
+        ("workspaces", "index.html?picker=1", 760.0, 800.0)
     } else {
-        (
-            "settings",
-            "settings.html",
-            "Trading Max · 设置",
-            860.0,
-            640.0,
-        )
+        ("settings", "settings.html", 860.0, 640.0)
     };
     if let Some(window) = app.get_webview_window(label) {
         return reveal_window(&window);
     }
+    let language = app.state::<Arc<Desktop>>().snapshot().app_language;
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(path.into()))
-        .title(title)
+        .title(language.window_title(label))
         .inner_size(width, height)
         .min_inner_size(640.0, 540.0)
         .center()
@@ -683,22 +676,34 @@ fn read_workspaces(root: &std::path::Path) -> Vec<Workspace> {
 async fn choose_workspace_folder(
     window: WebviewWindow,
     app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<Option<PathBuf>, String> {
     local_command(&window)?;
+    let language = desktop.snapshot().app_language;
     tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("选择本机文件夹")
+            .set_title(language.text("选择本机文件夹", "Choose a local folder"))
             .blocking_pick_folder()
             .map(|file| {
-                file.into_path()
-                    .map_err(|_| "请选择本机文件夹。".to_string())
+                file.into_path().map_err(|_| {
+                    language
+                        .text("请选择本机文件夹。", "Choose a local folder.")
+                        .to_string()
+                })
             })
             .transpose()
     })
     .await
-    .map_err(|_| "未能打开文件夹选择器。".to_string())?
+    .map_err(|_| {
+        language
+            .text(
+                "未能打开文件夹选择器。",
+                "Could not open the folder picker.",
+            )
+            .to_string()
+    })?
 }
 #[tauri::command]
 async fn prepare_workspace(
@@ -777,6 +782,7 @@ fn desktop_status(
         snapshot.profile = saved;
     }
     Ok(DesktopStatus {
+        app_language: snapshot.app_language,
         session: snapshot,
         mode,
         workspace,
@@ -790,6 +796,7 @@ fn desktop_status(
 struct DesktopStatus {
     #[serde(flatten)]
     session: Session,
+    app_language: AppLanguage,
     mode: Option<Mode>,
     workspace: Option<Workspace>,
     source_name: Option<String>,
@@ -1094,6 +1101,39 @@ fn set_auto_connect(
     update_auto_connect(&desktop.root, enabled)
 }
 #[tauri::command]
+fn set_app_language(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    desktop: tauri::State<'_, Arc<Desktop>>,
+    language: AppLanguage,
+) -> Result<AppLanguage, String> {
+    local_command(&window)?;
+    {
+        let mut session = desktop.session.lock().unwrap();
+        language.save(&desktop.root).map_err(|_| {
+            session
+                .app_language
+                .text("无法保存语言设置。", "Could not save the language setting.")
+                .to_string()
+        })?;
+        session.app_language = language;
+    }
+    for label in ["main", "settings", "workspaces"] {
+        if let Some(surface) = app.get_webview_window(label) {
+            if local_command(&surface).is_ok() {
+                let _ = surface.set_title(language.window_title(label));
+                let _ = app.emit_to(
+                    EventTarget::webview_window(label),
+                    "app-language-changed",
+                    language,
+                );
+            }
+        }
+    }
+    Ok(language)
+}
+
+#[tauri::command]
 fn open_demo(
     window: WebviewWindow,
     app: tauri::AppHandle,
@@ -1244,6 +1284,7 @@ fn main() {
             forget_workspace,
             open_workspace_page,
             set_auto_connect,
+            set_app_language,
             open_demo,
             open_in_browser,
             choose_workspace_folder,
@@ -1265,6 +1306,7 @@ fn main() {
                 Ok(None) => (Profile::default(), None),
                 Err(error) => (Profile::default(), Some(error)),
             };
+            let app_language = AppLanguage::read(&root);
             let reopen = sparkle::take_reopen(&root);
             let autostart = if config_error.is_none() {
                 reopen.or_else(|| {
@@ -1279,6 +1321,7 @@ fn main() {
                 root: root.clone(),
                 session: Mutex::new(Session {
                     app_version: env!("CARGO_PKG_VERSION"),
+                    app_language,
                     profile: profile.clone(),
                     workspaces: read_workspaces(&root),
                     generation: 0,
@@ -1307,7 +1350,7 @@ fn main() {
             // recovery surface even if the portfolio WebView loses its service.
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("Trading Max · 工作区与连接")
+                    .title(app_language.window_title("main"))
                     .inner_size(1280.0, 840.0)
                     .min_inner_size(900.0, 640.0)
                     .center()
@@ -1353,6 +1396,7 @@ mod tests {
         };
         Session {
             app_version: env!("CARGO_PKG_VERSION"),
+            app_language: AppLanguage::default(),
             profile: profile.clone(),
             workspaces: vec![],
             generation: 1,
@@ -1570,6 +1614,7 @@ mod tests {
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
+                app_language: AppLanguage::default(),
                 profile: profile.clone(),
                 workspaces: vec![],
                 generation: 0,
@@ -1618,6 +1663,7 @@ mod tests {
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
+                app_language: AppLanguage::default(),
                 profile: Profile::default(),
                 workspaces: vec![],
                 generation: 0,
