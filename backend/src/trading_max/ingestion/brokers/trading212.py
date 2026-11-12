@@ -316,7 +316,7 @@ class BrokerAccountSummary(DomainModel):
     unrealized_profit_loss: Decimal
     # Trading 212's total includes cash held for pending orders, which
     # ``availableToTrade`` leaves out. Uninvested pie cash is reported
-    # separately; it counts only when the total already includes it.
+    # separately and may already be included in the reported investments.
     cash_reserved_for_orders: Decimal = Decimal("0")
     cash_in_pies: Decimal = Decimal("0")
 
@@ -394,6 +394,7 @@ class BrokerSnapshotReconciliation(DomainModel):
 
     position_value_gbp: Decimal
     investments_value_gbp: Decimal
+    pie_cash_in_investments_gbp: Decimal
     position_delta_gbp: Decimal
     position_tolerance_gbp: Decimal
     account_total_delta_gbp: Decimal
@@ -1230,23 +1231,30 @@ def broker_snapshot_reconciliation(
         (position.current_value_gbp for position in snapshot.positions),
         Decimal("0"),
     )
-    position_delta = position_value - snapshot.account.investments_value
+    account = snapshot.account
+    cash = account.cash_total
+    # If the total doesn't count positive pie cash separately, it's already
+    # in investments.currentValue. The position list only values filled shares.
+    pie_cash_in_investments = (
+        account.cash_in_pies
+        if account.cash_in_pies > 0
+        and cash == account.cash_available + account.cash_reserved_for_orders
+        else Decimal("0")
+    )
+    position_delta = position_value - (account.investments_value - pie_cash_in_investments)
     position_tolerance = max(
         Decimal("0.02"),
-        abs(snapshot.account.investments_value) * Decimal("0.0005"),
+        abs(account.investments_value) * Decimal("0.0005"),
     )
-    account_total_delta = (
-        snapshot.account.cash_total
-        + snapshot.account.investments_value
-        - snapshot.account.total_value
-    )
+    account_total_delta = cash + account.investments_value - account.total_value
     account_total_tolerance = max(
         Decimal("0.02"),
-        abs(snapshot.account.total_value) * Decimal("0.0005"),
+        abs(account.total_value) * Decimal("0.0005"),
     )
     return BrokerSnapshotReconciliation(
         position_value_gbp=position_value,
-        investments_value_gbp=snapshot.account.investments_value,
+        investments_value_gbp=account.investments_value,
+        pie_cash_in_investments_gbp=pie_cash_in_investments,
         position_delta_gbp=position_delta,
         position_tolerance_gbp=position_tolerance,
         account_total_delta_gbp=account_total_delta,
@@ -1278,6 +1286,7 @@ def validate_broker_snapshot(
             f"{snapshot.profile}: broker snapshot reconciliation failed: {checks}; "
             f"position_delta_gbp={reconciliation.position_delta_gbp}; "
             f"position_tolerance_gbp={reconciliation.position_tolerance_gbp}; "
+            f"pie_cash_in_investments_gbp={reconciliation.pie_cash_in_investments_gbp}; "
             f"account_total_delta_gbp={reconciliation.account_total_delta_gbp}; "
             f"account_total_tolerance_gbp={reconciliation.account_total_tolerance_gbp}"
         )

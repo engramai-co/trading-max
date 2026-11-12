@@ -270,10 +270,10 @@ def _summary_with_cash(payload: dict[str, object], total: str, **cash: str) -> N
     summary["cash"] = cash
 
 
-def test_snapshot_counts_reserved_cash_but_not_pie_cash() -> None:
+def test_snapshot_counts_reserved_cash_and_reclassifies_embedded_pie_cash() -> None:
     # Trading 212's total includes cash held for pending orders, which
     # availableToTrade leaves out. Pie cash is reported but not added again.
-    payload = _snapshot_payload()
+    payload = _snapshot_payload(position_value="99.15")
     _summary_with_cash(
         payload,
         "112.40",
@@ -291,13 +291,15 @@ def test_snapshot_counts_reserved_cash_but_not_pie_cash() -> None:
     assert snapshot.account.cash_total == Decimal("12.40")
     assert reconciliation.account_total_delta_gbp == Decimal("0")
     assert reconciliation.cash_plus_investments_matches_total is True
-    assert metrics.cash_gbp == Decimal("12.40")
+    assert reconciliation.pie_cash_in_investments_gbp == Decimal("0.85")
+    assert metrics.cash_gbp == Decimal("13.25")
+    assert metrics.investments_value_gbp == Decimal("99.15")
 
 
 def test_pie_cash_is_not_counted_twice_against_the_total() -> None:
     # The broker's total equals available cash plus investments while a few
     # pence of uninvested pie cash are reported beside them.
-    payload = _snapshot_payload()
+    payload = _snapshot_payload(position_value="99.97")
     _summary_with_cash(payload, "110.00", availableToTrade="10.00", inPies="0.03")
 
     snapshot = snapshot_from_payload("invest", "live", payload)
@@ -311,18 +313,64 @@ def test_pie_cash_counts_when_the_total_includes_it() -> None:
     payload = _snapshot_payload()
     _summary_with_cash(
         payload,
-        "113.25",
+        "610.00",
         availableToTrade="10.00",
-        reservedForOrders="2.40",
-        inPies="0.85",
+        reservedForOrders="0",
+        inPies="500.00",
     )
 
     snapshot = snapshot_from_payload("invest", "live", payload)
     reconciliation = broker_snapshot_reconciliation(snapshot)
 
-    assert snapshot.account.cash_total == Decimal("13.25")
+    assert snapshot.account.cash_total == Decimal("510.00")
+    assert reconciliation.pie_cash_in_investments_gbp == Decimal("0")
     assert reconciliation.account_total_delta_gbp == Decimal("0")
     assert reconciliation.cash_plus_investments_matches_total is True
+    metrics = account_snapshot_metrics("invest", snapshot)
+    assert metrics.cash_gbp == Decimal("510.00")
+    assert metrics.investments_value_gbp == Decimal("100.00")
+
+    payload["positions"] = []
+    with pytest.raises(Trading212Error, match=r"position_delta_gbp=-100\.00"):
+        snapshot_from_payload("invest", "live", payload)
+
+
+def _pending_pie_snapshot(position_value: str = "100.00", pie_cash: str = "500.00") -> dict:
+    payload = _snapshot_payload(position_value=position_value)
+    _summary_with_cash(
+        payload, "610.00", availableToTrade="10.00", reservedForOrders="0", inPies=pie_cash
+    )
+    payload["account_summary"]["investments"]["currentValue"] = "600.00"  # type: ignore[index]
+    return payload
+
+
+def test_pending_pie_cash_reconciles_to_filled_positions() -> None:
+    snapshot = snapshot_from_payload("isa", "live", _pending_pie_snapshot("100.03"))
+    reconciliation = broker_snapshot_reconciliation(snapshot)
+    metrics = account_snapshot_metrics("isa", snapshot)
+
+    assert reconciliation.pie_cash_in_investments_gbp == Decimal("500.00")
+    assert reconciliation.position_delta_gbp == Decimal("0.03")
+    assert reconciliation.position_tolerance_gbp == Decimal("0.30")
+    assert reconciliation.account_total_delta_gbp == Decimal("0")
+    assert metrics.investments_value_gbp == Decimal("100.00")
+    assert metrics.cash_gbp == Decimal("510.00")
+    assert metrics.total_value_gbp == Decimal("610.00")
+
+
+@pytest.mark.parametrize(
+    ("position_value", "pie_cash", "delta"),
+    [("100.00", "0", "-500.00"), ("99.69", "500.00", "-0.31")],
+)
+def test_pie_cash_does_not_excuse_an_unexplained_position_gap(
+    position_value: str, pie_cash: str, delta: str
+) -> None:
+    payload = _pending_pie_snapshot(position_value, pie_cash)
+    with pytest.raises(Trading212Error, match=r"positions_match_investments.*False") as caught:
+        snapshot_from_payload("isa", "live", payload)
+
+    assert f"position_delta_gbp={delta};" in str(caught.value)
+    assert f"pie_cash_in_investments_gbp={pie_cash};" in str(caught.value)
 
 
 def test_snapshot_still_rejects_total_beyond_every_cash_component() -> None:
@@ -1110,17 +1158,18 @@ def test_broker_sync_use_case_persists_only_verified_export(
     assert (tmp_path / "invest" / "latest_export.json").is_file()
 
 
-def test_first_strict_sync_accepts_cash_reserved_for_orders(
-    tmp_path: Path,
+@pytest.mark.parametrize("pending_pie_cash", [False, True])
+def test_first_strict_sync_accepts_reserved_or_pending_pie_cash(
+    tmp_path: Path, pending_pie_cash: bool
 ) -> None:
-    payload = _snapshot_payload()
-    _summary_with_cash(
-        payload,
-        "112.40",
-        availableToTrade="10.00",
-        reservedForOrders="2.40",
-        inPies="0.85",
-    )
+    payload = _pending_pie_snapshot() if pending_pie_cash else _snapshot_payload()
+    if not pending_pie_cash:
+        _summary_with_cash(
+            payload,
+            "112.40",
+            availableToTrade="10.00",
+            reservedForOrders="2.40",
+        )
     fake = _FakeClient(payload)
     service = Trading212BrokerSync(
         credentials_factory=lambda _: _credentials(),
@@ -1140,7 +1189,8 @@ def test_first_strict_sync_accepts_cash_reserved_for_orders(
     )
 
     assert result.reconciliation.status == "verified"
-    assert result.snapshot.account.cash_total == Decimal("12.40")
+    assert result.snapshot.account.cash_total == Decimal("10.00" if pending_pie_cash else "12.40")
+    assert Path(result.snapshot_path).is_file()
 
 
 def test_broker_sync_refreshes_mutable_current_day_export(tmp_path: Path) -> None:

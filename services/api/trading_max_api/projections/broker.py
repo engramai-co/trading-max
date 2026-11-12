@@ -43,6 +43,7 @@ def _verified_live_positions(account: JsonObject) -> list[JsonObject] | None:
     ):
         return None
 
+    # The metrics producer has already moved embedded pie cash out of investments.
     investments = nullable_number(account.get("investments_value_gbp"))
     if investments is None or not isfinite(investments):
         return None
@@ -94,6 +95,7 @@ def overlay_live_broker_snapshot(
         # Live totals can be newer than the positions kept below, so positions
         # carry their own observation time for any price quoted from them.
         account["positions_observed_at"] = _positions_observed_at(raw_canonical)
+        account.pop("pie_cash_in_investments_gbp", None)
         for key in (
             "profile",
             "fetched_at",
@@ -102,6 +104,7 @@ def overlay_live_broker_snapshot(
             "cash_gbp",
             "investments_value_gbp",
             "position_value_gbp",
+            "pie_cash_in_investments_gbp",
             "position_delta_gbp",
             "position_tolerance_gbp",
             "positions_status",

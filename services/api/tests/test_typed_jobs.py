@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import time
 from datetime import UTC, date
@@ -11,6 +12,7 @@ import pandas as pd
 import pytest
 from starlette.testclient import TestClient
 from trading_max.application.decision_stages import AccountDecisionStage
+from trading_max.application.nav_stages import AccountNavStage
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.reference import (
     SecurityEntityRecord,
@@ -70,7 +72,9 @@ def _research_options_unavailable(
     raise RuntimeError("fixture has no option chain")
 
 
-def _write_snapshot(root: Path, profile: str, total: str) -> None:
+def _write_snapshot(
+    root: Path, profile: str, total: str, *, pending_pie_cash: bool = False
+) -> None:
     path = root / "trading212" / profile / "snapshots" / "snapshot_20260807.json"
     path.parent.mkdir(parents=True)
     path.write_text(
@@ -79,10 +83,14 @@ def _write_snapshot(root: Path, profile: str, total: str) -> None:
                 "fetched_at_utc": "2026-08-07T20:00:00Z",
                 "account_summary": {
                     "currency": "GBP",
-                    "totalValue": total,
-                    "cash": {"availableToTrade": "0"},
+                    "totalValue": "610" if pending_pie_cash else total,
+                    "cash": (
+                        {"availableToTrade": "10", "reservedForOrders": "0", "inPies": "500"}
+                        if pending_pie_cash
+                        else {"availableToTrade": "0"}
+                    ),
                     "investments": {
-                        "currentValue": total,
+                        "currentValue": "600" if pending_pie_cash else total,
                         "totalCost": "90",
                         "realizedProfitLoss": "1",
                         "unrealizedProfitLoss": "9",
@@ -318,6 +326,79 @@ def test_performance_scope_is_lightweight_and_never_syncs_history() -> None:
     ]
     with pytest.raises(ValueError, match="latest live broker snapshot"):
         stage_plan("performance", skip_sync=False)
+
+
+def test_performance_refresh_reconciles_pending_pie_cash_and_replays_retained_nav(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def history(symbol: str, start: date, end: date) -> pd.DataFrame:
+        prices = {"GBPUSD=X": 1.25, "BE": 125.0}
+        if symbol not in prices:
+            return pd.DataFrame()
+        return pd.DataFrame({"Close": prices[symbol]}, index=pd.bdate_range(start, end))
+
+    monkeypatch.setattr(
+        "trading_max.application.runtime.AccountNavStage",
+        partial(AccountNavStage, history_loader=history),
+    )
+    _write_snapshot(tmp_path, "isa", "100", pending_pie_cash=True)
+    _seed_ledger(tmp_path, ("isa",))
+    (tmp_path / "trading212/isa/exports/latest.csv").write_text(
+        "ID,Action,Time (UTC),ISIN,Ticker,No. of shares,Price / share,Currency (Price / share),Total\n"
+        "1,Deposit,2026-08-03T08:00:00Z,,,,,,110\n"
+        "2,Market buy,2026-08-03T15:00:00Z,US0937121079,BE,1,125,USD,100\n"
+        "3,Deposit,2026-08-07T09:00:00Z,,,,,,500\n",
+        encoding="utf-8",
+    )
+    store = ArtifactStore(tmp_path)
+    retained = store.immutable_artifacts.put_bytes(
+        key="account/nav/daily_nav_b.csv",
+        content=(
+            b"Date,SyntheticNAVGBP,CashGBP,MarketValueGBP,ValuationSource,ObservedAt,PerformanceStatus\n"
+            b"2026-08-04,110,10.03,100,broker_native,2026-08-04T20:00:00Z,eligible\n"
+        ),
+        kind="nav_series",
+        media_type="text/csv",
+        producer_version=AccountNavStage.version,
+    )
+    store.immutable_snapshots.publish(scope="accounts", source="fixture", artifacts=[retained])
+    manager = TypedJobManager(
+        store,
+        WatchlistStore(tmp_path),
+        broker_profiles_loader=lambda: ("isa",),
+    )
+    try:
+        queued = manager.submit("performance", skip_sync=True, trigger="performance")
+        worker = manager._build_worker(worker_id="test", lease_seconds=90)
+        assert worker.run_once()
+        completed = manager.get(queued.job_id)
+        assert completed.status.value == "succeeded", completed.error
+        assert completed.snapshot_run_id
+        account = store.read_json(completed.snapshot_run_id, "account/isa.json")
+        assert account["fetched_at"].startswith("2026-08-07T20:00:00")
+        assert account["pie_cash_in_investments_gbp"] == "500"
+        assert account["checks"]["positions_match_investments"] is True
+
+        latest = store.immutable_snapshots.latest()
+        assert latest is not None
+        nav_ref = next(
+            ref for ref in latest.manifest.artifacts if ref.key == "account/nav/daily_nav_b.csv"
+        )
+        with store.immutable_artifacts.get_bytes(nav_ref.artifact_id).path.open() as nav:
+            rows = {row["Date"]: row for row in csv.DictReader(nav)}
+        assert rows["2026-08-04"]["ValuationSource"] == "broker_native"
+        assert float(rows["2026-08-04"]["SyntheticNAVGBP"]) == 110
+        assert float(rows["2026-08-04"]["CashGBP"]) == 10
+        current = rows["2026-08-07"]
+        assert float(current["SyntheticNAVGBP"]) == 610
+        assert float(current["CashGBP"]) == 510
+        assert float(current["MarketValueGBP"]) == 100
+        assert float(current["ExternalFlowGBP"]) == 500
+        assert current["PerformanceStatus"] == "eligible"
+        performance = store.read_json(completed.snapshot_run_id, "account/performance_b.json")
+        assert performance["twr_total_return"] == pytest.approx(0.0)
+    finally:
+        manager.close()
 
 
 def test_research_scope_refreshes_lookthrough_without_broker_history() -> None:

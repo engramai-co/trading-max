@@ -45,6 +45,9 @@ class AccountSnapshotMetrics(DomainModel):
     cash_gbp: Decimal
     investments_value_gbp: Decimal
     position_value_gbp: Decimal
+    pie_cash_in_investments_gbp: Decimal
+    position_delta_gbp: Decimal
+    position_tolerance_gbp: Decimal
     total_cost_gbp: Decimal
     realized_profit_loss_gbp: Decimal
     unrealized_profit_loss_gbp: Decimal
@@ -64,6 +67,7 @@ class IntradayAccountValue(DomainModel):
     cash_gbp: Decimal
     investments_value_gbp: Decimal
     position_value_gbp: Decimal
+    pie_cash_in_investments_gbp: Decimal
     position_delta_gbp: Decimal
     position_tolerance_gbp: Decimal
     positions_status: Literal["verified", "unreconciled"]
@@ -128,14 +132,20 @@ def account_snapshot_metrics(
         "positions_match_investments": reconciliation.positions_match_investments,
         "cash_plus_investments_matches_total": (reconciliation.cash_plus_investments_matches_total),
     }
+    pie_cash = reconciliation.pie_cash_in_investments_gbp
     return AccountSnapshotMetrics(
         profile=profile,
         fetched_at=normalized.fetched_at,
         source=str(source) if source is not None else None,
         total_value_gbp=normalized.account.total_value,
-        cash_gbp=normalized.account.cash_total,
-        investments_value_gbp=normalized.account.investments_value,
+        # NAV reconciles cash against the ledger and uses it to detect deposits.
+        # An unfilled order still holds cash, even when the broker reports it as invested.
+        cash_gbp=normalized.account.cash_total + pie_cash,
+        investments_value_gbp=normalized.account.investments_value - pie_cash,
         position_value_gbp=reconciliation.position_value_gbp.quantize(Decimal("0.01")),
+        pie_cash_in_investments_gbp=pie_cash,
+        position_delta_gbp=reconciliation.position_delta_gbp,
+        position_tolerance_gbp=reconciliation.position_tolerance_gbp,
         total_cost_gbp=normalized.account.investments_cost,
         realized_profit_loss_gbp=normalized.account.realized_profit_loss,
         unrealized_profit_loss_gbp=normalized.account.unrealized_profit_loss,
@@ -147,11 +157,6 @@ def account_snapshot_metrics(
 def intraday_account_value(metrics: AccountSnapshotMetrics) -> IntradayAccountValue:
     """Reduce a live snapshot to the fields required by the NAV anchor stage."""
 
-    position_delta = metrics.position_value_gbp - metrics.investments_value_gbp
-    position_tolerance = max(
-        Decimal("0.02"),
-        abs(metrics.investments_value_gbp) * Decimal("0.0005"),
-    )
     positions_match = metrics.checks.get("positions_match_investments", False)
     return IntradayAccountValue(
         profile=metrics.profile,
@@ -161,8 +166,9 @@ def intraday_account_value(metrics: AccountSnapshotMetrics) -> IntradayAccountVa
         cash_gbp=metrics.cash_gbp,
         investments_value_gbp=metrics.investments_value_gbp,
         position_value_gbp=metrics.position_value_gbp,
-        position_delta_gbp=position_delta,
-        position_tolerance_gbp=position_tolerance,
+        pie_cash_in_investments_gbp=metrics.pie_cash_in_investments_gbp,
+        position_delta_gbp=metrics.position_delta_gbp,
+        position_tolerance_gbp=metrics.position_tolerance_gbp,
         positions_status="verified" if positions_match else "unreconciled",
         positions=metrics.positions if positions_match else None,
         checks=metrics.checks,
