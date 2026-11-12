@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.34.2] - 2026-11-12
+
+### Changed
+
+- Holdings show 休市 (Closed) in place of a zero or dash for today's change
+  when the listing's exchange had no trading session in the measured window.
+  Moves caused by exchange rates still show as figures.
+
 ## [1.34.1] - 2026-11-12
 
 ### Changed
