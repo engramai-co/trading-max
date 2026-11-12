@@ -5435,6 +5435,67 @@
         "title": "ETFDetail",
         "type": "object"
       },
+      "ETFDisclosure": {
+        "additionalProperties": false,
+        "properties": {
+          "effectiveAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveat"
+          },
+          "kind": {
+            "enum": [
+              "holdings",
+              "index-change"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "observedAt": {
+            "title": "Observedat",
+            "type": "string"
+          },
+          "previousValue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previousvalue"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value",
+          "observedAt"
+        ],
+        "title": "ETFDisclosure",
+        "type": "object"
+      },
       "ETFMatch": {
         "additionalProperties": false,
         "properties": {
@@ -6562,6 +6623,13 @@
             ],
             "title": "Basecurrency"
           },
+          "disclosures": {
+            "items": {
+              "$ref": "#/components/schemas/ETFDisclosure"
+            },
+            "title": "Disclosures",
+            "type": "array"
+          },
           "domicile": {
             "anyOf": [
               {
@@ -6669,6 +6737,13 @@
             ],
             "title": "Issuer"
           },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/ETFMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
           "methodology": {
             "anyOf": [
               {
@@ -6679,6 +6754,16 @@
               }
             ],
             "title": "Methodology"
+          },
+          "oneYearTracking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFTracking"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "profile": {
             "anyOf": [
@@ -12188,6 +12273,11 @@
           "held": {
             "default": false,
             "title": "Held",
+            "type": "boolean"
+          },
+          "isFund": {
+            "default": false,
+            "title": "Isfund",
             "type": "boolean"
           },
           "lastError": {
@@ -21184,6 +21274,38 @@
             "required": true,
             "schema": {
               "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,100}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "detail",
+            "required": false,
+            "schema": {
+              "default": "full",
+              "enum": [
+                "profile",
+                "full",
+                "journal"
+              ],
+              "title": "Detail",
               "type": "string"
             }
           }

@@ -60,3 +60,17 @@ def read_etf_detail(store, run_id: str, isin: str, *, include_holdings: bool = T
                 store.read_json(run_id, etf_holdings_key(isin))
             )
     return result
+
+
+def find_etf(funds: list[ETFReading], ticker: str) -> ETFReading | None:
+    normal = ticker.strip().upper()
+    matches = [fund for fund in funds if normal in fund.tickers]
+    if not matches:
+        matches = [
+            fund
+            for fund in funds
+            if any(
+                normal.removesuffix(".L") == symbol.removesuffix(".L") for symbol in fund.tickers
+            )
+        ]
+    return matches[0] if len(matches) == 1 else None

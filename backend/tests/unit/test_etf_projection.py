@@ -111,3 +111,39 @@ def test_tracking_uses_published_period_and_comparable_hedging_only():
         benchmark_hedging="unhedged",
     )
     assert tracking(eqgb, TODAY).state == "incomparable"
+
+
+def test_journal_records_only_observed_disclosures_and_real_index_changes():
+    from trading_max.analytics.etf_journal import update_etf_journal
+    from trading_max.analytics.etf_projection import (
+        ETFOverlap,
+        ETFPortfolio,
+        ETFReading,
+        ETFTracking,
+    )
+
+    source = FundEvidence(
+        source_url="https://issuer.example",
+        effective_at=STAMP,
+        fetched_at=STAMP,
+        parser_version="test",
+        coverage="available",
+    )
+    fund = ETFReading(
+        isin=A,
+        tickers=["A"],
+        index_name="Index A",
+        holdings_state="available",
+        overlap=ETFOverlap(state="missing", fund_holdings_date=STAMP),
+        tracking=ETFTracking(state="missing"),
+        evidence={"index_name": source, "holdings_date": source},
+    )
+    first = ETFPortfolio(funds=[fund])
+    journal = update_etf_journal({}, ETFPortfolio(), first, STAMP)
+    assert [row["kind"] for row in journal[A]] == ["holdings"]
+    assert update_etf_journal(journal, first, first, STAMP) == journal
+    after = ETFPortfolio(funds=[fund.model_copy(update={"index_name": "Index B"})])
+    changed = update_etf_journal(journal, first, after, STAMP)
+    assert changed[A][-1]["kind"] == "index-change"
+    assert changed[A][-1]["previousValue"] == "Index A"
+    assert changed[A][-1]["sourceUrl"] == source.source_url

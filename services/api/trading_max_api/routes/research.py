@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.valuation_preview import (
@@ -23,7 +24,7 @@ from ..dashboard_models import (
     ResearchPriceSeries,
     ResearchShell,
 )
-from ..etf_snapshot import read_etf_detail, read_etf_portfolio
+from ..etf_snapshot import find_etf, read_etf_detail, read_etf_portfolio
 from ..job_errors import JobConflict
 from ..models import (
     PortfolioImpact,
@@ -628,24 +629,33 @@ def research_ticker(
 
 
 @router.get("/v1/research/{ticker}/fund", response_model=FundResearch)
-def research_fund(ticker: str, request: Request) -> FundResearch:
-    manifest = latest_or_503(request)
+def research_fund(
+    ticker: str,
+    request: Request,
+    run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
+    detail: Literal["profile", "full", "journal"] = "full",
+) -> FundResearch:
     store = app_service(request, "store")
-    normal = ticker.strip().upper()
+    try:
+        manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
     portfolio = read_etf_portfolio(store, manifest.run_id)
-    matches = [fund for fund in portfolio.funds if normal in fund.tickers]
-    if not matches:
-        matches = [
-            fund
-            for fund in portfolio.funds
-            if any(
-                normal.removesuffix(".L") == symbol.removesuffix(".L") for symbol in fund.tickers
-            )
-        ]
-    if len(matches) == 1 and (isin := matches[0].isin):
-        return fund_research_from_snapshot(ticker, read_etf_detail(store, manifest.run_id, isin))
+    reading = find_etf(portfolio.funds, ticker)
+    if reading and (isin := reading.isin):
+        fund = fund_research_from_snapshot(
+            ticker, read_etf_detail(store, manifest.run_id, isin), include_holdings=detail == "full"
+        )
+        if detail == "journal":
+            try:
+                journal = store.read_json(manifest.run_id, ETF_JOURNAL_KEY)
+            except FileNotFoundError:
+                journal = {}
+            fund.disclosures = [ETFDisclosure.model_validate(row) for row in journal.get(isin, [])]
+        return fund
     lens = app_service(request, "research").lens_snapshot(ticker, "fundamentals", manifest)
     if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
         raise HTTPException(status_code=422, detail="fund-research-not-applicable")
     info = (lens.fundamentals or {}).get("metrics") or {}
-    return app_service(request, "research_funds").get(ticker, info)
+    fund = app_service(request, "research_funds").get(ticker, info)
+    return fund if detail == "full" else fund.model_copy(update={"holdings": None})

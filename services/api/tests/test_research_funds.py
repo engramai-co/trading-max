@@ -65,3 +65,61 @@ def test_current_ishares_facts_keep_share_class_identity_and_separate_asset_size
         assert fund.fund_size.amount == 33440
         assert fund.evidence["share_class_size"].effective_at == "2026-11-11"
         assert fund.evidence["replication"].coverage == "missing"
+
+
+def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
+    from datetime import UTC, datetime
+
+    from trading_max.analytics.etf_details import ETFDetail, etf_detail_key, etf_holdings_key
+    from trading_max.analytics.etf_projection import (
+        ETF_SUMMARY_KEY,
+        ETFOverlap,
+        ETFPortfolio,
+        ETFReading,
+        ETFTracking,
+    )
+    from trading_max.analytics.lookthrough import FundSnapshot
+
+    from services.api.trading_max_api.routes.research import research_fund
+    from services.api.trading_max_api.routes.system import dashboard_etfs
+
+    stamp = datetime.now(UTC).date().isoformat()
+    isin = "IE0032077012"
+    reading = ETFReading(
+        isin=isin,
+        tickers=["EQQQ"],
+        holdings_state="available",
+        tracking=ETFTracking(state="available", difference_pp=-0.50, period_end=stamp),
+        overlap=ETFOverlap(
+            state="available",
+            value=0.51,
+            dates_valid=True,
+            fund_holdings_date=stamp,
+            portfolio_as_of=stamp,
+        ),
+    )
+    calls = []
+    payloads = {
+        ETF_SUMMARY_KEY: ETFPortfolio(funds=[reading]).model_dump(),
+        etf_detail_key(isin): ETFDetail(reading=reading).model_dump(),
+        etf_holdings_key(isin): FundSnapshot(
+            ticker="EQQQ", fund_isin=isin, as_of=stamp
+        ).model_dump(),
+    }
+
+    def read(run_id, key):
+        assert run_id == "synthetic"
+        calls.append(key)
+        return payloads[key]
+
+    store = SimpleNamespace(
+        load_manifest=lambda run_id: SimpleNamespace(run_id=run_id), read_json=read
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
+    summary = dashboard_etfs(request, "synthetic")
+    assert calls == [ETF_SUMMARY_KEY]
+    assert summary.run_id == "synthetic"
+    fund = research_fund("EQQQ.L", request, run_id="synthetic", detail="profile")
+    assert fund.reading == summary.funds[0]
+    assert fund.holdings is None
+    assert fund.one_year_tracking.difference_pp == -0.50

@@ -9,7 +9,8 @@ from pathlib import Path
 import httpx
 from pydantic import Field
 from trading_max.analytics.etf_details import ETFDetail
-from trading_max.analytics.etf_projection import ETFReading
+from trading_max.analytics.etf_journal import ETFDisclosure
+from trading_max.analytics.etf_projection import ETFMatch, ETFReading, ETFTracking, tracking
 from trading_max.analytics.lookthrough import FundSnapshot, fetch_fund_snapshot
 from trading_max.domain.etf import FundReturnYear, FundShareClass
 from trading_max.infrastructure.fund_holdings import (
@@ -46,6 +47,9 @@ class FundResearch(ApiModel):
     holdings: FundSnapshot | None = None
     profile: FundShareClass | None = None
     reading: ETFReading | None = None
+    one_year_tracking: ETFTracking | None = None
+    matches: list[ETFMatch] = Field(default_factory=list)
+    disclosures: list[ETFDisclosure] = Field(default_factory=list)
     holdings_state: str = "no-holdings"
     return_currency: str | None = None
     return_basis: str | None = None
@@ -69,7 +73,9 @@ def parse_ishares_page(html: str) -> dict:
     return _profile_fields(parse_ishares_profile(html, ""))
 
 
-def fund_research_from_snapshot(ticker: str, detail: ETFDetail) -> FundResearch:
+def fund_research_from_snapshot(
+    ticker: str, detail: ETFDetail, *, include_holdings: bool = True
+) -> FundResearch:
     reading, holdings = detail.reading, detail.holdings
     profile = holdings.profile if holdings else None
     return FundResearch(
@@ -79,9 +85,16 @@ def fund_research_from_snapshot(ticker: str, detail: ETFDetail) -> FundResearch:
             "source_url": holdings.source_url if holdings else None,
             "issuer": reading.issuer,
             "isin": reading.isin,
-            "holdings": holdings,
+            "holdings": holdings.model_copy(update={"profile": None})
+            if include_holdings and holdings
+            else None,
             "profile": profile,
             "reading": reading,
+            "one_year_tracking": reading.tracking,
+            "matches": detail.matches if include_holdings else [],
+            "tracking_error_state": "issuer-published"
+            if profile and profile.tracking_error is not None
+            else "missing",
             "holdings_state": reading.holdings_state,
             "state": "stale"
             if reading.holdings_state == "holdings-stale"
@@ -194,5 +207,8 @@ class FundResearchService:
                 result.state = "stale"
             elif result.holdings is None and not result.profile and result.expense_ratio is None:
                 result.state = "missing"
+            result.one_year_tracking = tracking(result.profile, datetime.now(UTC).date())
+            if result.tracking_error is not None:
+                result.tracking_error_state = "issuer-published"
             _atomic_write(path, result.model_dump(mode="json"))
             return result

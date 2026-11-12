@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from trading_max.reference import is_fund_instrument
 from trading_max.research.technical_scoring import score_breakdown
 
 from .values import JsonObject, nullable_number, number_value
@@ -20,13 +21,17 @@ def technical_rows(raw: JsonObject) -> list[JsonObject]:
         strength = row.get("trend_strength") or {}
         coverage = row.get("history_coverage") or {}
         adr = row.get("adr_research")
-        score = nullable_number(row.get("technical_score"))
+        score = (
+            None
+            if is_fund_instrument(quote_type=str(row.get("asset_type") or ""))
+            else nullable_number(row.get("technical_score"))
+        )
         if score is not None and (not math.isfinite(score) or not 0 <= score <= 100):
             score = None
-        breakdown = score_breakdown(row)
+        breakdown = score_breakdown(row) if score is not None else None
         explanation_state = (
             "unavailable"
-            if score is None or not breakdown["availableSignals"]
+            if breakdown is None or not breakdown["availableSignals"]
             else "verified"
             if breakdown["score"] == score
             else "mismatch"

@@ -44,7 +44,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { SecurityFinder } from "./research-finder";
-import { fundQuery, FundWorkbench } from "./research-funds";
+import { FundJournal, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
@@ -70,6 +70,8 @@ export type ResearchTab =
   | "financials"
   | "analyst"
   | "options"
+  | "tracking"
+  | "peers"
   | "ledger";
 const researchTabs: ResearchTab[] = [
   "overview",
@@ -79,8 +81,16 @@ const researchTabs: ResearchTab[] = [
   "financials",
   "analyst",
   "options",
+  "tracking",
+  "peers",
   "ledger",
 ];
+
+export function fundResearchTab(tab: ResearchTab, fundMode: string | null): ResearchTab {
+  if (["analyst", "valuation", "options"].includes(tab)) return "overview";
+  if (fundMode === "tracking" && ["fundamentals", "financials", "overview"].includes(tab)) return "tracking";
+  return tab === "financials" ? "fundamentals" : tab;
+}
 export function useOverviewPrices(ticker: string, revision: string, enabled: boolean) {
   return useQuery({ ...researchPriceQuery(ticker, revision, "1d", "3M"), enabled });
 }
@@ -128,52 +138,38 @@ export function ResearchWorkspace() {
       update({ ticker: selected.ticker });
     }
   }, [selected, requestedTicker, update]);
-  const tab: ResearchTab = researchTabs.includes(
-    params.get("view") as ResearchTab,
-  )
-    ? (params.get("view") as ResearchTab)
-    : "overview";
-  const fetching =
-    selected?.status === "pending" || selected?.status === "running";
-  const lensName = tab === "financials" ? "fundamentals" : tab;
+  const requestedTab: ResearchTab = researchTabs.includes(params.get("view") as ResearchTab)
+    ? params.get("view") as ResearchTab : "overview";
+  const cached = client.getQueriesData<ResearchLensSnapshot>({ queryKey: ["workspace-research", ticker] })
+    .map(([key, data]) => ({ data, updatedAt: client.getQueryState(key)?.dataUpdatedAt ?? 0 }))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .find(({ data }) => data?.ticker === ticker)?.data;
+  const isFund = Boolean(selected?.isFund || ["ETF", "MUTUALFUND"].includes(cached?.context?.assetType ?? ""));
+  const tab = isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
+    : ["tracking", "peers"].includes(requestedTab) ? "overview" : requestedTab;
+  const fetching = selected?.status === "pending" || selected?.status === "running";
+  const lensName = ["financials", "tracking", "peers"].includes(tab) ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
   const detail = tab === "overview" ? "summary"
-    : tab === "technical" ? (params.get("technicalView") === "seasonality" ? "seasonality" : "summary")
-    : tab === "ledger" ? (["filings", "news"].includes(params.get("notebook") ?? "notes") ? "documents" : "summary")
-    : ["fundamentals", "financials"].includes(tab) && params.get("financialMode") !== "full" ? "summary"
+    : tab === "technical" ? (!isFund && params.get("technicalView") === "seasonality" ? "seasonality" : "summary")
+    : tab === "ledger" ? (!isFund && ["filings", "news"].includes(params.get("notebook") ?? "notes") ? "documents" : "summary")
+    : lensName === "fundamentals" && (isFund || params.get("financialMode") !== "full") ? "summary"
     : "full";
   const lens = useQuery({
     ...researchLensQuery(ticker, lensName, revision, detail),
     enabled: Boolean(selected),
   });
-  const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ??
-    client.getQueriesData<ResearchLensSnapshot>({ queryKey: ["workspace-research", ticker] })
-      .map(([key, data]) => ({ data, updatedAt: client.getQueryState(key)?.dataUpdatedAt ?? 0 }))
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-      .find(({ data }) => data?.ticker === ticker)?.data;
-  const isFund = ["ETF", "MUTUALFUND"].includes(
-    quote?.context?.assetType ?? "",
-  );
+  const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ?? cached;
   // A held line on the quote's listing is quoted at its broker price everywhere on the page.
   const price = basisPrice(selected, quote?.context?.quote);
   // Lenses name the next report by the exchange's date and carry its sessions:
   // a lens left open refetches when that date turns or the sessions run out.
   useLensRefresh(ticker, quote?.context?.quote);
-  const context = useQuery({
-    ...researchLensQuery(ticker, "fundamentals", revision),
-    enabled: Boolean(selected) && isFund && tab === "overview",
-  });
-  const prices = useOverviewPrices(ticker, revision ?? "", Boolean(selected) && tab === "overview");
-  const fundEnabled = isFund && tab === "overview" && Boolean(context.data ?? lens.data) && !context.isPending;
-  const fund = useQuery({
-    ...fundQuery(ticker, context.data?.runId ?? lens.data?.runId ?? ""),
-    enabled: fundEnabled,
-  });
-  const overviewWaiting = tab === "overview" && (
-    prices.isPending && !prices.data || runtime.status === "loading" ||
-    isFund && (context.isPending || fundEnabled && fund.isPending)
+  const prices = useOverviewPrices(ticker, revision ?? "", Boolean(selected) && tab === "overview" && !isFund);
+  const overviewWaiting = tab === "overview" && !isFund && (
+    (prices.isPending && !prices.data) || runtime.status === "loading"
   );
-  const technicalPrice = tab === "technical" && params.get("technicalView") !== "seasonality";
+  const technicalPrice = tab === "technical" && (isFund || params.get("technicalView") !== "seasonality");
   const currentLens = !overviewWaiting && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
@@ -190,10 +186,6 @@ export function ResearchWorkspace() {
   const waitingForResearch = !shown && !technicalPrice && (
     overviewWaiting || lens.isPending || fetching && !lens.isError
   );
-  useEffect(() => {
-    if (isFund && (tab === "valuation" || tab === "analyst"))
-      update({ view: "overview" });
-  }, [isFund, tab, update]);
   const exploreHolding = (symbol: string) => {
     const target = instruments.find((i) => i.ticker === symbol);
     if (target) update({ ticker: target.ticker, view: null, fromFund: ticker });
@@ -305,6 +297,8 @@ export function ResearchWorkspace() {
     financials: t("财务报表", "Financials"),
     analyst: t("预期与事件", "Estimates & events"),
     options: t("期权结构", "Options"),
+    tracking: t("指数与跟踪", "Index & tracking"),
+    peers: t("同类", "Peers"),
     ledger: t("研究记录", "Journal"),
   };
   // Phone labels keep all seven lenses in view; each is part of its full title.
@@ -316,6 +310,8 @@ export function ResearchWorkspace() {
     financials: t("财务", "Financials"),
     analyst: t("预期", "Estimates"),
     options: t("期权", "Options"),
+    tracking: t("指数", "Index"),
+    peers: t("同类", "Peers"),
     ledger: t("记录", "Journal"),
   };
   return (
@@ -361,7 +357,7 @@ export function ResearchWorkspace() {
                   <CaretRight size={18} />
                 </ActionIcon>
               </Tooltip>
-              <ResearchComparison ticker={ticker} instruments={instruments} />
+              {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
           <Tooltip label={t("添加证券", "Add security")}>
@@ -492,39 +488,18 @@ export function ResearchWorkspace() {
                 <Tabs
                   label={t("证券研究视角", "Security research perspective")}
                   value={tab === "financials" ? "fundamentals" : tab}
-                  onChange={(v) =>
-                    update({ view: v === "overview" ? null : v })
-                  }
-                  options={(
-                    [
-                      "overview",
-                      "fundamentals",
-                      "technical",
-                      "analyst",
-                      "valuation",
-                      "options",
-                      "ledger",
-                    ] as ResearchTab[]
-                  )
-                    .filter(
-                      (value) =>
-                        !(
-                          ["ETF", "MUTUALFUND"].includes(
-                            quote?.context?.assetType ?? "",
-                          ) && ["valuation", "analyst"].includes(value)
-                        ),
-                    )
-                    .map((value) => ({
-                      value,
-                      label:
-                        isFund && value === "fundamentals"
-                          ? t("持仓与跟踪", "Holdings & tracking")
-                          : titles[value],
-                      short:
-                        isFund && value === "fundamentals"
-                          ? t("持仓", "Holdings")
-                          : shortTitles[value],
-                    }))}
+                  onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
+                  options={(isFund
+                    ? ["overview", "technical", "tracking", "fundamentals", "peers", "ledger"] as ResearchTab[]
+                    : ["overview", "fundamentals", "technical", "analyst", "valuation", "options", "ledger"] as ResearchTab[]
+                  ).map((value) => ({
+                    value,
+                    label: isFund && value === "fundamentals" ? t("持仓与重叠", "Holdings & overlap")
+                      : isFund && value === "technical" ? t("价格与技术面", "Price & technicals")
+                      : isFund && value === "ledger" ? t("日志", "Journal") : titles[value],
+                    short: isFund && value === "fundamentals" ? t("持仓", "Holdings")
+                      : isFund && value === "ledger" ? t("日志", "Journal") : shortTitles[value],
+                  }))}
                 />
                 {operation.isError && (
                   <Notice tone="bad">
@@ -538,12 +513,12 @@ export function ResearchWorkspace() {
                   </Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
-                {displayTab === "overview" && shown && (runtime.status === "failed"
+                {displayTab === "overview" && shown && !isFund && (runtime.status === "failed"
                   ? <QueryError retry={runtime.retry} />
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
                 )}
                 {(tab === "technical" || displayTab === "technical") && <>
-                          <Tabs
+                          {!isFund && <Tabs
                             label={t(
                               "价格与技术内容",
                               "Price & technical sections",
@@ -563,13 +538,14 @@ export function ResearchWorkspace() {
                                 label: t("季节性", "Seasonality"),
                               },
                             ]}
-                          />
+                          />}
                           {(tab === "technical" ? technicalPrice : shown?.technicalPrice) && (
                             <TechnicalWorkspace
                               key={ticker}
                               ticker={ticker}
                               runId={revision ?? ""}
                               data={displayTab === "technical" ? displayData : undefined}
+                              fund={isFund}
                               pending={lens.isPending}
                               error={lens.isError}
                               retry={() => { void lens.refetch(); }}
@@ -607,26 +583,26 @@ export function ResearchWorkspace() {
                         <>
                           {isFund ? (
                             <FundWorkbench
-                              overview
-                              data={context.data ?? displayData}
+                              mode="overview"
+                              data={displayData}
                               onExplore={exploreHolding}
                             />
                           ) : (
                             <CompanyOverview
                               data={displayData}
-                              context={context.data}
                               gics={selected.gics}
                             />
                           )}
                         </>
                       )}
-                      {displayTab === "technical" && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
-                      {displayTab === "valuation" && (
+                      {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
+                      {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
+                            mode="holdings"
                             data={displayData}
                             onExplore={exploreHolding}
                           />
@@ -636,6 +612,7 @@ export function ResearchWorkspace() {
                       {displayTab === "financials" &&
                         (isFund ? (
                           <FundWorkbench
+                            mode="holdings"
                             data={displayData}
                             onExplore={exploreHolding}
                           />
@@ -645,12 +622,18 @@ export function ResearchWorkspace() {
                             initialMode="income"
                           />
                         ))}
-                      {displayTab === "analyst" && (
+                      {isFund && (displayTab === "tracking" || displayTab === "peers") && (
+                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} />
+                      )}
+                      {displayTab === "analyst" && !isFund && (
                         <AnalystView data={displayData} revision={revision} price={price} />
                       )}
-                      {displayTab === "options" && <OptionsView data={displayData} />}
+                      {displayTab === "options" && !isFund && <OptionsView data={displayData} />}
                       {displayTab === "ledger" && (
-                        <ResearchNotebook key={ticker} data={displayData} />
+                        <>
+                          <ResearchNotebook key={ticker} data={displayData} fund={isFund} />
+                          {isFund && <FundJournal data={displayData} />}
+                        </>
                       )}
                     </>
                   )

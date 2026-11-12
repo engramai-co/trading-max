@@ -259,6 +259,31 @@ class ETFExposure:
                         dates_valid=dates_valid,
                         portfolio_as_of=portfolio_as_of,
                     ),
+                    evidence={
+                        **(
+                            {
+                                field: fact
+                                for field, fact in profile.evidence.items()
+                                if field
+                                in {
+                                    "index_name",
+                                    "expense_ratio",
+                                    "income_use",
+                                    "domicile",
+                                    "hedging",
+                                    "share_class_size",
+                                    "fund_size",
+                                }
+                            }
+                            if profile
+                            else {}
+                        ),
+                        **(
+                            {"holdings_date": snapshot.evidence["holdings_date"]}
+                            if snapshot and "holdings_date" in snapshot.evidence
+                            else {}
+                        ),
+                    },
                     **(
                         {
                             field: getattr(profile, field)
@@ -271,7 +296,6 @@ class ETFExposure:
                                 "hedging",
                                 "share_class_size",
                                 "fund_size",
-                                "evidence",
                             )
                         }
                         if profile

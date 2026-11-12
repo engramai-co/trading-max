@@ -18,6 +18,7 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference import is_fund_instrument
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
@@ -51,8 +52,9 @@ class TechnicalResearchArtifact(DomainModel):
     seasonality_matrix: list[dict[str, Any]] = Field(default_factory=list)
     year_paths: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     price_series: list[dict[str, Any]] = Field(default_factory=list)
-    technical_score: int = Field(ge=0, le=100)
-    technical_state: str
+    asset_type: str = ""
+    technical_score: int | None = Field(default=None, ge=0, le=100)
+    technical_state: str | None = None
     signals: list[str]
 
 
@@ -276,6 +278,7 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     frame.attrs["exchange"] = str(metadata.get("exchangeName") or "")
     frame.attrs["timezone"] = str(metadata.get("exchangeTimezoneName") or "")
     frame.attrs["currency"] = currency
+    frame.attrs["asset_type"] = str(metadata.get("instrumentType") or "")
     if divisor != 1:
         frame[["Open", "High", "Low", "Close"]] /= divisor
         if "Dividends" in frame:
@@ -484,6 +487,7 @@ def analyze_ticker(
 ) -> TechnicalResearchArtifact:
     """Calculate all deterministic technical indicators for one security."""
 
+    asset_type = str(frame.attrs.get("asset_type") or "").upper()
     frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"))
     if frame.empty:
         raise MarketDataError(f"no completed daily bars for {label}")
@@ -625,9 +629,11 @@ def analyze_ticker(
         "year_paths": yearly_paths(close),
         "price_series": price_series(frame, sma),
     }
-    score, state = technical_score(metrics)
-    metrics["technical_score"] = score
-    metrics["technical_state"] = state
+    if not is_fund_instrument(quote_type=asset_type):
+        score, state = technical_score(metrics)
+        metrics["technical_score"] = score
+        metrics["technical_state"] = state
+    metrics["asset_type"] = asset_type
     metrics["signals"] = signals(metrics)
     return TechnicalResearchArtifact(
         **metrics,

@@ -2906,6 +2906,24 @@ export interface components {
              */
             runId: string;
         };
+        /** ETFDisclosure */
+        ETFDisclosure: {
+            /** Effectiveat */
+            effectiveAt?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "holdings" | "index-change";
+            /** Observedat */
+            observedAt: string;
+            /** Previousvalue */
+            previousValue?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Value */
+            value: string;
+        };
         /** ETFMatch */
         ETFMatch: {
             /** Fundweight */
@@ -3284,6 +3302,8 @@ export interface components {
             annualReturns?: components["schemas"]["FundReturnYear"][];
             /** Basecurrency */
             baseCurrency?: string | null;
+            /** Disclosures */
+            disclosures?: components["schemas"]["ETFDisclosure"][];
             /** Domicile */
             domicile?: string | null;
             /** Expenseratio */
@@ -3308,8 +3328,11 @@ export interface components {
             isin?: string | null;
             /** Issuer */
             issuer?: string | null;
+            /** Matches */
+            matches?: components["schemas"]["ETFMatch"][];
             /** Methodology */
             methodology?: string | null;
+            oneYearTracking?: components["schemas"]["ETFTracking"] | null;
             profile?: components["schemas"]["FundShareClass"] | null;
             reading?: components["schemas"]["ETFReading"] | null;
             /** Replication */
@@ -5104,6 +5127,11 @@ export interface components {
              * @default false
              */
             held: boolean;
+            /**
+             * Isfund
+             * @default false
+             */
+            isFund: boolean;
             /** Lasterror */
             lastError?: string | null;
             /** Lastrunid */
@@ -8804,7 +8832,10 @@ export interface operations {
     };
     research_fund_v1_research__ticker__fund_get: {
         parameters: {
-            query?: never;
+            query?: {
+                run_id?: string | null;
+                detail?: "profile" | "full" | "journal";
+            };
             header?: never;
             path: {
                 ticker: string;

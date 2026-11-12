@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
+from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
@@ -35,6 +37,7 @@ from .dashboard_models import (
     ResearchShell,
     ResearchTradeMarker,
 )
+from .etf_snapshot import find_etf, read_etf_portfolio
 from .models import (
     ArtifactInfo,
     PortfolioImpact,
@@ -213,6 +216,18 @@ def _financials_rows(raw: JsonObject) -> list[JsonObject]:
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
+def _without_stock_score(row: JsonObject | None) -> JsonObject | None:
+    if not row:
+        return row
+    return {
+        **row,
+        "score": None,
+        "scoreBreakdown": None,
+        "scoreExplanationState": "unavailable",
+        "state": "—",
+    }
+
+
 def _canonical_ticker(value: str) -> str:
     ticker = value.upper()
     return ticker[:-2] if ticker.endswith(".L") else ticker
@@ -225,9 +240,8 @@ def _quote_unit_price(value: Any, currency: Any) -> tuple[float | None, str | No
     code = str(currency or "") or None
     if price is None or price <= 0:
         return None, code
-    if code in {"GBX", "GBp", "GBx"}:
-        return price / 100, "GBP"
-    return price, code
+    code, divisor = major_quote_unit(code or "")
+    return price / divisor, code or None
 
 
 def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, JsonObject]:
@@ -619,17 +633,15 @@ class ResearchLedger:
             fundamental = _find(fundamentals, str(row.get("ticker", ""))) or {}
             metrics = fundamental.get("metrics") or fundamental.get("info") or {}
             quote_currency = str(fundamental.get("currency") or metrics.get("currency") or "")
-            in_pence = quote_currency in {"GBp", "GBX"}
-            if in_pence:
-                quote_currency = "GBP"
+            quote_currency, quote_divisor = major_quote_unit(quote_currency)
             enriched.append(
                 {
                     **row,
                     "currency": quote_currency or row.get("currency") or "",
                     **{
                         target: (
-                            metrics[source] / 100
-                            if in_pence and target == "analystMedian"
+                            metrics[source] / quote_divisor
+                            if target == "analystMedian" and quote_divisor != 1
                             else metrics[source]
                         )
                         for target, source in (
@@ -945,6 +957,11 @@ class ResearchLedger:
             ),
             ticker,
         )
+        asset_type = str(((fundamentals or {}).get("metrics") or {}).get("quoteType") or "").upper()
+        if asset_type in {"ETF", "MUTUALFUND"} or (
+            asset_type == "" and find_etf(self._published_etfs(manifest), ticker)
+        ):
+            technical = _without_stock_score(technical)
         analyst_row = _find(
             self._cached_rows(manifest, "research/analyst.json", _analyst_rows),
             ticker,
@@ -998,8 +1015,10 @@ class ResearchLedger:
         """
 
         holdings = self._holdings(manifest)
+        etfs = self._published_etfs(manifest)
         return [
             ResearchDirectoryInstrument(
+                is_fund=find_etf(etfs, item.ticker) is not None,
                 ticker=item.ticker,
                 name=item.name,
                 exchange=item.exchange,
@@ -1021,6 +1040,11 @@ class ResearchLedger:
             )
             for item in self.watchlist.items()
         ]
+
+    def _published_etfs(self, manifest: SnapshotManifest):
+        if _artifact(manifest, ETF_SUMMARY_KEY) is None:
+            return []
+        return read_etf_portfolio(self.store, manifest.run_id).funds
 
     def _broker_snapshot(self, manifest: SnapshotManifest) -> JsonObject:
         """The broker basis the holdings page shows: canonical positions with live values."""
@@ -1148,7 +1172,11 @@ class ResearchLedger:
         # Report dates are compared with the exchange's calendar date.
         today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
-        is_fund = asset_type in {"ETF", "MUTUALFUND"}
+        is_fund = asset_type in {"ETF", "MUTUALFUND"} or (
+            asset_type == "UNKNOWN" and find_etf(self._published_etfs(manifest), ticker) is not None
+        )
+        if is_fund and asset_type == "UNKNOWN":
+            asset_type = "ETF"
         is_financial = any(
             word in str(fundamental.get("industry") or metrics.get("industry") or "").lower()
             for word in ("banks", "banking", "insurance")
@@ -1227,7 +1255,7 @@ class ResearchLedger:
             "options",
             "ledger",
         ):
-            inappropriate = is_fund and task in {"analyst", "valuation"}
+            inappropriate = is_fund and task in {"analyst", "valuation", "options"}
             capabilities.append(
                 ResearchCapability(
                     task=task,
@@ -1302,7 +1330,9 @@ class ResearchLedger:
                 ),
                 ticker,
             )
-        if view == "valuation" or (view == "overview" and detail != "summary"):
+            if is_fund:
+                payload.technical = _without_stock_score(payload.technical)
+        if not is_fund and (view == "valuation" or (view == "overview" and detail != "summary")):
             payload.valuation = _find(
                 self._cached_rows(
                     manifest,
@@ -1455,7 +1485,7 @@ class ResearchLedger:
                 self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                 ticker,
             )
-            if summary_row:
+            if summary_row and not is_fund:
                 payload.technical_summary = {
                     key: summary_row.get(key)
                     for key in (
