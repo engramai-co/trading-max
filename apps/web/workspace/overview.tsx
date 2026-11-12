@@ -105,7 +105,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const history = usePortfolioHistory(selection, Boolean(incoming?.runId), openings);
   const todayHistory = usePortfolioHistory(todaySelection, Boolean(incoming?.runId), todayOpenings);
   // Only publish matching figures, attributions and history together. An open chart reading
-  // or exact record stays on its own run. An explicit range or account choice still proceeds.
+  // stays on its own run. An explicit range or account choice still proceeds.
   const candidate = useMemo(() => incoming && {
     lens: incoming, selection, history: history.data, today: todayHistory.data,
     updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt),
@@ -450,7 +450,6 @@ function OverviewHistory({
                 {percent(money.pnlPercents.at(-1), true, 2)}
               </span>
             )}
-            <EstimateTag points={points} />
             <TextLink href={portfolioPerformanceHref(scope, range)}>
               <ChartLine size={14} />
               {t("收益分析", "View performance")}
@@ -467,7 +466,7 @@ function OverviewHistory({
             timeline={history.timeline}
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
-            recordSource={selection}
+            showHistoryEvidence={false}
             height={264}
             tooltip={{
               range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,

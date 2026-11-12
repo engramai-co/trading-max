@@ -28,6 +28,7 @@ export function TimelineChart({
   observations,
   tooltip,
   recordSource,
+  showHistoryEvidence = true,
   range,
   pendingCashFlows = false,
   height,
@@ -43,6 +44,8 @@ export function TimelineChart({
   observations?: NavPoint[];
   tooltip?: TimelineTooltip;
   recordSource?: HistorySelection;
+  /** Keep the plotted source styles and tooltip when a surface puts provenance in its help. */
+  showHistoryEvidence?: boolean;
   range?: Range;
   pendingCashFlows?: boolean;
   /** A single-layer chart's height where a surface needs it shorter than the default. */
@@ -74,10 +77,12 @@ export function TimelineChart({
             ? t("估值已记录，净盈亏待核对", "Valuations recorded; P&L awaits reconciliation")
             : t("还没有可展示的观测记录", "No observations to chart yet")}
           description={pendingCashFlows && dates.length
-            ? t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The P&L chart will return after account cash flows are reconciled. Recorded values remain available below.")
+            ? showHistoryEvidence && recordSource
+              ? t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The P&L chart will return after account cash flows are reconciled. Recorded values remain available below.")
+              : t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。", "The P&L chart will return after account cash flows are reconciled.")
             : undefined}
         />
-        {recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} label={label} />}
+        {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} label={label} />}
       </>
     );
   }
@@ -101,7 +106,7 @@ export function TimelineChart({
   );
   // Solid is the default. Key only the source exceptions that produced a
   // visible stroke after sampling, using the same series as the chart.
-  const sourceKeys = observations ? [
+  const sourceKeys = showHistoryEvidence && observations ? [
     { type: "estimate", dash: "4 3", label: t("重建估算", "Estimate") },
     { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
   ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
@@ -137,7 +142,7 @@ export function TimelineChart({
           ))}
         </div>
       )}
-      {recordSource ? <HistoryRecords key={recordSource.range + ":" + recordSource.scope} selection={recordSource} label={label} /> : <details className="mx-chart-data">
+      {showHistoryEvidence && (recordSource ? <HistoryRecords key={recordSource.range + ":" + recordSource.scope} selection={recordSource} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable
           label={label}
@@ -163,7 +168,7 @@ export function TimelineChart({
             })),
           ]}
         />
-      </details>}
+      </details>)}
     </>
   );
 }

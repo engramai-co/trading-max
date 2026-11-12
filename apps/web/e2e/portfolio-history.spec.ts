@@ -89,16 +89,21 @@ test.describe("overview to performance", () => {
       await expect(overview).not.toContainText("Some periods have no observations");
       await expect(overview.locator(".mx-period-figure")).toContainText("£10.00");
       await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
-      const original = await observations(overview.locator(".mx-chart-data"));
-      expect(original.at(-1)).toEqual([intraday[2].date, "£190.00", "£10.00"]);
-      if (short) expect(original.map((row) => row.at(-1))).toEqual(["£0.00", "£0.00", "£10.00"]);
+      await expect(overview.locator(".mx-chart-data, .mx-source-legend, .mx-tag-help")).toHaveCount(0);
+      if (range === "1D") {
+        await overview.locator(".mx-info").click();
+        await expect(page.getByText(/Dashed lines show estimates reconstructed/)).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
       await overview.getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
       await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
       await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
-      expect(await observations(page.locator(".mx-chart-data").first())).toEqual(original);
+      const exact = await observations(page.locator(".mx-chart-data").first());
+      expect(exact.at(-1)).toEqual([intraday[2].date, "£190.00", "£10.00"]);
+      if (short) expect(exact.map((row) => row.at(-1))).toEqual(["£0.00", "£0.00", "£10.00"]);
       expect(await page.locator(".mx-history-coverage").allTextContents()).toEqual(coverage);
       await expect(page.getByText("Some periods have no observations", { exact: true })).toHaveCount(0);
       await expect(page.locator(".mx-money-summary")).toContainText("£10.00");

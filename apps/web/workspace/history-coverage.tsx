@@ -116,14 +116,14 @@ export function HistoryHelp() {
         "区间净盈亏 = 账户价值变化 − 区间净入金，以区间起点为零。金额包含现金与持仓变化，不是收益率；“相对期初”为净盈亏 ÷ 期初账户价值。",
         "Period net P&L is the change in account value less net deposits and withdrawals, starting at zero. It is a money amount, not a return rate; \"from opening\" divides it by the opening account value.",
       )}</p>
-      <p>{t("虚线显示重建估算，点线连接仍未补齐的时段；悬停或轻点可查看每个值的来源。", "Dashed sections show reconstructed estimates; dotted sections bridge remaining gaps. Hover or tap to inspect each value's source.")}</p>
+      <p>{t("虚线表示根据交易、持仓和行情重建的估算，点线跨过缺失记录。", "Dashed lines show estimates reconstructed from trades, holdings and prices; dotted lines bridge gaps in the record.")}</p>
       <p>{t(
-        "早期历史及离线期间可由交易、持仓与行情重建，区间盈亏和回撤也会包含估算，并在区间盈亏旁标注。估算决定期初或最新价值，或占区间四分之一以上时，标注转为提醒色。现金流待核对时，本图与收益分析统一截至最后可核对时刻。",
-        "Early history and collection outages can be reconstructed from transactions, holdings and prices; period P&L and drawdown then include estimates, marked beside the period P&L. The mark turns amber when an estimate sets the opening or latest value, or covers more than a quarter of the period. While cash flows await reconciliation, this chart and performance share the last verified cutoff.",
+        "悬停或轻点可查看单个数值的来源；完整记录在收益分析中。现金流待核对时，本图与收益分析统一截至最后可核对时刻。",
+        "Hover or tap to inspect a value’s source. The full record is in Returns & Risk. While cash flows await reconciliation, both charts share the last verified cutoff.",
       )}</p>
       <p>{t(
-        "5D 为最近 5 个工作日；月度区间按自然月，图中省略周末。完整记录及来源可在图下展开查看。",
-        "5D covers five weekdays. Monthly ranges use calendar months with weekends omitted from the chart. Expand the records below for individual observations and sources.",
+        "5D 为最近 5 个工作日；月度区间按自然月，图中省略周末。",
+        "5D covers five weekdays. Monthly ranges use calendar months with weekends omitted from the chart.",
       )}</p>
       <p>{t(
         "1D 的数字下方列出今天变动最大的持仓，按全天持有的股数计算；“其他”是其余部分，各项相加等于账户变化。持仓价格解释不了的较大变化（现金、汇率、当日买卖或估值时点）单独标为“未归因”。",
