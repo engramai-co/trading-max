@@ -127,9 +127,8 @@ export function timelineOption(
       top: top(index),
       height: moneyLayout?.grids[index]?.height ?? (index === 0 ? 210 : 150),
     })),
-    // The legend above names the first plot; plots stacked under it name
-    // themselves. Units live on the ticks.
-    graphic: layers.slice(1, moneyLayout ? -1 : undefined).map((layer, index) => ({
+    // Money pane labels are HTML; the return comparison still labels its lower plot here.
+    graphic: moneyLayout ? [] : layers.slice(1).map((layer, index) => ({
       type: "text",
       left: 0,
       top: top(index + 1) - 28,
@@ -174,15 +173,17 @@ export function timelineOption(
       const observed = layer.lines
         .flatMap((line) => line.values)
         .filter((v): v is number => v != null);
-      const range = moneyLayout && index > 0 ? moneyAxis(observed, !!layer.drawdown, !!layer.percentage) : undefined;
+      const range = moneyLayout && (layer.zeroBaseline || layer.drawdown)
+        ? moneyAxis(observed, !!layer.drawdown, !!layer.percentage) : undefined;
+      const autoScale = moneyLayout ? !range : index === 0;
       const allZero =
         observed.length > 0 && observed.every((value) => value === 0);
       return {
         type: "value",
         gridIndex: index,
         scale: true,
-        boundaryGap: index === 0 ? ["8%", "8%"] : [0, 0],
-        splitNumber: index === 0 ? 4 : 2,
+        boundaryGap: autoScale ? ["8%", "8%"] : [0, 0],
+        splitNumber: autoScale ? 4 : 2,
         ...(range ?? (layer.drawdown
           ? {
               max: 0,

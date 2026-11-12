@@ -4,7 +4,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
-import { Plot } from "./charts";
+import { Legend, Plot } from "./charts";
 import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
@@ -50,7 +50,8 @@ export function TimelineChart({
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const phone = useMediaQuery("(max-width: 767px)");
-  const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone) : undefined;
+  const narrow = useMediaQuery("(max-width: 375px)");
+  const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined;
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
@@ -113,6 +114,9 @@ export function TimelineChart({
     <>
       {moneyLayout ? (
         <div className="mx-money-timeline">
+          <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
+            <Legend items={layers[1].lines.map((line) => ({ label: line.name, dashed: line.dashed }))} />
+          </div>
           <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>
             {drawdownHeading}
           </div>

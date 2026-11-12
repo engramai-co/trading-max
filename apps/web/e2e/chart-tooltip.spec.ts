@@ -65,7 +65,7 @@ test.describe("performance tooltip", () => {
         await expect(page.locator(".mx-chart-tooltip__header")).toContainText(range);
       }).toPass();
       for (let index = 0; index < 24; index++) {
-        await page.mouse.move(box.x + 64 + (box.width - 76) * (index + 0.37) / 24, box.y + (index % 2 ? 330 : 175));
+        await page.mouse.move(box.x + 64 + (box.width - 76) * (index + 0.37) / 24, box.y + (index % 2 ? 405 : 175));
         // Wait longer than the chart's hide delay: a brief show followed by a
         // hide between buckets is the regression this test must catch.
         await page.waitForTimeout(160);
@@ -75,6 +75,24 @@ test.describe("performance tooltip", () => {
     }
     await page.mouse.move(230, 160);
     await expect(page.locator(".mx-chart-tooltip")).toBeHidden();
+  });
+
+  test("places the value keys between P&L and drawdown in GBP and percent", async ({ page }) => {
+    await page.goto("/analytics?view=money");
+    const timeline = page.locator(".mx-money-timeline");
+    const plot = timeline.locator("[data-tm-chart-ready=true]");
+    const legend = timeline.locator(".mx-chart-legend");
+    const drawdown = timeline.getByRole("heading", { name: "Maximum P&L drawdown" });
+    await expect(plot).toBeVisible();
+    await expect(page.locator(".mx-money-summary")).toContainText("Period net P&L");
+    await expect(legend).toContainText("Account value");
+    await expect(legend).toContainText("Cumulative net contributions");
+    expect((await legend.boundingBox())!.y).toBeGreaterThan((await plot.boundingBox())!.y + 220);
+    expect((await legend.boundingBox())!.y).toBeLessThan((await drawdown.boundingBox())!.y);
+    await page.getByRole("button", { name: "% of opening value", exact: true }).click();
+    await expect(legend).toContainText("Value change");
+    await expect(legend).toContainText("Contribution change");
+    expect((await legend.boundingBox())!.y).toBeLessThan((await drawdown.boundingBox())!.y);
   });
 
   test("keeps the tapped card inside a narrow chart", async ({ page, isMobile }) => {

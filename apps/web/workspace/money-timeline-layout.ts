@@ -1,15 +1,18 @@
-export function moneyTimelineLayout(phone: boolean) {
-  const [valueHeight, pnlHeight, drawdownHeight] = phone ? [140, 220, 110] : [176, 270, 130];
-  const valueTop = 32;
-  const pnlTop = valueTop + valueHeight + 46;
-  const drawdownHeading = pnlTop + pnlHeight + 24;
+export function moneyTimelineLayout(phone: boolean, narrow = false) {
+  const [pnlHeight, valueHeight, drawdownHeight] = phone ? [220, 140, 110] : [270, 176, 130];
+  const pnlTop = 32;
+  const valueHeading = pnlTop + pnlHeight + 24;
+  // Leave room for the two value keys to wrap on narrow phones.
+  const valueTop = valueHeading + (narrow ? 48 : 26);
+  const drawdownHeading = valueTop + valueHeight + 24;
   const drawdownTop = drawdownHeading + (phone ? 86 : 32);
   return {
     grids: [
-      { top: valueTop, height: valueHeight },
       { top: pnlTop, height: pnlHeight },
+      { top: valueTop, height: valueHeight },
       { top: drawdownTop, height: drawdownHeight },
     ],
+    valueHeading,
     drawdownHeading,
     height: drawdownTop + drawdownHeight + 68,
   };

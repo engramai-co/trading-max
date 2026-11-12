@@ -209,36 +209,27 @@ export function PerformanceContent({
     values: drawdowns(line.values, true),
     area: false,
   }));
-  const principalLines: ChartLine[] =
-    view === "returns"
-      ? returnLines
-      : portfolioValueLines(points, scope, t, moneyUnit === "percent");
   const timelineLayers: TimelineLayer[] = [
-    {
-      label:
-        view === "money"
-          ? moneyUnit === "percent" ? t("价值与入金变化", "Value & contribution change") : t("价值与入金", "Value & contributions")
-          : t("收益对比", "Return comparison"),
-      lines: principalLines,
-      percentage: view === "returns" || moneyUnit === "percent",
-    },
-    ...(view === "money"
-      ? [
-          {
-            label: t("区间净盈亏", "Period P&L"),
-            percentage: moneyUnit === "percent",
-            zeroBaseline: true,
-            markerDate: money.drawdownEpisode?.peak.date,
-            lines: [
-              {
-                name: t("净盈亏", "Net P&L"),
-                values: moneyUnit === "percent" ? money.pnlPercents : periodPnls,
-                area: true,
-              },
-            ],
-          },
-        ]
-      : []),
+    ...(view === "money" ? [
+      {
+        label: t("区间净盈亏", "Period P&L"),
+        percentage: moneyUnit === "percent",
+        zeroBaseline: true,
+        markerDate: money.drawdownEpisode?.peak.date,
+        lines: [{
+          name: t("净盈亏", "Net P&L"),
+          values: moneyUnit === "percent" ? money.pnlPercents : periodPnls,
+          area: true,
+        }],
+      },
+      {
+        label: moneyUnit === "percent"
+          ? t("价值与入金变化", "Value & contribution change")
+          : t("账户价值与累计净入金", "Account value & cumulative net contributions"),
+        percentage: moneyUnit === "percent",
+        lines: portfolioValueLines(points, scope, t, moneyUnit === "percent"),
+      },
+    ] : [{ label: t("收益对比", "Return comparison"), lines: returnLines, percentage: true }]),
     {
       label: view === "money" ? t("盈亏回撤", "P&L drawdown") : t("期间回撤", "Period drawdown"),
       percentage: view === "returns" || moneyUnit === "percent",
@@ -407,8 +398,7 @@ export function PerformanceContent({
             {view === "money" && moneyUnit === "percent" && points.length > 0 && (navNumber(first, scope) ?? 0) <= 0 && (
               <Notice>{t("期初价值不大于零，无法显示百分比。请选择 GBP。", "Opening value is zero or negative. Select GBP to view amounts.")}</Notice>
             )}
-              {/* Series names sit above the chart they explain. */}
-              <Legend items={(view === "returns" ? returnLines : principalLines).map((line) => ({ label: line.name }))} />
+              {view === "returns" && <Legend items={returnLines.map((line) => ({ label: line.name }))} />}
               <TimelineChart
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
@@ -428,8 +418,8 @@ export function PerformanceContent({
                 label={
                   view === "money"
                     ? t(
-                        "价值、盈亏与回撤的同日对照",
-                        "Value, P&L and drawdown on a shared timeline",
+                        "盈亏、价值与回撤的同日对照",
+                        "P&L, value and drawdown on a shared timeline",
                       )
                     : t(
                         "收益与回撤的同日对照",

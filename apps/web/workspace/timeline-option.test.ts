@@ -155,6 +155,22 @@ describe("shared performance timeline", () => {
 });
 
 describe("money timeline", () => {
+  it.each([false, true])("leads with the tallest P&L pane before value and drawdown (phone=%s)", (phone) => {
+    const moneyLayers = [{ ...layers[1], zeroBaseline: true }, layers[0], layers[2]];
+    const option = timelineOption(dates, moneyLayers, colours, String, undefined, [], String,
+      undefined, undefined, undefined, moneyTimelineLayout(phone));
+    const grids = option.grid as Array<{ top: number; height: number }>;
+    expect(grids[0].height).toBeGreaterThan(grids[1].height);
+    expect(grids[0].height).toBeGreaterThan(grids[2].height);
+    expect(grids[0].top + grids[0].height).toBeLessThan(grids[1].top);
+    expect(grids[1].top + grids[1].height).toBeLessThan(grids[2].top);
+    expect((option.series as Array<{ silent?: boolean }>).filter((line) => !line.silent)).toMatchObject([
+      { name: "P&L · Result", yAxisIndex: 0, markLine: { data: [{ yAxis: 0 }] } },
+      { name: "Value · NAV", yAxisIndex: 1 },
+      { name: "Drawdown · Decline", yAxisIndex: 2 },
+    ]);
+  });
+
   it.each([
     [0, 0, 0],
     [42, 410, 840],
@@ -166,18 +182,21 @@ describe("money timeline", () => {
     const values = [a, b, c];
     const drawdown = [0, 0, -Math.abs(c)];
     const moneyLayers = [
+      { ...layers[1], zeroBaseline: true, lines: [{ name: "P&L", values }] },
       layers[0],
-      { ...layers[1], lines: [{ name: "P&L", values }] },
       { ...layers[2], percentage: false, lines: [{ name: "Drawdown", values: drawdown }] },
     ];
     const option = timelineOption(dates, moneyLayers, colours, String, undefined, [], String,
       undefined, undefined, undefined, moneyTimelineLayout(false));
-    const [, pnl, decline] = option.yAxis as Array<{ min: number; max: number; interval: number }>;
+    const [pnl, value, decline] = option.yAxis as Array<{ min: number; max: number; interval: number }>;
     expect(pnl.min).toBeLessThanOrEqual(Math.min(0, ...values));
     expect(pnl.max).toBeGreaterThanOrEqual(Math.max(0, ...values));
     expect((-pnl.min / pnl.interval) % 1).toBeCloseTo(0);
     expect(Math.round((pnl.max - pnl.min) / pnl.interval)).toBeGreaterThanOrEqual(3);
     expect(Math.round((pnl.max - pnl.min) / pnl.interval)).toBeLessThanOrEqual(4);
+    expect(value).toMatchObject({ boundaryGap: ["8%", "8%"], splitNumber: 4 });
+    expect(value.min).toBeUndefined();
+    expect(value.max).toBeUndefined();
     expect(decline.max).toBe(0);
     expect(decline.min).toBeLessThanOrEqual(Math.min(...drawdown));
     expect(Math.round(-decline.min / decline.interval)).toBeLessThanOrEqual(2);
@@ -186,15 +205,15 @@ describe("money timeline", () => {
   it("keeps real marker observations in the plotted line even within a wider display bucket", () => {
     const calendar = { categories: dates, rowIndexes: [0, 1, 2], displayIntervalMinutes: 60 * 24 * 15 };
     const moneyLayers = [
+      { ...layers[1], zeroBaseline: true, markerDate: dates[1], lines: [{ name: "P&L", values: [0, 20, 5] }] },
       layers[0],
-      { ...layers[1], markerDate: dates[1], lines: [{ name: "P&L", values: [0, 20, 5] }] },
       { ...layers[2], markerDate: dates[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15] }] },
     ];
     const option = timelineOption(dates, moneyLayers, colours, String, calendar, [], String,
       undefined, undefined, undefined, moneyTimelineLayout(false));
     const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
-    expect(series[1].data.map((point) => point.value)).toContainEqual([1, 20]);
-    expect(series[1].markPoint?.data).toEqual([{ name: "P&L", coord: [1, 20] }]);
+    expect(series[0].data.map((point) => point.value)).toContainEqual([1, 20]);
+    expect(series[0].markPoint?.data).toEqual([{ name: "P&L", coord: [1, 20] }]);
     expect(series[2].markPoint?.data).toEqual([{ name: "Drawdown", coord: [2, -0.15] }]);
   });
 
@@ -202,16 +221,16 @@ describe("money timeline", () => {
     const dated = ["2025-01-01", "2025-01-02T14:00:00Z", "2025-01-02T21:00:00Z", "2025-01-03"];
     const calendar = { categories: ["2025-01-01", "2025-01-02", "2025-01-03"], rowIndexes: [0, 2, 3], displayIntervalMinutes: 1440 };
     const moneyLayers = [
+      { ...layers[1], zeroBaseline: true, markerDate: dated[1], lines: [{ name: "P&L", values: [0, 35, 20, 15] }] },
       { ...layers[0], lines: [{ name: "NAV", values: [100, 135, 120, 115] }] },
-      { ...layers[1], markerDate: dated[1], lines: [{ name: "P&L", values: [0, 35, 20, 15] }] },
       { ...layers[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15, -0.20] }] },
     ];
     const option = timelineOption(dated, moneyLayers, colours, String, calendar, [],
       (time) => new Date(time).toISOString(), undefined, undefined, undefined, moneyTimelineLayout(false));
     const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
-    expect(series[0].data.map((point) => point.value)).toContainEqual([1, 135]);
-    expect(series[1].data.map((point) => point.value)).toEqual([[0, 0], [1, 35], [2, 20], [3, 15]]);
-    expect(series[1].markPoint?.data[0].coord).toEqual([1, 35]);
+    expect(series[1].data.map((point) => point.value)).toContainEqual([1, 135]);
+    expect(series[0].data.map((point) => point.value)).toEqual([[0, 0], [1, 35], [2, 20], [3, 15]]);
+    expect(series[0].markPoint?.data[0].coord).toEqual([1, 35]);
     const tooltip = option.tooltip as { formatter: (input: unknown) => string };
     expect(tooltip.formatter([{ value: [1, 135] }])).toContain("2025-01-02T14:00:00.000Z");
   });
