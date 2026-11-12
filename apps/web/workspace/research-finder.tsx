@@ -7,6 +7,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, jsonRequest } from "@/workspace/data";
 import { Empty, Instrument, Notice, Pending, useCopy } from "./foundation";
+import Link from "./link";
+import { indexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
 
 export function SecurityFinder({
   opened,
@@ -24,6 +26,7 @@ export function SecurityFinder({
   const [search, setSearch] = useState(() => (initial.trim().length >= 2 ? initial.trim() : ""));
   const currentText = (text || initial).trim();
   const showingCurrentSearch = search === currentText;
+  const indices = matchIndices(useIndexCatalog(opened && currentText.length >= 2).data, currentText);
   const query = useQuery({
     queryKey: ["workspace-security-search", opened ? search : "", 3],
     enabled: opened && search.length >= 2,
@@ -75,6 +78,15 @@ export function SecurityFinder({
           </Button>
         </Group>
       </form>
+      {indices.length > 0 && <div className="mx-index-search">
+        {indices.map((index) => (
+          <Link key={index.id} className="mx-row-link mx-research-index-result" href={indexHref(index)} onClick={onClose}>
+            <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
+            <span className="mx-form-help">{t("指数", "Index")}</span>
+            <span>{t("查看", "Open")}</span>
+          </Link>
+        ))}
+      </div>}
       {add.isError && <Notice tone="bad">{add.error.message}</Notice>}
       {!showingCurrentSearch ? null : query.isError ? (
         <Notice tone="bad">
@@ -106,7 +118,7 @@ export function SecurityFinder({
               </div>
             ))}
           </div>
-        ) : (
+        ) : indices.length ? null : (
           <Empty
             title={t("没有找到匹配证券", "No matching securities")}
             description={t(
@@ -115,7 +127,7 @@ export function SecurityFinder({
             )}
           />
         )
-      ) : (
+      ) : indices.length ? null : (
         <Empty
           title={t("搜索证券", "Search for a security")}
           description={t(

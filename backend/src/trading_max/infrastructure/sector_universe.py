@@ -81,6 +81,14 @@ UNIVERSES: dict[str, UniverseSpec] = {
             "NYSE MKT LLC": "",
         },
     ),
+    "ndx": UniverseSpec(
+        market="ndx",
+        universe="Nasdaq 100",
+        fund="iShares NASDAQ 100 UCITS ETF",
+        fund_ticker="CNDX",
+        product_id="253741",
+        exchanges={"NASDAQ": ""},
+    ),
     "uk": UniverseSpec(
         market="uk",
         universe="FTSE 100",

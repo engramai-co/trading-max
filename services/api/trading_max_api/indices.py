@@ -1,0 +1,703 @@
+"""Market index reads reuse public quotes and immutable account snapshots."""
+
+from __future__ import annotations
+
+import logging
+import statistics
+import threading
+from bisect import bisect_right
+from collections.abc import Callable, Iterable
+from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
+from pathlib import Path
+from typing import cast, get_args
+from zoneinfo import ZoneInfo
+
+import pandas as pd
+from pydantic import ValidationError
+from trading_max.analytics.accounts import AccountPositionMetrics
+from trading_max.analytics.sector_board import FLAT_BAND, member_session, settle
+from trading_max.domain.etf import evidenced_benchmark_id
+from trading_max.infrastructure.durable_files import atomic_bytes
+from trading_max.infrastructure.sector_prices import SparkSeries
+from trading_max.infrastructure.sector_universe import SectorUniverseProvider
+from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
+from trading_max.reference.indices import INDEX_REGISTRY, IndexScope, IndexSpec
+
+from .artifacts import ArtifactStore
+from .etf_snapshot import read_etf_portfolio
+from .index_models import (
+    IndexBasket,
+    IndexContext,
+    IndexContribution,
+    IndexFundHolding,
+    IndexHistory,
+    IndexIdentity,
+    IndexMarket,
+    IndexPoint,
+    IndexQuote,
+    IndexRange,
+)
+from .sector_models import SectorBreadth, SectorMarketCode, SectorSessionWindow
+from .sector_monitor import SectorBoardStore
+from .sector_sessions import (
+    MARKETS,
+    board_complete,
+    exchange_sessions,
+    latest_session,
+    prior_session_dates,
+)
+
+LOGGER = logging.getLogger(__name__)
+DAILY_WINDOWS = {
+    "1W": pd.DateOffset(weeks=1),
+    "1M": pd.DateOffset(months=1),
+    "3M": pd.DateOffset(months=3),
+    "6M": pd.DateOffset(months=6),
+    "1Y": pd.DateOffset(years=1),
+    "3Y": pd.DateOffset(years=3),
+    "5Y": pd.DateOffset(years=5),
+}
+BROKER_KEY = "account/broker_snapshot_metrics.json"
+
+
+def index_identity(spec: IndexSpec) -> IndexIdentity:
+    return IndexIdentity(
+        id=spec.id,
+        scope=spec.scope,
+        name=spec.name,
+        name_zh=spec.name_zh,
+        compiler=spec.compiler,
+        compiler_id=spec.compiler_id,
+        symbol=spec.symbol,
+        currency=spec.currency,
+        calendar=spec.calendar,
+        basis=spec.basis,
+        kind=spec.kind,
+        history_years=spec.history_years,
+        rights=spec.rights,
+        aliases=list(spec.aliases),
+        source="Yahoo Finance" if spec.symbol else None,
+    )
+
+
+def active_indices(scope: IndexScope | None = None) -> Iterable[IndexSpec]:
+    return (spec for spec in INDEX_REGISTRY.values() if scope is None or spec.scope == scope)
+
+
+# Composite calendars do not imply a local session. Indian quotes use the
+# provider's observation date until the package has a maintained holiday table.
+_CLOCKS = {
+    **{item.calendar: (item.calendar, item.timezone) for item in MARKETS.values()},
+    "XNAS": ("XNYS", "America/New_York"),
+    "XETR": ("XETR", "Europe/Berlin"),
+    "XPAR": ("XPAR", "Europe/Paris"),
+    "XTAI": ("XTAI", "Asia/Taipei"),
+    "XTSE": ("XTSE", "America/Toronto"),
+    "XASX": ("XASX", "Australia/Sydney"),
+    "XSWX": ("XSWX", "Europe/Zurich"),
+    "XNSE": (None, "Asia/Kolkata"),
+    "XBOM": (None, "Asia/Kolkata"),
+    "STOXX-Europe": (None, "Europe/Paris"),
+}
+
+
+def _index_clock(
+    spec: IndexSpec, now: datetime
+) -> tuple[ZoneInfo, SectorSessionWindow | None, str | None]:
+    calendar, timezone = _CLOCKS.get(spec.calendar, (None, "UTC"))
+    zone = ZoneInfo(timezone)
+    if not calendar:
+        return zone, None, None
+    day = now.astimezone(zone).date()
+    started = [
+        window
+        for window in exchange_sessions(calendar, day - timedelta(days=14), day)
+        if window.open <= now
+    ]
+    return zone, started[-1] if started else None, started[-2].date if len(started) > 1 else None
+
+
+def _points(series: SparkSeries | None) -> list[IndexPoint]:
+    if series is None:
+        return []
+    return [
+        IndexPoint(at=datetime.fromtimestamp(at, UTC), value=value)
+        for at, value in sorted(dict(zip(series.timestamps, series.closes, strict=False)).items())
+        if value is not None
+    ]
+
+
+def _dated(series: SparkSeries | None, zone: ZoneInfo) -> dict[str, float]:
+    return {point.at.astimezone(zone).date().isoformat(): point.value for point in _points(series)}
+
+
+def _risk(points: list[IndexPoint], gaps: set[datetime]) -> tuple[float | None, float | None]:
+    if len(points) < 2:
+        return None, None
+    peak = points[0].value
+    trough = 0.0
+    for point in points:
+        peak = max(peak, point.value)
+        trough = min(trough, point.value / peak - 1)
+    adjacent: dict[datetime, IndexPoint | None] = dict.fromkeys(gaps)
+    adjacent.update({point.at: point for point in points})
+    returns = [
+        current.value / prior.value - 1
+        for a, b in pairwise(sorted(adjacent))
+        if (prior := adjacent[a]) is not None and (current := adjacent[b]) is not None
+    ]
+    return trough, statistics.stdev(returns) * (252**0.5) if len(returns) >= 2 else None
+
+
+def _convert(points: list[IndexPoint], rates: list[IndexPoint], *, daily: bool) -> list[IndexPoint]:
+    # Intraday uses the last observed FX bar. Daily uses only FX dates strictly
+    # before the index date, as the same day's FX candle can end after its close.
+    stamps = [point.at.date() if daily else point.at for point in rates]
+    converted = []
+    for point in points:
+        limit = point.at.date() - timedelta(days=1) if daily else point.at
+        index = bisect_right(stamps, limit) - 1
+        if index >= 0 and point.at - rates[index].at <= (
+            timedelta(days=5) if daily else timedelta(minutes=30)
+        ):
+            converted.append(point.model_copy(update={"value": point.value * rates[index].value}))
+    return converted
+
+
+class IndexService:
+    def __init__(
+        self,
+        root: Path,
+        store: ArtifactStore,
+        boards: SectorBoardStore,
+        prices: SharedMarketPrices,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.store = store
+        self.boards = boards
+        self.prices = prices
+        self.universes = SectorUniverseProvider(root)
+        self.root = root / "state" / "indices"
+        self.now = now or (lambda: datetime.now(UTC))
+        self._lock = threading.RLock()
+        self._market_locks = {scope: threading.Lock() for scope in get_args(IndexScope)}
+        self._markets: dict[str, tuple[datetime, IndexMarket]] = {}
+        self._baselines: dict[str, tuple[str, bool, SparkSeries]] = {}
+        self._ndx_lock = threading.Lock()
+        self._ndx_cache: tuple[datetime, IndexBasket | None] | None = None
+        self._ndx_late_attempts: tuple[str, int] | None = None
+        self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
+        self._histories: dict[tuple[str, str, bool], tuple[datetime, IndexHistory]] = {}
+
+    def market(self, scope: IndexScope) -> IndexMarket:
+        with self._market_locks[scope]:
+            return self._market(scope)
+
+    def _market(self, scope: IndexScope) -> IndexMarket:
+        now = self.now()
+        specs = list(active_indices(scope))
+        clocks = {spec.id: _index_clock(spec, now) for spec in specs if spec.symbol}
+        cached = self._markets.get(scope)
+        # Session-aware scopes slow down after the closing grace period.
+        # Unscheduled series are demand-driven and cannot claim a live session.
+        polling = any(
+            window and now <= window.close + timedelta(hours=1) for _, window, _ in clocks.values()
+        )
+        if cached and now - cached[0] < timedelta(minutes=10 if polling else 30):
+            return cached[1]
+        path = self.root / f"{scope}.json"
+        try:
+            previous = IndexMarket.model_validate_json(path.read_bytes())
+        except (OSError, ValueError):
+            previous = None
+        saved = {quote.index.id: quote for quote in previous.quotes} if previous else {}
+        fetch = []
+        for spec in specs:
+            if not spec.symbol:
+                continue
+            _, window, _ = clocks[spec.id]
+            old = saved.get(spec.id)
+            if (
+                window
+                and old
+                and old.index == index_identity(spec)
+                and old.session_date == window.date
+                and old.state == "closed"
+                and old.change is not None
+            ):
+                continue
+            fetch.append(spec)
+
+        daily, intraday = {}, {}
+        try:
+            if fetch:
+                intraday = self.prices.intraday(spec.symbol for spec in fetch if spec.symbol)
+        except Exception:
+            LOGGER.debug("Index intraday read failed", exc_info=True)
+        needed = []
+        for spec in fetch:
+            _, window, _ = clocks[spec.id]
+            if window is None:
+                continue
+            cached_baseline = self._baselines.get(spec.id)
+            if cached_baseline and cached_baseline[:2] == (
+                window.date,
+                board_complete(window, now),
+            ):
+                daily[spec.id] = cached_baseline[2]
+            else:
+                needed.append(spec)
+        try:
+            if needed:
+                rows = self.prices.daily(spec.symbol for spec in needed if spec.symbol)
+                for spec in needed:
+                    item = rows.get(spec.symbol or "")
+                    if item is None:
+                        continue
+                    daily[spec.id] = item
+                    zone, window, prior = clocks[spec.id]
+                    if window and prior:
+                        completed = board_complete(window, now)
+                        closes = _dated(item, zone)
+                        if prior in closes and (not completed or window.date in closes):
+                            self._baselines[spec.id] = (window.date, completed, item)
+        except Exception:
+            LOGGER.debug("Index daily close read failed", exc_info=True)
+
+        result = IndexMarket(scope=scope, quotes=[])
+        fetched_ids = {spec.id for spec in fetch}
+        for spec in specs:
+            quote = IndexQuote(index=index_identity(spec))
+            old = saved.get(spec.id)
+            if spec.id in fetched_ids:
+                zone, window, prior = clocks[spec.id]
+                item = intraday.get(spec.symbol or "")
+                points = [point for point in _points(item) if point.at <= now]
+                closes = _dated(daily.get(spec.id), zone)
+                state = "observed"
+                day = None
+                if window:
+                    day = window.date
+                    points = [
+                        p
+                        for p in points
+                        if window.open <= p.at <= window.close + timedelta(minutes=15)
+                    ]
+                    completed = board_complete(window, now)
+                    official = closes.get(window.date) if completed else None
+                    if official is not None:
+                        points = [p for p in points if p.at < window.close] + [
+                            IndexPoint(at=window.close, value=official)
+                        ]
+                    expected = min(now, window.close)
+                    if (
+                        window.break_start
+                        and window.break_end
+                        and window.break_start <= now < window.break_end
+                    ):
+                        expected = window.break_start
+                    state = (
+                        "closed"
+                        if official is not None
+                        else "stale"
+                        if completed
+                        or (points and expected - points[-1].at > timedelta(minutes=35))
+                        else "live"
+                    )
+                elif points:
+                    day = points[-1].at.astimezone(zone).date().isoformat()
+                    points = [p for p in points if p.at.astimezone(zone).date().isoformat() == day]
+                    # A composite does not have a verified prior session here.
+                    # Its feed must provide the reference; never subtract an
+                    # arbitrary older daily bar from the latest print.
+                base = (
+                    closes.get(prior)
+                    if prior
+                    else (item.previous_close if item and not window else None)
+                )
+                if points:
+                    last = points[-1]
+                    change = None
+                    if base:
+                        change = (
+                            last.value - base
+                            if spec.kind == "volatility"
+                            else last.value / base - 1
+                        )
+                    quote = IndexQuote(
+                        index=quote.index,
+                        session_date=day,
+                        level=last.value,
+                        change=change,
+                        as_of=last.at,
+                        points=points,
+                        state=state,
+                    )
+                if (
+                    old
+                    and old.index == quote.index
+                    and old.as_of
+                    and (
+                        quote.as_of is None or (quote.state != "closed" and quote.as_of < old.as_of)
+                    )
+                ):
+                    quote = old.model_copy(update={"state": "stale"})
+                if quote.state in {"unavailable", "stale"} or (window and quote.change is None):
+                    result.refresh_failed = True
+            elif spec.symbol and old:
+                quote = old
+            result.quotes.append(quote)
+        if fetch and any(quote.as_of for quote in result.quotes):
+            try:
+                atomic_bytes(path, result.model_dump_json(by_alias=True).encode())
+            except OSError:
+                LOGGER.debug("Index quote cache could not be written", exc_info=True)
+        self._markets[scope] = (now, result)
+        return result
+
+    def history(self, spec: IndexSpec, period: IndexRange, gbp: bool) -> IndexHistory:
+        key = (spec.id, period, gbp)
+        with self._lock:
+            now = self.now()
+            cached = self._histories.get(key)
+            if cached and now - cached[0] < timedelta(minutes=4):
+                return cached[1]
+            currency = "GBP" if gbp and spec.currency else spec.currency
+            result = IndexHistory(index=index_identity(spec), range=period, currency=currency)
+            try:
+                result = self._history(spec, period, gbp, result, now)
+            except Exception:
+                LOGGER.debug("Index history read failed", exc_info=True)
+            if not result.points and cached and cached[1].points:
+                result = cached[1].model_copy(update={"state": "stale"})
+            self._histories[key] = (now, result)
+            return result
+
+    def _history(
+        self,
+        spec: IndexSpec,
+        period: IndexRange,
+        gbp: bool,
+        result: IndexHistory,
+        now: datetime,
+    ) -> IndexHistory:
+        if spec.symbol is None:
+            return result
+        zone, window, _ = _index_clock(spec, now)
+        last_complete = (
+            date.fromisoformat(window.date)
+            if window and board_complete(window, now)
+            else date.fromisoformat(window.date) - timedelta(days=1)
+            if window
+            else now.astimezone(zone).date() - timedelta(days=1)
+        )
+        is_daily = period != "1D"
+        cut = None
+        gaps: set[datetime] = set()
+        if not is_daily:
+            quote = next((q for q in self.market(spec.scope).quotes if q.index.id == spec.id), None)
+            points = quote.points if quote else []
+        elif spec.history_years:
+            cut = (
+                pd.Timestamp(window.date if window else now.astimezone(zone).date())
+                - DAILY_WINDOWS[period]
+            ).date()
+            series = self.prices.history(spec.symbol)
+            observations = _dated(series, zone)
+            points = [
+                IndexPoint(at=datetime.fromisoformat(day).replace(tzinfo=UTC), value=value)
+                for day, value in observations.items()
+                if cut <= date.fromisoformat(day) <= last_complete
+            ]
+            if points and window:
+                calendar = _CLOCKS[spec.calendar][0]
+                gaps.update(
+                    datetime.fromisoformat(session.date).replace(tzinfo=UTC)
+                    for session in exchange_sessions(calendar, points[0].at.date(), last_complete)
+                    if session.date not in observations
+                )
+            elif points and series:
+                dates = {datetime.fromtimestamp(stamp, zone).date() for stamp in series.timestamps}
+                gaps.update(
+                    datetime.combine(day, datetime.min.time(), UTC)
+                    for day in dates
+                    if cut <= day <= last_complete and day.isoformat() not in observations
+                )
+        else:
+            return result
+        raw_count = len(points)
+        if gbp and spec.currency not in {None, "GBP"} and points:
+            fx = f"{spec.currency}GBP=X"
+            rates = self.prices.history(fx) if is_daily else self.prices.intraday([fx]).get(fx)
+            original = {point.at for point in points}
+            points = _convert(points, _points(rates), daily=is_daily)
+            gaps.update(original - {point.at for point in points})
+        if points:
+            result.points = points
+            result.as_of = points[-1].at
+            result.gaps = sorted(gaps)
+            result.state = (
+                "partial"
+                if gaps
+                or len(points) != raw_count
+                or (cut is not None and points[0].at.date() > cut + timedelta(days=7))
+                else "available"
+            )
+            if not is_daily and quote and quote.state == "stale":
+                result.state = "stale"
+            if is_daily:
+                result.max_drawdown, result.volatility = _risk(points, gaps)
+        return result
+
+    def context(self, spec: IndexSpec) -> IndexContext:
+        funds, as_of = self._funds(spec)
+        try:
+            if spec.basket == "ndx":
+                with self._ndx_lock:
+                    now = self.now()
+                    window = latest_session("us", now)
+                    cached = self._ndx_cache
+                    previous = cached[1] if cached else None
+                    late = bool(window and now >= window.close + timedelta(hours=1))
+                    same_session = previous and window and previous.session_date == window.date
+                    settled = same_session and (
+                        (late and previous.as_of is not None)
+                        or (
+                            board_complete(window, now)
+                            and previous.as_of == window.close
+                            and previous.coverage >= 0.98
+                        )
+                    )
+                    attempts = self._ndx_late_attempts
+                    late_attempts = (
+                        attempts[1] if attempts and window and attempts[0] == window.date else 0
+                    )
+                    interval = timedelta(minutes=60 if late else 15)
+                    if (
+                        window
+                        and not settled
+                        and late_attempts < 3
+                        and (not cached or now - cached[0] >= interval)
+                    ):
+                        if late:
+                            self._ndx_late_attempts = (window.date, late_attempts + 1)
+                        try:
+                            cached = (now, self._basket(spec))
+                        except Exception:
+                            LOGGER.debug("Nasdaq 100 basket refresh failed", exc_info=True)
+                            cached = (now, previous)
+                        self._ndx_cache = cached
+                    basket = cached[1] if cached else None
+            else:
+                basket = self._basket(spec)
+        except Exception:
+            LOGGER.debug("Index basket read failed", exc_info=True)
+            basket = None
+        return IndexContext(
+            basket=basket,
+            funds=funds,
+            portfolio_as_of=as_of,
+            exposure_gbp=round(sum(item.value_gbp for item in funds), 2) if funds else None,
+        )
+
+    def _funds(self, spec: IndexSpec) -> tuple[list[IndexFundHolding], str | None]:
+        manifest = self.store.latest_manifest()
+        if manifest is None:
+            return [], None
+        portfolio = read_etf_portfolio(self.store, manifest.run_id)
+        selected = {
+            fund.isin: fund
+            for fund in portfolio.funds
+            if fund.isin
+            and evidenced_benchmark_id(fund.index_name, fund.evidence) == spec.benchmark
+        }
+        if not selected:
+            return [], portfolio.broker_as_of
+        try:
+            broker = self.store.read_json(manifest.run_id, BROKER_KEY)
+        except FileNotFoundError:
+            return [], portfolio.broker_as_of
+        accounts = broker.get("accounts", {})
+        by_isin: dict[str, list[tuple[float, float | None]]] = {}
+        for account in accounts.values():
+            for row in account.get("positions", []):
+                if not isinstance(row, dict) or row.get("isin") not in selected:
+                    continue
+                try:
+                    position = AccountPositionMetrics.model_validate(row)
+                except ValidationError:
+                    continue
+                if position.current_value_gbp > 0:
+                    by_isin.setdefault(position.isin, []).append(
+                        (float(position.current_value_gbp), float(position.quantity))
+                    )
+        return [
+            IndexFundHolding(
+                isin=isin,
+                ticker=selected[isin].tickers[0],
+                name=selected[isin].name,
+                value_gbp=round(sum(value for value, _ in lines), 2),
+                shares=sum(shares for _, shares in lines if shares is not None)
+                if all(shares is not None for _, shares in lines)
+                else None,
+            )
+            for isin, lines in sorted(by_isin.items())
+            if selected[isin].tickers
+        ], portfolio.broker_as_of
+
+    def _basket(self, spec: IndexSpec) -> IndexBasket | None:
+        if spec.basket is None:
+            return None
+        now = self.now()
+        scope = cast(SectorMarketCode, spec.scope)
+        window = latest_session(scope, now)
+        if window is None:
+            return None
+        groups: dict[str, tuple[str, list[IndexContribution]]] = {}
+        if spec.basket == "ndx":
+            # CNDX overlaps with CSPX. Both use the same per-listing price cache.
+            # Only request dated baselines again if they were missing or to settle.
+            universe = self.universes.get("ndx")
+            symbols = [item.symbol for item in universe.constituents]
+            quotes = self.prices.intraday(symbols)
+            prior = prior_session_dates(scope, window.date, 1)
+            zone = ZoneInfo(MARKETS[scope].timezone)
+            completed = board_complete(window, now)
+            closes_cache = self._ndx_closes
+            dated = (
+                dict(closes_cache[2])
+                if closes_cache and closes_cache[:2] == (window.date, completed)
+                else {}
+            )
+            needed = [symbol for symbol in symbols if symbol not in dated]
+            if needed:
+                pulled = self.prices.daily(needed)
+                dated.update(pulled)
+                self._ndx_closes = (
+                    window.date,
+                    completed,
+                    {
+                        symbol: item
+                        for symbol, item in dated.items()
+                        if prior
+                        and prior[0] in (closes := _dated(item, zone))
+                        and (not completed or window.date in closes)
+                    },
+                )
+            fund, holdings_date, session_date = universe.fund_ticker, universe.as_of, window.date
+            as_of = None
+            for member in universe.constituents:
+                item = quotes.get(member.symbol)
+                closes = _dated(dated.get(member.symbol), zone)
+                base = closes.get(prior[0]) if prior else None
+                session = (
+                    member_session(
+                        item.timestamps,
+                        item.closes,
+                        base,
+                        session_open=window.open,
+                        session_close=window.close,
+                    )
+                    if item
+                    else None
+                )
+                if completed:
+                    session = settle(
+                        session, closes.get(window.date), base, session_close=window.close
+                    )
+                if session is not None:
+                    as_of = max(as_of or session.observed_at, session.observed_at)
+                groups.setdefault(member.sector_code, (member.sector_name, []))[1].append(
+                    IndexContribution(
+                        key=member.symbol,
+                        name=member.name,
+                        weight=member.weight,
+                        contribution=member.weight * session.change if session else None,
+                    )
+                )
+        else:
+            board = self.boards.load(spec.basket)
+            if board is None:
+                return None
+            grouping = next((g for g in board.groupings if g.kind == "gics"), None)
+            if grouping is None:
+                return None
+            fund, holdings_date, session_date = (
+                board.source.fund_ticker,
+                board.source.as_of,
+                board.session_date,
+            )
+            as_of = board.as_of
+            for group in grouping.groups:
+                groups[group.key] = (
+                    group.name,
+                    [
+                        IndexContribution(
+                            key=item.symbol,
+                            name=item.name,
+                            weight=item.weight,
+                            contribution=item.weight * item.change
+                            if item.change is not None and spec.basket in {"us", "uk"}
+                            else None,
+                        )
+                        for item in group.members
+                    ],
+                )
+        members = [member for _, group in groups.values() for member in group]
+        priced = [m for m in members if m.contribution is not None and m.weight > 0]
+        coverage = sum(m.weight for m in priced)
+        estimate = sum(m.contribution or 0 for m in priced) if priced else None
+        breadth = SectorBreadth()
+        for member in priced:
+            move = (member.contribution or 0) / member.weight
+            if move > FLAT_BAND + 1e-9:
+                breadth.up += 1
+            elif move < -FLAT_BAND - 1e-9:
+                breadth.down += 1
+            else:
+                breadth.flat += 1
+        residual = None
+        # Compare only contemporaneous reads of the same session; missing
+        # constituent weights stay missing in the contribution arithmetic.
+        if estimate is not None and spec.kind == "index" and spec.basis == "price" and as_of:
+            quote = next((q for q in self.market(scope).quotes if q.index.id == spec.id), None)
+            if (
+                quote
+                and quote.state != "stale"
+                and quote.session_date == session_date
+                and quote.change is not None
+                and quote.as_of
+                and abs(quote.as_of - as_of) <= timedelta(minutes=5)
+            ):
+                residual = quote.change - estimate
+        return IndexBasket(
+            fund=fund,
+            holdings_date=holdings_date,
+            session_date=session_date,
+            as_of=as_of,
+            coverage=coverage,
+            breadth=breadth,
+            leaders=sorted(
+                (m for m in priced if (m.contribution or 0) > 0),
+                key=lambda m: -(m.contribution or 0),
+            )[:5],
+            laggards=sorted(
+                (m for m in priced if (m.contribution or 0) < 0), key=lambda m: m.contribution or 0
+            )[:5],
+            top_holdings=sorted(members, key=lambda m: -m.weight)[:10],
+            sectors=[
+                IndexContribution(
+                    key=key,
+                    name=name,
+                    weight=sum(m.weight for m in group),
+                    contribution=sum(m.contribution or 0 for m in group)
+                    if any(m.contribution is not None for m in group)
+                    else None,
+                )
+                for key, (name, group) in groups.items()
+            ],
+            estimated_move=estimate,
+            residual=residual,
+        )

@@ -44,6 +44,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
   if (phone) return (
     <Select
       className="mx-sector-market-picker"
+      styles={{ input: { minHeight: 44 } }}
       aria-label={label}
       value={value}
       onChange={pick}
@@ -51,11 +52,19 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
       allowDeselect={false}
       nothingFoundMessage={t("没有匹配的市场", "No matching market")}
       data={[
-        ...fixed.map(({ value, label, marker }) => ({ value, label: marker ? `${label} · ${marker}` : label })),
+        ...fixed.map(({ value, label }) => ({ value, label })),
         ...grouped.filter(({ options }) => options.length).map(({ group, options }) => ({
-          group, items: options.map(({ value, label, marker }) => ({ value, label: marker ? `${label} · ${marker}` : label })),
+          group, items: options.map(({ value, label }) => ({ value, label })),
         })),
       ]}
+      renderOption={({ option }) => {
+        const marker = options.find(({ value }) => value === option.value)?.marker;
+        return <span className="mx-segment-label">
+          {marker && <span className="mx-segment-marker" aria-hidden="true" />}
+          {option.label}
+          {marker && <span className="sr-only">{`, ${marker}`}</span>}
+        </span>;
+      }}
     />
   );
   return (
@@ -66,7 +75,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
           <Button
             variant="default"
             rightSection={<CaretDown size={14} aria-hidden="true" />}
-            aria-label={t("更多市场", "More markets")}
+            aria-label={t("更多市场", "More markets") + (selected ? `: ${selected.label}` : "")}
             data-selected-market={selected ? "" : undefined}
           >
             {selected?.label ?? t("更多", "More")}
@@ -77,7 +86,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
             <div key={group}>
               <Menu.Label>{group}</Menu.Label>
               {options.map((option) => (
-                <Menu.Item key={option.value} role="menuitemradio" aria-checked={option.value === value} onClick={() => pick(option.value)}>
+                <Menu.Item key={option.value} aria-current={option.value === value ? "true" : undefined} onClick={() => pick(option.value)}>
                   {option.marker && <span className="mx-segment-marker" aria-label={option.marker} />} {option.label}
                 </Menu.Item>
               ))}

@@ -83,7 +83,9 @@ class FundShareClass(DomainModel):
 
     @property
     def benchmark_id(self) -> str | None:
-        evidence = self.evidence.get("index_name")
-        if evidence is None or evidence.coverage != "available":
-            return None
-        return issuer_benchmark_id(self.index_name)
+        return evidenced_benchmark_id(self.index_name, self.evidence)
+
+
+def evidenced_benchmark_id(index_name: str | None, evidence: dict[str, FundEvidence]) -> str | None:
+    fact = evidence.get("index_name")
+    return issuer_benchmark_id(index_name) if fact and fact.coverage == "available" else None

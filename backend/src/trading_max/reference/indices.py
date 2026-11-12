@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+IndexScope = Literal["global", "us", "eu", "uk", "jp", "hk", "kr", "tw", "in", "ca", "au", "ch"]
 IndexBasis = Literal["price", "net-return", "total-return", "implied-volatility"]
 IndexKind = Literal["index", "etf-price", "volatility"]
 UsageRights = Literal["provider-terms", "licensed-source-required"]
@@ -17,7 +18,7 @@ UsageRights = Literal["provider-terms", "licensed-source-required"]
 @dataclass(frozen=True, slots=True)
 class IndexSpec:
     id: str
-    scope: str
+    scope: IndexScope
     name: str
     name_zh: str
     compiler: str
@@ -128,6 +129,22 @@ INDEX_REGISTRY = {
             "ftse-250", "uk", "FTSE 250", "富时 250", "FTSE Russell", "MCX", "^FTMC", "GBP", "XLON"
         ),
         IndexSpec(
+            "msci-japan",
+            "jp",
+            "MSCI Japan",
+            "MSCI 日本",
+            "MSCI",
+            "939200",
+            None,
+            "USD",
+            "XTKS",
+            basis="net-return",
+            history_years=0,
+            rights="licensed-source-required",
+            basket="jp",
+            aliases=("MSCI Japan Index (Net)",),
+        ),
+        IndexSpec(
             "nikkei-225",
             "jp",
             "Nikkei 225",
@@ -151,22 +168,6 @@ INDEX_REGISTRY = {
             "XTKS",
             kind="etf-price",
             aliases=("TOPIX", "Tokyo Stock Price Index"),
-        ),
-        IndexSpec(
-            "msci-japan",
-            "jp",
-            "MSCI Japan",
-            "MSCI 日本",
-            "MSCI",
-            "939200",
-            None,
-            "USD",
-            "XTKS",
-            basis="net-return",
-            history_years=0,
-            rights="licensed-source-required",
-            basket="jp",
-            aliases=("MSCI Japan Index (Net)",),
         ),
         IndexSpec(
             "hang-seng",
@@ -233,7 +234,7 @@ INDEX_REGISTRY = {
         ),
         IndexSpec(
             "dax",
-            "de",
+            "eu",
             "DAX",
             "德国 DAX",
             "STOXX",
@@ -244,7 +245,7 @@ INDEX_REGISTRY = {
             basis="total-return",
         ),
         IndexSpec(
-            "cac-40", "fr", "CAC 40", "法国 CAC 40", "Euronext", "PX1", "^FCHI", "EUR", "XPAR"
+            "cac-40", "eu", "CAC 40", "法国 CAC 40", "Euronext", "PX1", "^FCHI", "EUR", "XPAR"
         ),
         IndexSpec("taiex", "tw", "TAIEX", "台湾加权指数", "TWSE", "TAIEX", "^TWII", "TWD", "XTAI"),
         IndexSpec(

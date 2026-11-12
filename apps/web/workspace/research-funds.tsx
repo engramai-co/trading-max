@@ -13,6 +13,7 @@ import { EvidenceReading } from "./etf-reading";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
+import { indexHref } from "./market-indices-data";
 import { researchPriceQuery } from "./research-queries";
 
 type Fund = components["schemas"]["FundResearch"];
@@ -133,7 +134,9 @@ function FundTracking({ fund }: { fund: Fund }) {
   return (
     <Panel title={t("指数与跟踪", "Index & tracking")} action={sourceLink(fund.sourceUrl, t("发行商原文", "Issuer source"))}>
       <Facts rows={[
-        [t("跟踪指数", "Tracked index"), fund.indexName ?? absent(t)],
+        [t("跟踪指数", "Tracked index"), fund.benchmark
+          ? <Link className="mx-text-link" href={indexHref(fund.benchmark)}>{fund.indexName}</Link>
+          : fund.indexName ?? absent(t)],
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
         [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t)} />],
         [errorLabel, <SourceValue key="tracking-error" label={errorLabel} value={error} evidence={fund.profile?.evidence?.tracking_error} t={t} />],

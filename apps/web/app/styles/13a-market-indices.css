@@ -1,0 +1,296 @@
+/* The index strip and the sector map share the same ink, heat and focus language. */
+.mx-index-strip,
+.mx-index-detail {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.mx-index-scope {
+  margin: 0 2px 6px;
+  font-size: 15px;
+}
+.mx-index-cards {
+  display: grid;
+  grid-auto-columns: minmax(140px, min(260px, calc((100% - 40px) / 5)));
+  grid-auto-flow: column;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mx-border) transparent;
+}
+.mx-index-card {
+  --mx-index-hue: var(--mx-soft);
+  display: grid;
+  grid-template-rows: auto auto 25px;
+  gap: 7px;
+  padding: 10px 12px 7px;
+  min-width: 0;
+  border: 1px solid var(--mx-border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--mx-index-hue) var(--mx-index-heat), var(--mx-surface));
+  color: var(--mx-ink);
+  text-decoration: none;
+}
+.mx-index-card[data-tone="up"] {
+  --mx-index-hue: var(--mx-up);
+}
+.mx-index-card[data-tone="down"] {
+  --mx-index-hue: var(--mx-down);
+}
+.mx-index-card:hover {
+  border-color: var(--mx-muted);
+}
+.mx-index-card:focus-visible,
+.mx-index-card[aria-current="page"] {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: -2px;
+}
+.mx-index-name,
+.mx-index-figures {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+}
+.mx-index-name {
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mx-index-name svg {
+  flex: none;
+  opacity: 0.65;
+}
+.mx-index-figures {
+  flex-wrap: wrap;
+}
+.mx-index-figures strong {
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+.mx-index-figures > span {
+  font-size: 13px;
+}
+.mx-index-spark {
+  position: relative;
+  color: var(--mx-index-hue);
+}
+.mx-index-card[data-tone="neutral"] .mx-index-spark {
+  color: var(--mx-muted);
+}
+.mx-index-spark svg {
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+}
+.mx-index-spark small {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--mx-ink);
+  background: var(--mx-surface);
+}
+.mx-index-stamp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-strip .mx-index-stamp {
+  margin: 5px 2px 0;
+}
+.mx-index-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  color: var(--mx-brand);
+  border: 0;
+  cursor: pointer;
+}
+.mx-index-retry:disabled {
+  opacity: 0.65;
+}
+.mx-index-detail {
+  display: grid;
+  gap: 22px;
+}
+.mx-index-history,
+.mx-index-basket,
+.mx-index-holdings {
+  display: grid;
+  gap: 12px;
+}
+.mx-index-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+}
+.mx-index-title h2,
+.mx-index-title h3,
+.mx-index-contributors h4 {
+  margin: 0;
+}
+.mx-index-title h2 {
+  font-size: 23px;
+  line-height: 1.15;
+}
+.mx-index-title h2:focus {
+  outline: none;
+}
+.mx-index-title h3 {
+  font-size: 16px;
+}
+.mx-index-title > span {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-controls,
+.mx-index-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.mx-index-compare {
+  margin-inline-start: auto;
+  min-width: 165px;
+}
+.mx-index-legend {
+  font-size: 12px;
+}
+.mx-index-legend span:nth-child(-n+2)::before {
+  display: inline-block;
+  content: "";
+  width: 10px;
+  height: 2px;
+  background: var(--mx-ink);
+  margin: 0 5px 3px 0;
+}
+.mx-index-legend span:nth-child(2)::before {
+  background: none;
+  border-top: 2px dashed var(--mx-muted);
+}
+.mx-index-legend span:last-child {
+  color: var(--mx-muted);
+}
+.mx-index-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin: 0;
+  padding-block-start: 12px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-index-metrics dt {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-metrics dd {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 620;
+}
+.mx-index-contributors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.mx-index-contributors h4 {
+  font-size: 13px;
+}
+.mx-index-contribution-list,
+.mx-index-funds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mx-index-contribution-list li,
+.mx-index-funds li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(2, auto);
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 7px;
+  border-bottom: 1px solid var(--mx-border);
+  font-size: 13px;
+}
+.mx-index-funds li {
+  grid-template-columns: auto minmax(0, 1fr) repeat(3, auto);
+}
+.mx-index-note {
+  margin: 0;
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+.mx-index-search {
+  margin-block: 12px;
+}
+.mx-research-index-result {
+  text-decoration: none;
+  color: var(--mx-ink);
+}
+.mx-research-index-result:focus-visible {
+  outline-offset: -2px;
+}
+@media (max-width: 767px) {
+  .mx-index-cards {
+    grid-auto-columns: minmax(143px, 44%);
+    gap: var(--mx-space-group);
+    scroll-snap-type: x proximity;
+  }
+  .mx-index-card {
+    scroll-snap-align: start;
+  }
+  .mx-index-figures strong {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-index-detail {
+    gap: var(--mx-space-section);
+  }
+  .mx-index-title h2 {
+    font-size: var(--mx-text-page);
+  }
+  .mx-index-controls > .mx-segments:first-child {
+    flex: 1 1 100%;
+  }
+  .mx-index-compare {
+    flex: 1 1 150px;
+    min-width: 0;
+  }
+  .mx-index-metrics {
+    display: grid;
+    gap: var(--mx-space-group);
+  }
+  .mx-index-metrics > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--mx-space-group);
+  }
+  .mx-index-metrics dd {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-index-contributors {
+    grid-template-columns: 1fr;
+    gap: var(--mx-space-items);
+  }
+  .mx-index-funds li {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .mx-index-funds li > span:nth-child(2) {
+    grid-row: 2;
+    grid-column: 1 / 3;
+  }
+  .mx-index-retry {
+    min-height: 44px;
+  }
+}

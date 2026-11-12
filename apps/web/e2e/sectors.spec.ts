@@ -1,3 +1,5 @@
+import path from "node:path";
+import type { IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -77,7 +79,7 @@ function fixture(code = "us") {
   });
   return {
     market: code,
-    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul")],
+    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul"), market("jp", "Asia/Tokyo")],
     monitor: { enabled: true, phase: "idle", intervalSeconds: 600, nextRunAt: null, lastAttemptAt: null, lastSuccessAt: null, lastError: null },
     board: {
       market: code,
@@ -98,6 +100,10 @@ function fixture(code = "us") {
 }
 
 async function open(page: Page) {
+  await page.route("**/api/backend/indices?**", async (route) => {
+    const scope = new URL(route.request().url()).searchParams.get("scope") ?? "us";
+    await route.fulfill({ json: { scope, quotes: [], refreshFailed: false } });
+  });
   await page.route("**/api/backend/sectors**", async (route) => {
     const code = new URL(route.request().url()).searchParams.get("market") ?? "us";
     // Hong Kong answers slowly, so a switch can be watched mid-flight.
@@ -105,6 +111,19 @@ async function open(page: Page) {
     await route.fulfill({ json: fixture(code) });
   });
   await page.goto("/sectors");
+}
+
+async function selectMarket(page: Page, name: RegExp, extra = false) {
+  const picker = page.getByRole("combobox", { name: /^(市场|Market)$/ });
+  if ((page.viewportSize()?.width ?? 1440) < 768) {
+    await picker.click();
+    await page.getByRole("option", { name }).click();
+  } else if (extra) {
+    await page.getByRole("button", { name: /更多市场|More markets/ }).click();
+    await page.getByRole("menuitem", { name }).click();
+  } else {
+    await page.getByRole("group", { name: /^(市场|Market)$/ }).getByRole("button", { name }).click();
+  }
 }
 
 async function settle(page: Page) {
@@ -148,7 +167,7 @@ test.describe("sector map", () => {
     test.skip(testInfo.project.name !== "desktop");
     await open(page);
     await expect(page.locator(".mx-sector-block")).toHaveCount(11);
-    await page.getByRole("group", { name: /市场|Market/ }).getByRole("button", { name: /港股|Hong Kong/ }).click();
+    await selectMarket(page, /港股|Hong Kong/, true);
     await expect(page).toHaveURL(/market=hk/);
     await expect(page.locator(".mx-sector-map")).toHaveCount(0);
     await expect(page.locator(".mx-sector-block")).toHaveCount(11);
@@ -195,7 +214,7 @@ test.describe("sector map", () => {
     await page.goto("/sectors");
     const markets = page.getByRole("group", { name: /市场|Market/ });
     await expect(page.locator(".mx-sector-block")).toHaveCount(11);
-    await markets.getByRole("button", { name: /港股|Hong Kong/ }).click();
+    await selectMarket(page, /港股|Hong Kong/, true);
     const retry = page.locator(".mx-sectors-retry");
     await expect(retry).toBeVisible();
     // The US board stays, under its own name, and the switch says so.
@@ -228,7 +247,7 @@ test.describe("sector map", () => {
     // The US list stays, with the market switch, rather than opening a US sector under the link's name.
     await expect(page.locator(".mx-sector-detail")).toHaveCount(0);
     await expect(rows).toHaveCount(11);
-    await expect(page.getByRole("group", { name: /市场|Market/ }).getByRole("button", { name: /美股|US/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("combobox", { name: /^(市场|Market)$/ })).toHaveValue(/美股|US/);
   });
 
   test("phones read a ranked list and open a sector as its own step", async ({ page }, testInfo) => {
@@ -255,10 +274,184 @@ test.describe("sector map", () => {
     await page.goBack();
     await expect(rows.nth(2).getByRole("button")).toBeFocused();
     // The focus target is spent: switching markets afterwards moves focus nowhere.
-    await page.getByRole("group", { name: /市场|Market/ }).getByRole("button", { name: /英股|UK/ }).tap();
+    await selectMarket(page, /英股|UK/);
     await expect(page.locator(".mx-sector-list button:focus")).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     expect(await page.locator(".mx-sector-list button").evaluateAll((buttons) =>
       buttons.every((button) => button.getBoundingClientRect().height >= 44))).toBe(true);
+  });
+});
+
+const fakeIndex = (
+  id: string, scope: IndexIdentity["scope"], name: string, nameZh: string,
+  symbol: string, currency: string | null, kind: IndexIdentity["kind"] = "index",
+): IndexIdentity => ({
+  id, scope, name, nameZh, symbol, currency, kind, compiler: "Synthetic fixture",
+  compilerId: id, basis: kind === "volatility" ? "implied-volatility" : "price",
+  calendar: "SYNTH", historyYears: 5, rights: "provider-terms", aliases: [],
+  source: "Synthetic fixture",
+});
+const indices = [
+  fakeIndex("sp-500", "us", "S&P 500", "标普 500", "^GSPC", "USD"),
+  fakeIndex("nasdaq-100", "us", "Nasdaq 100", "纳斯达克 100", "^NDX", "USD"),
+  fakeIndex("dow-jones", "us", "Dow Jones Industrial Average", "道琼斯工业平均指数", "^DJI", "USD"),
+  fakeIndex("russell-2000", "us", "Russell 2000", "罗素 2000", "^RUT", "USD"),
+  fakeIndex("vix", "us", "VIX", "VIX", "^VIX", null, "volatility"),
+  fakeIndex("nikkei-225", "jp", "Nikkei 225", "日经 225", "^N225", "JPY"),
+  fakeIndex("topix", "jp", "TOPIX ETF price", "TOPIX ETF 价格", "1306.T", "JPY", "etf-price"),
+  fakeIndex("msci-world", "global", "MSCI World", "MSCI 世界", "^SYN-WORLD", "USD"),
+  fakeIndex("smi", "ch", "SMI", "瑞士市场指数", "^SYN-SMI", "CHF"),
+];
+
+async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}) {
+  const base = Date.now() - 3600_000;
+  const point = (index: IndexIdentity, n: number, interval: number) => ({
+    at: new Date(base - (24 - n) * interval).toISOString(),
+    value: index.kind === "volatility" ? 16.1 - n * 0.04 + Math.sin(n * 0.4) * 0.2
+      : index.scope === "jp" ? (index.kind === "etf-price" ? 2870 - n * 3 : 39700 + n * 17)
+      : (index.id === "nasdaq-100" ? 24200 + n * 23 + Math.sin(n * 0.55) * 130
+        : index.id === "dow-jones" ? 46000 + n * 17 + Math.sin(n * 0.33) * 120
+        : index.id === "russell-2000" ? 2300 - n * 3 + Math.sin(n * 0.5) * 9
+        : 6800 + n * 7 + Math.sin(n * 0.9) * 25),
+  });
+  await page.route("**/api/backend/indices**", async (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split("/");
+    if (parts.at(-1) === "catalog") return route.fulfill({ json: indices });
+    if (parts.at(-1) === "history") {
+      const index = indices.find((item) => item.id === parts.at(-2));
+      if (!index) return route.fulfill({ status: 404, json: {} });
+      const range = url.searchParams.get("range") ?? "1Y";
+      const points = Array.from({ length: 25 }, (_, n) => point(index, n, range === "1D" ? 300_000 : 86_400_000));
+      return route.fulfill({ json: {
+        index, range, points, maxDrawdown: -0.13, volatility: 0.21,
+        currency: url.searchParams.get("currency") === "GBP" ? "GBP" : index.currency,
+        state: "available", asOf: points.at(-1)?.at,
+      } });
+    }
+    if (parts.at(-1) === "context") {
+      const useBasket = parts.at(-2) === "sp-500";
+      const sample = { key: "SYN", name: "Synthetic company", weight: 0.10, contribution: 0.0022 };
+      return route.fulfill({ json: useBasket ? {
+        basket: {
+          fund: "SYN", holdingsDate: "2026-11-11", sessionDate: "2026-11-12", asOf: new Date(base).toISOString(),
+          coverage: 0.89, breadth: { up: 45, flat: 5, down: 19 },
+          leaders: [sample], laggards: [{ ...sample, key: "SYNB", name: "Synthetic industry", contribution: -0.001 }],
+          topHoldings: [sample], sectors: [sample], estimatedMove: 0.012, residual: 0.0001,
+        },
+        funds: [{ isin: "ZZ0000000001", ticker: "SYNA", name: "Synthetic index fund", shares: 5, valueGbp: 120 }],
+        exposureGbp: 120, portfolioAsOf: new Date(base).toISOString(),
+      } : { basket: null, funds: [] } });
+    }
+    if (fail) return route.fulfill({ status: 503, json: {} });
+    const scope = url.searchParams.get("scope") ?? "us";
+    return route.fulfill({ json: {
+      scope, refreshFailed: false,
+      quotes: indices.filter((index) => index.scope === scope).map((index, n) => {
+        const points = Array.from({ length: 25 }, (_, i) => point(index, i, 300_000));
+        return {
+          index, points, asOf: points.at(-1)?.at, sessionDate: new Date(base).toISOString().slice(0, 10),
+          level: points.at(-1)?.value, change: index.kind === "volatility" ? -0.9 : [0.0134, 0.0161, 0.0088, -0.0042][n],
+          state: "live",
+        };
+      }),
+    } });
+  });
+  await page.route("**/api/backend/sectors**", async (route) => {
+    const code = new URL(route.request().url()).searchParams.get("market") ?? "us";
+    const response = fixture(code);
+    if (code === "jp") {
+      response.board.source = { ...response.board.source, fundTicker: "IJPN", universe: "MSCI Japan" };
+    }
+    await route.fulfill({ json: response });
+  });
+}
+
+test.describe("market index layer", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
+
+  test("opens Japan index history and returns focus to its card", async ({ page }, testInfo) => {
+    await mockIndices(page);
+    await page.goto("/sectors");
+    await selectMarket(page, /日股|Japan|^JP$/);
+    const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ });
+    await expect(page.getByRole("link", { name: /TOPIX ETF/ })).toBeVisible();
+    await expect(page.getByText(/板块篮子：MSCI Japan|Sector basket: MSCI Japan/)).toBeVisible();
+    await card.click();
+    await expect(page).toHaveURL(/market=jp&index=nikkei-225/);
+    await expect(page.getByRole("heading", { name: /日经 225|Nikkei 225/ })).toBeFocused();
+    await page.getByRole("button", { name: "5Y", exact: true }).click();
+    await expect(page).toHaveURL(/range=5Y/);
+    await page.getByRole("button", { name: "GBP", exact: true }).click();
+    await expect(page).toHaveURL(/currency=GBP/);
+    if (testInfo.project.name === "mobile") await expect(page.locator(".mx-index-cards")).toHaveCount(0);
+    await page.locator(".mx-sector-back").click();
+    await expect(page).toHaveURL(/sectors\?market=jp$/);
+    await expect(card).toBeFocused();
+  });
+
+  test("shows sectors through index errors and opens a shared index URL", async ({ page }) => {
+    await mockIndices(page, { fail: true });
+    await page.goto("/sectors?market=us");
+    await expect(page.locator(".mx-index-strip")).toContainText(/暂时无法读取指数|Indices are unavailable/);
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+    await page.goto("/sectors?market=us&index=sp-500&range=5Y&compare=nasdaq-100");
+    await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
+    await expect(page.locator(".mx-index-legend")).toContainText(/起点归 100|Rebased to 100/);
+    await expect(page.getByRole("heading", { name: /成分篮子|Constituent basket/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
+  });
+
+  test("opens index-only markets without a sector board request", async ({ page }) => {
+    await mockIndices(page);
+    let requests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/backend/sectors") requests += 1;
+    });
+    await page.goto("/sectors?market=global");
+    await expect(page.getByRole("link", { name: /MSCI 世界|MSCI World/ })).toBeVisible();
+    await selectMarket(page, /瑞士|Switzerland/, true);
+    await expect(page).toHaveURL(/market=ch/);
+    await page.getByRole("link", { name: /瑞士市场指数|SMI/ }).click();
+    await expect(page).toHaveURL(/market=ch&index=smi/);
+    await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
+    expect(requests).toBe(0);
+  });
+
+  test("research can open an index by its provider ticker", async ({ page }) => {
+    await mockIndices(page);
+    await page.goto("/research");
+    await page.getByRole("button", { name: /添加证券|Add security/ }).first().click();
+    await page.getByRole("textbox", { name: /搜索证券|Search securities/ }).fill("^GSPC");
+    await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
+    await expect(page).toHaveURL(/sectors\?market=us&index=sp-500/);
+    await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
+  });
+
+  test("capture market screenshots", async ({ browser }, testInfo) => {
+    const folder = process.env.TM_MARKETS_VISUAL_DIR;
+    test.skip(!folder || testInfo.project.name !== "desktop", "Opt-in batched visual evidence.");
+    test.setTimeout(120_000);
+    for (const width of [1440, 1100, 390]) {
+      for (const scheme of ["light", "dark"] as const) {
+        const page = await browser.newPage({
+          viewport: { width, height: 940 }, colorScheme: scheme, reducedMotion: "reduce",
+          baseURL: process.env.PLAYWRIGHT_BASE_URL,
+        });
+        await mockIndices(page);
+        await page.goto("/sectors?market=us");
+        await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })).toBeVisible();
+        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+        await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+        await settle(page);
+        await page.screenshot({ path: path.join(folder!, `market-${width}-${scheme}.png`), fullPage: true });
+        await page.goto("/sectors?market=us&index=sp-500&compare=nasdaq-100");
+        await expect(page.locator(".mx-index-legend")).toBeVisible();
+        await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
+        await settle(page);
+        await page.screenshot({ path: path.join(folder!, `index-${width}-${scheme}.png`), fullPage: true });
+        await page.close();
+      }
+    }
   });
 });

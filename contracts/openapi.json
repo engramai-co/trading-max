@@ -6623,6 +6623,16 @@
             ],
             "title": "Basecurrency"
           },
+          "benchmark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "disclosures": {
             "items": {
               "$ref": "#/components/schemas/ETFDisclosure"
@@ -7890,6 +7900,601 @@
           "isFund"
         ],
         "title": "Holding",
+        "type": "object"
+      },
+      "IndexBasket": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "breadth": {
+            "$ref": "#/components/schemas/SectorBreadth"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "estimatedMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedmove"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "string"
+          },
+          "holdingsDate": {
+            "title": "Holdingsdate",
+            "type": "string"
+          },
+          "laggards": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Laggards",
+            "type": "array"
+          },
+          "leaders": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Leaders",
+            "type": "array"
+          },
+          "residual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual"
+          },
+          "sectors": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Sectors",
+            "type": "array"
+          },
+          "sessionDate": {
+            "title": "Sessiondate",
+            "type": "string"
+          },
+          "topHoldings": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Topholdings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fund",
+          "holdingsDate",
+          "sessionDate",
+          "asOf",
+          "coverage",
+          "breadth",
+          "leaders",
+          "laggards",
+          "topHoldings",
+          "sectors",
+          "estimatedMove",
+          "residual"
+        ],
+        "title": "IndexBasket",
+        "type": "object"
+      },
+      "IndexContext": {
+        "properties": {
+          "basket": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexBasket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exposureGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposuregbp"
+          },
+          "funds": {
+            "items": {
+              "$ref": "#/components/schemas/IndexFundHolding"
+            },
+            "title": "Funds",
+            "type": "array"
+          },
+          "portfolioAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portfolioasof"
+          }
+        },
+        "title": "IndexContext",
+        "type": "object"
+      },
+      "IndexContribution": {
+        "properties": {
+          "contribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "weight",
+          "contribution"
+        ],
+        "title": "IndexContribution",
+        "type": "object"
+      },
+      "IndexFundHolding": {
+        "properties": {
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "shares": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shares"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "valueGbp": {
+            "title": "Valuegbp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "isin",
+          "ticker",
+          "valueGbp"
+        ],
+        "title": "IndexFundHolding",
+        "type": "object"
+      },
+      "IndexHistory": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "gaps": {
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexIdentity"
+          },
+          "maxDrawdown": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxdrawdown"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/IndexPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "range": {
+            "enum": [
+              "1D",
+              "1W",
+              "1M",
+              "3M",
+              "6M",
+              "1Y",
+              "3Y",
+              "5Y"
+            ],
+            "title": "Range",
+            "type": "string"
+          },
+          "state": {
+            "default": "unavailable",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable",
+              "stale"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          }
+        },
+        "required": [
+          "index",
+          "range"
+        ],
+        "title": "IndexHistory",
+        "type": "object"
+      },
+      "IndexIdentity": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "basis": {
+            "enum": [
+              "price",
+              "net-return",
+              "total-return",
+              "implied-volatility"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "calendar": {
+            "title": "Calendar",
+            "type": "string"
+          },
+          "compiler": {
+            "title": "Compiler",
+            "type": "string"
+          },
+          "compilerId": {
+            "title": "Compilerid",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "historyYears": {
+            "title": "Historyyears",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "index",
+              "etf-price",
+              "volatility"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nameZh": {
+            "title": "Namezh",
+            "type": "string"
+          },
+          "rights": {
+            "enum": [
+              "provider-terms",
+              "licensed-source-required"
+            ],
+            "title": "Rights",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "global",
+              "us",
+              "eu",
+              "uk",
+              "jp",
+              "hk",
+              "kr",
+              "tw",
+              "in",
+              "ca",
+              "au",
+              "ch"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "id",
+          "scope",
+          "name",
+          "nameZh",
+          "compiler",
+          "compilerId",
+          "symbol",
+          "currency",
+          "calendar",
+          "basis",
+          "kind",
+          "historyYears",
+          "rights",
+          "aliases",
+          "source"
+        ],
+        "title": "IndexIdentity",
+        "type": "object"
+      },
+      "IndexMarket": {
+        "properties": {
+          "quotes": {
+            "items": {
+              "$ref": "#/components/schemas/IndexQuote"
+            },
+            "title": "Quotes",
+            "type": "array"
+          },
+          "refreshFailed": {
+            "default": false,
+            "title": "Refreshfailed",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "global",
+              "us",
+              "eu",
+              "uk",
+              "jp",
+              "hk",
+              "kr",
+              "tw",
+              "in",
+              "ca",
+              "au",
+              "ch"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "quotes"
+        ],
+        "title": "IndexMarket",
+        "type": "object"
+      },
+      "IndexPoint": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "value"
+        ],
+        "title": "IndexPoint",
+        "type": "object"
+      },
+      "IndexQuote": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexIdentity"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/IndexPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "sessionDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessiondate"
+          },
+          "state": {
+            "default": "unavailable",
+            "enum": [
+              "unavailable",
+              "observed",
+              "live",
+              "closed",
+              "stale"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "IndexQuote",
         "type": "object"
       },
       "IntegrationOverview": {
@@ -20365,6 +20970,211 @@
         "summary": "Import Cfd Csv",
         "tags": [
           "imports"
+        ]
+      }
+    },
+    "/v1/indices": {
+      "get": {
+        "operationId": "index_market_v1_indices_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "enum": [
+                "global",
+                "us",
+                "eu",
+                "uk",
+                "jp",
+                "hk",
+                "kr",
+                "tw",
+                "in",
+                "ca",
+                "au",
+                "ch"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexMarket"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Index Market",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/v1/indices/catalog": {
+      "get": {
+        "operationId": "index_catalog_v1_indices_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndexIdentity"
+                  },
+                  "title": "Response Index Catalog V1 Indices Catalog Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Index Catalog",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/v1/indices/{index_id}/context": {
+      "get": {
+        "operationId": "index_context_v1_indices__index_id__context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_id",
+            "required": true,
+            "schema": {
+              "maxLength": 60,
+              "minLength": 1,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Index Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexContext"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Index Context",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/v1/indices/{index_id}/history": {
+      "get": {
+        "operationId": "index_history_v1_indices__index_id__history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_id",
+            "required": true,
+            "schema": {
+              "maxLength": 60,
+              "minLength": 1,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Index Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "default": "1Y",
+              "enum": [
+                "1D",
+                "1W",
+                "1M",
+                "3M",
+                "6M",
+                "1Y",
+                "3Y",
+                "5Y"
+              ],
+              "title": "Range",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "default": "local",
+              "enum": [
+                "local",
+                "GBP"
+              ],
+              "title": "Currency",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Index History",
+        "tags": [
+          "indices"
         ]
       }
     },

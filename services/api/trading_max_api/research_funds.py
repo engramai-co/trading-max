@@ -22,6 +22,8 @@ from trading_max.infrastructure.fund_profiles import parse_ishares_profile
 from trading_max.reference import SecurityDescriptor
 from trading_max.research.facts import fingerprint, number
 
+from .index_models import IndexIdentity
+from .indices import active_indices, index_identity
 from .models import ApiModel
 from .valuation_assumptions import _atomic_write
 
@@ -33,6 +35,7 @@ class FundResearch(ApiModel):
     issuer: str | None = None
     isin: str | None = None
     index_name: str | None = None
+    benchmark: IndexIdentity | None = None
     share_currency: str | None = None
     base_currency: str | None = None
     income_use: str | None = None
@@ -62,6 +65,8 @@ class FundResearch(ApiModel):
 
 def _profile_fields(profile: FundShareClass) -> dict:
     fields = profile.model_dump(by_alias=False, exclude_none=True)
+    benchmark = next((item for item in active_indices() if item.id == profile.benchmark_id), None)
+    fields["benchmark"] = index_identity(benchmark) if benchmark else None
     size = profile.share_class_size
     if size is not None:
         fields["total_assets_label"] = f"{size.currency} {size.amount:,.0f}"
@@ -135,6 +140,14 @@ class FundResearchService:
                 if (
                     datetime.now(UTC) - datetime.fromisoformat(previous.fetched_at)
                 ).total_seconds() < 64800:
+                    if previous.profile:
+                        return FundResearch.model_validate(
+                            {
+                                **previous.model_dump(by_alias=False),
+                                **_profile_fields(previous.profile),
+                                "ticker": ticker,
+                            }
+                        )
                     return previous.model_copy(update={"ticker": ticker})
             result = FundResearch(
                 ticker=ticker,

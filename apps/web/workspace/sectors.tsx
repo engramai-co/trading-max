@@ -33,6 +33,8 @@ import { api } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
 import { Empty, Page, Pending, QueryError, Segments, useCopy } from "./foundation";
 import Link from "./link";
+import { IndexDetail, IndexStrip } from "./market-indices";
+import { INDEX_MARKETS, INDEX_RANGES, indexHref, indexMarket, type IndexScope } from "./market-indices-data";
 import { useRouteState } from "./route-state";
 import { SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
 import { SectorDetail, SectorList } from "./sectors-detail";
@@ -47,17 +49,23 @@ export function SectorsWorkspace() {
   const { params, update } = useRouteState();
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const now = useMinute();
-  const requested = sectorMarket(params.get("market")) ?? (demonstration ? "us" : null);
+  const openedIndex = demonstration ? null : params.get("index");
+  const range = INDEX_RANGES.find((item) => item === params.get("range")) ?? "1Y";
+  const indexReturn = useRef<{ id: string; scroll: number; left: number } | null>(null);
+  const requested = demonstration ? sectorMarket(params.get("market")) ?? "us" : indexMarket(params.get("market"));
+  const requestedBoard = sectorMarket(requested);
+  const indicesOnly = requested !== null && requestedBoard === null;
   const client = useQueryClient();
   const query = useQuery({
-    queryKey: ["workspace-sectors", requested ?? "default"],
-    queryFn: async () => {
-      const answer = await api<SectorBoardResponse>("/sectors" + (requested ? "?market=" + requested : ""));
+    queryKey: ["workspace-sectors", requestedBoard ?? "default"],
+    enabled: !indicesOnly,
+    queryFn: async ({ signal }) => {
+      const answer = await api<SectorBoardResponse>("/sectors" + (requestedBoard ? "?market=" + requestedBoard : ""), { signal });
       // The default answer also fills its market's own entry when that is still empty, so
       // naming the market in the URL (as selecting a sector does) reuses it rather than
       // starting over; a slower default answer never replaces a newer explicit one.
       const own = ["workspace-sectors", answer.market];
-      if (!requested && client.getQueryData(own) === undefined) client.setQueryData(own, answer);
+      if (!requestedBoard && client.getQueryData(own) === undefined) client.setQueryData(own, answer);
       return answer;
     },
     refetchInterval: 60_000,
@@ -69,19 +77,19 @@ export function SectorsWorkspace() {
   const [lastGood, setLastGood] = useState<SectorBoardResponse | null>(null);
   if (data?.board && data.board.market === data.market && !query.isPlaceholderData && data !== lastGood) setLastGood(data);
   // The URL answers at once on a switch; the server names the default market.
-  const wanted: SectorMarketCode = requested ?? data?.market ?? "us";
+  const wanted: IndexScope = requested ?? data?.market ?? "us";
   // The requested market has answered for itself, with a board or an honest empty one.
   const answered = !query.isPlaceholderData && data?.market === wanted;
   // A switch the server rejects falls back to the board already on screen, under its own
   // market's name, with a retry for the market that failed. The fallback stays while a
   // retry is in flight and gives way only to the requested market's own answer.
-  const rejected = !answered && (query.isError || query.errorUpdatedAt > 0)
+  const rejected = !indicesOnly && !answered && (query.isError || query.errorUpdatedAt > 0)
     && lastGood?.board != null && lastGood.market !== wanted;
   const shown = rejected ? lastGood : data;
-  const market: SectorMarketCode = rejected && lastGood ? lastGood.market : wanted;
+  const market: IndexScope = rejected && lastGood ? lastGood.market : wanted;
   // While another market loads, the previous answer still supplies sessions for
   // the switch, but its board is never shown under the new market's name.
-  const board = shown?.board?.market === market ? shown.board : null;
+  const board = !indicesOnly && shown?.board?.market === market ? shown.board : null;
   const switching = !rejected && Boolean(data?.board) && !board && query.isFetching;
   // A failed background refresh keeps the board on screen and says so beside its time.
   const refreshFailed = query.isError && board != null && !rejected;
@@ -98,7 +106,14 @@ export function SectorsWorkspace() {
   const [returnTo, setReturnTo] = useState<string | null>(null);
   // Where the phone list was scrolled when a sector opened, restored when it closes.
   const listScroll = useRef(0);
-  const names: Record<SectorMarketCode, string> = {
+  const names: Record<IndexScope, string> = {
+    global: t("全球", "Global"),
+    eu: t("欧洲", "Europe"),
+    tw: t("台股", "Taiwan"),
+    in: t("印股", "India"),
+    ca: t("加股", "Canada"),
+    au: t("澳股", "Australia"),
+    ch: t("瑞士", "Switzerland"),
     us: t("美股", "US"),
     uk: t("英股", "UK"),
     hk: t("港股", "Hong Kong"),
@@ -140,14 +155,18 @@ export function SectorsWorkspace() {
         // Asking again for the market that just failed retries it, once at a time.
         if (value === requested && (query.isError || rejected)) {
           if (!query.isFetching) void query.refetch();
-        } else update({ market: value, sector: null });
+        } else update({ market: value, sector: null, index: null, range: null, currency: null, compare: null });
       }}
-      options={SECTOR_MARKETS.map((value) => ({
-        value,
-        label: names[value],
-        short: shortNames[value] !== names[value] ? shortNames[value] : undefined,
-        marker: phases[value]?.phase === "open" ? phaseName.open : undefined,
-      }))}
+      options={(demonstration ? SECTOR_MARKETS : INDEX_MARKETS).map((value) => {
+        const boardMarket = sectorMarket(value);
+        const short = boardMarket ? shortNames[boardMarket] : undefined;
+        return {
+          value,
+          label: names[value],
+          short: short !== names[value] ? short : undefined,
+          marker: phases[value]?.phase === "open" ? phaseName.open : undefined,
+        };
+      })}
     />
   );
   const groupingSwitch = kinds.includes("themes") && (
@@ -184,6 +203,40 @@ export function SectorsWorkspace() {
     if (openedKey) window.scrollTo({ top: 0 });
     else if (listScroll.current) window.scrollTo({ top: listScroll.current });
   }, [openedKey]);
+  useEffect(() => {
+    if (openedIndex) window.scrollTo({ top: 0 });
+    else if (indexReturn.current) {
+      const { id, scroll, left } = indexReturn.current;
+      const frame = requestAnimationFrame(() => {
+        const card = document.getElementById(`index-card-${id}`);
+        if (!card) return;
+        if (card.parentElement) card.parentElement.scrollLeft = left;
+        card.focus({ preventScroll: true });
+        window.scrollTo({ top: scroll });
+        indexReturn.current = null;
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [openedIndex]);
+  const updateIndex = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    const suffix = next.size ? "?" + next.toString() : "";
+    const drill = (window.history.state as { indexDrill?: boolean } | null)?.indexDrill;
+    window.history.replaceState(drill ? { indexDrill: true } : null, "", window.location.pathname + suffix);
+  };
+  const indexBack = (
+    <button type="button" className="mx-sector-back" onClick={() => {
+      if ((window.history.state as { indexDrill?: boolean } | null)?.indexDrill) window.history.back();
+      else update({ index: null, range: null, currency: null, compare: null });
+    }}>
+      <ArrowLeft size={18} aria-hidden="true" />
+      {names[wanted]}
+    </button>
+  );
   const back = (
     <button type="button" className="mx-sector-back" onClick={() => {
       if ((window.history.state as { sectorDrill?: boolean } | null)?.sectorDrill) window.history.back();
@@ -194,7 +247,7 @@ export function SectorsWorkspace() {
     </button>
   );
   // A retry behind a fallback board is pending too, but the fallback stays on screen.
-  const body = !rejected && (query.isPending || switching) ? (
+  const body = indicesOnly ? null : !rejected && (query.isPending || switching) ? (
     <Pending />
   ) : query.isError && !board ? (
     <QueryError retry={query.refetch} />
@@ -244,7 +297,9 @@ export function SectorsWorkspace() {
       titleHidden
       className="mx-sectors-page"
       actions={
-        phoneDetail ? (
+        openedIndex && phone ? (
+          <div className="mx-sectors-bar">{indexBack}</div>
+        ) : phoneDetail ? (
           <div className="mx-sectors-bar">
             {back}
             {clock}
@@ -252,13 +307,51 @@ export function SectorsWorkspace() {
         ) : (
           <div className="mx-sectors-bar">
             {marketSwitch}
-            {clock}
-            {groupingSwitch && <div className="mx-sectors-grouping">{groupingSwitch}</div>}
+            {!openedIndex && clock}
+            {!openedIndex && groupingSwitch && <div className="mx-sectors-grouping">{groupingSwitch}</div>}
           </div>
         )
       }
     >
-      {body}
+      {!demonstration && !phoneDetail && (!openedIndex || !phone) && (
+        <IndexStrip market={wanted} marketName={rejected ? names[wanted] : undefined} selected={openedIndex} open={(event, index) => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          const href = indexHref(index);
+          if (openedIndex === index.id) return;
+          if (!openedIndex) {
+            indexReturn.current = {
+              id: index.id,
+              scroll: window.scrollY,
+              left: event.currentTarget.parentElement?.scrollLeft ?? 0,
+            };
+            window.history.pushState({ indexDrill: true }, "", window.location.pathname + href.slice(href.indexOf("?")));
+          } else {
+            updateIndex({ market: index.scope, index: index.id, range: null, compare: null, currency: null, sector: null });
+          }
+        }} />
+      )}
+      {openedIndex ? (
+        <>
+          {!phone && indexBack}
+          <IndexDetail
+            id={openedIndex}
+            market={wanted}
+            period={range}
+            gbp={params.get("currency") === "GBP"}
+            comparison={params.get("compare")}
+            update={updateIndex}
+            phone={phone}
+          />
+        </>
+      ) : (
+        <>
+          {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
+            <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
+          )}
+          {body}
+        </>
+      )}
     </Page>
   );
 }
