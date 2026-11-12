@@ -118,20 +118,12 @@
   display: grid;
   gap: inherit;
 }
-.mx-overview-read > .mx-loading-status {
-  bottom: auto;
-  height: 175px;
-}
 .mx-period-span-reserved {
   min-width: 86px;
 }
 .mx-inline-retry {
   color: var(--mx-brand);
   font-size: 13px;
-}
-.mx-performance-risk {
-  display: grid;
-  gap: inherit;
 }
 .mx-research-read {
   display: grid;
@@ -191,4 +183,20 @@
 .mx-overview-history > .mx-data-body {
   display: flex;
   flex-direction: column;
+}
+
+.mx-waiting-as-of {
+  min-height: 1.5em;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-reading-placeholder {
+  display: block;
+  width: 5.5ch;
+  max-width: 100%;
+  height: 1em;
+  border-radius: 4px;
+  background: var(--mx-border);
+  visibility: hidden;
+  animation: mx-show-loading 0s 150ms forwards;
 }

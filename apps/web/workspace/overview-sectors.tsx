@@ -10,8 +10,9 @@ import { formatDateTime, formatDeltaPercent } from "@/ui/formatters";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api } from "@/workspace/data";
-import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Panel, Pending, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
+import { InlineRetry } from "./dashboard-controls";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
 import { heatMix, marketPhase, squarify, type Tile } from "./sectors-data";
 import { changeTone, groupName, textWidth } from "./sectors-map";
@@ -178,10 +179,7 @@ export function useOverviewSectors() {
   });
 }
 
-export function OverviewSectors({ query, initialWaiting }: {
-  query: ReturnType<typeof useOverviewSectors>;
-  initialWaiting: boolean;
-}) {
+export function OverviewSectors({ query }: { query: ReturnType<typeof useOverviewSectors> }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const now = useMinute();
@@ -200,12 +198,12 @@ export function OverviewSectors({ query, initialWaiting }: {
       className="mx-overview-sectors"
       title={t("美股板块", "US sectors")}
       help={board ? <SectorSources source={board.source} /> : undefined}
-      action={<span className="mx-freshness-group">{!initialWaiting && clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
+      action={<span className="mx-freshness-group">{clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
-      {initialWaiting || query.isPending ? (
-        <Pending shape="sectors" quiet={initialWaiting} label={t("正在读取美股板块…", "Loading US sectors…")} />
+      {query.isPending ? (
+        <Pending shape="sectors" label={t("正在读取美股板块…", "Loading US sectors…")} />
       ) : !board && query.isError ? (
-        <QueryError retry={query.refetch} />
+        <div className="mx-overview-unavailable"><InlineRetry label={t("板块行情暂不可用", "Sector quotes unavailable")} retry={query.refetch} /></div>
       ) : !board || !groups.length ? (
         <Empty
           title={t("还没有美股板块数据", "No US sector data yet")}

@@ -26,12 +26,12 @@ export function MoneySummary({ money, points }: { money: Money; points: NavPoint
         )}
       />
       {equation && (
-        <p className="mx-money-equation">
-          <span>{t("期初", "Opening")} <strong>{equation.opening}</strong></span>{" "}
-          <span>{equation.contributions.operator} {t("净入金", "Net contributions")} <strong>{equation.contributions.amount}</strong></span>{" "}
-          <span>{equation.pnl.operator} {t("净盈亏", "Net P&L")} <strong>{equation.pnl.amount}</strong></span>{" "}
-          <span>{equation.operator} {t("期末", "Ending")} <strong>{equation.ending}</strong></span>
-        </p>
+        <dl className="mx-money-equation">
+          <div><dt>{t("期初价值", "Opening value")}</dt><dd>{equation.opening}</dd></div>
+          <div><dt>{t("净入金", "Net contributions")}</dt><dd>{equation.contributions.operator} {equation.contributions.amount}</dd></div>
+          <div><dt>{t("净盈亏", "Net P&L")}</dt><dd>{equation.pnl.operator} {equation.pnl.amount}</dd></div>
+          <div><dt>{t("期末价值", "Ending value")}</dt><dd>{equation.operator} {equation.ending}</dd></div>
+        </dl>
       )}
     </div>
   );

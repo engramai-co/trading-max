@@ -105,14 +105,13 @@ test.describe("portfolio workspace", () => {
       route.fulfill({ status: 503, body: "{}" }),
     );
     await page.goto("/");
-    await expect(
-      page.getByRole("button", { name: /重新加载|Try again/ }),
-    ).toBeVisible();
+    const assets = page.getByRole("region", { name: /组合资产|Portfolio assets/ });
+    const retry = assets.getByRole("button", { name: /重试|Retry/ });
+    await expect(assets.getByRole("combobox")).toBeVisible();
+    await expect(retry).toBeVisible();
     await page.unroute("**/api/backend/dashboard/lens/overview?**");
-    await page.getByRole("button", { name: /重新加载|Try again/ }).click();
-    await expect(
-      page.getByRole("button", { name: /重新加载|Try again/ }),
-    ).toHaveCount(0);
+    await retry.click();
+    await expect(retry).toHaveCount(0);
   });
 
   test("data status retries in place after an error", async ({ page }) => {

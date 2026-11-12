@@ -2,6 +2,7 @@ import { expect, test, type Locator } from "@playwright/test";
 import { historyPage, prepareHistory } from "../lib/portfolio/prepared";
 import { PORTFOLIO_RANGES } from "../lib/portfolio/history";
 import type { NavPoint } from "../lib/types";
+import { chooseRange, selectedRange } from "./dashboard-ranges";
 
 const intraday: NavPoint[] = ([
   ["2026-09-18T09:00:00Z", 100, 90],
@@ -68,7 +69,7 @@ test.describe("overview to performance", () => {
   });
 
   for (const range of ["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"]) {
-    test(`${range} shows cash-flow-adjusted P&L and preserves account, range and cutoff`, async ({ page }) => {
+    test(`${range} shows cash-flow-adjusted P&L and preserves account, range and cutoff`, async ({ page, isMobile }) => {
       const short = ["1D", "1W", "1M", "3M"].includes(range);
       const rangeLabel = range === "1W" ? "5D" : range === "ALL" ? "All" : range;
       // Overview also reads 1D for its Today figure; observe the selected period.
@@ -83,7 +84,7 @@ test.describe("overview to performance", () => {
       expect(requested.searchParams.get("runId")).toBe(fixture.runId);
       const overview = page.locator(".mx-overview-history");
       await expect(overview.locator("[data-tm-chart-ready=true]")).toBeVisible();
-      await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
+      await selectedRange(overview.locator(".mx-dashboard-ranges"), rangeLabel, isMobile);
       await expect(overview.getByRole("heading", { name: "Period P&L", exact: true })).toBeVisible();
       await expect(overview).not.toContainText("Cumulative net contributions");
       await expect(overview).not.toContainText("Some periods have no observations");
@@ -99,7 +100,7 @@ test.describe("overview to performance", () => {
       await overview.getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
       await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
-      await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
+      await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), rangeLabel, isMobile);
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
       const exact = await observations(page.locator(".mx-chart-data").first());
       expect(exact.at(-1)).toEqual([intraday[2].date, "£190.00", "£10.00"]);
@@ -110,16 +111,16 @@ test.describe("overview to performance", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.goBack();
       await expect(page).toHaveURL(new RegExp(`scope=isa&range=${range}`));
-      await expect(overview.getByRole("button", { name: rangeLabel, exact: true })).toHaveAttribute("aria-pressed", "true");
+      await selectedRange(overview.locator(".mx-dashboard-ranges"), rangeLabel, isMobile);
     });
   }
   test("bare overview and its home links always start on 1D", async ({ page, isMobile }) => {
     const overview = page.locator(".mx-overview-history");
-    const activeRange = (range: string) => expect(overview.getByRole("button", { name: range, exact: true }))
-      .toHaveAttribute("aria-pressed", "true");
+    const control = overview.locator(".mx-dashboard-ranges");
+    const activeRange = (range: string) => selectedRange(control, range, isMobile);
     await page.goto("/");
     await activeRange("1D");
-    await overview.getByRole("button", { name: "6M", exact: true }).click();
+    await chooseRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
     await activeRange("6M");
     await overview.getByRole("link", { name: "View performance" }).click();
     await expect(page).toHaveURL(/view=money&range=6M/);
@@ -129,17 +130,17 @@ test.describe("overview to performance", () => {
     await expect(page).toHaveURL(/\/$/);
     await activeRange("1D");
   });
-  test("range changes survive reload and invalid links use the default", async ({ page }) => {
+  test("range changes survive reload and invalid links use the default", async ({ page, isMobile }) => {
     await page.goto("/?scope=invest&range=invalid");
     const overview = page.locator(".mx-overview-history");
-    await expect(overview.getByRole("button", { name: "1D", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await overview.getByRole("button", { name: "6M", exact: true }).click();
+    await selectedRange(overview.locator(".mx-dashboard-ranges"), "1D", isMobile);
+    await chooseRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
     await page.reload();
-    await expect(overview.getByRole("button", { name: "6M", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await selectedRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
     await overview.getByRole("link", { name: "View performance" }).click();
-    await page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: "1M", exact: true }).click();
+    await chooseRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);
     await page.reload();
-    await expect(page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: "1M", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);
     await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Invest");
   });
 });

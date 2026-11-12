@@ -47,8 +47,9 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
     let placed = "";
     const place = (animate: boolean) => {
       const active = list.querySelector<HTMLElement>(selector);
-      indicator.style.opacity = active ? "1" : "0";
-      if (!active) return;
+      const visible = active && active.getClientRects().length > 0;
+      indicator.style.opacity = visible ? "1" : "0";
+      if (!visible) { placed = ""; return; }
       const label = segments ? null : active.querySelector<HTMLElement>(":scope > .mx-tab-label");
       const anchor = label ?? active;
       // Equal-width touch cells rarely fall on whole pixels and offset* rounds, so the
@@ -399,14 +400,19 @@ function useReadErrorCopy() {
   );
 }
 
-export function UpdateFailure({ updatedAt, retry }: { updatedAt: number; retry: () => unknown }) {
+export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
+  updatedAt: number;
+  retry: () => unknown;
+  showRetry?: boolean;
+}) {
   const { locale, timeZone } = useLocale();
   const t = useCopy();
   const detail = useReadErrorCopy();
   if (!updatedAt) return null;
   const label = updateFailureLabel(updatedAt, locale, timeZone);
+  const action = label + " · " + t("重试", "Retry");
   return <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
-    title={detail} aria-label={label + " · " + t("重试", "Retry")} onClick={() => void retry()}>{label}</button>;
+    title={detail} aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</button>;
 }
 
 export function QueryError({
@@ -496,6 +502,8 @@ export function Segments<T extends string>({
     value: T;
     label: string;
     short?: string;
+    /** A responsive toolbar may move this option into a menu, without removing its shortcut. */
+    compact?: boolean;
     /** A live state worth a dot, such as an open market; the text is read to assistive technology. */
     marker?: string;
   }>;
@@ -542,6 +550,7 @@ export function Segments<T extends string>({
             type="button"
             key={option.value}
             aria-pressed={value === option.value}
+            data-compact-option={option.compact}
             aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
             onClick={() => onChange(option.value)}
           >
