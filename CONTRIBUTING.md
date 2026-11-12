@@ -49,6 +49,48 @@ npm --prefix apps/web run build
 Use a separate synthetic state root for manual development. Never point tests
 or development commands at a production state directory.
 
+## Web loading benchmark
+
+From the root of a clean worktree without local `.env` files, build the web app
+and run the opt-in Chromium benchmark:
+
+```bash
+npm --prefix apps/web ci
+(cd apps/web && npx playwright install chromium)
+PORTFOLIO_BACKEND_URL=http://127.0.0.1:9 npm --prefix apps/web run build
+(cd apps/web && BENCH_LOADING_LABEL=before npx playwright test --config tests/loading/playwright.config.ts)
+```
+
+The runner starts and stops the standalone build on a free loopback port.
+Playwright intercepts backend and logo requests, and blocks other origins and
+writes. It uses only synthetic data; no broker, backend, or production service
+is needed. It runs serially, with five samples per page, entry mode, and network
+profile by default. Set `BENCH_LOADING_RUNS=1` for a smoke run or
+`BENCH_LOADING_DELAY_MS` to change the synthetic upstream delay (default:
+250 ms per backend response). Both profiles use Chromium's DevTools Protocol:
+unthrottled adds zero latency and has unlimited throughput; Slow 4G adds 150 ms
+of latency with 200,000 bytes/s download and 93,750 bytes/s upload (1.6 Mbps
+down, 0.75 Mbps up). The fixture delay is separate from browser throttling.
+
+Direct loads use a new browser context and start at navigation. Rail runs use a
+new context, load Overview first, then start at the first rail click. The
+Overview rail run starts on Holdings because clicking the active link does not
+navigate. Look-through and Returns include a follow-up tab click; Money and
+Research use the rail's default view, with Research selecting the sole synthetic
+ticker. Chromium reports first contentful paint for direct loads. For rail
+runs, where document FCP does not reset, the runner samples the first frame with
+destination content. It also samples the toolbar with its skeletons or loaded
+content, a populated figure with its data time in view, and readiness of all
+primary charts in the default view. Pages without primary charts report a dash.
+
+Build the comparison revision and repeat with `BENCH_LOADING_LABEL=after`.
+Keep the machine, Chromium version, and settings the same, and compare matching
+rows in the two `benchmarks/loading/<label>/results.md` files. The JSON beside
+each table includes individual samples, build ID, and settings. Times are in
+milliseconds; p90 uses nearest rank, so with five samples it is the slowest
+sample. Results are gitignored. The benchmark does not run with the unit or
+default Playwright suites.
+
 ## Before submitting a change
 
 Changes to the installed product are releasable changes. Before opening or
