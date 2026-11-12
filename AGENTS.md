@@ -81,6 +81,9 @@ confirms broker totals. Existing-server clients must not reconfigure the server.
   prove the App exited; duplicate bundle IDs can misroute UI/updater actions.
   Restore product preferences without replaying stale
   macOS crash/window-restoration state into a healthy launch.
+- Restoring the daily state also restores its last `connection-status.json`,
+  which may already read `ready`. After relaunching the daily App, wait for a
+  status written after the launch before treating the reconnection as verified.
 - Exercise updater rejection, interrupted download, cancellation, installation,
   relaunch, preference retention and owned-process shutdown against the final
   signed DMG. Record observed results, distinguish private predecessor fixtures
