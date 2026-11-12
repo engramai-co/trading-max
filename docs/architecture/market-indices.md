@@ -21,7 +21,7 @@ not a historical feed for this feature.
 | --- | --- |
 | TOPIX | The Nomura ETF listing `1306.T`, labelled **TOPIX ETF price**, in JPY. |
 | Hang Seng TECH | The iShares ETF listing `3067.HK`, labelled **Hang Seng TECH ETF price**, in HKD. |
-| FTSE All-World | The index quote has no configured daily history. `VWRP.L` is a separate GBP ETF price series; it is never spliced into index points. |
+| FTSE All-World | No licensed index quote is configured, so the index card shows none. `VWRP.L` is a separate GBP ETF price series; it is never spliced into index points. |
 
 The DAX feed is the [total return index](https://stoxx.com/index/dax/). VIX is an implied volatility measure
 in volatility points; it is not a price or total return benchmark. Index prices
