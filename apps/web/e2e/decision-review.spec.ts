@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { components } from "../lib/api-schema";
 
 // A synthetic account with two scored decisions and three that a link can open; between fetches
 // only their context changes.
 const asOf = "2026-10-20T12:00:00Z";
-type Context = { benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean };
+type Context = { benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean; observations?: boolean };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
 // A twin is another security sold the same day under the same ticker; settled, the sale's 20 days are done.
@@ -53,9 +54,31 @@ function decisions(context: Context) {
   ];
 }
 
+function observations(account?: string): components["schemas"]["InvestmentReviewEvidence"] {
+  const before = { largestHolding: 0.28, cash: 0.24, usdExposure: 0.31 };
+  const after = { largestHolding: 0.26, cash: 0.21, usdExposure: 0.34 };
+  const invest: components["schemas"]["AccountReviewEvidence"] = {
+    coverage: "complete", asOf,
+    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068 }],
+    cashSpans: [{ start: "2026-09-30", end: "2026-10-16", sessions: 13, peakShare: 0.24, averageShare: 0.19 }],
+    weightDrifts: [{ start: "2026-09-30", end: "2026-10-16", ticker: "SYNB", before: 0.2, after: 0.26 }],
+    fillEffects: [
+      { filledAt: "2026-10-19T17:22:00Z", ticker: "SYNE", side: "buy", quantity: 0.5, before, after },
+      { filledAt: "2026-10-19T17:21:00Z", ticker: "SYNA", side: "sell", quantity: 2, before: after, after: before },
+    ],
+  };
+  return {
+    // A different threshold proves the help uses the response, not its own copy.
+    rules: { cashMinSessions: 10, cashShare: 0.12, evidenceDays: 90, recentFillLimit: 8,
+      sessionMoveShare: 0.05, weightDriftDays: 30, weightDriftShare: 0.03 },
+    accounts: { ...(account !== "B" ? { A: invest } : {}), ...(account !== "A" ? { B: { coverage: "partial" } as const } : {}) },
+  };
+}
+
 async function serve(page: Page, context: () => Context) {
   await page.route("**/api/backend/**", (route) => {
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url());
+    const { pathname: path } = url;
     if (path.includes("/dashboard/lens/")) return context().failing ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: {
       runId: "synthetic-decision-context", brokerAsOf: asOf, reviewAsOf: asOf,
       totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
@@ -64,6 +87,7 @@ async function serve(page: Page, context: () => Context) {
       selectedAccountReview: { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
       selectedAccountDecisions: { status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: decisions(context()) },
       decisionReviews: { A: { status: "available", horizonDays: 20, observingCount: 1, decisions: linked(context()) } },
+      ...(context().observations ? { reviewEvidence: observations(url.searchParams.get("account") ?? undefined) } : {}),
     } });
     if (path.endsWith("/health")) return context().healthFailing
       ? route.fulfill({ status: 503, json: {} })
@@ -384,4 +408,35 @@ test.describe("the review index", () => {
     }
     expect(warnings).toEqual([]);
   });
+});
+
+
+test("review shows dated observations, comparable fills and account coverage", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, observations: true }));
+  await page.goto("/review");
+  await expect(page.getByRole("heading", { name: "交易副作用" })).toBeVisible();
+  const headingNames = await page.getByRole("heading", { level: 2 }).allTextContents();
+  expect(headingNames.slice(0, 3)).toEqual(["最近的买卖决定", "没操作", "交易副作用"]);
+  const noTrades = page.locator("section").filter({ has: page.getByRole("heading", { name: "没操作", exact: true }) });
+  await expect(noTrades).toContainText("13 个交易日");
+  await expect(noTrades).toContainText("24.0%");
+  await expect(noTrades).toContainText("19.0%");
+  await expect(noTrades).toContainText("20.0%");
+  await expect(noTrades).toContainText("26.0%");
+  await expect(noTrades).toContainText("-6.8%");
+  await expect(noTrades).toContainText("覆盖不全");
+  await page.getByRole("button", { name: "没操作说明" }).click();
+  await expect(page.getByText(/达到 12%/)).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  const first = page.getByRole("table", { name: /买入 SYNE/ });
+  await expect(first.getByRole("row", { name: /美元计价敞口/ })).toContainText("31.0%");
+  await expect(first.getByRole("row", { name: /美元计价敞口/ })).toContainText("34.0%");
+  await page.locator("summary").filter({ hasText: "卖出 SYNA" }).click();
+  await expect(page.getByRole("table", { name: /卖出 SYNA/ })).toBeVisible();
+
+  await page.goto("/account-analysis?account=B&reviewView=decisions");
+  await expect(page.getByText("暂无可重算的成交")).toBeVisible();
+  await expect(page.getByRole("table", { name: /买入 SYNE/ })).toHaveCount(0);
 });

@@ -745,6 +745,64 @@
         "title": "AccountReview",
         "type": "object"
       },
+      "AccountReviewEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "cashSpans": {
+            "items": {
+              "$ref": "#/components/schemas/CashSpan"
+            },
+            "title": "Cashspans",
+            "type": "array"
+          },
+          "coverage": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Coverage",
+            "type": "string"
+          },
+          "fillEffects": {
+            "items": {
+              "$ref": "#/components/schemas/FillEffect"
+            },
+            "title": "Filleffects",
+            "type": "array"
+          },
+          "holdingMoves": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingMove"
+            },
+            "title": "Holdingmoves",
+            "type": "array"
+          },
+          "weightDrifts": {
+            "items": {
+              "$ref": "#/components/schemas/WeightDrift"
+            },
+            "title": "Weightdrifts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coverage"
+        ],
+        "title": "AccountReviewEvidence",
+        "type": "object"
+      },
       "AccountSummary": {
         "properties": {
           "accountType": {
@@ -1096,6 +1154,30 @@
           "watchlistIntervalSeconds"
         ],
         "title": "AlertMonitorState",
+        "type": "object"
+      },
+      "AllocationShares": {
+        "additionalProperties": false,
+        "properties": {
+          "cash": {
+            "title": "Cash",
+            "type": "number"
+          },
+          "largestHolding": {
+            "title": "Largestholding",
+            "type": "number"
+          },
+          "usdExposure": {
+            "title": "Usdexposure",
+            "type": "number"
+          }
+        },
+        "required": [
+          "largestHolding",
+          "cash",
+          "usdExposure"
+        ],
+        "title": "AllocationShares",
         "type": "object"
       },
       "AlpacaEnhancementUpdate": {
@@ -2122,6 +2204,42 @@
           "close"
         ],
         "title": "BenchmarkPricePoint",
+        "type": "object"
+      },
+      "CashSpan": {
+        "additionalProperties": false,
+        "properties": {
+          "averageShare": {
+            "title": "Averageshare",
+            "type": "number"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "peakShare": {
+            "title": "Peakshare",
+            "type": "number"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "sessions",
+          "peakShare",
+          "averageShare"
+        ],
+        "title": "CashSpan",
         "type": "object"
       },
       "CfdAccountPreferenceUpdate": {
@@ -4603,6 +4721,16 @@
             ],
             "title": "Reviewasof"
           },
+          "reviewEvidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvestmentReviewEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reviewSummaries": {
             "items": {
               "$ref": "#/components/schemas/OverviewReviewSummary"
@@ -6136,6 +6264,48 @@
           "version"
         ],
         "title": "EvidenceRef",
+        "type": "object"
+      },
+      "FillEffect": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/AllocationShares"
+          },
+          "before": {
+            "$ref": "#/components/schemas/AllocationShares"
+          },
+          "filledAt": {
+            "format": "date-time",
+            "title": "Filledat",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filledAt",
+          "ticker",
+          "side",
+          "quantity",
+          "before",
+          "after"
+        ],
+        "title": "FillEffect",
         "type": "object"
       },
       "FinancialFacts": {
@@ -7902,6 +8072,36 @@
         "title": "Holding",
         "type": "object"
       },
+      "HoldingMove": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "quoteCurrency": {
+            "title": "Quotecurrency",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "ticker",
+          "quoteCurrency",
+          "change"
+        ],
+        "title": "HoldingMove",
+        "type": "object"
+      },
       "IndexBasket": {
         "properties": {
           "asOf": {
@@ -8895,6 +9095,33 @@
           "windowEnd"
         ],
         "title": "IntradaySchedule",
+        "type": "object"
+      },
+      "InvestmentReviewEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountReviewEvidence"
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Accounts",
+            "type": "object"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/ReviewRules"
+          }
+        },
+        "required": [
+          "rules",
+          "accounts"
+        ],
+        "title": "InvestmentReviewEvidence",
         "type": "object"
       },
       "IsaBucket": {
@@ -15293,6 +15520,50 @@
         "title": "ReviewPhases",
         "type": "object"
       },
+      "ReviewRules": {
+        "additionalProperties": false,
+        "properties": {
+          "cashMinSessions": {
+            "title": "Cashminsessions",
+            "type": "integer"
+          },
+          "cashShare": {
+            "title": "Cashshare",
+            "type": "number"
+          },
+          "evidenceDays": {
+            "title": "Evidencedays",
+            "type": "integer"
+          },
+          "recentFillLimit": {
+            "title": "Recentfilllimit",
+            "type": "integer"
+          },
+          "sessionMoveShare": {
+            "title": "Sessionmoveshare",
+            "type": "number"
+          },
+          "weightDriftDays": {
+            "title": "Weightdriftdays",
+            "type": "integer"
+          },
+          "weightDriftShare": {
+            "title": "Weightdriftshare",
+            "type": "number"
+          }
+        },
+        "required": [
+          "sessionMoveShare",
+          "cashShare",
+          "cashMinSessions",
+          "weightDriftShare",
+          "weightDriftDays",
+          "evidenceDays",
+          "recentFillLimit"
+        ],
+        "title": "ReviewRules",
+        "type": "object"
+      },
       "ReviewSection": {
         "additionalProperties": true,
         "properties": {
@@ -19905,6 +20176,42 @@
         "title": "WatchlistState",
         "type": "object"
       },
+      "WeightDrift": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "number"
+          },
+          "before": {
+            "title": "Before",
+            "type": "number"
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "ticker",
+          "before",
+          "after"
+        ],
+        "title": "WeightDrift",
+        "type": "object"
+      },
       "WindowAttribution": {
         "description": "The 5D window: daily openings chained from the first available one in the\nwindow. Accounts appear only when that opening and their latest observation fall\nwithin the window's trading days.",
         "properties": {
@@ -20111,7 +20418,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.37.0"
+    "version": "1.38.0"
   },
   "openapi": "3.1.0",
   "paths": {

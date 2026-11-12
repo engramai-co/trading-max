@@ -54,6 +54,7 @@ import {
   signedMoney,
   verdictWord,
 } from "./review-decisions";
+import { ReviewDisclosure, ReviewObservations } from "./review-observations";
 import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
@@ -70,6 +71,27 @@ export function ReviewWorkspace() {
   const recentKeys = decisionKeys(recent);
   // A retired CFD account keeps its review, reached from the account switcher.
   const codes = query.data?.cfd?.accountStatus === "retired" ? (["A", "B"] as const) : (["A", "B", "C"] as const);
+  const visibleDecisions = 3;
+  const decisionRow = (row: (typeof recent)[number], index: number) => (
+    <Link
+      key={recentKeys[index]}
+      className="mx-row-link mx-decision-row"
+      // The link names the decision, so the account review opens on it.
+      href={"/account-analysis?" + new URLSearchParams({ account: row.account, reviewView: "decisions", decision: decisionParam(row) })}
+    >
+      <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
+      <span className={"mx-row-value mx-" + effectTone(row.effectToDateGbp)}>
+        <span>{signedMoney(row.effectToDateGbp)}</span>
+        <small>
+          {formatCalendarDate(row.date, locale)} ·{" "}
+          {decisionAction(row, t)}
+          {currency(row.amountGbp)} · {t("之后 ", "then ")}
+          {percent(row.returnToDate, true, 1)}
+        </small>
+      </span>
+      <ArrowUpRight size={15} aria-hidden="true" />
+    </Link>
+  );
   return (
     <Page title={t("投资复盘", "Investment review")} actions={
       <span className="mx-freshness-group">
@@ -84,6 +106,27 @@ export function ReviewWorkspace() {
       ) : (
         query.data && (
           <>
+              {(recent.length > 0 || watchingCount > 0) && (
+                <Panel title={t("最近的买卖决定", "Recent decisions")}>
+                  {watchingCount > 0 && (
+                    <p className="mx-decision-watching">
+                      {locale === "zh" ? `观察中 ${watchingCount} 笔` : `Watching ${watchingCount}`}
+                      {watching.length > 0 && (
+                        <span className="mx-muted">
+                          {" · " + watching.join(locale === "zh" ? "、" : ", ") + (watchingMore ? "…" : "")}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  {recent.slice(0, visibleDecisions).map(decisionRow)}
+                  {recent.length > visibleDecisions && (
+                    <ReviewDisclosure label={t("更多决定", "More decisions")}>
+                      {recent.slice(visibleDecisions).map((row, index) => decisionRow(row, index + visibleDecisions))}
+                    </ReviewDisclosure>
+                  )}
+                </Panel>
+              )}
+              {query.data.reviewEvidence && <ReviewObservations data={query.data.reviewEvidence} />}
               <div className={"mx-grid" + (codes.length === 3 ? " mx-grid-three" : "")}>
                 {codes.map((code) => {
                   const account = query.data?.accounts?.find(
@@ -164,40 +207,6 @@ export function ReviewWorkspace() {
                   );
                 })}
               </div>
-              {(recent.length > 0 || watchingCount > 0) && (
-                <Panel title={t("最近的买卖决定", "Recent decisions")}>
-                  {watchingCount > 0 && (
-                    <p className="mx-decision-watching">
-                      {locale === "zh" ? `观察中 ${watchingCount} 笔` : `Watching ${watchingCount}`}
-                      {watching.length > 0 && (
-                        <span className="mx-muted">
-                          {" · " + watching.join(locale === "zh" ? "、" : ", ") + (watchingMore ? "…" : "")}
-                        </span>
-                      )}
-                    </p>
-                  )}
-                  {recent.map((row, index) => (
-                    <Link
-                      key={recentKeys[index]}
-                      className="mx-row-link mx-decision-row"
-                      // The link names the decision, so the account review opens on it.
-                      href={"/account-analysis?" + new URLSearchParams({ account: row.account, reviewView: "decisions", decision: decisionParam(row) })}
-                    >
-                      <Instrument ticker={row.ticker} name={accountName(profile, row.account)} small />
-                      <span className={"mx-row-value mx-" + effectTone(row.effectToDateGbp)}>
-                        <span>{signedMoney(row.effectToDateGbp)}</span>
-                        <small>
-                          {formatCalendarDate(row.date, locale)} ·{" "}
-                          {decisionAction(row, t)}
-                          {currency(row.amountGbp)} · {t("之后 ", "then ")}
-                          {percent(row.returnToDate, true, 1)}
-                        </small>
-                      </span>
-                      <ArrowUpRight size={15} aria-hidden="true" />
-                    </Link>
-                  ))}
-                </Panel>
-              )}
           </>
         )
       )}
@@ -433,16 +442,19 @@ function AccountJournal({
         {tab === "imports" && cfd ? (
           <CfdImports />
         ) : tab === "decisions" && !cfd ? (
-          <DecisionReview
-            data={data.selectedAccountDecisions}
-            account={code}
-            dataAsOf={data.reviewAsOf}
-            focus={decision}
-            arrive={landing}
-            horizons={horizons}
-            onHorizons={onHorizons}
-            onClear={() => update({ decision: null })}
-          />
+          <>
+            <DecisionReview
+              data={data.selectedAccountDecisions}
+              account={code}
+              dataAsOf={data.reviewAsOf}
+              focus={decision}
+              arrive={landing}
+              horizons={horizons}
+              onHorizons={onHorizons}
+              onClear={() => update({ decision: null })}
+            />
+            {data.reviewEvidence && <ReviewObservations data={data.reviewEvidence} showAccount={false} />}
+          </>
         ) : tab === "outcome" ? (
           <>
             <Panel

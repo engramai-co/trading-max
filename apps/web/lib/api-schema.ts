@@ -1545,6 +1545,24 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** AccountReviewEvidence */
+        AccountReviewEvidence: {
+            /** Asof */
+            asOf?: string | null;
+            /** Cashspans */
+            cashSpans?: components["schemas"]["CashSpan"][];
+            /**
+             * Coverage
+             * @enum {string}
+             */
+            coverage: "complete" | "partial";
+            /** Filleffects */
+            fillEffects?: components["schemas"]["FillEffect"][];
+            /** Holdingmoves */
+            holdingMoves?: components["schemas"]["HoldingMove"][];
+            /** Weightdrifts */
+            weightDrifts?: components["schemas"]["WeightDrift"][];
+        };
         /** AccountSummary */
         AccountSummary: {
             /**
@@ -1665,6 +1683,15 @@ export interface components {
             watchlistIntervalSeconds: number;
             /** Watchlistupdatedat */
             watchlistUpdatedAt?: string | null;
+        };
+        /** AllocationShares */
+        AllocationShares: {
+            /** Cash */
+            cash: number;
+            /** Largestholding */
+            largestHolding: number;
+            /** Usdexposure */
+            usdExposure: number;
         };
         /** AlpacaEnhancementUpdate */
         AlpacaEnhancementUpdate: {
@@ -2035,6 +2062,25 @@ export interface components {
             close: number;
             /** Date */
             date: string;
+        };
+        /** CashSpan */
+        CashSpan: {
+            /** Averageshare */
+            averageShare: number;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Peakshare */
+            peakShare: number;
+            /** Sessions */
+            sessions: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
         };
         /** CfdAccountPreferenceUpdate */
         CfdAccountPreferenceUpdate: {
@@ -2730,6 +2776,7 @@ export interface components {
             researchAsOf: string;
             /** Reviewasof */
             reviewAsOf?: string | null;
+            reviewEvidence?: components["schemas"]["InvestmentReviewEvidence"] | null;
             /** Reviewsummaries */
             reviewSummaries?: components["schemas"]["OverviewReviewSummary"][];
             /** Risk */
@@ -3164,6 +3211,25 @@ export interface components {
             url?: string | null;
             /** Version */
             version: string;
+        };
+        /** FillEffect */
+        FillEffect: {
+            after: components["schemas"]["AllocationShares"];
+            before: components["schemas"]["AllocationShares"];
+            /**
+             * Filledat
+             * Format: date-time
+             */
+            filledAt: string;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+            /** Ticker */
+            ticker: string;
         };
         /** FinancialFacts */
         FinancialFacts: {
@@ -3764,6 +3830,20 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** HoldingMove */
+        HoldingMove: {
+            /** Change */
+            change: number;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Quotecurrency */
+            quoteCurrency: string;
+            /** Ticker */
+            ticker: string;
+        };
         /** IndexBasket */
         IndexBasket: {
             /** Asof */
@@ -4095,6 +4175,14 @@ export interface components {
             windowEnd: string;
             /** Windowstart */
             windowStart: string;
+        };
+        /** InvestmentReviewEvidence */
+        InvestmentReviewEvidence: {
+            /** Accounts */
+            accounts: {
+                [key: string]: components["schemas"]["AccountReviewEvidence"];
+            };
+            rules: components["schemas"]["ReviewRules"];
         };
         /** IsaBucket */
         IsaBucket: {
@@ -6240,6 +6328,23 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ReviewRules */
+        ReviewRules: {
+            /** Cashminsessions */
+            cashMinSessions: number;
+            /** Cashshare */
+            cashShare: number;
+            /** Evidencedays */
+            evidenceDays: number;
+            /** Recentfilllimit */
+            recentFillLimit: number;
+            /** Sessionmoveshare */
+            sessionMoveShare: number;
+            /** Weightdriftdays */
+            weightDriftDays: number;
+            /** Weightdriftshare */
+            weightDriftShare: number;
+        };
         /** ReviewSection */
         ReviewSection: {
             /**
@@ -7893,6 +7998,25 @@ export interface components {
              * Format: date-time
              */
             updatedAt?: string;
+        };
+        /** WeightDrift */
+        WeightDrift: {
+            /** After */
+            after: number;
+            /** Before */
+            before: number;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Ticker */
+            ticker: string;
         };
         /**
          * WindowAttribution

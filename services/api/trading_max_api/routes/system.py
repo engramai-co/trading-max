@@ -10,6 +10,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_projection import ETFPortfolio
+from trading_max.analytics.review_evidence import (
+    AccountReviewEvidence,
+    InvestmentReviewEvidence,
+    ReviewRules,
+)
+from trading_max.application.decision_stages import REVIEW_EVIDENCE_KEY
 
 from ..dashboard_models import (
     AccountCode,
@@ -19,6 +25,7 @@ from ..dashboard_models import (
     DashboardLensSnapshot,
     DashboardResponse,
     DayAttribution,
+    InvestableAccountCode,
     NavPoint,
     OverviewReviewSummary,
     TradeDecision,
@@ -85,6 +92,23 @@ def _decision_reviews(request: Request, run_id: str) -> dict[str, AccountDecisio
         }
     except (FileNotFoundError, TypeError, ValueError, AttributeError):
         return {}
+
+
+def _review_evidence(
+    request: Request, run_id: str, accounts: list[InvestableAccountCode]
+) -> InvestmentReviewEvidence:
+    try:
+        payload = app_service(request, "store").read_json(run_id, REVIEW_EVIDENCE_KEY)
+        saved = InvestmentReviewEvidence.model_validate(payload)
+    except (FileNotFoundError, TypeError, ValueError):
+        saved = InvestmentReviewEvidence(rules=ReviewRules.current(), accounts={})
+    return InvestmentReviewEvidence(
+        rules=saved.rules,
+        accounts={
+            code: saved.accounts.get(code, AccountReviewEvidence(coverage="partial"))
+            for code in accounts
+        },
+    )
 
 
 def _observing(decision: TradeDecision) -> bool:
@@ -400,12 +424,25 @@ def dashboard_lens(
             code: _review_index(review)
             for code, review in _decision_reviews(request, manifest.run_id).items()
         }
+        evidence = _review_evidence(
+            request,
+            manifest.run_id,
+            [item.code for item in dashboard_data.accounts if item.code in {"A", "B"}],
+        )
+        # A later lightweight snapshot can carry this review forward. Its
+        # readings still stop at the account observations used in the replay.
+        as_of = min(
+            (row.as_of for row in evidence.accounts.values() if row.as_of is not None),
+            default=None,
+        )
         return DashboardLensSnapshot(
             **base,
             accounts=dashboard_data.accounts,
             cfd=dashboard_data.cfd,
             risk=dashboard_data.risk,
             decision_reviews=reviews,
+            review_as_of=as_of.isoformat() if as_of is not None else None,
+            review_evidence=evidence,
         )
 
     selected = account or "A"
@@ -433,6 +470,11 @@ def dashboard_lens(
         selected_account_report=dashboard_data.account_report.analysis.get(selected, {}),
         selected_account_decisions=(
             _decision_reviews(request, manifest.run_id).get(selected)
+            if selected in {"A", "B"}
+            else None
+        ),
+        review_evidence=(
+            _review_evidence(request, manifest.run_id, [selected])
             if selected in {"A", "B"}
             else None
         ),
