@@ -51,9 +51,13 @@ test.describe("desktop surfaces", () => {
     test(`${route} has focused, accessible controls without the investment sidebar`, async ({ page }) => {
       await page.goto("/desktop/" + route);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
+      await expect(page.locator("main :is(.mx-loading, [aria-busy=true])")).toHaveCount(0);
       await expect(page.locator(".mx-sidebar")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      // Colour contrast is only meaningful once entrance transitions have settled.
+      await page.evaluate(() => Promise.all(document.getAnimations()
+        .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+        .map((animation) => animation.finished.catch(() => undefined))));
       expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
       await capture(page, route);
     });
