@@ -4,6 +4,28 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.36.0] - 2026-11-12
+
+### Added
+
+- Market index charts now offer an All range with weekly history where
+  available, reaching back to 1970.
+- MSCI World ex USA, Emerging Markets, and Emerging Markets IMI now show
+  history from one week to one year.
+
+### Changed
+
+- The Sectors tab is now called Markets (市场). Existing links still work.
+- The one-week index chart now shows 30-minute points, and the one-month chart
+  shows hourly points where intraday data is available.
+
+### Fixed
+
+- Weekend placeholders no longer break MSCI chart lines. Missing data during a
+  trading session is still marked with a dotted line.
+- Corrected the project contact address and the address sent with SEC requests
+  to contact@engramai.co.
+
 ## [1.35.1] - 2026-11-12
 
 ### Fixed

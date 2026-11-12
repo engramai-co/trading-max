@@ -248,3 +248,18 @@ def test_trailing_pe_is_published_from_completed_us_closes_and_reused(
     else:
         assert not calls
         assert "trailingPeHistory" not in first
+
+
+def test_edgar_filing_declares_contact_user_agent(tmp_path, monkeypatch):
+    import httpx
+    from trading_max.research.disclosures import ResearchEvidenceProvider
+
+    def get(url, *, timeout, headers):
+        request = httpx.Request("GET", url, headers=headers)
+        assert request.headers["User-Agent"] == "Trading Max contact@engramai.co"
+        return httpx.Response(200, request=request, text=filing())
+
+    monkeypatch.setattr(httpx, "get", get)
+    assert (
+        ResearchEvidenceProvider(tmp_path)._document("https://www.sec.gov/example.htm") == filing()
+    )

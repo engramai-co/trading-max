@@ -1,3 +1,5 @@
+import json
+import statistics
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -26,6 +28,7 @@ class FakePrices:
         self.failed = False
         self.intraday_calls = 0
         self.daily_calls = []
+        self.history_calls = []
 
     def intraday(self, symbols):
         self.intraday_calls += 1
@@ -60,6 +63,41 @@ class FakePrices:
             (f"2026-11-06T{hour}:00:00+00:00", 115),
         )
 
+    def history_bars(self, symbol, window, now):
+        self.history_calls.append((symbol, window, now))
+        if window == "MAX":
+            return bars(
+                symbol,
+                ("1999-10-07T04:00:00+00:00", 100),
+                ("1999-10-14T04:00:00+00:00", 110),
+                ("1999-10-21T04:00:00+00:00", 105),
+                ("2026-11-05T05:00:00+00:00", None),
+            )
+        if window == "1Y":
+            return bars(
+                symbol,
+                ("2026-07-08T21:00:00+00:00", 200),
+                ("2026-11-01T22:00:00+00:00", None),
+                ("2026-11-02T21:00:00+00:00", 800),
+                ("2026-11-02T22:00:00+00:00", 205),
+                ("2026-11-02T23:00:00+00:00", 1000),
+                ("2026-11-04T22:00:00+00:00", 207),
+            )
+        if symbol.endswith("=X"):
+            return bars(
+                symbol,
+                ("2026-11-02T13:30:00+00:00", 0.5),
+                ("2026-11-02T15:30:00+00:00", 0.75),
+            )
+        return bars(
+            symbol,
+            ("2026-10-09T14:00:00+00:00", 95),
+            ("2026-11-01T05:00:00+00:00", None),
+            ("2026-11-02T14:30:00+00:00", 100),
+            ("2026-11-02T15:00:00+00:00", 104),
+            ("2026-11-02T15:30:00+00:00", 102),
+        )
+
 
 @pytest.fixture
 def api(tmp_path):
@@ -90,6 +128,12 @@ def test_index_market_uses_dated_close_and_retains_last_read(api):
     assert client.get("/v1/indices?scope=jp").json()["quotes"] == quotes
     assert prices.intraday_calls == 1
 
+    cached = client.app.state.indices.root / "jp.json"
+    legacy = json.loads(cached.read_text())
+    for quote in legacy["quotes"]:
+        del quote["index"]["ranges"]
+    cached.write_text(json.dumps(legacy))
+
     clock[0] += timedelta(minutes=15)
     prices.failed = True
     response = client.get("/v1/indices?scope=jp").json()
@@ -98,17 +142,18 @@ def test_index_market_uses_dated_close_and_retains_last_read(api):
     assert retained["level"] == nikkei["level"]
     assert retained["asOf"] == nikkei["asOf"]
     assert retained["state"] == "stale"
+    assert retained["index"]["ranges"][-1] == "MAX"
 
 
 def test_index_history_risk_uses_completed_daily_bars(api):
     client, _, _ = api
-    response = client.get("/v1/indices/nikkei-225/history?range=1M").json()
+    response = client.get("/v1/indices/nikkei-225/history?range=3M").json()
     assert [point["value"] for point in response["points"]] == [110, 100, 105]
     assert response["maxDrawdown"] == pytest.approx(100 / 110 - 1)
     assert response["volatility"] is not None
-    assert response["state"] == "partial"
+    assert response["state"] == "available"
     assert response["gaps"] == []  # November 3 is a Tokyo holiday.
-    missing = client.get("/v1/indices/sp-500/history?range=1M").json()
+    missing = client.get("/v1/indices/sp-500/history?range=3M").json()
     assert missing["gaps"] == ["2026-11-03T00:00:00Z"]
     assert missing["volatility"] is None  # only one consecutive daily return
     day = client.get("/v1/indices/nikkei-225/history?range=1D").json()
@@ -127,7 +172,12 @@ def test_catalog_exposes_worldwide_indices_without_requesting_prices(api):
     }
     dax = next(index for index in catalog if index["id"] == "dax")
     assert (dax["scope"], dax["basis"]) == ("eu", "total-return")
+    assert dax["ranges"][-1] == "MAX"
+    limited = next(index for index in catalog if index["id"] == "msci-em")
+    assert limited["ranges"] == ["1D", "1W", "1M", "3M", "6M", "1Y"]
+    assert next(index for index in catalog if index["id"] == "msci-japan")["ranges"] == []
     assert prices.intraday_calls == 0
+    assert prices.history_calls == []
 
 
 def test_composite_observation_does_not_claim_a_local_session(api):
@@ -137,13 +187,74 @@ def test_composite_observation_does_not_claim_a_local_session(api):
     assert world["state"] == "observed"
     assert world["level"] == 101
     assert world["change"] == pytest.approx(101 / 300 - 1)
-    limited = client.get("/v1/indices/msci-em/history?range=1Y").json()
+    limited = client.get("/v1/indices/msci-em/history?range=3Y").json()
     assert limited["state"] == "unavailable"
     assert limited["points"] == []
     assert client.get("/v1/indices/msci-em/history?range=1D").json()["points"]
     assert client.get("/v1/indices?scope=cn").status_code == 422
     assert prices.intraday_calls == 1
     assert prices.daily_calls == [["VWRP.L"]]
+
+
+def test_composite_daily_history_ignores_sunday_but_keeps_weekday_gaps(api, monkeypatch):
+    client, prices, _ = api
+
+    def history(symbol):
+        return bars(
+            symbol,
+            ("2026-10-30T04:00:00+00:00", 100),
+            ("2026-11-01T04:00:00+00:00", None),
+            ("2026-11-02T05:00:00+00:00", 105),
+            ("2026-11-03T05:00:00+00:00", None),
+            ("2026-11-04T05:00:00+00:00", 110),
+        )
+
+    monkeypatch.setattr(prices, "history", history)
+    result = client.get("/v1/indices/msci-world/history?range=3M").json()
+    assert result["state"] == "partial"
+    assert result["gaps"] == ["2026-11-03T00:00:00Z"]
+    assert result["volatility"] is None
+    assert [point["value"] for point in result["points"]] == [100, 105, 110]
+
+
+@pytest.mark.parametrize(
+    ("period", "values", "gaps"),
+    [
+        ("1W", [76.5], ["2026-11-02T14:30:00Z", "2026-11-02T15:00:00Z"]),
+        ("1M", [50, 76.5], ["2026-10-09T14:00:00Z", "2026-11-02T15:00:00Z"]),
+    ],
+)
+def test_intraday_history_uses_same_window_fx_with_interval_tolerance(api, period, values, gaps):
+    client, prices, clock = api
+    result = client.get(f"/v1/indices/msci-em/history?range={period}&currency=GBP").json()
+    assert [point["value"] for point in result["points"]] == values
+    assert result["gaps"] == gaps
+    assert result["currency"] == "GBP"
+    assert prices.history_calls == [
+        ("^891800-USD-STRD", period, clock[0]),
+        ("USDGBP=X", period, clock[0]),
+    ]
+
+
+def test_max_uses_completed_weekly_bars_and_weekly_annualisation(api):
+    client, _, _ = api
+    result = client.get("/v1/indices/sp-500/history?range=MAX").json()
+    assert [point["at"] for point in result["points"]] == [
+        "1999-10-13T00:00:00Z",
+        "1999-10-20T00:00:00Z",
+        "1999-10-27T00:00:00Z",
+    ]
+    assert result["volatility"] == pytest.approx(statistics.stdev([0.1, 105 / 110 - 1]) * 52**0.5)
+    assert result["gaps"] == []
+
+
+def test_limited_msci_uses_hourly_close_in_the_new_york_zone(api):
+    client, prices, clock = api
+    result = client.get("/v1/indices/msci-em/history?range=1Y").json()
+    assert result["hourlyClose"]
+    assert [point["value"] for point in result["points"]] == [200, 205, 207]
+    assert result["gaps"] == []
+    assert prices.history_calls == [("^891800-USD-STRD", "1Y", clock[0])]
 
 
 def test_tracking_exposure_joins_confirmed_benchmarks_by_isin(tmp_path):
@@ -262,3 +373,58 @@ def test_nasdaq_basket_bounds_off_hours_backfill(api, monkeypatch):
         assert response.json()["basket"] is None
         clock[0] += timedelta(hours=1)
     assert requests == ["ndx"] * 3
+
+
+def test_chart_windows_cache_separately_and_share_the_rate_limit(monkeypatch):
+    from types import SimpleNamespace
+
+    from trading_max.infrastructure import shared_market_prices
+
+    requests = []
+
+    def get(url, params, timeout):
+        requests.append(params)
+        if url.endswith("THROTTLED"):
+            return SimpleNamespace(status_code=429)
+        granularity = "1h" if params["interval"] == "60m" else params["interval"]
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "chart": {
+                    "result": [
+                        {
+                            "meta": {"dataGranularity": granularity},
+                            "timestamp": [1],
+                            "indicators": {"quote": [{"close": [100]}]},
+                        }
+                    ]
+                }
+            },
+        )
+
+    monkeypatch.setattr(shared_market_prices, "_yahoo_get", get)
+    prices = shared_market_prices.SharedMarketPrices()
+    now = datetime(2026, 3, 31, 13, tzinfo=UTC)
+    assert prices.history_bars("SYN", "1W", now)
+    assert prices.history_bars("SYN", "1W", now + timedelta(minutes=1))
+    assert prices.history_bars("SYN", "1M", now)
+    assert prices.history_bars("SYN", "MAX", now)
+    assert requests == [
+        {
+            "period1": str(int((now - timedelta(days=7)).timestamp())),
+            "period2": str(int(now.timestamp())),
+            "interval": "30m",
+        },
+        {
+            "period1": str(int(now.replace(month=2, day=28).timestamp())),
+            "period2": str(int(now.timestamp())),
+            "interval": "60m",
+        },
+        {"period1": "0", "period2": str(int(now.timestamp())), "interval": "1wk"},
+    ]
+    with pytest.raises(SparkRateLimited):
+        prices.history_bars("THROTTLED", "MAX", now)
+    assert prices.history_bars("SYN", "MAX", now)
+    with pytest.raises(SparkRateLimited, match="paused"):
+        prices.history("ANOTHER")
+    assert len(requests) == 4

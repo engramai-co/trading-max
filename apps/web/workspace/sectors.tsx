@@ -46,6 +46,19 @@ export function SectorsWorkspace() {
   const t = useCopy();
   const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
+  useEffect(() => {
+    const title = locale === "zh" ? "市场 · Trading Max" : "Markets · Trading Max";
+    const setTitle = () => {
+      if (/^(?:\/desktop)?\/sectors\/?$/.test(location.pathname) && document.title !== title) {
+        document.title = title;
+      }
+    };
+    // The route's server metadata can stream in after the locale is restored.
+    const observer = new MutationObserver(setTitle);
+    observer.observe(document.head, { childList: true, characterData: true, subtree: true });
+    setTitle();
+    return () => observer.disconnect();
+  }, [locale]);
   const { params, update } = useRouteState();
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const now = useMinute();
@@ -293,7 +306,7 @@ export function SectorsWorkspace() {
   );
   return (
     <Page
-      title={t("板块行情", "Sectors")}
+      title={t("市场", "Markets")}
       titleHidden
       className="mx-sectors-page"
       actions={

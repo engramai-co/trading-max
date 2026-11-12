@@ -49,6 +49,7 @@ class SparkSeries:
     closes: tuple[float | None, ...]
     previous_close: float | None = None
     name: str = ""
+    timezone: str | None = None
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OverviewWorkspace } from "@/workspace/overview";
 import { HoldingsWorkspace } from "@/workspace/holdings";
@@ -10,6 +11,12 @@ import { HealthWorkspace } from "@/workspace/health";
 import { ImportsWorkspace } from "@/workspace/imports";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ page?: string[] }> }): Promise<Metadata> {
+  const { page } = await params;
+  return page?.[0] === "sectors" ? { title: "Markets" } : {};
+}
+
 export default async function DesktopPage({ params, searchParams }: { params: Promise<{ page?: string[] }>; searchParams: Promise<{ scope?: string }> }) {
   const { page = [] } = await params;
   const { scope } = await searchParams;

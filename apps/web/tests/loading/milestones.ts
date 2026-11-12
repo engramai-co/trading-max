@@ -64,7 +64,7 @@ export const scenarios: Scenario[] = [
     charts: [signal('main [aria-label="Returns and drawdowns on a shared timeline"]' + ready)],
   },
   {
-    name: "Sectors", url: "/sectors",
+    name: "Markets", url: "/sectors",
     first: viewport(".mx-sectors-bar"),
     toolbar: [viewport(".mx-sectors-bar")],
     placeholder: [signal(".mx-sectors-page .mx-loading-generic")],

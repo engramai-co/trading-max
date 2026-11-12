@@ -3,9 +3,9 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from trading_max.reference.indices import IndexScope, IndexSpec
+from trading_max.reference.indices import IndexRange, IndexScope, IndexSpec
 
-from ..index_models import IndexContext, IndexHistory, IndexIdentity, IndexMarket, IndexRange
+from ..index_models import IndexContext, IndexHistory, IndexIdentity, IndexMarket
 from ..indices import active_indices, index_identity
 from .dependencies import app_service
 

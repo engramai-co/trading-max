@@ -89,3 +89,17 @@ def test_companyfacts_resolves_ticker_and_joins_archived_acceptances_without_dat
     # A different history window reads EDGAR again.
     provider.filings("SYNT", since=date(2023, 6, 1))
     assert len(visited) > 4
+
+
+def test_edgar_json_declares_contact_user_agent(monkeypatch):
+    from contextlib import nullcontext
+
+    import httpx
+
+    def stream(method, url, *, headers, timeout):
+        request = httpx.Request(method, url, headers=headers)
+        assert request.headers["User-Agent"] == "Trading Max contact@engramai.co"
+        return nullcontext(httpx.Response(200, request=request, json={"synthetic": True}))
+
+    monkeypatch.setattr(sec_companyfacts.httpx, "stream", stream)
+    assert sec_companyfacts._get_json("https://data.sec.gov/example.json") == {"synthetic": True}

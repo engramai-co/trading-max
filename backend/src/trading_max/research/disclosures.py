@@ -30,7 +30,7 @@ from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import listing_calendar
 from trading_max.research.facts import fingerprint, number
-from trading_max.research.sec_companyfacts import SYMBOL, SecCompanyFacts
+from trading_max.research.sec_companyfacts import SYMBOL, USER_AGENT, SecCompanyFacts
 from trading_max.research.trailing_pe import DailyClose, trailing_pe_history
 
 logger = logging.getLogger(__name__)
@@ -422,9 +422,7 @@ class ResearchEvidenceProvider:
                 response = httpx.get(
                     url,
                     timeout=25,
-                    headers={
-                        "User-Agent": "TradingMax research https://github.com/engramai-co/trading-max"
-                    },
+                    headers={"User-Agent": USER_AGENT},
                 )
                 response.raise_for_status()
                 if len(response.content) > 25_000_000:

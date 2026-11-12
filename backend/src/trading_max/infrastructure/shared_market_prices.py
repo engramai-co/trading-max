@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import threading
 import time
+from calendar import monthrange
 from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime, timedelta
+from typing import Literal
 from urllib.parse import quote
 
 from yfinance.exceptions import YFRateLimitError
@@ -67,10 +70,37 @@ class SharedMarketPrices:
         return self._read("daily", symbols, 240, self.source.daily)
 
     def history(self, symbol: str) -> SparkSeries | None:
-        def load(_: list[str]) -> dict[str, SparkSeries]:
-            response = _yahoo_get(
-                CHART_URL + quote(symbol, safe=""), {"range": "5y", "interval": "1d"}, 12
+        return self._chart("5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60)
+
+    def history_bars(
+        self, symbol: str, window: Literal["1W", "1M", "1Y", "MAX"], now: datetime
+    ) -> SparkSeries | None:
+        if window == "1W":
+            start, interval, ttl = int((now - timedelta(days=7)).timestamp()), "30m", 5 * 60
+        elif window == "1M":
+            year, month = (now.year, now.month - 1) if now.month > 1 else (now.year - 1, 12)
+            prior_month = now.replace(
+                year=year, month=month, day=min(now.day, monthrange(year, month)[1])
             )
+            start, interval, ttl = int(prior_month.timestamp()), "60m", 20 * 60
+        elif window == "1Y":
+            # Extra days cover a leap year and the NY date boundary.
+            start, interval, ttl = int((now - timedelta(days=370)).timestamp()), "60m", 4 * 3600
+        else:
+            # Yahoo's range=max can silently coarsen even an explicit 1wk request.
+            start, interval, ttl = 0, "1wk", 4 * 3600
+        return self._chart(
+            window,
+            symbol,
+            {"period1": str(start), "period2": str(int(now.timestamp())), "interval": interval},
+            ttl,
+        )
+
+    def _chart(
+        self, kind: str, symbol: str, params: dict[str, str], ttl: int
+    ) -> SparkSeries | None:
+        def load(_: list[str]) -> dict[str, SparkSeries]:
+            response = _yahoo_get(CHART_URL + quote(symbol, safe=""), params, 12)
             if response.status_code == 429:
                 raise SparkRateLimited("Yahoo Finance is rate-limiting price requests")
             if response.status_code == 404:
@@ -81,8 +111,21 @@ class SharedMarketPrices:
             if not rows:
                 return {}
             row = rows[0]
+            meta = row.get("meta") or {}
+            interval = params["interval"]
+            granularity = meta.get("dataGranularity", interval)
+            if granularity != interval and (interval, granularity) != ("60m", "1h"):
+                return {}
             quotes = row.get("indicators", {}).get("quote") or [{}]
             timestamps, closes = _points(row.get("timestamp"), quotes[0].get("close"))
-            return {symbol: SparkSeries(symbol, timestamps, closes)} if timestamps else {}
+            return (
+                {
+                    symbol: SparkSeries(
+                        symbol, timestamps, closes, timezone=meta.get("exchangeTimezoneName")
+                    )
+                }
+                if timestamps
+                else {}
+            )
 
-        return self._read("5y-daily", [symbol], 30 * 60, load).get(symbol)
+        return self._read(kind, [symbol], ttl, load).get(symbol)

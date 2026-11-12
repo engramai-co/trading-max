@@ -136,7 +136,7 @@ test.describe("workspace navigation refinements", () => {
     await page.goto("/");
     const dock = page.locator(".mx-mobile-dock");
     await expect(dock).toBeVisible();
-    await expect(dock.getByRole("link")).toHaveText(["总览", "持仓", "收益", "板块", "研究", "复盘"]);
+    await expect(dock.getByRole("link")).toHaveText(["总览", "持仓", "收益", "市场", "研究", "复盘"]);
     expect(await dock.getByRole("link").first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(12);
     expect(await dock.getByRole("link").evaluateAll((links) => links.every((link) => link.getBoundingClientRect().height >= 56))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -167,7 +167,7 @@ test.describe("workspace navigation refinements", () => {
       await expect(page.locator(".mx-mobile-dock")).toBeVisible();
       // Six cells at 320px: the English names are short enough to fit at 12px without clipping.
       const dockLinks = page.locator(".mx-mobile-dock").getByRole("link");
-      await expect(dockLinks).toHaveText(["Home", "Assets", "Returns", "Sectors", "Stocks", "Review"]);
+      await expect(dockLinks).toHaveText(["Home", "Assets", "Returns", "Markets", "Stocks", "Review"]);
       expect(await dockLinks.evaluateAll((links) => links.every((link) => {
         const label = link.querySelector("span:last-child")!;
         return label.getBoundingClientRect().width <= link.getBoundingClientRect().width + 0.5;

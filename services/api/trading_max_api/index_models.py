@@ -4,12 +4,10 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import Field
-from trading_max.reference.indices import IndexBasis, IndexKind, IndexScope, UsageRights
+from trading_max.reference.indices import IndexBasis, IndexKind, IndexRange, IndexScope, UsageRights
 
 from .models import ApiModel
 from .sector_models import SectorBreadth
-
-IndexRange = Literal["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"]
 
 
 class IndexIdentity(ApiModel):
@@ -25,6 +23,7 @@ class IndexIdentity(ApiModel):
     basis: IndexBasis
     kind: IndexKind
     history_years: int
+    ranges: list[IndexRange]
     rights: UsageRights
     aliases: list[str]
     source: str | None
@@ -61,6 +60,7 @@ class IndexHistory(ApiModel):
     currency: str | None = None
     state: Literal["available", "partial", "unavailable", "stale"] = "unavailable"
     as_of: datetime | None = None
+    hourly_close: bool = False
 
 
 class IndexContribution(ApiModel):

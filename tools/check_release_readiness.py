@@ -29,12 +29,12 @@ ENGINEERING_FILES = (
 LICENSE_FILES = ("LICENSE", "LICENSE.md", "LICENSE.txt")
 PUBLIC_FILES = ("LICENSE", "NOTICE")
 PUBLIC_METADATA = {
-    "CODE_OF_CONDUCT.md": ("contact@ingramai.co",),
+    "CODE_OF_CONDUCT.md": ("contact@engramai.co",),
     "README.md": (
         "Apache License 2.0",
         "THIRD_PARTY_NOTICES.md",
     ),
-    "SECURITY.md": ("contact@ingramai.co",),
+    "SECURITY.md": ("contact@engramai.co",),
     "pyproject.toml": (
         'license = "Apache-2.0"',
         'Repository = "https://github.com/engramai-co/trading-max"',

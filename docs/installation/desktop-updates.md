@@ -74,7 +74,7 @@ a donut with weight, the latest move, unrealized P&L, technical score and model
 upside; an attention list limited to data problems; YTD on the research price
 chart; and sector boards that settle after a late start.
 Version 1.28.0 brings the workspace's changes since 1.18.4 to the App: the
-Sectors page for the US, UK, Hong Kong and Korea; today's change first on the
+Markets page for the US, UK, Hong Kong and Korea; today's change first on the
 overview; a decision review that scores same-day round trips and dividends,
 adds market context and an optional AI review, and opens a recent decision
 directly; and one price for each held security on the research desk.

@@ -21,7 +21,7 @@ from .facts import number
 from .trailing_pe import DilutedEps, EpsFiling
 
 TICKER_MAP = "https://www.sec.gov/files/company_tickers.json"
-USER_AGENT = "TradingMax research https://github.com/engramai-co/trading-max"
+USER_AGENT = "Trading Max contact@engramai.co"
 MAX_BYTES = 32_000_000
 FILINGS_TTL_SECONDS = 86400
 FORMS = {"10-Q", "10-K", "10-Q/A", "10-K/A"}

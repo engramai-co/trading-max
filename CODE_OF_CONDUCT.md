@@ -35,7 +35,7 @@ Project maintainers are responsible for clarifying and enforcing these
 standards and may remove, edit, or reject comments, commits, code, issues, and
 other contributions that are not aligned with this Code of Conduct.
 
-Report unacceptable behaviour privately to `contact@ingramai.co`. All reports
+Report unacceptable behaviour privately to `contact@engramai.co`. All reports
 will be reviewed promptly and fairly. Maintainers must respect the privacy and
 security of the reporter.
 

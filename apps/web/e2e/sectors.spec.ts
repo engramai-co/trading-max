@@ -288,7 +288,7 @@ const fakeIndex = (
 ): IndexIdentity => ({
   id, scope, name, nameZh, symbol, currency, kind, compiler: "Synthetic fixture",
   compilerId: id, basis: kind === "volatility" ? "implied-volatility" : "price",
-  calendar: "SYNTH", historyYears: 5, rights: "provider-terms", aliases: [],
+  calendar: "SYNTH", historyYears: 5, ranges: ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"], rights: "provider-terms", aliases: [],
   source: "Synthetic fixture",
 });
 const indices = [
@@ -322,9 +322,10 @@ async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}
       const index = indices.find((item) => item.id === parts.at(-2));
       if (!index) return route.fulfill({ status: 404, json: {} });
       const range = url.searchParams.get("range") ?? "1Y";
-      const points = Array.from({ length: 25 }, (_, n) => point(index, n, range === "1D" ? 300_000 : 86_400_000));
+      const interval = ({ "1D": 300_000, "1W": 1_800_000, "1M": 3_600_000, MAX: 604_800_000 } as Record<string, number>)[range] ?? 86_400_000;
+      const points = Array.from({ length: 25 }, (_, n) => point(index, n, interval));
       return route.fulfill({ json: {
-        index, range, points, maxDrawdown: -0.13, volatility: 0.21,
+        index, range, points, gaps: [], maxDrawdown: -0.13, volatility: 0.21,
         currency: url.searchParams.get("currency") === "GBP" ? "GBP" : index.currency,
         state: "available", asOf: points.at(-1)?.at,
       } });
@@ -379,6 +380,7 @@ test.describe("market index layer", () => {
     await expect(page.getByText(/板块篮子：MSCI Japan|Sector basket: MSCI Japan/)).toBeVisible();
     await card.click();
     await expect(page).toHaveURL(/market=jp&index=nikkei-225/);
+    await expect(page).toHaveTitle("市场 · Trading Max");
     await expect(page.getByRole("heading", { name: /日经 225|Nikkei 225/ })).toBeFocused();
     await page.getByRole("button", { name: "5Y", exact: true }).click();
     await expect(page).toHaveURL(/range=5Y/);
@@ -395,7 +397,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors?market=us");
     await expect(page.locator(".mx-index-strip")).toContainText(/暂时无法读取指数|Indices are unavailable/);
     await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
-    await page.goto("/sectors?market=us&index=sp-500&range=5Y&compare=nasdaq-100");
+    await page.goto("/sectors?market=us&index=sp-500&range=MAX&compare=nasdaq-100");
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
     await expect(page.locator(".mx-index-legend")).toContainText(/起点归 100|Rebased to 100/);
     await expect(page.getByRole("heading", { name: /成分篮子|Constituent basket/ })).toBeVisible();
