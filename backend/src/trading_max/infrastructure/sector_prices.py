@@ -56,6 +56,7 @@ class SparkSeries:
     session_end: int | None = None
     full_day_price: float | None = None
     stale: bool = False
+    session_start: int | None = None
     source: str = YAHOO_SOURCE
 
 
@@ -104,12 +105,13 @@ def parse_compact(payload: Any) -> dict[str, SparkSeries]:
             continue
         timestamps, closes = _points(row.get("timestamp"), row.get("close"))
         previous = _price(row.get("previousClose")) or _price(row.get("chartPreviousClose"))
-        end = row.get("end")
+        start, end = row.get("start"), row.get("end")
         series[str(symbol).upper()] = SparkSeries(
             symbol=str(symbol).upper(),
             timestamps=timestamps,
             closes=closes,
             previous_close=previous,
+            session_start=start if type(start) is int else None,
             session_end=end if type(end) is int else None,
             full_day_price=_price(row.get("fulldayPrice")),
         )

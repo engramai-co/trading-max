@@ -35,6 +35,7 @@ MARKETS = {
     },
     "ch": {"CHE"},
     "jp": {"JPN"},
+    "cn": {"CHN"},
     "kr": {"KOR"},
     "tw": {"TWN"},
     "in": {"IND"},

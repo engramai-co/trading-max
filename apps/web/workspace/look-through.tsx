@@ -577,6 +577,7 @@ function Exposure({
                           >
                             <SecurityPeek
                               ticker={p.ticker}
+                              range="1D"
                               position={{ valueGbp: p.valueGbp, weightPct: p.allocationPct, label: t("敞口", "Exposure") }}
                             >
                               <Instrument

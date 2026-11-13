@@ -19,6 +19,16 @@ export function globalHeatStyle(change: number | null | undefined): HeatStyle {
 }
 
 export type GlobalMarketContribution = components["schemas"]["GlobalMarketContribution"];
+export type GlobalMapMarket = components["schemas"]["GlobalMarketMove"]["market"];
+
+export const CHINA_MAP_INDEX = { id: "csi-300", name: ["沪深 300", "CSI 300"] } as const;
+
+export function globalMarketReading(
+  market: GlobalMapMarket | "em" | "other", name: string, locale: "zh" | "en",
+) {
+  if (market !== "cn") return name;
+  return `${name} · ${CHINA_MAP_INDEX.name[locale === "zh" ? 0 : 1]}`;
+}
 
 export function useGlobalContribution(enabled: boolean) {
   return useQuery({

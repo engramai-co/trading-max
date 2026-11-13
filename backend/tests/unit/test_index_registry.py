@@ -31,7 +31,17 @@ def test_proxies_and_unavailable_histories_are_explicit() -> None:
 
 
 def test_index_quotes_never_come_from_listing_symbols():
-    # An index card must quote an index; listing prices are only allowed when labelled as ETF prices.
+    # Yahoo uses these ordinary-looking symbols for the indices themselves.
+    verified_china_indices = {
+        "csi-300": "000300.SS",
+        "sse-composite": "000001.SS",
+        "shenzhen-component": "399001.SZ",
+        "chinext": "399006.SZ",
+    }
     for spec in INDEX_REGISTRY.values():
-        if spec.kind == "index" and spec.symbol is not None:
+        if spec.kind != "index" or spec.symbol is None:
+            continue
+        if spec.id in verified_china_indices:
+            assert spec.symbol == verified_china_indices[spec.id]
+        else:
             assert spec.symbol.startswith("^"), (spec.id, spec.symbol)

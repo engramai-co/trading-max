@@ -72,7 +72,7 @@ test.describe("overview to performance", () => {
     test(`${range} shows cash-flow-adjusted P&L and preserves account, range and cutoff`, async ({ page, isMobile }) => {
       const short = ["1D", "1W", "1M", "3M"].includes(range);
       const rangeLabel = range === "1W" ? "5D" : range === "ALL" ? "All" : range;
-      // Overview also reads 1D for its Today figure; observe the selected period.
+      // Observe the selected period's own history request.
       const historyRequest = page.waitForRequest((request) => {
         const url = new URL(request.url());
         return url.pathname.endsWith("/dashboard/history") && url.searchParams.get("range") === range;

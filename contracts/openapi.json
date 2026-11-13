@@ -8168,6 +8168,17 @@
             "title": "Markets",
             "type": "array"
           },
+          "otherWeight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otherweight"
+          },
           "phase": {
             "anyOf": [
               {
@@ -8273,6 +8284,7 @@
               "au",
               "hk",
               "kr",
+              "cn",
               "tw",
               "in"
             ],
@@ -8293,6 +8305,17 @@
           "notOpen": {
             "title": "Notopen",
             "type": "boolean"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
           }
         },
         "required": [
@@ -9714,6 +9737,7 @@
               "jp",
               "hk",
               "kr",
+              "cn",
               "tw",
               "in",
               "ca",
@@ -9790,6 +9814,7 @@
               "jp",
               "hk",
               "kr",
+              "cn",
               "tw",
               "in",
               "ca",
@@ -22051,7 +22076,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.46.2"
+    "version": "1.47.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -22955,6 +22980,7 @@
                 "jp",
                 "hk",
                 "kr",
+                "cn",
                 "tw",
                 "in",
                 "ca",

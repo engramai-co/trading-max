@@ -2,13 +2,13 @@
 
 /*
  * Direction contract — 首页「账本在下」(owner-pinned 合并账本 with a pie; seed 34de5601), comp-led.
- * THESIS: the morning read in three bands: what the money did, how far US sectors went today, and every
+ * THESIS: the morning read in three bands: what the money did, how far the chosen market's sectors went today, and every
  *   holding with its research on one row. No separate allocation, account or research boxes.
  * OWN-WORLD: the Quiet Ledger, unchanged: white hairline panels on the cool canvas, ink figures, cobalt only
  *   for links and selection, green and red only for gains and losses, sector heat washes.
- * STORY: read the value and today → the period curve → which US sectors moved → each holding's weight, day,
+ * STORY: read the value → the period curve, today's movers under the 1D figure → which sectors moved → each holding's weight, day,
  *   P&L, score and model upside, flags marked in place → open research or a sector.
- * FIRST VIEWPORT: the summary across the top; 区间净盈亏 (about 62%) beside the 美股板块 map (about 38%);
+ * FIRST VIEWPORT: the summary across the top; 区间净盈亏 (about 62%) beside the sector map, US by default (about 38%);
  *   the 持仓 panel below: donut left, ledger right.
  * FORM: 账本在下, the owner's pick among three pie variants of the dealt 合并账本 (index 1, seed 34de5601);
  *   approved comp .impeccable/mocks/decision/overview-r2-ledgerpie.png.
@@ -26,7 +26,6 @@ import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
 import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
@@ -46,8 +45,8 @@ import {
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
-import { CutoffTag, EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
-import { DayDrivers, dayDrivers, driverOpenings, signedPounds } from "./day-drivers";
+import { HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
+import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
 import { portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
@@ -57,7 +56,7 @@ import { useCurrentDay } from "./current-day";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 import { LocalOnboarding } from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
-import { OverviewSectors, useOverviewSectors } from "./overview-sectors";
+import { OverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
@@ -74,11 +73,10 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
-  const { today, now } = useCurrentDay();
+  const { now } = useCurrentDay();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
   const incoming = query.data;
   const reading = useReadingBoundary();
-  const sectors = useOverviewSectors();
   const runtime = useChartRuntime();
   const demonstration = useDemonstration();
   const refresh = useQuery({
@@ -97,24 +95,21 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         : "total";
   const range = portfolioRange(params.get("range"), "1D");
   const selection = useMemo(() => ({ range, scope: requestedScope, runId: incoming?.runId ?? "" }), [range, requestedScope, incoming?.runId]);
-  const todaySelection = useMemo(() => ({ ...selection, range: "1D" as const }), [selection]);
   const openings = useMemo(() => driverOpenings(range === "1D" ? incoming?.dayAttribution : range === "1W" ? incoming?.windowAttribution : null, requestedScope),
     [range, requestedScope, incoming?.dayAttribution, incoming?.windowAttribution]);
-  const todayOpenings = useMemo(() => driverOpenings(incoming?.dayAttribution, requestedScope), [incoming?.dayAttribution, requestedScope]);
   const history = usePortfolioHistory(selection, Boolean(incoming?.runId), openings);
-  const todayHistory = usePortfolioHistory(todaySelection, Boolean(incoming?.runId), todayOpenings);
   // Only publish matching figures, attributions and history together. An open chart reading
   // stays on its own run. An explicit range or account choice still proceeds.
   const candidate = useMemo(() => incoming && {
-    lens: incoming, selection, history: history.data, today: todayHistory.data,
-    updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt),
-  }, [incoming, selection, history.data, todayHistory.data, query.dataUpdatedAt, history.dataUpdatedAt, todayHistory.dataUpdatedAt]);
-  const complete = candidate?.history && candidate.today && runtime.status !== "loading" ? candidate : undefined;
+    lens: incoming, selection, history: history.data,
+    updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt),
+  }, [incoming, selection, history.data, query.dataUpdatedAt, history.dataUpdatedAt]);
+  const complete = candidate?.history && runtime.status !== "loading" ? candidate : undefined;
   const retained = useRetainedResult(complete, Object.is, (next, previous) =>
     !reading.active || next.selection.range !== previous.selection.range || next.selection.scope !== previous.selection.scope);
   const shown = retained?.selection.scope === requestedScope ? retained : undefined;
   const initialWaiting = !shown && !query.isError && (
-    !incoming || history.isPending || todayHistory.isPending || runtime.status === "loading");
+    !incoming || history.isPending || runtime.status === "loading");
   const displayed = shown ?? candidate;
   const data = displayed?.lens;
   const scope = displayed?.selection.scope ?? requestedScope;
@@ -122,8 +117,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const summaryFailure = query.isRefetchError
     ? { updatedAt: shown?.updatedAt ?? query.dataUpdatedAt, retry: query.refetch }
     : publicationFailure;
-  const todayFailure = todayHistory.isError && shown
-    ? { updatedAt: shown.updatedAt, retry: todayHistory.refetch } : undefined;
   const historyFailure = history.isError && shown
     ? { updatedAt: shown.updatedAt, retry: history.refetch } : undefined;
   const accounts = (data?.accounts ?? []).filter((a) => a.isInvestable);
@@ -200,19 +193,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               label={t("总资产", "Portfolio value")}
               value={currency(value, "GBP", 2)}
             />
-            <div className="mx-overview-today">
-              <TodayMetric
-                scope={scope}
-                data={displayed?.today}
-                failed={todayHistory.isError}
-                retry={todayHistory.refetch}
-                failure={todayFailure}
-                attribution={data?.dayAttribution}
-                previousDay={previousDay}
-                today={today}
-                now={now}
-              />
-            </div>
             <div className="mx-overview-statistics">
               <Metric
                 label={t("浮动盈亏", "Unrealized P&L")}
@@ -252,9 +232,11 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           initialWaiting={initialWaiting}
           runtime={runtime}
           onRange={(value) => update({ range: value })}
+          dayAttribution={data?.dayAttribution}
           windowAttribution={data?.windowAttribution}
+          previousDay={previousDay}
         />
-        <OverviewSectors query={sectors} />
+        <OverviewSectors />
       </div>
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
@@ -296,96 +278,9 @@ function Attention({ items }: { items: AttentionItem[] }) {
     </nav>
   );
 }
-/** What today did to the account, and the positions behind it; the 1D chart's own figure. */
-function TodayMetric({
-  scope,
-  data,
-  failed,
-  retry,
-  failure,
-  attribution,
-  previousDay,
-  today,
-  now,
-}: {
-  scope: Scope;
-  data?: ReturnType<typeof usePortfolioHistory>["data"];
-  failed: boolean;
-  retry: () => unknown;
-  failure?: { updatedAt: number; retry: () => unknown };
-  attribution?: DashboardLens["dayAttribution"];
-  previousDay?: number | null;
-  /** Today's calendar day in the display time zone. */
-  today: string;
-  now: number;
-}) {
-  const t = useCopy();
-  const { locale } = useLocale();
-  const history = data?.history;
-  const money = data?.money;
-  const points = history?.points ?? [];
-  const day = history?.endDay;
-  const pnl = money?.pnl ?? null;
-  const share = money?.pnlPercents.at(-1) ?? null;
-  // On a weekend or before the day's first observation the window is an earlier
-  // trading day: name it instead of calling it today.
-  const label = !day || day === today
-    ? t("今日", "Today")
-    : formatCalendarDate(day, locale, now);
-  // The drivers explain this figure only, so they wait while it stops at a cutoff.
-  const drivers = attribution && money && history ? dayDrivers({
-    attribution,
-    scope,
-    day,
-    dates: points.map((p) => p.date),
-    pnls: money.pnls,
-    openings: data?.openings,
-    cutOff: history.pendingCashFlows,
-  }) : null;
-  return (
-    <Metric
-      label={<>{label}{history && <CutoffTag history={history} />}{failure && <UpdateFailure {...failure} />}</>}
-      helpLabel={label}
-      value={pnl == null ? (failed && !data
-        ? <button type="button" className="mx-inline-retry" onClick={() => void retry()}>{t("重试", "Retry")}</button>
-        : "—") : (
-        <>
-          {signedPounds(pnl)}
-          {share != null && <small className="mx-metric-change">{percent(share, true, 2)}</small>}
-          <EstimateTag points={points} />
-        </>
-      )}
-      tone={tone(pnl)}
-      help={(
-        <>
-          {history?.pendingCashFlows && (
-            <p>
-              {t(
-                "新的现金流待核对：数字统计至最后可核对的记录，核对完成后更新，届时再列出变动最大的持仓。",
-                "New cash flows await reconciliation: the figure stops at the last verified record and catches up once they are reconciled; the largest position moves follow then.",
-              )}
-            </p>
-          )}
-          <p>
-            {t(
-              "本交易日第一条账户记录以来的净盈亏，已扣除当日出入金；下面列出变动最大的持仓。",
-              "Net P&L since the trading day's first account observation, excluding money moved in or out that day; the largest position moves follow.",
-            )}
-          </p>
-          <Facts rows={[[
-            t("上一交易日收益", "Previous trading day"),
-            <span key="previous" className={previousDay == null ? undefined : "mx-" + tone(previousDay)}>
-              {percent(previousDay, true, 2)}
-            </span>,
-          ]]} />
-        </>
-      )}
-      note={drivers ? <DayDrivers drivers={drivers} /> : undefined}
-    />
-  );
-}
 function OverviewHistory({
-  range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange, windowAttribution,
+  range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange,
+  dayAttribution, windowAttribution, previousDay,
 }: {
   range: Range;
   selection: Parameters<typeof usePortfolioHistory>[0];
@@ -397,7 +292,10 @@ function OverviewHistory({
   initialWaiting: boolean;
   runtime: ReturnType<typeof useChartRuntime>;
   onRange: (range: Range) => void;
+  /** Today's moves by position, listed under the 1D figure. */
+  dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
+  previousDay?: number | null;
 }) {
   const t = useCopy();
   const { range, scope } = selection;
@@ -405,9 +303,10 @@ function OverviewHistory({
   const { points } = history;
   const isIntraday = history.source === "intraday";
   const money = data?.money ?? portfolioMoney([], scope);
-  const attribution = windowAttribution;
+  // The 1D figure is today's: the positions behind it follow, as the five-day window's do.
+  const attribution = range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : undefined;
   const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
-  const drivers = range === "1W" && attribution ? dayDrivers({
+  const drivers = attribution ? dayDrivers({
     attribution,
     scope,
     day: history.endDay,
@@ -420,7 +319,15 @@ function OverviewHistory({
     <Panel
       className="mx-overview-history"
       title={t("区间净盈亏", "Period P&L")}
-      help={<HistoryHelp />}
+      help={<>
+        <HistoryHelp />
+        {range === "1D" && <Facts rows={[[
+          t("上一交易日收益", "Previous trading day"),
+          <span key="previous" className={previousDay == null ? undefined : "mx-" + tone(previousDay)}>
+            {percent(previousDay, true, 2)}
+          </span>,
+        ]]} />}
+      </>}
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
@@ -457,7 +364,7 @@ function OverviewHistory({
               {t("收益分析", "View performance")}
             </TextLink>
           </div>
-          {drivers && <DayDrivers span="5D" drivers={drivers} />}
+          {drivers && <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />}
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={points.map((p) => p.date)}

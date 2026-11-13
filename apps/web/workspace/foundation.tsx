@@ -230,6 +230,7 @@ export function Panel({
   title,
   description,
   help,
+  helpLabel,
   action,
   children,
   className = "",
@@ -239,6 +240,8 @@ export function Panel({
   title?: ReactNode;
   description?: ReactNode;
   help?: ReactNode;
+  /** The help's name when the title is a control rather than plain text. */
+  helpLabel?: string;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -254,7 +257,7 @@ export function Panel({
             {title && (
               <div className="mx-panel-title">
                 <h2>{title}</h2>
-                {help && <Help label={title}>{help}</Help>}
+                {help && <Help label={helpLabel ?? title}>{help}</Help>}
               </div>
             )}
             {description && <p>{description}</p>}

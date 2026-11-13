@@ -14,7 +14,7 @@ export type IndexPoint = components["schemas"]["IndexPoint"];
 export type IndexRange = IndexHistory["range"];
 
 export const INDEX_MARKETS: readonly IndexScope[] = [
-  "global", "us", "eu", "uk", "jp", "hk", "kr", "tw", "in", "au", "ch", "ca",
+  "global", "us", "eu", "uk", "jp", "hk", "cn", "kr", "tw", "in", "au", "ch", "ca",
 ];
 
 export function indexMarket(value: string | null): IndexScope | null {

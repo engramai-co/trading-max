@@ -534,11 +534,6 @@
   .mx-page .mx-period-figure > .mx-tag-help {
     align-self: center;
   }
-  /* An estimate tag on today's figure sits right above its drivers: its 44px hit area reaches 9px below the tag and a
-     driver's reaches 12px above its line, so 21px keeps them apart. */
-  .mx-page .mx-overview-today .mx-number:has(.mx-tag-help) + .mx-metric-note {
-    margin-top: 21px;
-  }
   /* Info buttons offer the 44px minimum. A larger area would reach past the 12px below a heading into its content. */
   .mx-page .mx-info::after {
     inset: min(0px, calc(50% - 22px));

@@ -305,7 +305,7 @@ function Positions() {
                                 t("查看持仓 ", "View position ") + h.ticker
                               }
                             >
-                              <SecurityPeek ticker={h.ticker} position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
+                              <SecurityPeek ticker={h.ticker} range="1D" position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
                                 <Instrument ticker={h.ticker} name={h.name} />
                               </SecurityPeek>
                             </button>

@@ -60,6 +60,7 @@ from .sector_sessions import (
     exchange_sessions,
     latest_session,
     prior_session_dates,
+    provider_previous_close,
     provider_session_close,
 )
 
@@ -108,6 +109,7 @@ _CLOCKS = {
     "XCBF": ("XCBF", "America/Chicago"),
     "XETR": ("XETR", "Europe/Berlin"),
     "XPAR": ("XPAR", "Europe/Paris"),
+    "XSHG": ("XSHG", "Asia/Shanghai"),
     "XTAI": ("XTAI", "Asia/Taipei"),
     "XTSE": ("XTSE", "America/Toronto"),
     "XASX": ("XASX", "Australia/Sydney"),
@@ -479,11 +481,14 @@ class IndexService:
                         if window.open <= p.at <= window.close + timedelta(minutes=15)
                     ]
                     completed = board_complete(window, now)
-                    official = (
-                        closes.get(window.date) or provider_session_close(item, window, now)
-                        if completed
-                        else None
-                    )
+                    official = None
+                    if completed:
+                        session_close = provider_session_close(item, window, now)
+                        official = (
+                            (session_close if spec.scope == "cn" else None)
+                            or closes.get(window.date)
+                            or session_close
+                        )
                     if official is not None:
                         points = [p for p in points if p.at < window.close] + [
                             IndexPoint(at=window.close, value=official)
@@ -517,6 +522,8 @@ class IndexService:
                     else (item.previous_close if item and not window else None)
                 )
                 if points:
+                    if base is None and spec.scope == "cn" and window:
+                        base = provider_previous_close(item, window)
                     last = points[-1]
                     change = None
                     if base:

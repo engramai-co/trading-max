@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { alignIndices } from "./market-indices-data";
+import { alignIndices, indexHref, indexMarket } from "./market-indices-data";
+import { sectorMarket } from "./sectors-data";
+
+it("resolves China A market links without enabling an A-share sector board", () => {
+  expect(indexMarket("cn")).toBe("cn");
+  expect(indexHref({ scope: "cn", id: "csi-300" })).toBe("/sectors?market=cn&index=csi-300");
+  expect(sectorMarket("cn")).toBeNull();
+});
 
 const point = (at: string, value: number) => ({ at, value });
 

@@ -28,7 +28,12 @@ from .index_models import (
     GlobalRowMarket,
 )
 from .sector_models import SectorSessionWindow
-from .sector_sessions import calendar_known, exchange_sessions, provider_session_close
+from .sector_sessions import (
+    calendar_known,
+    exchange_sessions,
+    provider_previous_close,
+    provider_session_close,
+)
 
 MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "us": "sp-500",
@@ -40,6 +45,7 @@ MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "au": "asx-200",
     "hk": "hang-seng",
     "kr": "kospi",
+    "cn": "csi-300",
     "tw": "taiex",
     "in": "nifty-50",
 }
@@ -101,6 +107,14 @@ LOCATIONS: dict[GlobalRowMarket, frozenset[str]] = {
     "hk": frozenset({"Hong Kong"}),
     "em": EMERGING,
 }
+# Each map market's own share of the ACWI; everything else is the rest of the world.
+MAP_LOCATIONS: dict[GlobalMapMarket, frozenset[str]] = {
+    **{market: LOCATIONS[market] for market in ("us", "ca", "uk", "eu", "ch", "jp", "au", "hk")},
+    "kr": frozenset({"South Korea", "Korea (South)"}),
+    "cn": frozenset({"China"}),
+    "tw": frozenset({"Taiwan"}),
+    "in": frozenset({"India"}),
+}
 
 
 LOGGER = logging.getLogger(__name__)
@@ -118,6 +132,7 @@ CALENDARS = {
     "au": ("XASX", "Australia/Sydney"),
     "hk": ("XHKG", "Asia/Hong_Kong"),
     "kr": ("XKRX", "Asia/Seoul"),
+    "cn": ("XSHG", "Asia/Shanghai"),
     "tw": ("XTAI", "Asia/Taipei"),
     "in": ("XNSE", "Asia/Kolkata"),
 }
@@ -304,11 +319,10 @@ def _market_move(
     ):
         expected = window.break_start
     complete = reference.end >= window.close
-    level = (
-        closes.get(window.date) or provider_session_close(intraday, window, reference.end)
-        if complete
-        else None
-    )
+    level = None
+    if complete:
+        official = provider_session_close(intraday, window, reference.end)
+        level = (official if market == "cn" else None) or closes.get(window.date) or official
     points = _points(intraday, reference.end)
     observations = [
         point for point in points if window.open <= point[0] <= window.close + timedelta(minutes=15)
@@ -317,7 +331,11 @@ def _market_move(
         stamp, value = observations[-1]
         if level is None and stamp >= expected - timedelta(minutes=5 if complete else 35):
             level = value
-        if (
+        if market == "cn":
+            # Some China indices lack daily history. A dated daily baseline
+            # takes precedence over Spark's previous close, which can lag.
+            base = base or provider_previous_close(intraday, window)
+        elif (
             base is None
             and intraday is not None
             and points[-1][0].astimezone(zone).date().isoformat() == window.date
@@ -424,8 +442,22 @@ def estimate_contribution(
     em_move: float | None,
 ) -> GlobalMarketContribution:
     total = reference.move if reference else None
+    shares: dict[GlobalMapMarket, float] = {}
+    other = None
+    if weights is not None:
+        shares = {
+            market: fsum(
+                weight
+                for location, weight in weights.locations.items()
+                if location in MAP_LOCATIONS[market]
+            )
+            for market in MAIN_INDEX
+        }
+        other = max(0.0, fsum(weights.locations.values()) - fsum(shares.values()))
     markets = [
-        market_moves.get(market) or GlobalMarketMove(market=market, move=None, not_open=False)
+        (
+            market_moves.get(market) or GlobalMarketMove(market=market, move=None, not_open=False)
+        ).model_copy(update={"weight": shares.get(market)})
         for market in MAIN_INDEX
     ]
     rows: list[GlobalContributionRow] = []
@@ -468,6 +500,7 @@ def estimate_contribution(
         weights_as_of=weights.as_of if weights else None,
         weights_stale=weights_stale,
         markets=markets,
+        other_weight=other,
         rows=rows,
         residual=residual,
         state=state,

@@ -68,6 +68,11 @@ const points = Array.from({ length: 12 }, (_, index) => ({
   high: 111 + index, low: 108 + index, volume: 1000, sma20: null, sma50: null, sma200: null,
 }));
 const markers = [{ ticker: "EQQQ", date: points[3].date, kind: "B", accounts: ["invest"], buyOrders: 1, buyQuantity: 1, sellOrders: 0, sellQuantity: 0, buyAveragePrice: 110, sellAveragePrice: null }];
+/** Fifteen-minute bars: the prior session's last bar, then the clock's session from the open. */
+const sessionBars = [
+  { date: "2026-11-10T16:15:00", close: 120 },
+  ...Array.from({ length: 6 }, (_, index) => ({ date: `${date}T${String(8 + index).padStart(2, "0")}:00:00`, close: 120 + index })),
+];
 
 async function synthetic(page: Page, late?: Promise<void>, fixture = summary, publishReadings = true, fundPending = false) {
   const requests: string[] = [];
@@ -118,7 +123,10 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
       return route.fulfill({ json: { ...fund, ukReportingFund } });
     }
     if (path.endsWith("/journal")) return route.fulfill({ json: { ticker: "EQQQ", notes: [], models: [] } });
-    if (path.endsWith("/prices")) return route.fulfill({ json: {
+    if (path.endsWith("/prices")) return route.fulfill({ json: url.searchParams.get("interval") === "15m" ? {
+      ticker: "EQQQ", requestedInterval: "15m", actualInterval: "15m", asOf: stamp,
+      currency: "GBP", points: sessionBars, tradeMarkers: [], availableSessions: 2,
+    } : {
       ticker: "EQQQ", requestedInterval: "1d", actualInterval: "1d", asOf: stamp,
       currency: "GBP", points, tradeMarkers: markers, availableSessions: points.length,
     } });
@@ -214,7 +222,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—"]);
   });
 
-  test("overview previews the ledger’s session move; holdings retains its price history", async ({ page }) => {
+  test("overview previews the ledger’s session move; holdings previews the session’s path", async ({ page }) => {
     test.skip(!await page.evaluate(() => matchMedia("(hover: hover) and (pointer: fine)").matches), "Hover is pointer-only.");
     const requests = await synthetic(page);
     await page.goto("/?range=1D");
@@ -227,8 +235,10 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
 
     await page.goto("/holdings");
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
-    await expect(peek).toContainText("3M");
+    await expect(peek).toContainText("今日");
+    await expect(peek).toContainText("+4.17%");
     await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
+    expect(requests.some((path) => path.endsWith("/prices"))).toBe(true);
   });
 
   test("drawer uses published ETF holdings and shows a stock event", async ({ page }, info) => {

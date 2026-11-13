@@ -25,6 +25,30 @@ def test_weights_use_location_and_total_fund_nav():
     )
 
 
+def test_country_funds_count_toward_the_market_they_hold():
+    data = payload()
+    data["countryOfRisk"]["value"][3] = "Ireland"
+    data["isin"] = {"value": ["US0", "US1", "KR0", "IE00BZCQB185", "XX0"]}
+    assert aggregate_acwi_weights(data, NOW).locations == pytest.approx(
+        {"United States": 0.65, "South Korea": 0.2, "India": 0.1}
+    )
+
+
+def test_weights_from_an_older_aggregation_are_refetched(tmp_path):
+    stored = aggregate_acwi_weights(payload(), NOW).model_copy(update={"method": 1})
+    path = tmp_path / "research-cache" / "sector-universe" / "acwi-weights.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(stored.model_dump_json(by_alias=True))
+    calls = []
+
+    def fetch(now):
+        calls.append(now)
+        return aggregate_acwi_weights(payload(), now)
+
+    weights, stale = AcwiWeightsProvider(tmp_path, fetch).get(NOW + timedelta(hours=1))
+    assert calls and not stale and weights.method == 2
+
+
 def test_weights_reject_incomplete_holdings():
     data = payload()
     data["countryOfRisk"]["value"].pop()

@@ -127,6 +127,7 @@ export function SectorsWorkspace() {
     ch: t("瑞士", "Switzerland"),
     us: t("美股", "US"),
     uk: t("英股", "UK"),
+    cn: t("A 股", "China A"),
     hk: t("港股", "Hong Kong"),
     kr: t("韩股", "Korea"),
     jp: t("日股", "Japan"),
