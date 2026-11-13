@@ -122,3 +122,55 @@ and valuation are skipped for recognized funds.
 
 See [security identity and GICS](../architecture/security-master-and-gics.md)
 for the constituent-to-company enrichment contract.
+
+## Research depth and data rights
+
+The fund research overview reports exact ISIN matches from HMRC's
+[approved offshore reporting funds](https://www.gov.uk/government/publications/approved-offshore-reporting-funds).
+It distinguishes approval, a future effective date, cessation, an absent match
+and unavailable evidence. The list can omit an ISIN; an absent match is not a
+tax classification. The displayed dates come from the register. Contains
+public sector information licensed under the
+[Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
+The background refresh checks GOV.UK metadata at most once per week per state
+root, downloads the workbook only for a new release, and keeps the last valid
+register on failure. Failed attempts back off for one day.
+
+The peers lens compares exact observed benchmark labels, domicile, hedge and
+income treatment. It uses held profiles plus existing issuer catalogue entries
+with a cached, ISIN-verified share-class profile. A catalogue name alone does
+not establish a benchmark. Each percentile uses a separate comparable subset:
+same fee basis; same currency and disclosure date for share-class assets; same
+one-year period, currency, hedge and net/gross benchmark variant for tracking;
+and the same portfolio snapshot with at least 90% coverage on both sides for
+overlap. Higher percentiles mean larger raw values. A tied peer counts half
+and a single observation has no percentile. Overlap is only available for
+held share classes. The UI shows each subset's count and evidence. Coverage
+varies with the share classes already observed; there is no network sweep of
+issuer catalogues to fill missing peers.
+
+The journal records observed changes to issuer benchmark labels and retains
+their sources and observation times. Missing disclosures do not erase the
+last known benchmark. A change does not imply a historical rule effective date
+unless the issuer evidence supplies one. No history is invented for periods
+before the observations began.
+
+Additional data connections remain off pending usable rights and evidence:
+
+| Source | Conclusion for new collection |
+|---|---|
+| [BlackRock / iShares UK](https://www.ishares.com/uk/individual/en/compliance/terms-and-conditions) | Public NAV and performance disclosure; copying and reuse are restricted. No automated NAV archive or new catalogue requests. |
+| [Invesco](https://www.invesco.com/corporate/en/footer/terms-of-use.html) | Personal website use does not establish an automated NAV archive grant. No new requests. |
+| [Vanguard UK](https://www.vanguard.co.uk/uk-fund-directory/terms-and-conditions) | Public fund directory and prices; no verified product reuse or systematic archiving grant. No new requests. |
+| [VanEck UK](https://www.vaneck.com/uk/en/terms-and-conditions) | Personal storage is allowed; product use and distribution are restricted. No new requests. |
+| [HSBC Asset Management UK](https://www.assetmanagement.hsbc.co.uk/en/individual-investor/terms-and-conditions) | Personal extracts do not permit systematic archival or redistribution. No new requests. |
+| [State Street](https://www.ssga.com/dk/en_gb/footer/terms-and-conditions) and other existing issuer adapters | No new data connection or reuse grant assumed. |
+| [Yahoo Finance](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) | Some LSE pages expose delayed bid and ask, without verified per-side observation times or permission to automate sampling and archive data. No new quote requests. |
+| [MSCI](https://developer.msci.com/apis/index-api), [FTSE Russell](https://www.lseg.com/en/ftse-russell/index-resources/indices-subscribe-data), [S&P DJI](https://www.spglobal.com/spdji/en/disclaimers/) and [Nasdaq](https://www.nasdaq.com/products/global-indexes/data) | No verified free feed for the necessary daily benchmark total-return variants with rights for this use. No new requests. |
+
+Daily NAV history, bid/ask and premium/discount stay unavailable without
+authorized sources. A closing market price is not compared with a NAV struck
+at an unverified time, and a session high/low is not a spread. Issuer-published
+tracking error remains available where reported; the desk does not estimate
+daily tracking error from a price-only index, another ETF, or mismatched NAV.
+The portfolio overview's compact ETF publication is unchanged.

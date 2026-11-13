@@ -38,7 +38,7 @@ export function signedPoints(value: number) {
   return (rounded > 0 ? "+" : rounded < 0 ? "−" : "") + Math.abs(rounded).toFixed(2);
 }
 
-export function trackingDisplay(reading: ETFReading | undefined, t: Copy, short = false) {
+export function trackingDisplay(reading: Pick<ETFReading, "tracking" | "issuer" | "indexName"> | undefined, t: Copy, short = false) {
   const tracking = reading?.tracking;
   const missing = t("暂无", "Unavailable");
   const value = tracking?.differencePp;
@@ -52,6 +52,7 @@ export function trackingDisplay(reading: ETFReading | undefined, t: Copy, short 
     ? t("未对冲", "Unhedged") : value ?? t("对冲未确认", "Hedging unconfirmed");
   const details = tracking ? [
     reading?.issuer, tracking.evidence?.sourceUrl, reading?.indexName,
+    tracking.evidence?.fetchedAt && t("读取于 ", "Fetched ") + tracking.evidence.fetchedAt,
     `${tracking.currency ?? "—"} · ${hedge(tracking.navHedging)} / ${tracking.benchmarkCurrency ?? "—"} · ${hedge(tracking.benchmarkHedging)}`,
     period,
   ].filter(Boolean) : [];
@@ -61,7 +62,7 @@ export function trackingDisplay(reading: ETFReading | undefined, t: Copy, short 
   };
 }
 
-export function overlapDisplay(reading: ETFReading | undefined, t: Copy) {
+export function overlapDisplay(reading: Pick<ETFReading, "overlap" | "issuer" | "evidence"> | undefined, t: Copy) {
   const overlap = reading?.overlap;
   const display = overlap?.value == null ? t("暂无", "Unavailable") : percent(overlap.value, false, 0);
   const status = overlap?.state === "stale" ? t("日期未验证", "Dates unverified") : undefined;
@@ -81,7 +82,8 @@ export function overlapDisplay(reading: ETFReading | undefined, t: Copy) {
         t("持仓日期 · 基金 / 其余基金", "Holdings dates · fund / other funds") + `: ${fundDate} / ${otherDates}`,
         t("账户快照", "Account snapshot") + `: ${overlap.portfolioAsOf ?? missing}`,
       ].join(" · "),
-      reading?.issuer, reading?.evidence?.holdings_date?.sourceUrl, status,
+      reading?.issuer, reading?.evidence?.holdings_date?.sourceUrl,
+      reading?.evidence?.holdings_date?.fetchedAt && t("读取于 ", "Fetched ") + reading.evidence.holdings_date.fetchedAt, status,
     ].filter(Boolean).join(" · "),
   };
 }

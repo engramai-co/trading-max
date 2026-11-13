@@ -79,6 +79,7 @@ def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
         ETFTracking,
     )
     from trading_max.analytics.lookthrough import FundSnapshot
+    from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY
 
     from services.api.trading_max_api.routes.research import research_fund
     from services.api.trading_max_api.routes.system import dashboard_etfs
@@ -100,6 +101,17 @@ def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
     )
     calls = []
     payloads = {
+        HMRC_REPORTING_KEY: {isin: {"state": "reporting", "effectiveFrom": stamp}},
+        ETF_PEERS_KEY: {
+            isin: {
+                "benchmark": "Synthetic index",
+                "domicile": "Ireland",
+                "hedging": "unhedged",
+                "incomeUse": "Accumulating",
+                "publishedAt": stamp + "T00:00:00Z",
+                "funds": [],
+            }
+        },
         ETF_SUMMARY_KEY: ETFPortfolio(funds=[reading]).model_dump(),
         etf_detail_key(isin): ETFDetail(reading=reading).model_dump(),
         etf_holdings_key(isin): FundSnapshot(
@@ -130,3 +142,12 @@ def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
     assert fund.reading == summary.funds[0]
     assert fund.holdings is None
     assert fund.one_year_tracking.difference_pp == -0.50
+    assert fund.uk_reporting_fund.state == "reporting"
+    assert fund.peer_comparison is None
+    assert ETF_PEERS_KEY not in calls
+
+    calls.clear()
+    peers = research_fund("EQQQ.L", request, run_id="synthetic", detail="peers")
+    assert peers.peer_comparison.benchmark == "Synthetic index"
+    assert peers.uk_reporting_fund is None
+    assert calls == [ETF_SUMMARY_KEY, etf_detail_key(isin), ETF_PEERS_KEY]

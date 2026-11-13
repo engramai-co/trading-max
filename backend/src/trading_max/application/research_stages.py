@@ -7,7 +7,12 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 
-from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, update_etf_journal
+from trading_max.analytics.etf_journal import (
+    ETF_BENCHMARKS_KEY,
+    ETF_JOURNAL_KEY,
+    BenchmarkObservation,
+    update_etf_journal,
+)
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
@@ -1037,15 +1042,34 @@ class TypedPublishSnapshotStage:
             current = ETFPortfolio.model_validate(
                 self.artifacts.get_json(current_etf.artifact_id).payload
             )
-            updated = update_etf_journal(
-                journal, old, current, current_etf.generated_at.isoformat()
+            benchmark_ref = refs_by_key.get(ETF_BENCHMARKS_KEY)
+            previous_benchmarks = (
+                self.artifacts.get_json(benchmark_ref.artifact_id).payload if benchmark_ref else {}
             )
+            benchmarks = {
+                key: BenchmarkObservation.model_validate(row)
+                for key, row in previous_benchmarks.items()
+            }
+            updated = update_etf_journal(
+                journal, old, current, current_etf.generated_at.isoformat(), benchmarks=benchmarks
+            )
+            benchmark_payload = {
+                key: row.model_dump(mode="json") for key, row in benchmarks.items()
+            }
+            if benchmark_payload != previous_benchmarks:
+                refs_by_key[ETF_BENCHMARKS_KEY] = self.artifacts.put_json(
+                    key=ETF_BENCHMARKS_KEY,
+                    kind="etf-benchmark-observations",
+                    payload=benchmark_payload,
+                    producer_version="etf-benchmark-observations-v1",
+                    dependency_artifact_ids=[current_etf.artifact_id],
+                ).ref
             if updated != journal:
                 refs_by_key[ETF_JOURNAL_KEY] = self.artifacts.put_json(
                     key=ETF_JOURNAL_KEY,
                     kind="etf-journal",
                     payload=updated,
-                    producer_version="etf-journal-v1",
+                    producer_version="etf-journal-v2",
                     dependency_artifact_ids=[current_etf.artifact_id],
                 ).ref
             # ETF evidence is a complete set for the current account selection.

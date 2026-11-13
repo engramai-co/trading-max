@@ -238,6 +238,22 @@ class FundCatalog:
     def __init__(self, root: Path):
         self.root = root / "reference" / "fund-catalogs"
 
+    def cached_isins(self) -> set[str]:
+        """Discover peer candidates from existing catalogues without issuer I/O."""
+        result: set[str] = set()
+        for issuer in CATALOGS:
+            path = self.root / (issuer.lower().replace(" ", "-") + ".json")
+            try:
+                payload = json.loads(path.read_text())
+                result.update(
+                    identity
+                    for row in payload["funds"]
+                    if row.get("issuer") == issuer and (identity := isin(row.get("isin")))
+                )
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+        return result
+
     def _catalog(self, issuer: str, client: httpx.Client) -> list[FundSpec]:
         from .fund_holdings import _atomic_json
 

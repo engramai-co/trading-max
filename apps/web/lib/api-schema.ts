@@ -3059,6 +3059,7 @@ export interface components {
         ETFDisclosure: {
             /** Effectiveat */
             effectiveAt?: string | null;
+            evidence?: components["schemas"]["FundEvidence"] | null;
             /**
              * Kind
              * @enum {string}
@@ -3066,6 +3067,7 @@ export interface components {
             kind: "holdings" | "index-change";
             /** Observedat */
             observedAt: string;
+            previousEvidence?: components["schemas"]["FundEvidence"] | null;
             /** Previousvalue */
             previousValue?: string | null;
             /** Sourceurl */
@@ -3114,6 +3116,61 @@ export interface components {
             state: "available" | "stale" | "missing";
             /** Value */
             value?: number | null;
+        };
+        /** ETFPeer */
+        ETFPeer: {
+            fee?: components["schemas"]["ETFPeerValue"] | null;
+            /** Heldticker */
+            heldTicker?: string | null;
+            /** Isin */
+            isin: string;
+            /** Name */
+            name: string;
+            overlap?: components["schemas"]["ETFOverlap"] | null;
+            overlapEvidence?: components["schemas"]["FundEvidence"] | null;
+            shareClassSize?: components["schemas"]["ETFPeerValue"] | null;
+            /** Sourceurl */
+            sourceUrl: string;
+            tracking?: components["schemas"]["ETFTracking"] | null;
+        };
+        /** ETFPeerComparison */
+        ETFPeerComparison: {
+            /** Benchmark */
+            benchmark: string;
+            /** Domicile */
+            domicile: string;
+            /** Funds */
+            funds: components["schemas"]["ETFPeer"][];
+            /** Hedging */
+            hedging: string;
+            /** Incomeuse */
+            incomeUse: string;
+            /**
+             * Publishedat
+             * Format: date-time
+             */
+            publishedAt: string;
+            /** Ranks */
+            ranks?: {
+                [key: string]: components["schemas"]["ETFPeerRank"];
+            };
+        };
+        /** ETFPeerRank */
+        ETFPeerRank: {
+            /** Comparableisins */
+            comparableIsins: string[];
+            /** Count */
+            count: number;
+            /** Percentile */
+            percentile: number;
+        };
+        /** ETFPeerValue */
+        ETFPeerValue: {
+            /** Basis */
+            basis: string;
+            evidence: components["schemas"]["FundEvidence"];
+            /** Value */
+            value: number;
         };
         /** ETFPortfolio */
         ETFPortfolio: {
@@ -3536,6 +3593,7 @@ export interface components {
             /** Methodology */
             methodology?: string | null;
             oneYearTracking?: components["schemas"]["ETFTracking"] | null;
+            peerComparison?: components["schemas"]["ETFPeerComparison"] | null;
             profile?: components["schemas"]["FundShareClass"] | null;
             reading?: components["schemas"]["ETFReading"] | null;
             /** Replication */
@@ -3566,6 +3624,7 @@ export interface components {
              * @default daily-nav-and-index-history-unavailable
              */
             trackingErrorState: string;
+            ukReportingFund?: components["schemas"]["UKReportingFund"] | null;
             /** Warnings */
             warnings?: string[];
         };
@@ -7796,6 +7855,21 @@ export interface components {
             /** Pe */
             pe: number | null;
         };
+        /** UKReportingFund */
+        UKReportingFund: {
+            /** Ceasedon */
+            ceasedOn?: string | null;
+            /** Effectivefrom */
+            effectiveFrom?: string | null;
+            evidence?: components["schemas"]["FundEvidence"] | null;
+            /** Publicationdate */
+            publicationDate?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "reporting" | "ceased" | "effective-later" | "not-listed" | "unavailable";
+        };
         /** UserProfile */
         UserProfile: {
             /** Accountlabels */
@@ -9619,7 +9693,7 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
-                detail?: "profile" | "full" | "journal";
+                detail?: "profile" | "full" | "journal" | "peers";
             };
             header?: never;
             path: {

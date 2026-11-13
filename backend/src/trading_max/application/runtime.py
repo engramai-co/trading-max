@@ -27,6 +27,7 @@ from .account_stages import (
 from .broker_stages import BrokerSyncStage
 from .cfd_stages import CfdAccountStage
 from .decision_stages import AccountDecisionStage
+from .etf_depth_stage import ETFDepthStage
 from .lookthrough_stages import PortfolioLookthroughStage
 from .nav_stages import AccountDayAttributionStage, AccountIntradayNavStage, AccountNavStage
 from .performance_stages import AccountPerformanceStage
@@ -142,6 +143,7 @@ class TypedWorkerRuntime:
                     assumptions_store=self.valuation_assumptions,
                 ),
                 EarningsArtifactStage(self.artifacts, self.research_service),
+                ETFDepthStage(self.state_root, self.artifacts, self.snapshots),
                 TypedPublishSnapshotStage(
                     self.artifacts,
                     self.snapshots,

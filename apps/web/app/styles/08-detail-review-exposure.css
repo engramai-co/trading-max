@@ -876,3 +876,11 @@ details.mx-review-fill-more > summary {
     padding-inline: 6px;
   }
 }
+
+.mx-etf-evidence {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-variant-numeric: tabular-nums;
+}

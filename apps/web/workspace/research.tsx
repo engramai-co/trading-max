@@ -628,7 +628,7 @@ export function ResearchWorkspace() {
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (
-                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} isin={selected.fundIsin} />
+                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} />
                       )}
                       {displayTab === "analyst" && !isFund && (
                         <AnalystView data={displayData} revision={revision} price={price} />
