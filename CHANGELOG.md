@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.46.1] - 2026-11-13
+
+### Fixed
+
+- The Overview holdings table now shows technical scores for funds; they were computed in research but left out of the overview.
+- HSBC fund data cached before the factsheet parser update is read again on the next full refresh, so its tracking difference appears without waiting for the cache to expire.
+
 ## [1.46.0] - 2026-11-13
 
 ### Added
