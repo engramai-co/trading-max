@@ -34,6 +34,13 @@ describe("research deep links", () => {
       expect(resolveResearchIdentity(instruments, requested).selected?.ticker).toBe(ticker);
     },
   );
+  it("opens a held fund by its broker display symbol without conflating venues", () => {
+    const amsterdam = { ticker: "SEMI.AS", isFund: true };
+    const london = { ticker: "SEMI.L", isFund: true };
+    expect(resolveResearchIdentity([amsterdam], "SEMI").selected).toBe(amsterdam);
+    expect(resolveResearchIdentity([amsterdam, london], "SEMI").candidates).toEqual([amsterdam, london]);
+    expect(resolveResearchIdentity([amsterdam, london], "SEMI.L").selected).toBe(london);
+  });
   it("requires a listing choice for ambiguous old symbols and respects exact identities", () => {
     expect(resolveResearchIdentity(instruments, "ABC")).toEqual({ selected: undefined, candidates: instruments.slice(3) });
     expect(resolveResearchIdentity([...instruments, { ticker: "ABC" }], "abc").selected?.ticker).toBe("ABC");

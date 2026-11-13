@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
@@ -490,6 +491,11 @@ def research_prices(
 
     if not re.fullmatch(r"[A-Za-z0-9^=._-]{1,32}", ticker):
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
+    manifest = latest_or_503(request)
+    research = app_service(request, "research")
+    listing = research.held_fund(ticker, manifest)
+    if listing:
+        ticker = listing.ticker
     fallback_reason = None
     if interval != "1d":
         try:
@@ -498,9 +504,7 @@ def research_prices(
             result.coverage_start = result.points[0].date if result.points else None
             result.coverage_end = result.points[-1].date if result.points else None
             try:
-                daily = app_service(request, "research").price_series(
-                    ticker, latest_or_503(request), limit=2_000
-                )
+                daily = research.price_series(ticker, manifest, limit=2_000)
                 visible_dates = {p.date[:10] for p in result.points}
                 result.trade_markers = [
                     m for m in daily.trade_markers if m.date[:10] in visible_dates
@@ -511,9 +515,7 @@ def research_prices(
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
-        result = app_service(request, "research").price_series(
-            ticker, latest_or_503(request), limit=limit
-        )
+        result = research.price_series(ticker, manifest, limit=limit)
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
         result.coverage_start = result.points[0].date if result.points else None
@@ -640,11 +642,26 @@ def research_fund(
         manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="snapshot not found") from None
+    research = app_service(request, "research")
+    listing = research.held_fund(ticker, manifest)
     portfolio = read_etf_portfolio(store, manifest.run_id)
-    reading = find_etf(portfolio.funds, ticker)
-    if reading and (isin := reading.isin):
+    reading = (
+        research.fund_reading(listing, portfolio.funds)
+        if listing
+        else find_etf(portfolio.funds, ticker)
+    )
+    if reading:
+        isin = reading.isin
+        try:
+            snapshot = (
+                read_etf_detail(store, manifest.run_id, isin)
+                if isin
+                else ETFDetail(reading=reading)
+            )
+        except FileNotFoundError:
+            snapshot = ETFDetail(reading=reading)
         fund = fund_research_from_snapshot(
-            ticker, read_etf_detail(store, manifest.run_id, isin), include_holdings=detail == "full"
+            listing.ticker if listing else ticker, snapshot, include_holdings=detail == "full"
         )
         if detail == "journal":
             try:
@@ -653,7 +670,12 @@ def research_fund(
                 journal = {}
             fund.disclosures = [ETFDisclosure.model_validate(row) for row in journal.get(isin, [])]
         return fund
-    lens = app_service(request, "research").lens_snapshot(ticker, "fundamentals", manifest)
+    if listing:
+        # Held fund lenses use the account publication, never a second issuer fetch.
+        return FundResearch(
+            ticker=listing.ticker, isin=listing.isin or None, fetched_at="", state="pending"
+        )
+    lens = research.lens_snapshot(ticker, "fundamentals", manifest)
     if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
         raise HTTPException(status_code=422, detail="fund-research-not-applicable")
     info = (lens.fundamentals or {}).get("metrics") or {}

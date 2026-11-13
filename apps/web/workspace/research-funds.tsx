@@ -6,7 +6,7 @@ import { queryOptions, useQuery } from "@tanstack/react-query";
 import { currency, number, percent, safeUrl } from "@/workspace/data";
 import { api, object, str } from "./data";
 import {
-  etfPortfolioQuery, fieldEvidence, overlapDisplay, signedPoints, trackingDisplay,
+  etfPortfolioQuery, fieldEvidence, findETF, overlapDisplay, signedPoints, trackingDisplay,
   type Copy, type ETFReading, type FundEvidence,
 } from "./etf-data";
 import { EvidenceReading } from "./etf-reading";
@@ -56,10 +56,10 @@ function fundReading(fund: Fund): ETFReading {
   };
 }
 
-export function FundWorkbench({ data, mode, onExplore }: {
-  data: ResearchLensSnapshot; mode: FundMode; onExplore: (ticker: string) => void;
+export function FundWorkbench({ data, mode, onExplore, isin }: {
+  data: ResearchLensSnapshot; mode: FundMode; onExplore: (ticker: string) => void; isin?: string | null;
 }) {
-  if (mode === "peers") return <FundPeers data={data} />;
+  if (mode === "peers") return <FundPeers data={data} isin={isin} />;
   return <FundIssuerLens data={data} mode={mode} onExplore={onExplore} />;
 }
 
@@ -68,7 +68,7 @@ function FundIssuerLens({ data, mode, onExplore }: {
 }) {
   const t = useCopy();
   const query = useQuery(fundQuery(data.ticker, data.runId, mode === "holdings" ? "full" : "profile"));
-  if (query.isPending) return <Pending shape="holdings" label={t("正在读取基金…", "Loading fund…")} />;
+  if (query.isPending || query.data?.state === "pending") return <Pending shape="holdings" label={t("正在读取基金…", "Loading fund…")} />;
   if (!query.data) return <QueryError retry={query.refetch} />;
   const fund = query.data;
   return <>
@@ -228,11 +228,12 @@ function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: str
   );
 }
 
-function FundPeers({ data }: { data: ResearchLensSnapshot }) {
+function FundPeers({ data, isin }: { data: ResearchLensSnapshot; isin?: string | null }) {
   const t = useCopy();
   const query = useQuery(etfPortfolioQuery(data.runId));
   const held = query.data?.runId === data.runId ? query.data.funds ?? [] : [];
-  const current = held.find((fund) => fund.tickers.some((ticker) => ticker.replace(/\.L$/, "") === data.ticker.replace(/\.L$/, "")));
+  const current = findETF(held, data.ticker, isin) ?? (!isin
+    ? findETF(held, data.ticker.replace(/\.L$/, "")) : undefined);
   // Both Nasdaq lines are worth comparing: only the held share classes can enter this table.
   const nasdaq = new Set(["IE0032077012", "IE00BYVTMW98"]);
   const peers = current ? held.filter((fund) => fund !== current && (

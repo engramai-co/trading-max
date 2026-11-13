@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.41.0] - 2026-11-13
+
+### Added
+
+- Markets → Global has a Sectors view. The sector map shows how each MSCI
+  World sector moved today, its contribution to the MSCI World move, and your
+  look-through exposure.
+- On phones, tap a sector to open its details. Going back returns you to the
+  same place.
+
+### Changed
+
+- Markets opens on Global by default, with Regions and Sectors views. Links to
+  a specific market still open that market.
+
+### Fixed
+
+- Funds you hold now open in Research with their fund views. You no longer
+  need to add them to your watchlist first.
+
 ## [1.40.1] - 2026-11-13
 
 ### Fixed

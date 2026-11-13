@@ -124,7 +124,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
       colour: index,
       facts: signal?.facts ?? [],
-      href: signal?.href ?? "/research?ticker=" + encodeURIComponent(ticker),
+      href: (!fund && signal?.href) || "/research?ticker=" + encodeURIComponent(positions[0].researchTicker ?? ticker),
     };
   });
   const groups: LedgerGroup[] = [

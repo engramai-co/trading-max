@@ -645,3 +645,62 @@ a.mx-sector-symbol:hover {
 .mx-sector-market-picker {
   width: 100%;
 }
+
+/* Global sector indices share the map and rail, with one wash per sector. */
+.mx-global-view-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-inline-start: auto;
+}
+.mx-global-sectors-body .mx-sector-map {
+  height: clamp(440px, calc(100dvh - 336px), 760px);
+}
+.mx-sector-block[data-flat-map] {
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-soft));
+}
+.mx-sector-block[data-flat-map] .mx-sector-head {
+  background: none;
+}
+.mx-global-sector-ledger h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mx-global-sector-ledger .mx-sector-subgroup-name {
+  white-space: normal;
+}
+.mx-global-sector-ledger .mx-sector-subgroup,
+.mx-global-sector-ledger .mx-sector-members li {
+  min-height: 36px;
+}
+.mx-global-sector-ledger.mx-sector-members {
+  padding-top: 12px;
+}
+.mx-global-sector-ledger > ul {
+  padding-left: 0;
+}
+.mx-sector-list[data-index-only] button {
+  grid-template-areas: "name spark change caret";
+  min-height: 52px;
+}
+@media (max-width: 767px) {
+  .mx-global-view-switch {
+    max-width: 70%;
+  }
+  .mx-global-view-switch .mx-info {
+    width: 44px;
+    height: 44px;
+  }
+  .mx-sectors-bar:has(.mx-global-view-switch) .mx-sector-market-picker {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+  }
+}
+@media (max-width: 359px) {
+  .mx-sector-list[data-index-only] button {
+    grid-template-areas: "name change caret";
+  }
+}

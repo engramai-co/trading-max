@@ -327,40 +327,60 @@ def _market_move(
     )
 
 
-def read_global_contribution(
-    prices: SharedMarketPrices, weights: AcwiWeights | None, weights_stale: bool, now: datetime
-) -> GlobalMarketContribution:
-    # Use the same shared Yahoo price cache as the index cards. Read the
-    # requested main listings in batches so opening Global does not fan out to
-    # every other index in the eleven tabs.
-    symbols = {
-        market: INDEX_REGISTRY[identifier].symbol for market, identifier in MAIN_INDEX.items()
-    }
-    requested = [symbol for symbol in symbols.values() if symbol]
-    daily, local = {}, {}
-    acwi = em = None
+@dataclass(frozen=True, slots=True)
+class GlobalReference:
+    reference: Reference | None
+    sessions: Mapping[GlobalMapMarket, tuple[SectorSessionWindow, ...] | None]
+    daily: SparkSeries | None
+
+
+def read_global_reference(prices: SharedMarketPrices, now: datetime) -> GlobalReference:
+    """Both Global views share the clock set by the ACWI observations and market opens."""
+    acwi = daily = None
     try:
         acwi = prices.benchmark_intraday(ACWI)
     except Exception:
         LOGGER.debug("Global ACWI observations failed", exc_info=True)
     try:
+        daily = prices.daily([ACWI]).get(ACWI)
+    except Exception:
+        LOGGER.debug("Global ACWI daily prices failed", exc_info=True)
+    close_dates = benchmark_closes(acwi, daily, now)
+    earliest = min((item[0] for item in close_dates.values()), default=now)
+    windows = {
+        market: market_windows(market, earliest - timedelta(days=14), now) for market in MAIN_INDEX
+    }
+    return GlobalReference(reference_day(close_dates, acwi, windows, now), windows, daily)
+
+
+def read_global_contribution(
+    prices: SharedMarketPrices,
+    weights: AcwiWeights | None,
+    weights_stale: bool,
+    now: datetime,
+    clock: GlobalReference | None = None,
+) -> GlobalMarketContribution:
+    # Read the main listings together; no other index in the regional tabs is needed.
+    clock = clock or read_global_reference(prices, now)
+    reference, windows = clock.reference, clock.sessions
+    symbols = {
+        market: INDEX_REGISTRY[identifier].symbol for market, identifier in MAIN_INDEX.items()
+    }
+    requested = [symbol for symbol in symbols.values() if symbol]
+    daily, local = {}, {}
+    em = None
+    try:
         em = prices.benchmark_intraday(EM)
     except Exception:
         LOGGER.debug("Global EM observations failed", exc_info=True)
     try:
-        daily = prices.daily([ACWI, EM, *requested])
+        daily = prices.daily([EM, *requested])
     except Exception:
         LOGGER.debug("Global daily prices failed", exc_info=True)
     try:
         local = prices.intraday(requested)
     except Exception:
         LOGGER.debug("Global market observations failed", exc_info=True)
-    close_dates = benchmark_closes(acwi, daily.get(ACWI), now)
-    earliest = min((item[0] for item in close_dates.values()), default=now)
-    windows = {
-        market: market_windows(market, earliest - timedelta(days=14), now) for market in MAIN_INDEX
-    }
-    reference = reference_day(close_dates, acwi, windows, now)
     market_moves = {}
     em_move = None
     if reference:

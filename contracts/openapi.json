@@ -7728,6 +7728,48 @@
         "title": "GlobalContributionRow",
         "type": "object"
       },
+      "GlobalIndustryMove": {
+        "properties": {
+          "gics": {
+            "title": "Gics",
+            "type": "string"
+          },
+          "indexCode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexcode"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gics",
+          "indexCode",
+          "name",
+          "move"
+        ],
+        "title": "GlobalIndustryMove",
+        "type": "object"
+      },
       "GlobalMarketContribution": {
         "description": "Moves and contributions are fractions; multiply by 100 for percent or pp.",
         "properties": {
@@ -7900,6 +7942,286 @@
           "notOpen"
         ],
         "title": "GlobalMarketMove",
+        "type": "object"
+      },
+      "GlobalSectorBoard": {
+        "properties": {
+          "acwiLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acwilevel"
+          },
+          "acwiMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acwimove"
+          },
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "exposureBasisGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposurebasisgbp"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "completed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "rankSessions": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Ranksessions",
+            "type": "array"
+          },
+          "referenceDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencedate"
+          },
+          "sectors": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalSectorMove"
+            },
+            "title": "Sectors",
+            "type": "array"
+          },
+          "weightsAsOf": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightsasof"
+          },
+          "weightsStale": {
+            "title": "Weightsstale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "referenceDate",
+          "phase",
+          "asOf",
+          "acwiMove",
+          "acwiLevel",
+          "weightsAsOf",
+          "weightsStale",
+          "rankSessions",
+          "sectors"
+        ],
+        "title": "GlobalSectorBoard",
+        "type": "object"
+      },
+      "GlobalSectorHolding": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "weight"
+        ],
+        "title": "GlobalSectorHolding",
+        "type": "object"
+      },
+      "GlobalSectorMove": {
+        "properties": {
+          "contribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution"
+          },
+          "exposureGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposuregbp"
+          },
+          "gics": {
+            "title": "Gics",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalIndustryMove"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalSectorHolding"
+            },
+            "title": "Holdings",
+            "type": "array"
+          },
+          "indexCode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexcode"
+          },
+          "intraday": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalSectorPoint"
+            },
+            "title": "Intraday",
+            "type": "array"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ranks": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Ranks",
+            "type": "array"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "gics",
+          "indexCode",
+          "name",
+          "move",
+          "weight",
+          "contribution",
+          "intraday",
+          "ranks",
+          "groups",
+          "holdings"
+        ],
+        "title": "GlobalSectorMove",
+        "type": "object"
+      },
+      "GlobalSectorPoint": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move"
+          }
+        },
+        "required": [
+          "at",
+          "move"
+        ],
+        "title": "GlobalSectorPoint",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -8255,6 +8577,17 @@
           "quantity": {
             "title": "Quantity",
             "type": "number"
+          },
+          "researchTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Researchticker"
           },
           "snapshotFxRateNativePerGbp": {
             "anyOf": [
@@ -13359,6 +13692,17 @@
             "title": "Figi",
             "type": "string"
           },
+          "fundIsin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundisin"
+          },
           "gics": {
             "anyOf": [
               {
@@ -13522,6 +13866,22 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "watchlistTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watchlistticker"
+          },
+          "watchlisted": {
+            "default": true,
+            "title": "Watchlisted",
+            "type": "boolean"
           },
           "website": {
             "default": "",
@@ -20720,7 +21080,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.40.1"
+    "version": "1.41.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -21704,6 +22064,27 @@
           }
         },
         "summary": "Global Contribution",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/v1/indices/global-sectors": {
+      "get": {
+        "operationId": "global_sectors_v1_indices_global_sectors_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalSectorBoard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Global Sectors",
         "tags": [
           "indices"
         ]

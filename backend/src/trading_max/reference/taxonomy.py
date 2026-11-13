@@ -16,9 +16,11 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -215,6 +217,15 @@ def taxonomy_reference() -> TaxonomyReference:
         profile_crosswalk=profile_crosswalk,
         title_crosswalk=title_crosswalk,
     )
+
+
+@lru_cache(maxsize=1)
+def standard_gics_names() -> Mapping[str, str]:
+    """Canonical sector and industry-group labels from the bundled taxonomy."""
+    dataset = _NodeDataset.model_validate(_read_object(_DEFAULT_NODES_PATH))
+    names = {row.sector_code: row.sector_name for row in dataset.nodes}
+    names.update({row.industry_group_code: row.industry_group_name for row in dataset.nodes})
+    return MappingProxyType(names)
 
 
 def gics_node_for_code(code: str) -> GicsNode | None:

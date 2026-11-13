@@ -148,6 +148,8 @@ export function ResearchWorkspace() {
   const tab = isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
     : ["tracking", "peers"].includes(requestedTab) ? "overview" : requestedTab;
   const fetching = selected?.status === "pending" || selected?.status === "running";
+  const awaitingHeldFund = Boolean(isFund && selected?.held && fetching);
+
   const lensName = ["financials", "tracking", "peers"].includes(tab) ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
   const detail = tab === "overview" ? "summary"
@@ -170,7 +172,7 @@ export function ResearchWorkspace() {
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
   const technicalPrice = tab === "technical" && (isFund || params.get("technicalView") !== "seasonality");
-  const currentLens = !overviewWaiting && !lens.isPlaceholderData && lens.data ? {
+  const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
   const lastLens = useRetainedResult(currentLens, (a, b) =>
@@ -184,7 +186,7 @@ export function ResearchWorkspace() {
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const waitingForResearch = !shown && !technicalPrice && (
-    overviewWaiting || lens.isPending || fetching && !lens.isError
+    overviewWaiting || awaitingHeldFund || lens.isPending || fetching && !lens.isError
   );
   const exploreHolding = (symbol: string) => {
     const target = instruments.find((i) => i.ticker === symbol);
@@ -202,8 +204,10 @@ export function ResearchWorkspace() {
       action: "refresh" | "remove" | "move";
       categoryId?: string;
     }) =>
-      api(
-        "/watchlist/" + encodeURIComponent(ticker),
+      action === "refresh" && isFund && selected?.held
+      ? api("/refresh", jsonRequest("POST", { scope: "research", skipSync: true, tickers: [ticker] }))
+      : api(
+        "/watchlist/" + encodeURIComponent(selected?.watchlistTicker ?? ticker),
         jsonRequest("POST", { action, categoryId }),
       ),
     onSuccess: async (_, variables) => {
@@ -373,7 +377,8 @@ export function ResearchWorkspace() {
             <SecurityActions
               held={selected.held}
               categoriesAvailable={Boolean(shell.data?.watchlistCategories.length)}
-              busy={operation.isPending || fetching}
+              watchlisted={selected.watchlisted !== false}
+              busy={operation.isPending || fetching && !awaitingHeldFund}
               pending={operation.isPending}
               onRefresh={() => operation.mutate({ action: "refresh" })}
               onManage={() => setManage(true)}
@@ -623,7 +628,7 @@ export function ResearchWorkspace() {
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (
-                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} />
+                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} isin={selected.fundIsin} />
                       )}
                       {displayTab === "analyst" && !isFund && (
                         <AnalystView data={displayData} revision={revision} price={price} />

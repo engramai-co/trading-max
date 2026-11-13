@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import UTC, datetime
 
 from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, update_etf_journal
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
@@ -14,6 +15,7 @@ from trading_max.infrastructure import (
     SnapshotStore,
     StoredSnapshot,
 )
+from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.research.coverage import merge_rows, row_clocks
 from trading_max.research.estimate_history import (
     ANALYST_KEY,
@@ -32,11 +34,21 @@ from trading_max.research.fundamentals import (
     YFinanceResearchService,
     build_valuation,
 )
+from trading_max.research.held_funds import (
+    BROKER_SNAPSHOT_KEY,
+    FUND_PRICE_DIRECTORY_KEY,
+    FUND_PRICES_KEY,
+    LOOKTHROUGH_KEY,
+    SECURITY_MASTER_KEY,
+    held_fund_positions,
+    known_fund,
+)
 from trading_max.research.market import (
     MarketResearchService,
     OptionsResearchBatch,
     TechnicalResearchBatch,
 )
+from trading_max.research.technical import price_series
 
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
@@ -69,6 +81,8 @@ def _quality_status(warnings: list[str]) -> str:
 MERGEABLE_RESEARCH_KEYS = frozenset(
     {
         "research/market_snapshot.json",
+        FUND_PRICE_DIRECTORY_KEY,
+        FUND_PRICES_KEY,
         "research/technical.json",
         "research/options.json",
         "research/adr.json",
@@ -130,11 +144,143 @@ def merge_partial_market_snapshot(
     return merged
 
 
+def _fund_inputs(artifacts, snapshots, context):
+    latest = snapshots.latest(verify_artifacts=False) if snapshots is not None else None
+    prior = {ref.key: ref for ref in latest.manifest.artifacts} if latest else {}
+
+    def read(key):
+        current = _upstream_json(artifacts, context, key)
+        if current is not None:
+            return current.payload
+        if key in prior:
+            return artifacts.get_json(prior[key].artifact_id).payload
+        return {}
+
+    raw_catalog = read(SECURITY_MASTER_KEY)
+    catalog = (
+        CatalogSecurityMaster(SecurityMasterCatalog.model_validate(raw_catalog))
+        if raw_catalog or snapshots is None
+        else CatalogSecurityMaster.from_state_root(snapshots.root)
+    )
+    funds = held_fund_positions(
+        read(BROKER_SNAPSHOT_KEY),
+        read(LOOKTHROUGH_KEY),
+        ETFPortfolio.model_validate(read(ETF_SUMMARY_KEY)).funds,
+        catalog,
+    )
+    return catalog, funds
+
+
+def _equity_tickers(artifacts, context):
+    market = _upstream_json(artifacts, context, "research/market_snapshot.json")
+    if market is not None and "equity_tickers" in market.payload:
+        return tuple(market.payload["equity_tickers"])
+    return context.tickers
+
+
+class FundPriceStage:
+    """Publish listing OHLC for fund lenses without scores, options or fundamentals.
+
+    Tracking, issuer holdings, overlap and disclosures already publish with the
+    account look-through. This stage only fills the listing price history.
+    """
+
+    name = "research.fund_prices"
+    version = "fund-prices-v1"
+    required_for = frozenset({"all", "research"})
+    dependencies = ("market.snapshot",)
+
+    def __init__(self, artifacts, snapshots, service):
+        self.artifacts = artifacts
+        self.snapshots = snapshots
+        self.service = service
+
+    def run(self, context: StageContext) -> StageResult:
+        catalog, holdings = _fund_inputs(self.artifacts, self.snapshots, context)
+        requested = {ticker.strip().upper() for ticker in context.tickers}
+        all_funds = context.scope == "all" or context.trigger in SCHEDULED_RESEARCH_TRIGGERS
+        # A ticker that resolves to multiple held listings is not a safe Yahoo input.
+        listings = {}
+        ambiguous = set()
+        for listing in holdings:
+            if listing.ticker in listings:
+                ambiguous.add(listing.ticker)
+            if all_funds or listing.ticker in requested or listing.symbol in requested:
+                listings[listing.ticker] = listing
+        # Only send broker-qualified symbols (or exact catalog symbols for
+        # separately saved funds) to the provider. A bare alias is never an
+        # extra request for the same held listing.
+        for ticker in requested - listings.keys():
+            if not any(ticker == item.symbol for item in holdings) and known_fund(catalog, ticker):
+                listings[ticker] = None
+        if not listings:
+            return StageResult()
+        rows, warnings = [], []
+        for ticker, listing in sorted(listings.items()):
+            if ticker in ambiguous:
+                warnings.append(f"{ticker}: ambiguous fund listing")
+                continue
+            try:
+                frame = self.service.history_loader(ticker, "max")
+                averages = {
+                    f"sma{n}": frame["Close"].rolling(n, min_periods=n).mean()
+                    for n in (20, 50, 200)
+                }
+                points = price_series(frame, averages)
+                if not points:
+                    raise ValueError("no valid fund prices")
+                provider_type = str(frame.attrs.get("asset_type") or "").upper()
+                if provider_type and provider_type not in {"ETF", "MUTUALFUND"}:
+                    raise ValueError("provider did not return a fund listing")
+                rows.append(
+                    {
+                        "ticker": ticker,
+                        "isin": listing.isin if listing else "",
+                        "mic": listing.mic if listing else "",
+                        "as_of": points[-1]["date"],
+                        "spot": points[-1]["close"],
+                        "currency": frame.attrs.get("currency") or "",
+                        "exchange": frame.attrs.get("exchange") or "",
+                        "timezone": frame.attrs.get("timezone") or "",
+                        "price_series": points,
+                    }
+                )
+            except Exception as exc:
+                warnings.append(f"{ticker}: fund price history unavailable ({type(exc).__name__})")
+        ref = self.artifacts.put_json(
+            key=FUND_PRICES_KEY,
+            payload={
+                "tickers": sorted(listings),
+                "rows": rows,
+                "generated_at": datetime.now(UTC).isoformat(),
+            },
+            kind="fund-prices",
+            as_of=max((row["as_of"] for row in rows), default=None),
+            producer_version=self.version,
+            quality=ArtifactQuality(status=_quality_status(warnings), warnings=warnings),
+        ).ref
+        directory = self.artifacts.put_json(
+            key=FUND_PRICE_DIRECTORY_KEY,
+            payload={
+                "tickers": sorted(listings),
+                "rows": [
+                    {key: value for key, value in row.items() if key != "price_series"}
+                    for row in rows
+                ],
+            },
+            kind="fund-price-directory",
+            as_of=ref.as_of,
+            producer_version=self.version,
+            dependency_artifact_ids=[ref.artifact_id],
+        ).ref
+        return StageResult(artifacts=(ref, directory), warnings=tuple(warnings))
+
+
 class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v9"
+    version = "market-snapshot-v10"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -142,9 +288,11 @@ class MarketSnapshotStage:
         self,
         artifacts: ContentAddressedArtifactStore,
         service: MarketResearchService | None = None,
+        snapshots: SnapshotStore | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.service = service or MarketResearchService()
+        self.snapshots = snapshots
 
     def run(self, context: StageContext) -> StageResult:
         if not context.tickers:
@@ -152,8 +300,25 @@ class MarketSnapshotStage:
                 "research.empty_universe",
                 "market snapshot requires a non-empty watchlist",
             )
+        catalog, funds = _fund_inputs(self.artifacts, self.snapshots, context)
+        fund_symbols = {item.ticker for item in funds}
+        equities = tuple(
+            ticker
+            for ticker in dict.fromkeys(value.strip().upper() for value in context.tickers)
+            if ticker not in fund_symbols and not known_fund(catalog, ticker)
+        )
         try:
-            technical, options = self.service.run(context.tickers)
+            if equities:
+                technical, options = self.service.run(equities)
+            else:
+                now = datetime.now(UTC)
+                empty = {
+                    "as_of": now.date().isoformat(),
+                    "generated_at": now,
+                    "tickers": [],
+                    "rows": [],
+                }
+                technical, options = TechnicalResearchBatch(**empty), OptionsResearchBatch(**empty)
         except Exception as exc:
             raise StageExecutionError(
                 "market.snapshot_failed",
@@ -167,6 +332,7 @@ class MarketSnapshotStage:
             "as_of": technical.as_of,
             "generated_at": technical.generated_at.isoformat(),
             "tickers": technical.tickers,
+            "equity_tickers": list(equities),
             "technical": technical.model_dump(mode="json", by_alias=False),
             "options": options.model_dump(mode="json", by_alias=False),
         }
@@ -431,8 +597,11 @@ class FundamentalsArtifactStage:
             "research/market_snapshot.json",
         )
         as_of = str(market.payload.get("as_of")) if market else None
+        tickers = _equity_tickers(self.artifacts, context)
+        if not tickers:
+            return StageResult()
         try:
-            batch = self.service.fundamentals(context.tickers, as_of=as_of)
+            batch = self.service.fundamentals(tickers, as_of=as_of)
         except ResearchDataError as exc:
             raise StageExecutionError(
                 "research.fundamentals_failed",
@@ -480,8 +649,11 @@ class FinancialsArtifactStage:
                 "research.empty_universe",
                 "financials research requires a non-empty watchlist",
             )
+        tickers = _equity_tickers(self.artifacts, context)
+        if not tickers:
+            return StageResult()
         try:
-            batch = self.service.financials(context.tickers)
+            batch = self.service.financials(tickers)
             FinancialsBatch.model_validate(batch.model_dump(mode="json"))
         except (ResearchDataError, KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError(
@@ -530,8 +702,11 @@ class AnalystArtifactStage:
                 "research.empty_universe",
                 "analyst research requires a non-empty watchlist",
             )
+        tickers = _equity_tickers(self.artifacts, context)
+        if not tickers:
+            return StageResult()
         try:
-            batch = self.service.analyst(context.tickers)
+            batch = self.service.analyst(tickers)
             AnalystBatch.model_validate(batch.model_dump(mode="json"))
         except (ResearchDataError, KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError(
@@ -614,6 +789,8 @@ class ValuationArtifactStage:
             return None
 
     def run(self, context: StageContext) -> StageResult:
+        if context.tickers and not _equity_tickers(self.artifacts, context):
+            return StageResult()
         technical = _upstream_json(
             self.artifacts,
             context,
@@ -702,8 +879,11 @@ class EarningsArtifactStage:
                 "research.empty_universe",
                 "earnings research requires a non-empty watchlist",
             )
+        tickers = _equity_tickers(self.artifacts, context)
+        if not tickers:
+            return StageResult()
         try:
-            batch = self.service.earnings(context.tickers)
+            batch = self.service.earnings(tickers)
             EarningsBatch.model_validate(batch.model_dump(mode="json"))
         except (ResearchDataError, KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError(
@@ -769,6 +949,7 @@ class TypedPublishSnapshotStage:
             return new_refs
         previous_by_key = {ref.key: ref for ref in previous.manifest.artifacts}
         merged_refs = []
+        equities = _equity_tickers(self.artifacts, context)
         for ref in new_refs:
             if ref.key not in MERGEABLE_RESEARCH_KEYS:
                 merged_refs.append(ref)
@@ -783,17 +964,27 @@ class TypedPublishSnapshotStage:
             except (FileNotFoundError, KeyError, ValueError):
                 merged_refs.append(ref)
                 continue
+            if (
+                not equities
+                and ref.key not in {FUND_PRICES_KEY, FUND_PRICE_DIRECTORY_KEY}
+                and context.tickers
+            ):
+                continue
             if ref.key == "research/market_snapshot.json":
                 merged_payload = merge_partial_market_snapshot(
                     previous_payload,
                     current.payload,
-                    refreshed=context.tickers or tuple(current.payload.get("tickers") or ()),
+                    refreshed=equities or tuple(current.payload.get("tickers") or ()),
                 )
             else:
                 merged_payload = merge_partial_rows(
                     previous_payload,
                     current.payload,
-                    refreshed=context.tickers or tuple(current.payload.get("tickers") or ()),
+                    refreshed=(
+                        tuple(current.payload.get("tickers") or ())
+                        if ref.key in {FUND_PRICES_KEY, FUND_PRICE_DIRECTORY_KEY}
+                        else equities or tuple(current.payload.get("tickers") or ())
+                    ),
                 )
             if merged_payload is current.payload:
                 merged_refs.append(ref)
@@ -873,7 +1064,11 @@ class TypedPublishSnapshotStage:
         if context.scope in {"all", "research"}:
             coverage: dict[str, dict] = {}
             for key, ref in refs_by_key.items():
-                if key not in MERGEABLE_RESEARCH_KEYS or key == "research/market_snapshot.json":
+                if key not in MERGEABLE_RESEARCH_KEYS or key in {
+                    "research/market_snapshot.json",
+                    FUND_PRICES_KEY,
+                    FUND_PRICE_DIRECTORY_KEY,
+                }:
                     continue
                 raw = self.artifacts.get_json(ref.artifact_id).payload
                 if key in estimate_keys:

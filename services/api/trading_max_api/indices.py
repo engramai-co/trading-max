@@ -24,11 +24,14 @@ from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
+from trading_max.infrastructure.world_sector_weights import WorldSectorWeightsProvider
 from trading_max.reference.indices import INDEX_REGISTRY, IndexRange, IndexScope, IndexSpec
 
 from .artifacts import ArtifactStore
 from .etf_snapshot import read_etf_portfolio
-from .global_markets import read_global_contribution
+from .global_markets import GlobalReference, read_global_contribution, read_global_reference
+from .global_sector_models import GlobalSectorBoard
+from .global_sectors import read_global_sectors, with_portfolio_exposure
 from .index_models import (
     GlobalMarketContribution,
     IndexBasket,
@@ -251,6 +254,11 @@ class IndexService:
         self.prices = prices
         self.universes = SectorUniverseProvider(root)
         self.acwi_weights = AcwiWeightsProvider(root)
+        self.world_sector_weights = WorldSectorWeightsProvider(root)
+        self._global_clock_lock = threading.Lock()
+        self._global_clock: tuple[datetime, GlobalReference] | None = None
+        self._global_sectors_lock = threading.Lock()
+        self._global_sectors: tuple[datetime, GlobalSectorBoard] | None = None
         self._contribution_lock = threading.Lock()
         self._contribution: tuple[datetime, GlobalMarketContribution] | None = None
         self.root = root / "state" / "indices"
@@ -265,16 +273,37 @@ class IndexService:
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
         self._histories: dict[tuple[str, str, bool], tuple[datetime, IndexHistory]] = {}
 
+    def _global_reference(self) -> tuple[datetime, GlobalReference]:
+        with self._global_clock_lock:
+            now = self.now()
+            cached = self._global_clock
+            if cached and timedelta(0) <= now - cached[0] < timedelta(minutes=4):
+                return cached
+            self._global_clock = (now, read_global_reference(self.prices, now))
+            return self._global_clock
+
     def global_contribution(self) -> GlobalMarketContribution:
         with self._contribution_lock:
-            now = self.now()
+            now, reference = self._global_reference()
             cached = self._contribution
-            if cached and now - cached[0] < timedelta(minutes=4):
+            if cached and now == cached[0]:
                 return cached[1]
             weights, stale = self.acwi_weights.get(now)
-            answer = read_global_contribution(self.prices, weights, stale, now)
+            answer = read_global_contribution(self.prices, weights, stale, now, reference)
             self._contribution = (now, answer)
             return answer
+
+    def global_sectors(self) -> GlobalSectorBoard:
+        with self._global_sectors_lock:
+            now, reference = self._global_reference()
+            cached = self._global_sectors
+            if cached and now == cached[0]:
+                public = cached[1]
+            else:
+                weights, stale = self.world_sector_weights.get(now)
+                public = read_global_sectors(self.prices, weights, stale, now, reference)
+                self._global_sectors = (now, public)
+        return with_portfolio_exposure(public, self.store)
 
     def market(self, scope: IndexScope) -> IndexMarket:
         with self._market_locks[scope]:

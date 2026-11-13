@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ path?: string[] }> }) {
   const { path = [] } = await params;
-  const overview = path.length === 1 && (path[0] === "catalog" || path[0] === "global-contribution");
+  const overview = path.length === 1 && ["catalog", "global-contribution", "global-sectors"].includes(path[0]);
   const detail = path.length === 2 && /^[a-z0-9-]{1,60}$/.test(path[0])
     && (path[1] === "history" || path[1] === "context");
   if ((path.length && !overview && !detail) || process.env.TRADING_MAX_ENV === "desktop-preview") {

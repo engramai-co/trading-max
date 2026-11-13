@@ -329,6 +329,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/indices/global-sectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Global Sectors */
+        get: operations["global_sectors_v1_indices_global_sectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/indices/{index_id}/context": {
         parameters: {
             query?: never;
@@ -3744,6 +3761,17 @@ export interface components {
             /** Weight */
             weight: number;
         };
+        /** GlobalIndustryMove */
+        GlobalIndustryMove: {
+            /** Gics */
+            gics: string;
+            /** Indexcode */
+            indexCode: number | null;
+            /** Move */
+            move: number | null;
+            /** Name */
+            name: string;
+        };
         /**
          * GlobalMarketContribution
          * @description Moves and contributions are fractions; multiply by 100 for percent or pp.
@@ -3786,6 +3814,71 @@ export interface components {
             move: number | null;
             /** Notopen */
             notOpen: boolean;
+        };
+        /** GlobalSectorBoard */
+        GlobalSectorBoard: {
+            /** Acwilevel */
+            acwiLevel: number | null;
+            /** Acwimove */
+            acwiMove: number | null;
+            /** Asof */
+            asOf: string | null;
+            /** Exposurebasisgbp */
+            exposureBasisGbp?: number | null;
+            /** Phase */
+            phase: ("live" | "completed") | null;
+            /** Ranksessions */
+            rankSessions: string[];
+            /** Referencedate */
+            referenceDate: string | null;
+            /** Sectors */
+            sectors: components["schemas"]["GlobalSectorMove"][];
+            /** Weightsasof */
+            weightsAsOf: string | null;
+            /** Weightsstale */
+            weightsStale: boolean;
+        };
+        /** GlobalSectorHolding */
+        GlobalSectorHolding: {
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+        };
+        /** GlobalSectorMove */
+        GlobalSectorMove: {
+            /** Contribution */
+            contribution: number | null;
+            /** Exposuregbp */
+            exposureGbp?: number | null;
+            /** Gics */
+            gics: string;
+            /** Groups */
+            groups: components["schemas"]["GlobalIndustryMove"][];
+            /** Holdings */
+            holdings: components["schemas"]["GlobalSectorHolding"][];
+            /** Indexcode */
+            indexCode: number | null;
+            /** Intraday */
+            intraday: components["schemas"]["GlobalSectorPoint"][];
+            /** Move */
+            move: number | null;
+            /** Name */
+            name: string;
+            /** Ranks */
+            ranks: (number | null)[];
+            /** Weight */
+            weight: number | null;
+        };
+        /** GlobalSectorPoint */
+        GlobalSectorPoint: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Move */
+            move: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3903,6 +3996,8 @@ export interface components {
             priceCurrency: string;
             /** Quantity */
             quantity: number;
+            /** Researchticker */
+            researchTicker?: string | null;
             /** Snapshotfxratenativepergbp */
             snapshotFxRateNativePerGbp: number | null;
             /** Ticker */
@@ -5521,6 +5616,8 @@ export interface components {
              * @default
              */
             figi: string;
+            /** Fundisin */
+            fundIsin?: string | null;
             gics?: components["schemas"]["GicsClassification"] | null;
             /**
              * Hasearnings
@@ -5600,6 +5697,13 @@ export interface components {
             taxonomyVersion?: number | null;
             /** Ticker */
             ticker: string;
+            /** Watchlistticker */
+            watchlistTicker?: string | null;
+            /**
+             * Watchlisted
+             * @default true
+             */
+            watchlisted: boolean;
             /**
              * Website
              * @default
@@ -8753,6 +8857,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GlobalMarketContribution"];
+                };
+            };
+        };
+    };
+    global_sectors_v1_indices_global_sectors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalSectorBoard"];
                 };
             };
         };

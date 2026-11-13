@@ -49,12 +49,13 @@ function wash(change: number | null | undefined): CSSProperties {
   return { "--mx-head-mix": Math.round(Math.abs(heat(change)) * 30) + "%" } as CSSProperties;
 }
 
-export function SectorMap({ groups, kind, selected, onSelect, label }: {
+export function SectorMap({ groups, kind, selected, onSelect, label, flat = false }: {
   groups: SectorGroup[];
   kind: SectorGroupingKind;
   selected: string | null;
   onSelect: (key: string, subgroup?: string) => void;
   label: string;
+  flat?: boolean;
 }) {
   const map = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -93,19 +94,20 @@ export function SectorMap({ groups, kind, selected, onSelect, label }: {
         const group = byKey.get(tile.key);
         return group ? (
           <SectorBlock key={tile.key} tile={tile} group={group} kind={kind} selected={tile.key === selected}
-            onSelect={onSelect} onKeyDown={move} />
+            onSelect={onSelect} onKeyDown={move} flat={flat} />
         ) : null;
       })}
     </div>
   );
 }
 
-function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
+function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }: {
   tile: Tile;
   group: SectorGroup;
   kind: SectorGroupingKind;
   selected: boolean;
   onSelect: (key: string, subgroup?: string) => void;
+  flat: boolean;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>, key: string) => void;
 }) {
   const t = useCopy();
@@ -116,7 +118,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
   const width = Math.max(0, Math.round(tile.x + tile.w) - left - GAP);
   const height = Math.max(0, Math.round(tile.y + tile.h) - top - GAP);
   const name = groupName(group, kind, locale);
-  const change = formatDeltaPercent(group.change, locale, 2);
+  const change = flat && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2);
   const roomy = width >= 104 && height >= 76;
   // A narrow sector stacks its name over its move rather than truncating the name away.
   const narrow = roomy && width < 168;
@@ -134,7 +136,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
   const items = byMember
     ? group.members.map((member) => ({ key: member.symbol, weight: member.weight }))
     : group.subgroups.map((subgroup) => ({ key: subgroup.key, weight: subgroup.weight }));
-  const inner = roomy
+  const inner = roomy && !flat
     ? squarify(items, { x: 0, y: 0, w: width - INSET * 2 + 1, h: height - (narrow ? HEAD_NARROW : HEAD) - INSET + 1 })
     : [];
   const breadth = group.breadth;
@@ -142,7 +144,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
   const spoken = [
     name,
     change,
-    locale === "zh" ? `上涨 ${breadth.up} 只，下跌 ${breadth.down} 只` : `${breadth.up} up, ${breadth.down} down`,
+    flat ? null : locale === "zh" ? `上涨 ${breadth.up} 只，下跌 ${breadth.down} 只` : `${breadth.up} up, ${breadth.down} down`,
     group.streak < 2 ? null : locale === "zh" ? `连续 ${group.streak} 日前三` : `top three for ${group.streak} sessions`,
   ].filter(Boolean).join(t("，", ", "));
   return (
@@ -151,12 +153,13 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
       className="mx-sector-block"
       data-key={group.key}
       data-tone={changeTone(group.change)}
+      data-flat-map={flat || undefined}
       data-roomy={roomy ? "" : undefined}
       data-narrow={narrow ? "" : undefined}
       aria-pressed={selected}
       aria-label={spoken}
       // Blocks too small for the strip still answer on hover with all three layers.
-      title={roomy && (showChip || !chip) ? undefined : spoken}
+      title={!flat && roomy && (showChip || !chip) ? undefined : spoken}
       tabIndex={selected ? 0 : -1}
       style={{ left, top, width, height, ...fill(group.change, scheme), ...wash(group.change) }}
       onClick={(event) => {
@@ -181,7 +184,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown }: {
           </span>
         )}
       </span>
-      {roomy && (
+      {roomy && !flat && (
         <span className="mx-sector-tiles" aria-hidden="true">
           {inner.map((cell) => {
             const subgroup = byMember ? undefined : group.subgroups.find((item) => item.key === cell.key);

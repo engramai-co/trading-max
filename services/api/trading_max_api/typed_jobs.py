@@ -21,6 +21,7 @@ from trading_max.analytics import (
     latest_snapshot_path,
     metrics_from_snapshot_file,
 )
+from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
 from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from trading_max.analytics.lookthrough import LookthroughService
 from trading_max.application.stages import StageRegistry
@@ -31,10 +32,17 @@ from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue, StoredSna
 from trading_max.reference import (
     CatalogSecurityMaster,
     SecurityDescriptor,
+    SecurityMasterCatalog,
     canonical_security_type,
 )
 from trading_max.research.estimate_history import SCHEDULED_RESEARCH_TRIGGERS, EstimateHistory
 from trading_max.research.fundamentals import YFinanceResearchService
+from trading_max.research.held_funds import (
+    BROKER_SNAPSHOT_KEY,
+    LOOKTHROUGH_KEY,
+    SECURITY_MASTER_KEY,
+    held_fund_positions,
+)
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.market import MarketResearchService
 from trading_max.worker import DurableWorker
@@ -52,6 +60,7 @@ from .models import (
     RefreshFailure,
     SecuritySearchResult,
 )
+from .projections.broker import overlay_live_broker_snapshot
 from .watchlist import TICKER_PATTERN, WatchlistStore, magnificent_seven_securities
 
 LOGGER = logging.getLogger(__name__)
@@ -266,6 +275,7 @@ def stage_plan(
         stages.extend(
             [
                 ("market.snapshot", "Fetch market data"),
+                ("research.fund_prices", "Update fund price history"),
                 ("research.taxonomy", "Normalize research taxonomy"),
                 ("research.technical", "Update technical research"),
                 ("research.options", "Update options research"),
@@ -649,6 +659,45 @@ class TypedJobManager:
                     tickers.append(ticker)
         return tickers
 
+    def _held_fund_tickers(self) -> list[str]:
+        manifest = self.store.latest_manifest()
+
+        def read(key):
+            if manifest is not None:
+                try:
+                    return self.store.read_json(manifest.run_id, key)
+                except FileNotFoundError:
+                    pass
+            return {}
+
+        # Before the first publication the broker snapshots and reference
+        # catalog can already identify known held funds.
+        broker = overlay_live_broker_snapshot(
+            read(BROKER_SNAPSHOT_KEY), read("account/intraday/broker_values.json")
+        )
+        if not broker:
+            broker = {"accounts": {}}
+            for profile in ("invest", "isa"):
+                try:
+                    metrics = self._latest_account_metrics(profile)
+                except (OSError, ValueError, RuntimeError):
+                    continue
+                if metrics:
+                    broker["accounts"][profile] = metrics.model_dump()
+        raw_catalog = read(SECURITY_MASTER_KEY)
+        catalog = (
+            CatalogSecurityMaster(SecurityMasterCatalog.model_validate(raw_catalog))
+            if raw_catalog
+            else CatalogSecurityMaster.from_state_root(self.store.data_root)
+        )
+        funds = held_fund_positions(
+            broker,
+            read(LOOKTHROUGH_KEY),
+            ETFPortfolio.model_validate(read(ETF_SUMMARY_KEY)).funds,
+            catalog,
+        )
+        return [fund.ticker for fund in funds if TICKER_PATTERN.fullmatch(fund.ticker)]
+
     def submit(
         self,
         scope: JobScope,
@@ -694,7 +743,7 @@ class TypedJobManager:
         elif tickers:
             research_tickers = list(dict.fromkeys(tickers))
         else:
-            research_tickers = self._bootstrap_watchlist()
+            research_tickers = [*self._bootstrap_watchlist(), *self._held_fund_tickers()]
             if trigger in SCHEDULED_RESEARCH_TRIGGERS:
                 research_tickers = [*research_tickers, *self._held_research_tickers()]
             research_tickers = list(dict.fromkeys(research_tickers))

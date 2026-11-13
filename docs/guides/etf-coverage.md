@@ -100,6 +100,16 @@ The overview reads only the compact publication, after the table loads. The
 position drawer and fund research use the same observations. The drawer reads
 the account snapshot without making issuer requests.
 
+Held funds appear in the research desk automatically. Invest and ISA share a
+research entry for the same listing. Listings keep their own price history;
+issuer holdings, tracking and overlap are shared by ISIN. A fully sold fund
+leaves the held list and stays in research only if it was saved to the watchlist.
+
+Research refreshes reuse the account publication for issuer evidence. The fund
+price stage makes one Yahoo daily-history call per eligible listing and no
+additional issuer calls. Equity scoring, options, earnings, analyst estimates
+and valuation are skipped for recognized funds.
+
 ## Official source entry points
 
 - [VanEck Semiconductor UCITS ETF](https://www.vaneck.com/uk/en/investments/semiconductor-etf/overview/)

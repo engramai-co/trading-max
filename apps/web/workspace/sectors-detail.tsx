@@ -1,7 +1,7 @@
 "use client";
 
 import { CaretRight } from "@phosphor-icons/react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBreadth, SectorGroup, SectorGroupingKind, SectorMember, SectorSessionWindow } from "@/lib/types";
 import { formatCalendarDate, formatDate, formatDeltaPercent } from "@/ui/formatters";
@@ -13,12 +13,13 @@ import { changeTone, groupName } from "./sectors-map";
 import { byStanding, displaySymbol, issuerName, sessionPosition, sparkline } from "./sectors-data";
 
 const MEMBERS_SHOWN = 8;
+export type SectorDetailBoard = Pick<SectorBoard, "sessionDate" | "times" | "rankSessions" | "exposureBasisGbp">;
 
-function sessionFor(board: SectorBoard, sessions: ReadonlyArray<SectorSessionWindow>) {
+function sessionFor(board: SectorDetailBoard, sessions: ReadonlyArray<SectorSessionWindow>) {
   return sessions.find((session) => session.date === board.sessionDate) ?? null;
 }
 
-function positions(board: SectorBoard, session: SectorSessionWindow | null) {
+function positions(board: SectorDetailBoard, session: SectorSessionWindow | null) {
   return session
     ? board.times.map((time) => sessionPosition(session, time))
     : board.times.map((_, index, all) => (all.length > 1 ? index / (all.length - 1) : 0));
@@ -45,14 +46,15 @@ function SymbolLink({ member, symbol }: { member?: SectorMember; symbol: string 
     : <span className="mx-sector-symbol">{label}</span>;
 }
 
-export function SectorDetail({ group, board, sessions, kind, openSubgroup, focusOnOpen = false }: {
+export function SectorDetail({ group, board, sessions, kind, openSubgroup, focusOnOpen = false, indexFacts }: {
   group: SectorGroup;
-  board: SectorBoard;
+  board: SectorDetailBoard;
   sessions: ReadonlyArray<SectorSessionWindow>;
   kind: SectorGroupingKind;
   openSubgroup: string | null;
   /** A phone step takes focus, since the row that opened it is gone. */
   focusOnOpen?: boolean;
+  indexFacts?: ReactNode;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -70,9 +72,10 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
     <section className="mx-panel mx-sector-detail" aria-label={name}>
       <header className="mx-sector-detail-head">
         <h2 ref={heading} tabIndex={-1}>{name}</h2>
-        <strong className={"mx-sector-detail-change mx-" + tone}>{formatDeltaPercent(group.change, locale, 2)}</strong>
+        <strong className={"mx-sector-detail-change mx-" + tone}>{indexFacts && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</strong>
       </header>
-      <SectorSpark group={group} board={board} session={sessionFor(board, sessions)} />
+      <SectorSpark group={group} board={board} session={sessionFor(board, sessions)} omitEmpty={Boolean(indexFacts)} />
+      {indexFacts ?? <>
       <dl className="mx-sector-facts">
         <div>
           <dt>{t("涨跌家数", "Breadth")}</dt>
@@ -126,11 +129,12 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
       {kind === "gics" && group.subgroups.length > 0
         ? <Subgroups key={openSubgroup === null ? "closed" : "open:" + openSubgroup} group={group} openSubgroup={openSubgroup} />
         : <Members members={group.members} />}
+      </>}
     </section>
   );
 }
 
-function SectorSpark({ group, board, session }: { group: SectorGroup; board: SectorBoard; session: SectorSessionWindow | null }) {
+function SectorSpark({ group, board, session, omitEmpty }: { group: SectorGroup; board: SectorDetailBoard; session: SectorSessionWindow | null; omitEmpty: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const width = 320;
@@ -145,6 +149,7 @@ function SectorSpark({ group, board, session }: { group: SectorGroup; board: Sec
   const high = line.peak;
   const highTone = changeTone(high?.value);
   if (!line.path) {
+    if (omitEmpty) return null;
     return (
       <figure className="mx-sector-spark">
         <div className="mx-sector-spark-plot mx-sector-spark-empty">{t("暂无日内走势", "No intraday prices yet")}</div>
@@ -234,9 +239,9 @@ function Members({ members }: { members: SectorMember[] }) {
   );
 }
 
-export function SectorList({ groups, board, sessions, kind, focusKey, onFocused, onOpen }: {
+export function SectorList({ groups, board, sessions, kind, focusKey, onFocused, onOpen, indexOnly = false }: {
   groups: SectorGroup[];
-  board: SectorBoard;
+  board: SectorDetailBoard;
   sessions: ReadonlyArray<SectorSessionWindow>;
   kind: SectorGroupingKind;
   /** The row a closed sector returns focus to. */
@@ -244,6 +249,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
   /** The return target is spent once focus lands, so a later market switch moves nothing. */
   onFocused: () => void;
   onOpen: (key: string) => void;
+  indexOnly?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -257,8 +263,8 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
   const session = sessionFor(board, sessions);
   const spots = positions(board, session);
   return (
-    <ol ref={list} className="mx-panel mx-sector-list">
-      {[...groups].sort(byStanding).map((group) => {
+    <ol ref={list} className="mx-panel mx-sector-list" data-index-only={indexOnly || undefined}>
+      {[...groups].sort(indexOnly ? byChange : byStanding).map((group) => {
         const name = groupName(group, kind, locale);
         const tone = changeTone(group.change);
         const line = sparkline(group.path, spots, 72, 26, 3);
@@ -267,12 +273,12 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
           <li key={group.key}>
             <button type="button" data-key={group.key} onClick={() => onOpen(group.key)}>
               <span className="mx-sector-list-name">{name}</span>
-              <svg className="mx-sector-list-spark" viewBox="0 0 72 26" aria-hidden="true">
+              {(!indexOnly || line.path) && <svg className="mx-sector-list-spark" viewBox="0 0 72 26" aria-hidden="true">
                 <line x1={0} x2={72} y1={line.zero} y2={line.zero} className="mx-sector-spark-zero" />
                 <path d={line.path} className={"mx-sector-spark-line mx-" + tone} />
-              </svg>
-              <span className={"mx-sector-list-change mx-" + tone}>{formatDeltaPercent(group.change, locale, 2)}</span>
-              <span className="mx-sector-list-meta">
+              </svg>}
+              <span className={"mx-sector-list-change mx-" + tone}>{indexOnly && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</span>
+              {!indexOnly && <span className="mx-sector-list-meta">
                 <BreadthBar breadth={group.breadth} />
                 <span>{t("涨", "Up")} {up} · {t("跌", "Down")} {down}</span>
                 {group.streak >= 2 && <span className="mx-sector-streak">{locale === "zh" ? `连 ${group.streak} 日前三` : `Top 3 · ${group.streak}d`}</span>}
@@ -281,7 +287,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
                     {displaySymbol(group.leader.symbol) + " " + formatDeltaPercent(group.leader.change, locale, 2)}
                   </span>
                 )}
-              </span>
+              </span>}
               <CaretRight size={16} className="mx-sector-list-caret" aria-hidden="true" />
             </button>
           </li>

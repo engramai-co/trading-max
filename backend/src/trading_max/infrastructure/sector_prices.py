@@ -159,6 +159,9 @@ class YahooSparkPrices:
 
         return self._fetch(SPARK_URL, symbols, {"range": "1d", "interval": "5m"}, parse_compact)
 
+    def benchmark_intraday(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
+        return self._fetch(SPARK_URL, symbols, {"range": "5d", "interval": "5m"}, parse_compact)
+
     def daily(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         """About a month of daily closes, with each security's display name."""
 
