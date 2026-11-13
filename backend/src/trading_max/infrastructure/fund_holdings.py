@@ -26,6 +26,7 @@ from .fund_catalogs import FundCatalog
 from .fund_downloads import as_of_date, percentage
 from .fund_downloads import isin as valid_isin
 from .fund_profiles import (
+    HSBC_VERSION,
     apply_invesco_factsheet,
     apply_vanguard_factsheet,
     empty_profile,
@@ -756,6 +757,19 @@ class FundFetchBackoff(RuntimeError):
     """An issuer failed and the next refresh is already rate limited."""
 
 
+# Issuers whose share-class parser changed after snapshots were cached. A snapshot
+# parsed by an earlier parser is read again on the next refresh, not after max_age.
+PROFILE_PARSERS = {"HSBC Asset Management": HSBC_VERSION}
+
+
+def _profile_current(snapshot: FundSnapshot) -> bool:
+    profile = snapshot.profile
+    expected = PROFILE_PARSERS.get(profile.issuer) if profile else None
+    return expected is None or any(
+        item.parser_version == expected for item in profile.evidence.values()
+    )
+
+
 class OfficialFundHoldingsProvider:
     """Use a daily official snapshot cache with stale-on-error resilience."""
 
@@ -788,7 +802,11 @@ class OfficialFundHoldingsProvider:
         return FundSnapshot.model_validate(payload)
 
     def _is_fresh(self, snapshot: FundSnapshot) -> bool:
-        if snapshot.cache_schema_version != 4 or not snapshot.fetched_at:
+        if (
+            snapshot.cache_schema_version != 4
+            or not snapshot.fetched_at
+            or not _profile_current(snapshot)
+        ):
             return False
         try:
             fetched_at = datetime.fromisoformat(snapshot.fetched_at.replace("Z", "+00:00"))
