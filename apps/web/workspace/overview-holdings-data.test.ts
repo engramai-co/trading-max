@@ -10,35 +10,38 @@ const holding = (ticker: string, value: number, extra: Partial<Holding> = {}) =>
 const tickers = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"];
 
 describe("overview holdings ledger", () => {
-  it("merges accounts, lists the largest eight and closes the rest in one row", () => {
+  it("merges accounts and lists every holding; the largest eight own colours, the rest share one segment", () => {
     const holdings = [...tickers.map((ticker, index) => holding(ticker, 1000 - index * 50)), holding("A", 100, { account: "B" })];
     const ledger = holdingsLedger({ holdings, signals: [] });
     expect(ledger.count).toBe(10);
     expect(ledger.groups).toEqual([{ kind: "stocks", rows: ledger.rows }]);
-    expect(ledger.rows.map((row) => row.ticker)).toEqual(["A", "B", "C", "D", "E", "F", "G", "H"]);
+    expect(ledger.rows.map((row) => row.ticker)).toEqual(tickers);
     expect(ledger.rows[0]).toMatchObject({ value: 1100, colour: 0 });
-    expect(ledger.rows.map((row) => row.colour)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(ledger.rows.map((row) => row.colour)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, null, null]);
     expect(ledger.rest).toMatchObject({ count: 2, value: 1150 });
-    expect(ledger.rows.reduce((sum, row) => sum + row.weight, 0) + ledger.rest.weight).toBeCloseTo(1);
+    expect(ledger.rows.reduce((sum, row) => sum + row.weight, 0)).toBeCloseTo(1);
+    const coloured = ledger.rows.filter((row) => row.colour !== null);
+    expect(coloured.reduce((sum, row) => sum + row.weight, 0) + ledger.rest.weight).toBeCloseTo(1);
   });
 
-  it("gives each flagged holding beyond the eight its own row, colour, segment and signal link", () => {
+  it("gives each flagged holding beyond the eight its own colour, segment and signal link", () => {
     const holdings = [...tickers, "K"].map((ticker, index) => holding(ticker, 1000 - index * 50));
     const facts = [{ kind: "score" as const, value: 7, severity: 83 }];
     const ledger = holdingsLedger({
       holdings,
       signals: ["J", "K"].map((ticker) => ({ ticker, facts, href: "/research?ticker=" + ticker + "&view=technical", severity: 83 })),
     });
-    expect(ledger.rows.slice(-2)).toMatchObject([
+    expect(ledger.rows.slice(-3)).toMatchObject([
+      { ticker: "I", colour: null, facts: [] },
       { ticker: "J", colour: 8, facts, href: "/research?ticker=J&view=technical" },
       { ticker: "K", colour: 9, facts, href: "/research?ticker=K&view=technical" },
     ]);
-    // The neutral segment and the closing row are the same holdings.
+    // The neutral segment is the listed holdings without a colour.
     expect(ledger.rest).toMatchObject({ count: 1, value: 600 });
-    expect(ledger.rows.reduce((sum, row) => sum + row.weight, 0) + ledger.rest.weight).toBeCloseTo(1);
+    expect(ledger.rows.reduce((sum, row) => sum + row.weight, 0)).toBeCloseTo(1);
   });
 
-  it("orders groups by total class weight and keeps the mixed tail outside both", () => {
+  it("orders groups by total class weight and lists every fund and stock in its group", () => {
     const holdings = [
       ...[95, 90, 85, 80, 20].map((value, index) => holding("S" + index, value)),
       ...[100, 88, 82, 77, 40, 15].map((value, index) => holding("F" + index, value, { isFund: true })),
@@ -47,11 +50,12 @@ describe("overview holdings ledger", () => {
     expect(before.groups.map(({ kind }) => kind)).toEqual(["funds", "stocks"]);
     const after = holdingsLedger({ holdings, signals: [{ ticker: "F4", facts: [], href: "/holdings", severity: 45 }] });
     expect(after.groups.map(({ kind, rows }) => [kind, rows.map((row) => row.ticker)])).toEqual([
-      ["funds", ["F0", "F1", "F2", "F3", "F4"]],
-      ["stocks", ["S0", "S1", "S2", "S3"]],
+      ["funds", ["F0", "F1", "F2", "F3", "F4", "F5"]],
+      ["stocks", ["S0", "S1", "S2", "S3", "S4"]],
     ]);
-    expect(after.rows.slice(0, 8)).toEqual(before.rows);
-    expect(after.rows.at(-1)).toMatchObject({ ticker: "F4", colour: 8 });
+    expect(after.rows.slice(0, 8)).toEqual(before.rows.slice(0, 8));
+    expect(after.rows.find((row) => row.ticker === "F4")).toMatchObject({ colour: 8 });
+    expect(before.rows.find((row) => row.ticker === "F4")).toMatchObject({ colour: null });
     expect(after.rest).toMatchObject({ count: 2, value: 35 });
   });
 

@@ -289,10 +289,6 @@
 .mx-overview-holdings .mx-company-logo img {
   padding: 3px;
 }
-.mx-ledger-rest :is(th, td) {
-  border-top: 1px solid var(--mx-border);
-  color: var(--mx-muted);
-}
 .mx-ledger-dot {
   flex: none;
   width: 8px;
@@ -467,10 +463,6 @@
   }
   .mx-ledger-etf .mx-ledger-flag {
     margin-right: 4px;
-  }
-  .mx-ledger-item-rest {
-    border-top: 1px solid var(--mx-border);
-    color: var(--mx-muted);
   }
 }
 @media (prefers-reduced-motion: reduce) {

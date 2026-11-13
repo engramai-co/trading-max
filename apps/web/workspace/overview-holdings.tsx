@@ -136,12 +136,13 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   const groupLabel = (kind: LedgerGroup["kind"]) => kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks");
   const restLabel = locale === "zh" ? `其余 ${ledger.rest.count} 只` : `${ledger.rest.count} more`;
   const countLabel = locale === "zh" ? `${ledger.count} 只` : `${ledger.count} ${ledger.count === 1 ? "holding" : "holdings"}`;
-  const rowFocus = (row: LedgerRow): Focus => ({ segment: row.ticker, label: row.ticker, weight: row.weight });
-  const restFocus: Focus = { segment: REST, label: restLabel, weight: ledger.rest.weight };
-  const lit = (segment: string) => (focus?.segment === segment ? "" : undefined);
-  const dot = (row: LedgerRow | null) => (
-    <i className="mx-ledger-dot" aria-hidden="true" data-rest={row ? undefined : ""}
-      style={row ? ({ "--mx-dot": palette[row.colour] } as CSSProperties) : undefined} />
+  // A neutral row lights the shared segment; the centre still names the row and its own weight.
+  const segmentOf = (row: LedgerRow) => (row.colour === null ? REST : row.ticker);
+  const rowFocus = (row: LedgerRow): Focus => ({ segment: segmentOf(row), label: row.ticker, weight: row.weight });
+  const lit = (row: LedgerRow) => (focus?.segment === segmentOf(row) ? "" : undefined);
+  const dot = (row: LedgerRow) => (
+    <i className="mx-ledger-dot" aria-hidden="true" data-rest={row.colour === null ? "" : undefined}
+      style={row.colour === null ? undefined : ({ "--mx-dot": palette[row.colour] } as CSSProperties)} />
   );
   const pointer = (next: Focus) => ({ onPointerEnter: () => setFocus(next), onPointerLeave: () => setFocus(null) });
   const keys = (next: Focus) => ({ onFocus: () => setFocus(next), onBlur: () => setFocus(null) });
@@ -183,7 +184,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                   const rowId = groupId + "-row-" + index;
                   const headers = (column: string) => rowId + " " + groupId + "-" + column;
                   return (
-                    <tr className="mx-ledger-row" key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row.ticker)}>
+                    <tr className="mx-ledger-row" key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row)}>
                       <th scope="row" id={rowId} headers={groupId}>
                         <Link className="mx-ledger-link" href={row.href} {...keys(rowFocus(row))}>
                           {dot(row)}
@@ -207,18 +208,6 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                 })}
               </tbody>;
             })}
-            {ledger.rest.count > 0 && <tbody>
-              <tr className="mx-ledger-row mx-ledger-rest" {...pointer(restFocus)} onClick={open} data-focus={lit(REST)}>
-                <th scope="row">
-                  <Link className="mx-ledger-link" href="/holdings" {...keys(restFocus)}>
-                    {dot(null)}
-                    <span>{restLabel}</span>
-                  </Link>
-                </th>
-                <td><span className="sr-only">{weightLabel} </span>{percent(ledger.rest.weight)}</td>
-                <td colSpan={4} />
-              </tr>
-            </tbody>}
           </table>
           {/* Phones keep name and weight above the figures; each group introduces its own columns. */}
           <div className="mx-ledger-list">
@@ -260,15 +249,6 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                 </ol>
               </section>;
             })}
-            {ledger.rest.count > 0 && (
-              <Link className="mx-ledger-item mx-ledger-item-rest" href="/holdings" {...keys(restFocus)}>
-                <span className="mx-ledger-item-head">
-                  {dot(null)}
-                  <span>{restLabel}</span>
-                  <strong><span className="sr-only">{weightLabel} </span>{percent(ledger.rest.weight)}</strong>
-                </span>
-              </Link>
-            )}
           </div>
         </div>
       )}
@@ -287,7 +267,7 @@ function Donut({ ledger, palette, focus, setFocus, title, countLabel, restLabel 
 }) {
   const t = useCopy();
   const segments = [
-    ...ledger.rows.map((row) => ({ key: row.ticker, label: row.ticker, weight: row.weight, colour: palette[row.colour] })),
+    ...ledger.rows.flatMap((row) => row.colour === null ? [] : [{ key: row.ticker, label: row.ticker, weight: row.weight, colour: palette[row.colour] }]),
     ...(ledger.rest.weight > 0 ? [{ key: REST, label: restLabel, weight: ledger.rest.weight, colour: undefined }] : []),
   ].filter((segment) => segment.weight > 0);
   const total = segments.reduce((sum, segment) => sum + segment.weight, 0);
