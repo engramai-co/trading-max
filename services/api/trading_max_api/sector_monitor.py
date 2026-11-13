@@ -17,7 +17,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
@@ -77,6 +77,7 @@ from .sector_sessions import (
     MARKETS,
     board_complete,
     calendar_known,
+    exchange_sessions,
     in_break,
     is_due,
     latest_session,
@@ -385,17 +386,14 @@ class SectorMonitor:
             session = latest_session(market, now)
             if session is not None:
                 eligible = max(boundary, self._ceil_slot(self._eligible_at(market, session, now)))
-                if self._due(market, session, eligible):
-                    candidates.append(eligible)
-                    continue
-                settlement = self._ceil_slot(session.close + COMPLETE_AFTER)
-                if now < settlement and self._due(market, session, max(boundary, settlement)):
-                    candidates.append(max(boundary, settlement))
-                    continue
-            if session is not None and session.break_end is not None and in_break(session, now):
-                # A rate-limit pause can outlast the break.
-                candidates.append(max(boundary, self._ceil_slot(session.break_end)))
-                continue
+                if session.break_end is not None and in_break(session, eligible):
+                    eligible = self._ceil_slot(session.break_end)
+                settlement = max(boundary, self._ceil_slot(session.close + COMPLETE_AFTER))
+                candidates.extend(
+                    candidate
+                    for candidate in {eligible, settlement}
+                    if candidate >= boundary and self._due(market, session, candidate)
+                )
             upcoming = next_session(market, now)
             if upcoming is not None:
                 candidates.append(max(boundary, self._ceil_slot(upcoming.open)))
@@ -537,6 +535,16 @@ class SectorMonitor:
         # Switching off while the inputs were prepared stops the refresh before
         # it asks the provider for anything.
         self._check_active()
+        day = date.fromisoformat(session.date)
+        listing_windows = {
+            suffix: next(iter(exchange_sessions(venue, day, day)), None)
+            for suffix, venue in MARKETS[market].listing_calendars
+        }
+        windows = {
+            symbol: listing_windows.get("." + symbol.rpartition(".")[2], session)
+            for symbol in symbols
+        }
+        symbols = [symbol for symbol in symbols if windows[symbol] is not None]
         series = self.prices.intraday(symbols)
         fetched_at = self._now()
         self._check_active()
@@ -545,7 +553,7 @@ class SectorMonitor:
         daily_sessions = prior_session_dates(market, session.date, RANK_SESSIONS + 1)
         previous_date = daily_sessions[-1] if daily_sessions else ""
         # HK Spark's undated previousClose can belong to a different session.
-        # Reuse the daily rank feed, requiring the calendar's exact prior close.
+        # Require the dated daily close in India too, including after Sunday trading.
         validated_daily = (
             self._daily_closes(
                 market,
@@ -555,20 +563,23 @@ class SectorMonitor:
                 late=late,
                 required_date=previous_date,
             )
-            if market == "hk"
+            if market in {"hk", "in"}
             else None
         )
         self._check_active()
         sessions: dict[str, MemberSession] = {}
         for symbol, item in series.items():
+            window = windows.get(symbol)
+            if window is None:
+                continue
             priced = member_session(
                 item.timestamps,
                 item.closes,
                 validated_daily.closes.get(symbol, {}).get(previous_date)
                 if validated_daily is not None
                 else item.previous_close,
-                session_open=session.open,
-                session_close=session.close,
+                session_open=window.open,
+                session_close=window.close,
             )
             if priced is not None:
                 sessions[symbol] = priced
@@ -591,6 +602,9 @@ class SectorMonitor:
         self._check_active()
         if after_close:
             for symbol in symbols:
+                window = windows[symbol]
+                if window is None:
+                    continue
                 closes = daily.closes.get(symbol) or {}
                 # The prior Xetra day may be a holiday on the listing's exchange.
                 prior = (
@@ -602,7 +616,7 @@ class SectorMonitor:
                     sessions.get(symbol),
                     closes.get(session.date),
                     closes.get(prior),
-                    session_close=session.close,
+                    session_close=window.close,
                 )
                 if settled is not None:
                     sessions[symbol] = settled
@@ -616,7 +630,9 @@ class SectorMonitor:
         closing = sum(
             c.weight
             for c in universe.constituents
-            if c.symbol in sessions and closes_at_close(sessions[c.symbol], session.close)
+            if (window := windows.get(c.symbol)) is not None
+            and c.symbol in sessions
+            and closes_at_close(sessions[c.symbol], window.close)
         )
         complete = after_close and closing >= MIN_COVERAGE
 
@@ -693,6 +709,9 @@ class SectorMonitor:
                 fund_ticker=universe.fund_ticker,
                 url=universe.source_url,
                 as_of=universe.as_of,
+                quote_weight_target=MARKETS[market].quote_weight
+                if MARKETS[market].quote_weight < 1
+                else None,
             ),
             exposure_gbp=round(sum(exposure.values()), 2),
             exposure_basis_gbp=portfolio.invested_gbp,
@@ -884,9 +903,9 @@ class SectorMonitor:
     def response(self, market: SectorMarketCode | None = None) -> SectorBoardResponse:
         now = self._now()
         statuses = self.markets(now)
-        # Europe overlaps the UK; keep the existing default-market candidates.
+        # Keep the legacy API default candidates; the workspace opens Global.
         chosen = market or default_market(
-            (status for status in statuses if status.market != "eu"), now
+            (status for status in statuses if status.market in {"us", "uk", "hk", "kr", "jp"}), now
         )
         return SectorBoardResponse(
             market=chosen,

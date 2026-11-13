@@ -25,6 +25,7 @@ class MarketCalendar:
     timezone: str
     refresh_minutes: int = 10
     quote_weight: float = 1.0
+    listing_calendars: tuple[tuple[str, str], ...] = ()
 
 
 MARKETS: dict[SectorMarketCode, MarketCalendar] = {
@@ -34,6 +35,16 @@ MARKETS: dict[SectorMarketCode, MarketCalendar] = {
     "kr": MarketCalendar("XKRX", "Asia/Seoul"),
     "jp": MarketCalendar("XTKS", "Asia/Tokyo"),
     "eu": MarketCalendar("XETR", "Europe/London", refresh_minutes=30, quote_weight=0.95),
+    "tw": MarketCalendar("XTAI", "Asia/Taipei", listing_calendars=((".TWO", "ROCO"),)),
+    "in": MarketCalendar(
+        "XNSE",
+        "Asia/Kolkata",
+        refresh_minutes=20,
+        quote_weight=0.95,
+        listing_calendars=((".BO", "XBOM"),),
+    ),
+    "ca": MarketCalendar("XTSE", "America/Toronto"),
+    "au": MarketCalendar("XASX", "Australia/Sydney"),
 }
 
 # Closing auctions finish within minutes; a board fetched this long after the
@@ -71,22 +82,33 @@ def calendar_known(name: str, timezone: str, now: datetime) -> bool:
     return INDIA_START <= now.astimezone(ZoneInfo(timezone)).date() <= INDIA_END
 
 
+# TWSE's published 2027 schedule adds these closures to the library.
+# TPEx's 2026 cash-equity calendar matches TWSE's 2026 schedule. The
+# separate venue identity permits its own future or extraordinary notices.
+_TWSE_CLOSURES = {date(2027, 2, 2), date(2027, 2, 3), date(2027, 4, 6), date(2027, 12, 24)}
+
+
 @lru_cache(maxsize=256)
 def exchange_sessions(
     name: str, start: date, end: date, *, buffer_years: int = 1
 ) -> tuple[SectorSessionWindow, ...]:
     if name in INDIAN_EXCHANGES:
         return india_sessions(name, start, end)
+    # exchange_calendars has no standalone Taipei Exchange calendar.
+    name = "XTAI" if name == "ROCO" else name
     calendar = market_calendar(name, start.year, end.year, buffer_years=buffer_years)
     schedule = calendar.schedule.loc[pd.Timestamp(start) : pd.Timestamp(end)]
     windows = []
     for label, row in schedule.iterrows():
+        day = pd.Timestamp(label).date()
+        if name == "XTAI" and day in _TWSE_CLOSURES:
+            continue
         opened, closed = _utc(row["open"]), _utc(row["close"])
         if opened is None or closed is None:
             continue
         windows.append(
             SectorSessionWindow(
-                date=pd.Timestamp(label).date().isoformat(),
+                date=day.isoformat(),
                 open=opened,
                 close=closed,
                 break_start=_utc(row.get("break_start")),

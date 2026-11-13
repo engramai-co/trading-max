@@ -1,9 +1,9 @@
 import { privateJsonResponse, proxyToBackend } from "@/lib/backend-proxy";
-import type { SectorMarketCode } from "@/lib/types";
+import { SECTOR_MARKETS } from "@/workspace/sectors-data";
 
 export const dynamic = "force-dynamic";
 
-const MARKETS: ReadonlySet<string> = new Set<SectorMarketCode>(["us", "eu", "uk", "hk", "kr", "jp"]);
+const MARKETS: ReadonlySet<string> = new Set(SECTOR_MARKETS);
 
 export async function GET(request: Request) {
   const market = new URL(request.url).searchParams.get("market");

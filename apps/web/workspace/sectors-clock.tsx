@@ -49,6 +49,10 @@ export function SectorSources({ source }: { source: SectorBoard["source"] }) {
         "地图面积和持仓按完整成分篮子计算；涨跌、家数和排名使用欧洲上市股样本，目标覆盖篮子至少 95% 的权重，以各股的交易币种计算。",
         "Map area and exposure use the full basket. Moves, breadth and ranks use the largest European listings, with a target of at least 95% of basket weight, in each listing’s own currency.",
       )}</p>}
+      {source.quoteWeightTarget != null && source.fundTicker !== "SMEA" && <p>{locale === "zh"
+        ? `面积和穿透敞口使用完整篮子；行情优先覆盖权重最高的成分股，目标为篮子权重的 ${Math.round(source.quoteWeightTarget * 100)}%。`
+        : `Area and look-through exposure use the full basket. Quotes prioritise the largest constituents, targeting ${Math.round(source.quoteWeightTarget * 100)}% of basket weight.`}
+      </p>}
       <p>
         {t(
           "板块涨跌按成分股权重加权；涨跌 ±0.05% 以内算持平；排名比较近 5 个交易日的板块涨跌，有报价的成分股不到板块权重一半时不排名（主题另需至少 3 只有报价）。你的持仓是穿透后落在这些成分股上的金额，百分比是它占穿透后已投资总额的比例。",

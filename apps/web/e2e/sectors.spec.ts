@@ -20,6 +20,13 @@ const SECTORS: Array<[string, string, number, number]> = [
   ["15", "Materials", 0.02, -0.0073],
 ];
 
+const NEW_MARKETS = [
+  { code: "tw", zone: "Asia/Taipei", fund: "ITWN", universe: "MSCI Taiwan", names: /台股|Taiwan/, ids: ["taiex"], at: "2026-11-13T04:05:00Z" },
+  { code: "in", zone: "Asia/Kolkata", fund: "NDIA", universe: "MSCI India", names: /印股|India/, ids: ["nifty-50", "sensex"], at: "2026-11-13T07:30:00Z" },
+  { code: "ca", zone: "America/Toronto", fund: "CSCA", universe: "MSCI Canada", names: /加股|Canada/, ids: ["sp-tsx"], at: "2026-11-13T17:45:00Z" },
+  { code: "au", zone: "Australia/Sydney", fund: "SAUS", universe: "MSCI Australia", names: /澳股|Australia/, ids: ["asx-200"], at: "2026-11-13T02:00:00Z" },
+] as const;
+
 const EUROPE_FIXTURE_TIME = Date.parse("2026-11-13T13:15:00Z");
 
 function fixture(code = "us", now = Date.now()) {
@@ -105,7 +112,7 @@ function fixture(code = "us", now = Date.now()) {
   });
   return {
     market: code,
-    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul"), market("jp", "Asia/Tokyo"), market("eu", "Europe/London")],
+    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul"), market("jp", "Asia/Tokyo"), market("eu", "Europe/London"), ...NEW_MARKETS.map(({ code, zone }) => market(code, zone))],
     monitor: { enabled: true, phase: "idle", intervalSeconds: 600, nextRunAt: null, lastAttemptAt: null, lastSuccessAt: null, lastError: null },
     board: {
       market: code,
@@ -337,6 +344,11 @@ const indices: IndexIdentity[] = [
   fakeIndex("msci-em-imi", "global", "MSCI Emerging Markets IMI", "MSCI 新兴市场 IMI", "^SYN-IMI", "USD"),
   fakeIndex("ftse-all-world-etf", "global", "FTSE All-World ETF price", "富时全球 ETF 价格", "SYN.L", "GBP", "etf-price"),
   { ...fakeIndex("ftse-all-world", "global", "FTSE All-World", "富时全球指数", "", "USD"), symbol: null, rights: "licensed-source-required" },
+  fakeIndex("taiex", "tw", "TAIEX", "台湾加权指数", "^SYN-TWII", "TWD"),
+  fakeIndex("nifty-50", "in", "Nifty 50", "印度 Nifty 50", "^SYN-NSEI", "INR"),
+  fakeIndex("sensex", "in", "SENSEX", "印度 SENSEX", "^SYN-BSESN", "INR"),
+  fakeIndex("sp-tsx", "ca", "S&P/TSX Composite", "标普多伦多综合指数", "^SYN-GSPTSE", "CAD"),
+  fakeIndex("asx-200", "au", "S&P/ASX 200", "标普澳洲 200", "^SYN-AXJO", "AUD"),
   fakeIndex("smi", "ch", "SMI", "瑞士市场指数", "^SYN-SMI", "CHF"),
 ];
 
@@ -420,6 +432,8 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
     } else if (code === "jp") {
       response.board.source = { ...response.board.source, fundTicker: "IJPN", universe: "MSCI Japan" };
     }
+    const market = NEW_MARKETS.find((item) => item.code === code);
+    if (market) response.board.source = { ...response.board.source, fundTicker: market.fund, universe: market.universe };
     await route.fulfill({ json: response });
   });
 }
@@ -716,6 +730,73 @@ test.describe("market index layer", () => {
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
     await expect(page).toHaveURL(/sectors\?market=us&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
+  });
+
+  for (const market of NEW_MARKETS) {
+    test(`${market.code} opens its index cards and sector board`, async ({ page }, testInfo) => {
+      const mobile = testInfo.project.name === "mobile";
+      if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+      const now = Date.parse(market.at);
+      await page.clock.setFixedTime(now);
+      await mockIndices(page, { now });
+      await page.goto("/sectors");
+      if (mobile) {
+        const picker = page.getByRole("combobox", { name: /^(市场|Market)$/ });
+        await picker.fill("zzzz");
+        await expect(page.getByText(/没有匹配的市场|No matching market/)).toBeVisible();
+        await picker.clear();
+        await page.getByRole("option", { name: market.names }).click();
+      } else {
+        await page.getByRole("button", { name: /更多市场|More markets/ }).click();
+        await expect(page.getByText(market.code === "ca" ? /^(美洲|Americas)$/ : /^(亚太|Asia Pacific)$/)).toBeVisible();
+        await page.getByRole("menuitem", { name: market.names }).click();
+      }
+      await expect(page).toHaveURL(new RegExp(`market=${market.code}$`));
+      await expect(page.locator(".mx-index-cards a")).toHaveCount(market.ids.length);
+      const card = page.locator(`#index-card-${market.ids[0]}`);
+      await expect(card).toBeVisible();
+      const rows = page.locator(".mx-sector-list > li");
+      if (mobile) await expect(rows).toHaveCount(11);
+      else await expect(page.locator(".mx-sector-block")).toHaveCount(11);
+      const folder = process.env.TM_MKT2_VISUAL_DIR;
+      if (folder) {
+        await page.evaluate(() => document.fonts.ready);
+        await settle(page);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        await page.screenshot({ path: path.join(folder, `market-${market.code}-${mobile ? 390 : 1440}.png`) });
+      }
+      if (mobile) await rows.first().getByRole("button").tap();
+      else await page.locator('[data-key="45"] [data-subgroup="4510"]').click();
+      const detail = page.locator(".mx-sector-detail");
+      await expect(detail.getByRole("heading", { level: 2 })).toHaveText(/信息技术|Information Technology/);
+      await expect(detail.locator(".mx-sector-breadth-detail")).toBeVisible();
+      await expect(detail.locator(".mx-sector-ranks li")).toHaveCount(5);
+      await expect(detail).toContainText("£1,200");
+      if (mobile) {
+        await page.locator(".mx-sector-back").tap();
+        await expect(rows.first().getByRole("button")).toBeFocused();
+      }
+      await card.click();
+      await expect(page).toHaveURL(new RegExp(`market=${market.code}&index=${market.ids[0]}`));
+      await expect(page.locator(".mx-index-detail")).toBeVisible();
+    });
+  }
+
+  test("India keeps the last board visible when its calendar is unknown", async ({ page }) => {
+    const now = Date.parse("2027-01-04T07:30:00Z");
+    await page.clock.setFixedTime(now);
+    await mockIndices(page, { now });
+    await page.route("**/api/backend/sectors?market=in", (route) => {
+      const data = fixture("in", Date.parse(NEW_MARKETS[1].at));
+      const markets = data.markets.map((status) => status.market === "in"
+        ? { ...status, calendarKnown: false } : status);
+      return route.fulfill({ json: { ...data, markets } });
+    });
+    await page.goto("/sectors?market=in");
+    const clock = page.locator(".mx-sectors-clock");
+    await expect(clock).toContainText(/日历未知|Calendar unknown/);
+    await expect(clock).not.toContainText(/已收盘|Closed/);
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
   });
 
   test("capture synthetic Europe board screenshots", async ({ browser }, testInfo) => {

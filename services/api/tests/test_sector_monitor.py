@@ -226,10 +226,10 @@ def window(day: str, opened: str, closed: str, **breaks: str) -> SectorSessionWi
         ("", "", "", None),
         # A named exchange decides alone; only an unnamed one lets the Bloomberg
         # code (often a generic "<ticker> US Equity") stand in.
-        ("SYN", "Toronto Stock Exchange", "SYN US Equity", None),
+        ("SYN", "Toronto Stock Exchange", "SYN US Equity", ("ca", "SYN.TO")),
         ("SYN", "NYSE", "SYN CN Equity", ("us", "SYN")),
         ("SYN", "Unknown", "SYN US Equity", ("us", "SYN")),
-        ("SYN", "N/A", "SYN CN Equity", None),
+        ("SYN", "N/A", "SYN CN Equity", ("ca", "SYN.TO")),
         # An exchange name these lists do not know never blocks a listing suffix.
         ("700.HK", "Hong Kong Exchanges And Clearing Ltd", "", ("hk", "0700")),
     ],
@@ -248,6 +248,12 @@ def test_board_symbols_use_the_same_keys() -> None:
     assert member_key("eu", "BT-A.L") == ("uk", "BT-A")
     assert member_key("eu", "SEMI.AS") == ("eu", "SEMI.AS")
     assert member_key("eu", "SEMI.PA") == ("eu", "SEMI.PA")
+    assert market_key("1234.TWO", "XTAI") is None
+    assert market_key("1234", "ROCO") == member_key("tw", "1234.TWO")
+    assert market_key("1234", "XTAI") != member_key("tw", "1234.TWO")
+    assert market_key("SYN.NS", "XBOM") is None
+    assert market_key("SYN.B", "XTSE") == member_key("ca", "SYN-B.TO")
+    assert market_key("SYN", "XASX") == member_key("au", "SYN.AX")
 
 
 def test_each_look_through_value_is_assigned_once() -> None:
@@ -618,12 +624,13 @@ def test_backfill_without_prices_is_reported_and_bounded(tmp_path: Path) -> None
         clock["now"] += timedelta(minutes=10)
 
     assert not any(
-        sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp", "eu")
+        sectors.due(market, clock["now"])
+        for market in ("us", "uk", "hk", "kr", "jp", "eu", "tw", "in", "ca", "au")
     )
     requests = len(prices.intraday_requests)
     sectors.run_once()
     assert len(prices.intraday_requests) == requests
-    assert sectors.status().next_run_at == datetime(2026, 11, 9, tzinfo=UTC)
+    assert sectors.status().next_run_at == datetime(2026, 11, 8, 8, 50, tzinfo=UTC)
 
 
 def test_a_late_fill_retries_an_unsettled_close(tmp_path: Path) -> None:
@@ -676,16 +683,20 @@ def test_a_late_fill_asks_again_for_closes_the_window_gave_up_on(tmp_path: Path)
     for minute in (30, 40, 50, 60):
         clock["now"] = US_CLOSE + timedelta(minutes=minute)
         sectors.run_once()
-    requests = len(prices.daily_requests)
+
+    def us_requests():
+        return sum("AAA" in symbols for symbols in prices.daily_requests)
+
+    requests = us_requests()
     clock["now"] = US_CLOSE + timedelta(minutes=70)
     sectors.run_once()
-    assert len(prices.daily_requests) == requests
+    assert us_requests() == requests
 
     # Past the window, the first late attempt asks again and settles the session.
     prices.history = official.history
     clock["now"] = US_CLOSE + COMPLETE_AFTER + GIVE_UP_AFTER + timedelta(minutes=10)
     sectors.run_once()
-    assert len(prices.daily_requests) == requests + 1
+    assert us_requests() == requests + 1
     board = sectors.boards.load("us")
     assert board is not None and board.complete is True
 
@@ -1036,7 +1047,8 @@ def test_rate_limiting_pauses_every_market(tmp_path: Path) -> None:
     assert state.phase == "error"
     assert len(prices.intraday_requests) == 1
     assert not any(
-        sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp", "eu")
+        sectors.due(market, clock["now"])
+        for market in ("us", "uk", "hk", "kr", "jp", "eu", "tw", "in", "ca", "au")
     )
     assert state.next_run_at == datetime(2026, 11, 6, 16, 30, tzinfo=UTC)
     clock["now"] = datetime(2026, 11, 6, 16, 31, tzinfo=UTC)
@@ -1184,10 +1196,10 @@ def test_status_reports_schedule_and_switches(tmp_path: Path) -> None:
     assert (starting.enabled, starting.phase, starting.interval_seconds) == (True, "starting", 600)
     assert starting.next_run_at == datetime(2026, 11, 6, 16, 10, tzinfo=UTC)
 
-    for market in ("us", "uk", "hk", "kr", "jp", "eu"):
+    for market in ("us", "uk", "hk", "kr", "jp", "eu", "tw", "in", "ca", "au"):
         sectors.boards.save(complete_board(market, SESSION))
     clock["now"] = datetime(2026, 11, 7, 12, tzinfo=UTC)
-    assert sectors.status().next_run_at == datetime(2026, 11, 9, tzinfo=UTC)
+    assert sectors.status().next_run_at == datetime(2026, 11, 8, 8, 50, tzinfo=UTC)
     assert sectors.run_once().phase == "idle"
 
 

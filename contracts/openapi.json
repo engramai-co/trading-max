@@ -17410,7 +17410,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17477,7 +17481,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17772,7 +17780,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17867,7 +17879,7 @@
         "type": "object"
       },
       "SectorMonitorState": {
-        "description": "Ten-minute sector-board refreshes for the markets that are trading.",
+        "description": "Sector-board refreshes for the markets that are trading.",
         "properties": {
           "enabled": {
             "title": "Enabled",
@@ -18013,6 +18025,17 @@
             "default": "Yahoo Finance",
             "title": "Prices",
             "type": "string"
+          },
+          "quoteWeightTarget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteweighttarget"
           },
           "universe": {
             "description": "Index universe, for example S&P 500.",
@@ -23904,7 +23927,11 @@
                     "hk",
                     "kr",
                     "jp",
-                    "eu"
+                    "eu",
+                    "tw",
+                    "in",
+                    "ca",
+                    "au"
                   ],
                   "type": "string"
                 },

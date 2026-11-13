@@ -211,7 +211,7 @@ export function OverviewSectors({ query }: { query: ReturnType<typeof useOvervie
             ? <span className="mx-sector-empty-copy">
                 <CenteredCopy>{t("开启「证券研究与每日对账」", "Enable Research & daily reconciliation")}</CenteredCopy>
                 <wbr />
-                <CenteredCopy>{t("即可在开盘时段每 10 分钟刷新板块。", " to refresh sectors every 10 minutes during market hours.")}</CenteredCopy>
+                <CenteredCopy>{t("即可在交易时段刷新板块。", " to refresh sectors during market hours.")}</CenteredCopy>
               </span>
             : data?.monitor?.nextRunAt
               ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)

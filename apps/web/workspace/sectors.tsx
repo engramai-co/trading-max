@@ -67,8 +67,10 @@ export function SectorsWorkspace() {
   const openedIndex = demonstration ? null : params.get("index");
   const range = INDEX_RANGES.find((item) => item === params.get("range")) ?? "1Y";
   const indexReturn = useRef<{ id: string; scroll: number; left: number } | null>(null);
+  const demoMarkets = SECTOR_MARKETS.filter((market) => !["tw", "in", "ca", "au"].includes(market));
+  const demoMarket = demoMarkets.find((market) => market === params.get("market"));
   const requested: IndexScope = (demonstration
-    ? sectorMarket(params.get("market"))
+    ? demoMarket
     : indexMarket(params.get("market"))) ?? "global";
   const requestedBoard = sectorMarket(requested);
   const indicesOnly = requestedBoard === null;
@@ -166,7 +168,7 @@ export function SectorsWorkspace() {
           if (!query.isFetching) void query.refetch();
         } else update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null });
       }}
-      options={(demonstration ? ["global" as const, ...SECTOR_MARKETS] : INDEX_MARKETS).map((value) => {
+      options={(demonstration ? ["global" as const, ...demoMarkets] : INDEX_MARKETS).map((value) => {
         const boardMarket = sectorMarket(value);
         const short = boardMarket ? shortNames[boardMarket] : undefined;
         return {
@@ -271,8 +273,10 @@ export function SectorsWorkspace() {
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
         description={demonstration
           ? t("此市场没有演示板块数据。", "Sector data for this market is not included in the demo.")
+          : status?.calendarKnown === false
+          ? undefined
           : data?.monitor?.enabled === false
-          ? t("开启「证券研究与每日对账」自动更新后，开盘时段每 10 分钟更新一次。", "Turn on Research & daily reconciliation updates to refresh sectors every 10 minutes while the market is open.")
+          ? t("开启「证券研究与每日对账」，在交易时段自动更新板块。", "Turn on Research & daily reconciliation to update sectors during trading hours.")
           : data?.monitor?.nextRunAt
             ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)
             : undefined}

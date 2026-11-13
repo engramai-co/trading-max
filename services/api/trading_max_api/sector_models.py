@@ -16,7 +16,7 @@ from pydantic import Field
 
 from .models import ApiModel, SectorMonitorState
 
-SectorMarketCode = Literal["us", "uk", "hk", "kr", "jp", "eu"]
+SectorMarketCode = Literal["us", "uk", "hk", "kr", "jp", "eu", "tw", "in", "ca", "au"]
 SectorGroupingKind = Literal["gics", "themes"]
 
 
@@ -113,6 +113,7 @@ class SectorSource(ApiModel):
     url: str
     as_of: str = Field(description="The issuer's holdings date.")
     prices: str = "Yahoo Finance"
+    quote_weight_target: float | None = None
 
 
 class SectorBoard(ApiModel):

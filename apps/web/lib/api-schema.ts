@@ -6958,7 +6958,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu";
+            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu" | "tw" | "in" | "ca" | "au";
             /**
              * Membercount
              * @default 0
@@ -6984,7 +6984,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu";
+            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu" | "tw" | "in" | "ca" | "au";
             /** Markets */
             markets?: components["schemas"]["SectorMarketStatus"][];
             /** @description Refresh schedule, so an empty board can say when the next update runs. */
@@ -7118,7 +7118,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu";
+            market: "us" | "uk" | "hk" | "kr" | "jp" | "eu" | "tw" | "in" | "ca" | "au";
             /** Sessiondate */
             sessionDate?: string | null;
             /** Sessions */
@@ -7161,7 +7161,7 @@ export interface components {
         };
         /**
          * SectorMonitorState
-         * @description Ten-minute sector-board refreshes for the markets that are trading.
+         * @description Sector-board refreshes for the markets that are trading.
          */
         SectorMonitorState: {
             /** Enabled */
@@ -7220,6 +7220,8 @@ export interface components {
              * @default Yahoo Finance
              */
             prices: string;
+            /** Quoteweighttarget */
+            quoteWeightTarget?: number | null;
             /**
              * Universe
              * @description Index universe, for example S&P 500.
@@ -9992,7 +9994,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Market to show; defaults to the one trading now. */
-                market?: ("us" | "uk" | "hk" | "kr" | "jp" | "eu") | null;
+                market?: ("us" | "uk" | "hk" | "kr" | "jp" | "eu" | "tw" | "in" | "ca" | "au") | null;
             };
             header?: never;
             path?: never;

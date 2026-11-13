@@ -143,6 +143,38 @@ UNIVERSES: dict[str, UniverseSpec] = {
         product_id="251866",
         exchanges={"Tokyo Stock Exchange": ".T"},
     ),
+    "tw": UniverseSpec(
+        market="tw",
+        universe="MSCI Taiwan",
+        fund="iShares MSCI Taiwan UCITS ETF",
+        fund_ticker="ITWN",
+        product_id="251878",
+        exchanges={"Taiwan Stock Exchange": ".TW", "Gretai Securities Market": ".TWO"},
+    ),
+    "in": UniverseSpec(
+        market="in",
+        universe="MSCI India",
+        fund="iShares MSCI India UCITS ETF",
+        fund_ticker="NDIA",
+        product_id="297617",
+        exchanges={"National Stock Exchange Of India": ".NS", "Bse Ltd": ".BO"},
+    ),
+    "ca": UniverseSpec(
+        market="ca",
+        universe="MSCI Canada",
+        fund="iShares MSCI Canada UCITS ETF",
+        fund_ticker="CSCA",
+        product_id="253721",
+        exchanges={"Toronto Stock Exchange": ".TO"},
+    ),
+    "au": UniverseSpec(
+        market="au",
+        universe="MSCI Australia",
+        fund="iShares MSCI Australia UCITS ETF",
+        fund_ticker="SAUS",
+        product_id="251851",
+        exchanges={"Asx - All Markets": ".AX"},
+    ),
     "kr": UniverseSpec(
         market="kr",
         universe="MSCI Korea",
@@ -185,6 +217,11 @@ class SectorUniverse(DomainModel):
     excluded: list[ExcludedHolding] = Field(default_factory=list)
 
 
+# Yahoo uses mnemonic symbols for these BSE listings while the issuer uses
+# BSE security codes. These are aliases for the same listings, not NSE prices.
+BSE_YAHOO_CODES = {"534091": "MCX", "532483": "CANBK"}
+
+
 def provider_symbol(spec: UniverseSpec, ticker: str | None, exchange: str | None) -> str | None:
     """The market-data symbol of one issuer holding, or None when it is not quotable here.
 
@@ -205,11 +242,16 @@ def provider_symbol(spec: UniverseSpec, ticker: str | None, exchange: str | None
         return f"{int(raw):04d}.HK" if raw.isdigit() else None
     if suffix in {".KS", ".KQ"}:
         return f"{raw.zfill(6)}{suffix}" if raw.isdigit() and len(raw) <= 6 else None
+    if suffix in {".TW", ".TWO"}:
+        return f"{raw}{suffix}" if re.fullmatch(r"[0-9]{4}", raw) else None
+    if suffix == ".BO":
+        raw = BSE_YAHOO_CODES.get(raw, raw)
     if suffix == ".T":
         # TSE codes can also carry a letter (e.g. 130A); do not strip it.
         return raw + suffix if re.fullmatch(r"[0-9][0-9A-Z]{3}", raw) else None
     base = re.sub(r"[ .]+", "-", raw.rstrip(".")).strip("-")
-    return base + suffix if _TICKER.fullmatch(base) else None
+    pattern = r"[A-Z0-9]+(?:[-&][A-Z0-9]+)*" if suffix in {".NS", ".BO"} else _TICKER
+    return base + suffix if re.fullmatch(pattern, base) else None
 
 
 def _number(value: Any) -> float:
