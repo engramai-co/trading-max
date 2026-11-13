@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-11-13
+
+### Added
+
+- See how many holdings in supported index baskets are above their 50- and 200-day moving averages, with coverage shown for each reading.
+- Put VIX in context with its latest close, five-year historical percentile, and typical range in volatility points.
+
+### Changed
+
+- Index details link to valuation sources, distinguish tracking ETF valuations from index valuations, and identify MSCI baskets used for Hang Seng and KOSPI.
+
 ## [1.42.0] - 2026-11-13
 
 ### Added
