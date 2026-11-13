@@ -21,15 +21,17 @@ from .sector_models import SectorMarketCode, SectorSessionWindow
 class MarketCalendar:
     calendar: str
     timezone: str
+    refresh_minutes: int = 10
+    quote_weight: float = 1.0
 
 
 MARKETS: dict[SectorMarketCode, MarketCalendar] = {
-    "us": MarketCalendar("XNYS", "America/New_York"),
+    "us": MarketCalendar("XNYS", "America/New_York", refresh_minutes=20),
     "uk": MarketCalendar("XLON", "Europe/London"),
     "hk": MarketCalendar("XHKG", "Asia/Hong_Kong"),
     "kr": MarketCalendar("XKRX", "Asia/Seoul"),
     "jp": MarketCalendar("XTKS", "Asia/Tokyo"),
-    "eu": MarketCalendar("XETR", "Europe/London"),
+    "eu": MarketCalendar("XETR", "Europe/London", refresh_minutes=30, quote_weight=0.95),
 }
 
 # Closing auctions finish within minutes; a board fetched this long after the

@@ -594,14 +594,14 @@ def test_thin_coverage_later_keeps_the_previous_board_and_reports_it(tmp_path: P
     assert us_status.last_error is not None and us_status.session_date == SESSION
 
     sectors.prices = prices
-    clock["now"] = datetime(2026, 11, 6, 16, 20, tzinfo=UTC)
+    clock["now"] = datetime(2026, 11, 6, 16, 30, tzinfo=UTC)
     recovered = sectors.run_once()
     # The other synthetic markets have no prices at all, which is reported too.
     assert recovered.last_error is not None and "US:" not in recovered.last_error
     assert "UK: No prices yet for the 2026-11-06 session" in recovered.last_error
     stored = json.loads((tmp_path / "state" / "sector-monitor.json").read_text())
     assert stored["markets"]["us"]["lastError"] is None
-    assert stored["markets"]["us"]["lastSuccessAt"] == "2026-11-06T16:20:00+00:00"
+    assert stored["markets"]["us"]["lastSuccessAt"] == "2026-11-06T16:30:00+00:00"
 
 
 def test_backfill_without_prices_is_reported_and_bounded(tmp_path: Path) -> None:
@@ -1309,3 +1309,15 @@ def test_europe_prices_top_weight_and_uses_official_close_when_available(
     assert members["SYN.PA"] == pytest.approx(0.05)
     assert members["IDLE.ST"] is None
     assert len(board.rank_sessions) == 5
+
+
+def test_wide_basket_runs_at_open_and_settlement_but_skips_adjacent_slots(tmp_path):
+    universes, prices = us_board_inputs(official=True)
+    clock = {"now": US_OPEN}
+    sectors = monitor(tmp_path, universes, prices, clock)
+    sectors.run_once()
+    assert not sectors.due("us", US_OPEN + timedelta(minutes=10))
+    assert sectors.due("us", US_OPEN + timedelta(minutes=20))
+    clock["now"] = US_CLOSE + COMPLETE_AFTER - timedelta(minutes=10)
+    sectors.run_once()
+    assert sectors.due("us", US_CLOSE + COMPLETE_AFTER)

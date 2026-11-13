@@ -351,7 +351,7 @@ def test_shared_quote_cache_reuses_listings_and_honours_rate_limit():
     source = Source()
     prices = SharedMarketPrices(source)
     assert set(prices.intraday(["SHARED", "ONLY-BOARD"])) == {"SHARED", "ONLY-BOARD"}
-    assert set(prices.intraday(["SHARED", "ONLY-INDEX"])) == {"SHARED", "ONLY-INDEX"}
+    assert set(prices.intraday([" shared ", "ONLY-INDEX"])) == {"SHARED", "ONLY-INDEX"}
     assert source.requests == [["SHARED", "ONLY-BOARD"], ["ONLY-INDEX"]]
     with pytest.raises(SparkRateLimited):
         prices.intraday(["THROTTLED"])
@@ -492,3 +492,32 @@ def test_global_sectors_endpoint_uses_shared_clock_and_caches_public_board(api, 
     clock[0] += timedelta(minutes=5)
     assert client.get("/v1/indices/global-sectors").status_code == 200
     assert len(calls) == 2
+
+
+def test_market_request_budget_reserves_opening_and_closing_capacity(monkeypatch):
+    from trading_max.infrastructure import shared_market_prices as shared
+
+    clock = [100.0]
+    monkeypatch.setattr(shared.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(shared, "REQUEST_BUDGET", ((60, 1, 2), (86400, 2, 3)))
+
+    class Source:
+        def intraday(self, symbols):
+            return {symbol: bars(symbol, ("2026-11-06T02:20:00+00:00", 100)) for symbol in symbols}
+
+        daily = intraday
+
+    prices = shared.SharedMarketPrices(Source())
+    assert prices.intraday(["ONE"])
+    with pytest.raises(shared.MarketPriceBudgetExhausted):
+        prices.daily(["ONE"])
+    assert prices.intraday(["ONE"])  # cache hits do not spend the budget
+    with shared.market_price_priority(True):
+        assert prices.daily(["ONE"])
+        with pytest.raises(shared.MarketPriceBudgetExhausted):
+            prices.intraday(["TWO"])
+        clock[0] += 60
+        assert prices.intraday(["TWO"])
+        with pytest.raises(shared.MarketPriceBudgetExhausted):
+            prices.intraday(["THREE"])
+    assert not prices.rate_limited  # a budget deferral is not a provider 429
