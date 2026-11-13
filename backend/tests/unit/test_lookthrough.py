@@ -582,6 +582,111 @@ def test_lookthrough_keeps_issuer_breakdown_and_constituent_labels() -> None:
     ]
 
 
+def _synthetic_semis_master() -> CatalogSecurityMaster:
+    return CatalogSecurityMaster(
+        SecurityMasterCatalog(
+            records=[
+                SecurityEntityRecord(
+                    entity_id="fund:nqgb",
+                    canonical_ticker="NQGB",
+                    entity_name="Synthetic semiconductor fund",
+                    security_type="ETF",
+                    ticker_aliases=["NQGB"],
+                    isins=["IE0000000099"],
+                    source="test-profile",
+                ),
+                SecurityEntityRecord(
+                    entity_id="issuer:synthetic-memory",
+                    canonical_ticker="SMEM",
+                    entity_name="Synthetic Memory Inc.",
+                    country_of_risk="South Korea",
+                    ticker_aliases=["SMEM"],
+                    isins=["US0000000021"],
+                    gics=classification_for_code("45301020", source="test-profile"),
+                    source="test-profile",
+                ),
+            ]
+        )
+    )
+
+
+def _one_fund_accounts(value: float) -> dict:
+    return {
+        "invest": {"investments_value_gbp": 0, "cash_gbp": 0, "positions": []},
+        "isa": {
+            "investments_value_gbp": value,
+            "cash_gbp": 0,
+            "positions": [
+                {"ticker": "NQGB", "isin": "IE0000000099", "current_value_gbp": value},
+            ],
+        },
+    }
+
+
+def test_lookthrough_fills_constituents_the_issuer_left_unlabelled() -> None:
+    # Breakdown built from constituents: the issuer gave every constituent a sector
+    # except one, which the security master can classify.
+    fund = FundSnapshot(
+        ticker="NQGB",
+        as_of="2026-11-12",
+        holdings=[
+            FundHolding(
+                isin="US0000000011",
+                name="Synthetic Chips Inc.",
+                country="United States",
+                industry="Information Technology",
+                weight_pct=90,
+            ),
+            FundHolding(
+                isin="US0000000021",
+                name="Synthetic Memory Inc.",
+                country="South Korea",
+                weight_pct=9.98,
+            ),
+            FundHolding(name="Other/Cash", asset_class="Cash", weight_pct=0.02),
+        ],
+        country_weights={"United States": 90, "South Korea": 9.98, "Cash & derivatives": 0.02},
+        industry_weights={
+            "Information Technology": 90,
+            "Unclassified": 9.98,
+            "Cash & derivatives": 0.02,
+        },
+    )
+    service = LookthroughService(lambda _ticker: fund, _synthetic_semis_master())
+
+    result = service.run(_one_fund_accounts(100))
+
+    industries = {row["industry"]: row["valueGbp"] for row in result["industryAllocation"]}
+    assert industries == {"Information Technology": 99.98, "Cash & derivatives": 0.02}
+    countries = {row["country"]: row["valueGbp"] for row in result["countryAllocation"]}
+    assert countries == {"United States": 90.0, "South Korea": 9.98, "Cash & derivatives": 0.02}
+
+
+def test_lookthrough_keeps_an_issuer_unclassified_bucket_it_cannot_explain() -> None:
+    # The issuer's own Unclassified bucket does not match unlabelled constituents,
+    # so it is not ours to reassign.
+    fund = FundSnapshot(
+        ticker="NQGB",
+        as_of="2026-11-12",
+        holdings=[
+            FundHolding(
+                isin="US0000000021",
+                name="Synthetic Memory Inc.",
+                country="South Korea",
+                industry="Information Technology",
+                weight_pct=100,
+            ),
+        ],
+        industry_weights={"Information Technology": 95, "Unclassified": 5},
+    )
+    service = LookthroughService(lambda _ticker: fund, _synthetic_semis_master())
+
+    result = service.run(_one_fund_accounts(100))
+
+    industries = {row["industry"]: row["valueGbp"] for row in result["industryAllocation"]}
+    assert industries == {"Information Technology": 95.0, "Unclassified": 5.0}
+
+
 def test_lookthrough_keeps_partial_fund_as_unverified_direct_exposure() -> None:
     partial = FundSnapshot(
         ticker="XUSE",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from io import BytesIO
 
 import httpx
@@ -16,6 +17,15 @@ from .fund_specs import FundSpec
 
 VANECK_ORIGIN = "https://www.vaneck.com"
 SPDR_ORIGIN = "https://www.ssga.com"
+
+
+def _vaneck_row_date(value: object) -> str:
+    """VanEck writes constituent dates as US month/day/year, e.g. 11/12/26 for 12 Nov."""
+    raw = text(value)
+    try:
+        return datetime.strptime(raw, "%m/%d/%y").replace(tzinfo=UTC).date().isoformat()
+    except ValueError:
+        return as_of_date(raw)
 
 
 def fetch_vaneck(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
@@ -51,7 +61,7 @@ def fetch_vaneck(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     for row in data["Holdings"]:
         if row.get("Ticker") != data["Ticker"]:
             raise ValueError(f"{spec.ticker}: mixed VanEck fund holdings")
-        if row.get("AsOfDate") and as_of_date(row["AsOfDate"]) != date:
+        if row.get("AsOfDate") and _vaneck_row_date(row["AsOfDate"]) != date:
             raise ValueError(f"{spec.ticker}: mixed VanEck holdings dates")
         asset = text(row.get("AssetClass"))
         asset = {"Stock": "Equity", "Bond": "Fixed Income"}.get(asset, asset)
