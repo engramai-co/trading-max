@@ -4,8 +4,8 @@ import { findETF, type Copy, type ETFReading } from "./etf-data";
 import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, isFundHolding } from "./holding-groups";
 
 /**
- * Holdings always listed. Every listed row owns a palette colour: the flagged holdings beyond these take the
- * next ones, and the signal cap keeps them inside the palette.
+ * Holdings with a colour and a donut segment of their own: the largest eight, then any flagged holding beyond
+ * them, which the signal cap keeps inside the palette. Every other holding is still listed, on a neutral dot.
  */
 export const COLOURED_HOLDINGS = 8;
 
@@ -28,8 +28,8 @@ export type LedgerRow = {
   etf?: ETFReading;
   score: number | null;
   upside: number | null;
-  /** Index into the allocation palette for this row's own donut segment. */
-  colour: number;
+  /** Index into the allocation palette for this row's own donut segment; null shares the neutral segment. */
+  colour: number | null;
   facts: AttentionFact[];
   href: string;
 };
@@ -49,11 +49,11 @@ export function readingColumns(kind: LedgerGroup["kind"], t: Copy, day: string) 
 }
 
 export type HoldingsLedger = {
-  /** Overall rank still determines the donut order and palette. */
+  /** Every holding, largest first; this order also sets the donut and the palette. */
   rows: LedgerRow[];
   /** The table and phone list read by class, then by weight. */
   groups: LedgerGroup[];
-  /** Holdings without a row of their own: the closing row and the donut's neutral segment. */
+  /** Holdings without a colour of their own: the donut's neutral segment. */
   rest: { count: number; value: number; weight: number };
   /** The newest session among the day moves, which the column is named for. */
   columnDay: string | null;
@@ -91,9 +91,9 @@ function dayMove(positions: Holding[]) {
 }
 
 /**
- * The overview's holdings: one row per security across accounts, largest first. The largest eight are
- * always listed; a flagged holding beyond them gets its row too, every listed row owns a donut segment,
- * and everything else closes as one row and one neutral segment. Signals arrive ranked and capped.
+ * The overview's holdings: one row per security across accounts, largest first, every one of them listed.
+ * The largest eight and any flagged holding beyond them own a colour and a donut segment; the others share
+ * one neutral segment. Signals arrive ranked and capped.
  */
 export function holdingsLedger({ holdings, technical, valuations, etfs, signals }: {
   holdings: Holding[];
@@ -113,12 +113,12 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
   const moves = new Map(securities.map((security) => [security.ticker, dayMove(security.positions)]));
   const columnDay = [...moves.values()].flatMap((move) => (move.date ? [move.date] : [])).sort().at(-1) ?? null;
   const flagged = new Map(signals.map((signal) => [signal.ticker, signal]));
-  const shown = securities.filter((security, index) => index < COLOURED_HOLDINGS || flagged.has(security.ticker));
-  const hidden = securities.filter((security, index) => index >= COLOURED_HOLDINGS && !flagged.has(security.ticker));
-  const rows = shown.map((security, index): LedgerRow => {
+  let colours = 0;
+  const rows = securities.map((security, index): LedgerRow => {
     const { ticker, positions, value, fund } = security;
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
+    const coloured = index < COLOURED_HOLDINGS || signal !== undefined;
     return {
       ticker,
       name: positions[0].name,
@@ -134,7 +134,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       etf: fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined,
       score: finite(holdingTechnical(technical, ticker, positions)?.score),
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
-      colour: index,
+      colour: coloured ? colours++ : null,
       facts: signal?.facts ?? [],
       href: signal?.href ?? "/research?ticker=" + encodeURIComponent(positions[0].researchTicker ?? ticker),
     };
@@ -143,18 +143,18 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
     { kind: "stocks", rows: rows.filter((row) => !row.fund) },
     { kind: "funds", rows: rows.filter((row) => row.fund) },
   ];
-  // Rank by total class value, including the unlisted tail. A late signal can
-  // reveal a row without swapping the groups under the reader.
+  // Rank by total class value. A late signal can colour a row without swapping the groups under the reader.
   const classValue = securities.reduce((value, security) => {
     value[security.fund ? "funds" : "stocks"] += security.value;
     return value;
   }, { stocks: 0, funds: 0 });
   groups.sort((a, b) => classValue[b.kind] - classValue[a.kind]);
-  const restValue = hidden.reduce((sum, security) => sum + security.value, 0);
+  const neutral = rows.filter((row) => row.colour === null);
+  const restValue = neutral.reduce((sum, row) => sum + row.value, 0);
   return {
     rows,
     groups: groups.filter((group) => group.rows.length > 0),
-    rest: { count: hidden.length, value: restValue, weight: share(restValue) },
+    rest: { count: neutral.length, value: restValue, weight: share(restValue) },
     columnDay,
     count: securities.length,
     total,
