@@ -370,15 +370,26 @@ def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
         params={"idType": "isin", "loadType": "initial"},
     )
     breakdown_url = f"{base}/weightedHoldings/fund"
+    asset_type = str((profile.get("investmentStrategy") or {}).get("assetType") or "Equity")
 
     def breakdown(kind, normalize):
-        params = {"idType": "isin", "breakdown": kind}
+        # Without the product and asset type, Invesco answers 200 with an empty
+        # object, which silently left whole funds unclassified.
+        params = {
+            "idType": "isin",
+            "breakdown": kind,
+            "productCode": "ETF",
+            "assetType": asset_type,
+        }
         weights: defaultdict[str, float] = defaultdict(float)
         source = str(httpx.URL(breakdown_url, params=params))
         stamp = None
         failed = False
         try:
             payload = _get_json(client, breakdown_url, params=params)
+            reported_isin = _string(payload.get("isin"))
+            if reported_isin and reported_isin != spec.isin:
+                raise ValueError(f"{spec.ticker} {kind}: breakdown ISIN mismatch")
             stamp = optional_date(payload.get("effectiveDate"))
             for item in payload.get("holdingWeights") or []:
                 if isinstance(item, dict) and _string(item.get("name")):

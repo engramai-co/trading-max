@@ -430,6 +430,158 @@ def test_lookthrough_merges_alphabet_share_classes_as_company_exposure() -> None
     ]
 
 
+def test_lookthrough_classifies_constituents_when_issuer_omits_breakdown() -> None:
+    # Some issuers publish constituents without country, sector or a fund-level
+    # breakdown. The fund must not fall into "Unclassified" as a whole.
+    fund = FundSnapshot(
+        ticker="NQGB",
+        as_of="2026-11-11",
+        holdings=[
+            FundHolding(isin="US0000000011", name="Synthetic Chips Inc.", weight_pct=60),
+            FundHolding(isin="NL0000000012", name="Synthetic Grid N.V.", weight_pct=30),
+            FundHolding(isin="US0000000013", name="Synthetic Unknown Corp.", weight_pct=8),
+            FundHolding(
+                name="Cash and/or Derivatives",
+                asset_class="Cash & derivatives",
+                weight_pct=2,
+            ),
+        ],
+    )
+    service = LookthroughService(
+        lambda _ticker: fund,
+        CatalogSecurityMaster(
+            SecurityMasterCatalog(
+                records=[
+                    SecurityEntityRecord(
+                        entity_id="fund:nqgb",
+                        canonical_ticker="NQGB",
+                        entity_name="Synthetic Nasdaq fund",
+                        security_type="ETF",
+                        ticker_aliases=["NQGB"],
+                        isins=["IE0000000099"],
+                        source="test-profile",
+                    ),
+                    SecurityEntityRecord(
+                        entity_id="issuer:synthetic-chips",
+                        canonical_ticker="SCHP",
+                        entity_name="Synthetic Chips Inc.",
+                        country_of_risk="United States",
+                        ticker_aliases=["SCHP"],
+                        isins=["US0000000011"],
+                        gics=classification_for_code("45301020", source="test-profile"),
+                        source="test-profile",
+                    ),
+                    SecurityEntityRecord(
+                        entity_id="issuer:synthetic-grid",
+                        canonical_ticker="SGRD",
+                        entity_name="Synthetic Grid N.V.",
+                        country_of_risk="Netherlands",
+                        ticker_aliases=["SGRD"],
+                        isins=["NL0000000012"],
+                        gics=classification_for_code("20104010", source="test-profile"),
+                        source="test-profile",
+                    ),
+                ]
+            )
+        ),
+    )
+    accounts = {
+        "invest": {"investments_value_gbp": 0, "cash_gbp": 0, "positions": []},
+        "isa": {
+            "investments_value_gbp": 100,
+            "cash_gbp": 0,
+            "positions": [
+                {"ticker": "NQGB", "isin": "IE0000000099", "current_value_gbp": 100},
+            ],
+        },
+    }
+
+    result = service.run(accounts)
+
+    countries = {row["country"]: row["valueGbp"] for row in result["countryAllocation"]}
+    industries = {row["industry"]: row["valueGbp"] for row in result["industryAllocation"]}
+    # Country of risk first, then the ISIN prefix for the unresolved constituent.
+    assert countries == {"United States": 68.0, "Netherlands": 30.0, "Cash & derivatives": 2.0}
+    # The GICS sector where known; only the unresolved constituent stays unclassified.
+    assert industries == {
+        "Information Technology": 60.0,
+        "Industrials": 30.0,
+        "Unclassified": 8.0,
+        "Cash & derivatives": 2.0,
+    }
+    assert [row["isNonIndustry"] for row in result["industryAllocation"]] == [
+        False,
+        False,
+        True,
+        False,
+    ]
+
+
+def test_lookthrough_keeps_issuer_breakdown_and_constituent_labels() -> None:
+    # An issuer breakdown wins over constituent classification, and issuer labels on
+    # constituents win over the security master.
+    fund = FundSnapshot(
+        ticker="NQGB",
+        as_of="2026-11-11",
+        holdings=[
+            FundHolding(
+                isin="US0000000011",
+                name="Synthetic Chips Inc.",
+                country="Ireland",
+                weight_pct=100,
+            ),
+        ],
+        industry_weights={"Health Care": 100},
+    )
+    service = LookthroughService(
+        lambda _ticker: fund,
+        CatalogSecurityMaster(
+            SecurityMasterCatalog(
+                records=[
+                    SecurityEntityRecord(
+                        entity_id="fund:nqgb",
+                        canonical_ticker="NQGB",
+                        entity_name="Synthetic Nasdaq fund",
+                        security_type="ETF",
+                        ticker_aliases=["NQGB"],
+                        isins=["IE0000000099"],
+                        source="test-profile",
+                    ),
+                    SecurityEntityRecord(
+                        entity_id="issuer:synthetic-chips",
+                        canonical_ticker="SCHP",
+                        entity_name="Synthetic Chips Inc.",
+                        country_of_risk="United States",
+                        ticker_aliases=["SCHP"],
+                        isins=["US0000000011"],
+                        gics=classification_for_code("45301020", source="test-profile"),
+                        source="test-profile",
+                    ),
+                ]
+            )
+        ),
+    )
+    accounts = {
+        "invest": {"investments_value_gbp": 0, "cash_gbp": 0, "positions": []},
+        "isa": {
+            "investments_value_gbp": 50,
+            "cash_gbp": 0,
+            "positions": [
+                {"ticker": "NQGB", "isin": "IE0000000099", "current_value_gbp": 50},
+            ],
+        },
+    }
+
+    result = service.run(accounts)
+
+    assert [(row["country"], row["valueGbp"]) for row in result["countryAllocation"]] == [
+        ("Ireland", 50.0)
+    ]
+    assert [(row["industry"], row["valueGbp"]) for row in result["industryAllocation"]] == [
+        ("Health Care", 50.0)
+    ]
+
+
 def test_lookthrough_keeps_partial_fund_as_unverified_direct_exposure() -> None:
     partial = FundSnapshot(
         ticker="XUSE",

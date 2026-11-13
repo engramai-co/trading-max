@@ -244,6 +244,36 @@ class LookthroughService:
         self.provider = provider
         self.security_master = security_master or CatalogSecurityMaster.default()
 
+    def _constituent_classification(self, holding: FundHolding) -> tuple[str, str]:
+        """Classify one constituent when its issuer publishes no fund-level breakdown.
+
+        The issuer's own labels win; missing ones follow the direct-holding rules:
+        country of risk, then the ISIN prefix, and the GICS sector.
+        """
+        if not holding.is_security:
+            return (
+                holding.country or "Cash & derivatives",
+                holding.industry or "Cash & derivatives",
+            )
+        if holding.country and holding.industry:
+            return holding.country, holding.industry
+        resolved = self.security_master.resolve(
+            SecurityDescriptor(
+                ticker=holding.ticker,
+                name=holding.name,
+                isin=holding.isin,
+                figi=holding.figi,
+                composite_figi=holding.composite_figi,
+                share_class_figi=holding.share_class_figi,
+                country=holding.country,
+            )
+        )
+        country = holding.country or resolved.country_of_risk or _country(holding.isin)
+        industry = holding.industry or (
+            resolved.gics.sector_name if resolved.gics is not None else "Unclassified"
+        )
+        return country or "Unclassified", industry or "Unclassified"
+
     def run(
         self,
         accounts: Mapping[str, Mapping[str, Any]],
@@ -565,18 +595,19 @@ class LookthroughService:
                 )
             country_weights = dict(snapshot.country_weights)
             industry_weights = dict(snapshot.industry_weights)
-            if not country_weights:
+            derive_country = not country_weights
+            derive_industry = not industry_weights
+            if derive_country or derive_industry:
                 for holding in snapshot.holdings:
-                    country_weights[holding.country or "Unclassified"] = (
-                        country_weights.get(holding.country or "Unclassified", 0)
-                        + holding.weight_pct
-                    )
-            if not industry_weights:
-                for holding in snapshot.holdings:
-                    industry = holding.industry or "Unclassified"
-                    industry_weights[industry] = (
-                        industry_weights.get(industry, 0) + holding.weight_pct
-                    )
+                    country, industry = self._constituent_classification(holding)
+                    if derive_country:
+                        country_weights[country] = (
+                            country_weights.get(country, 0.0) + holding.weight_pct
+                        )
+                    if derive_industry:
+                        industry_weights[industry] = (
+                            industry_weights.get(industry, 0.0) + holding.weight_pct
+                        )
             for country, weight in country_weights.items():
                 country_values[country or "Unclassified"] += fund_value * weight / 100
             for industry, weight in industry_weights.items():
@@ -713,13 +744,19 @@ class LookthroughService:
             "nonSecurityValueGbp": _clean(invested_value - covered_value),
             "lookthroughCoveragePct": covered_value / invested_value,
             "underlyingCount": len(output_positions),
-            "countryBasis": "country of risk / official fund geography",
+            "countryBasis": (
+                "country of risk / official fund geography; constituent country of risk "
+                "when the issuer publishes no breakdown"
+            ),
             "countryAllocation": _allocation(
                 country_values,
                 invested_value,
                 dimension="country",
             ),
-            "industryBasis": ("official fund sector allocation / direct equity classification"),
+            "industryBasis": (
+                "official fund sector allocation / direct equity classification; constituent "
+                "GICS sector when the issuer publishes no breakdown"
+            ),
             "industryAllocation": _allocation(
                 industry_values,
                 invested_value,
