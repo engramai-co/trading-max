@@ -48,3 +48,68 @@ def test_estimate_history_endpoint_is_bounded_and_independent_of_snapshots(tmp_p
         ]
         assert client.get("/v1/research/test/estimate-history").json() == []
         assert client.get("/v1/research/test.l/estimate-history?limit=2001").status_code == 422
+
+
+def test_forward_pe_lens_reads_the_exact_listing_at_publication_and_refreshes_after_append(
+    tmp_path,
+):
+    app = create_app(Settings(data_root=tmp_path))
+    store = app.state.store
+    ref = store.immutable_artifacts.put_json(
+        key="research/fundamentals.json",
+        payload={
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "currency": "USD",
+                    "metrics": {"quoteType": "EQUITY", "fullExchangeName": "NASDAQ"},
+                },
+                {
+                    "ticker": "^INDEX",
+                    "currency": "USD",
+                    "metrics": {"quoteType": "INDEX", "fullExchangeName": "NASDAQ"},
+                },
+            ],
+        },
+    ).ref
+    first = store.immutable_snapshots.publish(
+        scope="research", source="synthetic", artifacts=[ref]
+    ).manifest
+    history = app.state.estimate_history
+
+    def obs(ticker="TEST", listing="US:TEST", *, offset=0, multiple=17):
+        return EstimateObservation(
+            ticker=ticker,
+            listing=listing,
+            currency="USD",
+            observed_at=first.created_at + timedelta(seconds=offset),
+            forwardPE=multiple,
+        )
+
+    history.append(
+        [obs(listing="LSE:TEST", offset=-1), obs(offset=86_400), obs("^INDEX", "US:^INDEX")]
+    )
+
+    with TestClient(app) as client:
+
+        def lens(ticker="TEST", view="valuation"):
+            response = client.get(f"/v1/research/{ticker}/lens/{view}")
+            assert response.status_code == 200
+            return response.json()
+
+        before = lens()
+        assert before["forwardPeHistory"] is None
+
+        # The worker may append after the lens was first read for the same run.
+        history.append([obs(multiple=19)])
+        after = lens()
+        assert after["dataRevision"] != before["dataRevision"]
+        assert [(p["pe"], p["source"]) for p in after["forwardPeHistory"]["points"]] == [
+            (19, "yahoo-forward-pe")
+        ]
+        assert lens(view="overview")["forwardPeHistory"] is None
+        assert lens("^INDEX")["forwardPeHistory"] is None
+        assert lens("TEST.L")["forwardPeHistory"] is None
+
+        store.immutable_snapshots.publish(scope="live", source="synthetic", artifacts=[ref])
+        assert lens()["dataRevision"] == after["dataRevision"]

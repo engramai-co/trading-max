@@ -11,6 +11,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -23,6 +24,8 @@ from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportStore
 from trading_max.reference import CatalogSecurityMaster
+from trading_max.research.facts import fingerprint
+from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
 
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
@@ -121,6 +124,7 @@ def create_app(
     ] = {}
     research_shell_cache: SingleFlightCache[tuple, ResearchShell] = SingleFlightCache(32)
     research_lens_cache: SingleFlightCache[tuple, ResearchLensSnapshot] = SingleFlightCache(256)
+    forward_pe_cache: SingleFlightCache[tuple, ForwardPeHistory | None] = SingleFlightCache(128)
     history_reader = HistoryReader(store)
 
     def cached_dashboard(
@@ -217,11 +221,48 @@ def create_app(
         )
         if diagnostics is not None:
             diagnostics["cache"] = lookup.status
-        return lookup.value.model_copy(
+        payload = lookup.value
+        context = payload.context
+        forward_history = None
+        if view == "valuation" and context and context.asset_type == "EQUITY":
+            quote = context.quote
+            if quote.listing and quote.currency:
+                # Older US/London observations can lack an exchange time zone.
+                market = quote.listing.split(":", 1)[0]
+                with suppress(ValueError, ZoneInfoNotFoundError):
+                    zone = ZoneInfo(
+                        quote.timezone
+                        or ("Europe/London" if market == "LSE" else "America/New_York")
+                    )
+                    cutoff = manifest.created_at
+                    watermark, count = jobs.estimate_history.chart_revision(
+                        quote.ticker, quote.listing, cutoff=cutoff
+                    )
+                    if watermark:
+                        forward_history = forward_pe_cache.get_or_compute(
+                            (
+                                quote.ticker,
+                                quote.listing,
+                                quote.currency,
+                                zone.key,
+                                watermark,
+                                count,
+                            ),
+                            lambda: forward_pe_history(
+                                jobs.estimate_history.chart_observations(
+                                    quote.ticker, quote.listing, cutoff=cutoff, revision=watermark
+                                ),
+                                currency=quote.currency,
+                                timezone=zone,
+                            ),
+                        )
+                        revision = fingerprint([revision, watermark, count])
+        return payload.model_copy(
             update={
                 "run_id": manifest.run_id,
                 "generated_at": manifest.created_at.isoformat(),
                 "data_revision": revision,
+                "forward_pe_history": forward_history,
             }
         )
 

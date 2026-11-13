@@ -108,6 +108,41 @@ function peHistory(short = false): ResearchLensSnapshot["trailingPeHistory"] {
   };
 }
 
+function forwardHistory(short = false): ResearchLensSnapshot["forwardPeHistory"] {
+  const points = Array.from({ length: short ? 5 : 46 }, (_, i) => {
+    const date = new Date(Date.UTC(2026, 7, 1 + i + (i >= 23 ? 8 : 0))).toISOString().slice(0, 10);
+    const eps = 6.12 + 0.015 * i;
+    const pe = i === 0 ? 25 : 18 + i * 0.12 + Math.sin(i * 0.44) * 1.5 + Math.cos(i * 0.9) * 0.32;
+    return {
+      date, pe, eps, price: eps * pe,
+      observedAt: date + "T21:30:00Z", priceAsOf: date + "T20:00:00Z",
+      source: i === 0 ? "yahoo-forward-pe" as const : "yahoo-consensus" as const,
+      recovered: i === 0,
+    };
+  });
+  const values = points.slice(1).map((p) => p.pe).sort((a, b) => a - b);
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return {
+    currency: "USD",
+    points,
+    distribution: short ? null : {
+      samples: values.length, lowerQuartile: values[11], median: values[22],
+      upperQuartile: values[33], mean,
+      standardDeviation: Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length),
+      latestPercentile: values.filter((value) => value <= points.at(-1)!.pe).length / values.length,
+    },
+  };
+}
+
+async function peScreenshot(page: Page, scenario: string, project: string) {
+  const dir = process.env.PE2_QA_SCREENSHOTS_DIR;
+  if (!dir) return;
+  const section = page.locator(".mx-pe-history");
+  // Centre above the fixed phone dock before capturing the chart's x-axis.
+  await section.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+  await section.screenshot({ path: join(dir, `${project}-${scenario}.png`) });
+}
+
 async function synthetic(page: Page, running = true) {
   const state = {
     broker: { price: 100, asOf: "2026-11-04T15:40:00Z" },
@@ -115,6 +150,7 @@ async function synthetic(page: Page, running = true) {
     publication: "synthetic-run",
     newResearch: false,
     trailingPe: null as ResearchLensSnapshot["trailingPeHistory"],
+    forwardPe: null as ResearchLensSnapshot["forwardPeHistory"],
     posts: [] as { ticker: string; scenarios: Record<string, Inputs> }[],
     releaseOther: () => {},
   };
@@ -134,6 +170,7 @@ async function synthetic(page: Page, running = true) {
     const data = {
       ...lens(ticker, view, ticker === "SYNT" ? 101 : 55),
       trailingPeHistory: ticker === "SYNT" && view === "valuation" ? state.trailingPe : null,
+      forwardPeHistory: ticker === "SYNT" && view === "valuation" ? state.forwardPe : null,
     };
     return route.fulfill({ json: state.newResearch && ticker === "SYNT" ? {
       ...data, runId: state.publication, financialFacts: { ...data.financialFacts, version: "new-facts" },
@@ -223,33 +260,31 @@ test.describe("valuation refresh", () => {
     await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
   });
 
-  test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page }, testInfo) => {
+  test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page, isMobile }, testInfo) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const state = await synthetic(page, false);
     state.trailingPe = peHistory();
     await page.goto("/research?ticker=SYNT&view=valuation");
-    const section = page.locator(".mx-trailing-pe");
+    const section = page.locator(".mx-pe-history");
     const chart = section.getByRole("group", { name: /^Trailing P\/E history/ });
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
     await expect(chart).toHaveAccessibleName(/28\.4×.*Historical percentile/);
     await expect(section.getByRole("button", { name: "P25–P75" })).toHaveAttribute("aria-pressed", "true");
 
-    if (process.env.PE_QA_SCREENSHOTS_DIR) {
-      for (const scheme of ["light", "dark"] as const) {
-        await page.emulateMedia({ colorScheme: scheme });
-        await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
-        // Wait for the next frame so the theme change also reaches the canvas.
-        await page.evaluate(() => new Promise(requestAnimationFrame));
-        await section.screenshot({ path: join(process.env.PE_QA_SCREENSHOTS_DIR, `${testInfo.project.name}-${scheme}.png`) });
-      }
-    }
+    await peScreenshot(page, "trailing-gap", testInfo.project.name);
 
+    await chart.focus();
+    await chart.press("Home");
+    for (let i = 0; i < 132; i++) await chart.press("ArrowRight");
+    const reading = section.getByRole("status");
+    await expect(reading).toContainText("Not meaningful");
+    await expect(reading).toContainText("EPS (TTM) -0.25 USD");
     const deviation = section.getByRole("button", { name: "Mean ±1σ" });
     await deviation.click();
     await expect(deviation).toHaveAttribute("aria-pressed", "true");
     await chart.focus();
     await chart.press("End");
-    const reading = section.getByRole("status");
     await expect(reading).toContainText("Close 142 USD · Yahoo");
     await expect(reading).toContainText("EPS (TTM) 5 USD · SEC Companyfacts");
     await expect(reading).toContainText("Includes inferred Q4");
@@ -273,6 +308,63 @@ test.describe("valuation refresh", () => {
     await expect(page).toHaveURL(/ticker=OTHR/);
     await expect(page.locator(".mx-scenario-spot")).toContainText("55.00");
     await expect(chart).toHaveCount(0);
+  });
+
+  test("the same chart switches to archived NTM and identifies its fallback", async ({ page, isMobile }, testInfo) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory();
+    state.forwardPe = forwardHistory();
+    let extra = 0;
+    page.on("request", (request) => {
+      if (/\/estimate-history|finance\.yahoo/.test(request.url())) extra++;
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-pe-history");
+    const modes = section.getByRole("group", { name: "P/E basis" });
+    const ntm = modes.getByRole("button", { name: isMobile ? "NTM" : "NTM P/E", exact: true });
+    await ntm.click();
+    await expect(ntm).toHaveAttribute("aria-pressed", "true");
+    const chart = section.getByRole("group", { name: /^NTM P\/E history/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await expect(chart).toHaveAccessibleName(/Historical percentile \d+%/);
+    await expect(section.getByRole("button", { name: "P25–P75" })).toHaveAttribute("aria-pressed", "true");
+    await peScreenshot(page, "ntm-ranked", testInfo.project.name);
+    await section.getByRole("button", { name: "Mean ±1σ" }).click();
+    await expect(section.getByRole("button", { name: "Mean ±1σ" })).toHaveAttribute("aria-pressed", "true");
+    await chart.focus();
+    await chart.press("Home");
+    const reading = section.getByRole("status");
+    await expect(reading).toContainText("Yahoo forwardPE (fallback)");
+    await expect(reading).toContainText("Recovered publication");
+    await chart.press("End");
+    await expect(reading).toContainText("EPS (NTM)");
+    await expect(reading).toContainText("Effective (archive)");
+    await expect(reading).toContainText("Quoted");
+    await expect(reading).toContainText("Yahoo FY1 / FY2 consensus");
+    expect(extra).toBe(0);
+    const controls = (await modes.boundingBox())!;
+    const bounds = (await section.boundingBox())!;
+    expect(controls.x + controls.width).toBeLessThan(bounds.x + bounds.width);
+  });
+
+  test("a short NTM archive shows the latest multiple without a percentile", async ({ page, isMobile }, testInfo) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+    const state = await synthetic(page, false);
+    state.forwardPe = forwardHistory(true);
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-pe-history");
+    const chart = section.getByRole("group", { name: /^NTM P\/E 历史/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await expect(chart).not.toHaveAccessibleName(/历史分位/);
+    await expect(section.getByRole("button", { name: "P25–P75" })).toHaveCount(0);
+    await peScreenshot(page, "ntm-short", testInfo.project.name);
+    await section.getByRole("button", { name: isMobile ? "TTM" : "滚动 P/E" }).click();
+    await expect(section.getByText("暂无可计算的滚动 P/E")).toBeVisible();
   });
 
 });

@@ -43,7 +43,7 @@ import {
 import { GrowthContext, ValuationSensitivity, ValuationWorksheet } from "./research-valuation-detail";
 import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
-import { TrailingPeChart } from "./research-trailing-pe";
+import { PeHistoryChart } from "./research-pe-history";
 import {
   editorIdentity,
   loadedValuationQuery,
@@ -79,16 +79,17 @@ export function ValuationWorkbench({
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
   const preview = retained?.basis.ticker === data.ticker ? retained : undefined;
+  const peHistory = <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory} />;
   if (financial && !dirty)
     return (
       <>
         <ModelAlternatives data={data} financial />
-        <TrailingPeChart history={data.trailingPeHistory} />
+        {peHistory}
         <FilingMultiples data={data} price={price} />
       </>
     );
   if (!preview && state.view !== "error")
-    return <><Pending /><TrailingPeChart history={data.trailingPeHistory} /></>;
+    return <><Pending />{peHistory}</>;
   if (!preview)
     return (
       <>
@@ -102,7 +103,7 @@ export function ValuationWorkbench({
           />
           <QueryError retry={query.refetch} />
         </Panel>
-        <TrailingPeChart history={data.trailingPeHistory} />
+        {peHistory}
         <FilingMultiples data={data} price={price} />
       </>
     );
@@ -117,7 +118,7 @@ export function ValuationWorkbench({
         refreshing={query.isFetching}
         onRetry={query.isError ? () => void query.refetch() : undefined}
       />
-      <TrailingPeChart history={data.trailingPeHistory} />
+      {peHistory}
       <details className="mx-model-detail">
         <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
         <FilingMultiples data={data} price={price} />

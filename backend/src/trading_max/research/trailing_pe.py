@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from bisect import bisect_right
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from statistics import fmean, pstdev
@@ -192,17 +193,18 @@ class _EarningsReplay:
         return end, eps, "derivedFourthQuarter" if inferred else "fourQuarters"
 
 
-def _distribution(points: list[TrailingPePoint]) -> TrailingPeDistribution | None:
-    values = sorted(p.pe for p in points if p.pe is not None)
-    if len(values) < MINIMUM_SAMPLE:
+def pe_distribution(
+    samples: Sequence[float], latest: float | None, *, minimum: int = MINIMUM_SAMPLE
+) -> TrailingPeDistribution | None:
+    if len(samples) < minimum:
         return None
+    values = sorted(samples)
 
     def quantile(q: float) -> float:
         rank = (len(values) - 1) * q
         i = int(rank)
         return values[i] + (values[i + 1] - values[i]) * (rank - i)
 
-    latest = points[-1].pe
     return TrailingPeDistribution(
         samples=len(values),
         lower_quartile=quantile(0.25),
@@ -275,7 +277,11 @@ def trailing_pe_history(
             )
         )
     return (
-        TrailingPeHistory(points=points, earnings=earnings, distribution=_distribution(points))
+        TrailingPeHistory(
+            points=points,
+            earnings=earnings,
+            distribution=pe_distribution([p.pe for p in points if p.pe is not None], points[-1].pe),
+        )
         if points
         else None
     )

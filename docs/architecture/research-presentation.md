@@ -107,3 +107,32 @@ checks of the three technical sections, simple/full chart controls, actual range
 coverage, business modes, dividend/share presentation, model editing, list pin,
 logo, keyboard interaction and narrow layouts. Browser verification uses an isolated broker-only preview. Write behavior is
 tested in its disposable state, never in the user's production journal.
+
+## Historical earnings multiples
+
+The valuation lens has one P/E chart with trailing and NTM views. Trailing P/E
+for covered US listings divides the Yahoo split-adjusted daily close by the
+diluted SEC EPS known at that close. The line breaks at EPS vintages; missing
+or nonpositive EPS is not plotted. Annual P/E and TTM P/S at filing dates remain
+available as separate evidence.
+
+NTM uses the last PE-0 observation of each exchange-local archive date, for the
+same listing and quote currency, bounded by the snapshot publication time. The
+remaining fraction of the fiscal year is the days from observation to the
+current fiscal year end divided by the days between the two fiscal year ends.
+Apply that weight to Yahoo's current-year consensus EPS and its complement to
+next-year consensus EPS. Multiply neither EPS by an FX estimate: the annual
+consensus currencies must match the archived price in major currency units.
+Divide that price by the blended EPS. If the fiscal estimates, dates or
+currencies cannot be aligned, display the archived Yahoo `forwardPE` as a
+separate basis; its horizon may differ. An aligned nonpositive EPS leaves a
+gap. The source, archive time and recorded quote time appear with each reading.
+Nothing is filled before the archive, and the valuation chart does not fetch
+live data. Index and fund multiples are outside this view.
+
+The default band is P25–P75 with a median line. The alternative is mean ± one
+population standard deviation, with the visible band limited to nonnegative
+multiples. The rank is the share of readings at or below the last reading.
+Trailing requires 60 valid closes; NTM requires 30 distinct archive dates on
+the latest reading's basis. A fallback with a different horizon does not
+contribute to the consensus distribution.

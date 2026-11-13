@@ -3314,6 +3314,40 @@ export interface components {
             /** Providerend */
             providerEnd: string;
         };
+        /** ForwardPeHistory */
+        ForwardPeHistory: {
+            /** Currency */
+            currency: string;
+            distribution: components["schemas"]["TrailingPeDistribution"] | null;
+            /** Points */
+            points: components["schemas"]["ForwardPePoint"][];
+        };
+        /** ForwardPePoint */
+        ForwardPePoint: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Eps */
+            eps: number | null;
+            /**
+             * Observedat
+             * Format: date-time
+             */
+            observedAt: string;
+            /** Pe */
+            pe: number | null;
+            /** Price */
+            price: number | null;
+            /** Priceasof */
+            priceAsOf: string | null;
+            /** Recovered */
+            recovered: boolean;
+            source: components["schemas"]["ForwardPeSource"] | null;
+        };
+        /** @enum {string} */
+        ForwardPeSource: "yahoo-consensus" | "yahoo-forward-pe";
         /** FrozenValuationBasis */
         FrozenValuationBasis: {
             /**
@@ -5895,6 +5929,7 @@ export interface components {
             financials?: {
                 [key: string]: unknown;
             } | null;
+            forwardPeHistory?: components["schemas"]["ForwardPeHistory"] | null;
             /** Fundamentals */
             fundamentals?: {
                 [key: string]: unknown;
