@@ -436,7 +436,8 @@ def test_lightweight_lenses_preserve_values_and_keep_full_details_available(
     assert not notebook.timeline and not notebook.financial_facts
 
 
-def test_technical_score_projection_preserves_published_values_and_missingness():
+@pytest.mark.parametrize("asset_type", ["EQUITY", "ETF"])
+def test_technical_score_projection_preserves_published_values_and_missingness(asset_type):
     from trading_max.research.technical_scoring import technical_score
 
     from services.api.trading_max_api.projections.research import technical_rows
@@ -444,13 +445,14 @@ def test_technical_score_projection_preserves_published_values_and_missingness()
     raw = {
         "ticker": "SYNTHETIC",
         "as_of": "2026-10-05",
+        "asset_type": asset_type,
         "price": 100,
         "moving_averages": {"sma20": 90, "sma50": 110},
         "momentum": {"rsi14": 45},
     }
     score, state = technical_score(raw)
     row = technical_rows({"rows": [{**raw, "technical_score": score, "technical_state": state}]})[0]
-    assert row["score"] == score
+    assert (row["score"], row["state"]) == (score, state)
     assert row["scoreExplanationState"] == "verified"
     assert row["scoreBreakdown"]["availableSignals"] == 3
     assert row["scoreBreakdown"]["score"] == score

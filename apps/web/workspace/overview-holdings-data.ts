@@ -1,7 +1,7 @@
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
-import { findETF, type ETFReading } from "./etf-data";
-import { combinedHoldingPnl, finite, groupHoldings, isFundHolding } from "./holding-groups";
+import { findETF, type Copy, type ETFReading } from "./etf-data";
+import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, isFundHolding } from "./holding-groups";
 
 /**
  * Holdings always listed. Every listed row owns a palette colour: the flagged holdings beyond these take the
@@ -35,6 +35,18 @@ export type LedgerRow = {
 };
 
 export type LedgerGroup = { kind: "stocks" | "funds"; rows: LedgerRow[] };
+
+export function readingColumns(kind: LedgerGroup["kind"], t: Copy, day: string) {
+  const technical = t("技术", "Technical");
+  return [
+    { key: "day", label: day, short: day },
+    { key: "pnl", label: t("浮动盈亏", "Unrealized"), short: t("浮动盈亏", "P&L") },
+    { key: "score", label: technical, short: technical },
+    kind === "funds"
+      ? { key: "tracking" as const, label: t("跟踪差", "Tracking diff."), short: t("跟踪差", "Tracking") }
+      : { key: "upside" as const, label: t("模型空间", "Model upside"), short: t("模型空间", "Upside") },
+  ] as const;
+}
 
 export type HoldingsLedger = {
   /** Overall rank still determines the donut order and palette. */
@@ -120,11 +132,11 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       pnl: combinedHoldingPnl(positions),
       fund,
       etf: fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined,
-      score: fund ? null : finite(technical?.find((row) => row.ticker === ticker)?.score),
+      score: finite(holdingTechnical(technical, ticker, positions)?.score),
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
       colour: index,
       facts: signal?.facts ?? [],
-      href: (!fund && signal?.href) || "/research?ticker=" + encodeURIComponent(positions[0].researchTicker ?? ticker),
+      href: signal?.href ?? "/research?ticker=" + encodeURIComponent(positions[0].researchTicker ?? ticker),
     };
   });
   const groups: LedgerGroup[] = [

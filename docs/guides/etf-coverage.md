@@ -89,6 +89,12 @@ benchmark and share class have different bases, Trading Max reports them as
 incomparable. The research desk displays the original issuer period; values
 over 120 days old are marked stale.
 
+| Share class | One-year tracking coverage |
+|---|---|
+| HSBC MSCI Emerging Markets USD Acc (HEMC, IE000KCS7J59) | Reads the latest rolling 12-month fund and reference benchmark returns from the [monthly factsheet](https://www.assetmanagement.hsbc.co.uk/api/v1/download/document/ie000kcs7j59/gb/en/factsheet) already downloaded for sector weights. The [fund supplement](https://www.assetmanagement.hsbc.lu/api/v1/download/document/ie000kcs7j59/lu/en/supplement) distinguishes the base-currency USD class from the hedged classes. The report identifies the unhedged USD MSCI Emerging Markets Net Total Return benchmark (NDUEEGF). The app subtracts the displayed returns, so the result can differ slightly from HSBC's separately rounded tracking difference. |
+| VanEck Semiconductor (SMGB, IE00BMC38736) | Missing. The [UK factsheet](https://www.vaneck.com/uk/en/library/fact-sheets/smh-fact-sheet.pdf) publishes month-end one-year USD NAV and net total return benchmark (MVSMCTR) figures. SMGB trades in GBP but is the same USD share class. The existing overview response has a performance block placeholder, and its holdings response contains no return pair. Fetching the performance block or factsheet would require an additional request, which is not enabled under the terms below. |
+| Invesco EQQQ Nasdaq-100 GBP Hdg Acc (EQGB, IE00BYVTMW98) | Incomparable. The [share-class API](https://dng-api.invesco.com/cache/v1/accounts/en_GB/shareclasses/IE00BYVTMW98?idType=isin) lists a single benchmark, the USD NASDAQ-100 Notional Net Total Return Index (NNDX / XNDXNNR). The [factsheet](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) compares it with GBP-hedged NAV. Neither response supplies a GBP-hedged benchmark return. |
+
 Overlap adds the smaller of the two weights for each exact security ID. The
 other side includes direct and look-through Invest and ISA positions after
 excluding every listing of the fund's share class, cash and CFDs. Unidentified
@@ -162,8 +168,8 @@ Additional data connections remain off pending usable rights and evidence:
 | [BlackRock / iShares UK](https://www.ishares.com/uk/individual/en/compliance/terms-and-conditions) | Public NAV and performance disclosure; copying and reuse are restricted. No automated NAV archive or new catalogue requests. |
 | [Invesco](https://www.invesco.com/corporate/en/footer/terms-of-use.html) | Personal website use does not establish an automated NAV archive grant. No new requests. |
 | [Vanguard UK](https://www.vanguard.co.uk/uk-fund-directory/terms-and-conditions) | Public fund directory and prices; no verified product reuse or systematic archiving grant. No new requests. |
-| [VanEck UK](https://www.vaneck.com/uk/en/terms-and-conditions) | Personal storage is allowed; product use and distribution are restricted. No new requests. |
-| [HSBC Asset Management UK](https://www.assetmanagement.hsbc.co.uk/en/individual-investor/terms-and-conditions) | Personal extracts do not permit systematic archival or redistribution. No new requests. |
+| [VanEck UK](https://www.vaneck.com/uk/en/terms-and-conditions) | Personal storage is allowed; commercial reuse requires prior consent. No verified permission to add performance collection to the product. |
+| [HSBC Asset Management UK](https://www.assetmanagement.hsbc.co.uk/en/individual-investor/terms-and-conditions) | Automated extraction and systematic storage require prior written permission. The one-year observation reuses the existing sector factsheet response on the existing refresh schedule. No new request or historical return series is added. |
 | [State Street](https://www.ssga.com/dk/en_gb/footer/terms-and-conditions) and other existing issuer adapters | No new data connection or reuse grant assumed. |
 | [Yahoo Finance](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html) | Some LSE pages expose delayed bid and ask, without verified per-side observation times or permission to automate sampling and archive data. No new quote requests. |
 | [MSCI](https://developer.msci.com/apis/index-api), [FTSE Russell](https://www.lseg.com/en/ftse-russell/index-resources/indices-subscribe-data), [S&P DJI](https://www.spglobal.com/spdji/en/disclaimers/) and [Nasdaq](https://www.nasdaq.com/products/global-indexes/data) | No verified free feed for the necessary daily benchmark total-return variants with rights for this use. No new requests. |

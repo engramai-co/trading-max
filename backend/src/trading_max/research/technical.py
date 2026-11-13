@@ -18,7 +18,6 @@ import yfinance as yf
 from pydantic import Field
 
 from trading_max.domain import DomainModel
-from trading_max.reference import is_fund_instrument
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
@@ -53,6 +52,8 @@ class TechnicalResearchArtifact(DomainModel):
     year_paths: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     price_series: list[dict[str, Any]] = Field(default_factory=list)
     asset_type: str = ""
+    exchange: str = ""
+    timezone: str = ""
     technical_score: int | None = Field(default=None, ge=0, le=100)
     technical_state: str | None = None
     signals: list[str]
@@ -400,8 +401,12 @@ def _adx_dmi(
 def _relative_stats(
     close: pd.Series, benchmark: pd.Series, sessions: int
 ) -> dict[str, float | None]:
+    # Compare trading dates, including when listings have different time zones.
+    def by_session(series: pd.Series, name: str) -> pd.Series:
+        return series.rename(name).set_axis(series.index.tz_localize(None).normalize())
+
     aligned = pd.concat(
-        [close.rename("asset"), benchmark.rename("benchmark")], axis=1, sort=True
+        [by_session(close, "asset"), by_session(benchmark, "benchmark")], axis=1, sort=True
     ).dropna()
     if len(aligned) <= sessions:
         return {
@@ -629,11 +634,12 @@ def analyze_ticker(
         "year_paths": yearly_paths(close),
         "price_series": price_series(frame, sma),
     }
-    if not is_fund_instrument(quote_type=asset_type):
-        score, state = technical_score(metrics)
-        metrics["technical_score"] = score
-        metrics["technical_state"] = state
+    score, state = technical_score(metrics)
+    metrics["technical_score"] = score
+    metrics["technical_state"] = state
     metrics["asset_type"] = asset_type
+    metrics["exchange"] = str(frame.attrs.get("exchange") or "")
+    metrics["timezone"] = str(frame.attrs.get("timezone") or "")
     metrics["signals"] = signals(metrics)
     return TechnicalResearchArtifact(
         **metrics,

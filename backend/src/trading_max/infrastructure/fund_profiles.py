@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from calendar import monthrange
 from datetime import UTC, date, datetime
 from io import BytesIO
 from typing import Any
@@ -25,6 +26,7 @@ from .fund_downloads import as_of_date
 
 ISHARES_VERSION = "ishares-facts-v2"
 INVESCO_VERSION = "invesco-facts-v1"
+HSBC_VERSION = "hsbc-facts-v1"
 FACTS = (
     "index_name",
     "benchmark_currency",
@@ -374,6 +376,112 @@ def parse_invesco_profile(payload: dict, isin: str, source: str) -> FundShareCla
     ]
     stamp = optional_date(payload.get("effectiveDate"))
     return _profile(isin, "Invesco", source, INVESCO_VERSION, values, dict.fromkeys(FACTS, stamp))
+
+
+def parse_hsbc_profile(pages: list[str], isin: str, name: str, source: str) -> FundShareClass:
+    """Read HEMC's monthly NAV and reference benchmark from the existing factsheet."""
+    cover = pages[0] if pages else ""
+    performance = pages[1] if len(pages) > 1 else ""
+    values = {"name": name}
+    stamp = None
+    pair = None
+    header = (
+        r"^.*\bMonthly report (\d{1,2} [A-Za-z]+ \d{4})\s*\|[^|\n]+\|"
+        r"\s*([A-Z]{3})( Hedged)? \(Acc\)[ \t]*$"
+    )
+    cover_header = re.search(header, cover, re.M)
+    performance_header = re.search(header, performance, re.M)
+    if (
+        re.findall(r"^ISIN[ \t]+([A-Z0-9]{12})[ \t]*$", cover, re.M) == [isin]
+        and cover_header
+        and performance_header
+        and cover_header.groups() == performance_header.groups()
+    ):
+        stamp = optional_date(cover_header[1])
+        share = re.search(r"^Share class base currency[ \t]+([A-Z]{3})\b", cover, re.M)
+        base = re.search(r"^Fund base currency[ \t]+([A-Z]{3})\b", cover, re.M)
+        index = re.search(
+            r"^Index name[ \t]+(100% MSCI Emerging Markets Net)[ \t]*$", performance, re.M
+        )
+        currency = re.search(r"^Index currency[ \t]+([A-Z]{3})\b", performance, re.M)
+        # The HSBC fund supplement distinguishes the base-currency USD class
+        # from explicitly hedged classes. NDUEEGF is the unhedged net index.
+        if share and cover_header[2] == share[1]:
+            values["share_currency"] = share[1]
+            if cover_header[3]:
+                values["hedging"] = share[1]
+            elif base and base[1] == share[1] == "USD":
+                values["hedging"] = "unhedged"
+        if base:
+            values["base_currency"] = base[1]
+        if (
+            index
+            and currency
+            and re.search(r"^Benchmark type[ \t]+Total Return[ \t]*$", performance, re.M)
+            and re.search(r"^TR Index Bloomberg Ticker[ \t]+NDUEEGF[ \t]*$", performance, re.M)
+        ):
+            values.update(
+                index_name=index[1], benchmark_currency=currency[1], benchmark_hedging="unhedged"
+            )
+        if (
+            stamp
+            and values.get("share_currency")
+            and values.get("hedging")
+            and values.get("benchmark_currency")
+            and re.search(
+                r"calculated in the share class base currency,\s*dividend reinvested,\s*net\s+of fees",
+                performance,
+            )
+            and (returns := _hsbc_rolling_returns(performance, stamp)) is not None
+        ):
+            pair = FundReturnPair(
+                period_end=stamp,
+                nav_return=returns[0],
+                benchmark_return=returns[1],
+                nav_currency=values["share_currency"],
+                benchmark_currency=values["benchmark_currency"],
+                nav_hedging=values.get("hedging"),
+                benchmark_hedging=values.get("benchmark_hedging"),
+                evidence=evidence(source, HSBC_VERSION, stamp, True),
+            )
+    profile = _profile(
+        isin, "HSBC Asset Management", source, HSBC_VERSION, values, dict.fromkeys(FACTS, stamp)
+    )
+    profile.one_year = pair
+    profile.evidence["one_year"] = (
+        pair.evidence if pair else evidence(source, HSBC_VERSION, stamp, False)
+    )
+    return profile
+
+
+def _hsbc_rolling_returns(text: str, stamp: str) -> tuple[float, float] | None:
+    table = re.search(
+        r"^Rolling performance \(%\)[ \t]*\n([\d/\s-]+)\n"
+        r"Fund[ \t]+([^\n]+)\nReference Benchmark[ \t]+([^\n]+)",
+        text,
+        re.M,
+    )
+    if not table:
+        return None
+    periods = re.findall(r"(\d{2}/\d{2}/\d{2})\s*-\s*(\d{2}/\d{2}/\d{2})", table[1])
+    nav_values, benchmark_values = table[2].split(), table[3].split()
+    if not periods or len(periods) != len(nav_values) or len(periods) != len(benchmark_values):
+        return None
+    try:
+        start, end = (
+            datetime.strptime(raw, "%d/%m/%y").replace(tzinfo=UTC).date() for raw in periods[0]
+        )
+    except ValueError:
+        return None
+    if (
+        end.isoformat() != stamp
+        or start.year != end.year - 1
+        or start.month != end.month
+        or any(d.day != monthrange(d.year, d.month)[1] for d in (start, end))
+    ):
+        return None
+    nav, benchmark = amount(nav_values[0]), amount(benchmark_values[0])
+    return (nav / 100, benchmark / 100) if nav is not None and benchmark is not None else None
 
 
 def apply_invesco_factsheet(profile: FundShareClass, content: bytes, source: str) -> FundShareClass:

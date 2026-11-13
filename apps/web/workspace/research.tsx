@@ -167,7 +167,7 @@ export function ResearchWorkspace() {
   // Lenses name the next report by the exchange's date and carry its sessions:
   // a lens left open refetches when that date turns or the sessions run out.
   useLensRefresh(ticker, quote?.context?.quote);
-  const prices = useOverviewPrices(ticker, revision ?? "", Boolean(selected) && tab === "overview" && !isFund);
+  const prices = useOverviewPrices(ticker, revision ?? "", Boolean(selected) && tab === "overview" && (!isFund || selected?.status !== "pending"));
   const overviewWaiting = tab === "overview" && !isFund && (
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
@@ -518,7 +518,7 @@ export function ResearchWorkspace() {
                   </Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
-                {displayTab === "overview" && shown && !isFund && (runtime.status === "failed"
+                {displayTab === "overview" && shown && (!isFund || selected.status !== "pending") && (runtime.status === "failed"
                   ? <QueryError retry={runtime.retry} />
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
                 )}
@@ -550,7 +550,6 @@ export function ResearchWorkspace() {
                               ticker={ticker}
                               runId={revision ?? ""}
                               data={displayTab === "technical" ? displayData : undefined}
-                              fund={isFund}
                               pending={lens.isPending}
                               error={lens.isError}
                               retry={() => { void lens.refetch(); }}

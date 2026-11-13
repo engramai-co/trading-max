@@ -847,8 +847,8 @@ def test_api_typed_runtime_admits_refresh_without_legacy_root(
         assert client.get(f"/v1/jobs/{job_id}").json()["status"] == "succeeded"
 
 
-def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
-    tmp_path, seed_watchlist
+def test_held_fund_refresh_publishes_scored_technical_rows_without_equity_data(
+    tmp_path, seed_watchlist, monkeypatch
 ):
     from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
     from trading_max.research.held_funds import (
@@ -867,9 +867,19 @@ def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
         "current_value_gbp": 100,
         "price_currency": "GBP",
     }
+    monkeypatch.setattr(
+        "trading_max.application.etf_depth_stage.HMRCReportingSource.refresh",
+        lambda *_: None,
+    )
     payloads = {
         BROKER_SNAPSHOT_KEY: {
             "accounts": {"A": {"positions": [position]}, "B": {"positions": [position]}}
+        },
+        "account/synthetic_nav_metrics.json": {"A": {}, "B": {}},
+        "account/policy_metrics.json": {},
+        "research/technical.json": {
+            "tickers": ["BE"],
+            "rows": [{"ticker": "BE", "technical_score": 65}],
         },
         LOOKTHROUGH_KEY: {"fundPositions": [{"ticker": "SYNFUND", "isin": position["isin"]}]},
         ETF_SUMMARY_KEY: {
@@ -892,6 +902,15 @@ def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
                 key=key, payload=payload, kind="fixture", producer_version="fixture"
             )
             for key, payload in payloads.items()
+        ]
+        + [
+            store.immutable_artifacts.put_bytes(
+                key=f"account/nav/daily_nav_{code}.csv",
+                content=b"Date,SyntheticNAVGBP\n2026-11-11,100\n",
+                kind="fixture",
+                media_type="text/csv",
+            )
+            for code in ("a", "b")
         ],
     )
     histories, options, adr = [], [], []
@@ -927,7 +946,9 @@ def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
         queued = manager.submit("research", skip_sync=True, tickers=["SYNFUND.L"])
         assert manager._build_worker(worker_id="fixture", lease_seconds=60).run_once()
         assert manager.get(queued.job_id).status.value == "succeeded"
-        assert histories == ["SYNFUND.L"]
+        assert sorted(histories) == sorted(
+            ["SPY", "QQQ", "SOXX", "GBPUSD=X", "VOO", "VT", "SYNFUND.L"]
+        )
         assert options == adr == []
         latest = store.latest_manifest()
         result = store.read_json(latest.run_id, FUND_PRICES_KEY)["rows"][0]
@@ -936,7 +957,40 @@ def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
             position["isin"],
             "XLON",
         )
-        assert result["price_series"] and "score" not in result
+        assert result["price_series"]
+        technical_rows = {
+            row["ticker"]: row
+            for row in store.read_json(latest.run_id, "research/technical.json")["rows"]
+        }
+        assert technical_rows["BE"]["technical_score"] == 65
+        technical = technical_rows["SYNFUND.L"]
+        assert technical["asset_type"] == "ETF"
+        assert technical["technical_score"] is not None
+        assert technical["price_series"] == result["price_series"]
+        from services.api.trading_max_api.analysis_context import AnalysisContextBuilder
+        from services.api.trading_max_api.dashboard import build_dashboard_data
+        from services.api.trading_max_api.research import ResearchLedger
+
+        dashboard = build_dashboard_data(store, latest)
+        assert dashboard["holdings"][0]["researchTicker"] == "SYNFUND.L"
+        score = next(row["score"] for row in dashboard["technical"] if row["ticker"] == "SYNFUND.L")
+        assert score == technical["technical_score"]
+        assert dashboard["options"] == []
+        ledger = ResearchLedger(store, watchlist)
+        lens = ledger.lens_snapshot("SYNFUND", "technical", latest, detail="summary")
+        assert lens.ticker == "SYNFUND.L"
+        assert lens.technical.score == score
+        assert lens.technical.score_explanation_state == "verified"
+        assert lens.technical.score_breakdown.score == score
+        summary = ledger.lens_snapshot("SYNFUND.L", "overview", latest, detail="summary")
+        assert summary.technical is None
+        assert summary.technical_summary.score == score
+        assert ledger.timeline("SYNFUND")[0].technical["score"] == score
+        context = AnalysisContextBuilder(store, watchlist).build(
+            latest, "technical_regime", "SYNFUND.L"
+        )
+        assert context["selected"]["technical"]["score"] == score
+        assert context["selected"]["valuation"] is None
         assert store.read_json(latest.run_id, ETF_SUMMARY_KEY) == payloads[ETF_SUMMARY_KEY]
         assert not any(
             ref.key

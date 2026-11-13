@@ -251,6 +251,7 @@ def test_zero_valued_bull_scenario_does_not_break_research_alerts(boundary_clien
         research,
         "ticker_snapshot",
         lambda *args: SimpleNamespace(
+            ticker="SYNTH",
             valuation={"modelStatus": "ready", "spot": 10, "valueRange": {"bull": 0}},
             technical=None,
             options=None,

@@ -8,7 +8,7 @@ calculation boundary without network access.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
@@ -17,7 +17,9 @@ import pandas as pd
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference import is_fund_instrument
 
+from .calendar import completed_daily_bars
 from .technical import (
     MarketDataError,
     OptionsResearchArtifact,
@@ -128,29 +130,36 @@ class MarketResearchService:
         requested_period: str = "3y",
         history_period: str = "max",
         include_options: bool = True,
+        fund_tickers: Collection[str] = (),
     ) -> tuple[TechnicalResearchBatch, OptionsResearchBatch]:
         universe = list(dict.fromkeys(item.strip().upper() for item in tickers if item.strip()))
         if not universe:
             raise MarketDataError("technical research requires at least one ticker")
 
-        # Independent real histories can overlap; retain the same calculations
-        # and error semantics once all required benchmarks have arrived.
+        # Relative-performance inputs can fail independently of listing prices.
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-benchmark") as pool:
             histories = {
                 symbol: pool.submit(self.history_loader, symbol, history_period)
                 for symbol in ("SPY", "QQQ", "SOXX", "GBPUSD=X", "VOO", "VT")
             }
-            benchmark_frames = {
-                symbol: histories[symbol].result() for symbol in ("SPY", "QQQ", "SOXX")
-            }
-        benchmark_closes = {
-            benchmark: frame["Close"] for benchmark, frame in benchmark_frames.items()
-        }
         technical_rows: list[TechnicalResearchArtifact] = []
         option_rows: list[OptionsResearchArtifact] = []
+        identified_funds = set(fund_tickers)
         warnings: list[str] = []
         option_warnings: list[str] = []
         benchmark_series: dict[str, list[dict[str, Any]]] = {}
+        benchmark_closes = {}
+        now = pd.Timestamp.now(tz="UTC")
+        for symbol in ("SPY", "QQQ", "SOXX"):
+            try:
+                benchmark_closes[symbol] = completed_daily_bars(
+                    histories[symbol].result(), now=now
+                )["Close"]
+            except Exception as exc:
+                benchmark_closes[symbol] = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+                warnings.append(
+                    f"{symbol}: relative benchmark unavailable ({type(exc).__name__}: {exc})"
+                )
         try:
             gbp_usd_frame = histories["GBPUSD=X"].result()
         except Exception as exc:
@@ -160,9 +169,7 @@ class MarketResearchService:
             )
         for benchmark in ("VOO", "QQQ", "VT"):
             try:
-                frame = benchmark_frames.get(benchmark)
-                if frame is None:
-                    frame = histories[benchmark].result()
+                frame = histories[benchmark].result()
                 benchmark_series[benchmark] = _gbp_benchmark_series(
                     frame,
                     gbp_usd_frame,
@@ -174,8 +181,26 @@ class MarketResearchService:
                 )
         for ticker in universe:
             try:
-                frame = self.history_loader(ticker, history_period)
-                adr = self.adr_loader(ticker, frame, requested_period)
+                frame = (
+                    histories[ticker].result()
+                    if ticker in histories
+                    else self.history_loader(ticker, history_period)
+                )
+                provider_type = str(frame.attrs.get("asset_type") or "").upper()
+                expected_fund = ticker in fund_tickers
+                if expected_fund and provider_type and provider_type not in {"ETF", "MUTUALFUND"}:
+                    raise MarketDataError("provider did not return a fund listing")
+                fund = (
+                    expected_fund
+                    or provider_type == "MUTUALFUND"
+                    or is_fund_instrument(quote_type=provider_type)
+                )
+                if fund:
+                    identified_funds.add(ticker)
+                    if not provider_type:
+                        frame = frame.copy()
+                        frame.attrs["asset_type"] = "ETF"
+                adr = None if fund else self.adr_loader(ticker, frame, requested_period)
                 technical_rows.append(
                     analyze_ticker(
                         ticker,
@@ -188,7 +213,7 @@ class MarketResearchService:
                 )
                 # Option quotes use the latest genuine price, independent of completed-day studies.
                 spot = float(frame["Close"].iloc[-1])
-                if include_options and spot is not None:
+                if include_options and not fund:
                     try:
                         option_rows.append(self.options_loader(ticker, ticker, spot))
                     except Exception as exc:
@@ -200,9 +225,9 @@ class MarketResearchService:
                     f"{ticker}: technical research failed ({type(exc).__name__}: {exc})"
                 )
 
-        if not technical_rows:
+        if not technical_rows and any(ticker not in identified_funds for ticker in universe):
             raise MarketDataError("; ".join(warnings) or "technical research returned no rows")
-        as_of = max(row.as_of for row in technical_rows)
+        as_of = max((row.as_of for row in technical_rows), default=now.date().isoformat())
         generated_at = datetime.now(UTC)
         technical_batch = TechnicalResearchBatch(
             as_of=as_of,
@@ -218,7 +243,7 @@ class MarketResearchService:
         options_batch = OptionsResearchBatch(
             as_of=as_of,
             generated_at=generated_at,
-            tickers=universe,
+            tickers=[ticker for ticker in universe if ticker not in identified_funds],
             rows=option_rows,
             warnings=option_warnings,
         )

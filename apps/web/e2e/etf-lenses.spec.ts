@@ -17,14 +17,20 @@ const reading = {
   shareClassSize: { amount: 90_000_000, currency: "USD" },
 };
 const holding = {
-  ticker: "EQQQ", name: "Synthetic Nasdaq ETF", isFund: true, fundIsin: isin, listingMarket: "LSE", account: "A",
+  ticker: "EQQQ", researchTicker: "EQQQ.L", name: "Synthetic Nasdaq ETF", isFund: true, fundIsin: isin, listingMarket: "LSE", account: "A",
   quantity: 25, currentPrice: 60_000, priceCurrency: "GBX", currentValueGbp: 15_000, costGbp: 20_000,
   pnlGbp: -5_000, pnlPct: -0.25, allocationPct: 0.375,
   dayChangeGbp: 150, dayChangePct: 0.01, dayChangeDate: date,
 };
-const stock = { ...holding, ticker: "TEST", name: "Synthetic stock", isFund: false, fundIsin: null, account: "B", pnlPct: 0.25, pnlGbp: 5_000 };
+const stock = { ...holding, ticker: "TEST", researchTicker: "TEST", name: "Synthetic stock", isFund: false, fundIsin: null, account: "B", pnlPct: 0.25, pnlGbp: 5_000 };
 const accounts = ["A", "B"].map((code) => ({ code, name: code === "A" ? "Invest" : "ISA", isInvestable: true, totalValueGbp: 20_000, cashGbp: 1_000, asOf: stamp }));
-const summary = { runId, brokerAsOf: stamp, totalValueGbp: 40_000, totalCashGbp: 2_000, holdings: [holding, stock], accounts };
+const technical = {
+  ticker: holding.researchTicker, asOf: date, currency: "GBP", price: 600, score: 28, state: "弱势/趋势破坏",
+  rsi: 22, scoreExplanationState: "verified", atrPct: 0.03, bollingerWidth: 0.14, historyCoverage: {},
+  scoreBreakdown: { score: 28, baseScore: 50, rawScore: 28, clampAdjustment: 0, availableSignals: 2, totalSignals: 12,
+    groups: [{ key: "trend", contribution: -22, factors: [{ key: "sma200", value: 600, reference: 650, contribution: -22 }] }] },
+};
+const summary = { runId, technical: [technical], brokerAsOf: stamp, totalValueGbp: 40_000, totalCashGbp: 2_000, holdings: [holding, stock], accounts };
 const history = prepareHistory({ ...summary, dataRevision: "synthetic" }, { range: "1D", scope: "total" }).chart;
 const holdings = {
   ticker: "EQQQ", fundIsin: isin, asOf: date, fetchedAt: stamp, issuer: reading.issuer, state: "available",
@@ -88,16 +94,20 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
     if (path === "/research/shell") return route.fulfill({ json: {
       status: { runId, overall: "fresh", artifacts: [] }, watchlistCategories: [],
       instruments: [holding, stock].map((item, order) => ({
-        ticker: item.ticker, name: item.name, exchange: "LSE", status: item.isFund && fundPending ? "pending" : "ready", order, lastRunId: runId,
+        ticker: item.researchTicker, name: item.name, exchange: "LSE", status: item.isFund && fundPending ? "pending" : "ready", order, lastRunId: runId,
         held: true, isFund: item.isFund, exposureGbp: item.currentValueGbp, directValueGbp: item.currentValueGbp,
       })),
     } });
     if (path.includes("/lens/")) {
       const ticker = path.split("/")[2];
+      const view = path.split("/").at(-1);
+      const isFund = ticker === holding.researchTicker;
       return route.fulfill({ json: {
-        ticker, view: path.split("/").at(-1), runId, generatedAt: stamp, fundamentals: { metrics: {} },
+        ticker, view, runId, generatedAt: stamp, fundamentals: { metrics: {} },
+        technical: isFund && view === "technical" ? technical : null,
+        technicalSummary: isFund && view === "overview" ? technical : null,
         context: { quote: { ticker, price: 600, currency: "GBP", asOf: stamp, source: "synthetic", exchange: "LSE" },
-          assetType: ticker === "EQQQ" ? "ETF" : "EQUITY", capabilities: [], datasets: [] },
+          assetType: isFund ? "ETF" : "EQUITY", capabilities: [], datasets: [] },
         nextEarningsDate: ticker === "TEST" ? "2026-11-19" : null,
       } });
     }
@@ -120,10 +130,13 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
 }
 
 const shot = (page: Page, project: string, name: string, theme: string) =>
-  page.screenshot({ path: `/tmp/tm-etf-${project}-${name}-${theme}.png`, animations: "disabled" });
+  page.screenshot({ path: `/tmp/tm-etf-${project}-${name}-${theme}.png`, animations: "disabled", scale: "css", fullPage: name === "technical" });
 
 test.describe("ETF surfaces from synthetic snapshots", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
+  test.beforeEach(async ({ page }, info) => {
+    if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+  });
 
   test("ETF cells arrive after the table and preserve the warning and loss dots", async ({ page }, info) => {
     let release!: () => void;
@@ -139,26 +152,29 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(stocks.locator(headings)).toContainText("技术");
     await expect(stocks.locator(headings)).toContainText("模型空间");
     await expect(funds.locator(headings)).toContainText("跟踪差");
-    await expect(funds.locator(headings)).toContainText("重叠");
+    await expect(funds.locator(headings)).toContainText("技术");
+    await expect(funds.locator(headings)).not.toContainText("重叠");
+    await expect(funds.locator('a.mx-ledger-link:visible, a.mx-ledger-item:visible')).toHaveAttribute("href", "/research?ticker=EQQQ.L&view=technical&technicalView=data");
+    await expect(funds.locator('.mx-ledger-flag[title*="RSI 22"]')).toBeVisible();
     const etf = funds.locator(".mx-ledger-etf");
     const figures = etf.locator('> span[aria-hidden="true"]');
     try {
-      await expect(etf).toHaveCount(2);
-      await expect(figures).toHaveText(["—", "—"]);
+      await expect(etf).toHaveCount(1);
+      await expect(figures).toHaveText(["—"]);
     } finally {
       release();
     }
-    await expect(figures).toHaveText(["−0.50", "51%"]);
+    await expect(figures).toHaveText(["−0.50"]);
     const associatedHeadings = await etf.evaluateAll((cells) => cells.map((cell) => {
       const ids = cell.closest("td")?.getAttribute("headers");
       return ids ? document.getElementById(ids.split(" ").at(-1)!)?.textContent
         : cell.closest("dd")?.previousElementSibling?.textContent;
     }));
-    expect(associatedHeadings).toEqual(["跟踪差", "重叠"]);
+    expect(associatedHeadings).toEqual(["跟踪差"]);
     await expect(etf.first()).toHaveAttribute("aria-label", /2026-10-31/);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=warning]")).toHaveCount(2);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=down]")).toHaveCount(1);
-    await ledger.evaluate((node) => node.scrollIntoView({ block: "center", behavior: "instant" }));
+    await ledger.evaluate((node) => node.closest(".mx-overview-holdings")?.scrollIntoView({ block: "center", behavior: "instant" }));
     await shot(page, info.project.name, "overview", "light");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "dark");
@@ -173,7 +189,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/?range=1D");
     const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");
     try {
-      await expect(ledger.locator(".mx-ledger-etf")).toHaveCount(2);
+      await expect(ledger.locator(".mx-ledger-etf")).toHaveCount(1);
       await page.getByRole("combobox", { name: "组合账户" }).click();
       await page.getByRole("option", { name: "Stocks ISA" }).click();
       await expect(ledger.locator(".mx-ledger-etf")).toHaveCount(0);
@@ -187,7 +203,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   });
 
   test("fund-only ledgers omit an empty group and keep unavailable readings as dashes", async ({ page }) => {
-    await synthetic(page, undefined, { ...summary, holdings: [holding] }, false);
+    await synthetic(page, undefined, { ...summary, technical: [], holdings: [holding] }, false);
     const readings = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/dashboard/etfs"));
     await page.goto("/?range=1D");
     expect(await (await readings).json()).toEqual({ runId, funds: [] });
@@ -195,7 +211,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(ledger.locator("[data-asset-class]")).toHaveCount(1);
     const funds = ledger.locator('[data-asset-class="funds"]');
     await expect(funds).toBeVisible();
-    await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—", "—"]);
+    await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—"]);
   });
 
   test("overview previews the ledger’s session move; holdings retains its price history", async ({ page }) => {
@@ -237,21 +253,26 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
 
   test("an unresearched held fund stays pending, while an unknown ticker can be added", async ({ page }) => {
     await synthetic(page, undefined, summary, false, true);
-    await page.goto("/research?ticker=EQQQ");
+    await page.goto("/research?ticker=EQQQ.L");
     await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(6);
     await expect(page.getByText("正在读取证券研究…", { exact: true })).toBeAttached();
-    await expect(page.getByText("EQQQ 还不在研究清单里")).toHaveCount(0);
+    await expect(page.getByText("EQQQ.L 还不在研究清单里")).toHaveCount(0);
     await page.goto("/research?ticker=UNKNOWN");
     await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
   });
 
-  test("research keeps six fund lenses, legacy links and an unscored price chart", async ({ page }, info) => {
+  test("research keeps six fund lenses and links the overview score to its diagnosis", async ({ page }, info) => {
     await synthetic(page);
-    await page.goto("/research?ticker=EQQQ&view=analyst");
+    await page.goto("/research?ticker=EQQQ.L&view=analyst");
     const lenses = page.getByRole("tablist", { name: "证券研究视角" });
     await expect(lenses.getByRole("tab")).toHaveCount(6);
     await expect(lenses.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
+    await expect(page.locator(".mx-tech-score-compact .mx-tech-number strong")).toHaveText("28");
+    await page.getByRole("button", { name: "技术状态", exact: true }).click();
+    await expect(page.locator("#technical-diagnosis")).toBeFocused();
+    await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();
+    await lenses.getByRole("tab", { name: "概览" }).click();
     await expect(page.getByText("已获批")).toBeVisible();
     await page.getByRole("button", { name: "英国申报基金状态说明" }).click();
     await expect(page.getByRole("link", { name: "HMRC 原始名单" })).toBeVisible();
@@ -260,7 +281,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "dark");
     await shot(page, info.project.name, "research", "dark");
-    await page.goto("/research?ticker=EQQQ&view=fundamentals&fundMode=tracking");
+    await page.goto("/research?ticker=EQQQ.L&view=fundamentals&fundMode=tracking");
     await expect(lenses.getByRole("tab", { name: "指数与跟踪" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("region", { name: "年度净值与指数总回报" })).toBeVisible();
     await expect(page.getByText("日度净值历史")).toBeVisible();
@@ -283,7 +304,12 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await shot(page, info.project.name, "journal", "dark");
     await lenses.getByRole("tab", { name: "价格与技术面" }).click();
     await expect(page.locator(".mx-tech-main canvas").first()).toBeVisible();
-    await expect(page.locator(".mx-tech-score")).toHaveCount(0);
+    await expect(page.locator(".mx-tech-score .mx-tech-number strong")).toHaveText("28");
+    await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();
+    await shot(page, info.project.name, "technical", "dark");
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "light");
+    await shot(page, info.project.name, "technical", "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await page.goto("/research?ticker=TEST");
     await expect(lenses.getByRole("tab")).toHaveCount(7);

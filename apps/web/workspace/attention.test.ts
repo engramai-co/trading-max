@@ -54,14 +54,16 @@ describe("overview attention", () => {
     expect(item.facts.map((fact) => fact.kind)).toEqual(["score", "upside", "loss", "rsi"]);
   });
 
-  it("reads only a fund's loss, never research it does not have", () => {
-    const signals = holdingSignals({
-      holdings: [holding("IGLT.L", 100, 0, "B", true), holding("VWRP.L", 100, -30, "B", true)],
-      technical: [technical("IGLT.L", 0, 12), technical("VWRP.L", 5)],
-      valuations: [valuation("VWRP.L", -0.5)],
+  it("flags technical readings for a fund by listing ticker and ignores stock valuation", () => {
+    const fund = { ...holding("IGLT", 100, 0, "B", true), researchTicker: "IGLT.L" };
+    const [signal] = holdingSignals({
+      holdings: [fund],
+      technical: [technical("IGLT", 50), technical("IGLT.L", 0, 12)],
+      valuations: [valuation("IGLT", -0.5)],
     });
-    expect(signals).toEqual([expect.objectContaining({ ticker: "VWRP.L", href: "/holdings" })]);
-    expect(signals[0].facts.map((fact) => fact.kind)).toEqual(["loss"]);
+    expect(signal).toMatchObject({ ticker: "IGLT", href: "/research?ticker=IGLT.L&view=technical&technicalView=data" });
+    expect(signal.facts.map((fact) => fact.kind)).toEqual(["score", "rsi"]);
+    expect(holdingSignals({ holdings: [fund], technical: [technical("IGLT", 12)] })[0].facts[0].value).toBe(12);
   });
 
   it("measures the loss across accounts against combined cost", () => {
@@ -85,7 +87,7 @@ describe("overview attention", () => {
   });
 });
 
-it("ETF dots require comparable fresh tracking or overlap with dated coverage", () => {
+it("ETF tracking dots require comparable fresh tracking; overlap never flags a row", () => {
   const fund = { ...holding("EQQQ", 100, -20), isFund: true };
   const reading = {
     isin: "IE0032077012", tickers: ["EQQQ"], holdingsState: "available" as const,
@@ -93,14 +95,14 @@ it("ETF dots require comparable fresh tracking or overlap with dated coverage", 
     overlap: { state: "available" as const, value: 0.50, datesValid: true, fundCoverage: 0.90, restCoverage: 0.90 },
   };
   const [signal] = holdingSignals({ holdings: [fund], etfs: [reading] });
-  expect(signal.facts.map((fact) => fact.kind)).toEqual(["tracking", "overlap", "loss"]);
+  expect(signal.facts.map((fact) => fact.kind)).toEqual(["tracking", "loss"]);
   const [lossOnly] = holdingSignals({
     holdings: [fund],
-    etfs: [{ ...reading, tracking: { ...reading.tracking, state: "stale" }, overlap: { ...reading.overlap, fundCoverage: 0.89 } }],
+    etfs: [{ ...reading, tracking: { ...reading.tracking, state: "stale" } }],
   });
   expect(lossOnly.facts.map((fact) => fact.kind)).toEqual(["loss"]);
   const limited = holdingSignals({ holdings: [fund], etfs: [reading], limit: 1 });
-  expect(limited[0].facts.map((fact) => fact.kind)).toEqual(["tracking", "overlap", "loss"]);
+  expect(limited[0].facts.map((fact) => fact.kind)).toEqual(["tracking", "loss"]);
   const mixed = holdingSignals({
     holdings: [fund, holding("STRONG", 100, 0), holding("UPSIDE", 100, 0), holding("LOSS", 100, -30), holding("SMALL", 100, 0, "A", true)],
     technical: [technical("STRONG", 0)],
@@ -108,5 +110,5 @@ it("ETF dots require comparable fresh tracking or overlap with dated coverage", 
     etfs: [reading, { ...reading, isin: "IE00BYVTMW98", tickers: ["SMALL"], tracking: { ...reading.tracking, state: "stale" } }],
   });
   expect(mixed.map((signal) => signal.ticker)).toEqual(["STRONG", "EQQQ", "UPSIDE", "LOSS"]);
-  expect(mixed[1].facts.map((fact) => fact.kind)).toEqual(["tracking", "overlap", "loss"]);
+  expect(mixed[1].facts.map((fact) => fact.kind)).toEqual(["tracking", "loss"]);
 });
