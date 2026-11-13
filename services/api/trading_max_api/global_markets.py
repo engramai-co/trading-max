@@ -24,7 +24,7 @@ from .index_models import (
     GlobalRowMarket,
 )
 from .sector_models import SectorSessionWindow
-from .sector_sessions import exchange_sessions
+from .sector_sessions import calendar_known, exchange_sessions
 
 MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "us": "sp-500",
@@ -107,7 +107,7 @@ CALENDARS = {
     "us": ("XNYS", "America/New_York"),
     "ca": ("XTSE", "America/Toronto"),
     "uk": ("XLON", "Europe/London"),
-    # Regular core-European cash sessions and Mumbai exchange holidays.
+    # Regular core-European cash sessions.
     "eu": ("XPAR", "Europe/Paris"),
     "ch": ("XSWX", "Europe/Zurich"),
     "jp": ("XTKS", "Asia/Tokyo"),
@@ -115,7 +115,7 @@ CALENDARS = {
     "hk": ("XHKG", "Asia/Hong_Kong"),
     "kr": ("XKRX", "Asia/Seoul"),
     "tw": ("XTAI", "Asia/Taipei"),
-    "in": ("XBOM", "Asia/Kolkata"),
+    "in": ("XNSE", "Asia/Kolkata"),
 }
 Point = tuple[datetime, float]
 
@@ -223,16 +223,9 @@ def market_windows(
 ) -> tuple[SectorSessionWindow, ...] | None:
     calendar, zone = CALENDARS[market]
     local = ZoneInfo(zone)
-    try:
-        return exchange_sessions(
-            calendar,
-            start.astimezone(local).date(),
-            now.astimezone(local).date(),
-            buffer_years=0 if calendar == "XBOM" else 1,
-        )
-    except ValueError:
-        # The installed Mumbai holiday table may end before the observed year.
+    if not calendar_known(calendar, zone, now):
         return None
+    return exchange_sessions(calendar, start.astimezone(local).date(), now.astimezone(local).date())
 
 
 def reference_day(

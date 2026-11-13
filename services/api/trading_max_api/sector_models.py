@@ -141,6 +141,7 @@ class SectorMarketStatus(ApiModel):
     market: SectorMarketCode
     calendar: str
     timezone: str
+    calendar_known: bool = True
     sessions: list[SectorSessionWindow] = Field(default_factory=list)
     session_date: str | None = None
     complete: bool = False

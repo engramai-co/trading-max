@@ -10,10 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from trading_max.research.calendar import market_calendar
 
+from .india_sessions import INDIA_END, INDIA_START, INDIAN_EXCHANGES, india_sessions
 from .sector_models import SectorMarketCode, SectorSessionWindow
 
 
@@ -63,10 +65,18 @@ def sessions_between(
     return exchange_sessions(MARKETS[market].calendar, start, end)
 
 
+def calendar_known(name: str, timezone: str, now: datetime) -> bool:
+    if name not in INDIAN_EXCHANGES:
+        return True
+    return INDIA_START <= now.astimezone(ZoneInfo(timezone)).date() <= INDIA_END
+
+
 @lru_cache(maxsize=256)
 def exchange_sessions(
     name: str, start: date, end: date, *, buffer_years: int = 1
 ) -> tuple[SectorSessionWindow, ...]:
+    if name in INDIAN_EXCHANGES:
+        return india_sessions(name, start, end)
     calendar = market_calendar(name, start.year, end.year, buffer_years=buffer_years)
     schedule = calendar.schedule.loc[pd.Timestamp(start) : pd.Timestamp(end)]
     windows = []
@@ -89,6 +99,9 @@ def exchange_sessions(
 def latest_session(market: SectorMarketCode, now: datetime) -> SectorSessionWindow | None:
     """The latest session that has opened by `now`."""
 
+    calendar = MARKETS[market]
+    if not calendar_known(calendar.calendar, calendar.timezone, now):
+        return None
     started = [
         session
         for session in sessions_between(
@@ -102,6 +115,9 @@ def latest_session(market: SectorMarketCode, now: datetime) -> SectorSessionWind
 def next_session(market: SectorMarketCode, now: datetime) -> SectorSessionWindow | None:
     """The first session that opens after `now`."""
 
+    calendar = MARKETS[market]
+    if not calendar_known(calendar.calendar, calendar.timezone, now):
+        return None
     return next(
         (
             session

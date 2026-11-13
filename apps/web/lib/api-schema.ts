@@ -4191,6 +4191,11 @@ export interface components {
         IndexQuote: {
             /** Asof */
             asOf?: string | null;
+            /**
+             * Calendarknown
+             * @default true
+             */
+            calendarKnown: boolean;
             /** Change */
             change?: number | null;
             index: components["schemas"]["IndexIdentity"];
@@ -7088,6 +7093,11 @@ export interface components {
             asOf?: string | null;
             /** Calendar */
             calendar: string;
+            /**
+             * Calendarknown
+             * @default true
+             */
+            calendarKnown: boolean;
             /**
              * Complete
              * @default false

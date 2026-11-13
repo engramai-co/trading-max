@@ -9253,6 +9253,11 @@
             ],
             "title": "Asof"
           },
+          "calendarKnown": {
+            "default": true,
+            "title": "Calendarknown",
+            "type": "boolean"
+          },
           "change": {
             "anyOf": [
               {
@@ -17709,6 +17714,11 @@
           "calendar": {
             "title": "Calendar",
             "type": "string"
+          },
+          "calendarKnown": {
+            "default": true,
+            "title": "Calendarknown",
+            "type": "boolean"
           },
           "complete": {
             "default": false,

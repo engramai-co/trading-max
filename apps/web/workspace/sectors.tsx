@@ -137,7 +137,7 @@ export function SectorsWorkspace() {
     kr: t("韩股", "KR"),
     jp: t("日股", "JP"),
   };
-  const phases = Object.fromEntries((shown?.markets ?? []).map((item) => [item.market, marketPhase(item.sessions, item.timezone, now)]));
+  const phases = Object.fromEntries((shown?.markets ?? []).map((item) => [item.market, marketPhase(item.calendarKnown === false ? [] : item.sessions, item.timezone, now)]));
   const phaseName = usePhaseNames();
   const select = (key: string, opened?: string) => {
     // An "Other" tile opens with the empty key, so only a missing one means none.

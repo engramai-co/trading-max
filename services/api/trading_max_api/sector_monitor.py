@@ -38,15 +38,15 @@ from trading_max.infrastructure.sector_prices import (
     SparkRateLimited,
     SparkSeries,
 )
-from trading_max.infrastructure.shared_market_prices import (
-    MarketPriceBudgetExhausted,
-    SharedMarketPrices,
-    market_price_priority,
-)
 from trading_max.infrastructure.sector_universe import (
     GICS_SECTORS,
     SectorUniverse,
     SectorUniverseProvider,
+)
+from trading_max.infrastructure.shared_market_prices import (
+    MarketPriceBudgetExhausted,
+    SharedMarketPrices,
+    market_price_priority,
 )
 
 from .models import SectorMonitorState
@@ -76,6 +76,7 @@ from .sector_sessions import (
     GIVE_UP_AFTER,
     MARKETS,
     board_complete,
+    calendar_known,
     in_break,
     is_due,
     latest_session,
@@ -863,6 +864,7 @@ class SectorMonitor:
                     market=market,
                     calendar=calendar.calendar,
                     timezone=calendar.timezone,
+                    calendar_known=calendar_known(calendar.calendar, calendar.timezone, now),
                     sessions=list(
                         sessions_between(
                             market, (now - SESSION_WINDOW).date(), (now + SESSION_WINDOW).date()

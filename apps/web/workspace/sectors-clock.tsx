@@ -91,7 +91,8 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
   const source = board?.source;
   return (
     <div className="mx-sectors-clock" aria-live="polite">
-      {phaseName[phase] && <span>{phaseName[phase]}</span>}
+      {status.calendarKnown === false ? <Tag tone="warn">{t("日历未知", "Calendar unknown")}</Tag>
+        : phaseName[phase] && <span>{phaseName[phase]}</span>}
       {asOf && <span>{t("截至 ", "As of ") + formatDateTime(asOf, locale, timeZone, now)}</span>}
       {retry ? <button type="button" className="mx-tag mx-tag-warn mx-sectors-retry" aria-disabled={retry.busy || undefined}
         onClick={retry.busy ? undefined : retry.run}>{retry.label}</button>
