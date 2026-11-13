@@ -57,6 +57,8 @@ export function timelineOption(
   display?: TimelineDisplay,
   provenance?: Array<{ estimated: boolean; note: string }>,
   moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
+  /** The canvas height of a single-layer chart. A short chart shrinks its plot to keep its axis labels inside. */
+  plotHeight?: number,
 ): EChartsOption & { series: SeriesOption[] } {
   const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
@@ -101,6 +103,11 @@ export function timelineOption(
     axisLabel: { formatter: (value: string | number) => formatDay(typeof value === "string" ? Date.parse(value) : value) },
   };
   const top = (index: number) => moneyLayout?.grids[index]?.top ?? (index === 0 ? 32 : 292 + (index - 1) * 196);
+  // Below a single plot: one line of dates, or two where a label also names its year.
+  const years = new Set(times.filter(Number.isFinite).map((time) => new Date(time).getUTCFullYear()));
+  const singleHeight = plotHeight && layers.length === 1
+    ? Math.min(210, plotHeight - top(0) - (years.size > 1 ? 44 : 30))
+    : 210;
   const axisDensity = (count: number) => {
     const ticks = ticksForWidth(count);
     return {
@@ -125,7 +132,7 @@ export function timelineOption(
       left: 64,
       right: 12,
       top: top(index),
-      height: moneyLayout?.grids[index]?.height ?? (index === 0 ? 210 : 150),
+      height: moneyLayout?.grids[index]?.height ?? (index === 0 ? singleHeight : 150),
     })),
     // Money pane labels are HTML; the return comparison still labels its lower plot here.
     graphic: moneyLayout ? [] : layers.slice(1).map((layer, index) => ({

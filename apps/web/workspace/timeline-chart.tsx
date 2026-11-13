@@ -62,6 +62,8 @@ export function TimelineChart({
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
+  const plotHeight = (moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510))
+    - (shortRange ? 24 : 0);
   if (
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
@@ -103,6 +105,7 @@ export function TimelineChart({
     display,
     observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
     moneyLayout,
+    plotHeight,
   );
   // Solid is the default. Key only the source exceptions that produced a
   // visible stroke after sampling, using the same series as the chart.
@@ -113,7 +116,7 @@ export function TimelineChart({
   const plot = (
     <Plot
       label={label}
-      height={(moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510)) - (shortRange ? 24 : 0)}
+      height={plotHeight}
       option={() => option}
     />
   );
