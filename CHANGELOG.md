@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.44.0] - 2026-11-13
+
+### Added
+
+- ETF research now shows a daily technical score and explains the trend, momentum, relative performance, and volume behind it.
+- HSBC ETFs show one-year tracking difference from the fund and benchmark returns in their monthly factsheets.
+
+### Changed
+
+- The Overview holdings table and mobile list now show Technical and Tracking diff. for funds. Portfolio overlap remains available in fund research and holding details.
+
 ## [1.43.0] - 2026-11-13
 
 ### Added
