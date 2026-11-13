@@ -166,6 +166,17 @@
 .mx-research-page .mx-table tbody tr:last-child th {
   border-bottom: 0;
 }
+.mx-us-fund-peers .mx-table :is(th, td) {
+  white-space: normal;
+}
+.mx-us-fund-peers .mx-table td:nth-child(2) .mx-text-link {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.mx-us-fund-peers .mx-table td:last-child > .mx-etf-evidence {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
 .mx-company-context {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr);

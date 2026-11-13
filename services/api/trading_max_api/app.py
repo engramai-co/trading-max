@@ -27,6 +27,7 @@ from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportSto
 from trading_max.reference import CatalogSecurityMaster
 from trading_max.research.facts import fingerprint
 from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
+from trading_max.research.market import MarketResearchService
 
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
@@ -324,10 +325,12 @@ def create_app(
                 extra={"provider_error_code": exc.code},
             )
 
+    market_prices = SharedMarketPrices()
     jobs = TypedJobManager(
         store,
         watchlist,
         broker_profiles_loader=broker_profiles_loader(preferences),
+        market_service=MarketResearchService(prices=market_prices),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,
         on_snapshot_published=on_snapshot_published,
@@ -382,7 +385,6 @@ def create_app(
         held_interval_seconds=settings.alert_held_interval_seconds,
         watchlist_interval_seconds=settings.alert_watchlist_interval_seconds,
     )
-    market_prices = SharedMarketPrices()
     market_universes = SectorUniverseProvider(settings.data_root)
     index_depth = IndexDepth(settings.data_root, market_prices, market_universes)
     sector_monitor = SectorMonitor(
@@ -520,6 +522,7 @@ def create_app(
     app.state.security_search = security_search
     app.state.valuation_assumptions = valuation_assumptions
     app.state.security_prices = SecurityPriceHistory(settings.data_root)
+    app.state.market_prices = market_prices
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.validation_secret = validation_secret

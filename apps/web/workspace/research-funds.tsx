@@ -2,6 +2,7 @@
 
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
+import { useLocale } from "@/components/locale-provider";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { currency, number, percent, safeUrl } from "@/workspace/data";
 import { api, object, str } from "./data";
@@ -15,8 +16,11 @@ import { Empty, Facts, Help, Panel, Pending, QueryError, Tag, UpdateFailure, use
 import Link from "./link";
 import { indexHref } from "./market-indices-data";
 import { researchPriceQuery } from "./research-queries";
+import { usFundRelation } from "./research-fund-reference";
 
 type Fund = components["schemas"]["FundResearch"];
+type USFundPeer = components["schemas"]["USFundPeer"];
+
 type Holding = components["schemas"]["FundHolding"];
 type FundSize = components["schemas"]["FundSize"];
 type FundMode = "overview" | "tracking" | "holdings" | "peers";
@@ -56,10 +60,14 @@ function fundReading(fund: Fund): ETFReading {
   };
 }
 
-export function FundWorkbench({ data, mode, onExplore }: {
+export function FundWorkbench({ data, mode, onExplore, usPeers = [] }: {
   data: ResearchLensSnapshot; mode: FundMode; onExplore: (ticker: string) => void;
+  usPeers?: USFundPeer[];
 }) {
-  if (mode === "peers") return <FundPeers data={data} />;
+  if (mode === "peers") return <>
+    {usPeers.length > 0 && <USFundPeers peers={usPeers} />}
+    <FundPeers data={data} separate={usPeers.length > 0} />
+  </>;
   return <FundIssuerLens data={data} mode={mode} onExplore={onExplore} />;
 }
 
@@ -262,13 +270,37 @@ function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: str
   );
 }
 
-function FundPeers({ data }: { data: ResearchLensSnapshot }) {
+function USFundPeers({ peers }: { peers: USFundPeer[] }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return <Panel className="mx-us-fund-peers" title={t("美国同类", "US peers")}>
+    <EvidenceTable label={t("美国同类 ETF", "US peer ETFs")} rows={peers} columns={[
+      { label: "ETF", value: (row) => <Link
+        className="mx-text-link"
+        href={`/research?ticker=${encodeURIComponent(row.fund.ticker)}`}
+        title={row.fund.name}
+      >{row.fund.ticker}</Link> },
+      { label: t("跟踪指数", "Tracked index"), value: (row) => sourceLink(row.fund.sourceUrl, row.fund.benchmark) },
+      { label: t("关系", "Relationship"), value: (row) => <span className="mx-etf-evidence">
+        {usFundRelation(row, t)}
+        <Help label={t("查看关系依据", "View relationship evidence")}>
+          <p>{locale === "zh" ? row.differenceZh : row.differenceEn}</p>
+          <p>{sourceLink(row.localSourceUrl, row.localBenchmark)}</p>
+          <p>{t("核实日期", "Verified")} · <time className="mx-mono" dateTime={row.verifiedOn}>{row.verifiedOn}</time></p>
+        </Help>
+      </span> },
+    ]} />
+  </Panel>;
+}
+
+function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: boolean }) {
   const t = useCopy();
   const query = useQuery(fundQuery(data.ticker, data.runId, "peers"));
   if (query.isPending) return <Pending />;
   if (query.isError) return <QueryError retry={query.refetch} />;
   const comparison = query.data?.peerComparison;
-  if (!comparison) return <Panel title={t("同类", "Peers")}>
+  const title = separate ? t("UCITS 同类", "UCITS peers") : t("同类", "Peers");
+  if (!comparison) return <Panel title={title}>
     <Empty title={t("暂无已核实的同类份额", "No verified peers available")} />
   </Panel>;
   const fee = t("费率", "Fee");
@@ -276,7 +308,7 @@ function FundPeers({ data }: { data: ResearchLensSnapshot }) {
   const tracking = t("一年跟踪差", "1-year tracking difference");
   const overlap = t("组合重叠", "Portfolio overlap");
   const metrics = { fee, shareClassSize: size, tracking, overlap };
-  return <Panel title={t("同类", "Peers")} help={
+  return <Panel title={title} help={
     <>
       <p>{[comparison.benchmark, comparison.domicile, hedge(comparison.hedging, t), income(comparison.incomeUse, t)].join(" · ")}</p>
       <p>{t("分位按数值从低到高排列，并列取中间位置。每项只与有同口径读数的份额比较。", "Percentiles rank values from low to high, with ties at the midpoint. Each metric uses only share classes with comparable readings.")}</p>

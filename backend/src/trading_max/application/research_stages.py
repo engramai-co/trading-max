@@ -30,6 +30,7 @@ from trading_max.research.estimate_history import (
     EstimateHistory,
     estimate_observations,
 )
+from trading_max.research.fund_references import US_MARKETS, fund_peers, us_fund, us_fund_listing
 from trading_max.research.fundamentals import (
     AnalystBatch,
     EarningsBatch,
@@ -140,7 +141,7 @@ def merge_partial_market_snapshot(
 ) -> dict:
     """Merge the nested technical/options rows of a partial market snapshot."""
 
-    if previous is None or not refreshed:
+    if previous is None:
         return payload
     merged = dict(payload)
     for section in ("technical", "options"):
@@ -148,8 +149,8 @@ def merge_partial_market_snapshot(
         current_section = payload.get(section)
         if not isinstance(previous_section, dict) or not isinstance(current_section, dict):
             continue
-        if section == "options" and "equity_tickers" in payload:
-            attempted = tuple(payload["equity_tickers"])
+        if section == "options":
+            attempted = tuple(current_section.get("tickers") or ())
         else:
             attempted = refreshed
         merged_section = (
@@ -211,12 +212,18 @@ def _fund_listings(
     all_funds = context.scope == "all" or context.trigger in SCHEDULED_RESEARCH_TRIGGERS
     listings: dict[str, list[FundListingIdentity]] = {}
     for listing in holdings:
-        if all_funds or listing.ticker in requested or listing.symbol in requested:
+        if (
+            all_funds
+            or listing.ticker in requested
+            or (listing.symbol in requested and not us_fund(listing.symbol))
+        ):
             listings.setdefault(listing.ticker, []).append(listing)
     # Only use the broker-qualified listing for a held fund, or an exact
     # catalog symbol for a separately saved fund.
     for ticker in requested - listings.keys():
-        if not any(ticker == item.symbol for item in holdings) and known_fund(catalog, ticker):
+        if us_fund(ticker) or (
+            not any(ticker == item.symbol for item in holdings) and known_fund(catalog, ticker)
+        ):
             listings[ticker] = []
     return listings
 
@@ -290,7 +297,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v11"
+    version = "market-snapshot-v12"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -311,6 +318,7 @@ class MarketSnapshotStage:
                 "market snapshot requires a non-empty watchlist",
             )
         catalog, funds = _fund_inputs(self.artifacts, self.snapshots, context)
+        requested = tuple(dict.fromkeys(value.strip().upper() for value in context.tickers))
         fund_symbols = {item.ticker for item in funds}
         listings = _fund_listings(catalog, funds, context)
         fund_tickers = tuple(
@@ -320,10 +328,39 @@ class MarketSnapshotStage:
             f"{ticker}: ambiguous fund listing"
             for ticker in sorted(listings.keys() - set(fund_tickers))
         ]
+        # Respect a qualified US reference even when the same letters appear
+        # on a broker-held London listing (for example SMH and SMH.L).
+        held_symbols = fund_symbols | {item.symbol for item in funds if not us_fund(item.symbol)}
         equities = tuple(
             ticker
-            for ticker in dict.fromkeys(value.strip().upper() for value in context.tickers)
-            if ticker not in fund_symbols and not known_fund(catalog, ticker)
+            for ticker in requested
+            if ticker not in held_symbols
+            and not us_fund(ticker)
+            and not known_fund(catalog, ticker)
+        )
+        etf_options = {ticker for ticker in requested if us_fund(ticker)}
+        for ticker in fund_tickers:
+            identities = listings[ticker]
+            if identities:
+                listing = identities[0]
+                etf_options.update(peer.fund.ticker for peer in fund_peers(listing.isin))
+                if us_fund_listing(listing):
+                    etf_options.add(ticker)
+        # Watchlisted US ETFs can have their own chains even before a direct position exists.
+        etf_options.update(
+            ticker
+            for ticker in requested
+            if ticker not in held_symbols
+            and "." not in ticker
+            and any(
+                record.security_type == "ETF"
+                and any(
+                    listing.ticker == ticker
+                    and (listing.mic in US_MARKETS or listing.exchange.upper() in US_MARKETS)
+                    for listing in record.listings
+                )
+                for record in catalog.catalog.records
+            )
         )
         try:
             if fund_tickers:
@@ -355,6 +392,10 @@ class MarketSnapshotStage:
         }
         equities = tuple(ticker for ticker in equities if ticker not in discovered)
         technical.warnings.extend(fund_warnings)
+        # One scheduled chain capture per day, plus a deliberately requested
+        # refresh. Other research slots retain the last successful ETF rows.
+        if etf_options and context.trigger != "research":
+            self.service.extend_fund_options(options, etf_options)
         warnings = list(dict.fromkeys(technical.warnings + options.warnings))
         payload = {
             "schema_version": 1,
@@ -512,7 +553,7 @@ class OptionsArtifactStage:
     """Project options positioning from the same market input as technical."""
 
     name = "research.options"
-    version = "options-v5"
+    version = "options-v6"
     required_for = frozenset({"all", "research"})
     dependencies = ("research.technical",)
 
@@ -1005,7 +1046,7 @@ class TypedPublishSnapshotStage:
                 continue
             refreshed = tuple(current.payload.get("tickers") or ())
             if ref.key == "research/market_snapshot.json":
-                if not refreshed:
+                if not refreshed and not (current.payload.get("options") or {}).get("tickers"):
                     continue
                 merged_payload = merge_partial_market_snapshot(
                     previous_payload,
@@ -1017,6 +1058,7 @@ class TypedPublishSnapshotStage:
                     FUND_PRICES_KEY,
                     FUND_PRICE_DIRECTORY_KEY,
                     "research/technical.json",
+                    "research/options.json",
                 }:
                     if not equities and context.tickers:
                         continue

@@ -112,9 +112,9 @@ issuer holdings, tracking and overlap are shared by ISIN. A fully sold fund
 leaves the held list and stays in research only if it was saved to the watchlist.
 
 Research refreshes reuse the account publication for issuer evidence. The fund
-price stage makes one Yahoo daily-history call per eligible listing and no
-additional issuer calls. Equity scoring, options, earnings, analyst estimates
-and valuation are skipped for recognized funds.
+price and technical score use the same daily history, with no additional issuer
+calls. Recognized funds skip company earnings, analyst estimates and valuation.
+The options dataset can include verified US ETF underlyings, as described below.
 
 ## Official source entry points
 
@@ -180,3 +180,39 @@ at an unverified time, and a session high/low is not a spread. Issuer-published
 tracking error remains available where reported; the desk does not estimate
 daily tracking error from a price-only index, another ETF, or mismatched NAV.
 The portfolio overview's compact ETF publication is unchanged.
+
+## US-listed ETF references
+
+Verified against issuer disclosures on 2026-11-13. References are selected by
+share-class ISIN. “Same index” requires the same benchmark variant, including
+its stated return basis. “Similar” means related exposure with a different
+benchmark. US rows do not enter the UCITS comparison or its percentile counts.
+
+| UCITS listing | Issuer benchmark | US reference and issuer benchmark | Relation |
+|---|---|---|---|
+| EQGB.L (IE00BYVTMW98) | [Nasdaq-100 Notional Net Total Return (XNDXNNR)](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) | [QQQ](https://www.invesco.com/content/dam/invesco/hk/en/pdf/factsheet/Invesco_QQQ_factsheet_EN.pdf), [QQQM](https://www.invesco.com/us-rest/contentdetail?contentId=5b4d8e58e0737710VgnVCM1000006e36b50aRCRD&dnsName=us) · Nasdaq-100 Total Return (XNDX) | Similar: same constituent rules, [different dividend treatment in the index](https://indexes.nasdaq.com/docs/Index_Versions_NDX.pdf). EQGB is GBP hedged; QQQ and QQQM are quoted in USD and have no GBP hedge. |
+| XUSE.L (IE000R4ZNTN3) | [MSCI World Ex US Net Index](https://www.ishares.com/uk/individual/en/products/340748/) | [VEA · FTSE Developed All Cap ex US Index](https://advisors.vanguard.com/investments/products/vea/vanguard-ftse-developed-markets-etf) | Similar: VEA adds small caps and includes South Korea under FTSE’s developed-market classification. |
+| IUMF.L (IE00BD1F4N50) | [MSCI USA Momentum Factor Net Index](https://www.ishares.com/uk/individual/en/products/285208/ishares-edge-msci-usa-momentum-factor-ucits-etf) | [MTUM · MSCI USA Momentum SR Variant Index](https://www.ishares.com/us/products/251614/ishares-msci-usa-momentum-factor-etf) | Similar: US momentum exposure with different index rules. |
+| HEMC.L (IE000KCS7J59) | [MSCI Emerging Markets Net](https://www.assetmanagement.hsbc.co.uk/en/intermediary/funds/ie000kcs7j59) | [EEM · MSCI Emerging Markets Index (Net)](https://www.ishares.com/us/products/239637/ishares-msci-emerging-markets-etf-eem) | Same index: net return benchmark. HEMC is a GBP trading line; EEM is quoted in USD. |
+| SMGB.L (IE00BMC38736) | [MarketVector US Listed Semiconductor 10% Capped Screened Index (MVSMCTR)](https://www.vaneck.com/uk/en/investments/semiconductor-etf/overview/) | [SMH · MVIS US Listed Semiconductor 25 Index](https://www.vaneck.com/us/en/investments/semiconductor-etf-smh/) | Similar: the UCITS benchmark has a 10% cap and ESG screens. US SMH and London SMH are distinct listings. |
+| SEMI.L (IE000I8KRLL9) | [MSCI ACWI IMI Semiconductors & Semiconductor Equipment ESG Screened Select Capped Index](https://www.ishares.com/uk/professionals/en/products/319084/) | [SOXX · NYSE Semiconductor Index](https://www.ishares.com/us/literature/fact-sheet/soxx-ishares-semiconductor-etf-fund-fact-sheet-en-us.pdf) | Similar: global and ESG screened versus US-listed sector exposure. |
+
+The options lens uses the first US reference (QQQ for EQGB); US ETF pages
+display their own chains when captured. Marks and strikes stay in the US
+underlying’s USD units. The pipeline fetches the ETF chains in daily
+reconciliation (or legacy nightly refresh) and in explicitly requested research
+refreshes. The normal intraday research slots carry the most recent chains
+forward. No issuer download or options request is triggered by opening a lens.
+
+For the seven reference tickers above, daily reconciliation adds at most one
+shared daily quote batch (20 symbols per request, with cache reuse) and seven
+option capture attempts. Each attempt uses the existing Yahoo security metadata
+and expiry list, then up to four expiries within 120 days. The current
+yfinance metadata helper makes up to three logical reads (quote summary,
+quote and complementary statistics), so seven chains add at most 56 logical
+Yahoo reads, plus the quote batch and the existing shared
+Treasury input if it has not already been read that day. HTTP retries and Yahoo
+session setup are provider transport overhead. The same US ticker is captured
+once per job even when directly held. A reference added only for its options
+does not enter technical scoring. A held or separately saved ETF still gets its
+own technical score.

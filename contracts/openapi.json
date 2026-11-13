@@ -14613,6 +14613,13 @@
             "title": "Ticker",
             "type": "string"
           },
+          "usFundPeers": {
+            "items": {
+              "$ref": "#/components/schemas/USFundPeer"
+            },
+            "title": "Usfundpeers",
+            "type": "array"
+          },
           "watchlistTicker": {
             "anyOf": [
               {
@@ -15117,6 +15124,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/OptionSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "optionsPeer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/USFundPeer"
               },
               {
                 "type": "null"
@@ -20468,6 +20485,87 @@
         "title": "UKReportingFund",
         "type": "object"
       },
+      "USFund": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmark": {
+            "title": "Benchmark",
+            "type": "string"
+          },
+          "exchange": {
+            "title": "Exchange",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "exchange",
+          "benchmark",
+          "sourceUrl"
+        ],
+        "title": "USFund",
+        "type": "object"
+      },
+      "USFundPeer": {
+        "additionalProperties": false,
+        "properties": {
+          "differenceEn": {
+            "title": "Differenceen",
+            "type": "string"
+          },
+          "differenceZh": {
+            "title": "Differencezh",
+            "type": "string"
+          },
+          "fund": {
+            "$ref": "#/components/schemas/USFund"
+          },
+          "localBenchmark": {
+            "title": "Localbenchmark",
+            "type": "string"
+          },
+          "localSourceUrl": {
+            "title": "Localsourceurl",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "same-index",
+              "similar"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "verifiedOn": {
+            "default": "2026-11-13",
+            "title": "Verifiedon",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fund",
+          "relation",
+          "localBenchmark",
+          "localSourceUrl",
+          "differenceEn",
+          "differenceZh"
+        ],
+        "title": "USFundPeer",
+        "type": "object"
+      },
       "UserProfile": {
         "properties": {
           "accountLabels": {
@@ -21943,7 +22041,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.44.1"
+    "version": "1.45.0"
   },
   "openapi": "3.1.0",
   "paths": {

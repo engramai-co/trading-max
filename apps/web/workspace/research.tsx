@@ -87,7 +87,7 @@ const researchTabs: ResearchTab[] = [
 ];
 
 export function fundResearchTab(tab: ResearchTab, fundMode: string | null): ResearchTab {
-  if (["analyst", "valuation", "options"].includes(tab)) return "overview";
+  if (["analyst", "valuation"].includes(tab)) return "overview";
   if (fundMode === "tracking" && ["fundamentals", "financials", "overview"].includes(tab)) return "tracking";
   return tab === "financials" ? "fundamentals" : tab;
 }
@@ -148,7 +148,7 @@ export function ResearchWorkspace() {
   const tab = isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
     : ["tracking", "peers"].includes(requestedTab) ? "overview" : requestedTab;
   const fetching = selected?.status === "pending" || selected?.status === "running";
-  const awaitingHeldFund = Boolean(isFund && selected?.held && fetching);
+  const awaitingHeldFund = Boolean(isFund && selected?.held && fetching && tab === "overview");
 
   const lensName = ["financials", "tracking", "peers"].includes(tab) ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
@@ -204,7 +204,7 @@ export function ResearchWorkspace() {
       action: "refresh" | "remove" | "move";
       categoryId?: string;
     }) =>
-      action === "refresh" && isFund && selected?.held
+      action === "refresh" && isFund && (selected?.held || selected?.watchlisted === false)
       ? api("/refresh", jsonRequest("POST", { scope: "research", skipSync: true, tickers: [ticker] }))
       : api(
         "/watchlist/" + encodeURIComponent(selected?.watchlistTicker ?? ticker),
@@ -495,7 +495,7 @@ export function ResearchWorkspace() {
                   value={tab === "financials" ? "fundamentals" : tab}
                   onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
                   options={(isFund
-                    ? ["overview", "technical", "tracking", "fundamentals", "peers", "ledger"] as ResearchTab[]
+                    ? ["overview", "fundamentals", "technical", "tracking", "peers", "options", "ledger"] as ResearchTab[]
                     : ["overview", "fundamentals", "technical", "analyst", "valuation", "options", "ledger"] as ResearchTab[]
                   ).map((value) => ({
                     value,
@@ -627,12 +627,17 @@ export function ResearchWorkspace() {
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (
-                        <FundWorkbench mode={displayTab} data={displayData} onExplore={exploreHolding} />
+                        <FundWorkbench
+                          mode={displayTab}
+                          data={displayData}
+                          onExplore={exploreHolding}
+                          usPeers={instruments.find((item) => item.ticker === displayData.ticker)?.usFundPeers}
+                        />
                       )}
                       {displayTab === "analyst" && !isFund && (
                         <AnalystView data={displayData} revision={revision} price={price} />
                       )}
-                      {displayTab === "options" && !isFund && <OptionsView data={displayData} />}
+                      {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (
                         <>
                           <ResearchNotebook key={ticker} data={displayData} fund={isFund} />

@@ -11,6 +11,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import exchange_calendars as xcals
 import pandas as pd
@@ -91,7 +92,11 @@ def treasury_rate(as_of_day: str) -> dict[str, Any]:
 
 
 def chain_availability(
-    captured_at: str, expiries: list[dict[str, Any]], now: datetime | None = None
+    captured_at: str,
+    expiries: list[dict[str, Any]],
+    now: datetime | None = None,
+    *,
+    allow_unverified_future: bool = False,
 ) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     try:
@@ -100,13 +105,20 @@ def chain_availability(
         recent = 0 <= (now - capture).total_seconds() <= 86400
     except ValueError:
         recent = False
+    today = now.astimezone(ZoneInfo("America/New_York")).date()
     active = []
     for row in expiries:
         value = row.get("expiryInstant")
         try:
             if value and datetime.fromisoformat(value.replace("Z", "+00:00")) > now:
                 active.append(row["expiry"])
-        except (ValueError, TypeError):
+            elif (
+                not value and allow_unverified_future and date.fromisoformat(row["expiry"]) > today
+            ):
+                # A later session is still open interest, but with no verified
+                # cutoff we don't classify same-day expiries or model Greeks.
+                active.append(row["expiry"])
+        except (ValueError, TypeError, KeyError):
             continue
     return {
         "evaluatedAt": now.isoformat(),

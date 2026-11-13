@@ -11,6 +11,7 @@ import { currency, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import { Panel, Tag, UpdateFailure, useCopy } from "./foundation";
 import { DemoAsOf, useDemonstration } from "./demonstration";
+import Link from "./link";
 import { priceBasis, type PriceTime } from "./research-price-basis";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
@@ -86,6 +87,7 @@ export function SecurityHeader({
   // Older services report only the look-through exposure.
   const heldValue = selected.directValueGbp ?? selected.exposureGbp;
   const name = selected.name || ticker;
+  const usPeer = selected.usFundPeers?.[0];
   return (
     <Panel className="mx-security-panel">
       <div className="mx-security-header">
@@ -129,6 +131,11 @@ export function SecurityHeader({
                   )[selected.exchange] ||
                   selected.exchange}
               </span>
+              {usPeer && (
+                <Link className="mx-text-link" href={`/research?ticker=${encodeURIComponent(usPeer.fund.ticker)}`}>
+                  {t("美国同类", "US peer")} · {usPeer.fund.ticker}
+                </Link>
+              )}
               {selected.held && (
                 <Tag>{t("已持有 ", "Held ") + currency(heldValue, "GBP", 2)}</Tag>
               )}

@@ -8,6 +8,7 @@ from pydantic import ConfigDict, Field, model_validator
 from trading_max.analytics.review_evidence import InvestmentReviewEvidence
 from trading_max.research.facts import FinancialFacts, ResearchContext
 from trading_max.research.forward_pe import ForwardPeHistory
+from trading_max.research.fund_references import USFundPeer
 from trading_max.research.trailing_pe import TrailingPeHistory
 
 from .models import (
@@ -1084,6 +1085,7 @@ class ResearchDirectoryInstrument(ApiModel):
     last_error: str | None = None
     is_fund: bool = False
     fund_isin: str | None = None
+    us_fund_peers: list[USFundPeer] = Field(default_factory=list)
     watchlisted: bool = True
     # A saved bare symbol can be displayed under its exact held listing.
     watchlist_ticker: str | None = None
@@ -1138,6 +1140,7 @@ class ResearchLensSnapshot(ApiModel):
     technical_summary: TechnicalScoreSummary | None = None
     valuation: ValuationRow | None = None
     options: OptionSnapshot | None = None
+    options_peer: USFundPeer | None = None
     fundamentals: dict[str, Any] | None = None
     analyst: dict[str, Any] | None = None
     financials: dict[str, Any] | None = None
