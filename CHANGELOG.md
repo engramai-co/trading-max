@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-11-13
+
+### Added
+
+- UCITS ETFs link to issuer-verified US ETF references, labelled as tracking the same index or a similar one, with source links and verification dates.
+- Fund research shows the option chain of the US reference ETF, with the underlying and USD prices clearly identified.
+
+### Changed
+
+- ETF research tabs follow the same order and layout as equity research.
+- Daily reconciliation collects option chains for US reference ETFs, within the shared quote budget.
+
 ## [1.44.1] - 2026-11-13
 
 ### Fixed
