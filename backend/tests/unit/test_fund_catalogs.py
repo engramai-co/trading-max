@@ -15,6 +15,7 @@ from trading_max.infrastructure.fund_catalogs import (
     catalog_vanguard,
 )
 from trading_max.infrastructure.fund_holdings import OfficialFundHoldingsProvider, fetch_invesco
+from trading_max.infrastructure.fund_profiles import HSBC_VERSION, empty_profile, parse_hsbc_profile
 from trading_max.infrastructure.fund_specs import FundSpec
 from trading_max.reference import SecurityDescriptor
 
@@ -218,6 +219,30 @@ def test_failed_download_is_backed_off_between_stages(tmp_path):
     with pytest.raises(RuntimeError, match="prior issuer request failed"):
         provider.fetch("SMGB")
     assert calls == ["SMGB"]
+
+
+def test_hsbc_snapshots_parsed_before_the_share_class_parser_are_read_again(tmp_path):
+    provider = OfficialFundHoldingsProvider(tmp_path)
+
+    def cached(profile):
+        return FundSnapshot(
+            ticker="HSBC",
+            fund_isin=ISIN,
+            as_of="2026-11-12",
+            fetched_at=datetime.now(UTC).isoformat(),
+            cache_schema_version=4,
+            holdings=[FundHolding(name="Fixture company", weight_pct=100)],
+            profile=profile,
+        )
+
+    source = "https://issuer.example/factsheet"
+    generic = empty_profile(ISIN, "HSBC Asset Management", source, "Fixture fund")
+    assert not provider._is_fresh(cached(generic))
+    current = parse_hsbc_profile([], ISIN, "Fixture fund", source)
+    assert {item.parser_version for item in current.evidence.values()} == {HSBC_VERSION}
+    assert provider._is_fresh(cached(current))
+    # Issuers without a newer parser keep their cached snapshot until max_age.
+    assert provider._is_fresh(cached(empty_profile(ISIN, "VanEck", source, "Fixture fund")))
 
 
 def test_invesco_reads_fund_not_index_and_preserves_cash_and_share_class():

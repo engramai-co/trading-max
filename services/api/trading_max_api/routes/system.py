@@ -44,6 +44,13 @@ _EMPTY_STORE_BOOTSTRAP_ERROR = "FileNotFoundError: no typed snapshot has been pu
 _PORTFOLIO_TIME_ZONE = ZoneInfo("Europe/London")
 
 
+def researched_holdings(holdings) -> set[str]:
+    """Stocks are researched under their display ticker; funds under their listing (EQQQ.L)."""
+    return {holding.ticker for holding in holdings} | {
+        holding.research_ticker for holding in holdings if holding.research_ticker
+    }
+
+
 def _portfolio_day(value: str) -> date | None:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -329,7 +336,7 @@ def dashboard_lens(
     }
 
     if view == "overview":
-        held = {holding.ticker for holding in dashboard_data.holdings}
+        held = researched_holdings(dashboard_data.holdings)
         account_names = {item.code: item.name for item in dashboard_data.accounts}
         review_summaries = [
             OverviewReviewSummary(
