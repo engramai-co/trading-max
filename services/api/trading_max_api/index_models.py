@@ -51,7 +51,7 @@ class IndexMarket(ApiModel):
     refresh_failed: bool = False
 
 
-GlobalMapMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "kr", "tw", "in"]
+GlobalMapMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "kr", "cn", "tw", "in"]
 GlobalRowMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "em"]
 
 

@@ -14,7 +14,7 @@ import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api, percent, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, Tag, UpdateFailure, useCopy } from "./foundation";
-import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
+import { globalMarketReading, useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
@@ -336,6 +336,7 @@ const WORLD: Record<WorldMarket, { at: [number, number]; name: [string, string];
   uk: { at: [3, 1], name: ["英国", "UK"], short: "UK" },
   eu: { at: [4, 1], name: ["欧洲", "Europe"], short: "EU" },
   ch: { at: [4, 2], name: ["瑞士", "Switzerland"], short: "CH" },
+  cn: { at: [5, 1], name: ["中国", "China"], short: "CN" },
   in: { at: [5, 2], name: ["印度", "India"], short: "IN" },
   kr: { at: [6, 1], name: ["韩国", "Korea"], short: "KR" },
   jp: { at: [7, 1], name: ["日本", "Japan"], short: "JP" },
@@ -344,7 +345,7 @@ const WORLD: Record<WorldMarket, { at: [number, number]; name: [string, string];
   au: { at: [7, 3], name: ["澳洲", "Australia"], short: "AU" },
 };
 /** Phones list the same blocks in reading order, west to east. */
-const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "in", "jp", "kr", "hk", "tw", "au"];
+const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "cn", "in", "jp", "kr", "hk", "tw", "au"];
 type WorldMove = GlobalMarketContribution["markets"][number];
 type WorldKey = WorldMarket | "other";
 
@@ -450,6 +451,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
         const full = t(place.name[0], place.name[1]);
         const idle = notOpen || move == null;
         const change = worldChange(item, locale, 2, t);
+        const reading = globalMarketReading(market, full, locale) + " " + change;
         const style = {
           "--mx-heat-mix": heatMix(notOpen ? null : move, scheme),
           "--mx-world-column": place.at[0],
@@ -459,7 +461,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
         return (
           <Link key={market} href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
             data-tone={idle ? undefined : changeTone(move)} data-idle={idle ? "" : undefined}
-            aria-label={full + " " + change}>
+            aria-label={reading} title={market === "cn" ? reading : undefined}>
             <span className="mx-overview-sector-name">{locale === "zh" ? full : place.short}</span>
             {/* A narrow card rounds to one decimal; the accessible name keeps both. */}
             <span className="mx-overview-sector-change">
@@ -548,7 +550,7 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
         const change = item ? worldChange(item, locale, 2, t) : "";
         const shown = labels(names(key), change, item ? worldChange(item, locale, 1, t) : "", width, height, measure);
         const name = key === "other" ? t("其他市场", "Other markets") : names(key).full;
-        const reading = [name, change].filter(Boolean).join(" ");
+        const reading = [globalMarketReading(key, name, locale), change].filter(Boolean).join(" ");
         const spoken = locale === "zh"
           ? `${reading}，占比 ${percent(share, false, 1)}`
           : `${reading}, ${percent(share, false, 1)} of ACWI`;

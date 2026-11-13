@@ -28,7 +28,12 @@ from .index_models import (
     GlobalRowMarket,
 )
 from .sector_models import SectorSessionWindow
-from .sector_sessions import calendar_known, exchange_sessions, provider_session_close
+from .sector_sessions import (
+    calendar_known,
+    exchange_sessions,
+    provider_previous_close,
+    provider_session_close,
+)
 
 MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "us": "sp-500",
@@ -40,6 +45,7 @@ MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "au": "asx-200",
     "hk": "hang-seng",
     "kr": "kospi",
+    "cn": "csi-300",
     "tw": "taiex",
     "in": "nifty-50",
 }
@@ -105,6 +111,7 @@ LOCATIONS: dict[GlobalRowMarket, frozenset[str]] = {
 MAP_LOCATIONS: dict[GlobalMapMarket, frozenset[str]] = {
     **{market: LOCATIONS[market] for market in ("us", "ca", "uk", "eu", "ch", "jp", "au", "hk")},
     "kr": frozenset({"South Korea", "Korea (South)"}),
+    "cn": frozenset({"China"}),
     "tw": frozenset({"Taiwan"}),
     "in": frozenset({"India"}),
 }
@@ -125,6 +132,7 @@ CALENDARS = {
     "au": ("XASX", "Australia/Sydney"),
     "hk": ("XHKG", "Asia/Hong_Kong"),
     "kr": ("XKRX", "Asia/Seoul"),
+    "cn": ("XSHG", "Asia/Shanghai"),
     "tw": ("XTAI", "Asia/Taipei"),
     "in": ("XNSE", "Asia/Kolkata"),
 }
@@ -311,11 +319,10 @@ def _market_move(
     ):
         expected = window.break_start
     complete = reference.end >= window.close
-    level = (
-        closes.get(window.date) or provider_session_close(intraday, window, reference.end)
-        if complete
-        else None
-    )
+    level = None
+    if complete:
+        official = provider_session_close(intraday, window, reference.end)
+        level = (official if market == "cn" else None) or closes.get(window.date) or official
     points = _points(intraday, reference.end)
     observations = [
         point for point in points if window.open <= point[0] <= window.close + timedelta(minutes=15)
@@ -324,7 +331,11 @@ def _market_move(
         stamp, value = observations[-1]
         if level is None and stamp >= expected - timedelta(minutes=5 if complete else 35):
             level = value
-        if (
+        if market == "cn":
+            # Some China indices lack daily history. A dated daily baseline
+            # takes precedence over Spark's previous close, which can lag.
+            base = base or provider_previous_close(intraday, window)
+        elif (
             base is None
             and intraday is not None
             and points[-1][0].astimezone(zone).date().isoformat() == window.date

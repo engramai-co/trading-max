@@ -3909,7 +3909,7 @@ export interface components {
              * Market
              * @enum {string}
              */
-            market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "kr" | "tw" | "in";
+            market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "kr" | "cn" | "tw" | "in";
             /** Move */
             move: number | null;
             /** Notopen */
@@ -4345,7 +4345,7 @@ export interface components {
              * Scope
              * @enum {string}
              */
-            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "cn" | "tw" | "in" | "ca" | "au" | "ch";
             /** Source */
             source: string | null;
             /** Symbol */
@@ -4364,7 +4364,7 @@ export interface components {
              * Scope
              * @enum {string}
              */
-            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+            scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "cn" | "tw" | "in" | "ca" | "au" | "ch";
         };
         /** IndexPoint */
         IndexPoint: {
@@ -9131,7 +9131,7 @@ export interface operations {
     index_market_v1_indices_get: {
         parameters: {
             query: {
-                scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "tw" | "in" | "ca" | "au" | "ch";
+                scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "cn" | "tw" | "in" | "ca" | "au" | "ch";
             };
             header?: never;
             path?: never;

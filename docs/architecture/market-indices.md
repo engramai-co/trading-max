@@ -39,7 +39,30 @@ When that exact close is missing, the constituent remains unpriced.
 
 The US, Europe, UK, Hong Kong, Korea, Japan, Taiwan, India, Canada and Australia
 have index cards and sector boards. Switzerland shows its index card; Swiss
-constituents remain part of the Europe board.
+constituents remain part of the Europe board. China A (`/sectors?market=cn`)
+shows the CSI 300, SSE Composite, Shenzhen Component and ChiNext indices in
+CNY. These indices follow the Shanghai calendar (09:30–11:30 and 13:00–15:00
+China Standard Time). The lunch break retains the last morning reading. Beyond
+the holiday coverage of the calendar dependency, the cards report dated
+observations and the map omits the unverified move.
+
+| China A index | Yahoo symbol | History ranges verified on 13 November 2026 |
+| --- | --- | --- |
+| CSI 300 | `000300.SS` | 1D, 1W, 1M |
+| SSE Composite | `000001.SS` | 1D, 1W, 1M, 3M, 6M, 1Y, 3Y, 5Y, All |
+| Shenzhen Component | `399001.SZ` | 1D, 1W, 1M, 3M, 6M, 1Y, 3Y, 5Y, All |
+| ChiNext | `399006.SZ` | 1D, 1W, 1M |
+
+The CSI 300 and ChiNext daily and weekly chart requests return a single
+current quote. Yahoo carries roughly one year of hourly observations for both,
+but the last bar of each past session is not a verified daily close. The
+catalog therefore offers up to 1M for these two. The dated daily series
+supplies the previous close when available. Otherwise the matching Yahoo
+Spark session supplies the previous close. After the China A session ends,
+the matching Spark session supplies the close before falling back to daily
+bars, which can lag.
+The four index cards load on demand in the existing shared intraday and daily
+batches, reusing the map's cached CSI 300 quote where possible.
 Global groups six benchmarks above a choice of Regions and Sectors. Japan's
 sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock Exchange; the
 Nikkei 225 and TOPIX ETF cards use their own prices. The index cards and sector
@@ -180,7 +203,12 @@ using the issuer holdings source shared with the sector boards. If refresh
 fails, the last aggregate is retained and identified as stale. The developed
 market rows use local index moves, including STOXX Europe 600 for core Europe
 and the Nordics. The emerging market row uses the USD move of MSCI EM.
-Korea, Taiwan, and India still show their own local moves on the map.
+China, Korea, Taiwan, and India show their local moves on the map while their
+contributions stay in the emerging market row. China adds only the CSI 300
+symbol to the existing daily and intraday batches, with no extra Yahoo request
+at the current batch size. China’s tile in the Overview map uses the whole
+China country weight in MSCI ACWI, including offshore listings and the China A
+fund holdings. Its colour represents the CSI 300’s move in CNY.
 “Currency and other” is ACWI minus the sum of priced contributions; it includes
 FX, unlisted or missing markets, and proxy and observation-timing differences.
 

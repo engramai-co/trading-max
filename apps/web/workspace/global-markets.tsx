@@ -3,17 +3,16 @@
 import { useMediaQuery } from "@mantine/hooks";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import type { components } from "@/lib/api-schema";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
-import { globalHeatStyle, useGlobalContribution } from "./global-markets-data";
+import { CHINA_MAP_INDEX, globalHeatStyle, globalMarketReading, useGlobalContribution, type GlobalMapMarket } from "./global-markets-data";
 import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
 import Link from "./link";
 import { heat } from "./sectors-data";
 
-type MapMarket = components["schemas"]["GlobalMarketMove"]["market"];
+type MapMarket = GlobalMapMarket;
 type Market = MapMarket | "em";
 
 type Label = {
@@ -29,6 +28,7 @@ const MAP: Record<MapMarket, Label> = {
   eu: { name: ["欧洲", "Europe"], label: [439, 57], phone: [450, 78] },
   ch: { name: ["瑞士", "Switzerland"], label: [451, 115], point: [415, 75], phone: [459, 171] },
   jp: { name: ["日本", "Japan"], label: [718, 68], point: [671, 101], phone: [723, 35] },
+  cn: { name: ["中国", "China"], label: [600, 112], phone: [600, 93] },
   kr: { name: ["韩国", "Korea"], label: [727, 109], point: [650, 101], phone: [723, 127] },
   hk: { name: ["香港", "Hong Kong"], label: [719, 156], point: [637, 138], phone: [723, 218] },
   tw: { name: ["台湾", "Taiwan"], label: [720, 202], point: [654, 139], phone: [723, 307] },
@@ -36,7 +36,8 @@ const MAP: Record<MapMarket, Label> = {
   au: { name: ["澳洲", "Australia"], label: [683, 279], phone: [596, 280] },
 };
 
-const INDEX_NAMES: Record<string, [string, string]> = {
+const INDEX_NAMES: Record<string, readonly [string, string]> = {
+  [CHINA_MAP_INDEX.id]: CHINA_MAP_INDEX.name,
   "sp-500": ["标普 500", "S&P 500"],
   "sp-tsx": ["TSX", "TSX"],
   "ftse-100": ["富时 100", "FTSE 100"],
@@ -54,9 +55,9 @@ const INDEX_NAMES: Record<string, [string, string]> = {
 
 const MAP_INDEX: Record<MapMarket, string> = {
   us: "sp-500", ca: "sp-tsx", uk: "ftse-100", eu: "stoxx-europe-600", ch: "smi",
-  jp: "nikkei-225", au: "asx-200", hk: "hang-seng", kr: "kospi", tw: "taiex", in: "nifty-50",
+  jp: "nikkei-225", au: "asx-200", hk: "hang-seng", cn: CHINA_MAP_INDEX.id, kr: "kospi", tw: "taiex", in: "nifty-50",
 };
-const EM_MARKETS = new Set<Market>(["kr", "tw", "in"]);
+const EM_MARKETS = new Set<Market>(["cn", "kr", "tw", "in"]);
 
 type MapAnchor = HTMLAnchorElement | SVGAElement;
 
@@ -121,7 +122,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const accessible = (market: Market, move?: number | null, contribution?: number, notOpen = false) => {
     const status = quoteStatus(move, notOpen);
     const parts = [
-      name(market),
+      globalMarketReading(market, name(market), locale),
       ...(status ? [status] : []),
       ...(move != null && !notOpen ? [t("涨跌 ", "Move ") + change(move)] : []),
       t("贡献 ", "Contribution ") + contributionText(market, contribution),
@@ -198,8 +199,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             const reading = answer?.markets.find((item) => item.market === market);
             const move = reading?.move;
             const row = rows.find((item) => item.market === market);
-            // EM is an aggregate, so its three markets share a row but only an individually
-            // pointed market gets a border. Focusing the aggregate outlines all three.
+            // Focusing the EM aggregate outlines all of its mapped markets.
             const selected = active === market || (active === "em" && EM_MARKETS.has(market));
             const style = globalHeatStyle(move);
             return <a key={market} href={presentationLink(pathname, url(market)).href}

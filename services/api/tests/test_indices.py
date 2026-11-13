@@ -149,6 +149,76 @@ def test_index_market_uses_dated_close_and_retains_last_read(api):
     assert retained["index"]["ranges"][-1] == "MAX"
 
 
+def test_china_scope_uses_the_matching_session_and_keeps_the_lunch_print(api, monkeypatch):
+    client, prices, clock = api
+    clock[0] = NOW.replace(hour=4, minute=50)
+    symbols = ["000300.SS", "000001.SS", "399001.SZ", "399006.SZ"]
+    requested = []
+
+    def intraday(wanted):
+        requested.extend(wanted)
+        return {
+            symbol: replace(
+                bars(
+                    symbol,
+                    ("2026-11-05T06:55:00+00:00", 96),
+                    ("2026-11-06T03:25:00+00:00", 102),
+                    ("2026-11-06T05:00:00+00:00", 103),
+                    ("2026-11-06T07:00:00+00:00", 105),
+                ),
+                previous_close=101,
+                session_start=int(NOW.replace(hour=1, minute=30).timestamp()),
+                session_end=int(NOW.replace(hour=7).timestamp()),
+                full_day_price=105,
+            )
+            for symbol in requested
+        }
+
+    daily = prices.daily
+
+    def available_daily(wanted):
+        return {
+            symbol: tape
+            for symbol, tape in daily(wanted).items()
+            if symbol in {"000001.SS", "399001.SZ"}
+        }
+
+    monkeypatch.setattr(prices, "intraday", intraday)
+    monkeypatch.setattr(prices, "daily", available_daily)
+    result = client.get("/v1/indices?scope=cn").json()
+    assert result["scope"] == "cn"
+    assert not result["refreshFailed"]
+    assert requested == symbols
+    assert prices.daily_calls == [symbols]
+    assert [quote["index"]["symbol"] for quote in result["quotes"]] == symbols
+    assert all(quote["index"]["calendar"] == "XSHG" for quote in result["quotes"])
+    assert all(quote["index"]["currency"] == "CNY" for quote in result["quotes"])
+    for quote, base in zip(result["quotes"], (101, 100, 100, 101), strict=True):
+        assert quote["state"] == "live" and quote["calendarKnown"]
+        assert quote["sessionDate"] == "2026-11-06"
+        assert quote["change"] == pytest.approx(102 / base - 1)
+        assert quote["points"] == [{"at": "2026-11-06T03:25:00Z", "value": 102}]
+    assert [quote["index"]["ranges"][-1] for quote in result["quotes"]] == [
+        "1M",
+        "MAX",
+        "MAX",
+        "1M",
+    ]
+
+    clock[0] = NOW.replace(hour=8)
+    settled = client.get("/v1/indices?scope=cn").json()
+    assert all(quote["state"] == "closed" and quote["level"] == 105 for quote in settled["quotes"])
+    assert not settled["refreshFailed"]
+    calls = len(requested)
+    clock[0] += timedelta(hours=1)
+    assert client.get("/v1/indices?scope=cn").json() == settled
+    assert len(requested) == calls
+    for period in ("1Y", "5Y", "MAX"):
+        missing = client.get(f"/v1/indices/csi-300/history?range={period}").json()
+        assert missing["state"] == "unavailable" and not missing["points"]
+    assert not prices.history_calls
+
+
 def test_index_history_risk_uses_completed_daily_bars(api):
     client, _, _ = api
     response = client.get("/v1/indices/nikkei-225/history?range=3M").json()
@@ -171,7 +241,7 @@ def test_catalog_exposes_worldwide_indices_without_requesting_prices(api):
     client, prices, _ = api
     catalog = client.get("/v1/indices/catalog").json()
     assert "^GSPC" in {index["symbol"] for index in catalog}
-    assert {"global", "us", "eu", "uk", "jp", "hk", "kr", "tw", "in", "au", "ch", "ca"} == {
+    assert {"global", "us", "eu", "uk", "jp", "hk", "kr", "cn", "tw", "in", "au", "ch", "ca"} == {
         index["scope"] for index in catalog
     }
     dax = next(index for index in catalog if index["id"] == "dax")
@@ -195,7 +265,7 @@ def test_composite_observation_does_not_claim_a_local_session(api):
     assert limited["state"] == "unavailable"
     assert limited["points"] == []
     assert client.get("/v1/indices/msci-em/history?range=1D").json()["points"]
-    assert client.get("/v1/indices?scope=cn").status_code == 422
+    assert client.get("/v1/indices?scope=unknown").status_code == 422
     assert prices.intraday_calls == 1
     assert prices.daily_calls == [["VWRP.L"]]
 
@@ -453,7 +523,7 @@ def test_global_endpoint_caches_the_session_aligned_response(api, monkeypatch):
     assert result["phase"] is None
     assert result["state"] == "unavailable"
     assert result["residual"] is None
-    assert len(result["markets"]) == 11
+    assert len(result["markets"]) == 12
     assert result["rows"] == []
     assert client.get("/v1/indices/global-contribution").json() == result
     assert calls == [NOW]

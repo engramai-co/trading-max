@@ -13,7 +13,7 @@ type MarketOption<T extends string> = {
 
 const common = ["global", "us", "eu", "uk", "jp"];
 const regions = [
-  { markets: ["hk", "kr", "tw", "in", "au"], zh: "亚太", en: "Asia Pacific" },
+  { markets: ["cn", "hk", "kr", "tw", "in", "au"], zh: "亚太", en: "Asia Pacific" },
   { markets: ["de", "fr", "ch"], zh: "欧洲", en: "Europe" },
   { markets: ["ca"], zh: "美洲", en: "Americas" },
 ];

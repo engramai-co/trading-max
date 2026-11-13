@@ -346,6 +346,10 @@ const indices: IndexIdentity[] = [
   fakeIndex("msci-em-imi", "global", "MSCI Emerging Markets IMI", "MSCI 新兴市场 IMI", "^SYN-IMI", "USD"),
   fakeIndex("ftse-all-world-etf", "global", "FTSE All-World ETF price", "富时全球 ETF 价格", "SYN.L", "GBP", "etf-price"),
   { ...fakeIndex("ftse-all-world", "global", "FTSE All-World", "富时全球指数", "", "USD"), symbol: null, rights: "licensed-source-required" },
+  { ...fakeIndex("csi-300", "cn", "CSI 300", "沪深 300", "000300.SS", "CNY"), historyYears: 0, ranges: ["1D", "1W", "1M"] },
+  fakeIndex("sse-composite", "cn", "SSE Composite Index", "上证指数", "000001.SS", "CNY"),
+  fakeIndex("shenzhen-component", "cn", "Shenzhen Component Index", "深证成指", "399001.SZ", "CNY"),
+  { ...fakeIndex("chinext", "cn", "ChiNext Index", "创业板指", "399006.SZ", "CNY"), historyYears: 0, ranges: ["1D", "1W", "1M"] },
   fakeIndex("taiex", "tw", "TAIEX", "台湾加权指数", "^SYN-TWII", "TWD"),
   fakeIndex("nifty-50", "in", "Nifty 50", "印度 Nifty 50", "^SYN-NSEI", "INR"),
   fakeIndex("sensex", "in", "SENSEX", "印度 SENSEX", "^SYN-BSESN", "INR"),
@@ -363,6 +367,17 @@ const globalFixture: GlobalMarketContribution = {
     { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004, notOpen: false },
     { market: "uk", indexId: "ftse-100", weight: 0.03, move: 0, contribution: 0, notOpen: true },
   ],
+};
+
+const chinaGlobal: GlobalMarketContribution = {
+  ...globalFixture,
+  otherWeight: 0.115,
+  markets: ([
+    ["us", 0.63, -0.0035], ["jp", 0.057, -0.007], ["eu", 0.07, 0.0075],
+    ["uk", 0.034, 0], ["ca", 0.028, -0.0037], ["cn", 0.023, -0.0123],
+    ["tw", 0.02, 0.0081], ["ch", 0.02, -0.0042], ["au", 0.018, 0.0003],
+    ["in", 0.015, 0.0038], ["kr", 0.012, 0.001], ["hk", 0.009, 0.0088],
+  ] as const).map(([market, weight, move]) => ({ market, weight, move, notOpen: market === "uk" })),
 };
 
 const depthFixture: Pick<IndexContext, "breadthHistory" | "vix" | "valuation" | "valuationReference"> = {
@@ -397,11 +412,16 @@ async function mockIndices(page: Page, { fail = false, now = Date.now(), global 
   const europeLevels: Record<string, number> = {
     "euro-stoxx-50": 5700, "stoxx-europe-600": 590, dax: 23900, "cac-40": 8100,
   };
+  const chinaLevels: Record<string, [number, number]> = {
+    "csi-300": [4600, -0.0123], "sse-composite": [3700, 0.0042],
+    "shenzhen-component": [11500, -0.0088], chinext: [2650, 0.0161],
+  };
   const point = (index: IndexIdentity, n: number, interval: number) => ({
     at: new Date(base - (24 - n) * interval).toISOString(),
     value: index.kind === "volatility" ? 16.1 - n * 0.04 + Math.sin(n * 0.4) * 0.2
       : index.scope === "eu" ? europeLevels[index.id] * (1 + n * 0.0004 + Math.sin(n * 0.9) * 0.002)
       : index.scope === "jp" ? (index.kind === "etf-price" ? 2870 - n * 3 : 39700 + n * 17)
+      : index.scope === "cn" ? chinaLevels[index.id][0] * (1 + chinaLevels[index.id][1] * n / 24 + Math.sin(n * 0.6) * 0.003)
       : (index.id === "nasdaq-100" ? 24200 + n * 23 + Math.sin(n * 0.55) * 130
         : index.id === "dow-jones" ? 46000 + n * 17 + Math.sin(n * 0.33) * 120
         : index.id === "russell-2000" ? 2300 - n * 3 + Math.sin(n * 0.5) * 9
@@ -456,7 +476,7 @@ async function mockIndices(page: Page, { fail = false, now = Date.now(), global 
         const points = Array.from({ length: 25 }, (_, i) => point(index, i, 300_000));
         return {
           index, points, asOf: points.at(-1)?.at, sessionDate: new Date(base).toISOString().slice(0, 10),
-          level: points.at(-1)?.value, change: index.kind === "volatility" ? -0.9 : [0.0134, 0.0161, 0.0088, -0.0042][n],
+          level: points.at(-1)?.value, change: index.kind === "volatility" ? -0.9 : chinaLevels[index.id]?.[1] ?? [0.0134, 0.0161, 0.0088, -0.0042][n],
           state: index.id === "msci-em-imi" ? "stale" : index.id === "ftse-all-world-etf" ? "unavailable" : "live",
         };
       }),
@@ -505,6 +525,93 @@ const worldFixture: GlobalSectorBoard = {
 
 test.describe("market index layer", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
+
+  test("China A has four index cards and no sector board", async ({ page }, { project }) => {
+    const mobile = project.name === "mobile";
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await mockIndices(page, { global: chinaGlobal });
+    const paths: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith("/api/backend/")) paths.push(url.pathname + url.search);
+    });
+    await page.goto("/sectors");
+    await expect(page.locator(".mx-global-benchmark a")).toHaveCount(6);
+    expect(paths).not.toContain("/api/backend/indices?scope=cn");
+    await selectMarket(page, /A 股|China A/, true);
+    await expect(page).toHaveURL(/\/sectors\?market=cn$/);
+    const cards = page.locator(".mx-index-cards a");
+    await expect(cards).toHaveCount(4);
+    await expect(cards.first()).toHaveAccessibleName(/沪深 300|CSI 300/);
+    await expect(cards.last()).toHaveAccessibleName(/创业板指|ChiNext/);
+    await expect(page.locator(".mx-sector-list, .mx-sector-block")).toHaveCount(0);
+    await expect(page.getByText(/板块数据|sector data yet/)).toHaveCount(0);
+    expect(paths).not.toContain("/api/backend/sectors?market=cn");
+
+    const folder = process.env.TM_CN_VISUAL_DIR;
+    if (folder) await page.screenshot({ path: path.join(folder, `china-a-${mobile ? 390 : 1440}.png`) });
+    await cards.first().click();
+    await expect(page).toHaveURL(/market=cn&index=csi-300/);
+    await expect(page.getByRole("heading", { name: /沪深 300|CSI 300/ })).toBeFocused();
+    const ranges = page.getByRole("group", { name: /时间范围|Range/ });
+    await expect(ranges.getByRole("button", { name: "1M" })).toBeVisible();
+    await expect(ranges.getByRole("button", { name: "1Y" })).toHaveCount(0);
+    await page.goto("/sectors?market=cn");
+    await expect(cards).toHaveCount(4);
+    expect(paths).not.toContain("/api/backend/sectors?market=cn");
+  });
+
+  test("China map region names the CSI 300 and opens its market", async ({ page }, { project }) => {
+    const mobile = project.name === "mobile";
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await mockIndices(page, { global: chinaGlobal });
+    await page.goto("/sectors");
+    const map = page.getByRole("group", { name: /全球市场地图|World market map/ });
+    const china = map.getByRole("link", { name: /中国.*沪深 300.*1.23|China.*CSI 300.*1.23/ });
+    await expect(china.locator(".mx-global-shape")).toBeVisible();
+    await expect(map.locator('[data-market="tw"] .mx-global-shape')).toBeVisible();
+    const folder = process.env.TM_CN_VISUAL_DIR;
+    if (folder && mobile) await page.locator(".mx-global-map").screenshot({ path: path.join(folder, "global-map-390.png") });
+    const hit = china.locator(`.mx-global-label-${mobile ? "phone" : "desktop"} .mx-global-hit`);
+    if (mobile) await hit.tap();
+    else await hit.hover();
+    const inspection = page.locator("#mx-global-inspection");
+    await expect(china).toHaveAttribute("data-linked", "true");
+    await expect(inspection).toContainText(/沪深 300.*1.23|CSI 300.*1.23/);
+    await expect(inspection).toContainText(/计入新兴市场|Included in emerging markets/);
+    if (folder && !mobile) await page.locator(".mx-global-map").screenshot({ path: path.join(folder, "global-map-1440.png") });
+    await inspection.getByRole("link", { name: /打开市场|Open market/ }).click();
+    await expect(page).toHaveURL(/\/sectors\?market=cn$/);
+    await expect(page.locator("#index-card-csi-300")).toBeVisible();
+  });
+
+  test("Overview shows the China tile and names the CSI 300", async ({ page }, { project }) => {
+    const mobile = project.name === "mobile";
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    const colorScheme = mobile ? "dark" : "light";
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+    await mockIndices(page, { global: chinaGlobal });
+    await page.goto("/");
+    const card = page.locator(".mx-overview-sectors");
+    const picker = card.getByRole("button", { name: /选择市场|Choose market/ });
+    await picker.click();
+    await expect(page.getByRole("menuitem", { name: /A 股|China A/ })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: /^(全球|Global)$/ }).click();
+    const board = card.locator(mobile ? ".mx-overview-world" : ".mx-overview-world-map");
+    const china = board.getByRole("link", { name: /中国.*沪深 300.*1.23|China.*CSI 300.*1.23/ });
+    await expect(china).toHaveAttribute("href", "/sectors?market=cn");
+    await expect(china).toHaveAttribute("data-tone", "down");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
+    if (!mobile) {
+      await expect(china).toHaveAccessibleName(/2.3%/);
+      await china.hover();
+      await expect(page.getByRole("tooltip")).toContainText(/沪深 300|CSI 300/);
+    }
+    const folder = process.env.TM_CN_VISUAL_DIR;
+    if (folder) await card.screenshot({ path: path.join(folder, `overview-world-${mobile ? 390 : 1440}-${colorScheme}.png`) });
+    await china.click();
+    await expect(page).toHaveURL(/\/sectors\?market=cn$/);
+  });
 
   test("opens Japan index history and returns focus to its card", async ({ page }, testInfo) => {
     await mockIndices(page);

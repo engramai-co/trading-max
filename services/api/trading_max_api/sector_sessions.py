@@ -12,7 +12,9 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
+import exchange_calendars as xcals
 import pandas as pd
+from exchange_calendars.exchange_calendar_xshg import XSHGExchangeCalendar
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.research.calendar import market_calendar
 
@@ -79,10 +81,16 @@ def sessions_between(
     return exchange_sessions(MARKETS[market].calendar, start, end)
 
 
+XSHG_START = XSHGExchangeCalendar.bound_min().date()
+XSHG_END = XSHGExchangeCalendar.bound_max().date()
+
+
 def calendar_known(name: str, timezone: str, now: datetime) -> bool:
-    if name not in INDIAN_EXCHANGES:
-        return True
-    return INDIA_START <= now.astimezone(ZoneInfo(timezone)).date() <= INDIA_END
+    if name == "XSHG":
+        return XSHG_START <= now.astimezone(ZoneInfo(timezone)).date() <= XSHG_END
+    if name in INDIAN_EXCHANGES:
+        return INDIA_START <= now.astimezone(ZoneInfo(timezone)).date() <= INDIA_END
+    return True
 
 
 # TWSE's published 2027 schedule adds these closures to the library.
@@ -99,7 +107,11 @@ def exchange_sessions(
         return india_sessions(name, start, end)
     # exchange_calendars has no standalone Taipei Exchange calendar.
     name = "XTAI" if name == "ROCO" else name
-    calendar = market_calendar(name, start.year, end.year, buffer_years=buffer_years)
+    if name == "XSHG":
+        # The usual year buffer would exceed Shanghai's published holidays.
+        calendar = xcals.get_calendar(name, start=XSHG_START, end=XSHG_END)
+    else:
+        calendar = market_calendar(name, start.year, end.year, buffer_years=buffer_years)
     schedule = calendar.schedule.loc[pd.Timestamp(start) : pd.Timestamp(end)]
     windows = []
     for label, row in schedule.iterrows():
@@ -179,6 +191,15 @@ def in_break(session: SectorSessionWindow, now: datetime) -> bool:
 
 def board_complete(session: SectorSessionWindow, fetched_at: datetime) -> bool:
     return fetched_at >= session.close + COMPLETE_AFTER
+
+
+def provider_previous_close(
+    series: SparkSeries | None, session: SectorSessionWindow
+) -> float | None:
+    """Use the previous close only when Yahoo identifies this exact session."""
+    if series is not None and series.session_start == int(session.open.timestamp()):
+        return series.previous_close
+    return None
 
 
 def provider_session_close(

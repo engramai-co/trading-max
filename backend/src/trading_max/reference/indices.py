@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-IndexScope = Literal["global", "us", "eu", "uk", "jp", "hk", "kr", "tw", "in", "ca", "au", "ch"]
+IndexScope = Literal[
+    "global", "us", "eu", "uk", "jp", "hk", "kr", "cn", "tw", "in", "ca", "au", "ch"
+]
 IndexRange = Literal["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"]
 IndexBasis = Literal["price", "net-return", "total-return", "implied-volatility"]
 IndexKind = Literal["index", "etf-price", "volatility"]
@@ -272,6 +274,56 @@ INDEX_REGISTRY = {
         ),
         IndexSpec(
             "cac-40", "eu", "CAC 40", "法国 CAC 40", "Euronext", "PX1", "^FCHI", "EUR", "XPAR"
+        ),
+        # Yahoo has intraday bars but no multi-session daily or weekly closes
+        # for the CSI 300 or ChiNext. Their quote is not a history series.
+        IndexSpec(
+            "csi-300",
+            "cn",
+            "CSI 300",
+            "沪深 300",
+            "CSI",
+            "000300",
+            "000300.SS",
+            "CNY",
+            "XSHG",
+            history_years=0,
+        ),
+        IndexSpec(
+            "sse-composite",
+            "cn",
+            "SSE Composite Index",
+            "上证指数",
+            "SSE / CSI",
+            "000001",
+            "000001.SS",
+            "CNY",
+            "XSHG",
+            aliases=("上证综指", "Shanghai Composite"),
+        ),
+        IndexSpec(
+            "shenzhen-component",
+            "cn",
+            "Shenzhen Component Index",
+            "深证成指",
+            "SZSE / CNI",
+            "399001",
+            "399001.SZ",
+            "CNY",
+            "XSHG",
+            aliases=("Shenzhen Index",),
+        ),
+        IndexSpec(
+            "chinext",
+            "cn",
+            "ChiNext Index",
+            "创业板指",
+            "SZSE / CNI",
+            "399006",
+            "399006.SZ",
+            "CNY",
+            "XSHG",
+            history_years=0,
         ),
         IndexSpec("taiex", "tw", "TAIEX", "台湾加权指数", "TWSE", "TAIEX", "^TWII", "TWD", "XTAI"),
         IndexSpec(
