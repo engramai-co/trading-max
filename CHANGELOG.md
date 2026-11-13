@@ -4,6 +4,23 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.47.0] - 2026-11-13
+
+### Added
+
+- The Overview sector card can show any market, with the US as the default. Global sizes each market by its share of MSCI ACWI.
+- China A on Markets, with CSI 300, SSE Composite, Shenzhen Component and ChiNext index cards and charts. The Overview and Markets maps colour China by the CSI 300 move.
+
+### Changed
+
+- Today’s change now sits under Period net P&L on the Overview, with the holdings that moved it most.
+- Hovering a holding on Holdings and Look-through previews today’s price path.
+- MSCI ACWI weights count iShares country funds toward the market each one holds.
+
+### Fixed
+
+- The global market card tells a missing quote apart from a closed market and says when kept quotes have not updated.
+
 ## [1.46.2] - 2026-11-13
 
 ### Fixed
