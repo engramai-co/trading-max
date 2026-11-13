@@ -97,7 +97,7 @@ const sectors = {
   },
 };
 
-async function open(page: Page, locale: "zh" | "en", { estimated = false, large = false } = {}) {
+async function open(page: Page, locale: "zh" | "en", { estimated = false, large = false, range = "1W" } = {}) {
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   // No write leaves the page, and every backend request is answered here.
@@ -117,14 +117,13 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
     return route.fulfill({ json });
   });
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
-  await page.goto("/?scope=invest&range=1W");
-  await expect(page.locator(".mx-overview-today .mx-day-drivers a")).toHaveCount(3);
+  await page.goto("/?scope=invest&range=" + range);
+  // The period figure lists its movers: today's under 1D, the five days' under 5D.
   await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
   await expect(page.locator(".mx-attention a")).toHaveCount(1);
   await expect(page.locator(".mx-overview-holdings .mx-ledger-item")).toHaveCount(1);
   await expect(page.locator(".mx-overview-sector-grid a")).toHaveCount(SECTORS.length);
   await expect(page.locator(".mx-overview-sector-map")).toHaveCount(0);
-  if (estimated) await expect(page.locator(".mx-overview-today .mx-number .mx-tag-help")).toHaveCount(1);
 }
 
 async function resize(page: Page, width: number) {
@@ -218,10 +217,10 @@ function statistics() {
 test.describe("overview on phones", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
 
-  for (const [locale, estimated] of [["zh", false], ["en", false], ["zh", true]] as const) {
-    test(`controls keep their own 44px hit areas at every phone width (${locale}${estimated ? ", estimated today" : ""})`, async ({ page, isMobile }) => {
+  for (const [locale, estimated, range] of [["zh", false, "1W"], ["en", false, "1W"], ["zh", true, "1D"]] as const) {
+    test(`controls keep their own 44px hit areas at every phone width (${locale}, ${range}${estimated ? ", estimated" : ""})`, async ({ page, isMobile }) => {
       test.skip(!isMobile, "The phone layout");
-      await open(page, locale, { estimated });
+      await open(page, locale, { estimated, range });
       for (const width of [320, 360, 375, 390]) {
         await resize(page, width);
         const areas = await page.evaluate(hitAreas);
@@ -275,7 +274,7 @@ test.describe("overview on phones", () => {
   });
 });
 
-test("publishes an Overview run only after both histories arrive and the chart reading ends", async ({ page, isMobile }) => {
+test("publishes an Overview run only after its history arrives and the chart reading ends", async ({ page, isMobile }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Use an isolated local web build.");
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -286,7 +285,6 @@ test("publishes an Overview run only after both histories arrive and the chart r
   const nextTime = new Date(Date.parse(brokerAsOf) + 600_000).toISOString();
   let failRange = true;
   let rangeAttempts = 0;
-  let dayLoaded = false;
   let heldRangeLoaded = false;
   let thirdRangeLoaded = false;
   await page.route("**/api/backend/**", (route) => {
@@ -304,7 +302,6 @@ test("publishes an Overview run only after both histories arrive and the chart r
         if (failRange) return route.fulfill({ status: 503, json: {} });
         heldRangeLoaded = true;
       }
-      if (run === next && range === "1D") dayLoaded = true;
       if (run === third && range === "1W") thirdRangeLoaded = true;
       const history = prepared(range);
       return route.fulfill({ json: { ...history.chart, openings: pnlsAt(history, url.searchParams.getAll("opening")) } });
@@ -322,7 +319,7 @@ test("publishes an Overview run only after both histories arrive and the chart r
 
   latestRunId = next;
   await page.clock.fastForward(60_000);
-  await expect.poll(() => dayLoaded && rangeAttempts > 0).toBe(true);
+  await expect.poll(() => rangeAttempts > 0).toBe(true);
   await expect(summary).toContainText("£56,160.00");
   await expect(summary.locator(".mx-freshness")).toHaveText(oldTime!);
   await expect(chart).toBeVisible();

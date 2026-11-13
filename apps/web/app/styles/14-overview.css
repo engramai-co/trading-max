@@ -1,4 +1,5 @@
-/* 组合总览: the period curve beside today's US sectors, then every holding with its research. */
+/* 组合总览: the period curve beside today's sectors (the US unless the reader picks another market), then every
+   holding with its research. */
 /* The layout names the page; its heading stays for assistive technology without taking a row. */
 .mx-overview-page > .mx-page-tools {
   display: contents;
@@ -127,6 +128,123 @@
   }
   .mx-overview-sector-grid {
     display: grid;
+  }
+}
+
+/* The card's title chooses its market: it reads as the title, with a caret that says it opens. */
+.mx-overview-market {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-block: -6px;
+  /* Clear of the help button's 44px tap area beside it. */
+  margin-inline-end: 4px;
+  padding: 6px 4px 6px 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.mx-overview-market svg {
+  color: var(--mx-muted);
+}
+@media (hover: hover) {
+  .mx-overview-market:hover,
+  .mx-overview-market:hover svg {
+    color: var(--mx-brand);
+  }
+}
+.mx-overview-market:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 1px;
+}
+
+/* Global: the classic block world map, one equal block per market where it lies; the ocean corner holds MSCI ACWI. */
+.mx-overview-world {
+  container-type: inline-size;
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(64px, 1fr));
+  gap: 3px;
+  min-height: 248px;
+}
+.mx-overview-world > .mx-overview-sector {
+  position: relative;
+  grid-column: var(--mx-world-column);
+  grid-row: var(--mx-world-row);
+  justify-content: center;
+  padding-inline: 6px;
+}
+.mx-overview-world > .mx-overview-sector[data-idle] .mx-overview-sector-change {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-overview-world-short {
+  display: none;
+}
+/* Seven blocks across need about 45px for a two-decimal move; a narrower map rounds each move to one decimal.
+   Phones set three blocks across, which always fit both. */
+@media (min-width: 768px) {
+  @container (max-width: 430px) {
+    .mx-overview-world-full {
+      display: none;
+    }
+    .mx-overview-world-short {
+      display: inline;
+    }
+  }
+}
+.mx-overview-world-total {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  grid-column: 1 / 5;
+  grid-row: 3;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--mx-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.mx-overview-world-total strong {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 30px;
+}
+.mx-overview-world-total strong:not(.mx-up, .mx-down) {
+  color: var(--mx-ink);
+}
+@media (hover: hover) {
+  .mx-overview-world-total:hover {
+    background: var(--mx-soft);
+  }
+}
+.mx-overview-world-total:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--mx-brand);
+}
+/* Phones: the same blocks in rows of three, west to east, under the global figure. */
+@media (max-width: 767px) {
+  .mx-overview-world {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-rows: minmax(52px, auto);
+  }
+  .mx-overview-world > .mx-overview-sector {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .mx-overview-world-total {
+    order: -1;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    padding-inline: 0;
   }
 }
 
@@ -490,25 +608,12 @@
   color: var(--mx-warning);
 }
 
-/* The total leads, today's move stands beside it, and the two balances share a column. */
+/* The total leads and the two balances share a column at the end; today's move reads in the period panel below. */
 .mx-overview-totals {
   display: grid;
-  grid-template-columns: minmax(13rem, max-content) minmax(0, 1fr) minmax(0, max-content);
+  grid-template-columns: minmax(13rem, 1fr) minmax(0, max-content);
   align-items: start;
   gap: 28px;
-}
-.mx-overview-today {
-  min-width: 0;
-}
-.mx-overview-today .mx-number {
-  font-size: clamp(22px, 2vw, 28px);
-}
-.mx-overview-today .mx-metric-note {
-  margin-top: 4px;
-}
-.mx-overview-today .mx-day-drivers {
-  gap: 4px 12px;
-  font-size: 12px;
 }
 .mx-overview-statistics {
   display: grid;
@@ -543,46 +648,19 @@
   min-height: 326px;
 }
 .mx-overview-read :is(.mx-overview-totals, .mx-loading-summary) {
-  min-height: 114px;
+  min-height: 84px;
 }
 .mx-overview-read .mx-loading-summary > .mx-loading-shape {
   background:
     linear-gradient(var(--mx-placeholder) 0 0) 0 28px / min(23%, 230px) 44px no-repeat,
-    linear-gradient(var(--mx-placeholder) 0 0) 28% 27px / 14% 26px no-repeat,
-    linear-gradient(var(--mx-placeholder) 0 0) 28% 66px / 20% 14px no-repeat,
     linear-gradient(var(--mx-placeholder) 0 0) 100% 12px / 13% 18px no-repeat,
     linear-gradient(var(--mx-placeholder) 0 0) 100% 43px / 13% 18px no-repeat;
-}
-
-@media (min-width: 768px) and (max-width: 1199px) {
-  .mx-overview-statistics {
-    border-inline-start: 0;
-  }
-}
-@media (min-width: 768px) and (max-width: 959px) {
-  .mx-overview-totals {
-    grid-template-columns: minmax(13rem, max-content) minmax(0, 1fr);
-  }
-  .mx-overview-statistics {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 28px;
-    border-inline-start: 0;
-    border-block-start: 1px solid var(--mx-border);
-    padding: 12px 0 0;
-  }
 }
 
 @media (max-width: 767px) {
   .mx-overview-read .mx-overview-totals {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--mx-space-items);
-  }
-  .mx-page .mx-overview-today .mx-number {
-    font-size: var(--mx-text-figure);
-  }
-  .mx-page .mx-overview-today .mx-day-drivers {
-    row-gap: 24px;
   }
   .mx-overview-statistics {
     border-inline-start: 0;
@@ -604,14 +682,12 @@
     min-height: 327px;
   }
   .mx-overview-read :is(.mx-overview-totals, .mx-loading-summary) {
-    min-height: 260px;
+    min-height: 134px;
   }
   .mx-overview-read .mx-loading-summary > .mx-loading-shape {
     background:
       linear-gradient(var(--mx-placeholder) 0 0) 0 27px / 52% 38px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 100px / 42% 24px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 135px / 71% 14px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 100% 204px / 24% 14px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 100% 236px / 20% 12px no-repeat;
+      linear-gradient(var(--mx-placeholder) 0 0) 100% 96px / 24% 14px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 100% 120px / 20% 12px no-repeat;
   }
 }

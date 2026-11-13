@@ -1,20 +1,24 @@
 "use client";
 
-import { Button, Tooltip, useComputedColorScheme } from "@mantine/core";
+import { Button, Menu, Tooltip, useComputedColorScheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import { CaretDown } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode,
+} from "react";
 import { useLocale } from "@/components/locale-provider";
-import type { SectorBoardResponse, SectorGroup } from "@/lib/types";
-import { formatDateTime, formatDeltaPercent } from "@/ui/formatters";
+import type { SectorBoardResponse, SectorGroup, SectorMarketCode } from "@/lib/types";
+import { formatCalendarDate, formatDate, formatDateTime, formatDeltaPercent } from "@/ui/formatters";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
-import { api } from "@/workspace/data";
+import { api, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, UpdateFailure, useCopy } from "./foundation";
+import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
-import { heatMix, marketPhase, squarify, type Tile } from "./sectors-data";
+import { SECTOR_MARKETS, heatMix, marketPhase, sectorMarket, squarify, type Tile } from "./sectors-data";
 import { changeTone, groupName, textWidth } from "./sectors-map";
 
 /** Seam between blocks. */
@@ -166,28 +170,121 @@ function labels(names: { full: string; short: string; tiny: string }, change: st
   return pick(attempts[0], { showName: false, showChange: false });
 }
 
+type OverviewMarket = SectorMarketCode | "global";
+type WorldMarket = GlobalMarketContribution["markets"][number]["market"];
+
+const MARKET_NAMES: Record<string, [string, string]> = {
+  global: ["全球", "Global"],
+  us: ["美股", "US"],
+  eu: ["欧洲", "Europe"],
+  uk: ["英股", "UK"],
+  hk: ["港股", "Hong Kong"],
+  kr: ["韩股", "Korea"],
+  jp: ["日股", "Japan"],
+  tw: ["台股", "Taiwan"],
+  in: ["印股", "India"],
+  ca: ["加股", "Canada"],
+  au: ["澳股", "Australia"],
+};
+
+/** The reader's market for this card, kept in the browser; the US until they choose another. */
+const MARKET_KEY = "mx-overview-market";
+const marketListeners = new Set<() => void>();
+// A choice the browser would not store still holds for the session.
+let unsaved: string | null = null;
+function subscribeMarket(listener: () => void) {
+  marketListeners.add(listener);
+  window.addEventListener("storage", listener);
+  return () => {
+    marketListeners.delete(listener);
+    window.removeEventListener("storage", listener);
+  };
+}
+function readMarket() {
+  try {
+    return window.localStorage.getItem(MARKET_KEY) ?? unsaved;
+  } catch {
+    return unsaved;
+  }
+}
+function chooseMarket(value: OverviewMarket) {
+  unsaved = value;
+  try {
+    window.localStorage.setItem(MARKET_KEY, value);
+  } catch {
+    // Private windows keep the choice until the tab closes.
+  }
+  for (const listener of marketListeners) listener();
+}
+/** Null until the browser has been read, so the first request is already the chosen market's. */
+function useOverviewMarket() {
+  const stored = useSyncExternalStore<string | null | undefined>(subscribeMarket, readMarket, () => undefined);
+  const market: OverviewMarket | null = stored === undefined ? null
+    : stored === "global" ? "global" : sectorMarket(stored) ?? "us";
+  return [market, chooseMarket] as const;
+}
+
 /**
- * Today's US sectors on the overview: one flat block per GICS sector, area by index weight and a wash by
- * the session's move. The board is the Markets page's own US answer, so opening a block reuses it.
+ * Today's sectors on the overview, the US unless the reader picks another market: one flat block per GICS sector,
+ * area by index weight and a wash by the session's move. The board is the Markets page's own answer, so opening a
+ * block reuses it. Global shows the markets themselves as a block world map.
  */
-export function useOverviewSectors() {
+function useOverviewSectors(market: SectorMarketCode | null) {
   return useQuery({
-    queryKey: ["workspace-sectors", "us"],
-    queryFn: ({ signal }) => api<SectorBoardResponse>("/sectors?market=us", { signal }),
+    queryKey: ["workspace-sectors", market],
+    queryFn: ({ signal }) => api<SectorBoardResponse>("/sectors?market=" + market, { signal }),
+    enabled: market !== null,
     refetchInterval: 60_000,
     retry: 1,
   });
 }
 
-export function OverviewSectors({ query }: { query: ReturnType<typeof useOverviewSectors> }) {
+export function OverviewSectors() {
+  const t = useCopy();
+  const [market, choose] = useOverviewMarket();
+  const name = (value: string) => {
+    const names = MARKET_NAMES[value];
+    return names ? t(names[0], names[1]) : value.toUpperCase();
+  };
+  const title = market === "global" ? t("全球市场", "Global markets")
+    : market ? name(market) + t("板块", " sectors") : t("板块", "Sectors");
+  const picker = (
+    <Menu position="bottom-start" withinPortal>
+      <Menu.Target>
+        <button type="button" className="mx-overview-market" aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
+          {title}
+          <CaretDown size={14} aria-hidden="true" />
+        </button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        {(["global", ...SECTOR_MARKETS] as OverviewMarket[]).map((value) => (
+          <Menu.Item key={value} aria-current={value === market ? "true" : undefined} onClick={() => choose(value)}>
+            {name(value)}
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
+  if (market === null) return (
+    <Panel className="mx-overview-sectors" title={picker}>
+      <Pending shape="sectors" quiet />
+    </Panel>
+  );
+  return market === "global"
+    ? <GlobalPanel title={title} picker={picker} />
+    : <SectorPanel market={market} title={title} picker={picker} />;
+}
+
+function SectorPanel({ market, title, picker }: { market: SectorMarketCode; title: string; picker: ReactNode }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const now = useMinute();
   const phaseName = usePhaseNames();
+  const query = useOverviewSectors(market);
   const data = query.data;
-  const board = data?.board?.market === "us" ? data.board : null;
+  const board = data?.board?.market === market ? data.board : null;
   // An answer missing its parts shows the empty board rather than breaking the overview.
-  const status = data?.markets?.find((item) => item.market === "us");
+  const status = data?.markets?.find((item) => item.market === market);
   const groups = board?.groupings?.find((grouping) => grouping.kind === "gics")?.groups ?? [];
   const clock = status && board && (
     <SessionClock status={status} board={board} phase={marketPhase(status.sessions, status.timezone, now).phase}
@@ -196,17 +293,18 @@ export function OverviewSectors({ query }: { query: ReturnType<typeof useOvervie
   return (
     <Panel
       className="mx-overview-sectors"
-      title={t("美股板块", "US sectors")}
+      title={picker}
+      helpLabel={title}
       help={board ? <SectorSources source={board.source} /> : undefined}
       action={<span className="mx-freshness-group">{clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
       {query.isPending ? (
-        <Pending shape="sectors" label={t("正在读取美股板块…", "Loading US sectors…")} />
+        <Pending shape="sectors" label={t("正在读取", "Loading ") + title + t("…", "…")} />
       ) : !board && query.isError ? (
         <div className="mx-overview-unavailable"><InlineRetry label={t("板块行情暂不可用", "Sector quotes unavailable")} retry={query.refetch} /></div>
       ) : !board || !groups.length ? (
         <Empty
-          title={t("还没有美股板块数据", "No US sector data yet")}
+          title={t("还没有板块数据", "No sector data yet")}
           description={data?.monitor?.enabled === false
             ? <span className="mx-sector-empty-copy">
                 <CenteredCopy>{t("开启「证券研究与每日对账」", "Enable Research & daily reconciliation")}</CenteredCopy>
@@ -221,9 +319,117 @@ export function OverviewSectors({ query }: { query: ReturnType<typeof useOvervie
             : undefined}
         />
       ) : (
-        <SectorBoard groups={groups} />
+        <SectorBoard groups={groups} market={market} label={title} />
       )}
     </Panel>
+  );
+}
+
+/**
+ * The classic block world map: one equal block per market, set out roughly where it lies, washed by its main
+ * index's move today. The ocean corner carries the global index's own move.
+ */
+const WORLD: Record<WorldMarket, { at: [number, number]; name: [string, string]; short: string }> = {
+  ca: { at: [1, 1], name: ["加拿大", "Canada"], short: "CA" },
+  us: { at: [1, 2], name: ["美国", "US"], short: "US" },
+  uk: { at: [3, 1], name: ["英国", "UK"], short: "UK" },
+  eu: { at: [4, 1], name: ["欧洲", "Europe"], short: "EU" },
+  ch: { at: [4, 2], name: ["瑞士", "Switzerland"], short: "CH" },
+  in: { at: [5, 2], name: ["印度", "India"], short: "IN" },
+  kr: { at: [6, 1], name: ["韩国", "Korea"], short: "KR" },
+  jp: { at: [7, 1], name: ["日本", "Japan"], short: "JP" },
+  hk: { at: [6, 2], name: ["香港", "Hong Kong"], short: "HK" },
+  tw: { at: [7, 2], name: ["台湾", "Taiwan"], short: "TW" },
+  au: { at: [7, 3], name: ["澳洲", "Australia"], short: "AU" },
+};
+/** Phones list the same blocks in reading order, west to east. */
+const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "in", "jp", "kr", "hk", "tw", "au"];
+
+function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
+  const t = useCopy();
+  const query = useGlobalContribution(true);
+  const answer = query.data;
+  const markets = (answer?.markets ?? []).filter((item) => item.market in WORLD);
+  return (
+    <Panel
+      className="mx-overview-sectors"
+      title={picker}
+      helpLabel={title}
+      help={<p>{t(
+        "每块是该市场主要股指的当日涨跌，颜色越深，涨跌越大；左下是 MSCI 全球的当日涨跌。点开一块查看该市场。",
+        "Each block is the day’s move in that market’s main index; deeper colour means a bigger move. The corner shows MSCI ACWI. Open a block for that market.",
+      )}</p>}
+      action={<span className="mx-freshness-group">{answer && <GlobalStamp answer={answer} />}
+        {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
+    >
+      {query.isPending ? (
+        <Pending shape="sectors" label={t("正在读取全球市场…", "Loading global markets…")} />
+      ) : !answer && query.isError ? (
+        <div className="mx-overview-unavailable"><InlineRetry label={t("全球行情暂不可用", "Global quotes unavailable")} retry={query.refetch} /></div>
+      ) : !answer || !markets.length ? (
+        <Empty title={t("还没有全球行情", "No global quotes yet")} />
+      ) : (
+        <WorldBlocks markets={markets} acwiMove={answer.acwiMove} label={title} />
+      )}
+    </Panel>
+  );
+}
+
+function GlobalStamp({ answer }: { answer: GlobalMarketContribution }) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  const stamp = answer.asOf;
+  if (!stamp) return null;
+  const phase = answer.phase === "completed" ? t("已收盘", "Closed") : answer.phase === "live" ? t("盘中", "Open") : null;
+  const time = formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  return (
+    <div className="mx-sectors-clock">
+      {phase && <span>{phase}</span>}
+      <span><time dateTime={stamp}>{t("截至 ", "As of ")}{answer.phase === "completed" && answer.referenceDate
+        ? formatCalendarDate(answer.referenceDate, locale) + " " + time
+        : answer.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
+    </div>
+  );
+}
+
+function WorldBlocks({ markets, acwiMove, label }: { markets: GlobalMarketContribution["markets"]; acwiMove: number | null; label: string }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const scheme = useComputedColorScheme("light");
+  const total = formatDeltaPercent(acwiMove, locale, 2);
+  return (
+    <div className="mx-overview-world" role="group" aria-label={label}>
+      {markets.map(({ market, move, notOpen }) => {
+        const place = WORLD[market];
+        const full = t(place.name[0], place.name[1]);
+        const idle = notOpen || move == null;
+        const change = idle ? t("未开盘", "Not open") : formatDeltaPercent(move, locale, 2);
+        const style = {
+          "--mx-heat-mix": heatMix(notOpen ? null : move, scheme),
+          "--mx-world-column": place.at[0],
+          "--mx-world-row": place.at[1],
+          order: WORLD_ORDER.indexOf(market),
+        } as CSSProperties;
+        return (
+          <Link key={market} href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
+            data-tone={idle ? undefined : changeTone(move)} data-idle={idle ? "" : undefined}
+            aria-label={full + " " + change}>
+            <span className="mx-overview-sector-name">{locale === "zh" ? full : place.short}</span>
+            {/* A narrow card rounds to one decimal; the accessible name keeps both. */}
+            <span className="mx-overview-sector-change">
+              {idle ? change : <>
+                <span className="mx-overview-world-full">{change}</span>
+                <span className="mx-overview-world-short">{formatDeltaPercent(move, locale, 1)}</span>
+              </>}
+            </span>
+          </Link>
+        );
+      })}
+      <Link href="/sectors" className="mx-overview-world-total" aria-label={t("MSCI 全球 ", "MSCI ACWI ") + total}>
+        <span>{t("MSCI 全球", "MSCI ACWI")}</span>
+        <strong className={acwiMove == null ? undefined : "mx-" + tone(acwiMove)}>{total}</strong>
+      </Link>
+    </div>
   );
 }
 
@@ -232,14 +438,14 @@ export function OverviewSectors({ query }: { query: ReturnType<typeof useOvervie
  * block per sector instead, each large enough to tap and to carry its whole move. Stylesheets choose between them
  * too, so neither shows before the pointer is known.
  */
-function SectorBoard({ groups }: { groups: SectorGroup[] }) {
+function SectorBoard({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const t = useCopy();
   const fine = useFinePointer();
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   return (
     <>
-      {fine && !phone && <SectorMap groups={groups} label={t("美股板块地图", "US sector map")} />}
-      <SectorGrid groups={groups} label={t("美股板块", "US sectors")} />
+      {fine && !phone && <SectorMap groups={groups} market={market} label={label + t("地图", " map")} />}
+      <SectorGrid groups={groups} market={market} label={label} />
     </>
   );
 }
@@ -250,7 +456,7 @@ function useSpoken() {
   return (group: SectorGroup) => groupName(group, "gics", locale) + " " + formatDeltaPercent(group.change, locale, 2);
 }
 
-function SectorMap({ groups, label }: { groups: SectorGroup[]; label: string }) {
+function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("light");
   const spoken = useSpoken();
@@ -327,7 +533,7 @@ function SectorMap({ groups, label }: { groups: SectorGroup[]; label: string }) 
         return (
           <Tooltip key={group.key} label={spoken(group)} events={{ hover: true, focus: true, touch: false }} openDelay={120}
             withinPortal disabled={shown.complete}>
-            <Link href={"/sectors?market=us&sector=" + encodeURIComponent(group.key)} {...attributes} aria-label={spoken(group)}>
+            <Link href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)} {...attributes} aria-label={spoken(group)}>
               {content}
             </Link>
           </Tooltip>
@@ -338,7 +544,7 @@ function SectorMap({ groups, label }: { groups: SectorGroup[]; label: string }) 
 }
 
 /** Phones and touch: blocks in index-weight order, each opening its sector, with the full name where it fits. */
-function SectorGrid({ groups, label }: { groups: SectorGroup[]; label: string }) {
+function SectorGrid({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("light");
   const spoken = useSpoken();
@@ -369,7 +575,7 @@ function SectorGrid({ groups, label }: { groups: SectorGroup[]; label: string })
         const short = SHORT[group.key]?.[locale === "zh" ? 0 : 1] ?? full;
         const fits = !room || measureText(full, ROOMY.size, family) <= (index === 0 ? room.first : room.other);
         return (
-          <Link key={group.key} href={"/sectors?market=us&sector=" + encodeURIComponent(group.key)}
+          <Link key={group.key} href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)}
             className="mx-overview-sector" data-tone={changeTone(group.change)} aria-label={spoken(group)}
             style={{ "--mx-heat-mix": heatMix(group.change, scheme) } as CSSProperties}>
             <span className="mx-overview-sector-name">{fits ? full : short}</span>
