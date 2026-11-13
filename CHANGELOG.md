@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.46.2] - 2026-11-13
+
+### Fixed
+
+- The Overview holdings table lists every holding again. Holdings beyond the largest eight now show their own rows and readings, and share the donut’s neutral segment.
+
 ## [1.46.1] - 2026-11-13
 
 ### Fixed
