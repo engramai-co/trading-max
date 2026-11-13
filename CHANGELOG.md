@@ -4,6 +4,22 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.39.0] - 2026-11-13
+
+### Added
+
+- The Global tab in Markets now groups global, developed, and emerging
+  benchmarks.
+- A world heat map and ranked list show each market's estimated contribution
+  to the MSCI ACWI move. A separate row accounts for currency effects and
+  markets outside the available coverage.
+- Hover, focus, or tap a market to see its local move and trading status,
+  or open the market for more detail.
+
+### Changed
+
+- Gains and losses have stronger contrast on coloured index cards.
+
 ## [1.38.1] - 2026-11-12
 
 ### Fixed

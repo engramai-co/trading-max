@@ -7679,6 +7679,229 @@
         "title": "GicsClassification",
         "type": "object"
       },
+      "GlobalContributionRow": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "indexId": {
+            "title": "Indexid",
+            "type": "string"
+          },
+          "market": {
+            "enum": [
+              "us",
+              "ca",
+              "uk",
+              "eu",
+              "ch",
+              "jp",
+              "au",
+              "hk",
+              "em"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "move": {
+            "title": "Move",
+            "type": "number"
+          },
+          "notOpen": {
+            "title": "Notopen",
+            "type": "boolean"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "market",
+          "indexId",
+          "weight",
+          "move",
+          "contribution",
+          "notOpen"
+        ],
+        "title": "GlobalContributionRow",
+        "type": "object"
+      },
+      "GlobalMarketContribution": {
+        "description": "Moves and contributions are fractions; multiply by 100 for percent or pp.",
+        "properties": {
+          "acwiLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acwilevel"
+          },
+          "acwiMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acwimove"
+          },
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "markets": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalMarketMove"
+            },
+            "title": "Markets",
+            "type": "array"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "live",
+                  "completed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "referenceDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencedate"
+          },
+          "residual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/GlobalContributionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "partial",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "weightsAsOf": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weightsasof"
+          },
+          "weightsStale": {
+            "title": "Weightsstale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "acwiMove",
+          "acwiLevel",
+          "referenceDate",
+          "phase",
+          "asOf",
+          "weightsAsOf",
+          "weightsStale",
+          "markets",
+          "rows",
+          "residual",
+          "state"
+        ],
+        "title": "GlobalMarketContribution",
+        "type": "object"
+      },
+      "GlobalMarketMove": {
+        "properties": {
+          "market": {
+            "enum": [
+              "us",
+              "ca",
+              "uk",
+              "eu",
+              "ch",
+              "jp",
+              "au",
+              "hk",
+              "kr",
+              "tw",
+              "in"
+            ],
+            "title": "Market",
+            "type": "string"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move"
+          },
+          "notOpen": {
+            "title": "Notopen",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "market",
+          "move",
+          "notOpen"
+        ],
+        "title": "GlobalMarketMove",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -20418,7 +20641,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.38.1"
+    "version": "1.39.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -21381,6 +21604,27 @@
           }
         },
         "summary": "Index Catalog",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/v1/indices/global-contribution": {
+      "get": {
+        "operationId": "global_contribution_v1_indices_global_contribution_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlobalMarketContribution"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Global Contribution",
         "tags": [
           "indices"
         ]

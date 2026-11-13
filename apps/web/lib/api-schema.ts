@@ -312,6 +312,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/indices/global-contribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Global Contribution */
+        get: operations["global_contribution_v1_indices_global_contribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/indices/{index_id}/context": {
         parameters: {
             query?: never;
@@ -3708,6 +3725,67 @@ export interface components {
             subIndustryName: string;
             /** Version */
             version: string;
+        };
+        /** GlobalContributionRow */
+        GlobalContributionRow: {
+            /** Contribution */
+            contribution: number;
+            /** Indexid */
+            indexId: string;
+            /**
+             * Market
+             * @enum {string}
+             */
+            market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "em";
+            /** Move */
+            move: number;
+            /** Notopen */
+            notOpen: boolean;
+            /** Weight */
+            weight: number;
+        };
+        /**
+         * GlobalMarketContribution
+         * @description Moves and contributions are fractions; multiply by 100 for percent or pp.
+         */
+        GlobalMarketContribution: {
+            /** Acwilevel */
+            acwiLevel: number | null;
+            /** Acwimove */
+            acwiMove: number | null;
+            /** Asof */
+            asOf: string | null;
+            /** Markets */
+            markets: components["schemas"]["GlobalMarketMove"][];
+            /** Phase */
+            phase: ("live" | "completed") | null;
+            /** Referencedate */
+            referenceDate: string | null;
+            /** Residual */
+            residual: number | null;
+            /** Rows */
+            rows: components["schemas"]["GlobalContributionRow"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "partial" | "unavailable";
+            /** Weightsasof */
+            weightsAsOf: string | null;
+            /** Weightsstale */
+            weightsStale: boolean;
+        };
+        /** GlobalMarketMove */
+        GlobalMarketMove: {
+            /**
+             * Market
+             * @enum {string}
+             */
+            market: "us" | "ca" | "uk" | "eu" | "ch" | "jp" | "au" | "hk" | "kr" | "tw" | "in";
+            /** Move */
+            move: number | null;
+            /** Notopen */
+            notOpen: boolean;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -8637,6 +8715,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndexIdentity"][];
+                };
+            };
+        };
+    };
+    global_contribution_v1_indices_global_contribution_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GlobalMarketContribution"];
                 };
             };
         };

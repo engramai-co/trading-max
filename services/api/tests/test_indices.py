@@ -53,6 +53,9 @@ class FakePrices:
             for symbol in symbols
         }
 
+    def benchmark_intraday(self, symbol):
+        return None
+
     def history(self, symbol):
         hour = "15" if symbol == "^GSPC" else "00"
         return bars(
@@ -428,3 +431,32 @@ def test_chart_windows_cache_separately_and_share_the_rate_limit(monkeypatch):
     with pytest.raises(SparkRateLimited, match="paused"):
         prices.history("ANOTHER")
     assert len(requests) == 4
+
+
+def test_global_endpoint_caches_the_session_aligned_response(api, monkeypatch):
+    from services.api.trading_max_api.global_markets import read_global_contribution
+
+    client, _, clock = api
+    service = client.app.state.indices
+    calls = []
+
+    def compute(prices, weights, stale, now):
+        calls.append(now)
+        return read_global_contribution(prices, weights, stale, now)
+
+    monkeypatch.setattr("services.api.trading_max_api.indices.read_global_contribution", compute)
+    monkeypatch.setattr(service.acwi_weights, "get", lambda _: (None, False))
+    response = client.get("/v1/indices/global-contribution")
+    assert response.status_code == 200
+    result = response.json()
+    assert result["phase"] is None
+    assert result["state"] == "unavailable"
+    assert result["residual"] is None
+    assert len(result["markets"]) == 11
+    assert result["rows"] == []
+    assert client.get("/v1/indices/global-contribution").json() == result
+    assert calls == [NOW]
+
+    clock[0] += timedelta(minutes=5)
+    assert client.get("/v1/indices/global-contribution").status_code == 200
+    assert calls == [NOW, clock[0]]

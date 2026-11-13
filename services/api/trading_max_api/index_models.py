@@ -1,6 +1,6 @@
 """Index metadata, observed prices and separately dated portfolio context."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field
@@ -48,6 +48,41 @@ class IndexMarket(ApiModel):
     scope: IndexScope
     quotes: list[IndexQuote]
     refresh_failed: bool = False
+
+
+GlobalMapMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "kr", "tw", "in"]
+GlobalRowMarket = Literal["us", "ca", "uk", "eu", "ch", "jp", "au", "hk", "em"]
+
+
+class GlobalMarketMove(ApiModel):
+    market: GlobalMapMarket
+    move: float | None
+    not_open: bool
+
+
+class GlobalContributionRow(ApiModel):
+    market: GlobalRowMarket
+    index_id: str
+    weight: float
+    move: float
+    contribution: float
+    not_open: bool
+
+
+class GlobalMarketContribution(ApiModel):
+    """Moves and contributions are fractions; multiply by 100 for percent or pp."""
+
+    acwi_move: float | None
+    acwi_level: float | None
+    reference_date: date | None
+    phase: Literal["live", "completed"] | None
+    as_of: datetime | None
+    weights_as_of: date | None
+    weights_stale: bool
+    markets: list[GlobalMarketMove]
+    rows: list[GlobalContributionRow]
+    residual: float | None
+    state: Literal["ready", "partial", "unavailable"]
 
 
 class IndexHistory(ApiModel):

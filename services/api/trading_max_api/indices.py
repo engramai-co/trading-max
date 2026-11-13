@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from trading_max.analytics.accounts import AccountPositionMetrics
 from trading_max.analytics.sector_board import FLAT_BAND, member_session, settle
 from trading_max.domain.etf import evidenced_benchmark_id
+from trading_max.infrastructure.acwi_weights import AcwiWeightsProvider
 from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
@@ -27,7 +28,9 @@ from trading_max.reference.indices import INDEX_REGISTRY, IndexRange, IndexScope
 
 from .artifacts import ArtifactStore
 from .etf_snapshot import read_etf_portfolio
+from .global_markets import read_global_contribution
 from .index_models import (
+    GlobalMarketContribution,
     IndexBasket,
     IndexContext,
     IndexContribution,
@@ -247,6 +250,9 @@ class IndexService:
         self.boards = boards
         self.prices = prices
         self.universes = SectorUniverseProvider(root)
+        self.acwi_weights = AcwiWeightsProvider(root)
+        self._contribution_lock = threading.Lock()
+        self._contribution: tuple[datetime, GlobalMarketContribution] | None = None
         self.root = root / "state" / "indices"
         self.now = now or (lambda: datetime.now(UTC))
         self._lock = threading.RLock()
@@ -258,6 +264,17 @@ class IndexService:
         self._ndx_late_attempts: tuple[str, int] | None = None
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
         self._histories: dict[tuple[str, str, bool], tuple[datetime, IndexHistory]] = {}
+
+    def global_contribution(self) -> GlobalMarketContribution:
+        with self._contribution_lock:
+            now = self.now()
+            cached = self._contribution
+            if cached and now - cached[0] < timedelta(minutes=4):
+                return cached[1]
+            weights, stale = self.acwi_weights.get(now)
+            answer = read_global_contribution(self.prices, weights, stale, now)
+            self._contribution = (now, answer)
+            return answer
 
     def market(self, scope: IndexScope) -> IndexMarket:
         with self._market_locks[scope]:

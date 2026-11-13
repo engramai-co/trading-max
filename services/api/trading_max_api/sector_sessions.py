@@ -61,8 +61,10 @@ def sessions_between(
 
 
 @lru_cache(maxsize=256)
-def exchange_sessions(name: str, start: date, end: date) -> tuple[SectorSessionWindow, ...]:
-    calendar = market_calendar(name, start.year, end.year)
+def exchange_sessions(
+    name: str, start: date, end: date, *, buffer_years: int = 1
+) -> tuple[SectorSessionWindow, ...]:
+    calendar = market_calendar(name, start.year, end.year, buffer_years=buffer_years)
     schedule = calendar.schedule.loc[pd.Timestamp(start) : pd.Timestamp(end)]
     windows = []
     for label, row in schedule.iterrows():

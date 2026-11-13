@@ -9,9 +9,10 @@ import type { CSSProperties, MouseEvent } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
-import { formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
+import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { useGlobalContribution } from "./global-markets-data";
 import Link from "./link";
 import {
   alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
@@ -34,6 +35,20 @@ function useNames() {
     })[index.basis],
   };
 }
+
+const GLOBAL_GROUPS = [
+  { name: ["全球", "Global"], ids: ["msci-acwi", "ftse-all-world-etf"] },
+  { name: ["发达", "Developed"], ids: ["msci-world", "msci-world-ex-usa"] },
+  { name: ["新兴", "Emerging"], ids: ["msci-em", "msci-em-imi"] },
+] as const;
+
+const GLOBAL_CARD_NAMES: Record<string, string> = {
+  "msci-acwi": "MSCI ACWI",
+  "msci-world": "MSCI World",
+  "msci-world-ex-usa": "MSCI World ex USA",
+  "msci-em": "MSCI EM",
+  "msci-em-imi": "MSCI EM IMI",
+};
 
 function RetryIndices({ retry, busy }: { retry: () => void; busy?: boolean }) {
   const t = useCopy();
@@ -59,14 +74,56 @@ export function IndexStrip({ market, open, selected, marketName }: {
     staleTime: 60_000,
     retry: 0,
   });
+  const global = useGlobalContribution(market === "global" && !selected).data;
   const newest = (query.data?.quotes ?? []).map((quote) => quote.asOf ?? "").sort().at(-1);
   const error = query.isError || query.data?.refreshFailed;
+  const card = (quote: IndexQuote) => <IndexCard key={quote.index.id} quote={quote} selected={selected === quote.index.id} open={open}
+    nameOverride={market === "global" ? GLOBAL_CARD_NAMES[quote.index.id] : undefined}
+    primaryBenchmark={market === "global" && !selected && quote.index.id === "msci-acwi"} />;
+  if (market === "global") {
+    const quotes = new Map(query.data?.quotes.map((quote) => [quote.index.id, quote]));
+    const acwi = quotes.get("msci-acwi");
+    const stamp = global?.asOf ?? acwi?.asOf ?? newest;
+    const phase = global?.phase === "completed" ? t("已收盘", "Closed")
+      : global?.phase === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
+    const day = global?.referenceDate;
+    const time = stamp && formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+    if (acwi && global?.acwiMove != null) {
+      quotes.set(acwi.index.id, {
+        ...acwi, change: global.acwiMove, level: global.acwiLevel, asOf: global.asOf,
+        state: global.phase === "completed" ? "closed" : "live",
+        points: acwi.points?.filter(({ at }) => global.asOf != null && Date.parse(at) <= Date.parse(global.asOf)),
+      });
+    }
+    return <section className="mx-index-strip mx-index-global" aria-label={t("市场指数", "Market indices")}>
+      {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
+        {stamp && <>
+          <span>{phase}</span>
+          <span><time dateTime={stamp}>{t("截至 ", "As of ")}{day && global?.phase === "completed"
+            ? `${formatCalendarDate(day, locale)} ${time}`
+            : global?.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
+        </>}
+        {error && <><span>{stamp ? t("部分指数未更新", "Some indices haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
+          <RetryIndices busy={query.isFetching} retry={() => void query.refetch()} /></>}
+      </div>}
+      {query.isPending && <Pending label={t("正在加载指数", "Loading indices")} compact />}
+      {quotes.size > 0 && <div className="mx-global-benchmarks">
+        {GLOBAL_GROUPS.map(({ name, ids }) => <section className="mx-global-benchmark" key={name[1]}>
+          <h2>{t(name[0], name[1])}</h2>
+          <div>{ids.map((id) => {
+            const quote = quotes.get(id);
+            return quote && card(quote);
+          })}</div>
+        </section>)}
+      </div>}
+    </section>;
+  }
   return (
     <section className="mx-index-strip" aria-label={t("市场指数", "Market indices")}>
       {marketName && <h2 className="mx-index-scope">{marketName}</h2>}
       {query.isPending ? <Pending label={t("正在加载指数", "Loading indices")} compact /> : null}
       {query.data && <div className="mx-index-cards">
-        {query.data.quotes.map((quote) => <IndexCard key={quote.index.id} quote={quote} selected={selected === quote.index.id} open={open} />)}
+        {query.data.quotes.map(card)}
       </div>}
       {(newest || error) && <div className="mx-index-stamp">
         {newest && <time dateTime={newest}>{t("指数截至 ", "Indices as of ")}{formatDateTime(newest, locale, timeZone)}</time>}
@@ -79,10 +136,12 @@ export function IndexStrip({ market, open, selected, marketName }: {
   );
 }
 
-function IndexCard({ quote, open, selected }: {
+function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
   quote: IndexQuote;
   open: (event: MouseEvent<HTMLAnchorElement>, index: IndexIdentity) => void;
   selected: boolean;
+  nameOverride?: string;
+  primaryBenchmark?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -102,12 +161,13 @@ function IndexCard({ quote, open, selected }: {
   const level = index.kind === "volatility" && quote.level != null
     ? `${formatNumber(quote.level, locale, { maximumFractionDigits: 2 })} ${t("点", "pts")}`
     : index.kind === "etf-price" && index.currency ? formatCurrency(quote.level, locale, index.currency)
-    : formatNumber(quote.level, locale, { maximumFractionDigits: 2 });
+    : formatNumber(quote.level, locale, { maximumFractionDigits: 2, minimumFractionDigits: nameOverride ? 2 : undefined });
   const tone = index.kind === "volatility" || quote.change == null || quote.change === 0
     ? "neutral" : quote.change > 0 ? "up" : "down";
   const heat = Math.min(1, Math.abs(quote.change ?? 0) / 0.03);
   const freshness = quote.state === "stale" ? t("未更新", "Stale")
-    : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote") : null;
+    : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote")
+      : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   return (
     <Link
       href={indexHref(index)}
@@ -116,11 +176,12 @@ function IndexCard({ quote, open, selected }: {
       id={`index-card-${index.id}`}
       className="mx-index-card"
       data-tone={tone}
+      data-benchmark={primaryBenchmark ? "primary" : undefined}
       aria-current={selected ? "page" : undefined}
       style={{ "--mx-index-heat": `${Math.round(heat * 22 + (heat > 0 ? 5 : 0))}%` } as CSSProperties}
     >
       <span className="mx-index-name">
-        {index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index)}
+        {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
         <CaretRight size={13} aria-hidden="true" />
       </span>
       <span className="mx-index-figures"><strong>{level}</strong><span>{move}</span></span>
@@ -128,8 +189,8 @@ function IndexCard({ quote, open, selected }: {
         {points.length > 1 && <svg aria-hidden="true" viewBox="0 0 200 25" preserveAspectRatio="none">
           <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
         </svg>}
-        {freshness && <small>{freshness}</small>}
       </span>
+      {freshness && <small className="mx-index-freshness">{freshness}</small>}
     </Link>
   );
 }

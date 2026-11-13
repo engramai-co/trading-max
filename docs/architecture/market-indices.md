@@ -21,7 +21,7 @@ not a historical feed for this feature.
 | --- | --- |
 | TOPIX | The Nomura ETF listing `1306.T`, labelled **TOPIX ETF price**, in JPY. |
 | Hang Seng TECH | The iShares ETF listing `3067.HK`, labelled **Hang Seng TECH ETF price**, in HKD. |
-| FTSE All-World | No licensed index quote is configured, so the index card shows none. `VWRP.L` is a separate GBP ETF price series; it is never spliced into index points. |
+| FTSE All-World | No licensed index quote is configured, so it is listed only in catalog and search. `VWRP.L` is a separate GBP ETF price series; it is never spliced into index points. |
 
 The DAX feed is the [total return index](https://stoxx.com/index/dax/). VIX is an implied volatility measure
 in volatility points; it is not a price or total return benchmark. Index prices
@@ -38,8 +38,8 @@ When that exact close is missing, the constituent remains unpriced.
 ## Markets page reads
 
 The US, UK, Hong Kong, Korea and Japan have index cards and sector boards.
-Global, Europe, Taiwan, India, Canada, Australia and Switzerland show indices
-only. Europe includes the DAX and CAC 40. Japan's sector board uses IJPN's
+Europe, Taiwan, India, Canada, Australia and Switzerland show indices only.
+Global groups six benchmarks and adds a world map and attribution for MSCI ACWI. Europe includes the DAX and CAC 40. Japan's sector board uses IJPN's
 MSCI Japan holdings on the Tokyo Stock Exchange; the Nikkei 225 and TOPIX ETF
 cards use their own prices. The index cards and sector board load and report
 freshness independently.
@@ -82,3 +82,39 @@ refer to the same session and are within five minutes. The held ETF panel
 joins issuer-confirmed benchmarks to the same immutable broker snapshot by
 ISIN, then sums position value across accounts. A link to the ETF's holdings
 lens opens the look-through.
+
+## Global contribution
+
+`GET /v1/indices/global-contribution` returns public, portfolio-independent
+market moves and an estimate of each market's contribution to MSCI ACWI.
+The latest official close is identified from the benchmark's five-minute
+history, checked against the dated daily series and the provider's previous
+close. Its observed timestamp, not a fixed hour, separates global trading days.
+Before any tracked exchange opens after that close, the page shows the most
+recent completed day, including on weekends. Once a tracked exchange opens,
+ACWI is measured from that close, and markets with no session in the window
+show zero and remain neutral on the map. The page names the reference day.
+
+The endpoint reads the main indices in batches through the price cache shared
+with market tabs. A quote that cannot be matched to the reference session is
+omitted and disclosed as partial coverage. The response is cached for four
+minutes.
+
+Country weights are aggregated from the equity locations in the
+[iShares MSCI ACWI UCITS ETF (SSAC)](https://www.ishares.com/uk/individual/en/products/251850/ishares-msci-acwi-ucits-etf)
+holdings, with no renormalisation. The dated aggregate is cached for seven days
+using the issuer holdings source shared with the sector boards. If refresh
+fails, the last aggregate is retained and identified as stale. The developed
+market rows use local index moves, including STOXX Europe 600 for core Europe
+and the Nordics. The emerging market row uses the USD move of MSCI EM.
+Korea, Taiwan, and India still show their own local moves on the map.
+“Currency and other” is ACWI minus the sum of priced contributions; it includes
+FX, unlisted or missing markets, and proxy and observation-timing differences.
+
+The map uses [Natural Earth 110m](https://www.naturalearthdata.com/about/terms-of-use/)
+in Equal Earth projection, with the southern polar region omitted. The wide
+layout also crops the outer Pacific margins to give more space to the land.
+Both layouts preserve the projection’s proportions. Run
+`uv run python tools/generate_global_market_map.py` to regenerate the static
+paths from the pinned, checksum-verified source. No geography package or
+download is needed at runtime.
