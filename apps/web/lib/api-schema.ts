@@ -5958,6 +5958,8 @@ export interface components {
             taxonomyVersion?: number | null;
             /** Ticker */
             ticker: string;
+            /** Usfundpeers */
+            usFundPeers?: components["schemas"]["USFundPeer"][];
             /** Watchlistticker */
             watchlistTicker?: string | null;
             /**
@@ -6168,6 +6170,7 @@ export interface components {
             /** Nextearningsdate */
             nextEarningsDate?: string | null;
             options?: components["schemas"]["OptionSnapshot"] | null;
+            optionsPeer?: components["schemas"]["USFundPeer"] | null;
             portfolioImpact?: components["schemas"]["PortfolioImpact"] | null;
             /** Researchevidence */
             researchEvidence?: {
@@ -8034,6 +8037,41 @@ export interface components {
              * @enum {string}
              */
             state: "reporting" | "ceased" | "effective-later" | "not-listed" | "unavailable";
+        };
+        /** USFund */
+        USFund: {
+            /** Benchmark */
+            benchmark: string;
+            /** Exchange */
+            exchange: string;
+            /** Name */
+            name: string;
+            /** Sourceurl */
+            sourceUrl: string;
+            /** Ticker */
+            ticker: string;
+        };
+        /** USFundPeer */
+        USFundPeer: {
+            /** Differenceen */
+            differenceEn: string;
+            /** Differencezh */
+            differenceZh: string;
+            fund: components["schemas"]["USFund"];
+            /** Localbenchmark */
+            localBenchmark: string;
+            /** Localsourceurl */
+            localSourceUrl: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "same-index" | "similar";
+            /**
+             * Verifiedon
+             * @default 2026-11-13
+             */
+            verifiedOn: string;
         };
         /** UserProfile */
         UserProfile: {

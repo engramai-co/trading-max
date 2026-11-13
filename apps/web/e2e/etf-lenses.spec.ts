@@ -254,18 +254,18 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   test("an unresearched held fund stays pending, while an unknown ticker can be added", async ({ page }) => {
     await synthetic(page, undefined, summary, false, true);
     await page.goto("/research?ticker=EQQQ.L");
-    await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(6);
+    await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(7);
     await expect(page.getByText("正在读取证券研究…", { exact: true })).toBeAttached();
     await expect(page.getByText("EQQQ.L 还不在研究清单里")).toHaveCount(0);
     await page.goto("/research?ticker=UNKNOWN");
     await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
   });
 
-  test("research keeps six fund lenses and links the overview score to its diagnosis", async ({ page }, info) => {
+  test("research keeps seven fund lenses and links the overview score to its diagnosis", async ({ page }, info) => {
     await synthetic(page);
     await page.goto("/research?ticker=EQQQ.L&view=analyst");
     const lenses = page.getByRole("tablist", { name: "证券研究视角" });
-    await expect(lenses.getByRole("tab")).toHaveCount(6);
+    await expect(lenses.getByRole("tab")).toHaveCount(7);
     await expect(lenses.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
     await expect(page.locator(".mx-tech-score-compact .mx-tech-number strong")).toHaveText("28");

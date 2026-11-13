@@ -11,12 +11,14 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from math import isfinite
 from typing import Any
 
 import pandas as pd
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.reference import is_fund_instrument
 
 from .calendar import completed_daily_bars
@@ -118,10 +120,55 @@ class MarketResearchService:
         history_loader: HistoryLoader = _default_history,
         options_loader: OptionsLoader = _default_options,
         adr_loader: AdrLoader = adr_research,
+        prices: SharedMarketPrices | None = None,
     ) -> None:
         self.history_loader = history_loader
         self.options_loader = options_loader
         self.adr_loader = adr_loader
+        self.prices = prices or SharedMarketPrices()
+
+    def extend_fund_options(self, batch: OptionsResearchBatch, tickers: Sequence[str]) -> None:
+        """Collect ETF chains without running the equity studies or quote history."""
+        requested = sorted(set(tickers) - set(batch.tickers))
+        if not requested:
+            return
+        batch.tickers.extend(requested)
+        try:
+            marks = self.prices.daily(requested)
+        except Exception as exc:
+            batch.warnings.append(f"ETF option underlyings unavailable ({type(exc).__name__})")
+            return
+        for ticker in requested:
+            series = marks.get(ticker)
+            spot = (
+                next(
+                    (
+                        price
+                        for price in reversed(series.closes)
+                        if price and isfinite(price) and price > 0
+                    ),
+                    None,
+                )
+                if series
+                else None
+            )
+            if spot is None:
+                batch.warnings.append(f"{ticker}: option underlying price unavailable")
+                continue
+            try:
+                result = self.options_loader(ticker, ticker, spot)
+                # A USD listing must never inherit another currency's option marks.
+                if (
+                    result.ticker != ticker
+                    or result.yf_ticker != ticker
+                    or result.currency != "USD"
+                ):
+                    raise MarketDataError("unexpected ETF option underlying or currency")
+                batch.rows.append(result)
+            except Exception as exc:
+                batch.warnings.append(
+                    f"{ticker}: options unavailable ({type(exc).__name__}: {exc})"
+                )
 
     def run(
         self,

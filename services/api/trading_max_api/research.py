@@ -24,6 +24,7 @@ from trading_max.research.facts import (
     make_quote,
     number,
 )
+from trading_max.research.fund_references import US_MARKETS, fund_peers, us_fund, us_fund_listing
 from trading_max.research.held_funds import (
     FUND_PRICE_DIRECTORY_KEY,
     FUND_PRICES_KEY,
@@ -37,6 +38,7 @@ from trading_max.research.trailing_pe import TrailingPeHistory
 
 from .artifacts import ArtifactStore
 from .dashboard_models import (
+    OptionSnapshot,
     PriceSeriesPoint,
     ResearchDirectoryInstrument,
     ResearchLensName,
@@ -668,6 +670,8 @@ class ResearchLedger:
     def _route_ticker(self, ticker: str) -> str:
         """Keep exchange-qualified watchlist identities in links and responses."""
         ticker = ticker.strip().upper()
+        if us_fund(ticker):
+            return ticker
         items = self.watchlist.items()
         if any(item.ticker == ticker for item in items):
             return ticker
@@ -934,7 +938,9 @@ class ResearchLedger:
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
         if listing := self.held_fund(ticker, manifest):
-            lens = self._held_fund_lens(listing, "technical", manifest, detail="full")
+            lens = self._fund_lens(
+                listing.ticker, "technical", manifest, detail="full", listing=listing
+            )
             return ResearchTickerSnapshot(
                 ticker=listing.ticker,
                 run_id=manifest.run_id,
@@ -1037,10 +1043,25 @@ class ResearchLedger:
             if _artifact(manifest, FUND_PRICE_DIRECTORY_KEY)
             else []
         )
+
+        def saved_fund_isin(ticker: str) -> str | None:
+            if us_fund(ticker):
+                return None
+            reading = find_etf(etfs, ticker)
+            if reading:
+                return reading.isin
+            return next(
+                (row.get("isin") for row in price_directory if row.get("ticker") == ticker),
+                None,
+            )
+
         listed = [
             ResearchDirectoryInstrument(
-                is_fund=find_etf(etfs, item.ticker) is not None
+                is_fund=us_fund(item.ticker) is not None
+                or find_etf(etfs, item.ticker) is not None
                 or any(row.get("ticker") == item.ticker for row in price_directory),
+                fund_isin=saved_fund_isin(item.ticker),
+                us_fund_peers=list(fund_peers(saved_fund_isin(item.ticker))),
                 ticker=item.ticker,
                 name=item.name,
                 exchange=item.exchange,
@@ -1058,7 +1079,7 @@ class ResearchLedger:
                 status=item.status,
                 last_run_id=item.last_run_id,
                 last_error=item.last_error,
-                **_position_fields(holdings, item.ticker),
+                **(_position_fields(holdings, item.ticker) if not us_fund(item.ticker) else {}),
             )
             for item in self.watchlist.items()
         ]
@@ -1105,6 +1126,9 @@ class ResearchLedger:
                 "ticker": listing.ticker,
                 "is_fund": True,
                 "fund_isin": listing.isin or (reading.isin if reading else None),
+                "us_fund_peers": list(
+                    fund_peers(listing.isin or (reading.isin if reading else None))
+                ),
                 "status": status,
                 "last_run_id": manifest.run_id if status != "pending" else None,
                 "exchange": listing.exchange or (saved.exchange if saved else ""),
@@ -1120,6 +1144,21 @@ class ResearchLedger:
                         **updates,
                         name=str(position.get("name") or listing.ticker),
                         order=len(listed),
+                        watchlisted=False,
+                    )
+                )
+        already_listed = {item.ticker for item in listed}
+        references = {peer.fund.ticker: peer.fund for item in listed for peer in item.us_fund_peers}
+        for ticker, reference in references.items():
+            if ticker not in already_listed:
+                listed.append(
+                    ResearchDirectoryInstrument(
+                        ticker=ticker,
+                        name=reference.name,
+                        exchange=reference.exchange,
+                        order=len(listed),
+                        status="partial",
+                        is_fund=True,
                         watchlisted=False,
                     )
                 )
@@ -1146,7 +1185,7 @@ class ResearchLedger:
         ticker = ticker.strip().upper()
         funds = self._held_funds(manifest)
         exact = [listing for listing in funds if listing.ticker == ticker]
-        if exact or "." in ticker:
+        if exact or "." in ticker or us_fund(ticker):
             return exact[0] if len(exact) == 1 else None
         if any(
             item.ticker == ticker
@@ -1224,19 +1263,30 @@ class ResearchLedger:
             "research/fundamentals.json",
             "research/coverage.json",
         }
-        if ticker and (listing := self.held_fund(ticker, manifest)):
+        listing = self.held_fund(ticker, manifest) if ticker else None
+        reference = us_fund(ticker)
+        if listing or reference:
             fund_keys = {ETF_SUMMARY_KEY, FUND_PRICE_DIRECTORY_KEY}
             if view in {"overview", "technical"}:
                 fund_keys.update({"research/technical.json", "research/coverage.json"})
+            if view == "options":
+                fund_keys.add("research/options.json")
+                fund_keys.add("research/technical.json")
             return fingerprint(
                 [
-                    listing.key,
+                    listing.key if listing else reference.ticker,
                     view,
                     detail,
                     sorted((a.key, a.sha256) for a in manifest.artifacts if a.key in fund_keys),
-                    datetime.now(UTC).date().isoformat(),
+                    # Chain availability and expiration are time-dependent.
+                    datetime.now(UTC).isoformat(timespec="minutes")
+                    if view == "options"
+                    else datetime.now(UTC).date().isoformat(),
                 ]
             )
+        if view == "options":
+            common.add(FUND_PRICE_DIRECTORY_KEY)
+
         keys = common | {
             "overview": {
                 "research/financials.json",
@@ -1311,16 +1361,44 @@ class ResearchLedger:
             None,
         )
 
-    def _held_fund_lens(
+    def _option_chain(
+        self, manifest: SnapshotManifest, ticker: str, *, fund: bool = False
+    ) -> JsonObject | None:
+        rows = self._cached_rows(
+            manifest, "research/options.json", option_rows, fallback_key="research/technical.json"
+        )
+        row = (
+            next(
+                (
+                    row
+                    for row in rows
+                    if row.get("ticker") == ticker and row.get("currency") == "USD"
+                ),
+                None,
+            )
+            if fund
+            else _find(rows, ticker)
+        )
+        if row is None:
+            return None
+        return {
+            **row,
+            "availability": chain_availability(
+                row["capturedAt"], row["expiries"], allow_unverified_future=fund
+            ),
+        }
+
+    def _fund_lens(
         self,
-        listing: FundListingIdentity,
+        ticker: str,
         view: ResearchLensName,
         manifest: SnapshotManifest,
         *,
         detail: str,
+        listing: FundListingIdentity | None = None,
     ) -> ResearchLensSnapshot:
-        ticker = listing.ticker
         price = self._fund_price(manifest, ticker, listing)
+        reference = us_fund(ticker) if not listing or us_fund_listing(listing) else None
         market = (
             {
                 "ticker": ticker,
@@ -1331,22 +1409,55 @@ class ResearchLedger:
             if price
             else None
         )
+        reading = self.fund_reading(listing, self._published_etfs(manifest)) if listing else None
+        isin = (listing.isin if listing else None) or (reading.isin if reading else None)
+        peers = fund_peers(isin)
+        peer = peers[0] if peers else None
+        options_ticker = (
+            ticker
+            if reference or (listing and us_fund_listing(listing))
+            else peer.fund.ticker
+            if peer
+            else None
+        )
+        options = (
+            self._option_chain(manifest, options_ticker, fund=True)
+            if options_ticker and view == "options"
+            else None
+        )
+        options_peer = peer if options_ticker != ticker and view == "options" else None
+        if reference and options and market is None:
+            market = {
+                "ticker": ticker,
+                "spot": options["spot"],
+                "currency": "USD",
+            }
         metrics = {
             "quoteType": "ETF",
-            "exchangeTimezoneName": price["timezone"] if price else None,
-            "fullExchangeName": price["exchange"] if price else listing.exchange,
+            "isin": isin,
+            "exchangeTimezoneName": price["timezone"]
+            if price
+            else "America/New_York"
+            if reference
+            else None,
+            "fullExchangeName": price["exchange"]
+            if price
+            else listing.exchange
+            if listing
+            else reference.exchange
+            if reference
+            else None,
         }
-        fundamental = {"metrics": metrics}
+        fundamental = {"metrics": metrics, "currency": "USD" if reference else None}
         quote = make_quote(ticker, market or {}, fundamental)
-        if not price:
+        if listing and not price:
             position = next(iter(self._held_funds(manifest)[listing].values()))["positions"][0]
             currency, _ = major_quote_unit(str(position.get("price_currency") or ""))
-            quote.currency = currency or None
+            quote.currency = currency or quote.currency
             quote.listing = broker_listing(position.get("broker_ticker")) or quote.listing
         quote.schedule = session_schedule(
             listing_calendar(ticker, quote.exchange, quote.timezone), datetime.now(UTC)
         )
-        reading = self.fund_reading(listing, self._published_etfs(manifest))
         technical = None
         technical_summary = None
         datasets = []
@@ -1380,6 +1491,8 @@ class ResearchLedger:
             run_id=manifest.run_id,
             generated_at=manifest.created_at.isoformat(),
             market=market,
+            options=OptionSnapshot.model_validate(options) if options else None,
+            options_peer=options_peer,
             fundamentals=fundamental if view in {"overview", "fundamentals"} else None,
             technical=technical,
             technical_summary=technical_summary,
@@ -1400,8 +1513,17 @@ class ResearchLedger:
                     ResearchCapability(task="ledger", state="available"),
                     *[
                         ResearchCapability(task=task, state="notApplicable", reason="fund-research")
-                        for task in ("analyst", "valuation", "options")
+                        for task in ("analyst", "valuation")
                     ],
+                    ResearchCapability(
+                        task="options",
+                        state="available"
+                        if options
+                        else "missing"
+                        if options_ticker
+                        else "notApplicable",
+                        reason=None if options_ticker else "no-verified-us-options-underlying",
+                    ),
                 ],
             ),
         )
@@ -1425,8 +1547,10 @@ class ResearchLedger:
 
         listing = self.held_fund(ticker, manifest)
         if listing:
-            return self._held_fund_lens(listing, view, manifest, detail=detail)
+            return self._fund_lens(listing.ticker, view, manifest, listing=listing, detail=detail)
         ticker = self._route_ticker(ticker)
+        if us_fund(ticker):
+            return self._fund_lens(ticker, view, manifest, detail=detail)
         market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
@@ -1446,9 +1570,10 @@ class ResearchLedger:
         # Report dates are compared with the exchange's calendar date.
         today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
+        fund_price = self._fund_price(manifest, ticker, None)
         is_fund = (
             asset_type in {"ETF", "MUTUALFUND"}
-            or self._fund_price(manifest, ticker, None) is not None
+            or fund_price is not None
             or (
                 asset_type == "UNKNOWN"
                 and find_etf(self._published_etfs(manifest), ticker) is not None
@@ -1456,6 +1581,22 @@ class ResearchLedger:
         )
         if is_fund and asset_type not in {"ETF", "MUTUALFUND"}:
             asset_type = "ETF"
+        peers = fund_peers(metrics.get("isin") or (fund_price or {}).get("isin"))
+        peer = peers[0] if peers else None
+        exchange = str(metrics.get("exchange") or (fund_price or {}).get("exchange") or "").upper()
+        fund_options_ticker = (
+            ticker
+            if asset_type == "ETF"
+            and "." not in ticker
+            and (
+                exchange in US_MARKETS
+                or (metrics.get("exchangeTimezoneName") or (fund_price or {}).get("timezone"))
+                == "America/New_York"
+            )
+            else peer.fund.ticker
+            if peer
+            else None
+        )
         is_financial = any(
             word in str(fundamental.get("industry") or metrics.get("industry") or "").lower()
             for word in ("banks", "banking", "insurance")
@@ -1534,7 +1675,9 @@ class ResearchLedger:
             "options",
             "ledger",
         ):
-            inappropriate = is_fund and task in {"analyst", "valuation", "options"}
+            inappropriate = is_fund and (
+                task in {"analyst", "valuation"} or (task == "options" and not fund_options_ticker)
+            )
             capabilities.append(
                 ResearchCapability(
                     task=task,
@@ -1619,20 +1762,18 @@ class ResearchLedger:
                 ticker,
             )
         if view == "options":
-            payload.options = _find(
-                self._cached_rows(
-                    manifest,
-                    "research/options.json",
-                    option_rows,
-                    fallback_key="research/technical.json",
-                ),
-                ticker,
-            )
-            if payload.options:
-                payload.options = dict(payload.options)
-                payload.options["availability"] = chain_availability(
-                    payload.options["capturedAt"], payload.options["expiries"]
+            if is_fund:
+                payload.options_peer = peer if fund_options_ticker != ticker else None
+                payload.options = (
+                    self._option_chain(manifest, fund_options_ticker, fund=True)
+                    if fund_options_ticker
+                    else None
                 )
+                for capability in capabilities:
+                    if capability.task == "options" and fund_options_ticker:
+                        capability.state = "available" if payload.options else "missing"
+            else:
+                payload.options = self._option_chain(manifest, ticker)
         if view == "fundamentals":
             # Reuse parsed immutable rows; enriching one ticker must not parse
             # every statement and every technical history again.
@@ -2308,7 +2449,9 @@ class ResearchLedger:
         raw_rows = raw.get("rows")
         rows = raw_rows if isinstance(raw_rows, list) else []
         source = fund_price or (
-            None if listing else _find([row for row in rows if isinstance(row, dict)], ticker)
+            None
+            if listing or us_fund(ticker)
+            else _find([row for row in rows if isinstance(row, dict)], ticker)
         )
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")

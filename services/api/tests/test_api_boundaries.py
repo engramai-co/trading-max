@@ -357,3 +357,99 @@ def test_held_fund_directory_uses_broker_listings_and_published_share_classes(bo
 
     publish([unrelated], [])
     assert not boundary_client.get("/v1/research/shell").json()["instruments"]
+
+
+def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
+    boundary_client, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    from trading_max.infrastructure.sector_prices import SparkSeries
+    from trading_max.research.held_funds import BROKER_SNAPSHOT_KEY, LOOKTHROUGH_KEY
+
+    store = boundary_client.app.state.store
+    holdings = [
+        {"ticker": ticker, "broker_ticker": ticker + "l_EQ", "isin": isin, "price_currency": "GBP"}
+        for ticker, isin in (
+            ("EQGB", "IE00BYVTMW98"),
+            ("SMH", "IE00BMC38736"),
+            ("NONE", "IE0000000001"),
+        )
+    ]
+    now = datetime.now(UTC)
+    expiry = (now + timedelta(days=10)).date().isoformat()
+
+    def publish(ticker, spot, currency):
+        payloads = {
+            BROKER_SNAPSHOT_KEY: {"accounts": {"A": {"positions": holdings}}},
+            LOOKTHROUGH_KEY: {"fundPositions": holdings},
+            "research/options.json": {
+                "rows": [
+                    {
+                        "ticker": ticker,
+                        "currency": currency,
+                        "spot": spot,
+                        "expiry_count": 1,
+                        "captured_at": now.isoformat(),
+                        "expiries": [{"expiry": expiry}],
+                    }
+                ]
+            },
+        }
+        store.immutable_snapshots.publish(
+            scope="research",
+            source="synthetic",
+            artifacts=[
+                store.immutable_artifacts.put_json(key=key, payload=payload)
+                for key, payload in payloads.items()
+            ],
+        )
+
+    def lens(ticker, view="options"):
+        response = boundary_client.get(f"/v1/research/{ticker}/lens/{view}")
+        assert response.status_code == 200
+        return response.json()
+
+    publish("SMH.L", 93, "GBP")
+    shell = boundary_client.get("/v1/research/shell").json()["instruments"]
+    by_ticker = {row["ticker"]: row for row in shell}
+    assert by_ticker["SMH.L"]["held"]
+    assert not by_ticker["SMH"]["held"]
+    assert by_ticker["SMH"]["isFund"] and not by_ticker["SMH"]["watchlisted"]
+    assert [peer["fund"]["ticker"] for peer in by_ticker["EQGB.L"]["usFundPeers"]] == [
+        "QQQ",
+        "QQQM",
+    ]
+    assert lens("SMH.L")["options"] is None
+    assert lens("SMH")["options"] is None
+    assert lens("SMH.L")["optionsPeer"]["fund"]["ticker"] == "SMH"
+
+    publish("SMH", 120, "USD")
+    local = lens("SMH.L")
+    us = lens("SMH")
+    assert local["options"]["ticker"] == us["options"]["ticker"] == "SMH"
+    assert local["options"]["currency"] == "USD"
+    assert local["context"]["quote"]["currency"] == "GBP"
+    assert us["optionsPeer"] is None
+    assert us["options"]["availability"]["currentExpiries"] == [expiry]
+    assert lens("SMH.L", "overview")["options"] is None
+    assert lens("SMH.L", "fundamentals")["optionsPeer"] is None
+    unavailable = lens("NONE.L")
+    assert unavailable["options"] is None
+    assert (
+        next(c for c in unavailable["context"]["capabilities"] if c["task"] == "options")["state"]
+        == "notApplicable"
+    )
+
+    def prices(ticker):
+        assert ticker == "SMH"
+        return SparkSeries(ticker, (int(now.timestamp()),), (101.0,), fetched_at=now)
+
+    monkeypatch.setattr(boundary_client.app.state.market_prices, "history", prices)
+    response = boundary_client.get("/v1/research/SMH/prices?interval=60m")
+    assert response.status_code == 200
+    chart = response.json()
+    assert chart["currency"] == "USD"
+    assert chart["actualInterval"] == "1d"
+    assert chart["adjustment"] == "provider-close"
+    assert chart["points"][0]["close"] == 101.0

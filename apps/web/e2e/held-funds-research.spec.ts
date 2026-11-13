@@ -31,7 +31,7 @@ test.describe("held funds in research", () => {
     const lenses = page.getByRole("tablist", { name: "证券研究视角" });
     async function expectFundView() {
       await expect(page).toHaveURL(new RegExp("/research\\?ticker=" + ticker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-      await expect(lenses.getByRole("tab")).toHaveCount(6);
+      await expect(lenses.getByRole("tab")).toHaveCount(7);
       await expect(lenses.getByRole("tab", { name: "指数与跟踪" })).toBeVisible();
       await expect(page.getByText("还不在研究清单里", { exact: false })).toHaveCount(0);
       await expect(page.locator(".mx-etf-summary")).toBeVisible();

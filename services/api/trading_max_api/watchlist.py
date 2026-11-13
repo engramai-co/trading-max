@@ -21,6 +21,7 @@ from trading_max.reference import (
     infer_gics_eligibility,
 )
 from trading_max.research import TaxonomyCatalog, TaxonomyWorkflowDecision
+from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY
 
 from .artifacts import ArtifactStore
 from .models import (
@@ -623,6 +624,16 @@ class WatchlistStore:
             technical = store.read_json(manifest.run_id, "research/technical.json")
         except FileNotFoundError:
             technical = {}
+        try:
+            funds = store.read_json(manifest.run_id, FUND_PRICE_DIRECTORY_KEY)
+        except FileNotFoundError:
+            funds = {}
+        try:
+            options = store.read_json(manifest.run_id, "research/options.json")
+        except FileNotFoundError:
+            options = {}
+        fund_tickers = {row["ticker"] for row in funds.get("rows", []) if row.get("ticker")}
+        option_tickers = {row["ticker"] for row in options.get("rows", []) if row.get("ticker")}
         typed_technical = market.get("technical")
         if isinstance(typed_technical, dict):
             market_rows = {
@@ -658,7 +669,7 @@ class WatchlistStore:
                 if has_market and has_technical:
                     item.status = "ready"
                     item.last_error = None
-                elif has_market or has_technical:
+                elif has_market or has_technical or item.ticker in fund_tickers | option_tickers:
                     item.status = "partial"
                     item.last_error = (
                         str(failures.get(item.ticker))

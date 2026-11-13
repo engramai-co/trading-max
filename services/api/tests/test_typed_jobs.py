@@ -999,3 +999,135 @@ def test_held_fund_refresh_publishes_scored_technical_rows_without_equity_data(
         )
     finally:
         manager.close()
+
+
+def test_held_ucits_and_us_etfs_publish_independent_option_rows(
+    tmp_path, seed_watchlist, monkeypatch
+):
+    from datetime import datetime, timedelta
+
+    from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
+    from trading_max.infrastructure.sector_prices import SparkSeries, YahooSparkPrices
+    from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
+    from trading_max.research.held_funds import BROKER_SNAPSHOT_KEY, LOOKTHROUGH_KEY
+    from trading_max.research.technical import OptionsResearchArtifact
+
+    monkeypatch.setattr(
+        "trading_max.application.etf_depth_stage.HMRCReportingSource.refresh",
+        lambda *_: None,
+    )
+    store = ArtifactStore(tmp_path)
+    watchlist = WatchlistStore(tmp_path)
+    seed_watchlist(watchlist, "BE")
+    positions = [
+        {"ticker": ticker, "broker_ticker": listing, "isin": isin, "current_value_gbp": 20}
+        for ticker, listing, isin in (
+            ("EQGB", "EQGBl_EQ", "IE00BYVTMW98"),
+            ("SMH", "SMHl_EQ", "IE00BMC38736"),
+            ("SMH", "SMH_US_EQ", "US0000000001"),
+        )
+    ]
+    payloads = {
+        BROKER_SNAPSHOT_KEY: {
+            "accounts": {"A": {"positions": positions}, "B": {"positions": positions}}
+        },
+        LOOKTHROUGH_KEY: {"fundPositions": positions},
+        ETF_SUMMARY_KEY: {"funds": []},
+        "research/options.json": {
+            "tickers": ["BE"],
+            "rows": [{"ticker": "BE", "spot": 20}],
+            "generated_at": "2026-10-01T20:00:00Z",
+        },
+    }
+    store.immutable_snapshots.publish(
+        scope="accounts",
+        source="fixture",
+        artifacts=[
+            store.immutable_artifacts.put_json(key=key, payload=payload)
+            for key, payload in payloads.items()
+        ],
+    )
+    marks, option_calls = [], []
+
+    class FixtureQuotes(YahooSparkPrices):
+        def daily(self, symbols):
+            marks.append(list(symbols))
+            return {
+                ticker: SparkSeries(ticker, (1,), (float(100 + i),))
+                for i, ticker in enumerate(symbols)
+            }
+
+    def options_loader(ticker, yf_ticker, spot):
+        option_calls.append((ticker, spot))
+        expiry = (date.today() + timedelta(days=7)).isoformat()
+        return OptionsResearchArtifact(
+            ticker=ticker,
+            yf_ticker=yf_ticker,
+            spot=spot,
+            currency="USD",
+            captured_at=datetime.now(UTC),
+            expiry_count=1,
+            expiry_range=[expiry],
+            aggregate={},
+            gamma_proxy={},
+            expiries=[{"expiry": expiry}],
+            contracts=[{"expiry": expiry, "side": "call", "strike": 101, "currency": "USD"}],
+        )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("ETF-only refresh requested company data")
+
+    research = YFinanceResearchService(info_loader=forbidden)
+    research.fundamentals = research.financials = research.analyst = research.earnings = forbidden
+    manager = TypedJobManager(
+        store,
+        watchlist,
+        market_service=MarketResearchService(
+            history_loader=_research_history,
+            options_loader=options_loader,
+            adr_loader=forbidden,
+            prices=SharedMarketPrices(FixtureQuotes()),
+        ),
+        research_service=research,
+    )
+    try:
+        job = manager.submit("research", skip_sync=True, tickers=["EQGB.L", "SMH.L", "SMH"])
+        assert manager._build_worker(worker_id="fixture", lease_seconds=60).run_once()
+        assert manager.get(job.job_id).status.value == "succeeded"
+        assert marks == [["QQQ", "QQQM", "SMH"]]
+        assert option_calls == [("QQQ", 100.0), ("QQQM", 101.0), ("SMH", 102.0)]
+        latest = store.latest_manifest()
+        chains = store.read_json(latest.run_id, "research/options.json")
+        assert [row["ticker"] for row in chains["rows"]] == ["BE", "QQQ", "QQQM", "SMH"]
+        assert chains["rowClocks"]["BE"]["fetchedAt"] == "2026-10-01T20:00:00Z"
+        technical = {
+            row["ticker"]: row
+            for row in store.read_json(latest.run_id, "research/technical.json")["rows"]
+        }
+        for ticker in ("EQGB.L", "SMH.L", "SMH"):
+            assert technical[ticker]["technical_score"] is not None
+        assert "QQQM" not in technical  # A reference alone requests options only.
+        assert not any(ref.key == "research/fundamentals.json" for ref in latest.artifacts)
+        from trading_max.application.stages import StageContext
+
+        stage = manager.registry.get("market.snapshot")
+        result = stage.run(
+            StageContext(
+                job_id="synthetic-research-slot",
+                scope="research",
+                trigger="research",
+                tickers=("EQGB.L",),
+            )
+        )
+        scheduled = store.immutable_artifacts.get_json(result.artifacts[0].artifact_id).payload
+        assert scheduled["options"]["tickers"] == []
+        assert {row["ticker"] for row in scheduled["technical"]["rows"]} >= {
+            "EQGB.L",
+            "SMH.L",
+            "SMH",
+        }
+        assert len(option_calls) == 3
+        latest = store.latest_manifest()
+        assert store.read_json(latest.run_id, "research/options.json") == chains
+    finally:
+        manager.close()

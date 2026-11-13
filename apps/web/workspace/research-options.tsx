@@ -31,6 +31,7 @@ import {
   useCopy,
 } from "./foundation";
 import { nearMoneyStrikes } from "./research-math";
+import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
 
 type Chain = NonNullable<ResearchLensSnapshot["options"]>;
@@ -127,10 +128,26 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
     [allStrikes, setAllStrikes] = useState(false),
     [detail, setDetail] = useState<Contract | null>(null);
   const options = data.options;
+  const peer = data.optionsPeer;
+  const title = peer
+    ? t("{ticker} 期权链", "{ticker} option chain").replace("{ticker}", peer.fund.ticker)
+    : t("期权链", "Option chain");
+  const relationship = peer
+    ? <p className="mx-muted">{usFundRelation(peer, t)} · {t(
+      "标的价格和行权价均为 {ticker} 的 USD 报价。",
+      "Underlying prices and strikes are for {ticker}, in USD.",
+    ).replace("{ticker}", peer.fund.ticker)}</p>
+    : null;
+  const notApplicable = data.context?.capabilities?.some((capability) =>
+    capability.task === "options" && capability.state === "notApplicable",
+  );
   if (!options)
     return (
-      <Panel>
-        <Empty title={t("暂无期权链", "Option chain unavailable")} />
+      <Panel title={peer ? title : undefined}>
+        {relationship}
+        <Empty title={notApplicable
+          ? t("此基金暂无适用的期权标的", "No applicable options underlying")
+          : t("暂无期权链", "Option chain unavailable")} />
       </Panel>
     );
   const historical = params.get("chainMode") === "history";
@@ -144,7 +161,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const mode = params.get("optionView") ?? "chain";
   const scoped = options.contracts.filter((c) => selected.includes(c.expiry));
   const filtered = liquid ? scoped.filter(validQuote) : scoped;
-  const cc = options.currency || data.context?.quote?.currency || "";
+  const cc = options.currency || (peer ? "USD" : data.context?.quote?.currency) || "";
   const value = (v: unknown) =>
     quoteValue(v, cc, t("币种未提供", "Currency unavailable"));
   const calls = scoped.filter((c) => c.side === "call"),
@@ -170,7 +187,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   return (
     <>
       <Panel
-        title={t("期权链", "Option chain")}
+        title={title}
         action={
           <Group gap="sm">
             {(historical || !current.length) && (
@@ -182,6 +199,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
           </Group>
         }
       >
+        {relationship}
         <div className="mx-toolbar">
           <Segments
             label={t("期权快照", "Chain snapshot")}

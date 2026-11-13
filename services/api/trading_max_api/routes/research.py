@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Annotated, Literal
 
@@ -11,8 +12,10 @@ from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
+from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
+from trading_max.research.fund_references import us_fund
 from trading_max.research.valuation_preview import (
     AssumptionReference,
     FrozenValuationBasis,
@@ -23,6 +26,7 @@ from trading_max.research.valuation_preview import (
 )
 
 from ..dashboard_models import (
+    PriceSeriesPoint,
     ResearchLensName,
     ResearchLensSnapshot,
     ResearchPriceSeries,
@@ -499,6 +503,66 @@ def research_prices(
     listing = research.held_fund(ticker, manifest)
     if listing:
         ticker = listing.ticker
+    if (reference := us_fund(ticker)) and not listing:
+        # Prefer the listing's published technical history when it was researched
+        # directly. Otherwise use the shared close-only chart and budget.
+        try:
+            published = research.price_series(reference.ticker, manifest, limit=limit)
+        except FileNotFoundError:
+            published = None
+        if published:
+            published.requested_interval = interval
+            published.coverage_reason = (
+                "requested-interval-unavailable-daily-history-retained"
+                if interval != "1d"
+                else None
+            )
+            published.coverage_start = published.points[0].date if published.points else None
+            published.coverage_end = published.points[-1].date if published.points else None
+            return price_window(published, window)
+        try:
+            series = app_service(request, "market_prices").history(reference.ticker)
+        except Exception:
+            series = None
+        if series is None:
+            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+        points = [
+            PriceSeriesPoint(
+                date=datetime.fromtimestamp(stamp, UTC).date().isoformat(),
+                close=close,
+                open=None,
+                high=None,
+                low=None,
+                volume=None,
+                sma20=None,
+                sma50=None,
+                sma200=None,
+            )
+            for stamp, close in zip(series.timestamps, series.closes, strict=True)
+            if close is not None
+        ]
+        if not points:
+            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+        return price_window(
+            ResearchPriceSeries(
+                ticker=reference.ticker,
+                currency="USD",
+                as_of=points[-1].date,
+                requested_interval=interval,
+                available_sessions=len(points),
+                points=points[-limit:],
+                timezone=series.timezone,
+                exchange_calendar=calendar_name(reference.exchange),
+                adjustment="provider-close",
+                coverage_start=points[-limit].date if len(points) >= limit else points[0].date,
+                coverage_end=points[-1].date,
+                fetched_at=series.fetched_at.isoformat() if series.fetched_at else None,
+                coverage_reason="requested-interval-unavailable-daily-history-retained"
+                if interval != "1d"
+                else None,
+            ),
+            window,
+        )
     fallback_reason = None
     if interval != "1d":
         try:
@@ -647,6 +711,19 @@ def research_fund(
         raise HTTPException(status_code=404, detail="snapshot not found") from None
     research = app_service(request, "research")
     listing = research.held_fund(ticker, manifest)
+    # A US reference can share its ticker with a different London ETF. It
+    # has curated identity evidence and needs no issuer request to open.
+    reference = us_fund(ticker)
+    if reference and not listing:
+        return FundResearch(
+            ticker=reference.ticker,
+            fetched_at="",
+            index_name=reference.benchmark,
+            source_url=reference.source_url,
+            share_currency="USD",
+            domicile="US",
+            state="missing",
+        )
     portfolio = read_etf_portfolio(store, manifest.run_id)
     reading = (
         research.fund_reading(listing, portfolio.funds)
