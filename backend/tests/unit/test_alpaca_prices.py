@@ -12,13 +12,14 @@ from trading_max.analytics.alpaca_prices import (
     us_sessions,
 )
 from trading_max.analytics.intraday_reconstruction import IntradayPrices, _combined_marks
+from trading_max.infrastructure.alpaca_http import AlpacaRateBudget
 
 
 def ts(value):
     return pd.Timestamp(value, tz="UTC")
 
 
-def test_paginated_raw_prices_are_completed_and_never_future():
+def test_paginated_raw_prices_are_completed_and_never_future(tmp_path):
     requests = []
 
     def reply(request):
@@ -44,7 +45,11 @@ def test_paginated_raw_prices_are_completed_and_never_future():
         )
 
     client = AlpacaHistoricalClient(
-        "fixture-key", "fixture-secret", transport=httpx.MockTransport(reply), sleep=lambda _: None
+        "fixture-key",
+        "fixture-secret",
+        budget=AlpacaRateBudget(tmp_path / "budget.json"),
+        transport=httpx.MockTransport(reply),
+        sleep=lambda _: None,
     )
     bars = client.bars("ACME", ts("2026-09-14 06:00"), ts("2026-09-14 06:02"), "boats")
     assert bars.to_dict() == {ts("2026-09-14 06:01"): 100, ts("2026-09-14 06:02"): 101}
@@ -54,15 +59,24 @@ def test_paginated_raw_prices_are_completed_and_never_future():
 
 
 @pytest.mark.parametrize("status", [401, 403, 429, 500])
-def test_provider_errors_do_not_expose_credentials(status):
+def test_provider_errors_do_not_expose_credentials(tmp_path, status):
     calls = []
 
     def reply(request):
         calls.append(request)
         return httpx.Response(status, json={"message": "fixture-secret"})
 
+    clock = [1000.0]
     client = AlpacaHistoricalClient(
-        "fixture-key", "fixture-secret", transport=httpx.MockTransport(reply), sleep=lambda _: None
+        "fixture-key",
+        "fixture-secret",
+        budget=AlpacaRateBudget(
+            tmp_path / "budget.json",
+            clock=lambda: clock[0],
+            sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        ),
+        transport=httpx.MockTransport(reply),
+        sleep=lambda _: None,
     )
     with pytest.raises(AlpacaDataError) as error:
         client.bars("ACME", ts("2026-09-14"), ts("2026-09-15"), "boats")

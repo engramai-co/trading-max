@@ -9137,6 +9137,11 @@
             "title": "Leaders",
             "type": "array"
           },
+          "pricesSource": {
+            "default": "Yahoo Finance",
+            "title": "Pricessource",
+            "type": "string"
+          },
           "proxyUniverse": {
             "anyOf": [
               {
@@ -15658,6 +15663,11 @@
             "title": "Session",
             "type": "string"
           },
+          "source": {
+            "default": "Yahoo Finance",
+            "title": "Source",
+            "type": "string"
+          },
           "ticker": {
             "title": "Ticker",
             "type": "string"
@@ -22041,7 +22051,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.45.0"
+    "version": "1.46.0"
   },
   "openapi": "3.1.0",
   "paths": {

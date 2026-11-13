@@ -20,6 +20,12 @@ from trading_max.analytics.accounts import AccountPositionMetrics
 from trading_max.analytics.sector_board import FLAT_BAND, member_session, settle
 from trading_max.domain.etf import evidenced_benchmark_id
 from trading_max.infrastructure.acwi_weights import AcwiWeightsProvider
+from trading_max.infrastructure.alpaca_market_prices import (
+    ALPACA_INTRADAY,
+    ALPACA_SIP,
+    is_alpaca_listing,
+    market_price_sources,
+)
 from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
@@ -70,7 +76,7 @@ MSCI_ZONE = ZoneInfo("America/New_York")
 BROKER_KEY = "account/broker_snapshot_metrics.json"
 
 
-def index_identity(spec: IndexSpec) -> IndexIdentity:
+def index_identity(spec: IndexSpec, source: str = "Yahoo Finance") -> IndexIdentity:
     return IndexIdentity(
         id=spec.id,
         scope=spec.scope,
@@ -87,7 +93,7 @@ def index_identity(spec: IndexSpec) -> IndexIdentity:
         ranges=list(spec.ranges),
         rights=spec.rights,
         aliases=list(spec.aliases),
-        source="Yahoo Finance" if spec.symbol else None,
+        source=source if spec.symbol else None,
     )
 
 
@@ -271,6 +277,7 @@ class IndexService:
         self.now = now or (lambda: datetime.now(UTC))
         self._lock = threading.RLock()
         self._market_locks = {scope: threading.Lock() for scope in get_args(IndexScope)}
+        self._quote_source = None
         self._markets: dict[str, tuple[datetime, IndexMarket]] = {}
         self._baselines: dict[str, tuple[str, bool, SparkSeries]] = {}
         self._ndx_lock = threading.Lock()
@@ -337,10 +344,21 @@ class IndexService:
         with self._market_locks[scope]:
             return self._market(scope)
 
+    def _sync_market_source(self) -> None:
+        source = self.prices.alpaca_source if isinstance(self.prices, SharedMarketPrices) else None
+        if source is not self._quote_source:
+            self._markets.clear()
+            self._histories.clear()
+            self._baselines.clear()
+            self._ndx_closes = None
+            self._ndx_cache = None
+            self._quote_source = source
+
     def _market(self, scope: IndexScope) -> IndexMarket:
         now = self.now()
         specs = list(active_indices(scope))
         clocks = {spec.id: _index_clock(spec, now) for spec in specs if spec.symbol}
+        self._sync_market_source()
         cached = self._markets.get(scope)
         # Session-aware scopes slow down after the closing grace period.
         # Unscheduled series are demand-driven and cannot claim a live session.
@@ -387,6 +405,7 @@ class IndexService:
             if (
                 window
                 and old
+                and not is_alpaca_listing(spec.symbol)
                 and old.index == index_identity(spec)
                 and old.session_date == window.date
                 and old.state == "closed"
@@ -441,7 +460,15 @@ class IndexService:
                 zone, window, prior = clocks[spec.id]
                 item = intraday.get(spec.symbol or "")
                 points = [point for point in _points(item) if point.at <= now]
-                closes = _dated(daily.get(spec.id), zone)
+                daily_item = daily.get(spec.id)
+                from_alpaca = item is not None and item.source == ALPACA_INTRADAY
+                if (
+                    item
+                    and daily_item
+                    and daily_item.source != (ALPACA_SIP if from_alpaca else item.source)
+                ):
+                    daily_item = None
+                closes = _dated(daily_item, zone)
                 state = "observed"
                 day = None
                 if window:
@@ -483,7 +510,9 @@ class IndexService:
                     # Its feed must provide the reference; never subtract an
                     # arbitrary older daily bar from the latest print.
                 base = (
-                    closes.get(prior)
+                    item.previous_close
+                    if from_alpaca
+                    else closes.get(prior)
                     if prior
                     else (item.previous_close if item and not window else None)
                 )
@@ -497,7 +526,9 @@ class IndexService:
                             else last.value / base - 1
                         )
                     quote = IndexQuote(
-                        index=quote.index,
+                        index=index_identity(spec, (item or daily_item).source)
+                        if item or daily_item
+                        else quote.index,
                         calendar_known=known,
                         session_date=day,
                         level=last.value,
@@ -531,6 +562,7 @@ class IndexService:
     def history(self, spec: IndexSpec, period: IndexRange, gbp: bool) -> IndexHistory:
         key = (spec.id, period, gbp)
         with self._lock:
+            self._sync_market_source()
             now = self.now()
             cached = self._histories.get(key)
             if cached and now - cached[0] < timedelta(minutes=4):
@@ -561,9 +593,12 @@ class IndexService:
         gaps: set[datetime] = set()
         quote = None
         is_intraday = period in INTRADAY_MINUTES
+        series = None
         if period == "1D":
             quote = next((q for q in self.market(spec.scope).quotes if q.index.id == spec.id), None)
             points = quote.points if quote else []
+            if quote:
+                result.index = quote.index
         else:
             if period == "1W" or period == "1M":
                 series = self.prices.history_bars(spec.symbol, period, now)
@@ -627,6 +662,8 @@ class IndexService:
             points = [IndexPoint(at=at, value=value) for at, value in sorted(values.items())]
             if not window or is_intraday or period == "MAX":
                 gaps.update(at for at, value in rows if value is None and at not in values)
+        if series is not None:
+            result.index = index_identity(spec, series.source)
         if gbp and spec.currency not in {None, "GBP"} and points:
             fx = f"{spec.currency}GBP=X"
             if period == "1D":
@@ -676,6 +713,7 @@ class IndexService:
         funds, as_of = self._funds(spec)
         try:
             if spec.basket == "ndx":
+                self._sync_market_source()
                 with self._ndx_lock:
                     now = self.now()
                     window = latest_session("us", now)
@@ -792,6 +830,7 @@ class IndexService:
         groups: dict[str, tuple[str, list[IndexContribution]]] = {}
         proxy_universe = None
         if spec.basket == "ndx":
+            self._sync_market_source()
             # CNDX overlaps with CSPX. Both use the same per-listing price cache.
             # Only request dated baselines again if they were missing or to settle.
             universe = self.universes.get("ndx")
@@ -829,10 +868,21 @@ class IndexService:
                 default=None,
             )
             as_of = None
+            sources = set()
             for member in universe.constituents:
                 item = quotes.get(member.symbol)
-                closes = _dated(dated.get(member.symbol), zone)
-                base = closes.get(prior[0]) if prior else None
+                daily_item = dated.get(member.symbol)
+                from_alpaca = item is not None and item.source == ALPACA_INTRADAY
+                if (
+                    item
+                    and daily_item
+                    and daily_item.source != (ALPACA_SIP if from_alpaca else item.source)
+                ):
+                    daily_item = None
+                closes = _dated(daily_item, zone)
+                base = (
+                    item.previous_close if from_alpaca else closes.get(prior[0]) if prior else None
+                )
                 session = (
                     member_session(
                         item.timestamps,
@@ -846,9 +896,14 @@ class IndexService:
                 )
                 if completed:
                     session = settle(
-                        session, closes.get(window.date), base, session_close=window.close
+                        session,
+                        closes.get(window.date) or provider_session_close(item, window, now),
+                        base,
+                        session_close=window.close,
                     )
                 if session is not None:
+                    if item or daily_item:
+                        sources.add((item or daily_item).source)
                     as_of = max(as_of or session.observed_at, session.observed_at)
                 groups.setdefault(member.sector_code, (member.sector_name, []))[1].append(
                     IndexContribution(
@@ -858,6 +913,7 @@ class IndexService:
                         contribution=member.weight * session.change if session else None,
                     )
                 )
+            prices_source = market_price_sources(sources)
         else:
             board = self.boards.load(basket_id)
             if board is None:
@@ -872,6 +928,7 @@ class IndexService:
             )
             as_of = board.as_of
             source_url = board.source.url
+            prices_source = board.source.prices
             fetched_at = board.fetched_at
             holdings_fetched_at = board.source.holdings_fetched_at
             proxy_universe = board.source.universe if spec.proxy_basket else None
@@ -947,6 +1004,7 @@ class IndexService:
             residual=residual,
             proxy_universe=proxy_universe,
             source_url=source_url,
+            prices_source=prices_source,
             fetched_at=fetched_at,
             holdings_fetched_at=holdings_fetched_at,
         )

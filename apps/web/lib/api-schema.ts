@@ -4147,6 +4147,11 @@ export interface components {
             laggards: components["schemas"]["IndexContribution"][];
             /** Leaders */
             leaders: components["schemas"]["IndexContribution"][];
+            /**
+             * Pricessource
+             * @default Yahoo Finance
+             */
+            pricesSource: string;
             /** Proxyuniverse */
             proxyUniverse?: string | null;
             /** Residual */
@@ -6348,6 +6353,11 @@ export interface components {
              * @default regular
              */
             session: string;
+            /**
+             * Source
+             * @default Yahoo Finance
+             */
+            source: string;
             /** Ticker */
             ticker: string;
             /** Timezone */

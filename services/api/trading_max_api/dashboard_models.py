@@ -826,6 +826,7 @@ class ResearchPriceSeries(ApiModel):
     exchange_calendar: str | None = None
     session: str = "regular"
     adjustment: str = "split-and-dividend-adjusted"
+    source: str = "Yahoo Finance"
     coverage_reason: str | None = None
     fetched_at: str | None = None
     benchmark_series: dict[str, list[BenchmarkPricePoint]] = Field(default_factory=dict)

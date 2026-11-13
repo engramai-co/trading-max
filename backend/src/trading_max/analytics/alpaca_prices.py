@@ -13,25 +13,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import exchange_calendars as xcals
-import httpx
 import pandas as pd
+
+from trading_max.infrastructure.alpaca_http import AlpacaDataError, AlpacaHTTP, AlpacaRateBudget
 
 from .intraday_reconstruction import IntradayPriceLoader, IntradayPrices
 
-DATA_URL = "https://data.alpaca.markets"
 NY = "America/New_York"
 
 
-class AlpacaDataError(RuntimeError):
-    """A deliberately non-secret provider error."""
-
-
 class AlpacaHistoricalClient:
-    def __init__(self, key: str, secret: str, *, transport=None, sleep=time.sleep) -> None:
-        self._headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
-        self._transport = transport
-        self._sleep = sleep
-        self._last_request = 0.0
+    def __init__(
+        self,
+        key: str,
+        secret: str,
+        *,
+        budget: AlpacaRateBudget,
+        transport=None,
+        sleep=time.sleep,
+        wait: float = 90,
+    ) -> None:
+        self._http = AlpacaHTTP(key, secret, budget=budget, transport=transport, sleep=sleep)
+        self._wait = wait
 
     def bars(self, symbol: str, start: pd.Timestamp, end: pd.Timestamp, feed: str) -> pd.Series:
         """Read all pages; raw prices already match historical nominal ledger units."""
@@ -47,29 +50,10 @@ class AlpacaHistoricalClient:
         }
         rows: dict[pd.Timestamp, float] = {}
         tokens: set[str] = set()
-        with httpx.Client(
-            base_url=DATA_URL,
-            headers=self._headers,
-            timeout=20,
-            follow_redirects=False,
-            transport=self._transport,
-        ) as client:
+        with self._http.client(timeout=20) as client:
             for _ in range(250):
-                for attempt in range(3):
-                    self._sleep(max(0, 0.32 - (time.monotonic() - self._last_request)))
-                    self._last_request = time.monotonic()
-                    try:
-                        response = client.get("/v2/stocks/bars", params=params)
-                    except httpx.HTTPError:
-                        raise AlpacaDataError("Alpaca market data unavailable") from None
-                    if (response.status_code == 429 or response.status_code >= 500) and attempt < 2:
-                        self._sleep(2**attempt)
-                        continue
-                    break
-                if response.status_code != 200:
-                    raise AlpacaDataError(f"Alpaca {feed} HTTP {response.status_code}")
+                payload = self._http.get(client, "/v2/stocks/bars", params, wait=self._wait)
                 try:
-                    payload = response.json()
                     for row in (payload.get("bars") or {}).get(symbol, []):
                         stamp = pd.Timestamp(row["t"])
                         value = float(row["c"])

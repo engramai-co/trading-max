@@ -453,3 +453,20 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
     assert chart["actualInterval"] == "1d"
     assert chart["adjustment"] == "provider-close"
     assert chart["points"][0]["close"] == 101.0
+
+    from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
+
+    def alpaca_etf(ticker, interval):
+        assert (ticker, interval) == ("SMH", "1d")
+        return ResearchPriceSeries.model_validate(
+            {
+                **chart,
+                "requestedInterval": "1d",
+                "source": "Alpaca (SIP)",
+            }
+        )
+
+    monkeypatch.setattr(boundary_client.app.state.security_prices, "alpaca_etf", alpaca_etf)
+    response = boundary_client.get("/v1/research/SMH/prices?interval=1d")
+    assert response.status_code == 200
+    assert response.json()["source"] == "Alpaca (SIP)"

@@ -12,8 +12,18 @@ from typing import cast
 from zoneinfo import ZoneInfo
 
 from pydantic import Field
+from trading_max.infrastructure.alpaca_market_prices import (
+    ALPACA_BATCH_SIZE,
+    ALPACA_SIP,
+    market_price_sources,
+)
 from trading_max.infrastructure.durable_files import atomic_bytes
-from trading_max.infrastructure.sector_prices import BATCH_SIZE, SparkRateLimited, SparkSeries
+from trading_max.infrastructure.sector_prices import (
+    BATCH_SIZE,
+    YAHOO_SOURCE,
+    SparkRateLimited,
+    SparkSeries,
+)
 from trading_max.infrastructure.sector_universe import (
     UNIVERSES,
     SectorUniverse,
@@ -45,7 +55,6 @@ BREADTH_MARKETS: dict[SectorMarketCode, tuple[str, ...]] = {
 BREADTH_SESSIONS = 252
 MAX_LOOKBACK_SESSIONS = 210
 MIN_BREADTH_COVERAGE = 0.8
-PRICE_SOURCE = "Yahoo Finance"
 VIX_SOURCE = "Cboe VIX via Yahoo Finance (^VIX)"
 ATTEMPT_INTERVAL = timedelta(hours=1)
 
@@ -81,11 +90,13 @@ VALUATION_REFERENCES = _valuation_references()
 class BreadthCloses(ApiModel):
     fetched_at: datetime
     isin: str = ""
+    source: str = YAHOO_SOURCE
     values: dict[str, float]
 
 
 class _BreadthInputs(ApiModel):
     schema_version: int = 1
+    preferred_source: str = YAHOO_SOURCE
     closes: dict[str, BreadthCloses]
 
 
@@ -107,9 +118,9 @@ def _write(path: Path, data: ApiModel) -> None:
     atomic_bytes(path, data.model_dump_json().encode())
 
 
-def _batches(symbols: list[str]) -> Iterator[list[str]]:
+def _batches(symbols: list[str], size: int = BATCH_SIZE) -> Iterator[list[str]]:
     # Keep the provider's round-robin mix of large and small listings.
-    count = -(-len(symbols) // BATCH_SIZE)
+    count = -(-len(symbols) // size)
     for index in range(count):
         yield symbols[index::count]
 
@@ -190,7 +201,7 @@ def _breadth(
         holdings_url=universe.source_url,
         holdings_as_of=date.fromisoformat(universe.as_of),
         holdings_fetched_at=datetime.fromisoformat(universe.fetched_at),
-        prices_source=PRICE_SOURCE,
+        prices_source=market_price_sources(item.source for item in available),
         prices_fetched_at=max(item.fetched_at for item in available),
         calculated_at=now,
         as_of=next(
@@ -324,8 +335,21 @@ class IndexDepth:
             return
         day = dates[-1]
         snapshots = [self.breadth(INDEX_REGISTRY[key]) for key in ids]
-        if all(snapshot and snapshot.as_of.isoformat() >= day for snapshot in snapshots):
+        path = self.root / f"{market}-closes.json"
+        prefer_alpaca = (
+            market == "us"
+            and isinstance(self.prices, SharedMarketPrices)
+            and self.prices.alpaca_source is not None
+        )
+        preferred_source = ALPACA_SIP if prefer_alpaca else YAHOO_SOURCE
+        cache = _read(path, _BreadthInputs)
+        same_provider = cache is None or cache.preferred_source == preferred_source
+        if same_provider and all(
+            snapshot and snapshot.as_of.isoformat() >= day for snapshot in snapshots
+        ):
             return
+        if not same_provider:
+            self._attempts.pop(market, None)
         last_attempt = self._attempts.get(market)
         if not self._attempt(market, day, now):
             return
@@ -347,27 +371,41 @@ class IndexDepth:
                 for item in basket.constituents:
                     if item.weight > 0:
                         members[item.symbol] = item.isin or members.get(item.symbol, "")
-            path = self.root / f"{market}-closes.json"
-            cache = _read(path, _BreadthInputs)
             old = cache.closes if cache and cache.schema_version == 1 else {}
             old = {
                 symbol: old[symbol]
                 for symbol, isin in members.items()
                 if symbol in old and (not isin or old[symbol].isin == isin)
             }
-            inputs = {symbol: values for symbol, values in old.items() if day in values.values}
+            # When the preferred provider changes, replace a complete history
+            # before adding any new closes; already published snapshots stay readable.
+            forced = {
+                symbol
+                for symbol, item in old.items()
+                if not same_provider and item.source != preferred_source
+            }
+            inputs = {
+                symbol: values
+                for symbol, values in old.items()
+                if day in values.values and symbol not in forced
+            }
             # Bootstrapping needs long history regardless of the one-month cache.
             reusable = settled(day)
             recent = {symbol: reusable[symbol] for symbol in members if symbol in reusable}
-            missing = [symbol for symbol in old if symbol not in recent and symbol not in inputs]
+            missing = [
+                symbol
+                for symbol in old
+                if symbol not in recent and symbol not in inputs and symbol not in forced
+            ]
             check_active()
             session = exchange_sessions(
                 MARKETS[market].calendar, date.fromisoformat(day), date.fromisoformat(day)
             )[-1]
             deferred = False
+            batch_size = ALPACA_BATCH_SIZE if prefer_alpaca else BATCH_SIZE
             # Work in provider batches so a budget deferral can retain completed
             # reads and the next monitor slot can resume without starting over.
-            for batch in _batches(missing):
+            for batch in _batches(missing, batch_size):
                 check_active()
                 try:
                     quotes = self.prices.daily(batch, not_before=session.close)
@@ -376,25 +414,33 @@ class IndexDepth:
                     break
                 for symbol, series in quotes.items():
                     recent[symbol] = BreadthCloses(
-                        fetched_at=series.fetched_at or now, values=_dated(series, zone, valid)
+                        fetched_at=series.fetched_at or now,
+                        values=_dated(series, zone, valid),
+                        source=series.source,
                     )
+            replaced = set(forced)
             for symbol, newer in recent.items():
                 before = old.get(symbol)
                 if before is None or symbol in inputs or day not in newer.values:
                     continue
-                if _compatible(before.values, newer.values):
+                if before.source == newer.source and _compatible(before.values, newer.values):
                     inputs[symbol] = BreadthCloses(
                         fetched_at=newer.fetched_at,
                         isin=members[symbol],
                         values=before.values | newer.values,
+                        source=newer.source,
                     )
                 else:
                     # A split/correction revised the historical price basis, or
                     # the workspace was offline too long. Do not stitch the two.
-                    old.pop(symbol, None)
-            backfill = [symbol for symbol in members if symbol not in old and symbol not in inputs]
+                    replaced.add(symbol)
+            backfill = [
+                symbol
+                for symbol in members
+                if (symbol not in old or symbol in replaced) and symbol not in inputs
+            ]
             if not deferred:
-                for batch in _batches(backfill):
+                for batch in _batches(backfill, batch_size):
                     check_active()
                     try:
                         histories = self.prices.breadth_history(batch)
@@ -415,6 +461,7 @@ class IndexDepth:
                                 fetched_at=series.fetched_at or now,
                                 isin=members[symbol],
                                 values=closes,
+                                source=series.source,
                             )
             if deferred:
                 if last_attempt is None:
@@ -427,6 +474,7 @@ class IndexDepth:
                 symbol: BreadthCloses(
                     fetched_at=series.fetched_at,
                     isin=series.isin,
+                    source=series.source,
                     values={d: p for d, p in series.values.items() if d in valid},
                 )
                 for symbol, series in closes.items()
@@ -434,7 +482,15 @@ class IndexDepth:
             if not closes or (deferred and not inputs):
                 return
             check_active()
-            _write(path, _BreadthInputs(closes=closes))
+            _write(
+                path,
+                _BreadthInputs(
+                    closes=closes,
+                    preferred_source=cache.preferred_source
+                    if deferred and cache is not None
+                    else preferred_source,
+                ),
+            )
             for key, basket in baskets.items():
                 if snapshot := _breadth(basket, dates, closes, now):
                     previous = self.breadth(INDEX_REGISTRY[key])

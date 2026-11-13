@@ -26,6 +26,7 @@ from yfinance.exceptions import YFRateLimitError
 SPARK_URL = "https://query1.finance.yahoo.com/v8/finance/spark"
 SPARK_DETAIL_URL = "https://query1.finance.yahoo.com/v7/finance/spark"
 BATCH_SIZE = 20
+YAHOO_SOURCE = "Yahoo Finance"
 
 
 class SparkResponse(Protocol):
@@ -55,6 +56,7 @@ class SparkSeries:
     session_end: int | None = None
     full_day_price: float | None = None
     stale: bool = False
+    source: str = YAHOO_SOURCE
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:

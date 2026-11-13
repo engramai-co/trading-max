@@ -29,6 +29,7 @@ from ..llm_routing import (
     provider_routes,
     provider_spec,
 )
+from ..market_data_runtime import alpaca_budget
 from ..models import (
     AlpacaEnhancementUpdate,
     AlpacaIntegrationCandidate,
@@ -904,7 +905,12 @@ def cancel_openai_oauth(session_id: str, request: Request):
 )
 def test_alpaca(body: AlpacaIntegrationCandidate, request: Request) -> IntegrationTestResult:
     try:
-        AlpacaHistoricalClient(body.api_key_id, body.secret_key).test()
+        AlpacaHistoricalClient(
+            body.api_key_id,
+            body.secret_key,
+            budget=alpaca_budget(request.app.state.settings.data_root),
+            wait=0,
+        ).test()
     except Exception as exc:
         raise _safe_integration_error(exc) from exc
     return IntegrationTestResult(
@@ -968,7 +974,12 @@ def toggle_alpaca(body: AlpacaEnhancementUpdate, request: Request) -> Integratio
                 preferences.credential_reference("alpaca")
             )
             pair = json.loads(raw or "{}")
-            AlpacaHistoricalClient(pair["api_key"], pair["api_secret"]).test()
+            AlpacaHistoricalClient(
+                pair["api_key"],
+                pair["api_secret"],
+                budget=alpaca_budget(request.app.state.settings.data_root),
+                wait=0,
+            ).test()
         except Exception as exc:
             raise _safe_integration_error(exc) from exc
     return preferences.set_integration_enabled("alpaca", body.enabled)

@@ -129,3 +129,64 @@ def test_short_preview_cannot_poison_full_history_or_indicator_values(tmp_path, 
     assert full.points[-1].sma200 is not None
     assert cache.get("TEST", "1d").points == full.points
     assert periods == ["6mo", "10y"]
+
+
+def test_etf_price_chart_uses_sip_and_switch_off_invalidates_its_cache(tmp_path):
+    import httpx
+    from trading_max.infrastructure.alpaca_http import AlpacaHTTP, AlpacaRateBudget
+    from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP, AlpacaMarketPrices
+
+    requests = []
+
+    def reply(request):
+        params = request.url.params
+        requests.append(params)
+        assert params["symbols"] == "SPY"
+        assert params["feed"] == "sip"
+        assert params["adjustment"] == "split,dividend"
+        return httpx.Response(
+            200,
+            json={
+                "bars": {
+                    "SPY": [
+                        {
+                            "t": "2026-11-12T05:00:00Z",
+                            "o": 100,
+                            "h": 102,
+                            "l": 99,
+                            "c": 101,
+                            "v": 3100,
+                        },
+                        {
+                            "t": "2026-11-13T05:00:00Z",
+                            "o": 101,
+                            "h": 112,
+                            "l": 100,
+                            "c": 109,
+                            "v": 3900,
+                        },
+                    ]
+                }
+            },
+        )
+
+    source = AlpacaMarketPrices(
+        AlpacaHTTP(
+            "fixture-key",
+            "fixture-secret",
+            budget=AlpacaRateBudget(tmp_path / "budget.json"),
+            transport=httpx.MockTransport(reply),
+        ),
+        now=lambda: datetime(2026, 11, 13, 20, tzinfo=UTC),
+    )
+    enabled = [source]
+    history = SecurityPriceHistory(tmp_path, alpaca=lambda: enabled[0])
+    result = history.alpaca_etf("SPY", "1d")
+    assert result and result.source == ALPACA_SIP
+    assert result.as_of == "2026-11-12"
+    assert len(result.points) == 1 and result.points[0].close == 101
+    assert result.points[0].volume == 3100
+    assert history.alpaca_etf("SPY", "1d") == result
+    enabled[0] = None
+    assert history.alpaca_etf("SPY", "1d") is None
+    assert len(requests) == 1

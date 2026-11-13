@@ -291,3 +291,35 @@ def test_breadth_bootstrap_resumes_persisted_batches_after_budget_deferral(tmp_p
     assert sorted(symbol for batch in source.full for symbol in batch) == symbols
     assert depth.breadth(SP).points[-1].eligible_200 == len(symbols)
     assert depth.breadth(NDX).points[-1].above_200 == 1
+
+
+def test_breadth_replaces_whole_series_on_provider_switch(tmp_path):
+    from dataclasses import replace
+
+    from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP
+
+    class Prices(_Prices):
+        source = "Yahoo Finance"
+
+        def breadth_history(self, symbols):
+            return {
+                key: replace(value, source=self.source)
+                for key, value in super().breadth_history(symbols).items()
+            }
+
+        def daily(self, symbols, *, not_before=None):
+            return {
+                key: replace(value, source=self.source)
+                for key, value in super().daily(symbols, not_before=not_before).items()
+            }
+
+    prices = Prices()
+    depth = IndexDepth(tmp_path, prices, _Universes())
+    depth.refresh("us", NOW, settled=lambda _: {}, check_active=lambda: None)
+    assert depth.breadth(SP).prices_source == "Yahoo Finance"
+    prices.now += timedelta(days=3)
+    prices.source = ALPACA_SIP
+    depth.refresh("us", prices.now, settled=lambda _: {}, check_active=lambda: None)
+    assert depth.breadth(SP).prices_source == ALPACA_SIP
+    assert depth.breadth(SP).as_of.isoformat() == "2026-11-16"
+    assert set(prices.full[-1]) == {"SYNA", "SYNB", "SYNC"}

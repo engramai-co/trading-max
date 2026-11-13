@@ -12,6 +12,7 @@ from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
+from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
 from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
@@ -503,7 +504,32 @@ def research_prices(
     listing = research.held_fund(ticker, manifest)
     if listing:
         ticker = listing.ticker
-    if (reference := us_fund(ticker)) and not listing:
+    # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
+    # chart. The typed snapshot remains the source for broker events and research.
+    symbol = ticker.upper()
+    reference = us_fund(symbol) if listing is None else None
+    market_etf = is_alpaca_listing(symbol) and (
+        reference is not None
+        or symbol in {"SPY", "VOO", "QQQ", "VT"}
+        or (listing is not None and listing.mic in {"ARCX", "XNAS", "XNYS", "US"})
+    )
+    security_prices = app_service(request, "security_prices")
+    if market_etf:
+        result = security_prices.alpaca_etf(symbol, interval)
+        if result is not None:
+            result.points = result.points[-limit:]
+            result.coverage_start = result.points[0].date if result.points else None
+            result.coverage_end = result.points[-1].date if result.points else None
+            try:
+                daily = research.price_series(ticker, manifest, limit=2_000)
+                visible_dates = {point.date[:10] for point in result.points}
+                result.trade_markers = [
+                    marker for marker in daily.trade_markers if marker.date[:10] in visible_dates
+                ]
+            except FileNotFoundError:
+                pass
+            return price_window(result, window)
+    if reference is not None:
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
         try:
@@ -566,7 +592,7 @@ def research_prices(
     fallback_reason = None
     if interval != "1d":
         try:
-            result = app_service(request, "security_prices").get(ticker, interval)
+            result = security_prices.get(ticker, interval, market_etf=market_etf)
             result.points = result.points[-limit:]
             result.coverage_start = result.points[0].date if result.points else None
             result.coverage_end = result.points[-1].date if result.points else None
@@ -590,10 +616,8 @@ def research_prices(
         return price_window(result, window)
     except FileNotFoundError as exc:
         try:
-            result = (
-                app_service(request, "security_prices").get(ticker, "1d", preview=True)
-                if window == "3M"
-                else app_service(request, "security_prices").get(ticker, "1d")
+            result = security_prices.get(
+                ticker, "1d", preview=window == "3M", market_etf=market_etf
             )
             result.requested_interval = interval
             result.coverage_reason = fallback_reason

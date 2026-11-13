@@ -377,6 +377,7 @@ def build_grouping(
     subgroup_names: Mapping[str, str] | None = None,
     min_priced: int = 0,
     final_close: datetime | None = None,
+    final_symbols: set[str] | None = None,
 ) -> GroupingResult:
     """Summarise each labelled group of one grouping for a session.
 
@@ -495,7 +496,12 @@ def build_grouping(
         settled = [
             (member, session)
             for member, session in priced
-            if final_close is None or closes_at_close(session, final_close)
+            if final_close is None
+            or (
+                member.symbol in final_symbols
+                if final_symbols is not None
+                else closes_at_close(session, final_close)
+            )
         ]
         covered = rankable(group_members, (member for member, _ in settled), min_priced)
         ranked_changes.append(

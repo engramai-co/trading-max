@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.46.0] - 2026-11-13
+
+### Added
+
+- With Alpaca connected, US sector boards use real-time IEX prices and SIP closes, US index breadth uses SIP history, and supported US ETFs use SIP price history.
+
+### Changed
+
+- US market quotes and account value reconstruction share one Alpaca request budget. Yahoo Finance still serves non-US listings, indices and currencies, and fills in whenever Alpaca cannot return a series.
+
 ## [1.45.0] - 2026-11-13
 
 ### Added
