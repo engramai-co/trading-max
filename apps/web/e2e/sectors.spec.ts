@@ -19,19 +19,39 @@ const SECTORS: Array<[string, string, number, number]> = [
   ["15", "Materials", 0.02, -0.0073],
 ];
 
-function fixture(code = "us") {
-  const now = Date.now();
-  const open = new Date(now - 3 * 3600_000);
-  const close = new Date(now + 3.5 * 3600_000);
+const EUROPE_FIXTURE_TIME = Date.parse("2026-11-13T13:15:00Z");
+
+function fixture(code = "us", now = Date.now()) {
+  const open = new Date(code === "eu" && now === EUROPE_FIXTURE_TIME ? "2026-11-13T08:00:00Z" : now - 3 * 3600_000);
+  const close = new Date(code === "eu" && now === EUROPE_FIXTURE_TIME ? "2026-11-13T16:30:00Z" : now + 3.5 * 3600_000);
   const day = open.toISOString().slice(0, 10);
-  const times = Array.from({ length: 36 }, (_, index) => new Date(open.getTime() + index * 300_000).toISOString());
+  const times = Array.from({ length: code === "eu" && now === EUROPE_FIXTURE_TIME ? 64 : 36 },
+    (_, index) => new Date(open.getTime() + index * 300_000).toISOString());
   const session = { date: day, open: open.toISOString(), close: close.toISOString(), breakStart: null, breakEnd: null };
-  const groups = SECTORS.map(([key, name, weight, change], index) => {
+  const europeWeights: Record<string, number> = {
+    "40": 0.24, "20": 0.18, "35": 0.14, "30": 0.09, "45": 0.09, "10": 0.06,
+    "25": 0.06, "15": 0.05, "55": 0.05, "50": 0.03, "60": 0.01,
+  };
+  const europeIndustries: Record<string, readonly [string, string]> = {
+    "40": ["Banks", "Insurance"], "20": ["Capital Goods", "Transportation"],
+    "35": ["Health Care Equipment & Services", "Pharmaceuticals, Biotechnology & Life Sciences"],
+    "30": ["Consumer Staples Distribution & Retail", "Food, Beverage & Tobacco"],
+    "45": ["Software & Services", "Semiconductors & Semiconductor Equipment"],
+    "10": ["Energy Equipment & Services", "Oil, Gas & Consumable Fuels"],
+    "25": ["Automobiles & Components", "Consumer Durables & Apparel"],
+    "15": ["Materials", ""], "55": ["Utilities", ""],
+    "50": ["Telecommunication Services", "Media & Entertainment"],
+    "60": ["Equity Real Estate Investment Trusts (REITs)", "Real Estate Management & Development"],
+  };
+  const groups = SECTORS.map(([key, name, usWeight, change], index) => {
+    const weight = code === "eu" ? europeWeights[key] : usWeight;
+    const industries = code === "eu" ? europeIndustries[key] : ["Software & Services", "Semiconductors & Semiconductor Equipment"];
+    const oneIndustry = !industries[1];
     const members = Array.from({ length: 6 }, (_, member) => ({
       symbol: "SYN" + key + member,
       name: "SYNTHETIC COMPANY " + key + member,
       // The last member has no industry group, so each sector also lists "Other".
-      subgroup: member === 5 ? "" : key + (member % 2 ? "20" : "10"),
+      subgroup: member === 5 ? "" : key + (!oneIndustry && member % 2 ? "20" : "10"),
       change: change + (member - 2.5) * 0.004,
       weight: weight / 6,
       exposureGbp: member === 0 ? 1200 : 0,
@@ -46,41 +66,45 @@ function fixture(code = "us") {
       breadth: { up: change > 0 ? 4 : 2, flat: 0, down: change > 0 ? 2 : 4 },
       memberCount: 6,
       leader: { symbol: members[5].symbol, name: members[5].name, change: members[5].change },
-      path: times.map((_, step) => change * Math.sin((step + 1) / 12)),
+      path: times.map((_, step) => change * Math.sin(((step + 1) * 3) / times.length)),
       ranks: [index + 1, ((index + 3) % 11) + 1, ((index + 5) % 11) + 1, index < 3 ? 1 : 7, index + 1],
       streak: index === 0 ? 2 : 0,
       exposureGbp: 1200,
       subgroups: [
-        ...[10, 20].map((suffix) => ({
-          key: key + suffix,
-          name: suffix === 10 ? "Software & Services" : "Semiconductors & Semiconductor Equipment",
-          change: change + (suffix === 10 ? 0.002 : -0.002),
-          weight: (weight * 5) / 12,
-          breadth: { up: 2, flat: 0, down: 1 },
-          memberCount: suffix === 10 ? 3 : 2,
-          exposureGbp: suffix === 10 ? 1200 : 0,
-        })),
+        ...industries.flatMap((name, i) => {
+          if (!name) return [];
+          const count = oneIndustry ? 5 : i === 0 ? 3 : 2;
+          return [{
+            key: key + (i + 1) * 10,
+            name,
+            change: change + (i === 0 ? 0.002 : -0.002),
+            weight: weight * count / 6,
+            breadth: { up: count - 1, flat: 0, down: 1 },
+            memberCount: count,
+            exposureGbp: i === 0 ? 1200 : 0,
+          }];
+        }),
         { key: "", name: "", change, weight: weight / 6, breadth: { up: 1, flat: 0, down: 0 }, memberCount: 1, exposureGbp: 0 },
       ],
       members,
     };
   });
-  const market = (code: string, timezone: string) => ({
-    market: code,
+  const market = (id: string, timezone: string) => ({
+    market: id,
     calendar: "SYNTH",
     timezone,
-    sessions: code === "us" ? [session] : [],
-    sessionDate: code === "us" ? day : null,
+    sessions: id === code ? [session] : [],
+    sessionDate: id === code ? day : null,
     complete: false,
-    asOf: code === "us" ? times.at(-1) : null,
-    fetchedAt: code === "us" ? new Date(now).toISOString() : null,
+    asOf: id === code ? times.at(-1) : null,
+    fetchedAt: id === code ? new Date(now).toISOString() : null,
     exposureGbp: 0,
     lastError: null,
     lastErrorAt: null,
   });
   return {
     market: code,
-    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul"), market("jp", "Asia/Tokyo")],
+    markets: [market("us", "UTC"), market("uk", "Europe/London"), market("hk", "Asia/Hong_Kong"), market("kr", "Asia/Seoul"), market("jp", "Asia/Tokyo"), market("eu", "Europe/London")],
     monitor: { enabled: true, phase: "idle", intervalSeconds: 600, nextRunAt: null, lastAttemptAt: null, lastSuccessAt: null, lastError: null },
     board: {
       market: code,
@@ -298,6 +322,11 @@ const indices: IndexIdentity[] = [
   fakeIndex("dow-jones", "us", "Dow Jones Industrial Average", "道琼斯工业平均指数", "^DJI", "USD"),
   fakeIndex("russell-2000", "us", "Russell 2000", "罗素 2000", "^RUT", "USD"),
   fakeIndex("vix", "us", "VIX", "VIX", "^VIX", null, "volatility"),
+  fakeIndex("euro-stoxx-50", "eu", "EURO STOXX 50", "欧洲斯托克 50", "^SYN-STOXX50E", "EUR"),
+  fakeIndex("stoxx-europe-600", "eu", "STOXX Europe 600", "斯托克欧洲 600", "^SYN-STOXX", "EUR"),
+  fakeIndex("dax", "eu", "DAX", "德国 DAX", "^SYN-DAX", "EUR"),
+  fakeIndex("cac-40", "eu", "CAC 40", "法国 CAC 40", "^SYN-CAC", "EUR"),
+  fakeIndex("ftse-100", "uk", "FTSE 100", "富时 100", "^SYN-FTSE", "GBP"),
   fakeIndex("nikkei-225", "jp", "Nikkei 225", "日经 225", "^N225", "JPY"),
   fakeIndex("topix", "jp", "TOPIX ETF price", "TOPIX ETF 价格", "1306.T", "JPY", "etf-price"),
   fakeIndex("msci-world", "global", "MSCI World", "MSCI 世界", "^SYN-WORLD", "USD"),
@@ -321,11 +350,15 @@ const globalFixture: GlobalMarketContribution = {
   ],
 };
 
-async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}) {
-  const base = Date.now() - 3600_000;
+async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fail?: boolean; now?: number } = {}) {
+  const base = now - 3600_000;
+  const europeLevels: Record<string, number> = {
+    "euro-stoxx-50": 5700, "stoxx-europe-600": 590, dax: 23900, "cac-40": 8100,
+  };
   const point = (index: IndexIdentity, n: number, interval: number) => ({
     at: new Date(base - (24 - n) * interval).toISOString(),
     value: index.kind === "volatility" ? 16.1 - n * 0.04 + Math.sin(n * 0.4) * 0.2
+      : index.scope === "eu" ? europeLevels[index.id] * (1 + n * 0.0004 + Math.sin(n * 0.9) * 0.002)
       : index.scope === "jp" ? (index.kind === "etf-price" ? 2870 - n * 3 : 39700 + n * 17)
       : (index.id === "nasdaq-100" ? 24200 + n * 23 + Math.sin(n * 0.55) * 130
         : index.id === "dow-jones" ? 46000 + n * 17 + Math.sin(n * 0.33) * 120
@@ -379,8 +412,10 @@ async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}
   });
   await page.route("**/api/backend/sectors**", async (route) => {
     const code = new URL(route.request().url()).searchParams.get("market") ?? "us";
-    const response = fixture(code);
-    if (code === "jp") {
+    const response = fixture(code, now);
+    if (code === "eu") {
+      response.board.source = { ...response.board.source, universe: "Synthetic MSCI Europe" };
+    } else if (code === "jp") {
       response.board.source = { ...response.board.source, fundTicker: "IJPN", universe: "MSCI Japan" };
     }
     await route.fulfill({ json: response });
@@ -409,6 +444,56 @@ test.describe("market index layer", () => {
     await page.locator(".mx-sector-back").click();
     await expect(page).toHaveURL(/sectors\?market=jp$/);
     await expect(card).toBeFocused();
+  });
+
+  test("Europe shows four index cards and its own sector board", async ({ page }, testInfo) => {
+    await mockIndices(page);
+    await page.goto("/sectors");
+    const received = page.waitForResponse((response) => response.url().endsWith("/api/backend/sectors?market=eu"));
+    await selectMarket(page, /欧洲|Europe/);
+    await received;
+    await expect(page).toHaveURL(/market=eu$/);
+    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.locator("#index-card-stoxx-europe-600")).toBeVisible();
+    await expect(page.locator(".mx-sectors-clock")).toContainText(/盘中|Open/);
+    await expect(page.getByRole("button", { name: /我的主题|My themes/ })).toHaveCount(0);
+
+    const detail = page.locator(".mx-sector-detail");
+    const rows = page.locator(".mx-sector-list > li");
+    if (testInfo.project.name === "mobile") {
+      await expect(rows).toHaveCount(11);
+      await rows.first().getByRole("button").tap();
+      await expect(page).toHaveURL(/market=eu&sector=45/);
+      await expect(detail.getByRole("heading", { level: 2 })).toBeFocused();
+      await expect(page.locator(".mx-index-cards")).toHaveCount(0);
+    } else {
+      const map = page.getByRole("group", { name: /欧洲板块地图|Europe sector map/ });
+      await expect(map.locator(".mx-sector-block")).toHaveCount(11);
+      await map.locator('[data-key="45"] [data-subgroup="4510"]').click();
+      await expect(detail.locator('.mx-sector-subgroup[aria-expanded="true"]')).toHaveCount(1);
+    }
+    await expect(detail.getByRole("heading", { level: 2 })).toHaveText(/信息技术|Information Technology/);
+    await expect(detail.locator(".mx-sector-spark-line")).toBeVisible();
+    await expect(detail.locator(".mx-sector-breadth-detail")).toBeVisible();
+    await expect(detail.locator(".mx-sector-leader")).toContainText("SYN455");
+    await expect(detail.locator(".mx-sector-ranks li")).toHaveCount(5);
+    await expect(detail).toContainText("£1,200");
+    if (testInfo.project.name === "mobile") {
+      await page.locator(".mx-sector-back").tap();
+      await expect(page).toHaveURL(/market=eu$/);
+      await expect(rows.first().getByRole("button")).toBeFocused();
+    }
+  });
+
+  test("an empty Europe board keeps its index cards visible", async ({ page }) => {
+    await mockIndices(page);
+    await page.route("**/api/backend/sectors?market=eu", (route) => {
+      const data = fixture("eu");
+      return route.fulfill({ json: { ...data, board: null } });
+    });
+    await page.goto("/sectors?market=eu");
+    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.getByRole("heading", { name: /还没有欧洲板块数据|No Europe sector data yet/ })).toBeVisible();
   });
 
   test("shows sectors through index errors and opens a shared index URL", async ({ page }) => {
@@ -508,6 +593,18 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/market=jp/);
   });
 
+  test("the desktop demo serves only its seeded Europe sector data", async ({ page }) => {
+    const demo = process.env.DESKTOP_DEMO_QA_URL;
+    test.skip(!demo?.startsWith("http://127.0.0.1:"), "Requires the isolated desktop demo.");
+    // The portable seed is tested separately; this isolates the demo presentation.
+    await page.route("**/api/backend/sectors?market=eu", (route) => route.fulfill({ json: fixture("eu") }));
+    await page.goto(new URL("/desktop/sectors?market=eu", demo).href);
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+    await expect(page.locator(".mx-index-cards")).toHaveCount(0);
+    await page.getByRole("button", { name: /板块数据来源|Sector data sources/ }).click();
+    await expect(page.getByText(/均为演示数据|are synthetic/)).toBeVisible();
+  });
+
   test("Global discloses the desktop demo’s missing quote data", async ({ page }) => {
     const demo = process.env.DESKTOP_DEMO_QA_URL;
     test.skip(!demo?.startsWith("http://127.0.0.1:"), "Requires the isolated desktop demo.");
@@ -524,6 +621,40 @@ test.describe("market index layer", () => {
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
     await expect(page).toHaveURL(/sectors\?market=us&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
+  });
+
+  test("capture synthetic Europe board screenshots", async ({ browser }, testInfo) => {
+    const folder = process.env.TM_EU_VISUAL_DIR;
+    test.skip(!folder || testInfo.project.name !== "desktop", "Opt-in batched visual evidence.");
+    const sizes = [[1440, 900, "light"], [1440, 900, "dark"], [1100, 800, "light"], [390, 844, "light"]] as const;
+    test.setTimeout(60_000);
+    await Promise.all(sizes.map(async ([width, height, colorScheme]) => {
+      const page = await browser.newPage({ viewport: { width, height }, colorScheme, reducedMotion: "reduce",
+        baseURL: process.env.PLAYWRIGHT_BASE_URL });
+      await page.clock.setFixedTime(EUROPE_FIXTURE_TIME);
+      await mockIndices(page, { now: EUROPE_FIXTURE_TIME });
+      const capture = async (market: string, step = "") => {
+        await page.goto(`/sectors?market=${market}`);
+        await expect(page.locator(".mx-index-cards a").first()).toBeVisible();
+        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+        await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
+        await page.evaluate(() => document.fonts.ready);
+        await settle(page);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        await page.screenshot({ path: path.join(folder!, `synthetic-${market}-${width}x${height}-${colorScheme}${step}.png`) });
+      };
+      await capture("eu", width === 390 ? "-list" : "");
+      if (width === 390) {
+        await page.locator(".mx-sector-list button").first().click();
+        await expect(page.locator(".mx-sector-detail h2")).toBeFocused();
+        await settle(page);
+        await page.screenshot({ path: path.join(folder!, "synthetic-eu-390x844-light-detail.png") });
+      } else if (width === 1440 && colorScheme === "light") {
+        await capture("uk");
+        await capture("us");
+      }
+      await page.close();
+    }));
   });
 
   test("capture market screenshots", async ({ browser }, testInfo) => {

@@ -45,6 +45,10 @@ export function SectorSources({ source }: { source: SectorBoard["source"] }) {
           ? `成分股与权重来自 ${basket}（${source.universe}）${published} 公布的持仓；行情来自 ${source.prices}，以截至时间为准。`
           : `Constituents and weights: ${basket} (${source.universe}) holdings published ${published}. Prices: ${source.prices}, as of the time shown.`}
       </p>
+      {source.fundTicker === "SMEA" && <p>{t(
+        "地图面积和持仓按完整成分篮子计算；涨跌、家数和排名使用欧洲上市股样本，目标覆盖篮子至少 95% 的权重，以各股的交易币种计算。",
+        "Map area and exposure use the full basket. Moves, breadth and ranks use the largest European listings, with a target of at least 95% of basket weight, in each listing’s own currency.",
+      )}</p>}
       <p>
         {t(
           "板块涨跌按成分股权重加权；涨跌 ±0.05% 以内算持平；排名比较近 5 个交易日的板块涨跌，有报价的成分股不到板块权重一半时不排名（主题另需至少 3 只有报价）。你的持仓是穿透后落在这些成分股上的金额，百分比是它占穿透后已投资总额的比例。",

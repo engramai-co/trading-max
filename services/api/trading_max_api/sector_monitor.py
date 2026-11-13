@@ -95,6 +95,8 @@ MIN_COVERAGE = 0.8
 OPEN_GRACE = timedelta(minutes=30)
 # After Yahoo asks for fewer requests, every market pauses this long.
 RATE_LIMIT_PAUSE = timedelta(minutes=30)
+# Europe keeps the full basket for map area and exposure but prices only its heaviest names.
+EU_QUOTE_WEIGHT = 0.95
 # Daily closes a provider leaves out are asked for again this many times a session.
 DAILY_ATTEMPTS = 3
 RANK_SESSIONS = 4
@@ -216,6 +218,23 @@ def default_market(statuses: Iterable[SectorMarketStatus], now: datetime) -> Sec
         if (close := max((w.close for w in status.sessions if w.close <= now), default=None))
     ]
     return max(closed)[2] if closed else "us"
+
+
+def _quote_symbols(universe: SectorUniverse) -> list[str]:
+    if universe.market != "eu":
+        return [c.symbol for c in universe.constituents]
+    # The issuer includes a few US-listed European companies. Their prices
+    # belong to a different session, so they count only towards area/exposure.
+    symbols: list[str] = []
+    weight = 0.0
+    for constituent in sorted(universe.constituents, key=lambda c: (-c.weight, c.symbol)):
+        if "." not in constituent.symbol:
+            continue
+        symbols.append(constituent.symbol)
+        weight += constituent.weight
+        if weight >= EU_QUOTE_WEIGHT:
+            break
+    return symbols
 
 
 def _regresses(previous: SectorBoard, board: SectorBoard) -> bool:
@@ -483,7 +502,7 @@ class SectorMonitor:
         )
         symbols = list(
             dict.fromkeys(
-                [constituent.symbol for constituent in universe.constituents]
+                _quote_symbols(universe)
                 + ([member.symbol for member in themes.members] if themes else [])
             )
         )
@@ -545,10 +564,16 @@ class SectorMonitor:
         if after_close:
             for symbol in symbols:
                 closes = daily.closes.get(symbol) or {}
+                # The prior Xetra day may be a holiday on the listing's exchange.
+                prior = (
+                    max((day for day in closes if day < session.date), default="")
+                    if market == "eu"
+                    else previous_date
+                )
                 settled = settle(
                     sessions.get(symbol),
                     closes.get(session.date),
-                    closes.get(previous_date),
+                    closes.get(prior),
                     session_close=session.close,
                 )
                 if settled is not None:
@@ -799,7 +824,10 @@ class SectorMonitor:
     def response(self, market: SectorMarketCode | None = None) -> SectorBoardResponse:
         now = self._now()
         statuses = self.markets(now)
-        chosen = market or default_market(statuses, now)
+        # Europe overlaps the UK; keep the existing default-market candidates.
+        chosen = market or default_market(
+            (status for status in statuses if status.market != "eu"), now
+        )
         return SectorBoardResponse(
             market=chosen,
             markets=statuses,

@@ -135,8 +135,8 @@ export function SectorsWorkspace() {
     kr: t("韩股", "Korea"),
     jp: t("日股", "Japan"),
   };
-  // Phone labels, so five markets keep one row at 320px in English too.
-  const shortNames: Record<SectorMarketCode, string> = {
+  // Short labels for markets with established abbreviations.
+  const shortNames: Partial<Record<SectorMarketCode, string>> = {
     us: t("美股", "US"),
     uk: t("英股", "UK"),
     hk: t("港股", "HK"),
@@ -272,7 +272,7 @@ export function SectorsWorkspace() {
         headingLevel={2}
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
         description={demonstration
-          ? t("演示仅包含美股板块。", "The demo includes US sectors only.")
+          ? t("此市场没有演示板块数据。", "Sector data for this market is not included in the demo.")
           : data?.monitor?.enabled === false
           ? t("开启「证券研究与每日对账」自动更新后，开盘时段每 10 分钟更新一次。", "Turn on Research & daily reconciliation updates to refresh sectors every 10 minutes while the market is open.")
           : data?.monitor?.nextRunAt

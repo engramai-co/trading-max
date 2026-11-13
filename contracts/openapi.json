@@ -17044,7 +17044,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -17110,7 +17111,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -17399,7 +17401,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -23509,7 +23512,8 @@
                     "uk",
                     "hk",
                     "kr",
-                    "jp"
+                    "jp",
+                    "eu"
                   ],
                   "type": "string"
                 },
