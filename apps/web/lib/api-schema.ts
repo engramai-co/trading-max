@@ -3771,8 +3771,6 @@ export interface components {
             move: number | null;
             /** Name */
             name: string;
-            /** Namezh */
-            nameZh: string;
         };
         /**
          * GlobalMarketContribution
@@ -3867,8 +3865,6 @@ export interface components {
             move: number | null;
             /** Name */
             name: string;
-            /** Namezh */
-            nameZh: string;
             /** Ranks */
             ranks: (number | null)[];
             /** Weight */

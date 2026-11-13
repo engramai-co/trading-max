@@ -7,6 +7,7 @@ import type { components } from "@/lib/api-schema";
 import type { SectorGroup } from "@/lib/types";
 import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { api, currency, percent } from "./data";
+import { industryName } from "./exposure-names";
 import { Empty, Help, Pending, QueryError, Segments, Tag, useCopy } from "./foundation";
 import { issuerName, strongestGroup } from "./sectors-data";
 import { SectorDetail, SectorList, type SectorDetailBoard } from "./sectors-detail";
@@ -70,7 +71,7 @@ export function adaptWorldSectors(answer: GlobalSectorBoard) {
   const groups: SectorGroup[] = weighted.map((sector) => {
     const changes = new Map(sector.intraday.map(({ at, move }) => [slot(at), move]));
     return {
-      key: sector.gics, name: sector.name, nameZh: sector.nameZh,
+      key: sector.gics, name: sector.name, nameZh: null,
       change: sector.move, weight: sector.weight ?? 0,
       path: slots.map((stamp) => changes.get(stamp) ?? null),
       ranks: sector.ranks, breadth: { up: 0, down: 0, flat: 0 },
@@ -128,10 +129,14 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
   </>;
 }
 
+export function worldIndustryRows(groups: Sector["groups"], locale: "zh" | "en") {
+  return groups.map((group) => ({ ...group, label: industryName(group.name, locale) }));
+}
+
 function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSectorBoard }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const groups = sector.groups.filter(({ move }) => move != null);
+  const groups = worldIndustryRows(sector.groups, locale).filter(({ move }) => move != null);
   const ranks = sector.ranks.flatMap((rank, index) =>
     rank == null ? [] : [{ rank, day: answer.rankSessions[index] }]);
   const basis = answer.exposureBasisGbp;
@@ -140,7 +145,7 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
   return <>
     {(contribution != null || ranks.length > 0 || (basis && exposure != null)) && <dl className="mx-sector-facts">
       {contribution != null && <div>
-        <dt>{t("对 MSCI World 的贡献", "Contribution to MSCI World")}</dt>
+        <dt>{t("对 MSCI 世界的贡献", "Contribution to MSCI World")}</dt>
         <dd>{formatNumber(contribution * 100, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" })} pp</dd>
       </div>}
       {ranks.length > 0 && <div>
@@ -159,8 +164,8 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
     {groups.length > 0 && <div className="mx-global-sector-ledger">
       <h3>{t("行业组", "Industry groups")}</h3>
       <ol className="mx-sector-subgroups">
-        {groups.map(({ gics, name, nameZh, move }) => <li key={gics} className="mx-sector-subgroup">
-          <span className="mx-sector-subgroup-name">{locale === "zh" ? nameZh : name}</span>
+        {groups.map(({ gics, label, move }) => <li key={gics} className="mx-sector-subgroup">
+          <span className="mx-sector-subgroup-name">{label}</span>
           <span className={"mx-sector-subgroup-change mx-" + changeTone(move)}>{formatDeltaPercent(move, locale, 2)}</span>
         </li>)}
       </ol>

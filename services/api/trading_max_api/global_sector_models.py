@@ -10,7 +10,6 @@ class GlobalIndustryMove(ApiModel):
     gics: str
     index_code: int | None
     name: str
-    name_zh: str
     move: float | None
 
 

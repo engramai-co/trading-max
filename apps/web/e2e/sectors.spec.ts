@@ -435,7 +435,7 @@ const worldFixture: GlobalSectorBoard = {
   rankSessions: ["2026-11-06", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"],
   exposureBasisGbp: 100_000,
   sectors: SECTORS.map(([gics, name, weight, move], i) => ({
-    gics, name, weight, indexCode: 100 + i, nameZh: gics === "60" ? "房地产" : name,
+    gics, name, weight, indexCode: 100 + i,
     move: gics === "60" ? null : move,
     contribution: gics === "60" ? null : weight * move,
     intraday: gics === "60" ? [] : Array.from({ length: 25 }, (_, step) => ({
@@ -444,7 +444,7 @@ const worldFixture: GlobalSectorBoard = {
     })),
     ranks: gics === "60" ? [] : [1, 3, 3, 1, i + 1],
     groups: [
-      { gics: gics + "10", name: "Synthetic Industry", nameZh: "演示行业", move, indexCode: 200 + i },
+      { gics: gics + "10", name: "Synthetic Industry", move, indexCode: 200 + i },
     ],
     holdings: [{ name: "Synthetic Constituent", weight: weight / 3 }],
     exposureGbp: 1250,
@@ -684,6 +684,17 @@ test.describe("market index layer", () => {
     }
     await regions.click();
     await expect(page).not.toHaveURL(/view=sectors/);
+
+    for (const [market, indexCard] of [["eu", "stoxx-europe-600"], ["us", "sp-500"]]) {
+      const direct = `/sectors?market=${market}`;
+      const board = page.waitForResponse((response) => response.url().endsWith(`/api/backend/sectors?market=${market}`));
+      await page.goto(direct);
+      expect((await board).ok()).toBe(true);
+      await expect(page).toHaveURL(direct);
+      await expect(view).toHaveCount(0);
+      await expect(page.locator(`#index-card-${indexCard}`)).toBeVisible();
+      await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible")).toHaveCount(11);
+    }
   });
 
   test("Global discloses the desktop demo’s missing quote data", async ({ page }) => {

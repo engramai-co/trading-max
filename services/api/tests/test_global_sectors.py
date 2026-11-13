@@ -139,3 +139,17 @@ def test_before_next_market_open_keeps_the_completed_date():
     assert board.reference_date == date.fromisoformat(THURSDAY)
     assert board.phase == "completed"
     assert board.as_of == at(THURSDAY, "21:03")
+
+
+def test_board_uses_the_canonical_gics_sector_and_group_names():
+    from trading_max.reference.taxonomy import standard_gics_names
+
+    from services.api.trading_max_api.global_markets import GlobalReference
+
+    now = at(FRIDAY, "10:00")
+    board = read_global_sectors(Prices(now), None, False, now, GlobalReference(None, {}, None))
+    assert len(board.sectors) == 11
+    assert sum(len(sector.groups) for sector in board.sectors) == 25
+    labels = {sector.gics: sector.name for sector in board.sectors}
+    labels.update({group.gics: group.name for sector in board.sectors for group in sector.groups})
+    assert labels == standard_gics_names()

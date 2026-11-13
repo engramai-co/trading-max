@@ -7759,17 +7759,12 @@
           "name": {
             "title": "Name",
             "type": "string"
-          },
-          "nameZh": {
-            "title": "Namezh",
-            "type": "string"
           }
         },
         "required": [
           "gics",
           "indexCode",
           "name",
-          "nameZh",
           "move"
         ],
         "title": "GlobalIndustryMove",
@@ -8162,10 +8157,6 @@
             "title": "Name",
             "type": "string"
           },
-          "nameZh": {
-            "title": "Namezh",
-            "type": "string"
-          },
           "ranks": {
             "items": {
               "anyOf": [
@@ -8196,7 +8187,6 @@
           "gics",
           "indexCode",
           "name",
-          "nameZh",
           "move",
           "weight",
           "contribution",

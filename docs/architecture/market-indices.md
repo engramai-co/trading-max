@@ -39,9 +39,10 @@ When that exact close is missing, the constituent remains unpriced.
 
 The US, Europe, UK, Hong Kong, Korea and Japan have index cards and sector
 boards. Taiwan, India, Canada, Australia and Switzerland show indices only.
-Global groups six benchmarks above a choice of Regions and Sectors. Japan's sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock
-Exchange; the Nikkei 225 and TOPIX ETF cards use their own prices. The index
-cards and sector board load and report freshness independently.
+Global groups six benchmarks above a choice of Regions and Sectors. Japan's
+sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock Exchange; the
+Nikkei 225 and TOPIX ETF cards use their own prices. The index cards and sector
+board load and report freshness independently.
 
 Europe's board uses [SMEA's MSCI Europe holdings](https://www.ishares.com/uk/individual/en/products/251861/ishares-msci-europe-ucits-etf-eur-acc-fund),
 including the UK and Switzerland. Sector and industry group areas and portfolio

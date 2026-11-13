@@ -17,8 +17,7 @@ const INSET = 3;
 const ARROWS: Record<string, Direction> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
 export function groupName(group: Pick<SectorGroup, "name" | "nameZh">, kind: SectorGroupingKind, locale: Locale) {
-  if (locale === "zh" && group.nameZh) return group.nameZh;
-  return kind === "themes" ? group.name : industryName(group.name, locale);
+  return kind === "themes" ? (locale === "zh" && group.nameZh ? group.nameZh : group.name) : industryName(group.name, locale);
 }
 
 /** ±0.05% counts as unchanged, inclusive, with room for floating-point error — the server's band. */

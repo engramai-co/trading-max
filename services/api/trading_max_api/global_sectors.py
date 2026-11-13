@@ -118,7 +118,6 @@ def _index_fields(spec: WorldIndustryIndex, move: float | None) -> dict:
         "gics": spec.gics,
         "index_code": spec.code,
         "name": spec.name,
-        "name_zh": spec.name_zh,
         "move": move,
     }
 
