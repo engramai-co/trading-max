@@ -1,5 +1,6 @@
 "use client";
 
+import { useMediaQuery } from "@mantine/hooks";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import type { components } from "@/lib/api-schema";
@@ -8,7 +9,7 @@ import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/forma
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
 import { globalHeatStyle, useGlobalContribution } from "./global-markets-data";
-import { MARKET_PATHS, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
+import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
 import Link from "./link";
 import { heat } from "./sectors-data";
 
@@ -69,6 +70,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const t = useCopy();
   const { locale } = useLocale();
   const pathname = usePathname();
+  const wide = useMediaQuery("(min-width: 1180px)") ?? false;
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
   const [inspection, setInspection] = useState<Inspection | null>(null);
@@ -190,7 +192,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
         close();
       }}>
-        <svg viewBox={WORLD_VIEWBOX} preserveAspectRatio="xMidYMid meet" role="group" aria-label={t("全球市场地图", "World market map")}>
+        <svg viewBox={wide ? WIDE_WORLD_VIEWBOX : WORLD_VIEWBOX} preserveAspectRatio="xMidYMid meet" role="group" aria-label={t("全球市场地图", "World market map")}>
           <path className="mx-global-land" d={WORLD_LAND} fillRule="evenodd" />
           {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, point }]) => {
             const reading = answer?.markets.find((item) => item.market === market);

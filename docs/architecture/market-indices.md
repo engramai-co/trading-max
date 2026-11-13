@@ -112,7 +112,9 @@ Korea, Taiwan, and India still show their own local moves on the map.
 FX, unlisted or missing markets, and proxy and observation-timing differences.
 
 The map uses [Natural Earth 110m](https://www.naturalearthdata.com/about/terms-of-use/)
-in Equal Earth projection, with the southern polar region omitted. Run
+in Equal Earth projection, with the southern polar region omitted. The wide
+layout also crops the outer Pacific margins to give more space to the land.
+Both layouts preserve the projection’s proportions. Run
 `uv run python tools/generate_global_market_map.py` to regenerate the static
 paths from the pinned, checksum-verified source. No geography package or
 download is needed at runtime.
