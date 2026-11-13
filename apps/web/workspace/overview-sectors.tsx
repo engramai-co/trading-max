@@ -13,7 +13,7 @@ import { formatCalendarDate, formatDate, formatDateTime, formatDeltaPercent } fr
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api, percent, tone } from "@/workspace/data";
-import { Empty, Panel, Pending, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Panel, Pending, Tag, UpdateFailure, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
@@ -407,6 +407,10 @@ function GlobalStamp({ answer }: { answer: GlobalMarketContribution }) {
   const { locale, timeZone } = useLocale();
   const stamp = answer.asOf;
   if (!stamp) return null;
+  // Kept quotes from before a restart or a provider limit carry their own time, said plainly.
+  if (answer.pricesStale) return (
+    <Tag tone="warn">{t("报价未更新 · ", "Quotes haven’t updated · ") + formatDateTime(stamp, locale, timeZone)}</Tag>
+  );
   const phase = answer.phase === "completed" ? t("已收盘", "Closed") : answer.phase === "live" ? t("盘中", "Open") : null;
   const time = formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
   return (
