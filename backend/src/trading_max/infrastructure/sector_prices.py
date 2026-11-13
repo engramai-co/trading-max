@@ -18,6 +18,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 
 from yfinance.exceptions import YFRateLimitError
@@ -50,6 +51,7 @@ class SparkSeries:
     previous_close: float | None = None
     name: str = ""
     timezone: str | None = None
+    fetched_at: datetime | None = None
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:
@@ -136,6 +138,7 @@ def parse_detail(payload: Any) -> dict[str, SparkSeries]:
             closes=closes,
             previous_close=_price(meta.get("chartPreviousClose")),
             name=str(meta.get("longName") or meta.get("shortName") or "").strip(),
+            timezone=meta.get("exchangeTimezoneName"),
         )
     return series
 
@@ -167,6 +170,12 @@ class YahooSparkPrices:
 
         return self._fetch(
             SPARK_DETAIL_URL, symbols, {"range": "1mo", "interval": "1d"}, parse_detail
+        )
+
+    def breadth_history(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
+        """Two years cover a one-year chart plus the 200-session lookback."""
+        return self._fetch(
+            SPARK_DETAIL_URL, symbols, {"range": "2y", "interval": "1d"}, parse_detail
         )
 
     def _fetch(

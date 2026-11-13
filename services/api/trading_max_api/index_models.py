@@ -119,6 +119,64 @@ class IndexBasket(ApiModel):
     sectors: list[IndexContribution]
     estimated_move: float | None
     residual: float | None
+    proxy_universe: str | None = None
+    source_url: str | None = None
+    fetched_at: datetime | None = None
+    holdings_fetched_at: datetime | None = None
+
+
+class IndexBreadthPoint(ApiModel):
+    date: date
+    above_50: float | None = Field(ge=0, le=1)
+    above_200: float | None = Field(ge=0, le=1)
+    eligible_50: int = Field(ge=0)
+    eligible_200: int = Field(ge=0)
+
+
+class IndexBreadthHistory(ApiModel):
+    fund: str
+    holdings_url: str
+    holdings_as_of: date
+    holdings_fetched_at: datetime
+    prices_source: str
+    prices_fetched_at: datetime = Field(
+        description="Latest retrieval of inputs used by this snapshot."
+    )
+    as_of: date
+    calculated_at: datetime
+    members: int = Field(gt=0)
+    points: list[IndexBreadthPoint]
+
+
+class IndexVixContext(ApiModel):
+    source: str
+    as_of: date
+    fetched_at: datetime
+    sample_start: date
+    sample_end: date
+    sample_size: int = Field(gt=0)
+    close: float = Field(gt=0, allow_inf_nan=False)
+    percentile: float = Field(ge=0, le=1)
+    p10: float = Field(gt=0, allow_inf_nan=False)
+    p90: float = Field(gt=0, allow_inf_nan=False)
+
+
+class IndexValuationSnapshot(ApiModel):
+    """A manually supplied, dated reading, identified by a registered source."""
+
+    source: str
+    source_url: str
+    basis: Literal["index", "etf"]
+    as_of: date
+    fetched_at: datetime
+    pe: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    forward_pe: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+
+class IndexValuationReference(ApiModel):
+    source: str
+    source_url: str
+    basis: Literal["index", "etf"]
 
 
 class IndexFundHolding(ApiModel):
@@ -134,3 +192,9 @@ class IndexContext(ApiModel):
     funds: list[IndexFundHolding] = Field(default_factory=list)
     exposure_gbp: float | None = None
     portfolio_as_of: str | None = None
+    breadth_history: IndexBreadthHistory | None = None
+    breadth_stale: bool = False
+    vix: IndexVixContext | None = None
+    vix_stale: bool = False
+    valuation: IndexValuationSnapshot | None = None
+    valuation_reference: IndexValuationReference | None = None

@@ -4125,32 +4125,109 @@ export interface components {
             coverage: number;
             /** Estimatedmove */
             estimatedMove: number | null;
+            /** Fetchedat */
+            fetchedAt?: string | null;
             /** Fund */
             fund: string;
             /** Holdingsdate */
             holdingsDate: string;
+            /** Holdingsfetchedat */
+            holdingsFetchedAt?: string | null;
             /** Laggards */
             laggards: components["schemas"]["IndexContribution"][];
             /** Leaders */
             leaders: components["schemas"]["IndexContribution"][];
+            /** Proxyuniverse */
+            proxyUniverse?: string | null;
             /** Residual */
             residual: number | null;
             /** Sectors */
             sectors: components["schemas"]["IndexContribution"][];
             /** Sessiondate */
             sessionDate: string;
+            /** Sourceurl */
+            sourceUrl?: string | null;
             /** Topholdings */
             topHoldings: components["schemas"]["IndexContribution"][];
+        };
+        /** IndexBreadthHistory */
+        IndexBreadthHistory: {
+            /**
+             * Asof
+             * Format: date
+             */
+            asOf: string;
+            /**
+             * Calculatedat
+             * Format: date-time
+             */
+            calculatedAt: string;
+            /** Fund */
+            fund: string;
+            /**
+             * Holdingsasof
+             * Format: date
+             */
+            holdingsAsOf: string;
+            /**
+             * Holdingsfetchedat
+             * Format: date-time
+             */
+            holdingsFetchedAt: string;
+            /** Holdingsurl */
+            holdingsUrl: string;
+            /** Members */
+            members: number;
+            /** Points */
+            points: components["schemas"]["IndexBreadthPoint"][];
+            /**
+             * Pricesfetchedat
+             * Format: date-time
+             * @description Latest retrieval of inputs used by this snapshot.
+             */
+            pricesFetchedAt: string;
+            /** Pricessource */
+            pricesSource: string;
+        };
+        /** IndexBreadthPoint */
+        IndexBreadthPoint: {
+            /** Above200 */
+            above200: number | null;
+            /** Above50 */
+            above50: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Eligible200 */
+            eligible200: number;
+            /** Eligible50 */
+            eligible50: number;
         };
         /** IndexContext */
         IndexContext: {
             basket?: components["schemas"]["IndexBasket"] | null;
+            breadthHistory?: components["schemas"]["IndexBreadthHistory"] | null;
+            /**
+             * Breadthstale
+             * @default false
+             */
+            breadthStale: boolean;
             /** Exposuregbp */
             exposureGbp?: number | null;
             /** Funds */
             funds?: components["schemas"]["IndexFundHolding"][];
             /** Portfolioasof */
             portfolioAsOf?: string | null;
+            valuation?: components["schemas"]["IndexValuationSnapshot"] | null;
+            valuationReference?: components["schemas"]["IndexValuationReference"] | null;
+            vix?: components["schemas"]["IndexVixContext"] | null;
+            /**
+             * Vixstale
+             * @default false
+             */
+            vixStale: boolean;
         };
         /** IndexContribution */
         IndexContribution: {
@@ -4304,6 +4381,82 @@ export interface components {
              * @enum {string}
              */
             state: "unavailable" | "observed" | "live" | "closed" | "stale";
+        };
+        /** IndexValuationReference */
+        IndexValuationReference: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "index" | "etf";
+            /** Source */
+            source: string;
+            /** Sourceurl */
+            sourceUrl: string;
+        };
+        /**
+         * IndexValuationSnapshot
+         * @description A manually supplied, dated reading, identified by a registered source.
+         */
+        IndexValuationSnapshot: {
+            /**
+             * Asof
+             * Format: date
+             */
+            asOf: string;
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "index" | "etf";
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
+            /** Forwardpe */
+            forwardPe?: number | null;
+            /** Pe */
+            pe?: number | null;
+            /** Source */
+            source: string;
+            /** Sourceurl */
+            sourceUrl: string;
+        };
+        /** IndexVixContext */
+        IndexVixContext: {
+            /**
+             * Asof
+             * Format: date
+             */
+            asOf: string;
+            /** Close */
+            close: number;
+            /**
+             * Fetchedat
+             * Format: date-time
+             */
+            fetchedAt: string;
+            /** P10 */
+            p10: number;
+            /** P90 */
+            p90: number;
+            /** Percentile */
+            percentile: number;
+            /**
+             * Sampleend
+             * Format: date
+             */
+            sampleEnd: string;
+            /** Samplesize */
+            sampleSize: number;
+            /**
+             * Samplestart
+             * Format: date
+             */
+            sampleStart: string;
+            /** Source */
+            source: string;
         };
         /** IntegrationOverview */
         IntegrationOverview: {
@@ -7309,6 +7462,8 @@ export interface components {
             fund: string;
             /** Fundticker */
             fundTicker: string;
+            /** Holdingsfetchedat */
+            holdingsFetchedAt?: string | null;
             /**
              * Prices
              * @default Yahoo Finance

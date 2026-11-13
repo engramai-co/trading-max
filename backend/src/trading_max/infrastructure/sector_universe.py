@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -393,6 +394,7 @@ class SectorUniverseProvider:
         self.fetcher = fetcher
         self._now = now or (lambda: datetime.now(UTC))
         self._memory: dict[str, SectorUniverse] = {}
+        self._locks = {market: threading.Lock() for market in UNIVERSES}
 
     def _path(self, market: str) -> Path:
         return self.root / f"{market}.json"
@@ -425,6 +427,10 @@ class SectorUniverseProvider:
     def get(self, market: str) -> SectorUniverse:
         """The market's universe; a stale cache is served when a refresh fails."""
 
+        with self._locks[market]:
+            return self._get(market)
+
+    def _get(self, market: str) -> SectorUniverse:
         spec = UNIVERSES[market]
         cached = self._cached(market)
         if cached is not None and self._fresh(cached):

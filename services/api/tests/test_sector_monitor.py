@@ -418,6 +418,7 @@ def test_refresh_publishes_a_board_of_the_session(tmp_path: Path, seed_watchlist
         fund_ticker="SYN",
         url="https://example.invalid/synthetic",
         as_of="2026-11-05",
+        holdings_fetched_at=datetime(2026, 11, 6, 6, tzinfo=UTC),
     )
     assert board.exposure_gbp == 0.0 and board.exposure_basis_gbp is None
     assert [grouping.kind for grouping in board.groupings] == ["gics"]

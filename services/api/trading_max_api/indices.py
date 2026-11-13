@@ -32,6 +32,7 @@ from .etf_snapshot import read_etf_portfolio
 from .global_markets import GlobalReference, read_global_contribution, read_global_reference
 from .global_sector_models import GlobalSectorBoard
 from .global_sectors import read_global_sectors, with_portfolio_exposure
+from .index_depth import BREADTH_MARKETS, IndexDepth
 from .index_models import (
     GlobalMarketContribution,
     IndexBasket,
@@ -97,6 +98,7 @@ def active_indices(scope: IndexScope | None = None) -> Iterable[IndexSpec]:
 _CLOCKS = {
     **{item.calendar: (item.calendar, item.timezone) for item in MARKETS.values()},
     "XNAS": ("XNYS", "America/New_York"),
+    "XCBF": ("XCBF", "America/Chicago"),
     "XETR": ("XETR", "Europe/Berlin"),
     "XPAR": ("XPAR", "Europe/Paris"),
     "XTAI": ("XTAI", "Asia/Taipei"),
@@ -248,11 +250,14 @@ class IndexService:
         prices: SharedMarketPrices,
         *,
         now: Callable[[], datetime] | None = None,
+        universes: SectorUniverseProvider | None = None,
+        depth: IndexDepth | None = None,
     ) -> None:
         self.store = store
         self.boards = boards
         self.prices = prices
-        self.universes = SectorUniverseProvider(root)
+        self.universes = universes or SectorUniverseProvider(root)
+        self.depth = depth or IndexDepth(root, prices, self.universes)
         self.acwi_weights = AcwiWeightsProvider(root)
         self.world_sector_weights = WorldSectorWeightsProvider(root)
         self._global_clock_lock = threading.Lock()
@@ -684,11 +689,23 @@ class IndexService:
         except Exception:
             LOGGER.debug("Index basket read failed", exc_info=True)
             basket = None
+        now = self.now()
+        breadth = (
+            self.depth.breadth(spec) if spec.id in BREADTH_MARKETS.get(spec.scope, ()) else None
+        )
+        vix = self.depth.vix() if spec.scope == "us" else None
+        valuation, valuation_reference = self.depth.valuation(spec, now)
         return IndexContext(
             basket=basket,
             funds=funds,
             portfolio_as_of=as_of,
             exposure_gbp=round(sum(item.value_gbp for item in funds), 2) if funds else None,
+            breadth_history=breadth,
+            breadth_stale=breadth is not None and self.depth.breadth_stale(spec, breadth, now),
+            vix=vix,
+            vix_stale=vix is not None and self.depth.vix_stale(vix, now),
+            valuation=valuation,
+            valuation_reference=valuation_reference,
         )
 
     def _funds(self, spec: IndexSpec) -> tuple[list[IndexFundHolding], str | None]:
@@ -737,7 +754,8 @@ class IndexService:
         ], portfolio.broker_as_of
 
     def _basket(self, spec: IndexSpec) -> IndexBasket | None:
-        if spec.basket is None:
+        basket_id = spec.basket or spec.proxy_basket
+        if basket_id is None:
             return None
         now = self.now()
         scope = cast(SectorMarketCode, spec.scope)
@@ -745,6 +763,7 @@ class IndexService:
         if window is None:
             return None
         groups: dict[str, tuple[str, list[IndexContribution]]] = {}
+        proxy_universe = None
         if spec.basket == "ndx":
             # CNDX overlaps with CSPX. Both use the same per-listing price cache.
             # Only request dated baselines again if they were missing or to settle.
@@ -776,6 +795,12 @@ class IndexService:
                     },
                 )
             fund, holdings_date, session_date = universe.fund_ticker, universe.as_of, window.date
+            source_url = universe.source_url
+            holdings_fetched_at = datetime.fromisoformat(universe.fetched_at)
+            fetched_at = max(
+                (item.fetched_at for item in quotes.values() if item.fetched_at is not None),
+                default=None,
+            )
             as_of = None
             for member in universe.constituents:
                 item = quotes.get(member.symbol)
@@ -807,7 +832,7 @@ class IndexService:
                     )
                 )
         else:
-            board = self.boards.load(spec.basket)
+            board = self.boards.load(basket_id)
             if board is None:
                 return None
             grouping = next((g for g in board.groupings if g.kind == "gics"), None)
@@ -819,6 +844,10 @@ class IndexService:
                 board.session_date,
             )
             as_of = board.as_of
+            source_url = board.source.url
+            fetched_at = board.fetched_at
+            holdings_fetched_at = board.source.holdings_fetched_at
+            proxy_universe = board.source.universe if spec.proxy_basket else None
             for group in grouping.groups:
                 groups[group.key] = (
                     group.name,
@@ -889,4 +918,8 @@ class IndexService:
             ],
             estimated_move=estimate,
             residual=residual,
+            proxy_universe=proxy_universe,
+            source_url=source_url,
+            fetched_at=fetched_at,
+            holdings_fetched_at=holdings_fetched_at,
         )

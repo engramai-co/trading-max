@@ -35,6 +35,8 @@ class IndexSpec:
     basket: str | None = None
     aliases: tuple[str, ...] = ()
     hourly_close: bool = False
+    # A market-board proxy may supply dated weights, never index attribution.
+    proxy_basket: str | None = None
 
     @property
     def ranges(self) -> tuple[IndexRange, ...]:
@@ -120,7 +122,7 @@ INDEX_REGISTRY = {
             "VIX",
             "^VIX",
             None,
-            "XNYS",
+            "XCBF",
             basis="implied-volatility",
             kind="volatility",
         ),
@@ -192,6 +194,7 @@ INDEX_REGISTRY = {
             "HKD",
             "XHKG",
             aliases=("恒指",),
+            proxy_basket="hk",
         ),
         IndexSpec(
             "hang-seng-china-enterprises",
@@ -218,7 +221,18 @@ INDEX_REGISTRY = {
             kind="etf-price",
             aliases=("恒生科技", "Hang Seng TECH Index"),
         ),
-        IndexSpec("kospi", "kr", "KOSPI", "韩国综合指数", "KRX", "KOSPI", "^KS11", "KRW", "XKRX"),
+        IndexSpec(
+            "kospi",
+            "kr",
+            "KOSPI",
+            "韩国综合指数",
+            "KRX",
+            "KOSPI",
+            "^KS11",
+            "KRW",
+            "XKRX",
+            proxy_basket="kr",
+        ),
         IndexSpec(
             "kosdaq", "kr", "KOSDAQ", "韩国创业板指数", "KRX", "KOSDAQ", "^KQ11", "KRW", "XKRX"
         ),

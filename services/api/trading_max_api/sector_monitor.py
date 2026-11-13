@@ -49,6 +49,7 @@ from trading_max.infrastructure.shared_market_prices import (
     market_price_priority,
 )
 
+from .index_depth import BREADTH_MARKETS, BreadthCloses, IndexDepth
 from .models import SectorMonitorState
 from .sector_context import (
     MIN_THEME_MEMBERS,
@@ -191,6 +192,7 @@ class _DailyCloses:
     late: bool = False
     closes: dict[str, dict[str, float]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
+    fetched: dict[str, datetime] = field(default_factory=dict)
     misses: dict[str, int] = field(default_factory=dict)
 
     def satisfied(self, symbol: str, required_date: str | None) -> bool:
@@ -271,6 +273,7 @@ class SectorMonitor:
         interval_seconds: int = SLOT_SECONDS,
         universes: UniverseSource | None = None,
         prices: PriceSource | None = None,
+        index_depth: IndexDepth | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         if interval_seconds < 60:
@@ -282,6 +285,7 @@ class SectorMonitor:
         self.interval_seconds = interval_seconds
         self.universes = universes or SectorUniverseProvider(data_root)
         self.prices = prices or SharedMarketPrices()
+        self.index_depth = index_depth
         self.boards = SectorBoardStore(data_root)
         self.masters = SecurityMasterCache(data_root)
         self.status_path = data_root / "state" / "sector-monitor.json"
@@ -467,7 +471,14 @@ class SectorMonitor:
             return cached
         self._check_active()
         try:
-            series = self.prices.daily(wanted)
+            if final and isinstance(self.prices, SharedMarketPrices):
+                window = latest_session(market, self._now())
+                series = self.prices.daily(
+                    wanted,
+                    not_before=window.close if window and window.date == session_date else None,
+                )
+            else:
+                series = self.prices.daily(wanted)
         except (SparkRateLimited, MarketPriceBudgetExhausted):
             raise
         except Exception as exc:
@@ -480,6 +491,7 @@ class SectorMonitor:
         for symbol in wanted:
             item = series.get(symbol)
             if item is not None:
+                cached.fetched[symbol] = item.fetched_at or self._now()
                 cached.closes[symbol] = {
                     datetime.fromtimestamp(stamp, zone).date().isoformat(): close
                     for stamp, close in zip(item.timestamps, item.closes, strict=False)
@@ -490,6 +502,16 @@ class SectorMonitor:
             if not cached.satisfied(symbol, required_date):
                 cached.misses[symbol] = cached.misses.get(symbol, 0) + 1
         return cached
+
+    def _settled_closes(self, market: SectorMarketCode, day: str) -> dict[str, BreadthCloses]:
+        cached = self._daily.get(market)
+        if not cached or not cached.final or cached.session != day:
+            return {}
+        return {
+            symbol: BreadthCloses(fetched_at=cached.fetched[symbol], values=values)
+            for symbol, values in cached.closes.items()
+            if day in values
+        }
 
     # Refresh -----------------------------------------------------------
 
@@ -709,6 +731,7 @@ class SectorMonitor:
                 fund_ticker=universe.fund_ticker,
                 url=universe.source_url,
                 as_of=universe.as_of,
+                holdings_fetched_at=datetime.fromisoformat(universe.fetched_at),
                 quote_weight_target=MARKETS[market].quote_weight
                 if MARKETS[market].quote_weight < 1
                 else None,
@@ -924,6 +947,20 @@ class SectorMonitor:
         if slot != self._last_slot:
             self._last_slot = slot
             self.run_once()
+            if self.index_depth is not None:
+                # Opening and settlement work for every market ran first. Depth
+                # deliberately stays in the ordinary budget tier.
+                for market in BREADTH_MARKETS:
+                    if not self._active() or (
+                        self._paused_until is not None and self._now() < self._paused_until
+                    ):
+                        break
+                    self.index_depth.refresh(
+                        market,
+                        self._now(),
+                        settled=lambda day, market=market: self._settled_closes(market, day),
+                        check_active=self._check_active,
+                    )
             now = self._now()
         remaining = (slot + timedelta(seconds=self.interval_seconds) - now).total_seconds()
         # Short waits keep slots on time after the computer sleeps.

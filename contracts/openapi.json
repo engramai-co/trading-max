@@ -9081,6 +9081,18 @@
             ],
             "title": "Estimatedmove"
           },
+          "fetchedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetchedat"
+          },
           "fund": {
             "title": "Fund",
             "type": "string"
@@ -9088,6 +9100,18 @@
           "holdingsDate": {
             "title": "Holdingsdate",
             "type": "string"
+          },
+          "holdingsFetchedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdingsfetchedat"
           },
           "laggards": {
             "items": {
@@ -9102,6 +9126,17 @@
             },
             "title": "Leaders",
             "type": "array"
+          },
+          "proxyUniverse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proxyuniverse"
           },
           "residual": {
             "anyOf": [
@@ -9124,6 +9159,17 @@
           "sessionDate": {
             "title": "Sessiondate",
             "type": "string"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
           },
           "topHoldings": {
             "items": {
@@ -9150,6 +9196,128 @@
         "title": "IndexBasket",
         "type": "object"
       },
+      "IndexBreadthHistory": {
+        "properties": {
+          "asOf": {
+            "format": "date",
+            "title": "Asof",
+            "type": "string"
+          },
+          "calculatedAt": {
+            "format": "date-time",
+            "title": "Calculatedat",
+            "type": "string"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "string"
+          },
+          "holdingsAsOf": {
+            "format": "date",
+            "title": "Holdingsasof",
+            "type": "string"
+          },
+          "holdingsFetchedAt": {
+            "format": "date-time",
+            "title": "Holdingsfetchedat",
+            "type": "string"
+          },
+          "holdingsUrl": {
+            "title": "Holdingsurl",
+            "type": "string"
+          },
+          "members": {
+            "exclusiveMinimum": 0.0,
+            "title": "Members",
+            "type": "integer"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/IndexBreadthPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "pricesFetchedAt": {
+            "description": "Latest retrieval of inputs used by this snapshot.",
+            "format": "date-time",
+            "title": "Pricesfetchedat",
+            "type": "string"
+          },
+          "pricesSource": {
+            "title": "Pricessource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fund",
+          "holdingsUrl",
+          "holdingsAsOf",
+          "holdingsFetchedAt",
+          "pricesSource",
+          "pricesFetchedAt",
+          "asOf",
+          "calculatedAt",
+          "members",
+          "points"
+        ],
+        "title": "IndexBreadthHistory",
+        "type": "object"
+      },
+      "IndexBreadthPoint": {
+        "properties": {
+          "above200": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above200"
+          },
+          "above50": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above50"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "eligible200": {
+            "minimum": 0.0,
+            "title": "Eligible200",
+            "type": "integer"
+          },
+          "eligible50": {
+            "minimum": 0.0,
+            "title": "Eligible50",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "above50",
+          "above200",
+          "eligible50",
+          "eligible200"
+        ],
+        "title": "IndexBreadthPoint",
+        "type": "object"
+      },
       "IndexContext": {
         "properties": {
           "basket": {
@@ -9161,6 +9329,21 @@
                 "type": "null"
               }
             ]
+          },
+          "breadthHistory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexBreadthHistory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "breadthStale": {
+            "default": false,
+            "title": "Breadthstale",
+            "type": "boolean"
           },
           "exposureGbp": {
             "anyOf": [
@@ -9190,6 +9373,41 @@
               }
             ],
             "title": "Portfolioasof"
+          },
+          "valuation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexValuationSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valuationReference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexValuationReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vix": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexVixContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vixStale": {
+            "default": false,
+            "title": "Vixstale",
+            "type": "boolean"
           }
         },
         "title": "IndexContext",
@@ -9672,6 +9890,165 @@
           "index"
         ],
         "title": "IndexQuote",
+        "type": "object"
+      },
+      "IndexValuationReference": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "index",
+              "etf"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceUrl",
+          "basis"
+        ],
+        "title": "IndexValuationReference",
+        "type": "object"
+      },
+      "IndexValuationSnapshot": {
+        "description": "A manually supplied, dated reading, identified by a registered source.",
+        "properties": {
+          "asOf": {
+            "format": "date",
+            "title": "Asof",
+            "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "index",
+              "etf"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "fetchedAt": {
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "forwardPe": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwardpe"
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pe"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "sourceUrl",
+          "basis",
+          "asOf",
+          "fetchedAt"
+        ],
+        "title": "IndexValuationSnapshot",
+        "type": "object"
+      },
+      "IndexVixContext": {
+        "properties": {
+          "asOf": {
+            "format": "date",
+            "title": "Asof",
+            "type": "string"
+          },
+          "close": {
+            "exclusiveMinimum": 0.0,
+            "title": "Close",
+            "type": "number"
+          },
+          "fetchedAt": {
+            "format": "date-time",
+            "title": "Fetchedat",
+            "type": "string"
+          },
+          "p10": {
+            "exclusiveMinimum": 0.0,
+            "title": "P10",
+            "type": "number"
+          },
+          "p90": {
+            "exclusiveMinimum": 0.0,
+            "title": "P90",
+            "type": "number"
+          },
+          "percentile": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Percentile",
+            "type": "number"
+          },
+          "sampleEnd": {
+            "format": "date",
+            "title": "Sampleend",
+            "type": "string"
+          },
+          "sampleSize": {
+            "exclusiveMinimum": 0.0,
+            "title": "Samplesize",
+            "type": "integer"
+          },
+          "sampleStart": {
+            "format": "date",
+            "title": "Samplestart",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "asOf",
+          "fetchedAt",
+          "sampleStart",
+          "sampleEnd",
+          "sampleSize",
+          "close",
+          "percentile",
+          "p10",
+          "p90"
+        ],
+        "title": "IndexVixContext",
         "type": "object"
       },
       "IntegrationOverview": {
@@ -18385,6 +18762,18 @@
             "title": "Fundticker",
             "type": "string"
           },
+          "holdingsFetchedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdingsfetchedat"
+          },
           "prices": {
             "default": "Yahoo Finance",
             "title": "Prices",
@@ -21544,7 +21933,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.42.0"
+    "version": "1.43.0"
   },
   "openapi": "3.1.0",
   "paths": {

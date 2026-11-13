@@ -131,6 +131,7 @@
 }
 .mx-index-history,
 .mx-index-basket,
+.mx-index-depth,
 .mx-index-holdings {
   display: grid;
   gap: 12px;
@@ -243,6 +244,40 @@
   margin: 0;
   color: var(--mx-muted);
   font-size: 13px;
+}
+.mx-index-depth {
+  min-width: 0;
+}
+.mx-index-depth-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px clamp(14px, 4vw, 38px);
+  margin: 0;
+}
+.mx-index-depth-metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-depth-metrics dt i {
+  width: 12px;
+  border-top: 2px solid var(--mx-ink);
+}
+.mx-index-depth-metrics dt i[data-dashed="true"] {
+  border-top: 2px dashed var(--mx-muted);
+}
+.mx-index-depth-metrics dd {
+  margin: 0;
+  font-size: var(--mx-text-metric);
+  font-weight: 620;
+  white-space: nowrap;
+}
+.mx-index-depth-metrics dd small {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 .mx-index-search {
   margin-block: 12px;
