@@ -67,8 +67,8 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
   const enabled = requested ?? Boolean(integration?.configured && integration.enabled);
   return (
     <Panel
-      title={t("账户重建行情", "Reconstruction market data")}
-      help={t("默认使用 YF；Alpaca 可补充美股隔夜历史行情。", "YF is the default. Alpaca adds historical US overnight prices.")}
+      title={t("行情数据", "Market data")}
+      help={t("Alpaca 提供美股行情，并补充账户净值重建所需的历史数据。", "Alpaca provides US market prices and supplements account value reconstruction.")}
     >
       {/* YF is the base in every state; the row names it until Alpaca keys exist, then switches Alpaca on or off. */}
       <div className="mx-setting-row">
@@ -111,8 +111,7 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
         {outcome === "saved" && <Notice tone="good">{t("设置已保存，下一次账户更新会重新计算历史重建。", "Saved. The next account update will recalculate reconstruction history.")}</Notice>}
         <details>
           <summary>{t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>
-          <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。历史 SIP 与 BOATS 数据约延迟 15 分钟；英国证券和汇率仍使用 YF。此连接只读取行情，不会下单。", "Use a free Paper account’s API Key ID and Secret. Historical SIP and BOATS data has a 15-minute delay; UK instruments and FX continue to use YF. This connection only reads market data and never places orders.")}</p>
-          <p className="mx-measure">{t("Alpaca 无数据时回退到有效的 YF 行情；缺失的隔夜成交不会被填成真实价格。密钥保存在运行服务器的系统凭据库中。", "When Alpaca is unavailable, valid YF data remains the fallback. Missing overnight trades are not fabricated. Keys are kept in the server’s operating-system credential store.")}</p>
+          <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
           <a href="https://app.alpaca.markets/dashboard/overview" target="_blank" rel="noreferrer">{t("打开 Alpaca → Paper → API Keys", "Open Alpaca → Paper → API Keys")}</a>
         </details>
       </Stack>

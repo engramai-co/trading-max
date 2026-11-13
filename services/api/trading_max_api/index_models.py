@@ -122,6 +122,7 @@ class IndexBasket(ApiModel):
     residual: float | None
     proxy_universe: str | None = None
     source_url: str | None = None
+    prices_source: str = "Yahoo Finance"
     fetched_at: datetime | None = None
     holdings_fetched_at: datetime | None = None
 

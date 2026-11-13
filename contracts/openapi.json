@@ -9137,6 +9137,11 @@
             "title": "Leaders",
             "type": "array"
           },
+          "pricesSource": {
+            "default": "Yahoo Finance",
+            "title": "Pricessource",
+            "type": "string"
+          },
           "proxyUniverse": {
             "anyOf": [
               {
@@ -15656,6 +15661,11 @@
           "session": {
             "default": "regular",
             "title": "Session",
+            "type": "string"
+          },
+          "source": {
+            "default": "Yahoo Finance",
+            "title": "Source",
             "type": "string"
           },
           "ticker": {

@@ -59,7 +59,7 @@ async function open(page: Page, settings: () => IntegrationOverview) {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await page.goto("/settings");
-  const panel = page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "Reconstruction market data", exact: true }) });
+  const panel = page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "Market data", exact: true }) });
   await expect(panel).toBeVisible();
   return { panel, unexpected };
 }
@@ -267,7 +267,7 @@ test.describe("reconstruction market data", () => {
       server = alpaca(true, 2);
       await route.fulfill({ json: server });
     });
-    const panel = () => page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "Reconstruction market data", exact: true }) });
+    const panel = () => page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "Market data", exact: true }) });
     await panel().getByRole("switch", { name: "Alpaca enhancement", exact: true }).focus();
     await page.keyboard.press("Space");
     await expect(panel().getByRole("switch")).toHaveAttribute("aria-busy", "true");

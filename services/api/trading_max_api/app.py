@@ -50,7 +50,7 @@ from .index_depth import IndexDepth
 from .indices import IndexService
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
-from .market_data_runtime import reconstruction_loader_factory
+from .market_data_runtime import market_price_source_factory, reconstruction_loader_factory
 from .models import ResearchOverview, SnapshotManifest
 from .oauth import OAuthCredentialVault, OAuthLoginManager
 from .provider_runtime import ProviderRuntimeError, make_provider_factory
@@ -325,7 +325,8 @@ def create_app(
                 extra={"provider_error_code": exc.code},
             )
 
-    market_prices = SharedMarketPrices()
+    alpaca_source = market_price_source_factory(settings.data_root, preferences, credentials)
+    market_prices = SharedMarketPrices(alpaca=alpaca_source)
     jobs = TypedJobManager(
         store,
         watchlist,
@@ -521,7 +522,9 @@ def create_app(
     app.state.estimate_history = jobs.estimate_history
     app.state.security_search = security_search
     app.state.valuation_assumptions = valuation_assumptions
-    app.state.security_prices = SecurityPriceHistory(settings.data_root)
+    app.state.security_prices = SecurityPriceHistory(
+        settings.data_root, alpaca=alpaca_source, yahoo_request=market_prices.yahoo_request
+    )
     app.state.market_prices = market_prices
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)

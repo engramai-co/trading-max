@@ -33,6 +33,11 @@ from trading_max.analytics.sector_board import (
     member_session,
     settle,
 )
+from trading_max.infrastructure.alpaca_market_prices import (
+    ALPACA_INTRADAY,
+    ALPACA_SIP,
+    market_price_sources,
+)
 from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import (
     SparkRateLimited,
@@ -194,6 +199,7 @@ class _DailyCloses:
     closes: dict[str, dict[str, float]] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
     fetched: dict[str, datetime] = field(default_factory=dict)
+    sources: dict[str, str] = field(default_factory=dict)
     misses: dict[str, int] = field(default_factory=dict)
 
     def satisfied(self, symbol: str, required_date: str | None) -> bool:
@@ -298,6 +304,7 @@ class SectorMonitor:
         self._start_after: SectorMarketCode | None = None
         self._attempts: dict[SectorMarketCode, tuple[str, datetime, bool]] = {}
         self._backfill: dict[str, tuple[str, int]] = {}
+        self._daily_source = None
         self._daily: dict[str, _DailyCloses] = {}
         self._portfolio: tuple[str | None, PortfolioExposure] | None = None
         self._resolutions: dict[str, tuple[object, dict[str, Resolution]]] = {}
@@ -375,33 +382,47 @@ class SectorMonitor:
         return at + timedelta(seconds=interval)
 
     def due(self, market: SectorMarketCode, now: datetime) -> bool:
-        if self._paused_until is not None and now < self._paused_until:
+        if self._yahoo_paused_for(market, now):
             return False
         session = latest_session(market, now)
         return session is not None and self._due(market, session, now)
+
+    def _yahoo_paused_for(self, market: SectorMarketCode, now: datetime) -> bool:
+        return (
+            self._paused_until is not None
+            and now < self._paused_until
+            and not (
+                market == "us"
+                and isinstance(self.prices, SharedMarketPrices)
+                and self.prices.alpaca_source is not None
+            )
+        )
 
     def next_run_at(self, now: datetime) -> datetime | None:
         """When the next refresh of any market is scheduled."""
 
         boundary = self._slot(now) + timedelta(seconds=self.interval_seconds)
-        if self._paused_until is not None and now < self._paused_until:
-            boundary = max(boundary, self._ceil_slot(self._paused_until))
         candidates: list[datetime] = []
         for market in MARKETS:
+            market_boundary = boundary
+            if self._yahoo_paused_for(market, now):
+                market_boundary = max(boundary, self._ceil_slot(self._paused_until))
             session = latest_session(market, now)
             if session is not None:
-                eligible = max(boundary, self._ceil_slot(self._eligible_at(market, session, now)))
+                eligible = max(
+                    market_boundary, self._ceil_slot(self._eligible_at(market, session, now))
+                )
                 if session.break_end is not None and in_break(session, eligible):
                     eligible = self._ceil_slot(session.break_end)
-                settlement = max(boundary, self._ceil_slot(session.close + COMPLETE_AFTER))
+                settlement = max(market_boundary, self._ceil_slot(session.close + COMPLETE_AFTER))
                 candidates.extend(
                     candidate
                     for candidate in {eligible, settlement}
-                    if candidate >= boundary and self._due(market, session, candidate)
+                    if candidate >= market_boundary and self._due(market, session, candidate)
                 )
             upcoming = next_session(market, now)
             if upcoming is not None:
-                candidates.append(max(boundary, self._ceil_slot(upcoming.open)))
+                candidates.append(max(market_boundary, self._ceil_slot(upcoming.open)))
         return min(candidates, default=None)
 
     # Inputs ------------------------------------------------------------
@@ -449,6 +470,11 @@ class SectorMonitor:
         and a few times more once the refresh window has passed.
         """
 
+        if market == "us" and isinstance(self.prices, SharedMarketPrices):
+            source = self.prices.alpaca_source
+            if source is not self._daily_source:
+                self._daily.pop(market, None)
+                self._daily_source = source
         cached = self._daily.get(market)
         if cached is None or cached.session != session_date:
             cached = self._daily[market] = _DailyCloses(session_date)
@@ -493,6 +519,7 @@ class SectorMonitor:
             item = series.get(symbol)
             if item is not None:
                 cached.fetched[symbol] = item.fetched_at or self._now()
+                cached.sources[symbol] = item.source
                 cached.closes[symbol] = {
                     datetime.fromtimestamp(stamp, zone).date().isoformat(): close
                     for stamp, close in zip(item.timestamps, item.closes, strict=False)
@@ -509,7 +536,9 @@ class SectorMonitor:
         if not cached or not cached.final or cached.session != day:
             return {}
         return {
-            symbol: BreadthCloses(fetched_at=cached.fetched[symbol], values=values)
+            symbol: BreadthCloses(
+                fetched_at=cached.fetched[symbol], values=values, source=cached.sources[symbol]
+            )
             for symbol, values in cached.closes.items()
             if day in values
         }
@@ -623,6 +652,8 @@ class SectorMonitor:
             market, session.date, symbols, final=after_close, late=late
         )
         self._check_active()
+        closing_symbols: set[str] = set()
+        session_sources = {symbol: series[symbol].source for symbol in sessions}
         if after_close:
             for symbol in symbols:
                 window = windows[symbol]
@@ -635,23 +666,37 @@ class SectorMonitor:
                     if market == "eu"
                     else previous_date
                 )
-                official = closes.get(session.date)
+                item = series.get(symbol)
+                daily_source = daily.sources.get(symbol)
+                from_alpaca = item is not None and item.source == ALPACA_INTRADAY
+                # Never append a different provider's closing price to a live path.
+                matching = item is None or daily_source == (
+                    ALPACA_SIP if from_alpaca else item.source
+                )
+                official = closes.get(session.date) if matching else None
                 if (
                     official is None
-                    and (official := provider_session_close(series.get(symbol), window, fetched_at))
-                    is not None
+                    and (official := provider_session_close(item, window, fetched_at)) is not None
                 ):
-                    # Reuse the confirmed price for ranks and the breadth update.
-                    daily.closes.setdefault(symbol, {})[session.date] = official
-                    daily.fetched[symbol] = fetched_at
+                    source = ALPACA_SIP if from_alpaca else item.source
+                    if daily_source == source or daily_source is None:
+                        daily.closes.setdefault(symbol, {})[session.date] = official
+                        daily.fetched[symbol] = fetched_at
+                        daily.sources[symbol] = source
                 settled = settle(
                     sessions.get(symbol),
                     official,
-                    closes.get(prior),
+                    (item.previous_close if from_alpaca else None) or closes.get(prior),
                     session_close=window.close,
                 )
                 if settled is not None:
                     sessions[symbol] = settled
+                    if symbol not in session_sources and daily_source is not None:
+                        session_sources[symbol] = daily_source
+                    if official is not None or (
+                        not from_alpaca and closes_at_close(settled, window.close)
+                    ):
+                        closing_symbols.add(symbol)
             if coverage() <= 0:
                 raise SectorRefreshError(f"No prices for the {session.date} session")
             if coverage() < MIN_COVERAGE:
@@ -659,13 +704,7 @@ class SectorMonitor:
                     f"Prices cover {coverage():.0%} of the {universe.universe} weight"
                     f" for {session.date}"
                 )
-        closing = sum(
-            c.weight
-            for c in universe.constituents
-            if (window := windows.get(c.symbol)) is not None
-            and c.symbol in sessions
-            and closes_at_close(sessions[c.symbol], window.close)
-        )
+        closing = sum(c.weight for c in universe.constituents if c.symbol in closing_symbols)
         complete = after_close and closing >= MIN_COVERAGE
 
         exposure = shared_exposure(
@@ -697,6 +736,7 @@ class SectorMonitor:
             "daily": daily.closes,
             "daily_sessions": daily_sessions,
             "final_close": session.close if after_close else None,
+            "final_symbols": closing_symbols,
         }
         groupings = [
             build_grouping(
@@ -738,6 +778,7 @@ class SectorMonitor:
             source=SectorSource(
                 universe=universe.universe,
                 fund=universe.fund,
+                prices=market_price_sources((*session_sources.values(), *daily.sources.values())),
                 fund_ticker=universe.fund_ticker,
                 url=universe.source_url,
                 as_of=universe.as_of,
@@ -801,8 +842,8 @@ class SectorMonitor:
         for index, market in enumerate(due):
             if not self._active():
                 break
-            if self._paused_until is not None and self._now() < self._paused_until:
-                break
+            if self._yahoo_paused_for(market, self._now()):
+                continue
             session = latest_session(market, now)
             # Past the refresh window, only a few attempts may settle the session.
             backfilling = (
@@ -903,7 +944,11 @@ class SectorMonitor:
             board = self.boards.load(market)
             with self._lock:
                 entry = dict(self._state["markets"].get(market) or {})
-            if isinstance(self.prices, SharedMarketPrices) and self.prices.rate_limited:
+            if (
+                isinstance(self.prices, SharedMarketPrices)
+                and self.prices.rate_limited
+                and (market != "us" or self.prices.alpaca_source is None)
+            ):
                 session = latest_session(market, now)
                 if session is not None and (
                     not board or board.session_date != session.date or not board.complete
@@ -961,14 +1006,14 @@ class SectorMonitor:
                 # Opening and settlement work for every market ran first. Depth
                 # deliberately stays in the ordinary budget tier.
                 for market in BREADTH_MARKETS:
-                    if (
-                        not self._active()
-                        or (self._paused_until is not None and self._now() < self._paused_until)
-                        or (
-                            isinstance(self.prices, SharedMarketPrices) and self.prices.rate_limited
-                        )
-                    ):
+                    if not self._active():
                         break
+                    if self._yahoo_paused_for(market, self._now()) or (
+                        isinstance(self.prices, SharedMarketPrices)
+                        and self.prices.rate_limited
+                        and (market != "us" or self.prices.alpaca_source is None)
+                    ):
+                        continue
                     self.index_depth.refresh(
                         market,
                         self._now(),

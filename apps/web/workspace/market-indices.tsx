@@ -435,7 +435,7 @@ function IndexContextPanels({ context, phone }: { context: IndexContext; phone: 
               ? <><a href={basket.sourceUrl} target="_blank" rel="noreferrer" className="mx-text-link">{basket.fund}</a> · </>
               : null}{t("持仓日期", "Holdings dated")} {formatCalendarDate(basket.holdingsDate, locale)}
               {basket.holdingsFetchedAt && <> · {t("抓取于", "Retrieved")} {formatDateTime(basket.holdingsFetchedAt, locale, timeZone)}</>}</p>
-            {basket.estimatedMove != null && basket.fetchedAt && <p>Yahoo Finance · {t("抓取于", "Retrieved")} {formatDateTime(basket.fetchedAt, locale, timeZone)}</p>}
+            {basket.estimatedMove != null && basket.fetchedAt && <p>{(basket.pricesSource ?? "Yahoo Finance").replace("IEX real-time / SIP", t("IEX 实时 / SIP", "IEX real-time / SIP"))} · {t("抓取于", "Retrieved")} {formatDateTime(basket.fetchedAt, locale, timeZone)}</p>}
           </Help>
         </div>
         {!basket.proxyUniverse && basket.estimatedMove != null && <><dl className="mx-index-metrics">

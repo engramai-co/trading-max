@@ -16,6 +16,8 @@ from urllib.parse import quote
 
 from yfinance.exceptions import YFRateLimitError
 
+from .alpaca_http import AlpacaDataError
+from .alpaca_market_prices import ALPACA_BATCH_SIZE, AlpacaMarketPrices, is_alpaca_listing
 from .sector_prices import (
     BATCH_SIZE,
     SparkRateLimited,
@@ -71,14 +73,27 @@ def market_price_fallback() -> Iterator[MarketPriceFallback]:
 class SharedMarketPrices:
     """Deduplicate concurrent work, cache by listing and pause on a provider 429."""
 
-    def __init__(self, source: YahooSparkPrices | None = None) -> None:
+    def __init__(
+        self,
+        source: YahooSparkPrices | None = None,
+        *,
+        alpaca: Callable[[], AlpacaMarketPrices | None] | None = None,
+    ) -> None:
         self.source = source or YahooSparkPrices()
+        self._alpaca = alpaca
+        self._alpaca_lock = threading.Lock()
+        self._alpaca_source: AlpacaMarketPrices | None = None
+        self._alpaca_cache: dict[tuple[str, str], tuple[float, SparkSeries | None]] = {}
         self._lock = threading.Lock()
         self._paused_until = 0.0
         self._requests: dict[int, deque[float]] = {
             window: deque() for window, _, _ in REQUEST_BUDGET
         }
         self._cache: dict[tuple[str, str], tuple[float, SparkSeries | None]] = {}
+
+    @property
+    def alpaca_source(self) -> AlpacaMarketPrices | None:
+        return self._alpaca() if self._alpaca is not None else None
 
     @property
     def rate_limited(self) -> bool:
@@ -94,7 +109,106 @@ class SharedMarketPrices:
         for used in self._requests.values():
             used.extend([now] * cost)
 
+    @contextmanager
+    def yahoo_request(self) -> Iterator[None]:
+        """Charge a direct market chart request against the same Yahoo budget."""
+        with self._lock:
+            now = time.monotonic()
+            if now < self._paused_until:
+                raise SparkRateLimited("Yahoo Finance price requests are paused")
+            self._reserve(now, 1)
+        try:
+            yield
+        except (SparkRateLimited, YFRateLimitError):
+            with self._lock:
+                self._paused_until = time.monotonic() + RATE_LIMIT_SECONDS
+            raise SparkRateLimited("Yahoo Finance is rate-limiting price requests") from None
+
+    def _alpaca_read(
+        self,
+        kind: str,
+        symbols: list[str],
+        ttl: int,
+        load: Callable[[AlpacaMarketPrices, list[str]], Mapping[str, SparkSeries]],
+        not_before: datetime | None,
+    ) -> dict[str, SparkSeries]:
+        if self._alpaca is None or not symbols:
+            return {}
+        with self._alpaca_lock:
+            source = self.alpaca_source
+            if source is not self._alpaca_source:
+                self._alpaca_cache.clear()
+                self._alpaca_source = source
+            if source is None:
+                return {}
+            now = time.monotonic()
+            missing = []
+            result = {}
+            for symbol in symbols:
+                expires, item = self._alpaca_cache.get((kind, symbol), (0, None))
+                if expires <= now or (
+                    item is not None
+                    and not_before is not None
+                    and (item.fetched_at is None or item.fetched_at < not_before)
+                ):
+                    missing.append(symbol)
+                elif item is not None:
+                    result[symbol] = item
+            for start in range(0, len(missing), ALPACA_BATCH_SIZE):
+                batch = missing[start : start + ALPACA_BATCH_SIZE]
+                fetched = datetime.now(UTC)
+                try:
+                    rows = load(source, batch)
+                except AlpacaDataError:
+                    # No waiting for Alpaca's budget and no replay of a failed
+                    # page. Yahoo receives the remaining symbols.
+                    for symbol in missing[start:]:
+                        self._alpaca_cache[kind, symbol] = (time.monotonic() + 15, None)
+                    break
+                for symbol in batch:
+                    item = rows.get(symbol)
+                    if item is not None:
+                        item = result[symbol] = replace(item, fetched_at=fetched)
+                    self._alpaca_cache[kind, symbol] = (
+                        time.monotonic() + (ttl if item is not None else min(ttl, 60)),
+                        item,
+                    )
+            if len(self._alpaca_cache) > 4096:
+                self._alpaca_cache = {
+                    key: item for key, item in self._alpaca_cache.items() if item[0] > now
+                }
+            # Settings can change while the HTTP calls are in flight.
+            return result if self._alpaca() is source else {}
+
     def _read(
+        self,
+        kind: str,
+        symbols: Iterable[str],
+        ttl: int,
+        load: Callable[[list[str]], Mapping[str, SparkSeries]],
+        *,
+        not_before: datetime | None = None,
+        alpaca_load: Callable[[AlpacaMarketPrices, list[str]], Mapping[str, SparkSeries]]
+        | None = None,
+    ) -> dict[str, SparkSeries]:
+        unique = list(dict.fromkeys(symbol.strip().upper() for symbol in symbols if symbol.strip()))
+        alpaca = (
+            self._alpaca_read(
+                kind, [s for s in unique if is_alpaca_listing(s)], ttl, alpaca_load, not_before
+            )
+            if alpaca_load is not None
+            else {}
+        )
+        missing = [symbol for symbol in unique if symbol not in alpaca]
+        if not missing:
+            return alpaca
+        if not alpaca or _fallback.get() is not None:
+            return alpaca | self._read_yahoo(kind, missing, ttl, load, not_before=not_before)
+        # Keep successful Alpaca names even if the Yahoo fallback is paused.
+        with market_price_fallback():
+            return alpaca | self._read_yahoo(kind, missing, ttl, load, not_before=not_before)
+
+    def _read_yahoo(
         self,
         kind: str,
         symbols: Iterable[str],
@@ -160,15 +274,30 @@ class SharedMarketPrices:
             }
 
     def intraday(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
-        return self._read("intraday", symbols, 240, self.source.intraday)
+        return self._read(
+            "intraday", symbols, 240, self.source.intraday, alpaca_load=AlpacaMarketPrices.intraday
+        )
 
     def daily(
         self, symbols: Iterable[str], *, not_before: datetime | None = None
     ) -> dict[str, SparkSeries]:
-        return self._read("daily", symbols, 240, self.source.daily, not_before=not_before)
+        return self._read(
+            "daily",
+            symbols,
+            240,
+            self.source.daily,
+            not_before=not_before,
+            alpaca_load=AlpacaMarketPrices.daily,
+        )
 
     def breadth_history(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
-        return self._read("breadth-2y", symbols, 240, self.source.breadth_history)
+        return self._read(
+            "breadth-2y",
+            symbols,
+            240,
+            self.source.breadth_history,
+            alpaca_load=AlpacaMarketPrices.breadth_history,
+        )
 
     def benchmark_intraday_batch(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         """Read five-minute marks across the prior close in a batched spark request."""
@@ -255,4 +384,10 @@ class SharedMarketPrices:
                 else {}
             )
 
-        return self._read(kind, [symbol], ttl, load, not_before=not_before).get(symbol)
+        def alpaca_load(source: AlpacaMarketPrices, _: list[str]) -> dict[str, SparkSeries]:
+            item = source.chart(symbol, kind, params)
+            return {symbol: item} if item is not None else {}
+
+        return self._read(
+            kind, [symbol], ttl, load, not_before=not_before, alpaca_load=alpaca_load
+        ).get(symbol)

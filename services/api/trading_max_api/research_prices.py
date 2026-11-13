@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import threading
-from contextlib import suppress
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext, suppress
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
+from trading_max.infrastructure.alpaca_http import AlpacaDataError
+from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP, NY, AlpacaMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.calendar import calendar_name
 from trading_max.research.facts import fingerprint
@@ -19,12 +22,77 @@ from .valuation_assumptions import _atomic_write
 
 
 class SecurityPriceHistory:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        alpaca: Callable[[], AlpacaMarketPrices | None] | None = None,
+        yahoo_request: Callable[[], AbstractContextManager[None]] = nullcontext,
+    ) -> None:
         self.root = root / "research-cache" / "security-prices"
         self.cache: SingleFlightCache[tuple[str, str], ResearchPriceSeries] = SingleFlightCache(96)
         self.provider_slots = threading.BoundedSemaphore(3)
+        self._alpaca = alpaca
+        self._yahoo_request = yahoo_request
+        self._alpaca_cache: SingleFlightCache[
+            tuple[AlpacaMarketPrices, str, str], ResearchPriceSeries | None
+        ] = SingleFlightCache(48)
 
-    def get(self, ticker: str, interval: str, *, preview: bool = False) -> ResearchPriceSeries:
+    def alpaca_etf(self, ticker: str, interval: str) -> ResearchPriceSeries | None:
+        source = self._alpaca() if self._alpaca else None
+        if source is None:
+            return None
+
+        def load():
+            try:
+                rows = source.etf_history(ticker, interval)
+            except AlpacaDataError:
+                return None
+            if not rows:
+                return None
+            frame = pd.DataFrame.from_dict(rows, orient="index").rename(
+                columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}
+            )
+            columns = ["Open", "High", "Low", "Close", "Volume"]
+            frame = frame.reindex(columns=columns).apply(pd.to_numeric, errors="coerce")
+            frame.index = pd.DatetimeIndex(frame.index).tz_convert(NY)
+            frame = frame.sort_index()
+            frame.attrs["intraday"] = interval.endswith("m")
+            averages = {
+                f"sma{n}": frame["Close"].rolling(n, min_periods=n).mean() for n in (20, 50, 200)
+            }
+            points = price_series(frame, averages, sessions=10_000)
+            return ResearchPriceSeries(
+                ticker=ticker,
+                as_of=points[-1]["date"],
+                currency="USD",
+                available_sessions=len({p["date"][:10] for p in points}),
+                points=points,
+                requested_interval=interval,
+                actual_interval=interval,
+                timezone=NY.key,
+                exchange_calendar="XNYS",
+                source=ALPACA_SIP,
+                fetched_at=datetime.now(UTC).isoformat(),
+            )
+
+        result = self._alpaca_cache.get_or_compute(
+            (source, ticker, interval),
+            load,
+            valid=lambda value: (
+                value is not None
+                and value.fetched_at is not None
+                and (datetime.now(UTC) - datetime.fromisoformat(value.fetched_at)).total_seconds()
+                < 300
+            ),
+        )
+        if result is not None and self._alpaca() is source:
+            return result.model_copy(deep=True)
+        return None
+
+    def get(
+        self, ticker: str, interval: str, *, preview: bool = False, market_etf: bool = False
+    ) -> ResearchPriceSeries:
         if interval not in {"15m", "60m", "1d", "1wk"}:
             raise ValueError("unsupported-security-interval")
         ticker = ticker.upper()
@@ -42,7 +110,7 @@ class SecurityPriceHistory:
                 saved = ResearchPriceSeries.model_validate_json(path.read_text())
                 if fresh(saved):
                     return saved
-            with self.provider_slots:
+            with self.provider_slots, self._yahoo_request() if market_etf else nullcontext():
                 return (
                     self._fetch(ticker, interval, path, preview=True)
                     if preview

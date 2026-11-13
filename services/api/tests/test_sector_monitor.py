@@ -1361,3 +1361,32 @@ def test_asian_board_settles_provider_close_and_reuses_it_for_breadth(tmp_path):
     assert board and board.complete
     assert board.as_of == session.close
     assert sectors._settled_closes("kr", session.date)[symbol].values[session.date] == 104
+
+
+def test_an_iex_bar_near_the_bell_does_not_settle_the_board(tmp_path):
+    from trading_max.infrastructure.alpaca_market_prices import ALPACA_INTRADAY, ALPACA_SIP
+
+    universes, prices = us_board_inputs()
+    symbols = list(prices.quotes)
+    for symbol in symbols:
+        prices.quotes[symbol] = replace(
+            series(symbol, 100, [(0, 100), (385, 110)]), source=ALPACA_INTRADAY
+        )
+        prices.history[symbol] = replace(daily_series(symbol, {PRIOR[-1]: 100}), source=ALPACA_SIP)
+    clock = {"now": US_CLOSE + COMPLETE_AFTER}
+    sectors = monitor(tmp_path, universes, prices, clock)
+
+    sectors.refresh("us", clock["now"])
+    board = sectors.boards.load("us")
+    assert board is not None and not board.complete
+    assert board.source.prices == ALPACA_INTRADAY
+
+    for symbol in symbols:
+        prices.history[symbol] = replace(
+            daily_series(symbol, {PRIOR[-1]: 100, SESSION: 104}), source=ALPACA_SIP
+        )
+    clock["now"] += timedelta(minutes=10)
+    sectors.refresh("us", clock["now"])
+    board = sectors.boards.load("us")
+    assert board is not None and board.complete
+    assert board.groupings[0].groups[0].change == pytest.approx(0.04)

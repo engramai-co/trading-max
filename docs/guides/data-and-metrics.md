@@ -17,24 +17,32 @@ and separate from the running product.
 See [provider notices](../../THIRD_PARTY_NOTICES.md) and
 [privacy](../../PRIVACY.md) for requests and storage.
 
-## Optional Alpaca reconstruction enhancement
+## Optional Alpaca market data
 
-Yahoo Finance remains the default. In **Settings → Accounts & data →
-Reconstruction market data**, connect a free Alpaca Paper account using its
-API Key ID and Secret. Test both historical feeds, then choose **Save and
-Enable**. The next account refresh replays reconstruction; live broker
-collection is unchanged. Turn the enhancement off to return to the YF-only
-path, or remove the saved keys. Changes apply without a service restart.
+In **Settings → Accounts & data → Market data**, connect a free Alpaca Paper
+account with its API Key ID and Secret, test the connection, then choose
+**Save and Enable**. Enabling, disabling or removing the connection changes
+the provider for new quote requests without a restart.
 
-The enabled path supplements US stock history with SIP five-minute bars and
-BOATS one-minute overnight bars. Basic access is delayed by at least fifteen
-minutes; the adapter requests data at least sixteen minutes old to allow for
-clock drift. This is historical reconstruction, not a real-time quote service.
-Only GET requests to the fixed Alpaca market-data host are used. No order or
-account-trading endpoints are called.
+The Markets views use Alpaca for eligible US-listed stocks and ETFs when
+enabled. Regular-session charts and latest trades use real-time IEX;
+previous closes and completed daily closes use SIP after its delay. US
+breadth uses split-adjusted SIP closes. Historical charts for comparison
+ETFs and confirmed held US ETFs use SIP bars adjusted for splits and
+dividends. Index symbols, non-US listings and FX
+continue to use Yahoo Finance. An unavailable Alpaca symbol falls back to
+Yahoo Finance for the whole series. IEX covers only one exchange; its latest
+trade can differ from an all-exchange quote or the official closing price.
 
-UK instruments, FX and research continue using the existing providers. Valid
-YF prices remain available when Alpaca fails. During the overnight session,
+The same connection supplements account value reconstruction with SIP
+five-minute bars and BOATS one-minute overnight bars. On Basic access, requests
+for recent SIP and BOATS history allow sixteen minutes for the fifteen-minute
+delay and clock drift. The API and reconstruction worker share one rolling
+budget of 180 requests per minute per workspace; quote requests fall back when
+there is no capacity, while reconstruction can wait. Only GET requests to the
+Alpaca market-data host are used.
+
+During the overnight session,
 prices older than ten minutes are rejected even when YF has an older hourly
 bar: a failed feed or a quiet security must not become a fabricated valuation.
 Broker observations are retained exactly, including when reconstruction is
