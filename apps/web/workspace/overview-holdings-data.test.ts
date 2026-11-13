@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Holding } from "@/lib/types";
 import { allocationChartColours } from "@/ui/charts/palette";
 import { holdingSignals, SIGNAL_LIMIT } from "./attention";
-import { COLOURED_HOLDINGS, holdingsLedger } from "./overview-holdings-data";
+import { COLOURED_HOLDINGS, holdingsLedger, readingColumns } from "./overview-holdings-data";
 
 const holding = (ticker: string, value: number, extra: Partial<Holding> = {}) =>
   ({ ticker, name: ticker + " Inc", account: "A", currentValueGbp: value, costGbp: value, pnlGbp: 0, pnlPct: 0, isFund: false, ...extra }) as Holding;
@@ -91,15 +91,16 @@ describe("overview holdings ledger", () => {
     expect(row.day).toBe(0);
   });
 
-  it("reads research per security and leaves funds without it", () => {
+  it("matches a fund by research code first and falls back to its display code", () => {
     const ledger = holdingsLedger({
-      holdings: [holding("NVDA", 200, { costGbp: 100, pnlGbp: 100 }), holding("VWRP.L", 100, { isFund: true })],
-      technical: [{ ticker: "NVDA", score: 64 }, { ticker: "VWRP.L", score: 46 }] as never,
+      holdings: [holding("NVDA", 200, { costGbp: 100, pnlGbp: 100 }), holding("VWRP", 100, { isFund: true, researchTicker: "VWRP.L" }), holding("EQGB", 75, { isFund: true, researchTicker: "EQGB.L" })],
+      technical: [{ ticker: "NVDA", score: 64 }, { ticker: "VWRP", score: 27 }, { ticker: "VWRP.L", score: 46 }, { ticker: "EQGB", score: 70 }] as never,
       valuations: [{ ticker: "NVDA", ev5Upside: -0.2 }] as never,
       signals: [],
     });
     expect(ledger.rows[0]).toMatchObject({ ticker: "NVDA", fund: false, score: 64, upside: -0.2, pnl: 1, href: "/research?ticker=NVDA" });
-    expect(ledger.rows[1]).toMatchObject({ ticker: "VWRP.L", fund: true, score: null, upside: null });
+    expect(ledger.rows[1]).toMatchObject({ ticker: "VWRP", fund: true, score: 46, upside: null, href: "/research?ticker=VWRP.L" });
+    expect(ledger.rows[2]).toMatchObject({ ticker: "EQGB", fund: true, score: 70, upside: null });
   });
 
   it("uses the same unrounded loss for the ledger and signals, with the first position as fallback", () => {
@@ -110,9 +111,8 @@ describe("overview holdings ledger", () => {
       holding("FALLBACK", 300, { account: "B", costGbp: Infinity, pnlPct: -0.05, isFund: true }),
       holding("WEIGHTED", 25, { account: "B", costGbp: NaN, pnlGbp: NaN }),
     ];
-    const technical = [{ ticker: "FALLBACK", score: 5 }] as never;
-    const signals = holdingSignals({ holdings, technical });
-    const { rows } = holdingsLedger({ holdings, signals, technical });
+    const signals = holdingSignals({ holdings });
+    const { rows } = holdingsLedger({ holdings, signals });
     expect(rows.map(({ ticker, pnl, score }) => ({ ticker, pnl, score }))).toEqual([
       { ticker: "FALLBACK", pnl: -0.30123, score: null },
       { ticker: "WEIGHTED", pnl: (-51.23 - 10) / 300, score: null },
@@ -146,5 +146,18 @@ it("only marks a combined row closed if all of its positions were closed", () =>
     { ticker: "CLOSED", dayClosed: true, day: null },
     { ticker: "MIXED", dayClosed: false, day: 0 },
     { ticker: "UNKNOWN", dayClosed: false, day: null },
+  ]);
+});
+
+it("keeps Technical in the same column for stocks and funds on desktop and phones", () => {
+  const zh = (value: string) => value;
+  const en = (_: string, value: string) => value;
+  expect(readingColumns("stocks", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术", "模型空间"]);
+  expect(readingColumns("funds", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术", "跟踪差"]);
+  expect(readingColumns("stocks", en, "Today").map(({ label, short }) => [label, short])).toEqual([
+    ["Today", "Today"], ["Unrealized", "P&L"], ["Technical", "Technical"], ["Model upside", "Upside"],
+  ]);
+  expect(readingColumns("funds", en, "Today").map(({ label, short }) => [label, short])).toEqual([
+    ["Today", "Today"], ["Unrealized", "P&L"], ["Technical", "Technical"], ["Tracking diff.", "Tracking"],
   ]);
 });

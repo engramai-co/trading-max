@@ -44,6 +44,7 @@ from .dashboard_models import (
     ResearchPriceSeries,
     ResearchShell,
     ResearchTradeMarker,
+    TechnicalScoreSummary,
 )
 from .etf_snapshot import find_etf, read_etf_portfolio
 from .models import (
@@ -224,16 +225,13 @@ def _financials_rows(raw: JsonObject) -> list[JsonObject]:
     return [dict(row) for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
 
 
-def _without_stock_score(row: JsonObject | None) -> JsonObject | None:
-    if not row:
-        return row
-    return {
-        **row,
-        "score": None,
-        "scoreBreakdown": None,
-        "scoreExplanationState": "unavailable",
-        "state": "—",
-    }
+def _technical_summary(row: JsonObject | None) -> TechnicalScoreSummary | None:
+    if row is None:
+        return None
+    return TechnicalScoreSummary.model_validate(row)
+
+
+_TECHNICAL_SEASONALITY = ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths")
 
 
 def _canonical_ticker(value: str) -> str:
@@ -613,7 +611,7 @@ class ResearchLedger:
             if candidate is None:
                 continue
             artifact = _artifact(manifest, candidate)
-            cache_key = (artifact.sha256, candidate) if artifact is not None else None
+            cache_key = (artifact.sha256, candidate, parser) if artifact is not None else None
             cached = (
                 self._row_cache.get_or_compute(
                     cache_key,
@@ -935,6 +933,17 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
+        if listing := self.held_fund(ticker, manifest):
+            lens = self._held_fund_lens(listing, "technical", manifest, detail="full")
+            return ResearchTickerSnapshot(
+                ticker=listing.ticker,
+                run_id=manifest.run_id,
+                generated_at=manifest.created_at,
+                market=lens.market,
+                technical=lens.technical.model_dump() if lens.technical else None,
+                fundamentals={"metrics": {"quoteType": "ETF"}},
+                portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
+            )
         ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         technical = _find(
@@ -968,11 +977,6 @@ class ResearchLedger:
             ),
             ticker,
         )
-        asset_type = str(((fundamentals or {}).get("metrics") or {}).get("quoteType") or "").upper()
-        if asset_type in {"ETF", "MUTUALFUND"} or (
-            asset_type == "" and find_etf(self._published_etfs(manifest), ticker)
-        ):
-            technical = _without_stock_score(technical)
         analyst_row = _find(
             self._cached_rows(manifest, "research/analyst.json", _analyst_rows),
             ticker,
@@ -1221,20 +1225,15 @@ class ResearchLedger:
             "research/coverage.json",
         }
         if ticker and (listing := self.held_fund(ticker, manifest)):
+            fund_keys = {ETF_SUMMARY_KEY, FUND_PRICE_DIRECTORY_KEY}
+            if view in {"overview", "technical"}:
+                fund_keys.update({"research/technical.json", "research/coverage.json"})
             return fingerprint(
                 [
                     listing.key,
                     view,
                     detail,
-                    sorted(
-                        (a.key, a.sha256)
-                        for a in manifest.artifacts
-                        if a.key
-                        in {
-                            ETF_SUMMARY_KEY,
-                            FUND_PRICE_DIRECTORY_KEY,
-                        }
-                    ),
+                    sorted((a.key, a.sha256) for a in manifest.artifacts if a.key in fund_keys),
                     datetime.now(UTC).date().isoformat(),
                 ]
             )
@@ -1298,11 +1297,27 @@ class ResearchLedger:
             }
         )
 
+    def _fund_technical(self, manifest: SnapshotManifest, ticker: str) -> JsonObject | None:
+        # The caller has matched the price directory by ISIN and venue.
+        # Never substitute a bare symbol or another listing's technical row.
+        return next(
+            (
+                row
+                for row in self._cached_rows(
+                    manifest, "research/technical.json", project_technical_rows
+                )
+                if row["ticker"] == ticker
+            ),
+            None,
+        )
+
     def _held_fund_lens(
         self,
         listing: FundListingIdentity,
         view: ResearchLensName,
         manifest: SnapshotManifest,
+        *,
+        detail: str,
     ) -> ResearchLensSnapshot:
         ticker = listing.ticker
         price = self._fund_price(manifest, ticker, listing)
@@ -1332,6 +1347,33 @@ class ResearchLedger:
             listing_calendar(ticker, quote.exchange, quote.timezone), datetime.now(UTC)
         )
         reading = self.fund_reading(listing, self._published_etfs(manifest))
+        technical = None
+        technical_summary = None
+        datasets = []
+        if view in {"overview", "technical"}:
+            row = self._fund_technical(manifest, ticker) if price else None
+            if row is not None:
+                coverage = (
+                    _find(
+                        self._cached_rows(manifest, "research/coverage.json", _fundamentals_rows),
+                        ticker,
+                    )
+                    or {}
+                )
+                if clock := (coverage.get("datasets") or {}).get("technical"):
+                    datasets.append(DatasetClock(dataset="technical", **clock))
+                if view == "overview" and detail == "summary":
+                    technical_summary = _technical_summary(row)
+                else:
+                    technical = (
+                        row
+                        if detail == "full"
+                        else {
+                            key: value
+                            for key, value in row.items()
+                            if key not in _TECHNICAL_SEASONALITY
+                        }
+                    )
         return ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -1339,9 +1381,12 @@ class ResearchLedger:
             generated_at=manifest.created_at.isoformat(),
             market=market,
             fundamentals=fundamental if view in {"overview", "fundamentals"} else None,
+            technical=technical,
+            technical_summary=technical_summary,
             context=ResearchContext(
                 quote=quote,
                 asset_type="ETF",
+                datasets=datasets,
                 capabilities=[
                     ResearchCapability(task="overview", state="available"),
                     ResearchCapability(
@@ -1380,7 +1425,7 @@ class ResearchLedger:
 
         listing = self.held_fund(ticker, manifest)
         if listing:
-            return self._held_fund_lens(listing, view, manifest)
+            return self._held_fund_lens(listing, view, manifest, detail=detail)
         ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
@@ -1564,8 +1609,6 @@ class ResearchLedger:
                 ),
                 ticker,
             )
-            if is_fund:
-                payload.technical = _without_stock_score(payload.technical)
         if not is_fund and (view == "valuation" or (view == "overview" and detail != "summary")):
             payload.valuation = _find(
                 self._cached_rows(
@@ -1719,20 +1762,7 @@ class ResearchLedger:
                 self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                 ticker,
             )
-            if summary_row and not is_fund:
-                payload.technical_summary = {
-                    key: summary_row.get(key)
-                    for key in (
-                        "ticker",
-                        "asOf",
-                        "score",
-                        "state",
-                        "scoreBreakdown",
-                        "scoreExplanationState",
-                        "atrPct",
-                        "bollingerWidth",
-                    )
-                }
+            payload.technical_summary = _technical_summary(summary_row)
             payload.technical = None
             payload.valuation = None
             payload.fundamentals = dict(fundamental)
@@ -1773,15 +1803,9 @@ class ResearchLedger:
                 technical = dict(payload.technical)
                 if detail == "seasonality":
                     payload.fundamentals = {
-                        key: technical.get(key)
-                        for key in (
-                            "seasonality",
-                            "seasonalityCoverage",
-                            "seasonalityMatrix",
-                            "yearPaths",
-                        )
+                        key: technical.get(key) for key in _TECHNICAL_SEASONALITY
                     }
-                for key in ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths"):
+                for key in _TECHNICAL_SEASONALITY:
                     technical.pop(key, None)
                 payload.technical = technical
             payload.fundamentals = {
@@ -1818,7 +1842,9 @@ class ResearchLedger:
         *,
         limit: int = 30,
     ) -> list[ResearchTimelinePoint]:
-        ticker = _canonical_ticker(ticker)
+        latest = self.store.latest_manifest()
+        listing = self.held_fund(ticker, latest) if latest else None
+        ticker = listing.ticker if listing else self._route_ticker(ticker)
         points: list[ResearchTimelinePoint] = []
         seen: set[tuple[str | None, ...]] = set()
         for manifest in self._history_manifests():
@@ -1831,6 +1857,7 @@ class ResearchLedger:
                     "research/options.json",
                     "research/valuation.json",
                     "research/earnings.json",
+                    *((FUND_PRICE_DIRECTORY_KEY,) if listing else ()),
                 )
             )
             if artifact_hashes in seen:
@@ -1840,23 +1867,39 @@ class ResearchLedger:
             # points. Building a full ticker snapshot here would also read
             # fundamentals, earnings, broker and look-through artifacts for
             # every historical run, which dominated the research page latency.
-            market = _find(self._market_rows(manifest), ticker)
-            technical = _find(
-                self._cached_rows(manifest, "research/technical.json", project_technical_rows),
-                ticker,
+            if listing:
+                market = None
+                technical = (
+                    self._fund_technical(manifest, ticker)
+                    if self._fund_price(manifest, ticker, listing)
+                    else None
+                )
+            else:
+                market = _find(self._market_rows(manifest), ticker)
+                technical = _find(
+                    self._cached_rows(manifest, "research/technical.json", project_technical_rows),
+                    ticker,
+                )
+            valuation = (
+                None
+                if listing
+                else _find(
+                    self._cached_rows(manifest, "research/valuation.json", valuation_rows),
+                    ticker,
+                )
             )
-            valuation = _find(
-                self._cached_rows(manifest, "research/valuation.json", valuation_rows),
-                ticker,
-            )
-            options = _find(
-                self._cached_rows(
-                    manifest,
-                    "research/options.json",
-                    option_rows,
-                    fallback_key="research/technical.json",
-                ),
-                ticker,
+            options = (
+                None
+                if listing
+                else _find(
+                    self._cached_rows(
+                        manifest,
+                        "research/options.json",
+                        option_rows,
+                        fallback_key="research/technical.json",
+                    ),
+                    ticker,
+                )
             )
             if not any((market, technical, valuation, options)):
                 continue
@@ -1946,8 +1989,8 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> list[ResearchAlert]:
-        ticker = _canonical_ticker(ticker)
         snapshot = self.ticker_snapshot(ticker, manifest)
+        ticker = snapshot.ticker
         alerts: list[ResearchAlert] = []
         live_quote = (
             self.live_alerts.quote(ticker, snapshot_run_id=manifest.run_id)

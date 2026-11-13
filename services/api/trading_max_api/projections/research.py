@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 
-from trading_max.reference import is_fund_instrument
 from trading_max.research.technical_scoring import score_breakdown
 
 from .values import JsonObject, nullable_number, number_value
@@ -21,11 +20,7 @@ def technical_rows(raw: JsonObject) -> list[JsonObject]:
         strength = row.get("trend_strength") or {}
         coverage = row.get("history_coverage") or {}
         adr = row.get("adr_research")
-        score = (
-            None
-            if is_fund_instrument(quote_type=str(row.get("asset_type") or ""))
-            else nullable_number(row.get("technical_score"))
-        )
+        score = nullable_number(row.get("technical_score"))
         if score is not None and (not math.isfinite(score) or not 0 <= score <= 100):
             score = None
         breakdown = score_breakdown(row) if score is not None else None
@@ -147,12 +142,12 @@ def technical_rows(raw: JsonObject) -> list[JsonObject]:
 
 def option_rows(raw: JsonObject) -> list[JsonObject]:
     result: list[JsonObject] = []
-    raw_entries = raw.get("rows")
-    entries = (
-        raw_entries if isinstance(raw_entries, list) else list((raw.get("options") or {}).values())
-    )
+    embedded = raw.get("options")
+    entries = embedded.values() if isinstance(embedded, dict) else raw.get("rows") or []
     for entry in entries:
-        if not isinstance(entry, dict):
+        # A legacy combined artifact can fall back to technical rows. Only
+        # project records with option-specific observations.
+        if not isinstance(entry, dict) or not ({"spot", "expiry_count"} & entry.keys()):
             continue
         aggregate = entry.get("aggregate") or {}
         gamma = entry.get("gamma_proxy") or {}

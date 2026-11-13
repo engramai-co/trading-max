@@ -11,9 +11,9 @@ import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./a
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
-import { etfPortfolioQuery, overlapDisplay, signedPoints, trackingDisplay, type Copy } from "./etf-data";
+import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy } from "./etf-data";
 import Link from "./link";
-import { holdingsLedger, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
+import { holdingsLedger, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
 import { SecurityPeek } from "./security-peek";
 
 /**
@@ -52,7 +52,6 @@ function factText(fact: AttentionFact, zh: boolean) {
   }
   if (fact.kind === "upside") return zh ? `模型空间 ${percent(fact.value, true, 0)}` : `Model upside ${percent(fact.value, true, 0)}`;
   if (fact.kind === "tracking") return zh ? `一年跟踪差 ${signedPoints(fact.value)} pp` : `1-year tracking difference ${signedPoints(fact.value)} pp`;
-  if (fact.kind === "overlap") return zh ? `组合重叠 ${percent(fact.value, false, 0)}` : `Portfolio overlap ${percent(fact.value, false, 0)}`;
   return zh ? `浮亏 ${percent(Math.abs(fact.value), false, 0)}` : `${percent(fact.value, true, 0)} vs cost`;
 }
 
@@ -74,17 +73,16 @@ function Flag({ facts, kinds }: { facts: AttentionFact[]; kinds: AttentionFact["
   );
 }
 
-function FundCell({ display, description, status, facts, kind }: {
-  display: string; description: string; status?: string; facts: AttentionFact[]; kind: "tracking" | "overlap";
+function TrackingCell({ display, description, status, facts }: {
+  display: string; description: string; status?: string; facts: AttentionFact[];
 }) {
   return <span className="mx-ledger-etf" role="group" aria-label={description} title={description} data-stale={status ? "" : undefined}>
-    <Flag facts={facts} kinds={[kind]} /><span aria-hidden="true">{display}</span>
+    <Flag facts={facts} kinds={["tracking"]} /><span aria-hidden="true">{display}</span>
   </span>;
 }
 
 function figures(row: LedgerRow, t: Copy) {
   const tracking = row.fund ? trackingDisplay(row.etf, t, true) : undefined;
-  const overlap = row.fund ? overlapDisplay(row.etf, t) : undefined;
   const hasTracking = row.etf?.tracking.differencePp != null && row.etf.tracking.state !== "incomparable";
   return {
     day: row.dayClosed ? <ClosedMarket /> : <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
@@ -94,17 +92,16 @@ function figures(row: LedgerRow, t: Copy) {
         <span className={changeClass(row.pnl, 1)}>{percent(row.pnl, true, 1)}</span>
       </>
     ),
-    score: tracking ? (
-      <FundCell facts={row.facts} kind="tracking" {...tracking} display={hasTracking ? tracking.display : "—"} />
-    ) : (
+    score: (
       <>
         <Flag facts={row.facts} kinds={["score", "rsi"]} />
         {row.score ?? "—"}
       </>
     ),
-    upside: overlap ? (
-      <FundCell facts={row.facts} kind="overlap" {...overlap} display={row.etf?.overlap.value == null ? "—" : overlap.display} />
-    ) : (
+    tracking: tracking && (
+      <TrackingCell facts={row.facts} {...tracking} display={hasTracking ? tracking.display : "—"} />
+    ),
+    upside: (
       <>
         <Flag facts={row.facts} kinds={["upside"]} />
         {percent(row.upside, true, 0)}
@@ -136,19 +133,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   const dayLabel = (date: string | null) => (!date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now));
   const weightLabel = t("占比", "Weight");
   const day = dayLabel(ledger.columnDay);
-  const pnl = t("浮动盈亏", "Unrealized");
   const groupLabel = (kind: LedgerGroup["kind"]) => kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks");
-  const readingColumns = (kind: LedgerGroup["kind"]) => [
-    { key: "day", label: day, short: day } as const,
-    { key: "pnl", label: pnl, short: t("浮动盈亏", "P&L") } as const,
-    ...(kind === "funds" ? [
-      { key: "score", label: t("跟踪差", "Tracking diff."), short: t("跟踪差", "Tracking") },
-      { key: "upside", label: t("重叠", "Overlap"), short: t("重叠", "Overlap") },
-    ] as const : [
-      { key: "score", label: t("技术", "Technical"), short: t("技术", "Technical") },
-      { key: "upside", label: t("模型空间", "Model upside"), short: t("模型空间", "Upside") },
-    ] as const),
-  ] as const;
   const restLabel = locale === "zh" ? `其余 ${ledger.rest.count} 只` : `${ledger.rest.count} more`;
   const countLabel = locale === "zh" ? `${ledger.count} 只` : `${ledger.count} ${ledger.count === 1 ? "holding" : "holdings"}`;
   const rowFocus = (row: LedgerRow): Focus => ({ segment: row.ticker, label: row.ticker, weight: row.weight });
@@ -172,8 +157,8 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       className="mx-overview-holdings"
       title={t("持仓", "Holdings")}
       help={locale === "zh"
-        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。ETF 显示一年跟踪差和组合重叠。跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记；重叠 ≥ ${percent(THRESHOLD.overlap, false, 0)}、双方覆盖率 ≥ ${percent(THRESHOLD.coverage, false, 0)} 且日期有效时标记。黄色数字表示已过期或日期未验证。`
-        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. ETFs show 1-year tracking difference and portfolio overlap. Amber marks a fresh, comparable tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp, or overlap ≥ ${percent(THRESHOLD.overlap, false, 0)} when both sides have ≥ ${percent(THRESHOLD.coverage, false, 0)} coverage and valid dates. Amber fund figures indicate stale data or unverified dates.`}
+        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。黄色跟踪差数字表示已过期或日期未验证。`
+        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. An amber tracking figure indicates stale data or unverified dates.`}
       action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
     >
       {ledger.count === 0 ? (
@@ -186,7 +171,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
           <table className="mx-ledger-table">
             {ledger.groups.map(({ kind, rows }) => {
               const groupId = ledgerId + "-" + kind;
-              const columns = readingColumns(kind);
+              const columns = readingColumns(kind, t, day);
               return <tbody key={kind} data-asset-class={kind}>
                 <tr className="mx-ledger-head">
                   <th scope="col" id={groupId}>{groupLabel(kind)}</th>
@@ -239,7 +224,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
           <div className="mx-ledger-list">
             {ledger.groups.map(({ kind, rows }) => {
               const headingId = ledgerId + "-phone-" + kind;
-              const columns = readingColumns(kind);
+              const columns = readingColumns(kind, t, day);
               return <section key={kind} className="mx-ledger-phone-group" aria-labelledby={headingId} data-asset-class={kind}>
                 <div className="mx-ledger-list-heading">
                   <h3 id={headingId}>{groupLabel(kind)}</h3>

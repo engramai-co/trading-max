@@ -128,7 +128,7 @@ class TypedWorkerRuntime:
                 AccountReviewStage(self.state_root, self.artifacts),
                 AccountDecisionStage(self.state_root, self.artifacts),
                 MarketSnapshotStage(self.artifacts, self.market_service, self.snapshots),
-                FundPriceStage(self.artifacts, self.snapshots, self.market_service),
+                FundPriceStage(self.artifacts),
                 TaxonomyArtifactStage(self.artifacts, self.taxonomy_provider),
                 TechnicalArtifactStage(self.artifacts),
                 OptionsArtifactStage(self.artifacts),

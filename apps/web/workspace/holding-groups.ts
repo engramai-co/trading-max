@@ -1,4 +1,4 @@
-import type { Holding } from "@/lib/types";
+import type { DashboardLens, Holding } from "@/lib/types";
 
 export type HoldingGroup = [Holding, ...Holding[]];
 
@@ -23,4 +23,11 @@ export function combinedHoldingPnl(positions: HoldingGroup): number | null {
 
 export function isFundHolding(positions: HoldingGroup): boolean {
   return positions.some((holding) => holding.isFund);
+}
+
+/** Prefer the listing's research symbol; older snapshots may only have the display symbol. */
+export function holdingTechnical(technical: DashboardLens["technical"], ticker: string, positions: HoldingGroup) {
+  const researchTicker = positions[0].researchTicker;
+  return technical?.find((row) => row.ticker === researchTicker)
+    ?? technical?.find((row) => row.ticker === ticker);
 }

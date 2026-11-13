@@ -738,6 +738,10 @@
   .mx-tech-rail .mx-tech-scale {
     display: none;
   }
+  .mx-tech-rail .mx-tech-coverage {
+    display: block;
+    margin-top: 8px;
+  }
   .mx-tech-rail .mx-tech-impacts {
     display: flex;
     flex-wrap: wrap;

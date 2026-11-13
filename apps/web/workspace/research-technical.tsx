@@ -27,7 +27,6 @@ export function TechnicalScoreCard({ data, compact = false, pending = false }: {
   const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const score = data?.score;
   const valid = score != null && Number.isFinite(score) && score >= 0 && score <= 100;
-  const scoreTone = valid ? score < 45 ? "mx-down" : score >= 56 ? "mx-up" : "" : "";
   const breakdown = data?.scoreBreakdown;
   const title = t("技术状态", "Technical state");
   return <div className={`mx-tech-score ${compact ? "mx-tech-score-compact" : ""}`}>
@@ -44,9 +43,9 @@ export function TechnicalScoreCard({ data, compact = false, pending = false }: {
     {/* The latest session is the normal state; an older score names its date. */}
     {data?.asOf && !isLatestSession(data.asOf, today) && <time className="mx-tech-asof" dateTime={data.asOf}>{formatDate(data.asOf, locale, { ...(data.asOf.slice(0, 4) === today.slice(0, 4) ? {} : { year: "numeric" }), month: "short", day: "numeric", timeZone: "UTC" })}</time>}
     {pending && !data ? <Pending /> : <>
-      <div className={`mx-tech-number ${scoreTone}`}><strong>{valid ? number(score, 0) : "—"}</strong>{valid && <span>/ 100</span>}</div>
-      <p className={`mx-tech-state ${scoreTone}`}>{data && valid ? stateName(data, t) : t("暂无技术评分", "Technical score unavailable")}</p>
-      {!compact && valid && <div className={`mx-tech-scale ${scoreTone}`} aria-hidden="true"><progress max={100} value={score} /><div><span>0</span><span>100</span></div></div>}
+      <div className="mx-tech-number"><strong>{valid ? number(score, 0) : "—"}</strong>{valid && <span>/ 100</span>}</div>
+      <p className="mx-tech-state">{data && valid ? stateName(data, t) : t("暂无技术评分", "Technical score unavailable")}</p>
+      {!compact && valid && <div className="mx-tech-scale" aria-hidden="true"><progress max={100} value={score} /><div><span>0</span><span>100</span></div></div>}
       {data && valid && !breakdown && <p className="mx-tech-status">{data.scoreExplanationState === "mismatch"
         ? t("评分依据暂不可核对", "Score inputs cannot be reconciled") : t("评分依据尚未就绪", "Score inputs unavailable")}</p>}
       {breakdown && breakdown.availableSignals < breakdown.totalSignals && <span className="mx-tech-coverage">{t("部分依据", "Partial inputs")} · {breakdown.availableSignals}/{breakdown.totalSignals}</span>}
@@ -62,7 +61,7 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   const [opened, setOpened] = useState<string | null>("trend");
   const tech = data.technical;
   const breakdown = tech?.scoreBreakdown;
-  if (!tech) return <Panel><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel>;
+  if (!tech) return <div id="technical-diagnosis" tabIndex={-1}><Panel><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel></div>;
   return <div id="technical-diagnosis" tabIndex={-1}><Panel className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
     help={t("每组右侧的数字是它对总分的影响：现有评分规则实际加减的分数，不是四个独立的百分制评分。缺失读数不参与评分；原始指标仍可展开查看。", "The number beside each group is its contribution to the total score: the points the existing scoring rules actually add or subtract, not four independent /100 scores. Missing readings add no points; original metrics remain available below.")}>
     {breakdown ? <div>{breakdown.groups.map((g) => {
@@ -93,8 +92,8 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   </Panel></div>;
 }
 
-export function TechnicalWorkspace({ ticker, runId, data, fund = false, pending, error, retry }: {
-  ticker: string; runId: string; data?: ResearchLensSnapshot; fund?: boolean; pending: boolean; error: boolean; retry: () => void;
+export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry }: {
+  ticker: string; runId: string; data?: ResearchLensSnapshot; pending: boolean; error: boolean; retry: () => void;
 }) {
   const { params } = useRouteState("push");
   const focused = useRef(false);
@@ -108,10 +107,6 @@ export function TechnicalWorkspace({ ticker, runId, data, fund = false, pending,
     }
     if (!focusDiagnosis) focused.current = false;
   }, [data, focusDiagnosis]);
-  if (fund) return <div className="mx-tech-main">
-    <PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} />
-    {data ? <TechnicalView data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : <Pending />}</Panel>}
-  </div>;
   return <div className="mx-tech-workspace">
     <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
     <div className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} />
