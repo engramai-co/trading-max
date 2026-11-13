@@ -3878,6 +3878,8 @@ export interface components {
             asOf: string | null;
             /** Markets */
             markets: components["schemas"]["GlobalMarketMove"][];
+            /** Otherweight */
+            otherWeight?: number | null;
             /** Phase */
             phase: ("live" | "completed") | null;
             /**
@@ -3912,6 +3914,8 @@ export interface components {
             move: number | null;
             /** Notopen */
             notOpen: boolean;
+            /** Weight */
+            weight?: number | null;
         };
         /** GlobalSectorBoard */
         GlobalSectorBoard: {

@@ -168,6 +168,35 @@ def test_right_after_p_before_next_open_uses_completed_day():
     assert answer.state == "partial"
 
 
+def test_each_map_market_carries_its_share_and_the_rest_of_the_world():
+    now = at(THURSDAY, "21:11")
+    weights = AcwiWeights(
+        as_of=date.fromisoformat(THURSDAY),
+        fetched_at=now,
+        locations={
+            "United States": 0.60,
+            "France": 0.05,
+            "Sweden": 0.05,
+            "Korea (South)": 0.03,
+            "South Korea": 0.02,
+            "India": 0.05,
+            "China": 0.02,
+            "Brazil": 0.01,
+        },
+    )
+    answer = read_global_contribution(Prices(now), weights, False, now)
+    shares = {item.market: item.weight for item in answer.markets}
+    assert shares["us"] == pytest.approx(0.60)
+    assert shares["eu"] == pytest.approx(0.10)
+    assert shares["kr"] == pytest.approx(0.05)
+    assert shares["in"] == pytest.approx(0.05)
+    assert shares["tw"] == shares["ch"] == 0
+    assert answer.other_weight == pytest.approx(0.03)
+    unweighted = read_global_contribution(Prices(now), None, False, now)
+    assert unweighted.other_weight is None
+    assert all(item.weight is None for item in unweighted.markets)
+
+
 def test_asia_morning_neutralises_europe_and_us_with_zero_rows():
     answer, rows = contribution(at(FRIDAY, "01:00"))
     assert answer.reference_date.isoformat() == FRIDAY

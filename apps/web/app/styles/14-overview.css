@@ -171,6 +171,47 @@
   gap: 3px;
   min-height: 248px;
 }
+/* With weights a mouse reads the share map instead; these blocks stay for phones and touch. */
+.mx-overview-world[data-weighted] {
+  display: none;
+}
+@media (max-width: 767px), (hover: none), (pointer: coarse) {
+  .mx-overview-world[data-weighted] {
+    display: grid;
+  }
+}
+.mx-overview-world-map > .mx-overview-sector[data-idle] .mx-overview-sector-change {
+  color: var(--mx-muted);
+  font-weight: 500;
+}
+/* Beside the clock while the share map fills the card. */
+.mx-overview-acwi {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-right: 6px;
+  color: var(--mx-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.mx-overview-acwi strong {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mx-overview-acwi strong:not(.mx-up, .mx-down) {
+  color: var(--mx-ink);
+}
+@media (hover: hover) {
+  .mx-overview-acwi:hover {
+    color: var(--mx-brand);
+  }
+}
+.mx-overview-acwi:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .mx-overview-world > .mx-overview-sector {
   position: relative;
   grid-column: var(--mx-world-column);

@@ -101,6 +101,13 @@ LOCATIONS: dict[GlobalRowMarket, frozenset[str]] = {
     "hk": frozenset({"Hong Kong"}),
     "em": EMERGING,
 }
+# Each map market's own share of the ACWI; everything else is the rest of the world.
+MAP_LOCATIONS: dict[GlobalMapMarket, frozenset[str]] = {
+    **{market: LOCATIONS[market] for market in ("us", "ca", "uk", "eu", "ch", "jp", "au", "hk")},
+    "kr": frozenset({"South Korea", "Korea (South)"}),
+    "tw": frozenset({"Taiwan"}),
+    "in": frozenset({"India"}),
+}
 
 
 LOGGER = logging.getLogger(__name__)
@@ -424,8 +431,22 @@ def estimate_contribution(
     em_move: float | None,
 ) -> GlobalMarketContribution:
     total = reference.move if reference else None
+    shares: dict[GlobalMapMarket, float] = {}
+    other = None
+    if weights is not None:
+        shares = {
+            market: fsum(
+                weight
+                for location, weight in weights.locations.items()
+                if location in MAP_LOCATIONS[market]
+            )
+            for market in MAIN_INDEX
+        }
+        other = max(0.0, fsum(weights.locations.values()) - fsum(shares.values()))
     markets = [
-        market_moves.get(market) or GlobalMarketMove(market=market, move=None, not_open=False)
+        (
+            market_moves.get(market) or GlobalMarketMove(market=market, move=None, not_open=False)
+        ).model_copy(update={"weight": shares.get(market)})
         for market in MAIN_INDEX
     ]
     rows: list[GlobalContributionRow] = []
@@ -468,6 +489,7 @@ def estimate_contribution(
         weights_as_of=weights.as_of if weights else None,
         weights_stale=weights_stale,
         markets=markets,
+        other_weight=other,
         rows=rows,
         residual=residual,
         state=state,

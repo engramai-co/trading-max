@@ -59,6 +59,8 @@ class GlobalMarketMove(ApiModel):
     market: GlobalMapMarket
     move: float | None
     not_open: bool
+    # Share of MSCI ACWI in this market, a fraction; null without dated weights.
+    weight: float | None = None
 
 
 class GlobalContributionRow(ApiModel):
@@ -82,6 +84,8 @@ class GlobalMarketContribution(ApiModel):
     weights_stale: bool
     prices_stale: bool = False
     markets: list[GlobalMarketMove]
+    # Share of MSCI ACWI outside the map's markets, a fraction; null without dated weights.
+    other_weight: float | None = None
     rows: list[GlobalContributionRow]
     residual: float | None
     state: Literal["ready", "partial", "unavailable"]

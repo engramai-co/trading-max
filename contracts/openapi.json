@@ -8168,6 +8168,17 @@
             "title": "Markets",
             "type": "array"
           },
+          "otherWeight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otherweight"
+          },
           "phase": {
             "anyOf": [
               {
@@ -8293,6 +8304,17 @@
           "notOpen": {
             "title": "Notopen",
             "type": "boolean"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
           }
         },
         "required": [

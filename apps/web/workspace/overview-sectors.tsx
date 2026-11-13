@@ -12,7 +12,7 @@ import type { SectorBoardResponse, SectorGroup, SectorMarketCode } from "@/lib/t
 import { formatCalendarDate, formatDate, formatDateTime, formatDeltaPercent } from "@/ui/formatters";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
-import { api, tone } from "@/workspace/data";
+import { api, percent, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, UpdateFailure, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
@@ -326,8 +326,9 @@ function SectorPanel({ market, title, picker }: { market: SectorMarketCode; titl
 }
 
 /**
- * The classic block world map: one equal block per market, set out roughly where it lies, washed by its main
- * index's move today. The ocean corner carries the global index's own move.
+ * The global card: one block per market, washed by its main index's move today. With dated ACWI weights a mouse gets
+ * the markets as a map by their share of the world index, the rest of the world as one neutral block, like the sector
+ * map; phones and touch get equal blocks by share. Without weights the blocks sit roughly where each market lies.
  */
 const WORLD: Record<WorldMarket, { at: [number, number]; name: [string, string]; short: string }> = {
   ca: { at: [1, 1], name: ["加拿大", "Canada"], short: "CA" },
@@ -344,22 +345,34 @@ const WORLD: Record<WorldMarket, { at: [number, number]; name: [string, string];
 };
 /** Phones list the same blocks in reading order, west to east. */
 const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "in", "jp", "kr", "hk", "tw", "au"];
+type WorldMove = GlobalMarketContribution["markets"][number];
+type WorldKey = WorldMarket | "other";
 
 function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
   const t = useCopy();
+  const fine = useFinePointer();
+  const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const query = useGlobalContribution(true);
   const answer = query.data;
   const markets = (answer?.markets ?? []).filter((item) => item.market in WORLD);
+  const weighted = markets.some((item) => (item.weight ?? 0) > 0);
+  // The map leaves no ocean corner, so the world index moves to the heading beside the clock.
+  const mapped = Boolean(fine && !phone && weighted);
   return (
     <Panel
       className="mx-overview-sectors"
       title={picker}
       helpLabel={title}
-      help={<p>{t(
-        "每块是该市场主要股指的当日涨跌，颜色越深，涨跌越大；左下是 MSCI 全球的当日涨跌。点开一块查看该市场。",
-        "Each block is the day’s move in that market’s main index; deeper colour means a bigger move. The corner shows MSCI ACWI. Open a block for that market.",
+      help={<p>{weighted ? t(
+        "面积是各市场在 MSCI 全球指数中的占比，按 iShares MSCI ACWI 的持仓计算；颜色是该市场主要股指的当日涨跌，越深涨跌越大。点开一块查看该市场。",
+        "Area is each market’s share of MSCI ACWI, from iShares MSCI ACWI holdings; colour is the day’s move in its main index, deeper for a bigger move. Open a block for that market.",
+      ) : t(
+        "每块是该市场主要股指的当日涨跌，颜色越深，涨跌越大。点开一块查看该市场。",
+        "Each block is the day’s move in that market’s main index; deeper colour means a bigger move. Open a block for that market.",
       )}</p>}
-      action={<span className="mx-freshness-group">{answer && <GlobalStamp answer={answer} />}
+      action={<span className="mx-freshness-group">
+        {answer && mapped && <AcwiTotal move={answer.acwiMove} />}
+        {answer && <GlobalStamp answer={answer} />}
         {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
       {query.isPending ? (
@@ -369,9 +382,23 @@ function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
       ) : !answer || !markets.length ? (
         <Empty title={t("还没有全球行情", "No global quotes yet")} />
       ) : (
-        <WorldBlocks markets={markets} acwiMove={answer.acwiMove} label={title} />
+        <>
+          {mapped && <WorldMap markets={markets} other={answer.otherWeight ?? 0} label={title + t("地图", " map")} />}
+          <WorldBlocks markets={markets} acwiMove={answer.acwiMove} label={title} weighted={weighted} />
+        </>
       )}
     </Panel>
+  );
+}
+
+function AcwiTotal({ move }: { move: number | null }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return (
+    <Link href="/sectors" className="mx-overview-acwi">
+      {t("MSCI 全球", "MSCI ACWI")}
+      <strong className={move == null ? undefined : "mx-" + tone(move)}>{formatDeltaPercent(move, locale, 2)}</strong>
+    </Link>
   );
 }
 
@@ -392,23 +419,38 @@ function GlobalStamp({ answer }: { answer: GlobalMarketContribution }) {
   );
 }
 
-function WorldBlocks({ markets, acwiMove, label }: { markets: GlobalMarketContribution["markets"]; acwiMove: number | null; label: string }) {
+/** A market's move as its block shows it: closed markets say so, a missing reading is a dash. */
+function worldChange(item: Pick<WorldMove, "move" | "notOpen">, locale: Parameters<typeof formatDeltaPercent>[1], digits: number,
+  t: (zh: string, en: string) => string) {
+  if (item.notOpen) return t("未开盘", "Not open");
+  return item.move == null ? "—" : formatDeltaPercent(item.move, locale, digits);
+}
+
+function WorldBlocks({ markets, acwiMove, label, weighted }: {
+  markets: WorldMove[]; acwiMove: number | null; label: string; weighted: boolean;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("light");
   const total = formatDeltaPercent(acwiMove, locale, 2);
+  // With weights, phones read the blocks by share, the largest first.
+  const order = weighted
+    ? [...markets].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0) || WORLD_ORDER.indexOf(a.market) - WORLD_ORDER.indexOf(b.market))
+      .map((item) => item.market)
+    : WORLD_ORDER;
   return (
-    <div className="mx-overview-world" role="group" aria-label={label}>
-      {markets.map(({ market, move, notOpen }) => {
+    <div className="mx-overview-world" role="group" aria-label={label} data-weighted={weighted ? "" : undefined}>
+      {markets.map((item) => {
+        const { market, move, notOpen } = item;
         const place = WORLD[market];
         const full = t(place.name[0], place.name[1]);
         const idle = notOpen || move == null;
-        const change = idle ? t("未开盘", "Not open") : formatDeltaPercent(move, locale, 2);
+        const change = worldChange(item, locale, 2, t);
         const style = {
           "--mx-heat-mix": heatMix(notOpen ? null : move, scheme),
           "--mx-world-column": place.at[0],
           "--mx-world-row": place.at[1],
-          order: WORLD_ORDER.indexOf(market),
+          order: order.indexOf(market),
         } as CSSProperties;
         return (
           <Link key={market} href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
@@ -429,6 +471,96 @@ function WorldBlocks({ markets, acwiMove, label }: { markets: GlobalMarketContri
         <span>{t("MSCI 全球", "MSCI ACWI")}</span>
         <strong className={acwiMove == null ? undefined : "mx-" + tone(acwiMove)}>{total}</strong>
       </Link>
+    </div>
+  );
+}
+
+/**
+ * The markets by their share of MSCI ACWI, laid out like the sector map: small blocks finish their labels on hover,
+ * and the rest of the world closes the map as one neutral block.
+ */
+function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: number; label: string }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const scheme = useComputedColorScheme("light");
+  const map = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [family, setFamily] = useState("");
+  const measure = useCallback<Measure>((text, size) => measureText(text, size, family), [family]);
+  useLayoutEffect(() => {
+    const element = map.current;
+    if (!element) return;
+    setFamily(getComputedStyle(element).fontFamily);
+    const measure = () => {
+      const { width, height } = element.getBoundingClientRect();
+      setSize((current) =>
+        current && Math.abs(current.w - width) < 1 && Math.abs(current.h - height) < 1 ? current : { w: width, h: height });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const names = useCallback((key: WorldKey) => {
+    if (key === "other") {
+      const name = locale === "zh" ? "其他" : "Other";
+      return { full: name, short: name, tiny: name };
+    }
+    const place = WORLD[key];
+    const full = locale === "zh" ? place.name[0] : place.name[1];
+    const short = locale === "zh" ? full : place.short;
+    return { full, short, tiny: short };
+  }, [locale]);
+  const items = useMemo(() => [
+    ...markets.map((item) => ({ key: item.market as WorldKey, weight: item.weight ?? 0 })),
+    { key: "other" as WorldKey, weight: other },
+  ], [markets, other]);
+  const weights = items.map((item) => item.key + ":" + item.weight.toFixed(5)).join(",");
+  // The layout whose blocks keep the most of their labels, as the sector map chooses its own.
+  const tiles = useMemo(() => {
+    if (!size) return [];
+    let best: { tiles: Tile<WorldKey>[]; lost: number } | null = null;
+    for (const aspect of ASPECTS) {
+      const laid = squarify(items, { x: 0, y: 0, w: size.w + GAP, h: (size.h + GAP) * aspect })
+        .map((tile) => box({ ...tile, y: tile.y / aspect, h: tile.h / aspect }) as Tile<WorldKey>);
+      const lost = laid.reduce((sum, tile) => {
+        const shown = labels(names(tile.key), SAMPLE_MOVE.full, SAMPLE_MOVE.rounded, tile.w, tile.h, measure);
+        return sum + (shown.showName ? 0 : 2) + (tile.key === "other" || shown.showChange ? 0 : 1);
+      }, 0);
+      if (!best || lost < best.lost) best = { tiles: laid, lost };
+      if (lost === 0) break;
+    }
+    return best?.tiles ?? [];
+    // The weights string stands for the items: a refresh that only changes moves keeps the layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weights, size, measure, names]);
+  const byMarket = new Map(markets.map((item) => [item.market as WorldKey, item]));
+  return (
+    <div ref={map} className="mx-overview-sector-map mx-overview-world-map" role="group" aria-label={label}>
+      {tiles.map(({ key, x: left, y: top, w: width, h: height }) => {
+        const item = byMarket.get(key);
+        const share = key === "other" ? other : item?.weight ?? 0;
+        const idle = !item || item.notOpen || item.move == null;
+        const change = item ? worldChange(item, locale, 2, t) : "";
+        const shown = labels(names(key), change, item ? worldChange(item, locale, 1, t) : "", width, height, measure);
+        const name = key === "other" ? t("其他市场", "Other markets") : names(key).full;
+        const reading = [name, change].filter(Boolean).join(" ");
+        const spoken = locale === "zh"
+          ? `${reading}，占比 ${percent(share, false, 1)}`
+          : `${reading}, ${percent(share, false, 1)} of ACWI`;
+        const style = { left, top, width, height, "--mx-heat-mix": heatMix(idle ? null : item!.move, scheme) } as CSSProperties;
+        return (
+          <Tooltip key={key} label={spoken} events={{ hover: true, focus: true, touch: false }} openDelay={120} withinPortal>
+            <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key} className="mx-overview-sector"
+              data-tone={idle ? undefined : changeTone(item!.move)} data-idle={idle ? "" : undefined}
+              data-compact={shown.compact ? "" : undefined} data-tight={shown.tight ? "" : undefined}
+              data-inline={shown.inline ? "" : undefined} style={style} aria-label={spoken}>
+              {shown.showName && <span className="mx-overview-sector-name" data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>}
+              {key !== "other" && shown.showChange && <span className="mx-overview-sector-change">{shown.change}</span>}
+            </Link>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
