@@ -1,5 +1,6 @@
 """Synthetic prices around a publisher close and the following exchange opens."""
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from math import fsum
 
@@ -7,12 +8,18 @@ import pytest
 from trading_max.infrastructure.acwi_weights import AcwiWeights
 from trading_max.infrastructure.sector_prices import SparkSeries
 
+from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.global_markets import (
     ACWI,
     EM,
+    Reference,
+    _market_move,
     benchmark_closes,
+    market_windows,
     read_global_contribution,
 )
+from services.api.trading_max_api.indices import IndexService
+from services.api.trading_max_api.sector_monitor import SectorBoardStore
 
 THURSDAY = "2026-11-12"
 FRIDAY = "2026-11-13"
@@ -211,3 +218,125 @@ def test_yesterdays_previous_close_is_not_a_new_close_if_level_revisits_it():
     )
     daily = series(ACWI, [(at(THURSDAY, "05:00") - timedelta(days=1), 100)])
     assert benchmark_closes(tape, daily, now) == {}
+
+
+def test_global_quotes_use_reserved_budget_during_monitor_startup(monkeypatch):
+    from trading_max.infrastructure import shared_market_prices as shared
+
+    now = at(FRIDAY, "01:00")
+    monkeypatch.setattr(shared, "REQUEST_BUDGET", ((60, 1, 6),))
+    source = Prices(now)
+
+    class SharedPrices(shared.SharedMarketPrices):
+        def benchmark_intraday(self, symbol):
+            return self._read(
+                "benchmark",
+                [symbol],
+                240,
+                lambda symbols: {item: source.benchmark_intraday(item) for item in symbols},
+            ).get(symbol)
+
+    prices = SharedPrices(source)
+    prices.daily(["BACKGROUND"])
+    answer = read_global_contribution(prices, None, False, now)
+    assert not answer.prices_stale
+    assert answer.acwi_move == pytest.approx(98.8 / 99 - 1)
+    assert next(item.move for item in answer.markets if item.market == "jp") == pytest.approx(
+        99.5 / 98 - 1
+    )
+
+
+@pytest.mark.parametrize(
+    ("session_day", "full_day_price", "expected"),
+    [
+        (FRIDAY, 98.5, -0.015),
+        (FRIDAY, None, -0.02),
+        (THURSDAY, 98.5, None),
+    ],
+)
+def test_korean_move_uses_provider_session_end_only_for_the_matching_session(
+    session_day, full_day_price, expected
+):
+    now = at(FRIDAY, "21:00")
+    reference = Reference(
+        date.fromisoformat(FRIDAY), "live", at(THURSDAY, "21:03"), now, now, 100, 0
+    )
+    tape = replace(
+        series("^KS11", [(at(session_day, "06:00"), 98)], previous=100),
+        session_end=int(at(session_day, "06:00").timestamp()),
+        full_day_price=full_day_price,
+    )
+    windows = market_windows("kr", at(THURSDAY, "00:00"), now)
+    quote = _market_move("kr", reference, windows, None, tape)
+    assert quote.move == (pytest.approx(expected) if expected is not None else None)
+    assert not quote.not_open
+
+
+@pytest.mark.parametrize("block", ["budget", "429"])
+def test_global_price_fallback_keeps_fresh_and_expired_cache(monkeypatch, block):
+    from trading_max.infrastructure import shared_market_prices as shared
+    from trading_max.infrastructure.sector_prices import SparkRateLimited
+
+    clock = [500.0]
+    monkeypatch.setattr(shared.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(shared, "REQUEST_BUDGET", ((60, 1, 2), (86400, 2, 10)))
+    calls = []
+
+    class Source:
+        def daily(self, symbols):
+            calls.append(symbols)
+            if len(calls) == 3:
+                raise SparkRateLimited("Synthetic provider 429")
+            return {symbol: series(symbol, [(at(FRIDAY, "01:00"), 101)]) for symbol in symbols}
+
+    prices = shared.SharedMarketPrices(Source())
+    prices.daily(["OLD"])
+    clock[0] += 241
+    prices.daily(["FRESH"])
+    with shared.market_price_priority(block == "429"), shared.market_price_fallback() as fallback:
+        result = prices.daily(["MISSING", "OLD", "FRESH"])
+        assert result["OLD"].stale
+        assert not result["FRESH"].stale
+        assert "MISSING" not in result
+        assert fallback.deferred
+        if block == "429":
+            assert prices.rate_limited
+            assert prices.daily(["OLD"])["OLD"].stale
+    assert len(calls) == (3 if block == "429" else 2)
+
+
+def test_global_contribution_preserves_timestamped_estimate_across_restart(tmp_path, monkeypatch):
+    from trading_max.infrastructure import shared_market_prices as shared
+
+    now = at(FRIDAY, "01:00")
+    weights = AcwiWeights(as_of=now.date(), fetched_at=now, locations={"Japan": 0.10})
+
+    class Weights:
+        def get(self, now):
+            return weights, False
+
+    def service(prices, now):
+        indices = IndexService(
+            tmp_path, ArtifactStore(tmp_path), SectorBoardStore(tmp_path), prices, now=lambda: now
+        )
+        indices.acwi_weights = Weights()
+        return indices
+
+    answer = service(Prices(now), now).global_contribution()
+    assert answer.rows and answer.acwi_move is not None and not answer.prices_stale
+
+    class ProviderUnavailable:
+        def daily(self, symbols):
+            pytest.fail("A blocked read must stop before calling the provider")
+
+        intraday = daily
+
+    monkeypatch.setattr(shared, "REQUEST_BUDGET", ((60, 0, 0),))
+    next_time = now + timedelta(minutes=5)
+    restored = service(
+        shared.SharedMarketPrices(ProviderUnavailable()), next_time
+    ).global_contribution()
+    assert restored.prices_stale
+    assert restored.as_of == answer.as_of
+    assert restored.rows == answer.rows
+    assert restored.acwi_move == answer.acwi_move

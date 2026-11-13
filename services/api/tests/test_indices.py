@@ -1,5 +1,6 @@
 import json
 import statistics
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -521,3 +522,36 @@ def test_market_request_budget_reserves_opening_and_closing_capacity(monkeypatch
         with pytest.raises(shared.MarketPriceBudgetExhausted):
             prices.intraday(["THREE"])
     assert not prices.rate_limited  # a budget deferral is not a provider 429
+
+
+@pytest.mark.parametrize("current", [True, False])
+def test_taiwan_quote_uses_matching_provider_close_when_daily_bar_is_null(api, current):
+    client, prices, clock = api
+    clock[0] = datetime(2026, 11, 6, 21, tzinfo=UTC)
+    day = "2026-11-06" if current else "2026-11-05"
+    end = f"{day}T05:30:00+00:00"
+    prices.intraday = lambda symbols: {
+        symbol: replace(
+            bars(symbol, (end, 98)),
+            session_end=int(datetime.fromisoformat(end).timestamp()),
+            full_day_price=99,
+        )
+        for symbol in symbols
+    }
+    prices.daily = lambda symbols: {
+        symbol: bars(
+            symbol, ("2026-11-05T01:00:00+00:00", 100), ("2026-11-06T01:00:00+00:00", None)
+        )
+        for symbol in symbols
+    }
+    response = client.get("/v1/indices?scope=tw").json()
+    quote = next(row for row in response["quotes"] if row["index"]["id"] == "taiex")
+    if current:
+        assert quote["state"] == "closed"
+        assert quote["level"] == 99
+        assert quote["change"] == pytest.approx(-0.01)
+        assert quote["sessionDate"] == "2026-11-06"
+    else:
+        assert quote["state"] == "unavailable"
+        assert quote["level"] is None
+        assert response["refreshFailed"]

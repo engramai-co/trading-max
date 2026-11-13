@@ -52,6 +52,9 @@ class SparkSeries:
     name: str = ""
     timezone: str | None = None
     fetched_at: datetime | None = None
+    session_end: int | None = None
+    full_day_price: float | None = None
+    stale: bool = False
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:
@@ -99,11 +102,14 @@ def parse_compact(payload: Any) -> dict[str, SparkSeries]:
             continue
         timestamps, closes = _points(row.get("timestamp"), row.get("close"))
         previous = _price(row.get("previousClose")) or _price(row.get("chartPreviousClose"))
+        end = row.get("end")
         series[str(symbol).upper()] = SparkSeries(
             symbol=str(symbol).upper(),
             timestamps=timestamps,
             closes=closes,
             previous_close=previous,
+            session_end=end if type(end) is int else None,
+            full_day_price=_price(row.get("fulldayPrice")),
         )
     return series
 

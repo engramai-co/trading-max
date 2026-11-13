@@ -84,6 +84,7 @@ from .sector_sessions import (
     latest_session,
     next_session,
     prior_session_dates,
+    provider_session_close,
     sessions_between,
 )
 
@@ -627,16 +628,25 @@ class SectorMonitor:
                 window = windows[symbol]
                 if window is None:
                     continue
-                closes = daily.closes.get(symbol) or {}
+                closes = daily.closes.get(symbol, {})
                 # The prior Xetra day may be a holiday on the listing's exchange.
                 prior = (
                     max((day for day in closes if day < session.date), default="")
                     if market == "eu"
                     else previous_date
                 )
+                official = closes.get(session.date)
+                if (
+                    official is None
+                    and (official := provider_session_close(series.get(symbol), window, fetched_at))
+                    is not None
+                ):
+                    # Reuse the confirmed price for ranks and the breadth update.
+                    daily.closes.setdefault(symbol, {})[session.date] = official
+                    daily.fetched[symbol] = fetched_at
                 settled = settle(
                     sessions.get(symbol),
-                    closes.get(session.date),
+                    official,
                     closes.get(prior),
                     session_close=window.close,
                 )
@@ -951,8 +961,12 @@ class SectorMonitor:
                 # Opening and settlement work for every market ran first. Depth
                 # deliberately stays in the ordinary budget tier.
                 for market in BREADTH_MARKETS:
-                    if not self._active() or (
-                        self._paused_until is not None and self._now() < self._paused_until
+                    if (
+                        not self._active()
+                        or (self._paused_until is not None and self._now() < self._paused_until)
+                        or (
+                            isinstance(self.prices, SharedMarketPrices) and self.prices.rate_limited
+                        )
                     ):
                         break
                     self.index_depth.refresh(

@@ -13,7 +13,11 @@ from zoneinfo import ZoneInfo
 
 from trading_max.infrastructure.acwi_weights import AcwiWeights
 from trading_max.infrastructure.sector_prices import SparkSeries
-from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
+from trading_max.infrastructure.shared_market_prices import (
+    SharedMarketPrices,
+    market_price_fallback,
+    market_price_priority,
+)
 from trading_max.reference.indices import INDEX_REGISTRY
 
 from .index_models import (
@@ -24,7 +28,7 @@ from .index_models import (
     GlobalRowMarket,
 )
 from .sector_models import SectorSessionWindow
-from .sector_sessions import calendar_known, exchange_sessions
+from .sector_sessions import calendar_known, exchange_sessions, provider_session_close
 
 MAIN_INDEX: dict[GlobalMapMarket, str] = {
     "us": "sp-500",
@@ -300,7 +304,11 @@ def _market_move(
     ):
         expected = window.break_start
     complete = reference.end >= window.close
-    level = closes.get(window.date) if complete else None
+    level = (
+        closes.get(window.date) or provider_session_close(intraday, window, reference.end)
+        if complete
+        else None
+    )
     points = _points(intraday, reference.end)
     observations = [
         point for point in points if window.open <= point[0] <= window.close + timedelta(minutes=15)
@@ -325,27 +333,33 @@ class GlobalReference:
     reference: Reference | None
     sessions: Mapping[GlobalMapMarket, tuple[SectorSessionWindow, ...] | None]
     daily: SparkSeries | None
+    prices_stale: bool = False
 
 
+@market_price_priority(True)
 def read_global_reference(prices: SharedMarketPrices, now: datetime) -> GlobalReference:
     """Both Global views share the clock set by the ACWI observations and market opens."""
-    acwi = daily = None
-    try:
-        acwi = prices.benchmark_intraday(ACWI)
-    except Exception:
-        LOGGER.debug("Global ACWI observations failed", exc_info=True)
-    try:
-        daily = prices.daily([ACWI]).get(ACWI)
-    except Exception:
-        LOGGER.debug("Global ACWI daily prices failed", exc_info=True)
+    with market_price_fallback() as fallback:
+        acwi = daily = None
+        try:
+            acwi = prices.benchmark_intraday(ACWI)
+        except Exception:
+            LOGGER.debug("Global ACWI observations failed", exc_info=True)
+        try:
+            daily = prices.daily([ACWI]).get(ACWI)
+        except Exception:
+            LOGGER.debug("Global ACWI daily prices failed", exc_info=True)
     close_dates = benchmark_closes(acwi, daily, now)
     earliest = min((item[0] for item in close_dates.values()), default=now)
     windows = {
         market: market_windows(market, earliest - timedelta(days=14), now) for market in MAIN_INDEX
     }
-    return GlobalReference(reference_day(close_dates, acwi, windows, now), windows, daily)
+    return GlobalReference(
+        reference_day(close_dates, acwi, windows, now), windows, daily, fallback.deferred
+    )
 
 
+@market_price_priority(True)
 def read_global_contribution(
     prices: SharedMarketPrices,
     weights: AcwiWeights | None,
@@ -360,20 +374,21 @@ def read_global_contribution(
         market: INDEX_REGISTRY[identifier].symbol for market, identifier in MAIN_INDEX.items()
     }
     requested = [symbol for symbol in symbols.values() if symbol]
-    daily, local = {}, {}
-    em = None
-    try:
-        em = prices.benchmark_intraday(EM)
-    except Exception:
-        LOGGER.debug("Global EM observations failed", exc_info=True)
-    try:
-        daily = prices.daily([EM, *requested])
-    except Exception:
-        LOGGER.debug("Global daily prices failed", exc_info=True)
-    try:
-        local = prices.intraday(requested)
-    except Exception:
-        LOGGER.debug("Global market observations failed", exc_info=True)
+    with market_price_fallback() as fallback:
+        daily, local = {}, {}
+        em = None
+        try:
+            em = prices.benchmark_intraday(EM)
+        except Exception:
+            LOGGER.debug("Global EM observations failed", exc_info=True)
+        try:
+            daily = prices.daily([EM, *requested])
+        except Exception:
+            LOGGER.debug("Global daily prices failed", exc_info=True)
+        try:
+            local = prices.intraday(requested)
+        except Exception:
+            LOGGER.debug("Global market observations failed", exc_info=True)
     market_moves = {}
     em_move = None
     if reference:
@@ -396,7 +411,9 @@ def read_global_contribution(
             observation = _live_value(em, first_open, now)
         if baseline and observation:
             em_move = observation[1] / baseline[1] - 1
-    return estimate_contribution(reference, weights, weights_stale, market_moves, em_move)
+    answer = estimate_contribution(reference, weights, weights_stale, market_moves, em_move)
+    answer.prices_stale = clock.prices_stale or fallback.deferred
+    return answer
 
 
 def estimate_contribution(

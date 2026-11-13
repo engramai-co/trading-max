@@ -21,7 +21,7 @@ describe("Global sector labels", () => {
     const reading = (gics: string, name: string) => ({ gics, name, indexCode: null, move: 0.01 });
     const board: GlobalSectorBoard = {
       referenceDate: null, phase: null, asOf: null, acwiMove: null, acwiLevel: null,
-      weightsAsOf: null, weightsStale: false, rankSessions: [],
+      weightsAsOf: null, weightsStale: false, pricesStale: false, rankSessions: [],
       sectors: [...sectorNames].map(([gics, name]) => ({
         ...reading(gics, name), weight: 0.05, contribution: null, intraday: [], ranks: [], holdings: [],
         groups: [...groupNames].filter(([code]) => code.startsWith(gics)).map(([code, label]) => reading(code, label)),

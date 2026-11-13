@@ -222,6 +222,7 @@ def read_global_sectors(
         acwi_level=reference.level if reference else None,
         weights_as_of=weights.as_of if weights else None,
         weights_stale=weights_stale,
+        prices_stale=clock.prices_stale,
         rank_sessions=dates,
         sectors=sectors,
     )

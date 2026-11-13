@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.44.1] - 2026-11-13
+
+### Fixed
+
+- Asian index and sector quotes now use the matching session’s closing price when the daily candle is missing, so Korea’s closing move appears on the global map.
+- Global market estimates keep recent quotes through restarts and data-provider limits, and the map tells a missing quote apart from a market that has not opened.
+- S&P 500 and Nasdaq 100 breadth history resumes after temporary quote limits instead of restarting its backfill.
+
 ## [1.44.0] - 2026-11-13
 
 ### Added

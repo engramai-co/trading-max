@@ -9,7 +9,7 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import quote
@@ -45,6 +45,27 @@ def market_price_priority(enabled: bool) -> Iterator[None]:
         yield
     finally:
         _priority.reset(token)
+
+
+@dataclass
+class MarketPriceFallback:
+    deferred: bool = False
+
+
+_fallback: ContextVar[MarketPriceFallback | None] = ContextVar(
+    "market_price_fallback", default=None
+)
+
+
+@contextmanager
+def market_price_fallback() -> Iterator[MarketPriceFallback]:
+    """Allow read-only views to use cached data when fresh requests are blocked."""
+    state = MarketPriceFallback()
+    token = _fallback.set(state)
+    try:
+        yield state
+    finally:
+        _fallback.reset(token)
 
 
 class SharedMarketPrices:
@@ -96,15 +117,28 @@ class SharedMarketPrices:
 
             wanted = [symbol for symbol in unique if expired(symbol)]
             if wanted:
-                if now < self._paused_until:
-                    raise SparkRateLimited("Yahoo Finance price requests are paused")
-                self._reserve(now, -(-len(wanted) // BATCH_SIZE))
                 try:
-                    fetched_at = datetime.now(UTC)
-                    result = load(wanted)
-                except (SparkRateLimited, YFRateLimitError) as exc:
-                    self._paused_until = time.monotonic() + RATE_LIMIT_SECONDS
-                    raise SparkRateLimited("Yahoo Finance is rate-limiting price requests") from exc
+                    if now < self._paused_until:
+                        raise SparkRateLimited("Yahoo Finance price requests are paused")
+                    self._reserve(now, -(-len(wanted) // BATCH_SIZE))
+                    try:
+                        fetched_at = datetime.now(UTC)
+                        result = load(wanted)
+                    except (SparkRateLimited, YFRateLimitError) as exc:
+                        self._paused_until = time.monotonic() + RATE_LIMIT_SECONDS
+                        raise SparkRateLimited(
+                            "Yahoo Finance is rate-limiting price requests"
+                        ) from exc
+                except (SparkRateLimited, MarketPriceBudgetExhausted):
+                    fallback = _fallback.get()
+                    if fallback is None:
+                        raise
+                    fallback.deferred = True
+                    return {
+                        symbol: replace(item, stale=True) if expired(symbol) else item
+                        for symbol in unique
+                        if (item := self._cache.get((kind, symbol), (0, None))[1]) is not None
+                    }
                 for symbol in wanted:
                     self._cache[kind, symbol] = (
                         time.monotonic() + (ttl if symbol in result else min(ttl, 60)),
@@ -114,12 +148,15 @@ class SharedMarketPrices:
                     )
                 if len(self._cache) > 4096:
                     self._cache = {
-                        key: value for key, value in self._cache.items() if value[0] > now
+                        key: value
+                        for key, value in self._cache.items()
+                        if value[0] > now
+                        or (value[1] is not None and value[0] > now - RATE_LIMIT_SECONDS)
                     }
             return {
                 symbol: item
                 for symbol in unique
-                if (item := self._cache[kind, symbol][1]) is not None
+                if (item := self._cache.get((kind, symbol), (0, None))[1]) is not None
             }
 
     def intraday(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:

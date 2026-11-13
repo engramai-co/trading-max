@@ -356,7 +356,7 @@ const indices: IndexIdentity[] = [
 
 const globalFixture: GlobalMarketContribution = {
   acwiMove: -0.0044, acwiLevel: 1116.27, phase: "completed", referenceDate: "2026-11-12", asOf: "2026-11-12T19:00:00Z", weightsAsOf: "2026-11-11",
-  weightsStale: false, state: "partial", residual: -0.0018,
+  weightsStale: false, pricesStale: false, state: "partial", residual: -0.0018,
   markets: [{ market: "us", move: -0.0035, notOpen: false }, { market: "jp", move: -0.007, notOpen: false }, { market: "ch", move: null, notOpen: false }, { market: "uk", move: 0, notOpen: true }, { market: "au", move: 0.0003, notOpen: false }, { market: "kr", move: 0.001, notOpen: false }],
   rows: [
     { market: "us", indexId: "sp-500", weight: 0.63, move: -0.0035, contribution: -0.0022, notOpen: false },
@@ -391,7 +391,8 @@ const depthFixture: Pick<IndexContext, "breadthHistory" | "vix" | "valuation" | 
   },
 };
 
-async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fail?: boolean; now?: number } = {}) {
+async function mockIndices(page: Page, { fail = false, now = Date.now(), global = globalFixture }:
+  { fail?: boolean; now?: number; global?: GlobalMarketContribution } = {}) {
   const base = now - 3600_000;
   const europeLevels: Record<string, number> = {
     "euro-stoxx-50": 5700, "stoxx-europe-600": 590, dax: 23900, "cac-40": 8100,
@@ -410,7 +411,7 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/");
     if (parts.at(-1) === "global-sectors") return route.fulfill({ json: worldFixture });
-    if (parts.at(-1) === "global-contribution") return route.fulfill({ json: globalFixture });
+    if (parts.at(-1) === "global-contribution") return route.fulfill({ json: global });
     if (parts.at(-1) === "catalog") return route.fulfill({ json: indices });
     if (parts.at(-1) === "history") {
       const index = indices.find((item) => item.id === parts.at(-2));
@@ -482,7 +483,7 @@ const worldFixture: GlobalSectorBoard = {
   acwiMove: -0.0044,
   acwiLevel: 1000,
   weightsAsOf: "2026-11-11",
-  weightsStale: false,
+  weightsStale: false, pricesStale: false,
   rankSessions: ["2026-11-06", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"],
   exposureBasisGbp: 100_000,
   sectors: SECTORS.map(([gics, name, weight, move], i) => ({
@@ -671,6 +672,22 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/market=global/);
     await inspection.getByRole("link", { name: /打开市场|Open market/ }).click();
     await expect(page).toHaveURL(/market=jp/);
+  });
+
+  test("Global labels retained quotes and distinguishes missing data from pre-open", async ({ page }) => {
+    await mockIndices(page, { global: {
+      ...globalFixture, pricesStale: true,
+      markets: [{ market: "us", move: -0.0035, notOpen: false },
+        { market: "uk", move: 0, notOpen: true },
+        { market: "ch", move: null, notOpen: false }],
+    } });
+    await page.goto("/sectors?market=global");
+    const map = page.getByTestId("global-map");
+    await expect(map.getByRole("link", { name: /瑞士.*无报价|Switzerland.*No quote/ })).toBeVisible();
+    await expect(map.getByRole("link", { name: /台湾.*无报价|Taiwan.*No quote/ })).toBeVisible();
+    await expect(map.getByRole("link", { name: /英国.*未开盘|UK.*Not open/ })).toBeVisible();
+    await expect(page.locator(".mx-global-caveats")).toContainText(/报价未更新|Quotes haven’t updated/);
+    await expect(page.locator("#index-card-msci-acwi .mx-index-freshness")).toContainText(/未更新|Stale/);
   });
 
   test("the desktop demo serves only its seeded Europe sector data", async ({ page }) => {

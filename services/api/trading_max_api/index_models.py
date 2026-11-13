@@ -80,6 +80,7 @@ class GlobalMarketContribution(ApiModel):
     as_of: datetime | None
     weights_as_of: date | None
     weights_stale: bool
+    prices_stale: bool = False
     markets: list[GlobalMarketMove]
     rows: list[GlobalContributionRow]
     residual: float | None
