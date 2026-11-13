@@ -313,7 +313,7 @@ const indices: IndexIdentity[] = [
 const globalFixture: GlobalMarketContribution = {
   acwiMove: -0.0044, acwiLevel: 1116.27, phase: "completed", referenceDate: "2026-11-12", asOf: "2026-11-12T19:00:00Z", weightsAsOf: "2026-11-11",
   weightsStale: false, state: "partial", residual: -0.0018,
-  markets: [{ market: "us", move: -0.0035, notOpen: false }, { market: "jp", move: -0.007, notOpen: false }, { market: "ch", move: null, notOpen: false }, { market: "uk", move: 0, notOpen: true }],
+  markets: [{ market: "us", move: -0.0035, notOpen: false }, { market: "jp", move: -0.007, notOpen: false }, { market: "ch", move: null, notOpen: false }, { market: "uk", move: 0, notOpen: true }, { market: "au", move: 0.0003, notOpen: false }, { market: "kr", move: 0.001, notOpen: false }],
   rows: [
     { market: "us", indexId: "sp-500", weight: 0.63, move: -0.0035, contribution: -0.0022, notOpen: false },
     { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004, notOpen: false },
@@ -372,7 +372,7 @@ async function mockIndices(page: Page, { fail = false }: { fail?: boolean } = {}
         return {
           index, points, asOf: points.at(-1)?.at, sessionDate: new Date(base).toISOString().slice(0, 10),
           level: points.at(-1)?.value, change: index.kind === "volatility" ? -0.9 : [0.0134, 0.0161, 0.0088, -0.0042][n],
-          state: "live",
+          state: index.id === "msci-em-imi" ? "stale" : index.id === "ftse-all-world-etf" ? "unavailable" : "live",
         };
       }),
     } });
@@ -448,12 +448,13 @@ test.describe("market index layer", () => {
     await expect(page.locator("#index-card-ftse-all-world")).toHaveCount(0);
     const map = page.getByRole("group", { name: /全球市场地图|World market map/ });
     const shape = map.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
-    const ranking = page.getByRole("region", { name: /对 MSCI 全球的贡献|Contribution to MSCI ACWI/ });
+    const panel = page.getByRole("region", { name: /对 MSCI 全球的贡献|Contribution to MSCI ACWI/ });
+    const ranking = panel.locator(".mx-global-ranking");
     const row = ranking.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
     await expect(ranking).toContainText(/部分报价不可用|Partial quote coverage/);
     await expect(ranking).toContainText(/汇率与其他|Currency and other/);
     await expect(page.locator(".mx-index-global .mx-index-stamp")).toContainText(/已收盘|Closed/);
-    await expect(page.locator('.mx-index-global time[datetime="2026-11-12"]')).toBeVisible();
+    await expect(page.locator('.mx-index-global time[datetime="2026-11-12T19:00:00Z"]')).toContainText(/11月12日 19:00|12 Nov 19:00/);
     await expect(ranking.getByRole("link", { name: /英国.*未开盘.*0.00 pp|UK.*Not open.*0.00 pp/ })).toBeVisible();
     await expect(map.getByRole("link", { name: /英国.*未开盘|UK.*Not open/ })).toHaveAttribute("data-neutral", "true");
     await expect(ranking.locator(".mx-global-total")).toContainText("-0.44%");
@@ -461,25 +462,49 @@ test.describe("market index layer", () => {
       await row.hover();
       await expect(shape).toHaveAttribute("data-linked", "true");
       await expect(shape.locator(".mx-global-shape")).toHaveCSS("stroke-width", "1.5px");
-      await map.getByRole("link", { name: /^美国|^US,/ }).focus();
-      await page.mouse.move(1, 1);
-      await page.keyboard.press("Tab");
-      await expect(map.locator("a:focus")).toHaveCount(1);
-      await shape.focus();
+      await shape.locator(".mx-global-label-desktop .mx-global-hit").hover();
+      await expect(page.locator("#mx-global-inspection")).toContainText(/日经 225|Nikkei 225/);
       await expect(row).toHaveAttribute("data-linked", "true");
+      await page.mouse.move(1, 1);
+      await shape.focus();
+      await page.keyboard.press("Tab");
+      await expect(page.locator("#mx-global-inspection a")).toBeFocused();
+      await page.keyboard.press("Escape");
     } else {
       const mapBox = await map.boundingBox();
       const rankingBox = await ranking.boundingBox();
-      expect(mapBox && rankingBox && mapBox.y + mapBox.height < rankingBox.y).toBe(true);
+      const leadBox = await panel.locator(".mx-global-lead").boundingBox();
+      const dockBox = await page.locator(".mx-mobile-dock").boundingBox();
+      expect(mapBox && rankingBox && mapBox.y + mapBox.height <= rankingBox.y + 1).toBe(true);
+      expect(leadBox && dockBox && leadBox.y + leadBox.height < dockBox.y).toBe(true);
       expect(await row.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      await expect(page.locator("#index-card-msci-em-imi .mx-index-freshness")).toBeVisible();
+      await expect(page.locator("#index-card-ftse-all-world-etf .mx-index-freshness")).toBeVisible();
     }
-    await ranking.getByRole("button", { name: /对 MSCI 全球的贡献说明|Contribution to MSCI ACWI explained/ }).click();
+    await panel.getByRole("button", { name: /对 MSCI 全球的贡献说明|Contribution to MSCI ACWI explained/ }).click();
     await expect(page.getByText(/权重来自 iShares|Weights come from iShares/)).toBeVisible();
     await page.keyboard.press("Escape");
-    if (testInfo.project.name === "desktop") {
-      await shape.focus();
-      await page.keyboard.press("Enter");
-    } else await row.tap();
+    const inspect = async (market: string) => {
+      const marker = map.locator(`a[data-market="${market}"]`);
+      const hit = marker.locator(".mx-global-label-phone .mx-global-hit");
+      if (testInfo.project.name === "desktop") await marker.focus();
+      else await hit.tap();
+      return page.locator("#mx-global-inspection");
+    };
+    for (const [market, text] of [
+      ["uk", /未开盘|Not open/], ["au", /持平|Flat/],
+      ["ch", /无报价|No quote/], ["kr", /计入新兴市场|Included in emerging markets/],
+    ] as const) {
+      const card = await inspect(market);
+      await expect(card).toContainText(text);
+      if (testInfo.project.name === "desktop") await page.keyboard.press("Escape");
+      else await panel.getByRole("heading", { name: /对 MSCI 全球的贡献|Contribution to MSCI ACWI/ }).tap();
+      await expect(card).toBeHidden();
+    }
+    const inspection = await inspect("jp");
+    await expect(inspection).toContainText(/0.04 pp/);
+    await expect(page).toHaveURL(/market=global/);
+    await inspection.getByRole("link", { name: /打开市场|Open market/ }).click();
     await expect(page).toHaveURL(/market=jp/);
   });
 

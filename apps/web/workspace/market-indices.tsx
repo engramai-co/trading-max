@@ -87,6 +87,7 @@ export function IndexStrip({ market, open, selected, marketName }: {
     const phase = global?.phase === "completed" ? t("已收盘", "Closed")
       : global?.phase === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
     const day = global?.referenceDate;
+    const time = stamp && formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
     if (acwi && global?.acwiMove != null) {
       quotes.set(acwi.index.id, {
         ...acwi, change: global.acwiMove, level: global.acwiLevel, asOf: global.asOf,
@@ -98,8 +99,9 @@ export function IndexStrip({ market, open, selected, marketName }: {
       {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
         {stamp && <>
           <span>{phase}</span>
-          {day && <span><time dateTime={day}>{formatCalendarDate(day, locale)}</time></span>}
-          {global?.phase !== "completed" && <span><time dateTime={stamp}>{t("截至 ", "As of ")}{formatDateTime(stamp, locale, timeZone)}</time></span>}
+          <span><time dateTime={stamp}>{t("截至 ", "As of ")}{day && global?.phase === "completed"
+            ? `${formatCalendarDate(day, locale)} ${time}`
+            : global?.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
         </>}
         {error && <><span>{stamp ? t("部分指数未更新", "Some indices haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
           <RetryIndices busy={query.isFetching} retry={() => void query.refetch()} /></>}
@@ -164,7 +166,8 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
     ? "neutral" : quote.change > 0 ? "up" : "down";
   const heat = Math.min(1, Math.abs(quote.change ?? 0) / 0.03);
   const freshness = quote.state === "stale" ? t("未更新", "Stale")
-    : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote") : null;
+    : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote")
+      : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   return (
     <Link
       href={indexHref(index)}
@@ -186,8 +189,8 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
         {points.length > 1 && <svg aria-hidden="true" viewBox="0 0 200 25" preserveAspectRatio="none">
           <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
         </svg>}
-        {freshness && <small>{freshness}</small>}
       </span>
+      {freshness && <small className="mx-index-freshness">{freshness}</small>}
     </Link>
   );
 }

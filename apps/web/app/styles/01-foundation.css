@@ -21,6 +21,9 @@
   --mx-nav-active-ink: #ffffff;
   --mx-up: #2f7a49;
   --mx-down: #b4473a;
+  --mx-up-on-wash: #195531;
+  --mx-down-on-wash: #8d3026;
+  --mx-world-land: #e2e8ef;
   --mx-warning: #80530c;
   --mx-chart-0: #1768e5;
   --mx-chart-1: #d97706;
@@ -58,6 +61,9 @@
   --mx-side-hover: #212328;
   --mx-up: #78cf91;
   --mx-down: #ff958a;
+  --mx-up-on-wash: #a8edb6;
+  --mx-down-on-wash: #ffbdb4;
+  --mx-world-land: #30343c;
   --mx-warning: #f4c35f;
   --mx-chart-0: #5b9dff;
   --mx-chart-1: #f6ad55;
