@@ -26,7 +26,8 @@ export function useResearchUniverse(instruments: ResearchInstrument[]) {
     .sort((a, b) =>
       listSort === "az"
         ? a.ticker.localeCompare(b.ticker)
-        : Number(b.held) - Number(a.held) || a.order - b.order,
+        : Number(b.held) - Number(a.held) || Number(Boolean(a.isFund)) - Number(Boolean(b.isFund))
+          || (a.isFund ? a.ticker.localeCompare(b.ticker) : a.order - b.order),
     );
   return {
     filter,

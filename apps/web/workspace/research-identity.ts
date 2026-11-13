@@ -8,7 +8,10 @@ export function resolveResearchIdentity<T extends { ticker: string }>(
   if (exact) return { selected: exact, candidates: [] };
   // A qualified symbol is an explicit market choice, never a bare-symbol alias.
   if (normalized.includes(".")) return { selected: undefined, candidates: [] };
-  const aliases = instruments.filter((item) => item.ticker.toUpperCase() === normalized + ".L");
+  const aliases = instruments.filter((item) =>
+    item.ticker.toUpperCase() === normalized + ".L" ||
+    ("isFund" in item && item.isFund === true && item.ticker.toUpperCase().startsWith(normalized + ".")),
+  );
   if (!aliases.length) return { selected: undefined, candidates: [] };
   const candidates = instruments.filter((item) =>
     item.ticker.toUpperCase().startsWith(normalized + "."),

@@ -49,7 +49,7 @@ const points = Array.from({ length: 12 }, (_, index) => ({
 }));
 const markers = [{ ticker: "EQQQ", date: points[3].date, kind: "B", accounts: ["invest"], buyOrders: 1, buyQuantity: 1, sellOrders: 0, sellQuantity: 0, buyAveragePrice: 110, sellAveragePrice: null }];
 
-async function synthetic(page: Page, late?: Promise<void>, fixture = summary, publishReadings = true) {
+async function synthetic(page: Page, late?: Promise<void>, fixture = summary, publishReadings = true, fundPending = false) {
   const requests: string[] = [];
   const origin = new URL(process.env.PLAYWRIGHT_BASE_URL!).origin;
   await page.clock.install({ time: new Date(stamp) });
@@ -74,7 +74,7 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
     if (path === "/research/shell") return route.fulfill({ json: {
       status: { runId, overall: "fresh", artifacts: [] }, watchlistCategories: [],
       instruments: [holding, stock].map((item, order) => ({
-        ticker: item.ticker, name: item.name, exchange: "LSE", status: "ready", order, lastRunId: runId,
+        ticker: item.ticker, name: item.name, exchange: "LSE", status: item.isFund && fundPending ? "pending" : "ready", order, lastRunId: runId,
         held: true, isFund: item.isFund, exposureGbp: item.currentValueGbp, directValueGbp: item.currentValueGbp,
       })),
     } });
@@ -214,6 +214,16 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.getByRole("button", { name: "关闭持仓明细" }).click();
     await page.locator("button:visible").filter({ hasText: "TEST" }).first().click();
     await expect(drawer).toContainText("下次财报");
+  });
+
+  test("an unresearched held fund stays pending, while an unknown ticker can be added", async ({ page }) => {
+    await synthetic(page, undefined, summary, false, true);
+    await page.goto("/research?ticker=EQQQ");
+    await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(6);
+    await expect(page.getByText("正在读取证券研究…", { exact: true })).toBeAttached();
+    await expect(page.getByText("EQQQ 还不在研究清单里")).toHaveCount(0);
+    await page.goto("/research?ticker=UNKNOWN");
+    await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
   });
 
   test("research keeps six fund lenses, legacy links and an unscored price chart", async ({ page }, info) => {

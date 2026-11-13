@@ -210,7 +210,7 @@ def create_app(
         diagnostics: dict | None = None,
     ) -> ResearchLensSnapshot:
         live_revision = live_alerts.revision() if view == "ledger" else ""
-        revision = research.lens_revision(manifest, view, detail)
+        revision = research.lens_revision(manifest, view, detail, ticker)
         key = (revision, ticker.upper(), view, limit, live_revision, detail)
         lookup = research_lens_cache.resolve(
             key, lambda: research.lens_snapshot(ticker, view, manifest, limit=limit, detail=detail)

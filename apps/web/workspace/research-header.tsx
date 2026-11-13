@@ -168,6 +168,7 @@ export function SecurityHeader({
 export function SecurityActions({
   held,
   categoriesAvailable,
+  watchlisted,
   busy,
   pending,
   onRefresh,
@@ -176,6 +177,7 @@ export function SecurityActions({
 }: {
   held: boolean;
   categoriesAvailable: boolean;
+  watchlisted: boolean;
   busy: boolean;
   pending: boolean;
   onRefresh: () => void;
@@ -196,7 +198,7 @@ export function SecurityActions({
       >
         {busy ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
       </Button>
-      <Menu shadow="md" position="bottom-end">
+      {watchlisted && <Menu shadow="md" position="bottom-end">
         <Menu.Target>
           <ActionIcon aria-label={t("管理当前证券", "Manage this security")}>
             <DotsThree size={23} />
@@ -219,7 +221,7 @@ export function SecurityActions({
               : t("从研究清单移除", "Remove from research")}
           </Menu.Item>
         </Menu.Dropdown>
-      </Menu>
+      </Menu>}
     </div>
   );
 }

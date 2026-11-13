@@ -115,7 +115,14 @@ def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
     store = SimpleNamespace(
         load_manifest=lambda run_id: SimpleNamespace(run_id=run_id), read_json=read
     )
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(store=store)))
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                store=store,
+                research=SimpleNamespace(held_fund=lambda *_: None),
+            )
+        )
+    )
     summary = dashboard_etfs(request, "synthetic")
     assert calls == [ETF_SUMMARY_KEY]
     assert summary.run_id == "synthetic"

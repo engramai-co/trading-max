@@ -3996,6 +3996,8 @@ export interface components {
             priceCurrency: string;
             /** Quantity */
             quantity: number;
+            /** Researchticker */
+            researchTicker?: string | null;
             /** Snapshotfxratenativepergbp */
             snapshotFxRateNativePerGbp: number | null;
             /** Ticker */
@@ -5614,6 +5616,8 @@ export interface components {
              * @default
              */
             figi: string;
+            /** Fundisin */
+            fundIsin?: string | null;
             gics?: components["schemas"]["GicsClassification"] | null;
             /**
              * Hasearnings
@@ -5693,6 +5697,13 @@ export interface components {
             taxonomyVersion?: number | null;
             /** Ticker */
             ticker: string;
+            /** Watchlistticker */
+            watchlistTicker?: string | null;
+            /**
+             * Watchlisted
+             * @default true
+             */
+            watchlisted: boolean;
             /**
              * Website
              * @default

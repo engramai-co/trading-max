@@ -627,8 +627,9 @@ def test_empty_watchlist_uses_mag_seven_for_etf_only_portfolio(tmp_path: Path) -
             "META",
             "NVDA",
             "TSLA",
+            "DXYZ",
         ]
-        assert watchlist.tickers() == queued.tickers
+        assert watchlist.tickers() == queued.tickers[:-1]
     finally:
         manager.close()
 
@@ -844,3 +845,103 @@ def test_api_typed_runtime_admits_refresh_without_legacy_root(
                 break
             time.sleep(0.01)
         assert client.get(f"/v1/jobs/{job_id}").json()["status"] == "succeeded"
+
+
+def test_held_fund_refresh_uses_only_fund_prices_and_published_issuer_evidence(
+    tmp_path, seed_watchlist
+):
+    from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
+    from trading_max.research.held_funds import (
+        BROKER_SNAPSHOT_KEY,
+        FUND_PRICES_KEY,
+        LOOKTHROUGH_KEY,
+    )
+
+    store = ArtifactStore(tmp_path)
+    watchlist = WatchlistStore(tmp_path)
+    seed_watchlist(watchlist, "BE")
+    position = {
+        "ticker": "SYNFUND",
+        "broker_ticker": "SYNFUNDl_EQ",
+        "isin": "IE0000000001",
+        "current_value_gbp": 100,
+        "price_currency": "GBP",
+    }
+    payloads = {
+        BROKER_SNAPSHOT_KEY: {
+            "accounts": {"A": {"positions": [position]}, "B": {"positions": [position]}}
+        },
+        LOOKTHROUGH_KEY: {"fundPositions": [{"ticker": "SYNFUND", "isin": position["isin"]}]},
+        ETF_SUMMARY_KEY: {
+            "funds": [
+                {
+                    "isin": position["isin"],
+                    "tickers": ["SYNFUND"],
+                    "holdingsState": "no-holdings",
+                    "tracking": {"state": "missing"},
+                    "overlap": {"state": "missing"},
+                }
+            ]
+        },
+    }
+    store.immutable_snapshots.publish(
+        scope="accounts",
+        source="fixture",
+        artifacts=[
+            store.immutable_artifacts.put_json(
+                key=key, payload=payload, kind="fixture", producer_version="fixture"
+            )
+            for key, payload in payloads.items()
+        ],
+    )
+    histories, options, adr = [], [], []
+
+    def history(ticker, period):
+        histories.append(ticker)
+        return _research_history(ticker, period)
+
+    def options_loader(ticker, *args):
+        options.append(ticker)
+        return _research_options_unavailable(ticker, *args)
+
+    def adr_loader(ticker, *_):
+        adr.append(ticker)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("fund refresh requested equity provider data")
+
+    research = YFinanceResearchService(info_loader=forbidden)
+    research.fundamentals = research.financials = research.analyst = research.earnings = forbidden
+    manager = TypedJobManager(
+        store,
+        watchlist,
+        market_service=MarketResearchService(
+            history_loader=history, options_loader=options_loader, adr_loader=adr_loader
+        ),
+        research_service=research,
+    )
+    try:
+        queued = manager.submit("research", skip_sync=True)
+        assert queued.tickers == ["BE", "SYNFUND.L"]
+        manager.cancel(queued.job_id)
+        queued = manager.submit("research", skip_sync=True, tickers=["SYNFUND.L"])
+        assert manager._build_worker(worker_id="fixture", lease_seconds=60).run_once()
+        assert manager.get(queued.job_id).status.value == "succeeded"
+        assert histories == ["SYNFUND.L"]
+        assert options == adr == []
+        latest = store.latest_manifest()
+        result = store.read_json(latest.run_id, FUND_PRICES_KEY)["rows"][0]
+        assert (result["ticker"], result["isin"], result["mic"]) == (
+            "SYNFUND.L",
+            position["isin"],
+            "XLON",
+        )
+        assert result["price_series"] and "score" not in result
+        assert store.read_json(latest.run_id, ETF_SUMMARY_KEY) == payloads[ETF_SUMMARY_KEY]
+        assert not any(
+            ref.key
+            in {"research/valuation.json", "research/analyst.json", "research/financials.json"}
+            for ref in latest.artifacts
+        )
+    finally:
+        manager.close()

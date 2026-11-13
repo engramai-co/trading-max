@@ -258,3 +258,101 @@ def test_zero_valued_bull_scenario_does_not_break_research_alerts(boundary_clien
         ),
     )
     assert research.alerts("SYNTH", manifest) == []
+
+
+def test_held_fund_directory_uses_broker_listings_and_published_share_classes(boundary_client):
+    from trading_max.analytics.etf_details import ETFDetail, etf_detail_key
+    from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
+    from trading_max.research.held_funds import BROKER_SNAPSHOT_KEY, LOOKTHROUGH_KEY
+
+    app = boundary_client.app
+    store = app.state.store
+    share_class = "IE0000000001"
+    alternate = "IE0000000002"
+    london = {
+        "ticker": "FUND",
+        "broker_ticker": "FUNDl_EQ",
+        "name": "Synthetic London Fund",
+        "isin": share_class,
+        "current_value_gbp": 100,
+        "current_price": 1000,
+        "price_currency": "GBX",
+    }
+    amsterdam = {**london, "ticker": "FUND.AS", "broker_ticker": "FUND.AS", "current_value_gbp": 70}
+    unrelated = {
+        **london,
+        "broker_ticker": "FUND_US_EQ",
+        "name": "Synthetic US Company",
+        "isin": "US0000000001",
+        "current_value_gbp": 20,
+    }
+    pending = {**london, "ticker": "NEW", "broker_ticker": "NEWl_EQ", "isin": alternate}
+    reading = ETFReading(
+        isin=share_class,
+        tickers=["FUND", "FUND.AS"],
+        issuer="Synthetic issuer",
+        holdings_state="available",
+        tracking={"state": "missing"},
+        overlap={"state": "missing"},
+    )
+
+    def publish(positions_a, positions_b):
+        payloads = {
+            BROKER_SNAPSHOT_KEY: {
+                "accounts": {
+                    "A": {"positions": positions_a},
+                    "B": {"positions": positions_b},
+                }
+            },
+            LOOKTHROUGH_KEY: {
+                "fundPositions": [
+                    {"ticker": "FUND", "isin": share_class},
+                    {"ticker": "NEW", "isin": alternate},
+                ]
+            },
+            ETF_SUMMARY_KEY: {"funds": [reading.model_dump(mode="json")]},
+            etf_detail_key(share_class): ETFDetail(reading=reading).model_dump(mode="json"),
+        }
+        return store.immutable_snapshots.publish(
+            scope="all",
+            source="fixture",
+            artifacts=[
+                store.immutable_artifacts.put_json(
+                    key=key, payload=payload, kind="fixture", producer_version="fixture"
+                )
+                for key, payload in payloads.items()
+            ],
+        )
+
+    publish([london, unrelated], [london, amsterdam, pending])
+    instruments = boundary_client.get("/v1/research/shell").json()["instruments"]
+    funds = [row for row in instruments if row["isFund"]]
+    assert sorted(row["ticker"] for row in funds) == ["FUND.AS", "FUND.L", "NEW.L"]
+    assert all(row["held"] and not row["watchlisted"] for row in funds)
+    assert {row["ticker"]: row["directValueGbp"] for row in funds} == {
+        "FUND.L": 200,
+        "FUND.AS": 70,
+        "NEW.L": 100,
+    }
+    assert next(row for row in funds if row["ticker"] == "NEW.L")["status"] == "pending"
+    assert app.state.watchlist.tickers() == []
+    for ticker in ("FUND.L", "FUND.AS"):
+        result = boundary_client.get(f"/v1/research/{ticker}/fund").json()
+        assert (result["ticker"], result["isin"], result["issuer"]) == (
+            ticker,
+            share_class,
+            "Synthetic issuer",
+        )
+    assert boundary_client.get("/v1/research/NEW.L/fund").json()["state"] == "pending"
+    for view, field in (
+        ("analyst", "analyst"),
+        ("options", "options"),
+        ("valuation", "valuation"),
+        ("technical", "technical"),
+    ):
+        lens = boundary_client.get(f"/v1/research/FUND.L/lens/{view}").json()
+        assert lens["context"]["assetType"] == "ETF"
+        assert lens[field] is None
+
+    publish([unrelated], [])
+    assert not boundary_client.get("/v1/research/shell").json()["instruments"]

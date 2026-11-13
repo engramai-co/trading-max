@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from contextlib import suppress
 
+from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
+from trading_max.research.held_funds import SECURITY_MASTER_KEY, fund_listing
 from trading_max.research.listing import broker_listing
 
 from .artifacts import ArtifactStore
@@ -277,6 +279,12 @@ def build_dashboard_data(
         lookthrough.setdefault("gicsNotApplicableValueGbp", 0.0)
         lookthrough.setdefault("gicsSubIndustryAllocation", [])
     fund_identities = _fund_identities(lookthrough)
+    catalog = CatalogSecurityMaster.default()
+    if fund_identities:
+        with suppress(FileNotFoundError):
+            catalog = CatalogSecurityMaster(
+                SecurityMasterCatalog.model_validate(store.read_json(run_id, SECURITY_MASTER_KEY))
+            )
     try:
         diluted_cost_raw = store.read_json(run_id, "account/diluted_cost_metrics.json")
     except FileNotFoundError:
@@ -364,6 +372,9 @@ def build_dashboard_data(
                     "dayChangeDate": day_change.date if day_change else None,
                     "dayChangeClosedOn": day_change.closed_on if day_change else None,
                     "isFund": fund is not None,
+                    "researchTicker": fund_listing(position, catalog).ticker
+                    if fund is not None
+                    else None,
                     "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }
             )

@@ -51,6 +51,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const quote = holdingQuote(holding);
+  const researchHref = "/research?ticker=" + encodeURIComponent(holding.researchTicker ?? holding.ticker);
   const rate = holding.snapshotFxRateNativePerGbp;
   const calculation: ComponentProps<typeof Facts>["rows"] = [
     [t("原始报价", "Raw quote"), quote.raw],
@@ -118,11 +119,11 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
         <Facts rows={calculation} />
       </details>
       <div className="mx-position-actions">
-        <Button component={Link} href={"/research?ticker=" + encodeURIComponent(holding.ticker)} rightSection={<ArrowRight size={16} />}>
+        <Button component={Link} href={researchHref} rightSection={<ArrowRight size={16} />}>
           {t("研究这项投资", "Research this investment")}
         </Button>
         {holding.isFund && (
-          <Button component={Link} variant="default" href={`/research?ticker=${encodeURIComponent(holding.ticker)}&view=fundamentals`}>
+          <Button component={Link} variant="default" href={researchHref + "&view=fundamentals"}>
             {t("查看底层资产", "View look-through")}
           </Button>
         )}

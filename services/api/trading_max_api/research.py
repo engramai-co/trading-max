@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
-from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY
+from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
@@ -22,6 +23,13 @@ from trading_max.research.facts import (
     fingerprint,
     make_quote,
     number,
+)
+from trading_max.research.held_funds import (
+    FUND_PRICE_DIRECTORY_KEY,
+    FUND_PRICES_KEY,
+    SECURITY_MASTER_KEY,
+    FundListingIdentity,
+    held_fund_positions,
 )
 from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
@@ -530,6 +538,9 @@ class ResearchLedger:
         # rows can be memoized by sha256. The timeline and model history walk
         # the same handful of artifacts across many snapshots; without this the
         # research overview re-parses every research JSON per snapshot.
+        self._fund_cache: SingleFlightCache[str, dict[FundListingIdentity, dict[str, dict]]] = (
+            SingleFlightCache(8)
+        )
         self._facts_cache: SingleFlightCache[tuple, Any] = SingleFlightCache(128)
         self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
@@ -1016,9 +1027,16 @@ class ResearchLedger:
 
         holdings = self._holdings(manifest)
         etfs = self._published_etfs(manifest)
-        return [
+        held_funds = self._held_funds(manifest)
+        price_directory = (
+            self._cached_rows(manifest, FUND_PRICE_DIRECTORY_KEY, _fundamentals_rows)
+            if _artifact(manifest, FUND_PRICE_DIRECTORY_KEY)
+            else []
+        )
+        listed = [
             ResearchDirectoryInstrument(
-                is_fund=find_etf(etfs, item.ticker) is not None,
+                is_fund=find_etf(etfs, item.ticker) is not None
+                or any(row.get("ticker") == item.ticker for row in price_directory),
                 ticker=item.ticker,
                 name=item.name,
                 exchange=item.exchange,
@@ -1040,6 +1058,131 @@ class ResearchLedger:
             )
             for item in self.watchlist.items()
         ]
+        for listing, accounts in held_funds.items():
+            saved = next((i for i in listed if i.ticker == listing.ticker), None)
+            if saved is None and listing.mic == "XLON":
+                # Older watchlists saved London symbols without a suffix.
+                saved = next(
+                    (
+                        i
+                        for i in listed
+                        if i.ticker == listing.symbol
+                        and i.exchange.upper() in {"LSE", "LONDON", "LONDON STOCK EXCHANGE"}
+                    ),
+                    None,
+                )
+            reading = self.fund_reading(listing, etfs)
+            price = any(
+                row.get("ticker") == listing.ticker
+                and (row.get("isin"), row.get("mic")) == (listing.isin, listing.mic)
+                for row in price_directory
+            )
+            status = "ready" if reading and price else "partial" if reading or price else "pending"
+            position = next(iter(accounts.values()))["positions"][0]
+            normalized = {
+                code: {
+                    **account,
+                    "positions": [
+                        {**p, "ticker": listing.ticker, "broker_ticker": position["broker_ticker"]}
+                        if position.get("broker_ticker")
+                        else {**p, "ticker": listing.ticker}
+                        for p in account["positions"]
+                    ],
+                }
+                for code, account in accounts.items()
+            }
+            fields = _position_fields(
+                _account_holdings({"accounts": normalized}, {}), listing.ticker
+            )
+            if listing.mic == "XLON":
+                fields["broker_listing"] = "LSE:" + listing.symbol
+            updates = {
+                **fields,
+                "ticker": listing.ticker,
+                "is_fund": True,
+                "fund_isin": listing.isin or (reading.isin if reading else None),
+                "status": status,
+                "last_run_id": manifest.run_id if status != "pending" else None,
+                "exchange": listing.exchange or (saved.exchange if saved else ""),
+                "last_error": None,
+            }
+            if saved is not None:
+                if saved.ticker != listing.ticker:
+                    updates["watchlist_ticker"] = saved.ticker
+                listed[listed.index(saved)] = saved.model_copy(update=updates)
+            else:
+                listed.append(
+                    ResearchDirectoryInstrument(
+                        **updates,
+                        name=str(position.get("name") or listing.ticker),
+                        order=len(listed),
+                        watchlisted=False,
+                    )
+                )
+        return listed
+
+    def _held_funds(self, manifest: SnapshotManifest) -> dict[FundListingIdentity, dict[str, dict]]:
+        def load():
+            raw = (
+                self._read_optional(manifest, SECURITY_MASTER_KEY)
+                if _artifact(manifest, SECURITY_MASTER_KEY)
+                else {}
+            )
+            catalog = CatalogSecurityMaster(SecurityMasterCatalog.model_validate(raw))
+            return held_fund_positions(
+                self._broker_snapshot(manifest),
+                self._read_optional(manifest, LOOKTHROUGH_KEY),
+                self._published_etfs(manifest),
+                catalog,
+            )
+
+        return self._fund_cache.get_or_compute(manifest.run_id, load)
+
+    def held_fund(self, ticker: str, manifest: SnapshotManifest) -> FundListingIdentity | None:
+        ticker = ticker.strip().upper()
+        funds = self._held_funds(manifest)
+        exact = [listing for listing in funds if listing.ticker == ticker]
+        if exact or "." in ticker:
+            return exact[0] if len(exact) == 1 else None
+        if any(
+            item.ticker == ticker
+            and item.exchange.upper() in {"US", "NYSE", "NASDAQ", "NMS", "NYQ"}
+            for item in self.watchlist.items()
+        ):
+            return None
+        aliases = [listing for listing in funds if listing.symbol == ticker]
+        return aliases[0] if len(aliases) == 1 else None
+
+    @staticmethod
+    def fund_reading(listing: FundListingIdentity, etfs: list[ETFReading]) -> ETFReading | None:
+        if listing.isin:
+            return next((fund for fund in etfs if fund.isin == listing.isin), None)
+        return find_etf(etfs, listing.ticker)
+
+    def _fund_price(
+        self,
+        manifest: SnapshotManifest,
+        ticker: str,
+        listing: FundListingIdentity | None,
+        *,
+        with_points: bool = False,
+    ) -> JsonObject | None:
+        key = FUND_PRICES_KEY if with_points else FUND_PRICE_DIRECTORY_KEY
+        if _artifact(manifest, key) is None:
+            return None
+        rows = self._cached_rows(manifest, key, _fundamentals_rows)
+        return next(
+            (
+                row
+                for row in rows
+                if row.get("ticker") == ticker
+                and (
+                    listing is None
+                    or (row.get("isin"), row.get("mic")) == (listing.isin, listing.mic)
+                )
+            ),
+            None,
+        )
 
     def _published_etfs(self, manifest: SnapshotManifest):
         if _artifact(manifest, ETF_SUMMARY_KEY) is None:
@@ -1067,7 +1210,9 @@ class ResearchLedger:
         item = _account_holdings(self._broker_snapshot(manifest), {}).get(key)
         return item if item and item["held"] and item["price"] is not None else None
 
-    def lens_revision(self, manifest: SnapshotManifest, view: str, detail: str) -> str:
+    def lens_revision(
+        self, manifest: SnapshotManifest, view: str, detail: str, ticker: str = ""
+    ) -> str:
         """Account-only snapshots must not invalidate immutable company research."""
         common = {
             CURRENT_MARKET_KEY,
@@ -1075,6 +1220,24 @@ class ResearchLedger:
             "research/fundamentals.json",
             "research/coverage.json",
         }
+        if ticker and (listing := self.held_fund(ticker, manifest)):
+            return fingerprint(
+                [
+                    listing.key,
+                    view,
+                    detail,
+                    sorted(
+                        (a.key, a.sha256)
+                        for a in manifest.artifacts
+                        if a.key
+                        in {
+                            ETF_SUMMARY_KEY,
+                            FUND_PRICE_DIRECTORY_KEY,
+                        }
+                    ),
+                    datetime.now(UTC).date().isoformat(),
+                ]
+            )
         keys = common | {
             "overview": {
                 "research/financials.json",
@@ -1135,6 +1298,69 @@ class ResearchLedger:
             }
         )
 
+    def _held_fund_lens(
+        self,
+        listing: FundListingIdentity,
+        view: ResearchLensName,
+        manifest: SnapshotManifest,
+    ) -> ResearchLensSnapshot:
+        ticker = listing.ticker
+        price = self._fund_price(manifest, ticker, listing)
+        market = (
+            {
+                "ticker": ticker,
+                "spot": price["spot"],
+                "asOf": price["as_of"],
+                "currency": price["currency"],
+            }
+            if price
+            else None
+        )
+        metrics = {
+            "quoteType": "ETF",
+            "exchangeTimezoneName": price["timezone"] if price else None,
+            "fullExchangeName": price["exchange"] if price else listing.exchange,
+        }
+        fundamental = {"metrics": metrics}
+        quote = make_quote(ticker, market or {}, fundamental)
+        if not price:
+            position = next(iter(self._held_funds(manifest)[listing].values()))["positions"][0]
+            currency, _ = major_quote_unit(str(position.get("price_currency") or ""))
+            quote.currency = currency or None
+            quote.listing = broker_listing(position.get("broker_ticker")) or quote.listing
+        quote.schedule = session_schedule(
+            listing_calendar(ticker, quote.exchange, quote.timezone), datetime.now(UTC)
+        )
+        reading = self.fund_reading(listing, self._published_etfs(manifest))
+        return ResearchLensSnapshot(
+            ticker=ticker,
+            view=view,
+            run_id=manifest.run_id,
+            generated_at=manifest.created_at.isoformat(),
+            market=market,
+            fundamentals=fundamental if view in {"overview", "fundamentals"} else None,
+            context=ResearchContext(
+                quote=quote,
+                asset_type="ETF",
+                capabilities=[
+                    ResearchCapability(task="overview", state="available"),
+                    ResearchCapability(
+                        task="fundamentals", state="available" if reading else "missing"
+                    ),
+                    ResearchCapability(
+                        task="technical",
+                        state="available" if price else "missing",
+                        intervals=["1d"],
+                    ),
+                    ResearchCapability(task="ledger", state="available"),
+                    *[
+                        ResearchCapability(task=task, state="notApplicable", reason="fund-research")
+                        for task in ("analyst", "valuation", "options")
+                    ],
+                ],
+            ),
+        )
+
     def lens_snapshot(
         self,
         ticker: str,
@@ -1152,6 +1378,9 @@ class ResearchLedger:
         history into the response.
         """
 
+        listing = self.held_fund(ticker, manifest)
+        if listing:
+            return self._held_fund_lens(listing, view, manifest)
         ticker = self._route_ticker(ticker)
         market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
@@ -1172,10 +1401,15 @@ class ResearchLedger:
         # Report dates are compared with the exchange's calendar date.
         today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
-        is_fund = asset_type in {"ETF", "MUTUALFUND"} or (
-            asset_type == "UNKNOWN" and find_etf(self._published_etfs(manifest), ticker) is not None
+        is_fund = (
+            asset_type in {"ETF", "MUTUALFUND"}
+            or self._fund_price(manifest, ticker, None) is not None
+            or (
+                asset_type == "UNKNOWN"
+                and find_etf(self._published_etfs(manifest), ticker) is not None
+            )
         )
-        if is_fund and asset_type == "UNKNOWN":
+        if is_fund and asset_type not in {"ETF", "MUTUALFUND"}:
             asset_type = "ETF"
         is_financial = any(
             word in str(fundamental.get("industry") or metrics.get("industry") or "").lower()
@@ -1992,8 +2226,10 @@ class ResearchLedger:
         *,
         limit: int = 504,
     ) -> ResearchPriceSeries:
-        ticker = self._route_ticker(ticker)
-        artifact = _artifact(manifest, "research/technical.json")
+        listing = self.held_fund(ticker, manifest)
+        ticker = listing.ticker if listing else self._route_ticker(ticker)
+        fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
+        artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
         metadata_artifact = _artifact(manifest, "research/fundamentals.json")
         marker_artifact = _artifact(manifest, "account/trade_markers.json")
         cache_key = (
@@ -2024,11 +2260,13 @@ class ResearchLedger:
             )
         raw = self._raw_price_cache.get_or_compute(
             artifact.sha256 if artifact else manifest.run_id,
-            lambda: self._read_optional(manifest, "research/technical.json"),
+            lambda: {} if fund_price else self._read_optional(manifest, "research/technical.json"),
         )
         raw_rows = raw.get("rows")
         rows = raw_rows if isinstance(raw_rows, list) else []
-        source = _find([row for row in rows if isinstance(row, dict)], ticker)
+        source = fund_price or (
+            None if listing else _find([row for row in rows if isinstance(row, dict)], ticker)
+        )
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         raw_points = source.get("price_series")
@@ -2038,8 +2276,12 @@ class ResearchLedger:
             if isinstance(point, dict)
         ]
         as_of = str(source.get("as_of") or raw.get("as_of") or "")
-        market = _find(self._market_rows(manifest), ticker) or {}
-        currency = str(market.get("currency") or source.get("currency") or "")
+        market = {} if fund_price else _find(self._market_rows(manifest), ticker) or {}
+        currency = str(
+            source.get("currency")
+            if fund_price
+            else market.get("currency") or source.get("currency") or ""
+        )
         raw_markers = (
             self._read_optional(manifest, "account/trade_markers.json")
             if marker_artifact is not None

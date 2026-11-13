@@ -8578,6 +8578,17 @@
             "title": "Quantity",
             "type": "number"
           },
+          "researchTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Researchticker"
+          },
           "snapshotFxRateNativePerGbp": {
             "anyOf": [
               {
@@ -13681,6 +13692,17 @@
             "title": "Figi",
             "type": "string"
           },
+          "fundIsin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundisin"
+          },
           "gics": {
             "anyOf": [
               {
@@ -13844,6 +13866,22 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "watchlistTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watchlistticker"
+          },
+          "watchlisted": {
+            "default": true,
+            "title": "Watchlisted",
+            "type": "boolean"
           },
           "website": {
             "default": "",

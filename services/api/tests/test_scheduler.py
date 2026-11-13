@@ -141,7 +141,13 @@ def test_scheduled_research_covers_held_listings_and_watchlist(
     monkeypatch.setattr(
         jobs,
         "_latest_account_metrics",
-        lambda profile: SimpleNamespace(positions=positions) if profile == "invest" else None,
+        lambda profile: (
+            SimpleNamespace(
+                positions=positions, model_dump=lambda: {"positions": [vars(p) for p in positions]}
+            )
+            if profile == "invest"
+            else None
+        ),
     )
     now = datetime(2026, 11, 11, 17, 31, tzinfo=UTC)
     scheduler = NightlyScheduler(
