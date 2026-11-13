@@ -30,6 +30,25 @@ NOW = datetime(2026, 11, 9, 9, tzinfo=UTC)
         ("uk", "BT.A", "London Stock Exchange", "BT-A.L"),
         ("uk", "HSBA", "London Stock Exchange", "HSBA.L"),
         ("uk", "SMT", None, "SMT.L"),
+        ("eu", "SAP", "Xetra", "SAP.DE"),
+        ("eu", "QIA", "Deutsche Boerse Xetra", "QIA.DE"),
+        ("eu", "MC", "Nyse Euronext - Euronext Paris", "MC.PA"),
+        ("eu", "ASML", "Euronext Amsterdam", "ASML.AS"),
+        ("eu", "ISP", "Borsa Italiana", "ISP.MI"),
+        ("eu", "ITX", "Bolsa De Madrid", "ITX.MC"),
+        ("eu", "NESN", "SIX Swiss Exchange", "NESN.SW"),
+        ("eu", "BT.A", "London Stock Exchange", "BT-A.L"),
+        ("eu", "RR.", "London Stock Exchange", "RR.L"),
+        ("eu", "NDA FI", "Nasdaq Omx Helsinki Ltd.", "NDA-FI.HE"),
+        ("eu", "NOVO B", "Omx Nordic Exchange Copenhagen A/S", "NOVO-B.CO"),
+        ("eu", "VOLV B", "Nasdaq Omx Nordic", "VOLV-B.ST"),
+        ("eu", "EQNR", "Oslo Bors Asa", "EQNR.OL"),
+        ("eu", "ABI", "Nyse Euronext - Euronext Brussels", "ABI.BR"),
+        ("eu", "EDP", "Nyse Euronext - Euronext Lisbon", "EDP.LS"),
+        ("eu", "A5G", "Irish Stock Exchange - All Market", "A5G.IR"),
+        ("eu", "EBS", "Wiener Boerse Ag", "EBS.VI"),
+        ("eu", "SPOT", "New York Stock Exchange Inc.", "SPOT"),
+        ("eu", "NBIS", "NASDAQ", "NBIS"),
         ("hk", "700", "Hong Kong Exchanges And Clearing Ltd", "0700.HK"),
         ("hk", "9988", "Hong Kong Exchanges And Clearing Ltd", "9988.HK"),
         ("hk", None, "Hong Kong Exchanges And Clearing Ltd", None),
@@ -210,3 +229,39 @@ def test_japan_basket_uses_tokyo_listings_only() -> None:
     assert universe.fund_ticker == "IJPN"
     assert [c.symbol for c in universe.constituents] == ["7203.T", "130A.T"]
     assert [c.weight for c in universe.constituents] == [0.75, 0.25]
+
+
+def test_europe_basket_preserves_exchange_weights_and_records_equity_exclusions() -> None:
+    universe = parse_universe(
+        UNIVERSES["eu"],
+        points(
+            [
+                holding("NOVO B", 4.0, exchange="Omx Nordic Exchange Copenhagen A/S"),
+                holding("BT.A", 2.0, exchange="London Stock Exchange", sector="Communication"),
+                holding("SYN", 2.0, exchange="SIX Swiss Exchange"),
+                holding("SYN", 1.0, exchange="Euronext Amsterdam"),
+                holding("SYN", 1.0, exchange="NASDAQ"),
+                holding("OLD", 0.0002, exchange="Xetra"),
+                holding("NEW", 0.1, exchange="Unmapped exchange"),
+                holding("RTS", 0.1, exchange="Nasdaq Omx Helsinki Ltd.", sector="Unclassified"),
+                holding("EUR", 0.5, exchange=None, asset="Cash"),
+                holding("XEUR", 0.1, exchange="Xetra", asset="Futures"),
+            ]
+        ),
+        fetched_at=NOW,
+    )
+    assert universe.source_url.endswith("/251861")
+    assert universe.fund_ticker == "SMEA"
+    assert [(c.symbol, c.weight) for c in universe.constituents] == [
+        ("NOVO-B.CO", 0.4),
+        ("BT-A.L", 0.2),
+        ("SYN.SW", 0.2),
+        ("SYN", 0.1),
+        ("SYN.AS", 0.1),
+    ]
+    assert universe.constituents[1].sector_code == "50"
+    assert [(c.ticker, c.reason) for c in universe.excluded] == [
+        ("OLD", "residual holding"),
+        ("NEW", "not quoted on this market"),
+        ("RTS", "no GICS sector"),
+    ]

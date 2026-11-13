@@ -214,12 +214,14 @@ def window(day: str, opened: str, closed: str, **breaks: str) -> SectorSessionWi
         ("HSBA.L", "US", "HSBA.L US Equity", ("uk", "HSBA")),
         # Without a US venue an unsuffixed ticker is not a US listing.
         ("ASML", "", "", None),
-        ("ASML", "AMS", "", None),
-        ("SAP", "GER", "SAP US Equity", None),
-        ("SAP", "", "SAP GY Equity", None),
+        ("ASML", "AMS", "", ("eu", "ASML.AS")),
+        ("SAP", "GER", "SAP US Equity", ("eu", "SAP.DE")),
+        ("SAP", "", "SAP GY Equity", ("eu", "SAP.DE")),
         ("XYZ.L", "AMS", "", None),
         ("0700.HK", "LSE", "", None),
-        ("SEMI.AS", "US", "", None),
+        ("SEMI.AS", "US", "", ("eu", "SEMI.AS")),
+        ("SEMI.AS", "PAR", "", None),
+        ("NOVO B", "CPH", "", ("eu", "NOVO-B.CO")),
         ("7203.T", "", "", ("jp", "7203")),
         ("", "", "", None),
         # A named exchange decides alone; only an unnamed one lets the Bloomberg
@@ -243,6 +245,9 @@ def test_board_symbols_use_the_same_keys() -> None:
     assert member_key("uk", "BT-A.L") == ("uk", "BT-A")
     assert member_key("hk", "0700.HK") == ("hk", "0700")
     assert member_key("kr", "196170.KQ") == ("kr", "196170")
+    assert member_key("eu", "BT-A.L") == ("uk", "BT-A")
+    assert member_key("eu", "SEMI.AS") == ("eu", "SEMI.AS")
+    assert member_key("eu", "SEMI.PA") == ("eu", "SEMI.PA")
 
 
 def test_each_look_through_value_is_assigned_once() -> None:
@@ -612,7 +617,9 @@ def test_backfill_without_prices_is_reported_and_bounded(tmp_path: Path) -> None
         assert "US: No prices for the 2026-11-06 session" in state.last_error
         clock["now"] += timedelta(minutes=10)
 
-    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp"))
+    assert not any(
+        sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp", "eu")
+    )
     requests = len(prices.intraday_requests)
     sectors.run_once()
     assert len(prices.intraday_requests) == requests
@@ -1028,7 +1035,9 @@ def test_rate_limiting_pauses_every_market(tmp_path: Path) -> None:
 
     assert state.phase == "error"
     assert len(prices.intraday_requests) == 1
-    assert not any(sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp"))
+    assert not any(
+        sectors.due(market, clock["now"]) for market in ("us", "uk", "hk", "kr", "jp", "eu")
+    )
     assert state.next_run_at == datetime(2026, 11, 6, 16, 30, tzinfo=UTC)
     clock["now"] = datetime(2026, 11, 6, 16, 31, tzinfo=UTC)
     assert sectors.due("us", clock["now"])
@@ -1175,7 +1184,7 @@ def test_status_reports_schedule_and_switches(tmp_path: Path) -> None:
     assert (starting.enabled, starting.phase, starting.interval_seconds) == (True, "starting", 600)
     assert starting.next_run_at == datetime(2026, 11, 6, 16, 10, tzinfo=UTC)
 
-    for market in ("us", "uk", "hk", "kr", "jp"):
+    for market in ("us", "uk", "hk", "kr", "jp", "eu"):
         sectors.boards.save(complete_board(market, SESSION))
     clock["now"] = datetime(2026, 11, 7, 12, tzinfo=UTC)
     assert sectors.status().next_run_at == datetime(2026, 11, 9, tzinfo=UTC)
@@ -1242,3 +1251,61 @@ def test_tokyo_clock_has_a_lunch_break_and_japanese_listing_identity() -> None:
     assert not in_break(session, datetime(2026, 11, 6, 3, 30, tzinfo=UTC))
     assert market_key("130A.T", "JPX") == ("jp", "130A")
     assert market_key("130A.T", "HKG") is None
+
+
+def test_europe_cash_calendar_tracks_london_hours_and_xetra_holidays() -> None:
+    assert sessions_between("eu", date(2026, 7, 1), date(2026, 7, 1)) == (
+        window("2026-07-01", "07:00", "15:30"),
+    )
+    assert sessions_between("eu", date(2026, 11, 6), date(2026, 11, 6)) == (
+        window(SESSION, "08:00", "16:30"),
+    )
+    assert not sessions_between("eu", date(2026, 12, 24), date(2026, 12, 24))
+
+
+@pytest.mark.parametrize(("has_close", "complete"), [(True, True), (False, False)])
+def test_europe_prices_top_weight_and_uses_official_close_when_available(
+    tmp_path: Path, has_close: bool, complete: bool
+) -> None:
+    opened = datetime(2026, 11, 6, 8, tzinfo=UTC)
+    clock = {"now": datetime(2026, 11, 6, 17, tzinfo=UTC)}
+    universes = FakeUniverses(
+        eu=universe(
+            "eu",
+            constituent("SYN.PA", 0.12),
+            constituent("IDLE.ST", 0.03),
+            constituent("SYN.L", 0.56, sector="40"),
+            constituent("SYN", 0.01),
+            constituent("SYN.SW", 0.28),
+        )
+    )
+    prices = FakePrices(
+        intraday={
+            "SYN.L": series("SYN.L", 100, [(0, 101), (450, 102)], opened=opened),
+            "SYN.SW": series("SYN.SW", 100, [(0, 103), (450, 104)], opened=opened),
+        },
+        daily={
+            # The .PA listing had a local holiday yesterday and no usable intraday
+            # series today. Its official close uses its own last daily close.
+            "SYN.PA": daily_series("SYN.PA", {"2026-11-04": 100, SESSION: 105}),
+            "SYN.L": history("SYN.L", [100] * 5, close=104),
+            "SYN.SW": history("SYN.SW", [100] * 5, **({"close": 105} if has_close else {})),
+        },
+    )
+    sectors = monitor(tmp_path, universes, prices, clock)
+    result = sectors.refresh("eu", clock["now"])
+    assert result.published
+    assert (result.problem is None) is complete
+    expected = [["SYN.L", "SYN.SW", "SYN.PA"]]
+    assert prices.intraday_requests == prices.daily_requests == expected
+    board = sectors.boards.load("eu")
+    assert board is not None and board.complete is complete
+    assert board.member_count == 5
+    assert board.priced_count == 3
+    assert [grouping.kind for grouping in board.groupings] == ["gics"]
+    groups = {group.key: group for group in board.groupings[0].groups}
+    assert groups["45"].weight == pytest.approx(0.44)
+    members = {member.symbol: member.change for member in groups["45"].members}
+    assert members["SYN.PA"] == pytest.approx(0.05)
+    assert members["IDLE.ST"] is None
+    assert len(board.rank_sessions) == 5

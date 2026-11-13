@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import statistics
 import threading
 from collections import defaultdict
@@ -56,13 +57,29 @@ VENUES: dict[str, frozenset[str]] = {
     "jp": _codes("JPX TYO XTKS TOKYOSTOCKEXCHANGE JP JT"),
     "kr": _codes("KSC KOE KRX KSE KOSPI KOSDAQ XKRX XKOS KS KQ"),
 }
-# Venues of markets without a board. Naming one keeps a listing off every board.
+# A Europe board spans several venues. Keep the suffix in lookup keys so
+# similarly named listings (e.g. Amsterdam and Paris) cannot borrow links.
+EU_VENUES = {
+    ".AS": _codes("AMS XAMS NA EURONEXTAMSTERDAM"),
+    ".BR": _codes("BRU XBRU BB NYSEEURONEXT-EURONEXTBRUSSELS"),
+    ".CO": _codes("CPH XCSE DC OMXNORDICEXCHANGECOPENHAGENA/S"),
+    ".DE": _codes("GER XETRA ETR XETR GY GR DEUTSCHEBOERSEXETRA"),
+    ".HE": _codes("HEL XHEL FH NASDAQOMXHELSINKILTD."),
+    ".IR": _codes("ISE XDUB ID IRISHSTOCKEXCHANGE-ALLMARKET"),
+    ".LS": _codes("LIS XLIS PL NYSEEURONEXT-EURONEXTLISBON"),
+    ".MC": _codes("MCE XMAD SM BOLSADEMADRID"),
+    ".MI": _codes("MIL XMIL IM BORSAITALIANA"),
+    ".OL": _codes("OSL XOSL NO OSLOBORSASA"),
+    ".PA": _codes("PAR XPAR FP NYSEEURONEXT-EURONEXTPARIS"),
+    ".ST": _codes("STO XSTO SS NASDAQOMXNORDIC"),
+    ".SW": _codes("SWX EBS XSWX SW SE SIXSWISSEXCHANGE"),
+    ".VI": _codes("VIE XWBO AV WIENERBOERSEAG"),
+}
+# Known venues outside these boards keep a listing from borrowing a ticker.
 FOREIGN_VENUES = _codes(
     """
-    AMS PAR BRU LIS GER FRA XETRA ETR MIL MCE VIE SWX EBS STO CPH HEL OSL ISE TOR TSX CNQ
-    NEO OSA ASX SES SGX TAI TWO SHH SHZ NSE BSE JNB SAO MEX XAMS XPAR XETR XFRA
-    XMIL XSWX XTSE XASX NA FP GY GR IM SM SW SE SS DC FH NO CN CT AU SP TT CH
-    IN IB SJ BZ MM
+    FRA TOR TSX CNQ NEO OSA ASX SES SGX TAI TWO SHH SHZ NSE BSE JNB SAO MEX XFRA XTSE XASX
+    CN CT AU SP TT CH IN IB SJ BZ MM
     """
 )
 SUFFIX_MARKETS = {".L": "uk", ".HK": "hk", ".KS": "kr", ".KQ": "kr", ".T": "jp"}
@@ -98,8 +115,8 @@ def _positive(value: Any) -> float | None:
     return number if math.isfinite(number) and number > 0 else None
 
 
-def _venue(exchange: str, bloomberg_ticker: str) -> str | None:
-    """The market a listing venue names: a board market, "foreign", or None.
+def _venue(exchange: str, bloomberg_ticker: str) -> tuple[str | None, str | None]:
+    """The named board (or "foreign") and, for continental Europe, its suffix.
 
     A named exchange decides alone, even one these lists do not know; a
     Bloomberg exchange code counts only when no exchange is named.
@@ -111,8 +128,11 @@ def _venue(exchange: str, bloomberg_ticker: str) -> str | None:
         code = words[-2] if len(words) >= 3 else ""
     market = next((market for market, venues in VENUES.items() if code in venues), None)
     if market is not None:
-        return market
-    return "foreign" if code in FOREIGN_VENUES else None
+        return market, None
+    suffix = next((end for end, codes in EU_VENUES.items() if code in codes), None)
+    if suffix is not None:
+        return "eu", suffix
+    return ("foreign" if code in FOREIGN_VENUES else None), None
 
 
 def _local_code(market: str, value: str) -> str | None:
@@ -135,7 +155,7 @@ def market_key(
 
     A listing suffix (``.L``, ``.HK``, ``.KS``, ``.KQ``) or a named venue
     places a listing; an unsuffixed ticker counts as US only with a US venue. A
-    named foreign venue or a foreign suffix keeps the listing off every board,
+    named venue outside these boards or an unknown suffix keeps the listing off every board,
     and a generic US venue never overrides an explicit listing suffix.
     The venue is the named exchange; a Bloomberg exchange code counts only
     when none is named, so an exchange these lists do not know places nothing.
@@ -145,16 +165,23 @@ def market_key(
     if not value:
         return None
     suffix = next((market for end, market in SUFFIX_MARKETS.items() if value.endswith(end)), None)
-    if suffix is None and "." in value:
+    eu_suffix = next((end for end in EU_VENUES if value.endswith(end)), None)
+    if suffix is None and eu_suffix is None and "." in value:
         base, _, letter = value.rpartition(".")
         if not (base.isalpha() and letter in US_SHARE_CLASSES):
             return None  # another market's suffix
-    venue = _venue(exchange, bloomberg_ticker)
+    venue, venue_suffix = _venue(exchange, bloomberg_ticker)
     if venue == "foreign":
         return None
+    if eu_suffix is not None:
+        if venue not in (None, "us", "eu") or venue_suffix not in (None, eu_suffix):
+            return None
+        return ("eu", value)
     if suffix is not None and venue not in (None, "us", suffix):
         return None  # the venue and the suffix disagree
     market = suffix or venue
+    if market == "eu" and venue_suffix is not None:
+        return ("eu", re.sub(r"[ .]+", "-", value.rstrip(".")) + venue_suffix)
     if market is None:
         return None
     code = _local_code(market, value)
@@ -164,6 +191,13 @@ def market_key(
 def member_key(market: SectorMarketCode, symbol: str) -> tuple[str, str]:
     """The research lookup key of a board member's market-data symbol."""
 
+    if market == "eu":
+        # London and US listings use the same research entry on either board.
+        if symbol.endswith(".L"):
+            return ("uk", symbol.removesuffix(".L"))
+        if "." not in symbol:
+            return ("us", symbol)
+        return (market, symbol)
     if market == "us":
         return (market, symbol)
     return (market, symbol.rpartition(".")[0])

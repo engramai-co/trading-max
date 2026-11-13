@@ -14,6 +14,7 @@ from services.api.trading_max_api.sector_models import (
     SectorGroup,
     SectorGrouping,
     SectorLeader,
+    SectorMarketCode,
     SectorMember,
     SectorSource,
 )
@@ -34,6 +35,19 @@ SECTORS = (
     ("55", "Utilities", "NEE", "NextEra Energy", 2, 0.42),
     ("60", "Real Estate", "PLD", "Prologis", 2, 0.01),
     ("15", "Materials", "LIN", "Linde", 2, -0.18),
+)
+EU_SECTORS = (
+    ("40", "Financials", "EUSYN40.SW", "Synthetic European Bank", 24, 0.86),
+    ("20", "Industrials", "EUSYN20.DE", "Synthetic Engineering", 18, -0.42),
+    ("35", "Health Care", "EUSYN35.CO", "Synthetic Life Sciences", 15, 1.12),
+    ("30", "Consumer Staples", "EUSYN30.L", "Synthetic Foods", 9, -0.27),
+    ("45", "Information Technology", "EUSYN45.AS", "Synthetic Semiconductors", 8, 0.71),
+    ("25", "Consumer Discretionary", "EUSYN25.PA", "Synthetic Retail", 7, -0.52),
+    ("10", "Energy", "EUSYN10.L", "Synthetic Energy", 6, 0.33),
+    ("55", "Utilities", "EUSYN55.MC", "Synthetic Utilities", 5, 0.18),
+    ("15", "Materials", "EUSYN15.ST", "Synthetic Materials", 4, -0.46),
+    ("50", "Communication Services", "EUSYN50.DE", "Synthetic Telecom", 3, -0.68),
+    ("60", "Real Estate", "EUSYN60.BR", "Synthetic Properties", 1, 0.08),
 )
 # (ticker, name, quantity, GBP value, GBP cost, sector; None means a fund)
 INVEST = (
@@ -159,12 +173,25 @@ def seed_accounts(report: Path, as_of: datetime) -> dict[str, tuple[float, float
 
 def seed_sector_board(destination: Path, end: date) -> None:
     next_day = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
-    session = latest_session("us", next_day)
+    store = SectorBoardStore(destination)
+    _seed_sector_market(store, "us", next_day, SECTORS)
+    _seed_sector_market(store, "eu", next_day, EU_SECTORS)
+
+
+def _seed_sector_market(
+    store: SectorBoardStore,
+    market: SectorMarketCode,
+    next_day: datetime,
+    rows: tuple[tuple[str, str, str, str, int, float], ...],
+) -> None:
+    session = latest_session(market, next_day)
     if session is None:
-        raise ValueError("Cannot find a US sector demo session for the requested date")
+        raise ValueError(
+            f"Cannot find a {market.upper()} sector demo session for the requested date"
+        )
     times = [session.open + (session.close - session.open) * (n / 24) for n in range(25)]
     groups = []
-    for i, (code, name, symbol, company, pct_weight, pct_move) in enumerate(SECTORS):
+    for i, (code, name, symbol, company, pct_weight, pct_move) in enumerate(rows):
         change = pct_move / 100
         weight = pct_weight / 100
         groups.append(
@@ -196,9 +223,9 @@ def seed_sector_board(destination: Path, end: date) -> None:
                 ],
             )
         )
-    SectorBoardStore(destination).save(
+    store.save(
         SectorBoard(
-            market="us",
+            market=market,
             session_date=session.date,
             as_of=session.close,
             fetched_at=session.close,
@@ -207,7 +234,7 @@ def seed_sector_board(destination: Path, end: date) -> None:
             member_count=len(groups),
             priced_count=len(groups),
             source=SectorSource(
-                universe="Synthetic US sector sample",
+                universe=f"Synthetic {market.upper()} sector sample",
                 fund="Trading Max demo",
                 fund_ticker="",
                 url="",

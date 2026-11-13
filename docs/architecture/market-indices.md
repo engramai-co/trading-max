@@ -37,12 +37,33 @@ When that exact close is missing, the constituent remains unpriced.
 
 ## Markets page reads
 
-The US, UK, Hong Kong, Korea and Japan have index cards and sector boards.
-Europe, Taiwan, India, Canada, Australia and Switzerland show indices only.
-Global groups six benchmarks and adds a world map and attribution for MSCI ACWI. Europe includes the DAX and CAC 40. Japan's sector board uses IJPN's
-MSCI Japan holdings on the Tokyo Stock Exchange; the Nikkei 225 and TOPIX ETF
-cards use their own prices. The index cards and sector board load and report
-freshness independently.
+The US, Europe, UK, Hong Kong, Korea and Japan have index cards and sector
+boards. Taiwan, India, Canada, Australia and Switzerland show indices only.
+Global groups six benchmarks and adds a world map and attribution for MSCI
+ACWI. Japan's sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock
+Exchange; the Nikkei 225 and TOPIX ETF cards use their own prices. The index
+cards and sector board load and report freshness independently.
+
+Europe's board uses [SMEA's MSCI Europe holdings](https://www.ishares.com/uk/individual/en/products/251861/ishares-msci-europe-ucits-etf-eur-acc-fund),
+including the UK and Switzerland. Sector and industry group areas and portfolio
+exposure use the full equity basket. Price requests take the largest European
+listings up to at least 95% of basket weight; the tail and any US listings
+contribute weight and exposure only. Returns are in each listing's local
+currency. The Xetra calendar sets the board session (normally 08:00–16:30
+London, with no lunch break); the board settles when closing prices cover
+80% of basket weight. A listing closed for a local holiday contributes no
+price for that day. Industry groups use available GICS matches in the local
+security master.
+
+The 12 November 2026 holdings check mapped 383 equity listings. Cash and
+derivatives were skipped; a Kesko subscription right had no GICS sector and
+was excluded. Yahoo Spark returned usable prices for all mapped listings.
+The refresh sample was 289 names (95.04% of equity weight), or up to 15
+batches per slot. In a normal full session that adds up to 855 Spark requests
+(55 intraday slots plus two daily reads) before shared UK cache hits. With
+all 56 overlapping UK listings reused, batching order puts the marginal
+count at about 684–741 requests. Failed, delayed or unsettled sessions may
+use additional retries under the monitor's existing limits.
 
 The index catalog is metadata only. Market summaries reuse one batched
 intraday quote read and dated daily baselines. Successful open sessions
