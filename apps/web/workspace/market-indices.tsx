@@ -14,6 +14,7 @@ import { api } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
+import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
 import {
   alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
@@ -405,12 +406,12 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         </dl>
       </section>
       {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} showDataStatusLink={false} /> :
-        context.data && <IndexContextPanels context={context.data} />}
+        context.data && <IndexContextPanels context={context.data} phone={phone} />}
     </div>
   );
 }
 
-function IndexContextPanels({ context }: { context: IndexContext }) {
+function IndexContextPanels({ context, phone }: { context: IndexContext; phone: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const basket = context.basket;
@@ -419,13 +420,23 @@ function IndexContextPanels({ context }: { context: IndexContext }) {
       {basket && <section className="mx-panel mx-index-basket">
         <div className="mx-index-title">
           <h3>{t("成分篮子", "Constituent basket")} · {basket.fund}</h3>
-          <span>{basket.asOf ? formatDateTime(basket.asOf, locale, timeZone) : basket.sessionDate}</span>
-          <Help label={t("篮子贡献口径", "How basket contributions are measured")}>
-            <p>{t("贡献是成分权重乘以当日涨跌，单位为百分点。缺少报价的权重保留为空；残差只比较同一时段的指数报价。", "Contributions are weights multiplied by session moves, in percentage points. Unpriced weights stay missing. The residual uses an index quote from the same session and time.")}</p>
-            <p>{t("持仓日期 ", "Holdings dated ")}{basket.holdingsDate}</p>
+          <span>{basket.proxyUniverse && `${basket.proxyUniverse} · `}
+            {!basket.proxyUniverse && basket.asOf
+              ? formatDateTime(basket.asOf, locale, timeZone) : formatCalendarDate(basket.holdingsDate, locale)}</span>
+          <Help label={t("篮子口径", "Constituent basket basis")}>
+            <p>{basket.proxyUniverse
+              ? t("这是该市场板块使用的 MSCI 篮子，不是本指数的成分或权重。", "This is the MSCI basket used by the market’s sector board. Its holdings and weights are not the index’s own.")
+              : basket.estimatedMove != null
+                ? t("贡献是成分权重乘以当日涨跌，单位为百分点。缺少报价的权重保留为空；残差只比较同一时段的指数报价。", "Contributions are weights multiplied by session moves, in percentage points. Unpriced weights stay missing. The residual uses an index quote from the same session and time.")
+                : t("仅显示发行商公布的成分篮子权重。", "Only weights from the issuer’s constituent basket are shown.")}</p>
+            <p>{basket.sourceUrl
+              ? <><a href={basket.sourceUrl} target="_blank" rel="noreferrer" className="mx-text-link">{basket.fund}</a> · </>
+              : null}{t("持仓日期", "Holdings dated")} {formatCalendarDate(basket.holdingsDate, locale)}
+              {basket.holdingsFetchedAt && <> · {t("抓取于", "Retrieved")} {formatDateTime(basket.holdingsFetchedAt, locale, timeZone)}</>}</p>
+            {basket.estimatedMove != null && basket.fetchedAt && <p>Yahoo Finance · {t("抓取于", "Retrieved")} {formatDateTime(basket.fetchedAt, locale, timeZone)}</p>}
           </Help>
         </div>
-        <dl className="mx-index-metrics">
+        {!basket.proxyUniverse && basket.estimatedMove != null && <><dl className="mx-index-metrics">
           <div><dt>{t("上涨", "Up")}</dt><dd>{basket.coverage > 0 ? basket.breadth.up : "—"}</dd></div>
           <div><dt>{t("持平", "Flat")}</dt><dd>{basket.coverage > 0 ? basket.breadth.flat : "—"}</dd></div>
           <div><dt>{t("下跌", "Down")}</dt><dd>{basket.coverage > 0 ? basket.breadth.down : "—"}</dd></div>
@@ -436,14 +447,18 @@ function IndexContextPanels({ context }: { context: IndexContext }) {
         <div className="mx-index-contributors">
           <ContributionList title={t("正贡献", "Top contributors")} items={basket.leaders} />
           <ContributionList title={t("负贡献", "Top detractors")} items={basket.laggards} />
-        </div>
-        <details className="mx-details"><summary>{t("行业权重与贡献", "Sector weights and contribution")}</summary>
-          <ContributionList items={basket.sectors} showWeight />
+        </div></>}
+        <details className="mx-details"><summary>{basket.estimatedMove != null
+          ? t("行业权重与贡献", "Sector weights and contribution") : t("行业权重", "Sector weights")}</summary>
+          <ContributionList items={basket.sectors} showWeight showContribution={basket.estimatedMove != null} />
         </details>
         <details className="mx-details"><summary>{t("前十大成分", "Top ten constituents")}</summary>
-          <ContributionList items={basket.topHoldings} showWeight />
+          <ContributionList items={basket.topHoldings} showWeight showContribution={basket.estimatedMove != null} />
         </details>
       </section>}
+      {context.breadthHistory && <IndexBreadthPanel history={context.breadthHistory} stale={!!context.breadthStale} phone={phone} />}
+      {context.vix && <IndexVixPanel vix={context.vix} stale={!!context.vixStale} />}
+      {context.valuationReference && <IndexValuationPanel snapshot={context.valuation} reference={context.valuationReference} />}
       <section className="mx-panel mx-index-holdings">
         <div className="mx-index-title">
           <h3>{t("我持有的跟踪 ETF", "Tracking ETFs I hold")}</h3>
@@ -466,7 +481,9 @@ function IndexContextPanels({ context }: { context: IndexContext }) {
   );
 }
 
-function ContributionList({ title, items, showWeight = false }: { title?: string; items: IndexContribution[]; showWeight?: boolean }) {
+function ContributionList({ title, items, showWeight = false, showContribution = true }: {
+  title?: string; items: IndexContribution[]; showWeight?: boolean; showContribution?: boolean;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   return (
@@ -476,7 +493,7 @@ function ContributionList({ title, items, showWeight = false }: { title?: string
         {items.length ? items.map((item) => <li key={item.key}>
           <span>{item.name}</span>
           {showWeight && <span>{formatPercent(item.weight, locale, 2)}</span>}
-          <strong>{pointsText(item.contribution == null ? null : item.contribution * 100, locale, t("百分点", "pp"))}</strong>
+          {showContribution && <strong>{pointsText(item.contribution == null ? null : item.contribution * 100, locale, t("百分点", "pp"))}</strong>}
         </li>) : <li>—</li>}
       </ul>
     </div>

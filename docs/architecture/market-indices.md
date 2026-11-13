@@ -221,3 +221,99 @@ renormalised. The help popover records the basis and holdings date.
 Constituents are displayed by name and weight without requesting their prices.
 Portfolio exposure is read independently of the public cache from the latest
 immutable portfolio look-through industry allocation across all accounts.
+
+## Index depth
+
+The existing `GET /v1/indices/{id}/context` response includes saved breadth,
+VIX context and valuation when available. It does not fetch inputs or
+calculate those statistics during a request. The market monitor, when enabled
+by the research schedule, updates the snapshots after its ordinary quote
+work. The local cache is under `<data-root>/state/indices/depth-v1/`. A later
+unavailable session leaves the previous reading visible and marked stale.
+
+**Breadth.** S&P 500 (CSPX), Nasdaq 100 (CNDX), FTSE 100 (ISF) and MSCI Japan
+(IJPN) use their existing iShares equity baskets. The chart shows up to 252
+exchange sessions, recalculated against one dated basket; this is a
+current-basket back-calculation with survivorship bias. Each listing counts
+once. A listing must have that session's close and 50 or 200 observed daily
+closes within the last 53 or 210 exchange sessions, including the reading
+session. Breadth is the fraction of eligible listings strictly above their
+simple average. Eligibility is shown separately for each window; readings
+with less than 80% of basket members eligible are missing. Holidays and
+weekends are omitted, genuine gaps have dotted connectors, and missing prices
+are never carried forward. Closes use listing currency.
+
+The initial fill uses two years of daily Spark closes in 20-symbol batches.
+The 12 November 2026 holdings contained 503 CSPX, 101 CNDX, 100 ISF and 167
+IJPN equity listings, with 86 listings shared by the US baskets. That is
+26 US + 5 UK + 9 Japan = **40 Spark calls** for an empty cache. After the
+fill, the monitor reuses the settled daily closes it already collects for the
+boards and the shared short cache. Only the 15 CNDX-only lines need a
+separate one-month batch in the ordinary case (**1 Spark call per US
+session**); missing settlements can add batches. New members, revised
+overlapping prices (e.g. a split) and offline gaps longer than the short
+cache require a new long series for affected listings. A changed ISIN also
+invalidates the cached ticker history. A normal refresh adds no issuer call
+for CSPX/ISF/IJPN when their existing 20-hour caches are fresh; CNDX moves
+from view-only refresh to one shared holdings read per session when needed.
+All new Yahoo reads share the MKT-2 ordinary limits of 64/minute and 3,200/day,
+its higher-priority reserves remain available for board opening and
+settlement, and a provider 429 pauses the same shared cache. Failed or
+incomplete work has up to three hourly attempts per session per market.
+
+**VIX.** US details compare the latest completed Cboe VIX close with earlier
+daily closes over roughly five years. The response gives the empirical
+percentile (share at or below that close), the 10th–90th percentile range, the
+sample dates and size, and the data retrieval time. Close and range are in
+volatility points. This reuses the existing Yahoo `^VIX` daily chart cache
+and takes at most one chart call per successful session on a cache miss.
+Intraday marks are excluded.
+
+**Valuation.** Selected MSCI and iShares source pages are linked without
+automated retrieval. When the workspace operator has the right to use a
+provider or issuer snapshot, place one dated JSON record in
+`<data-root>/reference/index-valuations/<index-id>.json`; leave any
+unpublished metric out. Replace the file as the source updates. The index
+registry binding determines the provider, link and whether the reading
+represents an index or a tracking fund portfolio. The UI shows only that
+snapshot and its date, with no inferred forward P/E or valuation history.
+Synthetic file example:
+
+```json
+{
+  "asOf": "2026-10-30",
+  "fetchedAt": "2026-11-01T12:00:00Z",
+  "pe": 22.5,
+  "forwardPe": 18.6
+}
+```
+
+**Data and rights.** The private workspace reuses the existing Yahoo
+compatibility path and iShares holdings caches; neither ships data or grants
+a feed licence. [Yahoo terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html)
+require express permission for automated access; use the integration only
+where the applicable terms and permissions allow it.
+[iShares terms](https://www.ishares.com/uk/individual/en/compliance/terms-and-conditions)
+restrict copying and redistribution. [Cboe history](https://www.cboe.com/tradable-products/vix/vix-historical-data/)
+and [FRED VIXCLS](https://fred.stlouisfed.org/series/VIXCLS) are reference
+sources only; the FRED series is Cboe copyright and is reprinted with
+permission. No new feed is added for either.
+
+[MSCI index terms](https://www.msci.com/legal/index-terms) do not grant
+automated copying or redistribution rights for public factsheets. Index
+historical membership is omitted: public change announcements do not supply
+a complete, authorised point-in-time membership series. Nikkei also publishes
+a [component change archive](https://indexes.nikkei.co.jp/nkave/archives/file/history_of_nikkei_stock_average_component_changes_en.pdf);
+it is a reference and is not republished or used to build an in-app series.
+[S&P DJI](https://www.spglobal.com/en/terms-of-use) publishes selected
+constituent changes; the Dow's effective divisor is distributed through
+its end-of-day index files. [Nikkei](https://indexes.nikkei.co.jp/nkave/data/index.en.html)
+publishes the divisor and constituent information for reference. Its licensed
+data package supplies daily calculation inputs, including corporate actions
+and next-session base prices, for a reproducible series. The application
+publishes no price-weighted attribution for either index.
+[Hang Seng Indexes](https://www.hsi.com.hk/solutions/data-analytics/)
+offers index and constituent licences, and [KRX](https://global.krx.co.kr/contents/GLB/01/0103/0103010000/GLB0103010000.jsp)
+has a separate index licensing business. The Hang Seng and KOSPI details show
+the existing MSCI sector-board baskets explicitly as proxies, with no
+benchmark attribution and no claim to use official weights.

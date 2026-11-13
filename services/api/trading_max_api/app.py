@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 from trading_max import __version__ as trading_max_version
+from trading_max.infrastructure.sector_universe import SectorUniverseProvider
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportStore
@@ -44,6 +45,7 @@ from .dashboard_models import (
 )
 from .flow_diagnostics import SnapshotFlowDiagnostics
 from .history_reader import HistoryReader
+from .index_depth import IndexDepth
 from .indices import IndexService
 from .intraday_scheduler import IntradayScheduler
 from .logging_setup import configure_logging
@@ -381,6 +383,8 @@ def create_app(
         watchlist_interval_seconds=settings.alert_watchlist_interval_seconds,
     )
     market_prices = SharedMarketPrices()
+    market_universes = SectorUniverseProvider(settings.data_root)
+    index_depth = IndexDepth(settings.data_root, market_prices, market_universes)
     sector_monitor = SectorMonitor(
         settings.data_root,
         store,
@@ -388,6 +392,8 @@ def create_app(
         available=settings.sector_monitor_enabled,
         enabled=automation_preferences.research_enabled,
         prices=market_prices,
+        universes=market_universes,
+        index_depth=index_depth,
     )
 
     @asynccontextmanager
@@ -502,7 +508,12 @@ def create_app(
     app.state.alert_monitor = alert_monitor
     app.state.sector_monitor = sector_monitor
     app.state.indices = IndexService(
-        settings.data_root, store, sector_monitor.boards, market_prices
+        settings.data_root,
+        store,
+        sector_monitor.boards,
+        market_prices,
+        universes=market_universes,
+        depth=index_depth,
     )
     app.state.research = research
     app.state.estimate_history = jobs.estimate_history

@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { GlobalSectorBoard } from "../workspace/global-sectors";
 import type { GlobalMarketContribution } from "../workspace/global-markets-data";
-import type { IndexIdentity } from "../workspace/market-indices-data";
+import type { IndexContext, IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -337,6 +337,8 @@ const indices: IndexIdentity[] = [
   fakeIndex("ftse-100", "uk", "FTSE 100", "富时 100", "^SYN-FTSE", "GBP"),
   fakeIndex("nikkei-225", "jp", "Nikkei 225", "日经 225", "^N225", "JPY"),
   fakeIndex("topix", "jp", "TOPIX ETF price", "TOPIX ETF 价格", "1306.T", "JPY", "etf-price"),
+  fakeIndex("hang-seng", "hk", "Hang Seng", "恒生指数", "^SYN-HSI", "HKD"),
+  fakeIndex("kospi", "kr", "KOSPI", "韩国综合指数", "^SYN-KS", "KRW"),
   fakeIndex("msci-world", "global", "MSCI World", "MSCI 世界", "^SYN-WORLD", "USD"),
   fakeIndex("msci-acwi", "global", "MSCI ACWI", "MSCI 全球", "^SYN-ACWI", "USD"),
   fakeIndex("msci-world-ex-usa", "global", "MSCI World ex USA", "MSCI 世界（除美国）", "^SYN-WORLD-XUS", "USD"),
@@ -361,6 +363,32 @@ const globalFixture: GlobalMarketContribution = {
     { market: "jp", indexId: "nikkei-225", weight: 0.057, move: -0.007, contribution: -0.0004, notOpen: false },
     { market: "uk", indexId: "ftse-100", weight: 0.03, move: 0, contribution: 0, notOpen: true },
   ],
+};
+
+const depthFixture: Pick<IndexContext, "breadthHistory" | "vix" | "valuation" | "valuationReference"> = {
+  breadthHistory: {
+    fund: "SYN", holdingsUrl: "https://example.invalid/fund",
+    holdingsAsOf: "2026-11-11", holdingsFetchedAt: "2026-11-12T10:00:00Z",
+    pricesSource: "Synthetic quotes", pricesFetchedAt: "2026-11-12T22:01:00Z",
+    asOf: "2026-11-12", calculatedAt: "2026-11-12T22:02:00Z", members: 503,
+    points: Array.from({ length: 345 }, (_, i) => {
+      const day = new Date(Date.UTC(2025, 11, 3 + i));
+      const above50 = 0.56 + Math.sin(i * 0.075) * 0.16 + Math.sin(i * 1.35) * 0.035;
+      const above200 = 0.59 + Math.sin(i * 0.045 + 2) * 0.14 + Math.cos(i * 0.42) * 0.016;
+      return { date: day.toISOString().slice(0, 10), above50: i === 120 ? null : above50, above200,
+        eligible50: i === 120 ? 201 : 500, eligible200: 488 };
+    }).filter(({ date }) => ![0, 6].includes(new Date(date).getUTCDay())),
+  },
+  vix: {
+    source: "Synthetic quotes", asOf: "2026-11-12", fetchedAt: "2026-11-12T22:01:00Z",
+    sampleStart: "2021-11-12", sampleEnd: "2026-11-11", sampleSize: 1253,
+    close: 18.37, percentile: 0.58, p10: 12.71, p90: 27.84,
+  },
+  valuationReference: { source: "Synthetic issuer", sourceUrl: "https://example.invalid/valuation", basis: "etf" },
+  valuation: {
+    source: "Synthetic issuer", sourceUrl: "https://example.invalid/valuation", basis: "etf",
+    asOf: "2026-10-30", fetchedAt: "2026-11-01T13:00:00Z", pe: 26.52, forwardPe: 22.4,
+  },
 };
 
 async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fail?: boolean; now?: number } = {}) {
@@ -397,9 +425,18 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
       } });
     }
     if (parts.at(-1) === "context") {
-      const useBasket = parts.at(-2) === "sp-500";
+      const id = parts.at(-2);
+      const useBasket = id === "sp-500";
+      const proxy = id === "hang-seng" ? "Synthetic MSCI Hong Kong basket" : id === "kospi" ? "Synthetic MSCI Korea basket" : null;
       const sample = { key: "SYN", name: "Synthetic company", weight: 0.10, contribution: 0.0022 };
+      if (proxy) return route.fulfill({ json: {
+        funds: [], basket: { fund: "SYN", proxyUniverse: proxy, holdingsDate: "2026-11-11",
+          sessionDate: "2026-11-12", asOf: null, estimatedMove: null, residual: null,
+          breadth: { up: 0, flat: 0, down: 0 }, coverage: 0,
+          leaders: [], laggards: [], topHoldings: [{ ...sample, contribution: null }], sectors: [] },
+      } });
       return route.fulfill({ json: useBasket ? {
+        ...depthFixture,
         basket: {
           fund: "SYN", holdingsDate: "2026-11-11", sessionDate: "2026-11-12", asOf: new Date(base).toISOString(),
           coverage: 0.89, breadth: { up: 45, flat: 5, down: 19 },
@@ -408,7 +445,7 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
         },
         funds: [{ isin: "ZZ0000000001", ticker: "SYNA", name: "Synthetic index fund", shares: 5, valueGbp: 120 }],
         exposureGbp: 120, portfolioAsOf: new Date(base).toISOString(),
-      } : { basket: null, funds: [] } });
+      } : { basket: null, funds: [], ...(id === "nasdaq-100" ? { valuationReference: depthFixture.valuationReference } : {}) } });
     }
     if (fail) return route.fulfill({ status: 503, json: {} });
     const scope = url.searchParams.get("scope") ?? "us";
@@ -547,7 +584,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors?market=us&index=sp-500&range=MAX&compare=nasdaq-100");
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
     await expect(page.locator(".mx-index-legend")).toContainText(/起点归 100|Rebased to 100/);
-    await expect(page.getByRole("heading", { name: /成分篮子|Constituent basket/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^(成分篮子|Constituent basket) · SYN$/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
   });
 
@@ -782,6 +819,40 @@ test.describe("market index layer", () => {
     });
   }
 
+  test("shows dated basket breadth, VIX in points and a separate ETF valuation snapshot", async ({ page }, testInfo) => {
+    if (testInfo.project.name === "mobile") {
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    }
+    await mockIndices(page);
+    await page.goto("/sectors?market=us&index=sp-500");
+    const breadth = page.getByRole("heading", { name: /成分篮子宽度历史|Constituent basket breadth/ });
+    await expect(breadth).toBeVisible();
+    await expect(page.getByText(/站上 200 日线|Above 200-day average/).first()).toBeVisible();
+    await expect(page.getByText("488/503")).toBeVisible();
+    await expect(page.getByText(/18\.37 (点|pts)/)).toBeVisible();
+    await expect(page.getByText("58%")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /跟踪 ETF 估值|Tracking ETF valuation/ })).toBeVisible();
+    await expect(page.getByText("22.4×")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Synthetic issuer" })).toHaveAttribute("href", "https://example.invalid/valuation");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+
+    await page.goto("/sectors?market=us&index=nasdaq-100");
+    await expect(page.getByText(/暂无快照|No snapshot/)).toBeVisible();
+    await expect(page.getByText("22.4×")).toHaveCount(0);
+  });
+
+  test("Hang Seng and KOSPI disclose MSCI basket weights without index attribution", async ({ page }) => {
+    await mockIndices(page);
+    for (const [market, id, proxy] of [["hk", "hang-seng", "Hong Kong"], ["kr", "kospi", "Korea"]]) {
+      await page.goto(`/sectors?market=${market}&index=${id}`);
+      const basket = page.locator(".mx-index-basket");
+      await expect(basket.getByText(`Synthetic MSCI ${proxy} basket`, { exact: false })).toBeVisible();
+      await expect(basket.getByText(/残差|Residual|正贡献|Top contributors/)).toHaveCount(0);
+      await basket.getByText(/前十大成分|Top ten constituents/).click();
+      await expect(basket.getByText("10%")).toBeVisible();
+    }
+  });
+
   test("India keeps the last board visible when its calendar is unknown", async ({ page }) => {
     const now = Date.parse("2027-01-04T07:30:00Z");
     await page.clock.setFixedTime(now);
@@ -855,6 +926,12 @@ test.describe("market index layer", () => {
         await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
         await settle(page);
         await page.screenshot({ path: path.join(folder!, `index-${width}-${scheme}.png`), fullPage: true });
+        if (width !== 1100) {
+          const depth = page.locator(".mx-index-depth").first();
+          await depth.scrollIntoViewIfNeeded();
+          await settle(page);
+          await page.screenshot({ path: path.join(folder!, `index-depth-${width}-${scheme}.png`) });
+        }
         await page.close();
       }
     }

@@ -112,6 +112,7 @@ class SectorSource(ApiModel):
     fund_ticker: str
     url: str
     as_of: str = Field(description="The issuer's holdings date.")
+    holdings_fetched_at: datetime | None = None
     prices: str = "Yahoo Finance"
     quote_weight_target: float | None = None
 

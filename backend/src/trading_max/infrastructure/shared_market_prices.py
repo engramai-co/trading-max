@@ -9,7 +9,8 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timedelta
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from urllib.parse import quote
 
@@ -78,18 +79,28 @@ class SharedMarketPrices:
         symbols: Iterable[str],
         ttl: int,
         load: Callable[[list[str]], Mapping[str, SparkSeries]],
+        *,
+        not_before: datetime | None = None,
     ) -> dict[str, SparkSeries]:
         unique = list(dict.fromkeys(symbol.strip().upper() for symbol in symbols if symbol.strip()))
         with self._lock:
             now = time.monotonic()
-            wanted = [
-                symbol for symbol in unique if self._cache.get((kind, symbol), (0, None))[0] <= now
-            ]
+
+            def expired(symbol: str) -> bool:
+                expires, item = self._cache.get((kind, symbol), (0, None))
+                return expires <= now or (
+                    item is not None
+                    and not_before is not None
+                    and (item.fetched_at is None or item.fetched_at < not_before)
+                )
+
+            wanted = [symbol for symbol in unique if expired(symbol)]
             if wanted:
                 if now < self._paused_until:
                     raise SparkRateLimited("Yahoo Finance price requests are paused")
                 self._reserve(now, -(-len(wanted) // BATCH_SIZE))
                 try:
+                    fetched_at = datetime.now(UTC)
                     result = load(wanted)
                 except (SparkRateLimited, YFRateLimitError) as exc:
                     self._paused_until = time.monotonic() + RATE_LIMIT_SECONDS
@@ -97,7 +108,9 @@ class SharedMarketPrices:
                 for symbol in wanted:
                     self._cache[kind, symbol] = (
                         time.monotonic() + (ttl if symbol in result else min(ttl, 60)),
-                        result.get(symbol),
+                        replace(result[symbol], fetched_at=fetched_at)
+                        if symbol in result
+                        else None,
                     )
                 if len(self._cache) > 4096:
                     self._cache = {
@@ -112,8 +125,13 @@ class SharedMarketPrices:
     def intraday(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         return self._read("intraday", symbols, 240, self.source.intraday)
 
-    def daily(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
-        return self._read("daily", symbols, 240, self.source.daily)
+    def daily(
+        self, symbols: Iterable[str], *, not_before: datetime | None = None
+    ) -> dict[str, SparkSeries]:
+        return self._read("daily", symbols, 240, self.source.daily, not_before=not_before)
+
+    def breadth_history(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
+        return self._read("breadth-2y", symbols, 240, self.source.breadth_history)
 
     def benchmark_intraday_batch(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         """Read five-minute marks across the prior close in a batched spark request."""
@@ -126,8 +144,10 @@ class SharedMarketPrices:
             f"benchmark-{window}-5m", symbol, {"range": window, "interval": "5m"}, 240
         )
 
-    def history(self, symbol: str) -> SparkSeries | None:
-        return self._chart("5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60)
+    def history(self, symbol: str, *, not_before: datetime | None = None) -> SparkSeries | None:
+        return self._chart(
+            "5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60, not_before=not_before
+        )
 
     def history_bars(
         self, symbol: str, window: Literal["1W", "1M", "1Y", "MAX"], now: datetime
@@ -154,7 +174,13 @@ class SharedMarketPrices:
         )
 
     def _chart(
-        self, kind: str, symbol: str, params: dict[str, str], ttl: int
+        self,
+        kind: str,
+        symbol: str,
+        params: dict[str, str],
+        ttl: int,
+        *,
+        not_before: datetime | None = None,
     ) -> SparkSeries | None:
         symbol = symbol.strip().upper()
 
@@ -192,4 +218,4 @@ class SharedMarketPrices:
                 else {}
             )
 
-        return self._read(kind, [symbol], ttl, load).get(symbol)
+        return self._read(kind, [symbol], ttl, load, not_before=not_before).get(symbol)
