@@ -328,7 +328,7 @@ class AlertMonitorState(ApiModel):
 
 
 class SectorMonitorState(ApiModel):
-    """Ten-minute sector-board refreshes for the markets that are trading."""
+    """Sector-board refreshes for the markets that are trading."""
 
     enabled: bool
     phase: Literal["disabled", "starting", "idle", "refreshing", "error"]

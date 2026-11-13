@@ -37,8 +37,9 @@ When that exact close is missing, the constituent remains unpriced.
 
 ## Markets page reads
 
-The US, Europe, UK, Hong Kong, Korea and Japan have index cards and sector
-boards. Taiwan, India, Canada, Australia and Switzerland show indices only.
+The US, Europe, UK, Hong Kong, Korea, Japan, Taiwan, India, Canada and Australia
+have index cards and sector boards. Switzerland shows its index card; Swiss
+constituents remain part of the Europe board.
 Global groups six benchmarks above a choice of Regions and Sectors. Japan's
 sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock Exchange; the
 Nikkei 225 and TOPIX ETF cards use their own prices. The index cards and sector
@@ -59,18 +60,69 @@ The 12 November 2026 holdings check mapped 383 equity listings. Cash and
 derivatives were skipped; a Kesko subscription right had no GICS sector and
 was excluded. Yahoo Spark returned usable prices for all mapped listings.
 The refresh sample was 289 names (95.04% of equity weight), or up to 15
-batches per slot. In a normal full session that adds up to 855 Spark requests
-(55 intraday slots plus two daily reads) before shared UK cache hits. With
-all 56 overlapping UK listings reused, batching order puts the marginal
-count at about 684–741 requests. Failed, delayed or unsettled sessions may
-use additional retries under the monitor's existing limits.
+batches per slot. Europe now polls every 30 minutes during the session and
+shares overlapping London prices with the UK board.
+
+The four additional boards use these iShares UCITS ETF holdings. Counts and
+sample weights are from the issuer's 12 November 2026 holdings, after excluding
+cash, derivatives and residual zero-weight equity lines. The displayed index
+cards are separate local benchmarks; their returns are not the fund's returns.
+
+| Board | Holdings source | Equity basket | Quoted sample | Local session | Spark requests/session |
+| --- | --- | ---: | ---: | --- | ---: |
+| Taiwan | [ITWN](https://www.ishares.com/uk/individual/en/products/251878) | 74 | 74 (100%) | TWSE and TPEx, 09:00–13:30 | 132 |
+| India | [NDIA](https://www.ishares.com/uk/individual/en/products/297617) | 165 | 134 (95.08%) | NSE and BSE, 09:15–15:30 | 161 |
+| Canada | [CSCA](https://www.ishares.com/uk/individual/en/products/253721) | 80 | 80 (100%) | TSX, 09:30–16:00 | 180 |
+| Australia | [SAUS](https://www.ishares.com/uk/individual/en/products/251851) | 43 | 43 (100%) | ASX, 10:00–16:00 | 126 |
+
+Taiwan keeps exchange-listed and OTC listings distinct (six TPEx lines,
+`.TWO`, in this holdings file). The
+[2026 TPEx calendar](https://dsp.tpex.org.tw/storage/eb_data/11411/114007545811-1.pdf)
+matches TWSE's cash-equity schedule; the shared calendar applies the published
+[TWSE 2027 closures](https://www.twse.com.tw/holidaySchedule/holidaySchedule?response=html)
+missing in the calendar dependency. Canada uses the
+[TSX trading calendar](https://www.tsx.com/en/trading/calendars-and-trading-hours/calendar)
+and Australia the [ASX cash calendar](https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar.),
+including their early closes. NDIA uses both NSE and BSE lines; prices
+are never substituted across venues. The 95% target limits prices only.
+The complete basket still determines map area and look-through exposure.
+
+The India cash-equity calendar implements the
+[NSE 2026 holidays](https://nsearchives.nseindia.com/content/circulars/CMTR71775.pdf),
+[BSE holidays](https://www.bseindia.com/markets/MarketInfo/DispNewNoticesCirculars.aspx?page=20251212-8),
+and the added January 15 municipal election closure
+([NSE](https://nsearchives.nseindia.com/content/circulars/CMTR72260.pdf),
+[BSE](https://www.bseindia.com/markets/MarketInfo/DispNewNoticesCirculars.aspx?page=20260112-8)).
+The February 1 Union Budget session follows regular hours
+([NSE](https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf),
+[BSE](https://www.bseindia.com/markets/MarketInfo/DispNewNoticesCirculars.aspx?page=20260116-33)).
+The November 8 Muhurat session is 14:20–15:30 IST
+([NSE](https://nsearchives.nseindia.com/content/circulars/CMTR76941.pdf),
+[BSE](https://www.bseindia.com/markets/MarketInfo/DispNewNoticesCirculars.aspx?page=20261019-9)).
+Outside the verified year, the board retains its last snapshot and pauses
+scheduled refreshes. Index cards show provider-dated observations and mark the
+calendar unknown; Global omits the unverified local move from its estimate.
+
+A normal full-session estimate for automated boards is about 3,040 Spark
+requests before these changes and about 2,660 after, allowing for overlapping
+UK/Europe listings in the same polling slot. The four new boards account for
+599 of the latter total. Without cache hits the corresponding counts are
+3,210 and 2,723. Estimates include initial and closing daily reads with
+successful data; retries and page-driven index/detail traffic vary with use.
+US and India refresh every 20 minutes, Europe every 30 minutes and the
+other boards every 10 minutes. Opening and settlement take priority, with
+markets of the same priority rotating. All market reads share a budget of
+64 requests per rolling minute and 3,200 per rolling day, with reserved
+capacity up to 96 and 4,000 for opening and settlement. A Yahoo 429 pauses
+provider reads for 30 minutes while each market keeps its last known board
+and flags delayed updates.
 
 The index catalog is metadata only. Market summaries reuse one batched
 intraday quote read and dated daily baselines. Successful open sessions
 refresh at most every ten minutes per viewed market; a settled session is
 reused until the next open. The daily close is requested again after the
-closing auction settles. Composite and Indian indices report the provider's
-dated observations without claiming a verified session or official close;
+closing auction settles. Composite indices, and Indian indices outside the verified calendar year,
+report provider-dated observations without claiming an official close;
 those reads are limited to once every 30 minutes unless a listed index in
 the same scope is trading. A shared listing cache coalesces overlapping basket
 and card reads and pauses all those requests on a provider rate limit. The

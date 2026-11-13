@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from trading_max.analytics.sector_board import BoardMember, GroupLabel
-from trading_max.infrastructure.sector_universe import SectorConstituent
+from trading_max.infrastructure.sector_universe import BSE_YAHOO_CODES, SectorConstituent
 from trading_max.reference import CatalogSecurityMaster, SecurityDescriptor
 
 from .models import SnapshotManifest, WatchlistItem, WatchlistState
@@ -57,6 +57,14 @@ VENUES: dict[str, frozenset[str]] = {
     "jp": _codes("JPX TYO XTKS TOKYOSTOCKEXCHANGE JP JT"),
     "kr": _codes("KSC KOE KRX KSE KOSPI KOSDAQ XKRX XKOS KS KQ"),
 }
+QUALIFIED_VENUES = {
+    ".TW": _codes("TAI TWSE XTAI TAIWANSTOCKEXCHANGE TT"),
+    ".TWO": _codes("TWO TPEX ROCO GRETAISECURITIESMARKET"),
+    ".NS": _codes("NSI NSE XNSE NATIONALSTOCKEXCHANGEOFINDIA IN"),
+    ".BO": _codes("BSE BSELTD BOMBAYSTOCKEXCHANGE XBOM BO BOM IB"),
+    ".TO": _codes("TOR TSX XTSE TORONTOSTOCKEXCHANGE CN CT"),
+    ".AX": _codes("ASX XASX ASX-ALLMARKETS AU"),
+}
 # A Europe board spans several venues. Keep the suffix in lookup keys so
 # similarly named listings (e.g. Amsterdam and Paris) cannot borrow links.
 EU_VENUES = {
@@ -78,11 +86,22 @@ EU_VENUES = {
 # Known venues outside these boards keep a listing from borrowing a ticker.
 FOREIGN_VENUES = _codes(
     """
-    FRA TOR TSX CNQ NEO OSA ASX SES SGX TAI TWO SHH SHZ NSE BSE JNB SAO MEX XFRA XTSE XASX
-    CN CT AU SP TT CH IN IB SJ BZ MM
+    FRA CNQ NEO OSA SES SGX SHH SHZ JNB SAO MEX XFRA SP CH SJ BZ MM
     """
 )
-SUFFIX_MARKETS = {".L": "uk", ".HK": "hk", ".KS": "kr", ".KQ": "kr", ".T": "jp"}
+SUFFIX_MARKETS = {
+    ".L": "uk",
+    ".HK": "hk",
+    ".KS": "kr",
+    ".KQ": "kr",
+    ".T": "jp",
+    ".TW": "tw",
+    ".TWO": "tw",
+    ".NS": "in",
+    ".BO": "in",
+    ".TO": "ca",
+    ".AX": "au",
+}
 # Exchange values that name no venue. Only these let a Bloomberg exchange code
 # stand in, since watchlist items default to a generic "<ticker> US Equity".
 UNNAMED_EXCHANGES = frozenset({"", "UNKNOWN", "N/A", "-"})
@@ -129,6 +148,9 @@ def _venue(exchange: str, bloomberg_ticker: str) -> tuple[str | None, str | None
     market = next((market for market, venues in VENUES.items() if code in venues), None)
     if market is not None:
         return market, None
+    listing = next((end for end, codes in QUALIFIED_VENUES.items() if code in codes), None)
+    if listing is not None:
+        return SUFFIX_MARKETS[listing], listing
     suffix = next((end for end, codes in EU_VENUES.items() if code in codes), None)
     if suffix is not None:
         return "eu", suffix
@@ -164,13 +186,19 @@ def market_key(
     value = ticker.strip().upper()
     if not value:
         return None
-    suffix = next((market for end, market in SUFFIX_MARKETS.items() if value.endswith(end)), None)
+    listing_suffix = next((end for end in SUFFIX_MARKETS if value.endswith(end)), None)
+    suffix = SUFFIX_MARKETS.get(listing_suffix or "")
     eu_suffix = next((end for end in EU_VENUES if value.endswith(end)), None)
-    if suffix is None and eu_suffix is None and "." in value:
+    venue, venue_suffix = _venue(exchange, bloomberg_ticker)
+    if (
+        suffix is None
+        and eu_suffix is None
+        and venue_suffix not in QUALIFIED_VENUES
+        and "." in value
+    ):
         base, _, letter = value.rpartition(".")
         if not (base.isalpha() and letter in US_SHARE_CLASSES):
             return None  # another market's suffix
-    venue, venue_suffix = _venue(exchange, bloomberg_ticker)
     if venue == "foreign":
         return None
     if eu_suffix is not None:
@@ -180,6 +208,16 @@ def market_key(
     if suffix is not None and venue not in (None, "us", suffix):
         return None  # the venue and the suffix disagree
     market = suffix or venue
+    qualified = listing_suffix or venue_suffix
+    if qualified in QUALIFIED_VENUES:
+        if listing_suffix and venue_suffix and listing_suffix != venue_suffix:
+            return None
+        local = _local_code(market or "", value)
+        if not local:
+            return None
+        if qualified == ".BO":
+            local = BSE_YAHOO_CODES.get(local, local)
+        return (SUFFIX_MARKETS[qualified], local + qualified)
     if market == "eu" and venue_suffix is not None:
         return ("eu", re.sub(r"[ .]+", "-", value.rstrip(".")) + venue_suffix)
     if market is None:
@@ -198,7 +236,7 @@ def member_key(market: SectorMarketCode, symbol: str) -> tuple[str, str]:
         if "." not in symbol:
             return ("us", symbol)
         return (market, symbol)
-    if market == "us":
+    if market in {"us", "tw", "in", "ca", "au"}:
         return (market, symbol)
     return (market, symbol.rpartition(".")[0])
 
@@ -309,7 +347,10 @@ def resolve_constituents(
     for constituent in constituents:
         entity = master.resolve(
             SecurityDescriptor(
-                ticker=constituent.ticker, name=constituent.name, isin=constituent.isin
+                ticker=constituent.ticker,
+                name=constituent.name,
+                isin=constituent.isin,
+                exchange=constituent.exchange,
             )
         )
         if entity.method == "unresolved":

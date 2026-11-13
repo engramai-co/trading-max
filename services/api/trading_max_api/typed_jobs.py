@@ -295,6 +295,7 @@ def stage_plan(
                 ("accounts.decisions", "Score buys and sells against what followed"),
             ]
         )
+    stages.append(("research.etf_depth", "Update ETF research evidence"))
     stages.append(("snapshot.publish", "Publish immutable snapshot"))
     return stages
 

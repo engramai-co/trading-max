@@ -4,7 +4,8 @@ import { prepareHistory } from "../lib/portfolio/prepared";
 const runId = "synthetic-etf-lenses";
 const date = "2026-11-11";
 const stamp = date + "T16:30:00Z";
-const isin = "IE0032077012";
+const isin = "ZZ0000000011";
+const peerIsin = "ZZ0000000022";
 const evidence = { coverage: "available", sourceUrl: "https://issuer.example/etf", effectiveAt: date, fetchedAt: stamp, parserVersion: "fixture" };
 const reading = {
   isin, tickers: ["EQQQ"], name: "Synthetic Nasdaq ETF", issuer: "Synthetic issuer", indexName: "Synthetic Nasdaq Index (Net)",
@@ -42,6 +43,19 @@ const fund = {
   reading, matches, holdings, holdingsState: "available", returnCurrency: "USD",
   returnBasis: "Synthetic NAV and benchmark total returns", annualReturns: [{ year: 2025, navReturn: 0.12, benchmarkReturn: 0.125, trackingDifference: -0.005 }],
   disclosures: [{ kind: "holdings", value: date, observedAt: stamp, effectiveAt: date, sourceUrl: evidence.sourceUrl }],
+};
+const ukReportingFund = { state: "reporting", publicationDate: date, effectiveFrom: "2025-01-01", evidence };
+const peerComparison = {
+  benchmark: reading.indexName, domicile: reading.domicile, hedging: reading.hedging, incomeUse: reading.incomeUse, publishedAt: stamp,
+  funds: [
+    { isin, name: reading.name, sourceUrl: evidence.sourceUrl, heldTicker: "EQQQ", fee: { value: 0.003, basis: "OCF", evidence }, tracking: reading.tracking, overlap: reading.overlap },
+    { isin: peerIsin, name: "Synthetic peer ETF", sourceUrl: evidence.sourceUrl, fee: { value: 0.004, basis: "OCF", evidence } },
+  ],
+  ranks: { fee: { percentile: 0, count: 2, comparableIsins: [isin, peerIsin] } },
+};
+const benchmarkChange = {
+  kind: "index-change", value: reading.indexName, previousValue: "Synthetic legacy index",
+  observedAt: stamp, sourceUrl: evidence.sourceUrl, evidence, previousEvidence: evidence,
 };
 const points = Array.from({ length: 12 }, (_, index) => ({
   date: "2026-10-" + String(12 + index).padStart(2, "0"), close: 110 + index, open: 109 + index,
@@ -87,7 +101,12 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
         nextEarningsDate: ticker === "TEST" ? "2026-11-19" : null,
       } });
     }
-    if (path.endsWith("/fund")) return route.fulfill({ json: fund });
+    if (path.endsWith("/fund")) {
+      const detail = url.searchParams.get("detail");
+      if (detail === "peers") return route.fulfill({ json: { ...fund, peerComparison } });
+      if (detail === "journal") return route.fulfill({ json: { ...fund, disclosures: [...fund.disclosures, benchmarkChange] } });
+      return route.fulfill({ json: { ...fund, ukReportingFund } });
+    }
     if (path.endsWith("/journal")) return route.fulfill({ json: { ticker: "EQQQ", notes: [], models: [] } });
     if (path.endsWith("/prices")) return route.fulfill({ json: {
       ticker: "EQQQ", requestedInterval: "1d", actualInterval: "1d", asOf: stamp,
@@ -233,6 +252,10 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(lenses.getByRole("tab")).toHaveCount(6);
     await expect(lenses.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
+    await expect(page.getByText("已获批")).toBeVisible();
+    await page.getByRole("button", { name: "英国申报基金状态说明" }).click();
+    await expect(page.getByRole("link", { name: "HMRC 原始名单" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await shot(page, info.project.name, "research", "light");
     await page.emulateMedia({ colorScheme: "dark" });
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "dark");
@@ -240,6 +263,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/research?ticker=EQQQ&view=fundamentals&fundMode=tracking");
     await expect(lenses.getByRole("tab", { name: "指数与跟踪" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("region", { name: "年度净值与指数总回报" })).toBeVisible();
+    await expect(page.getByText("日度净值历史")).toBeVisible();
     await shot(page, info.project.name, "tracking", "dark");
     await lenses.getByRole("tab", { name: "持仓与重叠" }).click();
     await expect(page.getByRole("region", { name: "前十大持仓" })).toBeVisible();
@@ -247,10 +271,16 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(page.getByRole("region", { name: "相同证券的直接及穿透权重" })).toContainText("IE00BYVTMW98");
     await shot(page, info.project.name, "holdings", "dark");
     await lenses.getByRole("tab", { name: "同类" }).click();
-    await expect(page.getByRole("region", { name: "已持有 ETF 对比" })).toContainText("不可比");
+    await expect(page.getByRole("region", { name: "同类 ETF 对比" })).toContainText("Synthetic peer ETF");
+    await page.getByText("本基金分位").click();
+    await expect(page.getByText("第 0 分位")).toBeVisible();
+    await expect(page.getByRole("button", { name: "同类说明" })).toBeVisible();
+    await shot(page, info.project.name, "peers", "dark");
     await lenses.getByRole("tab", { name: "日志" }).click();
     await expect(page.getByRole("region", { name: "交易记录" })).toContainText("Invest");
     await expect(page.getByRole("region", { name: "发行商披露" })).toContainText(date);
+    await expect(page.getByRole("region", { name: "发行商披露" })).toContainText(benchmarkChange.previousValue);
+    await shot(page, info.project.name, "journal", "dark");
     await lenses.getByRole("tab", { name: "价格与技术面" }).click();
     await expect(page.locator(".mx-tech-main canvas").first()).toBeVisible();
     await expect(page.locator(".mx-tech-score")).toHaveCount(0);

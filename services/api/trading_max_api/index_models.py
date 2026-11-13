@@ -36,6 +36,7 @@ class IndexPoint(ApiModel):
 
 class IndexQuote(ApiModel):
     index: IndexIdentity
+    calendar_known: bool = True
     session_date: str | None = None
     level: float | None = None
     change: float | None = None

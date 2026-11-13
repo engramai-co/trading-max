@@ -5,7 +5,10 @@ from __future__ import annotations
 import threading
 import time
 from calendar import monthrange
-from collections.abc import Callable, Iterable, Mapping
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from typing import Literal
 from urllib.parse import quote
@@ -13,6 +16,7 @@ from urllib.parse import quote
 from yfinance.exceptions import YFRateLimitError
 
 from .sector_prices import (
+    BATCH_SIZE,
     SparkRateLimited,
     SparkSeries,
     YahooSparkPrices,
@@ -23,6 +27,23 @@ from .sector_prices import (
 
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
 RATE_LIMIT_SECONDS = 30 * 60
+# Reserve capacity for the opening and official closing reads. Limits apply
+# across all market surfaces, including chart calls and failed requests.
+REQUEST_BUDGET = ((60, 64, 96), (86400, 3200, 4000))
+_priority = ContextVar("market_price_priority", default=False)
+
+
+class MarketPriceBudgetExhausted(RuntimeError):
+    """The shared market budget will make room as older requests age out."""
+
+
+@contextmanager
+def market_price_priority(enabled: bool) -> Iterator[None]:
+    token = _priority.set(enabled)
+    try:
+        yield
+    finally:
+        _priority.reset(token)
 
 
 class SharedMarketPrices:
@@ -32,7 +53,24 @@ class SharedMarketPrices:
         self.source = source or YahooSparkPrices()
         self._lock = threading.Lock()
         self._paused_until = 0.0
+        self._requests: dict[int, deque[float]] = {
+            window: deque() for window, _, _ in REQUEST_BUDGET
+        }
         self._cache: dict[tuple[str, str], tuple[float, SparkSeries | None]] = {}
+
+    @property
+    def rate_limited(self) -> bool:
+        return time.monotonic() < self._paused_until
+
+    def _reserve(self, now: float, cost: int) -> None:
+        for window, ordinary, total in REQUEST_BUDGET:
+            used = self._requests[window]
+            while used and used[0] <= now - window:
+                used.popleft()
+            if len(used) + cost > (total if _priority.get() else ordinary):
+                raise MarketPriceBudgetExhausted("Shared market price request budget reached")
+        for used in self._requests.values():
+            used.extend([now] * cost)
 
     def _read(
         self,
@@ -41,7 +79,7 @@ class SharedMarketPrices:
         ttl: int,
         load: Callable[[list[str]], Mapping[str, SparkSeries]],
     ) -> dict[str, SparkSeries]:
-        unique = list(dict.fromkeys(symbols))
+        unique = list(dict.fromkeys(symbol.strip().upper() for symbol in symbols if symbol.strip()))
         with self._lock:
             now = time.monotonic()
             wanted = [
@@ -50,6 +88,7 @@ class SharedMarketPrices:
             if wanted:
                 if now < self._paused_until:
                     raise SparkRateLimited("Yahoo Finance price requests are paused")
+                self._reserve(now, -(-len(wanted) // BATCH_SIZE))
                 try:
                     result = load(wanted)
                 except (SparkRateLimited, YFRateLimitError) as exc:
@@ -117,6 +156,8 @@ class SharedMarketPrices:
     def _chart(
         self, kind: str, symbol: str, params: dict[str, str], ttl: int
     ) -> SparkSeries | None:
+        symbol = symbol.strip().upper()
+
         def load(_: list[str]) -> dict[str, SparkSeries]:
             response = _yahoo_get(CHART_URL + quote(symbol, safe=""), params, 12)
             if response.status_code == 429:

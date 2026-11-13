@@ -1,6 +1,6 @@
-"""Ten-minute sector boards for the markets that are trading.
+"""Session-aware sector boards for the markets that are trading.
 
-Every ten-minute slot refreshes each market whose session is under way, and
+Scheduled slots refresh each market whose session is under way, and
 once more after the close so the board ends on official closing prices. A
 market without a board is filled from its latest session at once, a few
 times at most. A refresh that prices too little of the index keeps the
@@ -17,7 +17,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 from zoneinfo import ZoneInfo
@@ -37,12 +37,16 @@ from trading_max.infrastructure.durable_files import atomic_bytes
 from trading_max.infrastructure.sector_prices import (
     SparkRateLimited,
     SparkSeries,
-    YahooSparkPrices,
 )
 from trading_max.infrastructure.sector_universe import (
     GICS_SECTORS,
     SectorUniverse,
     SectorUniverseProvider,
+)
+from trading_max.infrastructure.shared_market_prices import (
+    MarketPriceBudgetExhausted,
+    SharedMarketPrices,
+    market_price_priority,
 )
 
 from .models import SectorMonitorState
@@ -72,6 +76,8 @@ from .sector_sessions import (
     GIVE_UP_AFTER,
     MARKETS,
     board_complete,
+    calendar_known,
+    exchange_sessions,
     in_break,
     is_due,
     latest_session,
@@ -95,8 +101,6 @@ MIN_COVERAGE = 0.8
 OPEN_GRACE = timedelta(minutes=30)
 # After Yahoo asks for fewer requests, every market pauses this long.
 RATE_LIMIT_PAUSE = timedelta(minutes=30)
-# Europe keeps the full basket for map area and exposure but prices only its heaviest names.
-EU_QUOTE_WEIGHT = 0.95
 # Daily closes a provider leaves out are asked for again this many times a session.
 DAILY_ATTEMPTS = 3
 RANK_SESSIONS = 4
@@ -221,18 +225,19 @@ def default_market(statuses: Iterable[SectorMarketStatus], now: datetime) -> Sec
 
 
 def _quote_symbols(universe: SectorUniverse) -> list[str]:
-    if universe.market != "eu":
+    target = MARKETS[universe.market].quote_weight
+    if target >= 1:
         return [c.symbol for c in universe.constituents]
     # The issuer includes a few US-listed European companies. Their prices
     # belong to a different session, so they count only towards area/exposure.
     symbols: list[str] = []
     weight = 0.0
     for constituent in sorted(universe.constituents, key=lambda c: (-c.weight, c.symbol)):
-        if "." not in constituent.symbol:
+        if universe.market == "eu" and "." not in constituent.symbol:
             continue
         symbols.append(constituent.symbol)
         weight += constituent.weight
-        if weight >= EU_QUOTE_WEIGHT:
+        if weight >= target:
             break
     return symbols
 
@@ -253,7 +258,7 @@ def _message(exc: Exception) -> str:
 
 
 class SectorMonitor:
-    """Refresh each market's sector board on ten-minute wall-clock slots."""
+    """Refresh sector boards in priority order, rotating peers between slots."""
 
     def __init__(
         self,
@@ -276,7 +281,7 @@ class SectorMonitor:
         self.enabled = enabled
         self.interval_seconds = interval_seconds
         self.universes = universes or SectorUniverseProvider(data_root)
-        self.prices = prices or YahooSparkPrices()
+        self.prices = prices or SharedMarketPrices()
         self.boards = SectorBoardStore(data_root)
         self.masters = SecurityMasterCache(data_root)
         self.status_path = data_root / "state" / "sector-monitor.json"
@@ -286,6 +291,7 @@ class SectorMonitor:
         self._phase = "starting"
         self._paused_until: datetime | None = None
         self._start_after: SectorMarketCode | None = None
+        self._attempts: dict[SectorMarketCode, tuple[str, datetime, bool]] = {}
         self._backfill: dict[str, tuple[str, int]] = {}
         self._daily: dict[str, _DailyCloses] = {}
         self._portfolio: tuple[str | None, PortfolioExposure] | None = None
@@ -338,6 +344,8 @@ class SectorMonitor:
 
     def _due(self, market: SectorMarketCode, session: SectorSessionWindow, now: datetime) -> bool:
         board = self.boards.load(market)
+        if self._eligible_at(market, session, now) > now:
+            return False
         return is_due(
             session,
             board.session_date if board else None,
@@ -345,6 +353,21 @@ class SectorMonitor:
             now,
             backfill_attempts=self._backfill_attempts(market, session),
         )
+
+    def _eligible_at(
+        self, market: SectorMarketCode, session: SectorSessionWindow, now: datetime
+    ) -> datetime:
+        attempt = self._attempts.get(market)
+        if not attempt or attempt[0] != session.date:
+            return now
+        _, at, settled = attempt
+        # The first settlement is never held back by an intraday read.
+        if not settled and board_complete(session, now):
+            return now
+        interval = MARKETS[market].refresh_minutes * 60
+        if settled or interval <= self.interval_seconds:
+            return now
+        return at + timedelta(seconds=interval)
 
     def due(self, market: SectorMarketCode, now: datetime) -> bool:
         if self._paused_until is not None and now < self._paused_until:
@@ -361,13 +384,16 @@ class SectorMonitor:
         candidates: list[datetime] = []
         for market in MARKETS:
             session = latest_session(market, now)
-            if session is not None and self._due(market, session, now):
-                candidates.append(boundary)
-                continue
-            if session is not None and session.break_end is not None and in_break(session, now):
-                # A rate-limit pause can outlast the break.
-                candidates.append(max(boundary, self._ceil_slot(session.break_end)))
-                continue
+            if session is not None:
+                eligible = max(boundary, self._ceil_slot(self._eligible_at(market, session, now)))
+                if session.break_end is not None and in_break(session, eligible):
+                    eligible = self._ceil_slot(session.break_end)
+                settlement = max(boundary, self._ceil_slot(session.close + COMPLETE_AFTER))
+                candidates.extend(
+                    candidate
+                    for candidate in {eligible, settlement}
+                    if candidate >= boundary and self._due(market, session, candidate)
+                )
             upcoming = next_session(market, now)
             if upcoming is not None:
                 candidates.append(max(boundary, self._ceil_slot(upcoming.open)))
@@ -442,7 +468,7 @@ class SectorMonitor:
         self._check_active()
         try:
             series = self.prices.daily(wanted)
-        except SparkRateLimited:
+        except (SparkRateLimited, MarketPriceBudgetExhausted):
             raise
         except Exception as exc:
             # Earlier ranks are a refinement; the session board stands without them.
@@ -509,6 +535,16 @@ class SectorMonitor:
         # Switching off while the inputs were prepared stops the refresh before
         # it asks the provider for anything.
         self._check_active()
+        day = date.fromisoformat(session.date)
+        listing_windows = {
+            suffix: next(iter(exchange_sessions(venue, day, day)), None)
+            for suffix, venue in MARKETS[market].listing_calendars
+        }
+        windows = {
+            symbol: listing_windows.get("." + symbol.rpartition(".")[2], session)
+            for symbol in symbols
+        }
+        symbols = [symbol for symbol in symbols if windows[symbol] is not None]
         series = self.prices.intraday(symbols)
         fetched_at = self._now()
         self._check_active()
@@ -517,7 +553,7 @@ class SectorMonitor:
         daily_sessions = prior_session_dates(market, session.date, RANK_SESSIONS + 1)
         previous_date = daily_sessions[-1] if daily_sessions else ""
         # HK Spark's undated previousClose can belong to a different session.
-        # Reuse the daily rank feed, requiring the calendar's exact prior close.
+        # Require the dated daily close in India too, including after Sunday trading.
         validated_daily = (
             self._daily_closes(
                 market,
@@ -527,20 +563,23 @@ class SectorMonitor:
                 late=late,
                 required_date=previous_date,
             )
-            if market == "hk"
+            if market in {"hk", "in"}
             else None
         )
         self._check_active()
         sessions: dict[str, MemberSession] = {}
         for symbol, item in series.items():
+            window = windows.get(symbol)
+            if window is None:
+                continue
             priced = member_session(
                 item.timestamps,
                 item.closes,
                 validated_daily.closes.get(symbol, {}).get(previous_date)
                 if validated_daily is not None
                 else item.previous_close,
-                session_open=session.open,
-                session_close=session.close,
+                session_open=window.open,
+                session_close=window.close,
             )
             if priced is not None:
                 sessions[symbol] = priced
@@ -563,6 +602,9 @@ class SectorMonitor:
         self._check_active()
         if after_close:
             for symbol in symbols:
+                window = windows[symbol]
+                if window is None:
+                    continue
                 closes = daily.closes.get(symbol) or {}
                 # The prior Xetra day may be a holiday on the listing's exchange.
                 prior = (
@@ -574,7 +616,7 @@ class SectorMonitor:
                     sessions.get(symbol),
                     closes.get(session.date),
                     closes.get(prior),
-                    session_close=session.close,
+                    session_close=window.close,
                 )
                 if settled is not None:
                     sessions[symbol] = settled
@@ -588,7 +630,9 @@ class SectorMonitor:
         closing = sum(
             c.weight
             for c in universe.constituents
-            if c.symbol in sessions and closes_at_close(sessions[c.symbol], session.close)
+            if (window := windows.get(c.symbol)) is not None
+            and c.symbol in sessions
+            and closes_at_close(sessions[c.symbol], window.close)
         )
         complete = after_close and closing >= MIN_COVERAGE
 
@@ -665,6 +709,9 @@ class SectorMonitor:
                 fund_ticker=universe.fund_ticker,
                 url=universe.source_url,
                 as_of=universe.as_of,
+                quote_weight_target=MARKETS[market].quote_weight
+                if MARKETS[market].quote_weight < 1
+                else None,
             ),
             exposure_gbp=round(sum(exposure.values()), 2),
             exposure_basis_gbp=portfolio.invested_gbp,
@@ -717,7 +764,8 @@ class SectorMonitor:
             self._phase = "refreshing"
         errors: dict[str, str] = {}
         published = False
-        for market in due:
+        deferred: SectorMarketCode | None = None
+        for index, market in enumerate(due):
             if not self._active():
                 break
             if self._paused_until is not None and self._now() < self._paused_until:
@@ -730,7 +778,18 @@ class SectorMonitor:
             entry: dict[str, Any] = {"lastAttemptAt": self._now().isoformat()}
             result = RefreshResult(published=False)
             try:
-                result = self.refresh(market, now)
+                with market_price_priority(priority(market) == 0):
+                    result = self.refresh(market, now)
+            except MarketPriceBudgetExhausted as exc:
+                if deferred is None:
+                    deferred = market
+                message = _message(exc)
+                errors[market] = message
+                with self._lock:
+                    self._state["markets"].setdefault(market, {}).update(
+                        lastError=message, lastErrorAt=self._now().isoformat()
+                    )
+                continue
             except SectorRefreshCancelled:
                 break
             except Exception as exc:
@@ -739,7 +798,13 @@ class SectorMonitor:
                 entry.update(lastError=message, lastErrorAt=self._now().isoformat())
                 if isinstance(exc, SparkRateLimited):
                     self._paused_until = self._now() + RATE_LIMIT_PAUSE
-                    self._start_after = market
+                    # A skipped market can already be showing a superseded board.
+                    with self._lock:
+                        for skipped in due[index + 1 :]:
+                            self._state["markets"].setdefault(skipped, {}).update(
+                                lastError=message, lastErrorAt=self._now().isoformat()
+                            )
+                    deferred = due[(index + 1) % len(due)]
                 LOGGER.warning(
                     "sector board refresh failed", extra={"market": market, "error": message}
                 )
@@ -749,6 +814,8 @@ class SectorMonitor:
                     entry.update(lastError=result.problem, lastErrorAt=self._now().isoformat())
                 elif not result.stale:
                     entry.update(lastError=None, lastErrorAt=None)
+            if session is not None:
+                self._attempts[market] = (session.date, now, board_complete(session, now))
             if result.published:
                 published = True
                 entry["lastSuccessAt"] = self._now().isoformat()
@@ -762,6 +829,9 @@ class SectorMonitor:
                 self._backfill.pop(market, None)
             with self._lock:
                 self._state["markets"].setdefault(market, {}).update(entry)
+        # Within a priority tier, start next time after today's leader, or
+        # at the first market the budget or provider forced us to skip.
+        self._start_after = order[(order.index(deferred) - 1) % len(order)] if deferred else due[0]
         with self._lock:
             self._state["lastAttemptAt"] = now.isoformat()
             if published:
@@ -800,11 +870,20 @@ class SectorMonitor:
             board = self.boards.load(market)
             with self._lock:
                 entry = dict(self._state["markets"].get(market) or {})
+            if isinstance(self.prices, SharedMarketPrices) and self.prices.rate_limited:
+                session = latest_session(market, now)
+                if session is not None and (
+                    not board or board.session_date != session.date or not board.complete
+                ):
+                    entry.update(
+                        lastError="Yahoo Finance price requests are paused", lastErrorAt=now
+                    )
             statuses.append(
                 SectorMarketStatus(
                     market=market,
                     calendar=calendar.calendar,
                     timezone=calendar.timezone,
+                    calendar_known=calendar_known(calendar.calendar, calendar.timezone, now),
                     sessions=list(
                         sessions_between(
                             market, (now - SESSION_WINDOW).date(), (now + SESSION_WINDOW).date()
@@ -824,9 +903,9 @@ class SectorMonitor:
     def response(self, market: SectorMarketCode | None = None) -> SectorBoardResponse:
         now = self._now()
         statuses = self.markets(now)
-        # Europe overlaps the UK; keep the existing default-market candidates.
+        # Keep the legacy API default candidates; the workspace opens Global.
         chosen = market or default_market(
-            (status for status in statuses if status.market != "eu"), now
+            (status for status in statuses if status.market in {"us", "uk", "hk", "kr", "jp"}), now
         )
         return SectorBoardResponse(
             market=chosen,

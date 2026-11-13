@@ -252,6 +252,34 @@ class EstimateHistory:
             for row in reversed(rows)
         ]
 
+    def chart_revision(self, ticker: str, listing: str, *, cutoff: datetime) -> tuple[int, int]:
+        # Pin the read to an append watermark as well as the publication time.
+        # PE-0 appends just after publication; a first request can race that write.
+        with self.database.read() as connection:
+            row = connection.execute(
+                "SELECT coalesce(max(id), 0), count(*) FROM research_estimate_history "
+                "WHERE ticker = ? AND observed_at <= ? "
+                "AND json_extract(observation_json, '$.listing') = ?",
+                (ticker, _utc_iso(cutoff), listing),
+            ).fetchone()
+            return row[0], row[1]
+
+    def chart_observations(
+        self, ticker: str, listing: str, *, cutoff: datetime, revision: int
+    ) -> Iterable[EstimateObservation]:
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT observed_at, observation_json FROM research_estimate_history "
+                "WHERE ticker = ? AND observed_at <= ? AND id <= ? "
+                "AND json_extract(observation_json, '$.listing') = ? "
+                "ORDER BY observed_at, id",
+                (ticker, _utc_iso(cutoff), revision, listing),
+            )
+            for row in rows:
+                yield EstimateObservation.model_validate(
+                    {**json.loads(row["observation_json"]), "observedAt": row["observed_at"]}
+                )
+
     def valuation_window(
         self, ticker: str, listing: str, *, cutoff: datetime
     ) -> list[EstimateObservation]:

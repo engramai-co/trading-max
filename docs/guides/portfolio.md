@@ -91,7 +91,9 @@ unrealized position P&L, and a cash-flow-adjusted return are distinct measures.
 ## Watch today's sectors
 
 **Markets** shows global and regional index histories, plus sector moves for the
-US, UK, Hong Kong, Korea and Japan. Block area follows index weight and colour
+US, Europe, UK, Japan, Hong Kong, Korea, Taiwan, India, Canada and Australia.
+On phones, start with the ranked list and tap a sector for details. Block area
+follows basket weight and colour
 follows the session's move. Each sector shows how many members are up and down and,
 while it keeps ranking in the top three, for how many sessions. Select a sector
 for its intraday path, leader, ranks over the last five sessions and your
@@ -102,10 +104,10 @@ The overview carries the US sectors beside its period chart; each block opens
 that sector here.
 
 Constituents and weights come from iShares fund holdings; prices come from
-Yahoo and some exchanges are delayed. Boards refresh every 10 minutes while a
-market is open, only when **Research & daily reconciliation** updates are on,
-and settle on official closing prices after the close. A failed refresh keeps
-the last board and says so beside its time.
+Yahoo and some exchanges are delayed. With **Research & daily reconciliation**
+enabled, boards refresh every 10–30 minutes while a market is open and settle
+after the close. A failed refresh or an unknown exchange calendar keeps the
+last board and says so beside its time.
 
 ## Review and refresh
 

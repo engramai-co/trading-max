@@ -5577,6 +5577,16 @@
             ],
             "title": "Effectiveat"
           },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "enum": [
               "holdings",
@@ -5588,6 +5598,16 @@
           "observedAt": {
             "title": "Observedat",
             "type": "string"
+          },
+          "previousEvidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "previousValue": {
             "anyOf": [
@@ -5750,6 +5770,194 @@
           "state"
         ],
         "title": "ETFOverlap",
+        "type": "object"
+      },
+      "ETFPeer": {
+        "additionalProperties": false,
+        "properties": {
+          "fee": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFPeerValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "heldTicker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heldticker"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFOverlap"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "overlapEvidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "shareClassSize": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFPeerValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "tracking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFTracking"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "isin",
+          "name",
+          "sourceUrl"
+        ],
+        "title": "ETFPeer",
+        "type": "object"
+      },
+      "ETFPeerComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmark": {
+            "title": "Benchmark",
+            "type": "string"
+          },
+          "domicile": {
+            "title": "Domicile",
+            "type": "string"
+          },
+          "funds": {
+            "items": {
+              "$ref": "#/components/schemas/ETFPeer"
+            },
+            "title": "Funds",
+            "type": "array"
+          },
+          "hedging": {
+            "title": "Hedging",
+            "type": "string"
+          },
+          "incomeUse": {
+            "title": "Incomeuse",
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "title": "Publishedat",
+            "type": "string"
+          },
+          "ranks": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ETFPeerRank"
+            },
+            "title": "Ranks",
+            "type": "object"
+          }
+        },
+        "required": [
+          "benchmark",
+          "domicile",
+          "hedging",
+          "incomeUse",
+          "publishedAt",
+          "funds"
+        ],
+        "title": "ETFPeerComparison",
+        "type": "object"
+      },
+      "ETFPeerRank": {
+        "additionalProperties": false,
+        "properties": {
+          "comparableIsins": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Comparableisins",
+            "type": "array"
+          },
+          "count": {
+            "minimum": 2.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "percentile": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Percentile",
+            "type": "number"
+          }
+        },
+        "required": [
+          "percentile",
+          "count",
+          "comparableIsins"
+        ],
+        "title": "ETFPeerRank",
+        "type": "object"
+      },
+      "ETFPeerValue": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/FundEvidence"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "basis",
+          "evidence"
+        ],
+        "title": "ETFPeerValue",
         "type": "object"
       },
       "ETFPortfolio": {
@@ -6472,6 +6680,132 @@
         "title": "FinancialPeriod",
         "type": "object"
       },
+      "ForwardPeHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrailingPeDistribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ForwardPePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "currency",
+          "points",
+          "distribution"
+        ],
+        "title": "ForwardPeHistory",
+        "type": "object"
+      },
+      "ForwardPePoint": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eps"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "pe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pe"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "priceAsOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceasof"
+          },
+          "recovered": {
+            "title": "Recovered",
+            "type": "boolean"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForwardPeSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "observedAt",
+          "price",
+          "priceAsOf",
+          "eps",
+          "pe",
+          "source",
+          "recovered"
+        ],
+        "title": "ForwardPePoint",
+        "type": "object"
+      },
+      "ForwardPeSource": {
+        "enum": [
+          "yahoo-consensus",
+          "yahoo-forward-pe"
+        ],
+        "type": "string"
+      },
       "FrozenValuationBasis": {
         "additionalProperties": false,
         "properties": {
@@ -6945,6 +7279,16 @@
               }
             ]
           },
+          "peerComparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ETFPeerComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "profile": {
             "anyOf": [
               {
@@ -7066,6 +7410,16 @@
             "default": "daily-nav-and-index-history-unavailable",
             "title": "Trackingerrorstate",
             "type": "string"
+          },
+          "ukReportingFund": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UKReportingFund"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "warnings": {
             "items": {
@@ -9252,6 +9606,11 @@
               }
             ],
             "title": "Asof"
+          },
+          "calendarKnown": {
+            "default": true,
+            "title": "Calendarknown",
+            "type": "boolean"
           },
           "change": {
             "anyOf": [
@@ -14301,6 +14660,16 @@
             ],
             "title": "Financials"
           },
+          "forwardPeHistory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ForwardPeHistory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "fundamentals": {
             "anyOf": [
               {
@@ -17405,7 +17774,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17472,7 +17845,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17710,6 +18087,11 @@
             "title": "Calendar",
             "type": "string"
           },
+          "calendarKnown": {
+            "default": true,
+            "title": "Calendarknown",
+            "type": "boolean"
+          },
           "complete": {
             "default": false,
             "title": "Complete",
@@ -17762,7 +18144,11 @@
               "hk",
               "kr",
               "jp",
-              "eu"
+              "eu",
+              "tw",
+              "in",
+              "ca",
+              "au"
             ],
             "title": "Market",
             "type": "string"
@@ -17857,7 +18243,7 @@
         "type": "object"
       },
       "SectorMonitorState": {
-        "description": "Ten-minute sector-board refreshes for the markets that are trading.",
+        "description": "Sector-board refreshes for the markets that are trading.",
         "properties": {
           "enabled": {
             "title": "Enabled",
@@ -18003,6 +18389,17 @@
             "default": "Yahoo Finance",
             "title": "Prices",
             "type": "string"
+          },
+          "quoteWeightTarget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteweighttarget"
           },
           "universe": {
             "description": "Index universe, for example S&P 500.",
@@ -19605,6 +20002,73 @@
         "title": "TrailingPePoint",
         "type": "object"
       },
+      "UKReportingFund": {
+        "additionalProperties": false,
+        "properties": {
+          "ceasedOn": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceasedon"
+          },
+          "effectiveFrom": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectivefrom"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publicationDate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publicationdate"
+          },
+          "state": {
+            "enum": [
+              "reporting",
+              "ceased",
+              "effective-later",
+              "not-listed",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "UKReportingFund",
+        "type": "object"
+      },
       "UserProfile": {
         "properties": {
           "accountLabels": {
@@ -21080,7 +21544,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.41.1"
+    "version": "1.42.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -23165,7 +23629,8 @@
               "enum": [
                 "profile",
                 "full",
-                "journal"
+                "journal",
+                "peers"
               ],
               "title": "Detail",
               "type": "string"
@@ -23894,7 +24359,11 @@
                     "hk",
                     "kr",
                     "jp",
-                    "eu"
+                    "eu",
+                    "tw",
+                    "in",
+                    "ca",
+                    "au"
                   ],
                   "type": "string"
                 },

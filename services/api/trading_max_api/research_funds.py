@@ -10,9 +10,11 @@ import httpx
 from pydantic import Field
 from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_journal import ETFDisclosure
+from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.analytics.etf_projection import ETFMatch, ETFReading, ETFTracking, tracking
 from trading_max.analytics.lookthrough import FundSnapshot, fetch_fund_snapshot
 from trading_max.domain.etf import FundReturnYear, FundShareClass
+from trading_max.domain.etf_depth import UKReportingFund
 from trading_max.infrastructure.fund_holdings import (
     BUILTIN_FUND_ADAPTERS,
     USER_AGENT,
@@ -53,6 +55,8 @@ class FundResearch(ApiModel):
     one_year_tracking: ETFTracking | None = None
     matches: list[ETFMatch] = Field(default_factory=list)
     disclosures: list[ETFDisclosure] = Field(default_factory=list)
+    uk_reporting_fund: UKReportingFund | None = None
+    peer_comparison: ETFPeerComparison | None = None
     holdings_state: str = "no-holdings"
     return_currency: str | None = None
     return_basis: str | None = None

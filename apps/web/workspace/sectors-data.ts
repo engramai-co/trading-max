@@ -1,7 +1,7 @@
 import type { SectorGroup, SectorMarketCode, SectorSessionWindow } from "@/lib/types";
 
 /** Markets in the order the page lists them. */
-export const SECTOR_MARKETS: readonly SectorMarketCode[] = ["us", "eu", "uk", "hk", "kr", "jp"];
+export const SECTOR_MARKETS: readonly SectorMarketCode[] = ["us", "eu", "uk", "hk", "kr", "jp", "tw", "in", "ca", "au"];
 
 export function sectorMarket(value: string | null | undefined): SectorMarketCode | null {
   return SECTOR_MARKETS.find((market) => market === value) ?? null;
@@ -9,7 +9,7 @@ export function sectorMarket(value: string | null | undefined): SectorMarketCode
 
 /** Exchange suffixes add nothing inside one market's board. */
 export function displaySymbol(symbol: string) {
-  return symbol.replace(/\.(HK|KS|KQ|L|T)$/i, "");
+  return symbol.replace(/\.(HK|KS|KQ|L|T|TW|TWO|NS|BO|TO|AX)$/i, "");
 }
 
 const SMALL_WORDS: Record<string, string> = { LTD: "Ltd", INC: "Inc", PLC: "plc", CO: "Co", CORP: "Corp" };

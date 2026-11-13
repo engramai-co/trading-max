@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from time import perf_counter
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from trading_max.analytics.etf_details import ETFDetail
 from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
+from trading_max.analytics.etf_peers import ETFPeerComparison
+from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.valuation_preview import (
@@ -635,7 +638,7 @@ def research_fund(
     ticker: str,
     request: Request,
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
-    detail: Literal["profile", "full", "journal"] = "full",
+    detail: Literal["profile", "full", "journal", "peers"] = "full",
 ) -> FundResearch:
     store = app_service(request, "store")
     try:
@@ -654,7 +657,9 @@ def research_fund(
         isin = reading.isin
         try:
             snapshot = (
-                read_etf_detail(store, manifest.run_id, isin)
+                read_etf_detail(
+                    store, manifest.run_id, isin, include_holdings=detail in {"profile", "full"}
+                )
                 if isin
                 else ETFDetail(reading=reading)
             )
@@ -669,6 +674,16 @@ def research_fund(
             except FileNotFoundError:
                 journal = {}
             fund.disclosures = [ETFDisclosure.model_validate(row) for row in journal.get(isin, [])]
+        if isin and detail in {"profile", "full"}:
+            with suppress(FileNotFoundError, KeyError):
+                status = store.read_json(manifest.run_id, HMRC_REPORTING_KEY).get(isin)
+                if status is not None:
+                    fund.uk_reporting_fund = UKReportingFund.model_validate(status)
+        if isin and detail == "peers":
+            with suppress(FileNotFoundError, KeyError):
+                comparison = store.read_json(manifest.run_id, ETF_PEERS_KEY).get(isin)
+                if comparison is not None:
+                    fund.peer_comparison = ETFPeerComparison.model_validate(comparison)
         return fund
     if listing:
         # Held fund lenses use the account publication, never a second issuer fetch.
@@ -679,5 +694,7 @@ def research_fund(
     if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
         raise HTTPException(status_code=422, detail="fund-research-not-applicable")
     info = (lens.fundamentals or {}).get("metrics") or {}
+    if detail in {"journal", "peers"}:
+        return FundResearch(ticker=ticker, isin=info.get("isin"), fetched_at="")
     fund = app_service(request, "research_funds").get(ticker, info)
     return fund if detail == "full" else fund.model_copy(update={"holdings": None})

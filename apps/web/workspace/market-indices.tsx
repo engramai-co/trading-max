@@ -170,6 +170,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
   const freshness = quote.state === "stale" ? t("未更新", "Stale")
     : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote")
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
+  const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   return (
     <Link
       href={indexHref(index)}
@@ -192,7 +193,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
           <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
         </svg>}
       </span>
-      {freshness && <small className="mx-index-freshness">{freshness}</small>}
+      {notice && <small className="mx-index-freshness">{notice}</small>}
     </Link>
   );
 }

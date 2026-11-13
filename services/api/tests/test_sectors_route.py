@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from services.api.trading_max_api.app import create_app
@@ -34,6 +35,7 @@ def board(market: str) -> SectorBoard:
 def test_sector_route_serves_an_empty_state_then_a_stored_board(tmp_path: Path) -> None:
     app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
     with TestClient(app) as client:
+        app.state.sector_monitor._now = lambda: datetime(2026, 11, 13, 19, tzinfo=UTC)
         empty = client.get("/v1/sectors")
         assert empty.status_code == 200
         payload = empty.json()
@@ -45,6 +47,10 @@ def test_sector_route_serves_an_empty_state_then_a_stored_board(tmp_path: Path) 
             "kr",
             "jp",
             "eu",
+            "tw",
+            "in",
+            "ca",
+            "au",
         ]
         assert all(market["sessions"] for market in payload["markets"])
         assert payload["markets"][2]["calendar"] == "XHKG"
@@ -109,3 +115,33 @@ def test_europe_sector_route_accepts_the_scope_without_changing_default(tmp_path
         assert stored["market"] == "eu"
         assert stored["exposureGbp"] == 12.5
         assert client.get("/v1/sectors").json()["market"] == "uk"
+
+
+@pytest.mark.parametrize(
+    ("market", "exchange", "opened", "closed"),
+    [
+        ("tw", "XTAI", "2026-11-13T01:00:00Z", "2026-11-13T05:30:00Z"),
+        ("in", "XNSE", "2026-11-13T03:45:00Z", "2026-11-13T10:00:00Z"),
+        ("ca", "XTSE", "2026-11-13T14:30:00Z", "2026-11-13T21:00:00Z"),
+        ("au", "XASX", "2026-11-12T23:00:00Z", "2026-11-13T05:00:00Z"),
+    ],
+)
+def test_new_sector_routes_and_exchange_clocks(tmp_path, market, exchange, opened, closed):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        monitor = app.state.sector_monitor
+        monitor._now = lambda: datetime(2026, 11, 13, 19, tzinfo=UTC)
+        monitor.boards.save(board(market))
+        payload = client.get("/v1/sectors", params={"market": market}).json()
+        assert payload["market"] == payload["board"]["market"] == market
+        status = next(row for row in payload["markets"] if row["market"] == market)
+        assert status["calendar"] == exchange and status["calendarKnown"]
+        session = next(row for row in status["sessions"] if row["date"] == "2026-11-13")
+        assert (session["open"], session["close"]) == (opened, closed)
+        if market == "in":
+            monitor._now = lambda: datetime(2027, 1, 1, 6, tzinfo=UTC)
+            payload = client.get("/v1/sectors?market=in").json()
+            status = next(row for row in payload["markets"] if row["market"] == "in")
+            assert status["calendarKnown"] is False
+            assert not monitor.due("in", monitor._now())
+            assert payload["board"]["sessionDate"] == "2026-11-06"

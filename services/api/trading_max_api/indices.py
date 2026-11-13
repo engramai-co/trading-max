@@ -49,6 +49,7 @@ from .sector_monitor import SectorBoardStore
 from .sector_sessions import (
     MARKETS,
     board_complete,
+    calendar_known,
     exchange_sessions,
     latest_session,
     prior_session_dates,
@@ -92,8 +93,7 @@ def active_indices(scope: IndexScope | None = None) -> Iterable[IndexSpec]:
     return (spec for spec in INDEX_REGISTRY.values() if scope is None or spec.scope == scope)
 
 
-# Composite calendars do not imply a local session. Indian quotes use the
-# provider's observation date until the package has a maintained holiday table.
+# Composite calendars do not imply a local session.
 _CLOCKS = {
     **{item.calendar: (item.calendar, item.timezone) for item in MARKETS.values()},
     "XNAS": ("XNYS", "America/New_York"),
@@ -103,8 +103,8 @@ _CLOCKS = {
     "XTSE": ("XTSE", "America/Toronto"),
     "XASX": ("XASX", "Australia/Sydney"),
     "XSWX": ("XSWX", "Europe/Zurich"),
-    "XNSE": (None, "Asia/Kolkata"),
-    "XBOM": (None, "Asia/Kolkata"),
+    "XNSE": ("XNSE", "Asia/Kolkata"),
+    "XBOM": ("XBOM", "Asia/Kolkata"),
     "STOXX-Europe": (None, "Europe/Paris"),
 }
 
@@ -114,7 +114,7 @@ def _index_clock(
 ) -> tuple[ZoneInfo, SectorSessionWindow | None, str | None]:
     calendar, timezone = _CLOCKS.get(spec.calendar, (None, "UTC"))
     zone = ZoneInfo(timezone)
-    if not calendar:
+    if not calendar or not calendar_known(calendar, timezone, now):
         return zone, None, None
     day = now.astimezone(zone).date()
     started = [
@@ -319,7 +319,20 @@ class IndexService:
         polling = any(
             window and now <= window.close + timedelta(hours=1) for _, window, _ in clocks.values()
         )
-        if cached and now - cached[0] < timedelta(minutes=10 if polling else 30):
+        calendar_status = {
+            spec.id: calendar_known(
+                spec.calendar, _CLOCKS.get(spec.calendar, (None, "UTC"))[1], now
+            )
+            for spec in specs
+        }
+        if (
+            cached
+            and now - cached[0] < timedelta(minutes=10 if polling else 30)
+            and all(
+                quote.calendar_known == calendar_status[quote.index.id]
+                for quote in cached[1].quotes
+            )
+        ):
             return cached[1]
         path = self.root / f"{scope}.json"
         try:
@@ -393,7 +406,8 @@ class IndexService:
         result = IndexMarket(scope=scope, quotes=[])
         fetched_ids = {spec.id for spec in fetch}
         for spec in specs:
-            quote = IndexQuote(index=index_identity(spec))
+            known = calendar_status[spec.id]
+            quote = IndexQuote(index=index_identity(spec), calendar_known=known)
             old = saved.get(spec.id)
             if spec.id in fetched_ids:
                 zone, window, prior = clocks[spec.id]
@@ -452,6 +466,7 @@ class IndexService:
                         )
                     quote = IndexQuote(
                         index=quote.index,
+                        calendar_known=known,
                         session_date=day,
                         level=last.value,
                         change=change,
@@ -467,7 +482,7 @@ class IndexService:
                         quote.as_of is None or (quote.state != "closed" and quote.as_of < old.as_of)
                     )
                 ):
-                    quote = old.model_copy(update={"state": "stale"})
+                    quote = old.model_copy(update={"state": "stale", "calendar_known": known})
                 if quote.state in {"unavailable", "stale"} or (window and quote.change is None):
                     result.refresh_failed = True
             elif spec.symbol and old:
