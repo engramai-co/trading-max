@@ -6,7 +6,7 @@
  *   colour is the session's move, and every block already says how far it has gone.
  * OWN-WORLD: the Quiet Ledger, inherited unchanged — cool neutrals, ink figures,
  *   cobalt only for the selected block, green and red only for gains and losses.
- * STORY: pick a market (the open one is chosen for you) → scan the map → the
+ * STORY: pick a market (Global opens first) → scan the map → the
  *   strongest sector is already open beside it → follow an industry group to its
  *   companies → open one in research.
  * FIRST VIEWPORT: market switch with its session state and time; the sector map
@@ -24,7 +24,7 @@
 import { Button } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { ArrowLeft } from "@phosphor-icons/react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "@/lib/types";
@@ -33,6 +33,7 @@ import { api } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
 import { Empty, Page, Pending, QueryError, Segments, useCopy } from "./foundation";
 import { GlobalMarkets } from "./global-markets";
+import { GlobalSectors, GlobalViewSwitch, globalView, useGlobalSectors } from "./global-sectors";
 import Link from "./link";
 import { IndexDetail, IndexStrip } from "./market-indices";
 import { INDEX_MARKETS, INDEX_RANGES, indexHref, indexMarket, type IndexScope } from "./market-indices-data";
@@ -66,23 +67,17 @@ export function SectorsWorkspace() {
   const openedIndex = demonstration ? null : params.get("index");
   const range = INDEX_RANGES.find((item) => item === params.get("range")) ?? "1Y";
   const indexReturn = useRef<{ id: string; scroll: number; left: number } | null>(null);
-  const requested = demonstration && params.get("market") !== "global"
-    ? sectorMarket(params.get("market")) ?? "us" : indexMarket(params.get("market"));
+  const requested: IndexScope = (demonstration
+    ? sectorMarket(params.get("market"))
+    : indexMarket(params.get("market"))) ?? "global";
   const requestedBoard = sectorMarket(requested);
-  const indicesOnly = requested !== null && requestedBoard === null;
-  const client = useQueryClient();
+  const indicesOnly = requestedBoard === null;
+  const view = globalView(params.get("view"));
+  const world = useGlobalSectors(!demonstration && requested === "global" && view === "sectors" && !openedIndex);
   const query = useQuery({
-    queryKey: ["workspace-sectors", requestedBoard ?? "default"],
-    enabled: !indicesOnly,
-    queryFn: async ({ signal }) => {
-      const answer = await api<SectorBoardResponse>("/sectors" + (requestedBoard ? "?market=" + requestedBoard : ""), { signal });
-      // The default answer also fills its market's own entry when that is still empty, so
-      // naming the market in the URL (as selecting a sector does) reuses it rather than
-      // starting over; a slower default answer never replaces a newer explicit one.
-      const own = ["workspace-sectors", answer.market];
-      if (!requestedBoard && client.getQueryData(own) === undefined) client.setQueryData(own, answer);
-      return answer;
-    },
+    queryKey: ["workspace-sectors", requestedBoard],
+    enabled: requestedBoard !== null,
+    queryFn: ({ signal }) => api<SectorBoardResponse>("/sectors?market=" + requestedBoard, { signal }),
     refetchInterval: 60_000,
     placeholderData: keepPreviousData,
     retry: 1,
@@ -91,8 +86,7 @@ export function SectorsWorkspace() {
   // The last answer that carried its own market's board, whichever market that was.
   const [lastGood, setLastGood] = useState<SectorBoardResponse | null>(null);
   if (data?.board && data.board.market === data.market && !query.isPlaceholderData && data !== lastGood) setLastGood(data);
-  // The URL answers at once on a switch; the server names the default market.
-  const wanted: IndexScope = requested ?? data?.market ?? "us";
+  const wanted = requested;
   // The requested market has answered for itself, with a board or an honest empty one.
   const answered = !query.isPlaceholderData && data?.market === wanted;
   // A switch the server rejects falls back to the board already on screen, under its own
@@ -170,7 +164,7 @@ export function SectorsWorkspace() {
         // Asking again for the market that just failed retries it, once at a time.
         if (value === requested && (query.isError || rejected)) {
           if (!query.isFetching) void query.refetch();
-        } else update({ market: value, sector: null, index: null, range: null, currency: null, compare: null });
+        } else update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null });
       }}
       options={(demonstration ? ["global" as const, ...SECTOR_MARKETS] : INDEX_MARKETS).map((value) => {
         const boardMarket = sectorMarket(value);
@@ -206,7 +200,11 @@ export function SectorsWorkspace() {
   const detail = selected ? groups.find((group) => group.key === selected) : undefined;
   // On a phone an opened sector is its own step: Back replaces the switches until it closes.
   const phoneDetail = phone && explicit && detail ? detail : null;
-  const openedKey = phoneDetail?.key ?? null;
+  const globalSector = market === "global" && view === "sectors" ? requestedSector : null;
+  const globalPhoneDetail = phone && !openedIndex && globalSector != null
+    && world.data?.sectors.some(({ gics, weight }) => gics === globalSector && (weight ?? 0) > 0);
+  const drilled = Boolean(phoneDetail || globalPhoneDetail);
+  const openedKey = phoneDetail?.key ?? (globalPhoneDetail ? globalSector : null);
   // Whichever Back closes a sector (the page's or the browser's), focus returns to its row.
   const [shownKey, setShownKey] = useState<string | null>(null);
   if (openedKey !== shownKey) {
@@ -314,7 +312,7 @@ export function SectorsWorkspace() {
       actions={
         openedIndex && phone ? (
           <div className="mx-sectors-bar">{indexBack}</div>
-        ) : phoneDetail ? (
+        ) : drilled ? (
           <div className="mx-sectors-bar">
             {back}
             {clock}
@@ -322,14 +320,16 @@ export function SectorsWorkspace() {
         ) : (
           <div className="mx-sectors-bar">
             {marketSwitch}
+            {!openedIndex && market === "global" && <GlobalViewSwitch value={view} query={world}
+              onChange={(value) => update({ view: value === "sectors" ? value : null, sector: null })} />}
             {!openedIndex && clock}
             {!openedIndex && groupingSwitch && <div className="mx-sectors-grouping">{groupingSwitch}</div>}
           </div>
         )
       }
     >
-      {!demonstration && !phoneDetail && (!openedIndex || !phone) && (
-        <IndexStrip market={wanted} marketName={rejected ? names[wanted] : undefined} selected={openedIndex} open={(event, index) => {
+      {!demonstration && !drilled && (!openedIndex || !phone) && (
+        <IndexStrip market={wanted} globalClock={view === "sectors" ? world.data ?? null : undefined} marketName={rejected ? names[wanted] : undefined} selected={openedIndex} open={(event, index) => {
           if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
           const href = indexHref(index);
@@ -364,8 +364,11 @@ export function SectorsWorkspace() {
           {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
             <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
           )}
-          {market === "global" ? <GlobalMarkets demo={demonstration} onMarket={(value) =>
-            update({ market: value, sector: null, index: null, range: null, currency: null, compare: null })} /> : body}
+          {market === "global" ? (view === "sectors"
+            ? <GlobalSectors query={world} demo={demonstration} phone={phone} sector={globalSector}
+                onSelect={select} returnTo={returnTo} onFocused={() => setReturnTo(null)} />
+            : <GlobalMarkets demo={demonstration} onMarket={(value) =>
+                update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null })} />) : body}
         </>
       )}
     </Page>

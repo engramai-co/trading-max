@@ -440,9 +440,9 @@ def test_global_endpoint_caches_the_session_aligned_response(api, monkeypatch):
     service = client.app.state.indices
     calls = []
 
-    def compute(prices, weights, stale, now):
+    def compute(prices, weights, stale, now, clock):
         calls.append(now)
-        return read_global_contribution(prices, weights, stale, now)
+        return read_global_contribution(prices, weights, stale, now, clock)
 
     monkeypatch.setattr("services.api.trading_max_api.indices.read_global_contribution", compute)
     monkeypatch.setattr(service.acwi_weights, "get", lambda _: (None, False))
@@ -460,3 +460,35 @@ def test_global_endpoint_caches_the_session_aligned_response(api, monkeypatch):
     clock[0] += timedelta(minutes=5)
     assert client.get("/v1/indices/global-contribution").status_code == 200
     assert calls == [NOW, clock[0]]
+
+
+def test_global_sectors_endpoint_uses_shared_clock_and_caches_public_board(api, monkeypatch):
+    from services.api.trading_max_api.global_sectors import read_global_sectors
+
+    client, _, clock = api
+    service = client.app.state.indices
+    calls = []
+
+    def compute(prices, weights, stale, now, reference):
+        calls.append((now, reference))
+        return read_global_sectors(prices, weights, stale, now, reference)
+
+    monkeypatch.setattr("services.api.trading_max_api.indices.read_global_sectors", compute)
+    monkeypatch.setattr(service.world_sector_weights, "get", lambda _: (None, False))
+    monkeypatch.setattr(service.acwi_weights, "get", lambda _: (None, False))
+
+    response = client.get("/v1/indices/global-sectors")
+    assert response.status_code == 200
+    result = response.json()
+    assert len(result["sectors"]) == 11
+    assert result["weightsAsOf"] is None
+    assert result["sectors"][-1]["indexCode"] == 132085
+    assert result["sectors"][-1]["move"] is None
+    assert client.get("/v1/indices/global-sectors").json() == result
+    contribution = client.get("/v1/indices/global-contribution").json()
+    assert all(result[key] == contribution[key] for key in ("phase", "referenceDate", "asOf"))
+    assert calls == [(NOW, service._global_reference()[1])]
+
+    clock[0] += timedelta(minutes=5)
+    assert client.get("/v1/indices/global-sectors").status_code == 200
+    assert len(calls) == 2

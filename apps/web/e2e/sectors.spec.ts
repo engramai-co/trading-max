@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { GlobalSectorBoard } from "../workspace/global-sectors";
 import type { GlobalMarketContribution } from "../workspace/global-markets-data";
 import type { IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
@@ -135,7 +136,7 @@ async function open(page: Page) {
     if (code === "hk") await new Promise((resolve) => setTimeout(resolve, 800));
     await route.fulfill({ json: fixture(code) });
   });
-  await page.goto("/sectors");
+  await page.goto("/sectors?market=us");
 }
 
 async function selectMarket(page: Page, name: RegExp, extra = false) {
@@ -209,7 +210,7 @@ test.describe("sector map", () => {
       else await route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
     });
     await page.clock.install();
-    await page.goto("/sectors");
+    await page.goto("/sectors?market=us");
     await expect(page.locator(".mx-sector-block")).toHaveCount(11);
     // Selecting a sector names the market in the URL; the board it came from stays.
     await page.locator('.mx-sector-map [data-key="30"]').click();
@@ -236,7 +237,7 @@ test.describe("sector map", () => {
         await route.fulfill({ json: fixture(code) });
       }
     });
-    await page.goto("/sectors");
+    await page.goto("/sectors?market=us");
     const markets = page.getByRole("group", { name: /市场|Market/ });
     await expect(page.locator(".mx-sector-block")).toHaveCount(11);
     await selectMarket(page, /港股|Hong Kong/, true);
@@ -263,7 +264,7 @@ test.describe("sector map", () => {
       if (code === "hk") await route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
       else await route.fulfill({ json: fixture(code) });
     });
-    await page.goto("/sectors");
+    await page.goto("/sectors?market=us");
     const rows = page.locator(".mx-sector-list > li");
     await expect(rows).toHaveCount(11);
     // A link into a Hong Kong sector arrives while Hong Kong is unavailable.
@@ -368,6 +369,7 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
   await page.route("**/api/backend/indices**", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/");
+    if (parts.at(-1) === "global-sectors") return route.fulfill({ json: worldFixture });
     if (parts.at(-1) === "global-contribution") return route.fulfill({ json: globalFixture });
     if (parts.at(-1) === "catalog") return route.fulfill({ json: indices });
     if (parts.at(-1) === "history") {
@@ -421,6 +423,33 @@ async function mockIndices(page: Page, { fail = false, now = Date.now() }: { fai
     await route.fulfill({ json: response });
   });
 }
+
+const worldFixture: GlobalSectorBoard = {
+  referenceDate: "2026-11-12",
+  phase: "completed",
+  asOf: "2026-11-12T19:00:00Z",
+  acwiMove: -0.0044,
+  acwiLevel: 1000,
+  weightsAsOf: "2026-11-11",
+  weightsStale: false,
+  rankSessions: ["2026-11-06", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"],
+  exposureBasisGbp: 100_000,
+  sectors: SECTORS.map(([gics, name, weight, move], i) => ({
+    gics, name, weight, indexCode: 100 + i, nameZh: gics === "60" ? "房地产" : name,
+    move: gics === "60" ? null : move,
+    contribution: gics === "60" ? null : weight * move,
+    intraday: gics === "60" ? [] : Array.from({ length: 25 }, (_, step) => ({
+      at: new Date(Date.UTC(2026, 10, 12, 17, step * 5)).toISOString(),
+      move: move * Math.sin((step + 1) / 15),
+    })),
+    ranks: gics === "60" ? [] : [1, 3, 3, 1, i + 1],
+    groups: [
+      { gics: gics + "10", name: "Synthetic Industry", nameZh: "演示行业", move, indexCode: 200 + i },
+    ],
+    holdings: [{ name: "Synthetic Constituent", weight: weight / 3 }],
+    exposureGbp: 1250,
+  })),
+};
 
 test.describe("market index layer", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
@@ -605,12 +634,67 @@ test.describe("market index layer", () => {
     await expect(page.getByText(/均为演示数据|are synthetic/)).toBeVisible();
   });
 
+  test("Markets defaults to Global and the sector switch persists in the URL", async ({ page }, testInfo) => {
+    await mockIndices(page);
+    await page.goto("/sectors");
+    const view = page.getByRole("group", { name: /全球视图|Global view/ });
+    const regions = view.getByRole("button", { name: /地区|Regions/ });
+    const sectors = view.getByRole("button", { name: /行业|Sectors/ });
+    await expect(regions).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("group", { name: /全球市场地图|World market map/ })).toBeVisible();
+    await sectors.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/sectors\?view=sectors$/);
+    await expect(sectors).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".mx-global-benchmark")).toHaveCount(3);
+    await expect(page.locator(".mx-index-global time")).toHaveAttribute("datetime", "2026-11-12T19:00:00Z");
+    await page.reload();
+    await expect(sectors).toHaveAttribute("aria-pressed", "true");
+
+    if (testInfo.project.name === "desktop") {
+      const map = page.getByRole("group", { name: /全球板块地图|Global sector map/ });
+      await expect(map.getByRole("button")).toHaveCount(11);
+      const noQuote = map.getByRole("button", { name: /房地产.*无报价|Real Estate.*No quote/ });
+      await expect(noQuote).toHaveAttribute("data-tone", "flat");
+      await expect(noQuote).toHaveCSS("--mx-heat-mix", "0%");
+      await expect(map.locator(".mx-sector-tile")).toHaveCount(0);
+      const active = map.locator('[aria-pressed="true"]');
+      await expect(active).toHaveAttribute("data-key", "45");
+      await active.focus();
+      await page.keyboard.press("ArrowRight");
+      await expect(page).toHaveURL(/view=sectors.*sector=/);
+      await expect(active).not.toHaveAttribute("data-key", "45");
+      await expect(active).toBeFocused();
+    } else {
+      const rows = page.locator(".mx-sector-list button");
+      await expect(rows).toHaveCount(11);
+      const row = page.locator('.mx-sector-list button[data-key="60"]');
+      await row.scrollIntoViewIfNeeded();
+      const scroll = await page.evaluate(() => window.scrollY);
+      expect(scroll).toBeGreaterThan(0);
+      await row.click();
+      await expect(page).toHaveURL(/view=sectors.*sector=60/);
+      await expect(page.getByRole("heading", { name: /房地产|Real Estate/ })).toBeFocused();
+      await expect(page.locator(".mx-sector-detail")).toContainText(/无报价|No quote/);
+      await expect(page.locator(".mx-global-benchmark")).toHaveCount(0);
+      await page.locator(".mx-sector-back").click();
+      await expect(page).toHaveURL(/\/sectors\?view=sectors$/);
+      await expect(row).toBeFocused();
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+    }
+    await regions.click();
+    await expect(page).not.toHaveURL(/view=sectors/);
+  });
+
   test("Global discloses the desktop demo’s missing quote data", async ({ page }) => {
     const demo = process.env.DESKTOP_DEMO_QA_URL;
     test.skip(!demo?.startsWith("http://127.0.0.1:"), "Requires the isolated desktop demo.");
-    await page.goto(new URL("/desktop/sectors?market=global", demo).href);
+    await page.goto(new URL("/desktop/sectors", demo).href);
     await expect(page.getByRole("heading", { name: /演示不包含全球行情|Global quotes aren’t included in the demo/ })).toBeVisible();
     await expect(page.locator(".mx-global-rows")).toHaveCount(0);
+    await page.getByRole("group", { name: /全球视图|Global view/ }).getByRole("button", { name: /行业|Sectors/ }).click();
+    await expect(page).toHaveURL(/\/desktop\/sectors\?view=sectors$/);
+    await expect(page.getByRole("heading", { name: /演示不包含全球行业行情|Global sector quotes aren’t included in the demo/ })).toBeVisible();
   });
 
   test("research can open an index by its provider ticker", async ({ page }) => {

@@ -12,7 +12,7 @@ import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
-import { useGlobalContribution } from "./global-markets-data";
+import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import {
   alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
@@ -59,11 +59,12 @@ function RetryIndices({ retry, busy }: { retry: () => void; busy?: boolean }) {
   );
 }
 
-export function IndexStrip({ market, open, selected, marketName }: {
+export function IndexStrip({ market, open, selected, marketName, globalClock }: {
   market: IndexScope;
   open: (event: MouseEvent<HTMLAnchorElement>, index: IndexIdentity) => void;
   selected?: string | null;
   marketName?: string;
+  globalClock?: Pick<GlobalMarketContribution, "asOf" | "referenceDate" | "phase" | "acwiMove" | "acwiLevel"> | null;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -74,7 +75,8 @@ export function IndexStrip({ market, open, selected, marketName }: {
     staleTime: 60_000,
     retry: 0,
   });
-  const global = useGlobalContribution(market === "global" && !selected).data;
+  const regions = useGlobalContribution(market === "global" && !selected && globalClock === undefined);
+  const global = globalClock === undefined ? regions.data : globalClock;
   const newest = (query.data?.quotes ?? []).map((quote) => quote.asOf ?? "").sort().at(-1);
   const error = query.isError || query.data?.refreshFailed;
   const card = (quote: IndexQuote) => <IndexCard key={quote.index.id} quote={quote} selected={selected === quote.index.id} open={open}

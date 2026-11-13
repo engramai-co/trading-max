@@ -39,8 +39,7 @@ When that exact close is missing, the constituent remains unpriced.
 
 The US, Europe, UK, Hong Kong, Korea and Japan have index cards and sector
 boards. Taiwan, India, Canada, Australia and Switzerland show indices only.
-Global groups six benchmarks and adds a world map and attribution for MSCI
-ACWI. Japan's sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock
+Global groups six benchmarks above a choice of Regions and Sectors. Japan's sector board uses IJPN's MSCI Japan holdings on the Tokyo Stock
 Exchange; the Nikkei 225 and TOPIX ETF cards use their own prices. The index
 cards and sector board load and report freshness independently.
 
@@ -139,3 +138,33 @@ Both layouts preserve the projection’s proportions. Run
 `uv run python tools/generate_global_market_map.py` to regenerate the static
 paths from the pinned, checksum-verified source. No geography package or
 download is needed at runtime.
+
+## Global sector indices
+
+Markets opens on Global unless a market is named in the URL. The Global
+Regions view retains the ACWI contribution map. `?view=sectors` keeps the
+same benchmarks and reference clock while showing the MSCI World (developed
+markets) sector board. The desktop demo discloses that both views have no
+quote data.
+
+`GET /v1/indices/global-sectors` returns the reference date, phase and as-of
+time shared with Global contribution. The public board is computed on demand
+and cached for four minutes. The [industry index registry](../../backend/src/trading_max/reference/msci_world_sectors.py)
+identifies MSCI's USD price indices by GICS code. Five-minute observations and
+daily closes are batched through SharedMarketPrices. For the few symbols
+whose Yahoo daily feed lacks dated history, the Yahoo chart feed's carried
+official marks can corroborate closes. The board uses the prior official
+close as its baseline and caps all observations at the shared reference time.
+Ranks compare the last five completed sessions. Unconfirmed moves and
+ranks stay empty; missing sector quotes keep their weight and a neutral
+tile. Industry groups with no verified index quote are omitted from the rail.
+
+Tile area and top constituent weights use GICS equity holdings in
+[iShares Core MSCI World UCITS ETF (SWDA)](https://www.ishares.com/uk/individual/en/products/251882).
+The dated public aggregate is cached for seven days, with a stale indicator
+if the previous good result is retained. A sector's estimated contribution
+to MSCI World is its share of fund NAV times its index move; weights are not
+renormalised. The help popover records the basis and holdings date.
+Constituents are displayed by name and weight without requesting their prices.
+Portfolio exposure is read independently of the public cache from the latest
+immutable portfolio look-through industry allocation across all accounts.

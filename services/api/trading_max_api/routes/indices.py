@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from trading_max.reference.indices import IndexRange, IndexScope, IndexSpec
 
+from ..global_sector_models import GlobalSectorBoard
 from ..index_models import (
     GlobalMarketContribution,
     IndexContext,
@@ -39,6 +40,11 @@ def index_market(request: Request, scope: IndexScope) -> IndexMarket:
 @router.get("/v1/indices/global-contribution", response_model=GlobalMarketContribution)
 def global_contribution(request: Request) -> GlobalMarketContribution:
     return app_service(request, "indices").global_contribution()
+
+
+@router.get("/v1/indices/global-sectors", response_model=GlobalSectorBoard)
+def global_sectors(request: Request) -> GlobalSectorBoard:
+    return app_service(request, "indices").global_sectors()
 
 
 @router.get("/v1/indices/{index_id}/history", response_model=IndexHistory)

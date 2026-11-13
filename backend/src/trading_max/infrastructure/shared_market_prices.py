@@ -76,9 +76,16 @@ class SharedMarketPrices:
     def daily(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
         return self._read("daily", symbols, 240, self.source.daily)
 
-    def benchmark_intraday(self, symbol: str) -> SparkSeries | None:
-        """Keep enough five-minute history to timestamp benchmark closes across a weekend."""
-        return self._chart("benchmark-5m", symbol, {"range": "5d", "interval": "5m"}, 240)
+    def benchmark_intraday_batch(self, symbols: Iterable[str]) -> dict[str, SparkSeries]:
+        """Read five-minute marks across the prior close in a batched spark request."""
+        return self._read("benchmark-batch-5m", symbols, 240, self.source.benchmark_intraday)
+
+    def benchmark_intraday(self, symbol: str, *, extended: bool = False) -> SparkSeries | None:
+        """Keep enough five-minute history to identify carried official benchmark closes."""
+        window = "1mo" if extended else "5d"
+        return self._chart(
+            f"benchmark-{window}-5m", symbol, {"range": window, "interval": "5m"}, 240
+        )
 
     def history(self, symbol: str) -> SparkSeries | None:
         return self._chart("5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60)
