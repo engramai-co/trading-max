@@ -1,7 +1,7 @@
 import type { SectorGroup, SectorMarketCode, SectorSessionWindow } from "@/lib/types";
 
 /** Markets in the order the page lists them. */
-export const SECTOR_MARKETS: readonly SectorMarketCode[] = ["us", "uk", "hk", "kr", "jp"];
+export const SECTOR_MARKETS: readonly SectorMarketCode[] = ["us", "eu", "uk", "hk", "kr", "jp"];
 
 export function sectorMarket(value: string | null | undefined): SectorMarketCode | null {
   return SECTOR_MARKETS.find((market) => market === value) ?? null;

@@ -98,6 +98,34 @@ UNIVERSES: dict[str, UniverseSpec] = {
         exchanges={"London Stock Exchange": ".L"},
         unlisted_suffix=".L",
     ),
+    "eu": UniverseSpec(
+        market="eu",
+        universe="MSCI Europe",
+        fund="iShares Core MSCI Europe UCITS ETF",
+        fund_ticker="SMEA",
+        product_id="251861",
+        exchanges={
+            "Bolsa De Madrid": ".MC",
+            "Borsa Italiana": ".MI",
+            "Deutsche Boerse Xetra": ".DE",
+            "Euronext Amsterdam": ".AS",
+            "Irish Stock Exchange - All Market": ".IR",
+            "London Stock Exchange": ".L",
+            "Nasdaq Omx Helsinki Ltd.": ".HE",
+            "Nasdaq Omx Nordic": ".ST",
+            "Nyse Euronext - Euronext Brussels": ".BR",
+            "Nyse Euronext - Euronext Lisbon": ".LS",
+            "Nyse Euronext - Euronext Paris": ".PA",
+            "Omx Nordic Exchange Copenhagen A/S": ".CO",
+            "Oslo Bors Asa": ".OL",
+            "SIX Swiss Exchange": ".SW",
+            "Wiener Boerse Ag": ".VI",
+            "Xetra": ".DE",
+            # Some European issuers' primary listings trade in the US.
+            "NASDAQ": "",
+            "New York Stock Exchange Inc.": "",
+        },
+    ),
     "hk": UniverseSpec(
         market="hk",
         universe="MSCI AC Far East ex Japan, Hong Kong listings",
@@ -161,7 +189,8 @@ def provider_symbol(spec: UniverseSpec, ticker: str | None, exchange: str | None
     """The market-data symbol of one issuer holding, or None when it is not quotable here.
 
     US share classes use a hyphen (``BRK B`` → ``BRK-B``); London drops the
-    issuer's trailing dot (``RR.`` → ``RR.L``, ``BT.A`` → ``BT-A.L``); Hong Kong
+    issuer's trailing dot (``RR.`` → ``RR.L``, ``BT.A`` → ``BT-A.L``); Nordic classes
+    also use a hyphen (``NOVO B`` → ``NOVO-B.CO``, ``VOLV B`` → ``VOLV-B.ST``). Hong Kong
     codes are four digits (``700`` → ``0700.HK``); Korean codes six (``.KS`` or
     ``.KQ`` by board).
     """

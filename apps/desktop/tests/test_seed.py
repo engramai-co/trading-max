@@ -13,6 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from services.api.trading_max_api.artifacts import ArtifactStore
+from services.api.trading_max_api.sector_monitor import SectorBoardStore
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "build_seed.py"
 LONDON = ZoneInfo("Europe/London")
@@ -27,6 +28,17 @@ class PackagedSeedTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
                 text=True,
+            )
+            europe = SectorBoardStore(seed).load("eu")
+            self.assertIsNotNone(europe)
+            self.assertEqual(europe.source.prices, "Synthetic")
+            self.assertEqual(len(europe.groupings[0].groups), 11)
+            self.assertTrue(
+                all(
+                    member.symbol.startswith("EUSYN")
+                    for group in europe.groupings[0].groups
+                    for member in group.members
+                )
             )
             store = ArtifactStore(seed)
             refs = {ref.key: ref for ref in store.immutable_snapshots.latest().manifest.artifacts}

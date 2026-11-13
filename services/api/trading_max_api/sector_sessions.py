@@ -29,6 +29,7 @@ MARKETS: dict[SectorMarketCode, MarketCalendar] = {
     "hk": MarketCalendar("XHKG", "Asia/Hong_Kong"),
     "kr": MarketCalendar("XKRX", "Asia/Seoul"),
     "jp": MarketCalendar("XTKS", "Asia/Tokyo"),
+    "eu": MarketCalendar("XETR", "Europe/London"),
 }
 
 # Closing auctions finish within minutes; a board fetched this long after the

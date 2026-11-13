@@ -120,6 +120,8 @@ describe("intraday line and colour", () => {
     expect(strongestGroup([{ key: "c", change: null, ranks: [] }] as unknown as SectorGroup[])).toBe("c");
     expect(strongestGroup([])).toBeNull();
     expect(sectorMarket("hk")).toBe("hk");
+    expect(sectorMarket("eu")).toBe("eu");
+    expect(sectorMarket("ch")).toBeNull();
     expect(sectorMarket("cn")).toBeNull();
   });
 

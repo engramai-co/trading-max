@@ -38,7 +38,14 @@ def test_sector_route_serves_an_empty_state_then_a_stored_board(tmp_path: Path) 
         assert empty.status_code == 200
         payload = empty.json()
         assert payload["board"] is None
-        assert [market["market"] for market in payload["markets"]] == ["us", "uk", "hk", "kr", "jp"]
+        assert [market["market"] for market in payload["markets"]] == [
+            "us",
+            "uk",
+            "hk",
+            "kr",
+            "jp",
+            "eu",
+        ]
         assert all(market["sessions"] for market in payload["markets"])
         assert payload["markets"][2]["calendar"] == "XHKG"
         assert payload["markets"][2]["timezone"] == "Asia/Hong_Kong"
@@ -76,3 +83,29 @@ def test_research_automation_switch_reaches_the_sector_monitor(tmp_path: Path) -
         assert monitor.enabled is True
         # Unavailable in test apps, so it still never runs.
         assert monitor.status().enabled is False
+
+
+def test_europe_sector_route_accepts_the_scope_without_changing_default(tmp_path: Path) -> None:
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        monitor = app.state.sector_monitor
+        monitor._now = lambda: datetime(2026, 11, 6, 10, tzinfo=UTC)
+        assert client.get("/v1/sectors").json()["market"] == "uk"
+        params = {"market": "eu"}
+        empty = client.get("/v1/sectors", params=params).json()
+        assert empty["market"] == "eu"
+        assert empty["board"] is None
+        europe = next(m for m in empty["markets"] if m["market"] == "eu")
+        assert (europe["calendar"], europe["timezone"]) == ("XETR", "Europe/London")
+        assert next(s for s in europe["sessions"] if s["date"] == "2026-11-06") == {
+            "date": "2026-11-06",
+            "open": "2026-11-06T08:00:00Z",
+            "close": "2026-11-06T16:30:00Z",
+            "breakStart": None,
+            "breakEnd": None,
+        }
+        monitor.boards.save(board("eu"))
+        stored = client.get("/v1/sectors", params=params).json()["board"]
+        assert stored["market"] == "eu"
+        assert stored["exposureGbp"] == 12.5
+        assert client.get("/v1/sectors").json()["market"] == "uk"

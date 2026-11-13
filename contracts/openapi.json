@@ -17044,7 +17044,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -17110,7 +17111,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -17399,7 +17401,8 @@
               "uk",
               "hk",
               "kr",
-              "jp"
+              "jp",
+              "eu"
             ],
             "title": "Market",
             "type": "string"
@@ -20717,7 +20720,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.39.1"
+    "version": "1.40.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -23509,7 +23512,8 @@
                     "uk",
                     "hk",
                     "kr",
-                    "jp"
+                    "jp",
+                    "eu"
                   ],
                   "type": "string"
                 },
