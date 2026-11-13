@@ -40,15 +40,24 @@ def test_parse_compact_reads_points_and_falls_back_to_the_chart_previous_close()
                 "timestamp": [1794182400, 1794182700, None],
                 "close": [10.0, None, 11.0],
                 "chartPreviousClose": 9.5,
+                "end": 1794182700,
+                "fulldayPrice": 10.25,
             },
             "BBB": "unexpected",
+            "CCC": {"end": True, "fulldayPrice": -1},
+            "DDD": {},
         }
     )
 
-    assert list(series) == ["AAA"]
+    assert list(series) == ["AAA", "CCC", "DDD"]
     assert series["AAA"].timestamps == (1794182400, 1794182700)
     assert series["AAA"].closes == (10.0, None)
     assert series["AAA"].previous_close == 9.5
+    assert series["AAA"].session_end == 1794182700
+    assert series["AAA"].full_day_price == 10.25
+    for symbol in ("CCC", "DDD"):
+        assert series[symbol].session_end is None
+        assert series[symbol].full_day_price is None
 
 
 def test_parse_compact_rejects_an_error_envelope() -> None:

@@ -54,6 +54,7 @@ from .sector_sessions import (
     exchange_sessions,
     latest_session,
     prior_session_dates,
+    provider_session_close,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -295,6 +296,28 @@ class IndexService:
                 return cached[1]
             weights, stale = self.acwi_weights.get(now)
             answer = read_global_contribution(self.prices, weights, stale, now, reference)
+            path = self.root / "global-contribution.json"
+            # Keep the last usable estimate across a process restart, including
+            # normal partial market coverage. Keep its original reference time.
+            if answer.prices_stale and not answer.rows:
+                try:
+                    saved = GlobalMarketContribution.model_validate_json(path.read_bytes())
+                    if (
+                        saved.as_of is not None
+                        and timedelta(0) <= now - saved.as_of <= timedelta(days=4)
+                        and (
+                            answer.reference_date is None
+                            or answer.reference_date == saved.reference_date
+                        )
+                    ):
+                        answer = saved.model_copy(update={"prices_stale": True})
+                except (OSError, ValueError):
+                    LOGGER.debug("Global contribution cache is unavailable", exc_info=True)
+            elif answer.rows and not answer.prices_stale:
+                try:
+                    atomic_bytes(path, answer.model_dump_json(by_alias=True).encode())
+                except OSError:
+                    LOGGER.debug("Global contribution cache could not be written", exc_info=True)
             self._contribution = (now, answer)
             return answer
 
@@ -429,7 +452,11 @@ class IndexService:
                         if window.open <= p.at <= window.close + timedelta(minutes=15)
                     ]
                     completed = board_complete(window, now)
-                    official = closes.get(window.date) if completed else None
+                    official = (
+                        closes.get(window.date) or provider_session_close(item, window, now)
+                        if completed
+                        else None
+                    )
                     if official is not None:
                         points = [p for p in points if p.at < window.close] + [
                             IndexPoint(at=window.close, value=official)

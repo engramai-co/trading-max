@@ -3880,6 +3880,11 @@ export interface components {
             markets: components["schemas"]["GlobalMarketMove"][];
             /** Phase */
             phase: ("live" | "completed") | null;
+            /**
+             * Pricesstale
+             * @default false
+             */
+            pricesStale: boolean;
             /** Referencedate */
             referenceDate: string | null;
             /** Residual */
@@ -3920,6 +3925,11 @@ export interface components {
             exposureBasisGbp?: number | null;
             /** Phase */
             phase: ("live" | "completed") | null;
+            /**
+             * Pricesstale
+             * @default false
+             */
+            pricesStale: boolean;
             /** Ranksessions */
             rankSessions: string[];
             /** Referencedate */

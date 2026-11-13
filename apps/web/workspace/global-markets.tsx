@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import type { components } from "@/lib/api-schema";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/formatters";
+import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
 import { globalHeatStyle, useGlobalContribution } from "./global-markets-data";
@@ -68,7 +68,7 @@ function tone(value: number) {
 
 export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (market: MapMarket) => void }) {
   const t = useCopy();
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const pathname = usePathname();
   const wide = useMediaQuery("(min-width: 1180px)") ?? false;
   const [hovered, setHovered] = useState<Market | null>(null);
@@ -113,8 +113,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   }) + " pp";
   const name = (market: Market) => market === "em" ? t("新兴市场", "Emerging markets") : t(...MAP[market].name);
   const preOpen = t("未开盘", "Not open");
-  const quoteStatus = (move?: number | null, notOpen = false) => notOpen ? preOpen
-    : move == null ? t("无报价", "No quote") : heat(move) === 0 ? t("持平", "Flat") : null;
+  const quoteStatus = (move?: number | null, notOpen = false) => move == null ? t("无报价", "No quote")
+    : notOpen ? preOpen : heat(move) === 0 ? t("持平", "Flat") : null;
   const contributionText = (market: Market, contribution?: number) => EM_MARKETS.has(market)
     ? t("计入新兴市场", "Included in emerging markets")
     : contribution == null ? t("未单列", "Not shown separately") : pp(contribution);
@@ -278,8 +278,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
               {t("重试", "Retry")}
             </button>
           </div> : null}
-        {(query.isError && answer || answer?.weightsStale || answer?.state === "partial") && <div className="mx-global-caveats" role="status">
+        {(query.isError && answer || answer?.weightsStale || answer?.pricesStale || answer?.state === "partial") && <div className="mx-global-caveats" role="status">
           {query.isError && answer && <Tag tone="warn">{t("刷新失败", "Refresh failed")}</Tag>}
+          {answer?.pricesStale && <Tag tone="warn">{answer.asOf
+            ? t("报价未更新 · ", "Quotes haven’t updated · ") + formatDateTime(answer.asOf, locale, timeZone)
+            : t("报价暂不可用", "Quotes temporarily unavailable")}</Tag>}
           {answer?.weightsStale && <Tag tone="warn">{t("权重未更新", "Weights haven’t updated")}</Tag>}
           {answer?.state === "partial" && <Tag tone="warn">{t("部分报价不可用", "Partial quote coverage")}</Tag>}
         </div>}

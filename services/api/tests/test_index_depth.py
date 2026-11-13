@@ -231,3 +231,63 @@ def test_long_daily_reads_share_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     assert prices.breadth_history(["SYNA"])
     with pytest.raises(MarketPriceBudgetExhausted):
         prices.daily(["SYNC"])
+
+
+def test_breadth_bootstrap_resumes_persisted_batches_after_budget_deferral(tmp_path, monkeypatch):
+    from trading_max.infrastructure import shared_market_prices as shared
+
+    class WallClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW + timedelta(seconds=clock[0] - 500)
+
+    clock = [500.0]
+    monkeypatch.setattr(shared, "datetime", WallClock)
+    monkeypatch.setattr(shared.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(shared, "REQUEST_BUDGET", ((60, 1, 2),))
+    symbols = [f"SYN{i:02d}" for i in range(41)]
+
+    class Universes:
+        def get(self, market):
+            return _universe(symbols)
+
+    class Source(_Prices):
+        def breadth_history(self, wanted):
+            self.full.append(wanted)
+            days = self._closes(wanted[0], 500)
+            return {symbol: _series(symbol, days) for symbol in wanted}
+
+    class Prices(SharedMarketPrices):
+        def history(self, symbol, *, not_before=None):
+            return None
+
+    source = Source()
+    prices = Prices(source)
+
+    def refresh(depth, now):
+        depth.refresh("us", now, settled=lambda _: {}, check_active=lambda: None)
+
+    depth = IndexDepth(tmp_path, prices, Universes())
+    # Hold the ordinary token on multiple consecutive ticks. These are scheduling
+    # deferrals and must not use up the day's three actual refresh attempts.
+    for _ in range(4):
+        prices.daily(["OTHER"])
+        refresh(depth, NOW + timedelta(seconds=clock[0] - 500))
+        clock[0] += 600
+    assert not source.full
+    assert depth.breadth(SP) is None
+
+    refresh(depth, NOW + timedelta(seconds=clock[0] - 500))
+    assert len(source.full) == 1 and depth.breadth(SP) is None
+    clock[0] += 600
+    # A process restart must not redownload the completed batch.
+    depth = IndexDepth(tmp_path, Prices(source), Universes())
+    refresh(depth, NOW + timedelta(seconds=clock[0] - 500))
+    assert len(source.full) == 2
+    assert set(source.full[0]).isdisjoint(source.full[1])
+    clock[0] += 600
+    refresh(depth, NOW + timedelta(seconds=clock[0] - 500))
+    assert len(source.full) == 3
+    assert sorted(symbol for batch in source.full for symbol in batch) == symbols
+    assert depth.breadth(SP).points[-1].eligible_200 == len(symbols)
+    assert depth.breadth(NDX).points[-1].above_200 == 1

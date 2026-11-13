@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -1334,3 +1335,29 @@ def test_wide_basket_runs_at_open_and_settlement_but_skips_adjacent_slots(tmp_pa
     clock["now"] = US_CLOSE + COMPLETE_AFTER - timedelta(minutes=10)
     sectors.run_once()
     assert sectors.due("us", US_CLOSE + COMPLETE_AFTER)
+
+
+def test_asian_board_settles_provider_close_and_reuses_it_for_breadth(tmp_path):
+    symbol = "SYN.KS"
+    now = datetime(2026, 11, 6, 9, tzinfo=UTC)
+    session = latest_session("kr", now)
+    assert session
+    end = session.close - timedelta(minutes=30)
+    prices = FakePrices(
+        intraday={
+            symbol: replace(
+                series(symbol, 100, [(0, 101), (360, 103)], opened=session.open),
+                session_end=int(end.timestamp()),
+                full_day_price=104,
+            )
+        },
+        daily={symbol: SparkSeries(symbol, (int(session.open.timestamp()) - 86400,), (100,))},
+    )
+    sectors = monitor(
+        tmp_path, FakeUniverses(kr=universe("kr", constituent(symbol, 1.0))), prices, {"now": now}
+    )
+    assert sectors.refresh("kr", now).published
+    board = sectors.boards.load("kr")
+    assert board and board.complete
+    assert board.as_of == session.close
+    assert sectors._settled_closes("kr", session.date)[symbol].values[session.date] == 104

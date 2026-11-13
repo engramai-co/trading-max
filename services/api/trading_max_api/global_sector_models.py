@@ -41,6 +41,7 @@ class GlobalSectorBoard(ApiModel):
     acwi_level: float | None
     weights_as_of: date | None
     weights_stale: bool
+    prices_stale: bool = False
     rank_sessions: list[date]
     exposure_basis_gbp: float | None = None
     sectors: list[GlobalSectorMove]

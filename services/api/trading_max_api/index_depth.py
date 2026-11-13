@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from math import ceil, isclose
 from pathlib import Path
@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import Field
 from trading_max.infrastructure.durable_files import atomic_bytes
-from trading_max.infrastructure.sector_prices import SparkRateLimited, SparkSeries
+from trading_max.infrastructure.sector_prices import BATCH_SIZE, SparkRateLimited, SparkSeries
 from trading_max.infrastructure.sector_universe import (
     UNIVERSES,
     SectorUniverse,
@@ -105,6 +105,13 @@ def _read[T: ApiModel](path: Path, model: type[T]) -> T | None:
 
 def _write(path: Path, data: ApiModel) -> None:
     atomic_bytes(path, data.model_dump_json().encode())
+
+
+def _batches(symbols: list[str]) -> Iterator[list[str]]:
+    # Keep the provider's round-robin mix of large and small listings.
+    count = -(-len(symbols) // BATCH_SIZE)
+    for index in range(count):
+        yield symbols[index::count]
 
 
 def _completed(sessions: Sequence[SectorSessionWindow], now: datetime) -> list[str]:
@@ -319,6 +326,7 @@ class IndexDepth:
         snapshots = [self.breadth(INDEX_REGISTRY[key]) for key in ids]
         if all(snapshot and snapshot.as_of.isoformat() >= day for snapshot in snapshots):
             return
+        last_attempt = self._attempts.get(market)
         if not self._attempt(market, day, now):
             return
         try:
@@ -356,8 +364,16 @@ class IndexDepth:
             session = exchange_sessions(
                 MARKETS[market].calendar, date.fromisoformat(day), date.fromisoformat(day)
             )[-1]
-            if missing:
-                quotes = self.prices.daily(missing, not_before=session.close)
+            deferred = False
+            # Work in provider batches so a budget deferral can retain completed
+            # reads and the next monitor slot can resume without starting over.
+            for batch in _batches(missing):
+                check_active()
+                try:
+                    quotes = self.prices.daily(batch, not_before=session.close)
+                except (SparkRateLimited, MarketPriceBudgetExhausted):
+                    deferred = True
+                    break
                 for symbol, series in quotes.items():
                     recent[symbol] = BreadthCloses(
                         fetched_at=series.fetched_at or now, values=_dated(series, zone, valid)
@@ -377,16 +393,34 @@ class IndexDepth:
                     # the workspace was offline too long. Do not stitch the two.
                     old.pop(symbol, None)
             backfill = [symbol for symbol in members if symbol not in old and symbol not in inputs]
-            check_active()
-            if backfill:
-                for symbol, series in self.prices.breadth_history(backfill).items():
-                    if series.fetched_at and series.fetched_at < session.close:
-                        continue
-                    closes = _dated(series, zone, valid)
-                    if closes:
-                        inputs[symbol] = BreadthCloses(
-                            fetched_at=series.fetched_at or now, isin=members[symbol], values=closes
+            if not deferred:
+                for batch in _batches(backfill):
+                    check_active()
+                    try:
+                        histories = self.prices.breadth_history(batch)
+                    except (SparkRateLimited, MarketPriceBudgetExhausted):
+                        deferred = True
+                        break
+                    except RuntimeError:
+                        LOGGER.warning(
+                            "Index breadth history batch failed for %s", market, exc_info=True
                         )
+                        continue
+                    for symbol, series in histories.items():
+                        if series.fetched_at and series.fetched_at < session.close:
+                            continue
+                        closes = _dated(series, zone, valid)
+                        if closes:
+                            inputs[symbol] = BreadthCloses(
+                                fetched_at=series.fetched_at or now,
+                                isin=members[symbol],
+                                values=closes,
+                            )
+            if deferred:
+                if last_attempt is None:
+                    self._attempts.pop(market, None)
+                else:
+                    self._attempts[market] = last_attempt
             # Retain older prices for a missing session; leave that session blank.
             closes = old | inputs
             closes = {
@@ -397,14 +431,18 @@ class IndexDepth:
                 )
                 for symbol, series in closes.items()
             }
-            if not closes:
+            if not closes or (deferred and not inputs):
                 return
             check_active()
             _write(path, _BreadthInputs(closes=closes))
             for key, basket in baskets.items():
                 if snapshot := _breadth(basket, dates, closes, now):
                     previous = self.breadth(INDEX_REGISTRY[key])
-                    if previous is None or snapshot.as_of > previous.as_of:
+                    if (
+                        previous is None
+                        or snapshot.as_of > previous.as_of
+                        or (snapshot.as_of == previous.as_of and not deferred)
+                    ):
                         _write(self.root / f"{key}.json", snapshot)
         except (SparkRateLimited, MarketPriceBudgetExhausted):
             raise

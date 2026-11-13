@@ -13,6 +13,7 @@ from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.research.calendar import market_calendar
 
 from .india_sessions import INDIA_END, INDIA_START, INDIAN_EXCHANGES, india_sessions
@@ -50,6 +51,8 @@ MARKETS: dict[SectorMarketCode, MarketCalendar] = {
 # Closing auctions finish within minutes; a board fetched this long after the
 # close carries official closing prices and is complete.
 COMPLETE_AFTER = timedelta(minutes=30)
+# Yahoo's Hong Kong schedule includes the closing auction after the cash session.
+CLOSING_AUCTION = timedelta(minutes=15)
 # The first slot after a midday break begins still captures the morning's last prints.
 BREAK_TAIL = timedelta(minutes=10)
 # A session whose prices never arrive is retried until this long after its close.
@@ -176,6 +179,34 @@ def in_break(session: SectorSessionWindow, now: datetime) -> bool:
 
 def board_complete(session: SectorSessionWindow, fetched_at: datetime) -> bool:
     return fetched_at >= session.close + COMPLETE_AFTER
+
+
+def provider_session_close(
+    series: SparkSeries | None, session: SectorSessionWindow, as_of: datetime
+) -> float | None:
+    """Use Yahoo's finished-session mark only for the matching exchange window."""
+    if series is None or series.session_end is None or as_of < session.close:
+        return None
+    end = series.session_end
+    opened = session.open.timestamp()
+    if not opened <= end <= min(as_of, session.close + CLOSING_AUCTION).timestamp():
+        return None
+    if series.fetched_at is not None and series.fetched_at.timestamp() < end:
+        return None
+    last = max(
+        (
+            (stamp, value)
+            for stamp, value in zip(series.timestamps, series.closes, strict=False)
+            if opened <= stamp <= end and value is not None
+        ),
+        default=None,
+    )
+    # Reject a rolled schedule that still carries only the previous day's quotes.
+    if last is None:
+        return None
+    if series.full_day_price is not None:
+        return series.full_day_price
+    return last[1] if last[0] == end else None
 
 
 def is_due(

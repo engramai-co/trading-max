@@ -65,7 +65,7 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
   open: (event: MouseEvent<HTMLAnchorElement>, index: IndexIdentity) => void;
   selected?: string | null;
   marketName?: string;
-  globalClock?: Pick<GlobalMarketContribution, "asOf" | "referenceDate" | "phase" | "acwiMove" | "acwiLevel"> | null;
+  globalClock?: Pick<GlobalMarketContribution, "asOf" | "referenceDate" | "phase" | "acwiMove" | "acwiLevel" | "pricesStale"> | null;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -87,14 +87,15 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
     const quotes = new Map(query.data?.quotes.map((quote) => [quote.index.id, quote]));
     const acwi = quotes.get("msci-acwi");
     const stamp = global?.asOf ?? acwi?.asOf ?? newest;
-    const phase = global?.phase === "completed" ? t("已收盘", "Closed")
+    const phase = global?.pricesStale ? t("最近报价", "Latest quote")
+      : global?.phase === "completed" ? t("已收盘", "Closed")
       : global?.phase === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
     const day = global?.referenceDate;
     const time = stamp && formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
     if (acwi && global?.acwiMove != null) {
       quotes.set(acwi.index.id, {
         ...acwi, change: global.acwiMove, level: global.acwiLevel, asOf: global.asOf,
-        state: global.phase === "completed" ? "closed" : "live",
+        state: global.pricesStale ? "stale" : global.phase === "completed" ? "closed" : "live",
         points: acwi.points?.filter(({ at }) => global.asOf != null && Date.parse(at) <= Date.parse(global.asOf)),
       });
     }
@@ -102,10 +103,11 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
       {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
         {stamp && <>
           <span>{phase}</span>
-          <span><time dateTime={stamp}>{t("截至 ", "As of ")}{day && global?.phase === "completed"
+          <span><time dateTime={stamp}>{t("截至 ", "As of ")}{day && !global?.pricesStale && global?.phase === "completed"
             ? `${formatCalendarDate(day, locale)} ${time}`
-            : global?.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
+            : global?.phase === "live" && !global.pricesStale ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
         </>}
+        {global?.pricesStale && <span>{t("全球报价未更新", "Global quotes haven’t updated")}</span>}
         {error && <><span>{stamp ? t("部分指数未更新", "Some indices haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
           <RetryIndices busy={query.isFetching} retry={() => void query.refetch()} /></>}
       </div>}
