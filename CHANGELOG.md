@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.41.1] - 2026-11-13
+
+### Fixed
+
+- VanEck holdings load again, so SMGB look-through stays current.
+- Look-through classifies holdings that an issuer leaves without a country or
+  sector, using the same rules as direct holdings, instead of listing them as
+  Unclassified.
+
 ## [1.41.0] - 2026-11-13
 
 ### Added

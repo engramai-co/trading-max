@@ -192,6 +192,25 @@ def _clean(value: float) -> float:
     return round(value, 2)
 
 
+def _unlabelled_bucket(
+    holdings: list[FundHolding],
+    weights: Mapping[str, float],
+    label: Callable[[FundHolding], str | None],
+) -> bool:
+    """True when the breakdown's Unclassified bucket is exactly the unlabelled constituents.
+
+    That means the breakdown was built from constituents, so the gaps can be filled
+    the same way as direct holdings without overriding any label the issuer supplied.
+    """
+    unclassified = weights.get("Unclassified", 0.0)
+    if unclassified <= 0:
+        return False
+    missing = sum(
+        holding.weight_pct for holding in holdings if holding.is_security and not label(holding)
+    )
+    return missing > 0 and math.isclose(missing, unclassified, abs_tol=0.05)
+
+
 def _allocation(
     values: Mapping[str, float],
     total: float,
@@ -595,8 +614,16 @@ class LookthroughService:
                 )
             country_weights = dict(snapshot.country_weights)
             industry_weights = dict(snapshot.industry_weights)
-            derive_country = not country_weights
-            derive_industry = not industry_weights
+            derive_country = not country_weights or _unlabelled_bucket(
+                snapshot.holdings, country_weights, lambda holding: holding.country
+            )
+            derive_industry = not industry_weights or _unlabelled_bucket(
+                snapshot.holdings, industry_weights, lambda holding: holding.industry
+            )
+            if derive_country:
+                country_weights = {}
+            if derive_industry:
+                industry_weights = {}
             if derive_country or derive_industry:
                 for holding in snapshot.holdings:
                     country, industry = self._constituent_classification(holding)

@@ -114,6 +114,20 @@ def test_vaneck_rejects_partial_or_conflicting_downloads(defect):
         fetch_vaneck(client, spec("VanEck"))
 
 
+def test_vaneck_reads_constituent_dates_as_month_first():
+    # VanEck writes the fund date as "12 Nov 2026" and constituent dates as 11/12/26.
+    data = vaneck_payload()
+    data["data"]["AsOfDate"] = "12 Nov 2026"
+    data["data"]["Holdings"][0]["AsOfDate"] = "11/12/26"
+    with vaneck_client(data) as client:
+        result = fetch_vaneck(client, spec("VanEck"))
+    assert result.as_of == "2026-11-12"
+
+    data["data"]["Holdings"][0]["AsOfDate"] = "11/11/26"
+    with vaneck_client(data) as client, pytest.raises(ValueError, match="mixed VanEck"):
+        fetch_vaneck(client, spec("VanEck"))
+
+
 def spdr_workbook(*, fund_isin=FUND_ISIN, weight=100, missing=True) -> bytes:
     book = Workbook()
     sheet = book.active
