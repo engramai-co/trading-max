@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.40.1] - 2026-11-13
+
+### Fixed
+
+- Look-through no longer lists whole funds as Unclassified when an issuer's
+  country or sector breakdown is missing. Invesco breakdowns, including EQGB,
+  load again, and a fund without one is classified from its holdings.
+
 ## [1.40.0] - 2026-11-13
 
 ### Added

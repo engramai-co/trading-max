@@ -299,3 +299,73 @@ def test_eqqq_retains_102_holdings_when_distributions_are_empty():
     assert snapshot.country_weights == snapshot.industry_weights == {}
     assert snapshot.evidence["country_weights"].coverage == "missing"
     assert snapshot.evidence["industry_weights"].coverage == "missing"
+
+
+def _invesco_breakdown_handler(breakdown_isin: str):
+    """Synthetic Invesco endpoints; breakdowns answer {} unless product and asset type are named."""
+
+    def handler(request):
+        path = request.url.path
+        if path.endswith(ISIN):
+            return httpx.Response(
+                200,
+                json={
+                    "aliases": {"isin": ISIN},
+                    "replicationMethod": "Physical",
+                    "investmentStrategy": {"assetType": "Equity"},
+                },
+            )
+        if path.endswith("/holdings/fund"):
+            return httpx.Response(
+                200,
+                json={
+                    "effectiveDate": "2026-11-12",
+                    "numberOfHoldings": 2,
+                    "holdings": [
+                        {"isin": "US0000000001", "name": "Fixture A", "weight": 60},
+                        {"isin": "NL0000000002", "name": "Fixture B", "weight": 40},
+                    ],
+                },
+            )
+        assert path.endswith("/weightedHoldings/fund")
+        params = request.url.params
+        if params.get("productCode") != "ETF" or params.get("assetType") != "Equity":
+            return httpx.Response(200, json={})
+        weights = {
+            "country": [
+                {"name": "UnitedStates", "value": 60},
+                {"name": "Netherlands", "value": 40},
+            ],
+            "sector": [
+                {"name": "informationTechnology", "value": 60},
+                {"name": "industrials", "value": 40},
+            ],
+        }[params["breakdown"]]
+        return httpx.Response(
+            200,
+            json={"isin": breakdown_isin, "effectiveDate": "2026-11-12", "holdingWeights": weights},
+        )
+
+    return handler
+
+
+def test_invesco_breakdowns_name_the_product_and_asset_type():
+    spec = FundSpec("TEST", ISIN, "Fixture", "Invesco", "https://www.invesco.com")
+    with httpx.Client(transport=httpx.MockTransport(_invesco_breakdown_handler(ISIN))) as client:
+        snapshot = fetch_invesco(client, spec)
+    assert snapshot.country_weights == {"United States": 60, "Netherlands": 40}
+    assert snapshot.industry_weights == {"Information Technology": 60, "Industrials": 40}
+    assert snapshot.industry_as_of == "2026-11-12"
+    assert snapshot.evidence["country_weights"].coverage == "available"
+    assert snapshot.evidence["industry_weights"].coverage == "available"
+
+
+def test_invesco_rejects_a_breakdown_for_another_share_class():
+    spec = FundSpec("TEST", ISIN, "Fixture", "Invesco", "https://www.invesco.com")
+    handler = _invesco_breakdown_handler("IE0000000009")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        snapshot = fetch_invesco(client, spec)
+    assert len(snapshot.holdings) == 2
+    assert snapshot.country_weights == snapshot.industry_weights == {}
+    assert snapshot.evidence["country_weights"].coverage == "failed"
+    assert snapshot.evidence["industry_weights"].coverage == "failed"
