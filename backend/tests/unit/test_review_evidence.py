@@ -260,3 +260,123 @@ def test_sterling_listing_resolves_when_no_dollar_rates_are_available():
     )
     assert not missing
     assert prices[A].listing_currency == "GBP"
+
+
+def test_move_uses_own_prior_sixty_returns_and_excludes_the_session_being_tested():
+    from statistics import stdev
+
+    events = [
+        event("2026-04-07 07:00", 3000),
+        event("2026-04-07 09:00", -100, A, 1, "buy"),
+        event("2026-04-07 09:01", -100, B, 1, "buy"),
+    ]
+    calm, volatile = listing(), listing()
+    # Two distinct listings can share one exchange calendar.
+    volatile = ReviewListing("VOL", "GBP", "VOL.L", "GBP", volatile.frame)
+    target = pd.Timestamp("2026-07-08")
+    prior_days = calm.frame.index[calm.frame.index < target]
+    assert len(prior_days) > 61
+    for market, amplitude in [(calm, 0.002), (volatile, 0.05)]:
+        # Very early observations are deliberately volatile. They cannot
+        # contribute to the threshold, even if present in the provider frame.
+        price = 100.0
+        for i, day in enumerate(prior_days):
+            step = amplitude if day in prior_days[-60:] else 0.25
+            price *= 1 + step * (-1 if i % 2 else 1)
+            market.frame.loc[day, "Close"] = price
+        market.frame.loc[target:, "Close"] = price * 1.08
+    result = compute(
+        events,
+        markets={A: calm, B: volatile},
+        end="2026-07-08 21:00",
+        terminal_holdings={A: 1, B: 1},
+        terminal_cash=2800,
+    )
+    [move] = [row for row in result.holding_moves if row.date == target.date()]
+    assert move.ticker == "SYN"
+    assert move.basis == "volatility"
+    assert move.prior_returns == 60
+    assert move.threshold == 0.05
+    assert 2.5 * stdev([0.05, -0.05] * 30) > move.change
+
+
+def test_short_history_falls_back_until_twenty_usable_returns_including_gaps():
+    market = listing()
+    market.frame.drop(market.frame.index[market.frame.index < "2026-04-01"], inplace=True)
+    market.frame.drop(pd.Timestamp("2026-04-10"), inplace=True)
+    target = pd.Timestamp("2026-05-01")
+    market.frame.loc[target:, "Close"] = 105.0
+    events = [event("2026-04-01 07:00", 2000), event("2026-04-01 09:00", -100, A, 1, "buy")]
+    result = compute(
+        events,
+        markets={A: market},
+        end="2026-05-01 21:00",
+        terminal_holdings={A: 1},
+        terminal_cash=1900,
+    )
+    [move] = result.holding_moves
+    assert move.basis == "short_history"
+    # Good Friday, Easter Monday and weekends are absent; a missing close
+    # removes the return on that day and on the following trading session.
+    assert move.prior_returns == 17
+    assert move.threshold == 0.05
+
+
+def test_only_three_most_recent_qualifying_sessions_per_holding_are_kept():
+    changes = {
+        "2026-06-01": 110,
+        "2026-06-03": 121,
+        "2026-06-08": 133.1,
+        "2026-06-15": 146.41,
+        "2026-06-22": 161.051,
+    }
+    events = [
+        event("2026-04-01 07:00", 2000),
+        event("2026-04-01 09:00", -100, A, 1, "buy"),
+        event("2026-04-01 09:01", -100, B, 1, "buy"),
+    ]
+    second = listing(changes=changes)
+    result = compute(
+        events,
+        markets={
+            A: listing(changes=changes),
+            B: ReviewListing("SYN2", "GBP", "SYN2.L", "GBP", second.frame),
+        },
+        end="2026-06-30 21:00",
+        terminal_holdings={A: 1, B: 1},
+        terminal_cash=1800,
+    )
+    for ticker in ("SYN", "SYN2"):
+        assert [str(row.date) for row in result.holding_moves if row.ticker == ticker] == [
+            "2026-06-22",
+            "2026-06-15",
+            "2026-06-08",
+        ]
+
+
+def test_session_being_tested_cannot_raise_its_own_threshold():
+    market = listing()
+    days = market.frame.index
+    first = days.get_loc(pd.Timestamp("2026-05-01"))
+    prior = days[first : first + 20]
+    target = days[first + 20]
+    market.frame.drop(days[: first - 1], inplace=True)
+    price = 100
+    for i, day in enumerate(prior):
+        price *= 1 + (0.023 if i % 2 else -0.023)
+        market.frame.loc[day, "Close"] = price
+    market.frame.loc[target:, "Close"] = price * 1.06
+    events = [event("2026-05-01 07:00", 2000), event("2026-05-01 09:00", -100, A, 1, "buy")]
+    result = compute(
+        events,
+        markets={A: market},
+        end=f"{target.date()} 21:00",
+        terminal_holdings={A: 1},
+        terminal_cash=1900,
+    )
+    # 6% exceeds 2.5× the prior sample volatility (~5.9%), but adding
+    # today's 6% to the sample would push the threshold above 6%.
+    [move] = result.holding_moves
+    assert move.prior_returns == 20
+    assert move.basis == "volatility"
+    assert 0.05 < move.threshold < 0.06

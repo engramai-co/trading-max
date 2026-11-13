@@ -8298,6 +8298,21 @@
       "HoldingMove": {
         "additionalProperties": false,
         "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "volatility",
+                  "short_history"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
           "change": {
             "title": "Change",
             "type": "number"
@@ -8307,9 +8322,31 @@
             "title": "Date",
             "type": "string"
           },
+          "priorReturns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priorreturns"
+          },
           "quoteCurrency": {
             "title": "Quotecurrency",
             "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           },
           "ticker": {
             "title": "Ticker",
@@ -15766,6 +15803,16 @@
             "title": "Sessionmoveshare",
             "type": "number"
           },
+          "sessionMoveVolatility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMoveVolatility"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "weightDriftDays": {
             "title": "Weightdriftdays",
             "type": "integer"
@@ -17847,6 +17894,35 @@
           "upside"
         ],
         "title": "SensitivityCell",
+        "type": "object"
+      },
+      "SessionMoveVolatility": {
+        "additionalProperties": false,
+        "properties": {
+          "lookbackSessions": {
+            "title": "Lookbacksessions",
+            "type": "integer"
+          },
+          "maxRowsPerHolding": {
+            "title": "Maxrowsperholding",
+            "type": "integer"
+          },
+          "minReturns": {
+            "title": "Minreturns",
+            "type": "integer"
+          },
+          "multiple": {
+            "title": "Multiple",
+            "type": "number"
+          }
+        },
+        "required": [
+          "multiple",
+          "lookbackSessions",
+          "minReturns",
+          "maxRowsPerHolding"
+        ],
+        "title": "SessionMoveVolatility",
         "type": "object"
       },
       "SessionSchedule": {
@@ -20641,7 +20717,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.39.0"
+    "version": "1.39.1"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -1,10 +1,10 @@
 import { expect, it } from "vitest";
 import type { components } from "@/lib/api-schema";
-import { fillRows, orderReviewObservations } from "./review-observations";
+import { fillRows, orderReviewObservations, shortMoveBasis } from "./review-observations";
 
 const rules = {
   cashMinSessions: 10, cashShare: 0.1, evidenceDays: 90, recentFillLimit: 8,
-  sessionMoveShare: 0.05, weightDriftDays: 30, weightDriftShare: 0.03,
+  sessionMoveShare: 0.05, sessionMoveVolatility: { multiple: 2.5, lookbackSessions: 60, minReturns: 20, maxRowsPerHolding: 3 }, weightDriftDays: 30, weightDriftShare: 0.03,
 };
 
 it("keeps each available rule visible even after a burst of daily moves", () => {
@@ -42,4 +42,15 @@ it("orders the individual fills by instant across account timestamps", () => {
     },
   });
   expect(rows.map((row) => row.account)).toEqual(["B", "A"]);
+});
+
+
+it("marks only short-history moves with their actual floor in each language", () => {
+  const row = {
+    date: "2026-11-06", ticker: "SYN", quoteCurrency: "USD", change: -0.072,
+    basis: "short_history" as const, priorReturns: 19, threshold: 0.055,
+  };
+  expect(shortMoveBasis(row, "zh")).toBe("历史不足，采用 5.5% 阈值");
+  expect(shortMoveBasis(row, "en")).toBe("Limited history · 5.5% floor");
+  expect(shortMoveBasis({ ...row, basis: "volatility", priorReturns: 60 }, "en")).toBeNull();
 });

@@ -59,7 +59,7 @@ function observations(account?: string): components["schemas"]["InvestmentReview
   const after = { largestHolding: 0.26, cash: 0.21, usdExposure: 0.34 };
   const invest: components["schemas"]["AccountReviewEvidence"] = {
     coverage: "complete", asOf,
-    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068 }],
+    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068, basis: "short_history", priorReturns: 19, threshold: 0.05 }],
     cashSpans: [{ start: "2026-09-30", end: "2026-10-16", sessions: 13, peakShare: 0.24, averageShare: 0.19 }],
     weightDrifts: [{ start: "2026-09-30", end: "2026-10-16", ticker: "SYNB", before: 0.2, after: 0.26 }],
     fillEffects: [
@@ -70,7 +70,7 @@ function observations(account?: string): components["schemas"]["InvestmentReview
   return {
     // A different threshold proves the help uses the response, not its own copy.
     rules: { cashMinSessions: 10, cashShare: 0.12, evidenceDays: 90, recentFillLimit: 8,
-      sessionMoveShare: 0.05, weightDriftDays: 30, weightDriftShare: 0.03 },
+      sessionMoveShare: 0.05, sessionMoveVolatility: { multiple: 2.75, lookbackSessions: 62, minReturns: 21, maxRowsPerHolding: 4 }, weightDriftDays: 30, weightDriftShare: 0.03 },
     accounts: { ...(account !== "B" ? { A: invest } : {}), ...(account !== "A" ? { B: { coverage: "partial" } as const } : {}) },
   };
 }
@@ -425,9 +425,11 @@ test("review shows dated observations, comparable fills and account coverage", a
   await expect(noTrades).toContainText("20.0%");
   await expect(noTrades).toContainText("26.0%");
   await expect(noTrades).toContainText("-6.8%");
+  await expect(noTrades).toContainText("历史不足，采用 5% 阈值");
   await expect(noTrades).toContainText("覆盖不全");
   await page.getByRole("button", { name: "没操作说明" }).click();
   await expect(page.getByText(/达到 12%/)).toBeVisible();
+  await expect(page.getByText(/过去 62 个交易日.*2.75 倍.*不足 21 个.*最近 4 条/)).toBeVisible();
   await page.keyboard.press("Escape");
 
   const first = page.getByRole("table", { name: /买入 SYNE/ });

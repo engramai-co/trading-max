@@ -489,6 +489,7 @@ def resolve_decision_prices(
     memo: dict[str, str] | None = None,
     now: pd.Timestamp | None = None,
     allow_missing_usd: bool = False,
+    listing_history_start: pd.Timestamp | None = None,
 ) -> tuple[dict[str, SecurityPrices], list[str]]:
     """Resolve adjusted GBP closes per identity; return them and unpriced tickers.
 
@@ -500,6 +501,8 @@ def resolve_decision_prices(
     frame's attrs that had closed by ``now``. A close in a currency other than
     sterling is valued at that day's final exchange rate. A session without its
     close or rate is one of the listing's pending days until it settles.
+    ``listing_history_start`` can extend the raw market frame for review
+    evidence without changing the decision comparison window.
     """
 
     now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
@@ -512,6 +515,9 @@ def resolve_decision_prices(
         return {}, []
     start_day = pd.Timestamp(fills["BusinessDate"].min()) - pd.Timedelta(days=14)
     end_day = pd.Timestamp(end_day).normalize()
+    listing_start = (
+        min(start_day, listing_history_start) if listing_history_start is not None else start_day
+    )
     days = pd.bdate_range(start_day, end_day)
     usd_rates = final_rates(history_loader, "GBPUSD=X", start_day, end_day, now)
     gbpusd = usd_rates.reindex(days).ffill().bfill()
@@ -577,15 +583,19 @@ def resolve_decision_prices(
             if best is not None and best[0] <= MAX_LOG_DISTANCE and best[1] == remembered:
                 break
             try:
-                listing = history_loader(symbol, start_day.date(), end_day.date())
+                listing = history_loader(symbol, listing_start.date(), end_day.date())
                 frame = completed_daily_bars(listing, now=now)
             except Exception:  # noqa: S112 - an unavailable listing is just a rejected candidate
                 continue
             exchange = str(listing.attrs.get("exchange") or "")
-            nominal = _nominal_close(frame)
+            decision_frame = frame
+            if not frame.empty and listing_start < start_day:
+                quote_days = frame.index.tz_localize(None).normalize()
+                decision_frame = frame.loc[quote_days >= start_day]
+            nominal = _nominal_close(decision_frame)
             if nominal.empty:
                 continue
-            adjusted = pd.to_numeric(frame.get("Close"), errors="coerce").dropna()
+            adjusted = pd.to_numeric(decision_frame.get("Close"), errors="coerce").dropna()
             adjusted.index = pd.to_datetime(adjusted.index).tz_localize(None).normalize()
             modes = ["GBP", "GBX", *[c for c in cash_fx.columns if c != "GBP"]]
             if allow_missing_usd and gbpusd.isna().all() and currency not in {"GBP", "GBX"}:

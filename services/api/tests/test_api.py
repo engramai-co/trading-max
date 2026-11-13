@@ -1070,6 +1070,9 @@ def test_review_evidence_is_typed_scoped_and_tied_to_snapshot(
                             "ticker": "SYN",
                             "quoteCurrency": "GBP",
                             "change": 0.056,
+                            "basis": "short_history",
+                            "priorReturns": 12,
+                            "threshold": 0.05,
                         }
                     ],
                 },
@@ -1091,7 +1094,17 @@ def test_review_evidence_is_typed_scoped_and_tied_to_snapshot(
         assert review["runId"] == published.manifest.run_id
         assert review["reviewAsOf"] == "2026-11-09T10:01:00+00:00"
         assert review["reviewEvidence"]["rules"]["sessionMoveShare"] == 0.05
-        assert review["reviewEvidence"]["accounts"]["A"]["holdingMoves"][0]["ticker"] == "SYN"
+        assert review["reviewEvidence"]["rules"]["sessionMoveVolatility"] == {
+            "multiple": 2.5,
+            "lookbackSessions": 60,
+            "minReturns": 20,
+            "maxRowsPerHolding": 3,
+        }
+        [move] = review["reviewEvidence"]["accounts"]["A"]["holdingMoves"]
+        assert move["ticker"] == "SYN"
+        assert move["basis"] == "short_history"
+        assert move["priorReturns"] == 12
+        assert move["threshold"] == 0.05
         assert review["reviewEvidence"]["accounts"]["B"] == {"coverage": "partial"}
         for code in ("A", "B"):
             account = client.get(path + f"account-analysis?account={code}&detail=summary").json()
@@ -1100,3 +1113,58 @@ def test_review_evidence_is_typed_scoped_and_tied_to_snapshot(
         assert "reviewEvidence" not in cfd
         overview = client.get(path + "overview?detail=summary").json()
         assert "reviewEvidence" not in overview
+
+
+def test_review_hides_old_fixed_threshold_moves_but_preserves_other_evidence(
+    research_root: Path,
+    tmp_path: Path,
+    typed_fixture,
+) -> None:
+    from trading_max.analytics.review_evidence import ReviewRules
+    from trading_max.application.decision_stages import REVIEW_EVIDENCE_KEY
+
+    store = ArtifactStore(tmp_path / "runtime")
+    typed_fixture(research_root, store)
+    old = store.immutable_snapshots.latest()
+    assert old is not None
+    evidence = store.immutable_artifacts.put_json(
+        key=REVIEW_EVIDENCE_KEY,
+        payload={
+            "rules": ReviewRules.current().model_dump(exclude={"session_move_volatility"}),
+            "accounts": {
+                "A": {
+                    "coverage": "complete",
+                    "holdingMoves": [
+                        {
+                            "date": "2026-11-06",
+                            "ticker": "SYN",
+                            "quoteCurrency": "GBP",
+                            "change": 0.056,
+                        }
+                    ],
+                    "cashSpans": [
+                        {
+                            "start": "2026-10-01",
+                            "end": "2026-10-23",
+                            "sessions": 17,
+                            "peakShare": 0.16,
+                            "averageShare": 0.13,
+                        }
+                    ],
+                }
+            },
+        },
+        kind="account_review_evidence",
+        producer_version="test",
+    )
+    store.immutable_snapshots.publish(
+        scope="accounts", source="test", artifacts=[*old.manifest.artifacts, evidence]
+    )
+    with TestClient(
+        create_app(Settings(data_root=tmp_path / "runtime", embedded_worker=False))
+    ) as client:
+        result = client.get("/v1/dashboard/lens/review?detail=summary").json()["reviewEvidence"]
+    assert result["rules"]["sessionMoveVolatility"]["multiple"] == 2.5
+    assert result["accounts"]["A"]["coverage"] == "partial"
+    assert "holdingMoves" not in result["accounts"]["A"]
+    assert result["accounts"]["A"]["cashSpans"][0]["sessions"] == 17

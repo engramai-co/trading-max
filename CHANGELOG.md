@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.39.1] - 2026-11-13
+
+### Fixed
+
+- Investment Review now flags an untraded move only if it is at least 5% and
+  at least 2.5 times the holding's daily volatility over the previous
+  60 trading sessions. With too little history, the 5% threshold applies.
+- Review shows at most three recent moves per holding.
+
 ## [1.39.0] - 2026-11-13
 
 ### Added
