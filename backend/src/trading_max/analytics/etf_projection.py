@@ -108,6 +108,8 @@ def tracking(profile: FundShareClass | None, today: date) -> ETFTracking:
     ):
         return ETFTracking(state="incomparable", **common)
     if not pair or not all((currency, benchmark_currency, nav_hedging, benchmark_hedging)):
+        if "one_year" in profile.evidence:
+            common["evidence"] = profile.evidence["one_year"]
         return ETFTracking(state="missing", **common)
     return ETFTracking(
         state="available" if recent(pair.period_end, today, MAX_TRACKING_AGE_DAYS) else "stale",

@@ -31,6 +31,7 @@ from .fund_profiles import (
     empty_profile,
     evidence,
     optional_date,
+    parse_hsbc_profile,
     parse_invesco_profile,
     parse_ishares_one_year,
     parse_ishares_profile,
@@ -461,8 +462,7 @@ def fetch_invesco(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     )
 
 
-def _parse_hsbc_sector_pdf(content: bytes) -> tuple[dict[str, float], str]:
-    text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(content)).pages)
+def _parse_hsbc_sector_weights(text: str) -> tuple[dict[str, float], str]:
     marker = "Sector allocation (%)"
     if marker not in text:
         raise ValueError("HEMC: sector allocation is absent from the official factsheet")
@@ -531,11 +531,15 @@ def fetch_hsbc(client: httpx.Client, spec: FundSpec) -> FundSnapshot:
     factsheet_response = client.get(HSBC_FACTSHEET_URL)
     factsheet_response.raise_for_status()
     holdings, country_weights, as_of = _parse_hsbc_workbook(holdings_response.content)
-    industry_weights, industry_as_of = _parse_hsbc_sector_pdf(factsheet_response.content)
+    pages = [
+        page.extract_text() or "" for page in PdfReader(BytesIO(factsheet_response.content)).pages
+    ]
+    industry_weights, industry_as_of = _parse_hsbc_sector_weights("\n".join(pages))
     return FundSnapshot(
         ticker=spec.ticker,
         as_of=as_of,
         fetched_at=datetime.now(UTC).isoformat(),
+        profile=parse_hsbc_profile(pages, spec.isin, spec.name, HSBC_FACTSHEET_URL),
         industry_as_of=industry_as_of,
         cache_schema_version=2,
         holdings=holdings,
