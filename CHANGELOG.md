@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-11-13
+
+### Added
+
+- Markets → Europe now has a sector map based on MSCI Europe constituents,
+  including the UK and Switzerland. It shows intraday moves, breadth, leaders,
+  five-session ranks, and your look-through exposure.
+- On phones, Europe opens as a ranked list. Tap a sector to open its details.
+
 ## [1.39.1] - 2026-11-13
 
 ### Fixed
