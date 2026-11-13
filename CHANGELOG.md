@@ -4,6 +4,26 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-11-13
+
+### Added
+
+- Explore sector moves, breadth, and your look-through exposure in Taiwan, India, Canada, and Australia, with local index charts.
+- Switch between trailing and next-twelve-month P/E in the valuation chart. Forward history starts with the first archived observation.
+- See UK reporting fund status and effective dates from HMRC in ETF research.
+- Compare verified ETF peers and see percentiles for metrics with comparable evidence.
+
+### Changed
+
+- Market boards share one quote request budget and give opening and closing prices priority.
+- P/E charts show the latest multiple, its historical percentile when enough comparable observations exist, and the price, EPS, date, and source behind each reading.
+- The ETF journal keeps observed benchmark changes with links to the issuer disclosures.
+
+### Fixed
+
+- India follows verified NSE and BSE holidays and special sessions, and flags dates outside the verified calendar.
+- Trailing P/E breaks at filing changes and leaves gaps when earnings are not positive.
+
 ## [1.41.1] - 2026-11-13
 
 ### Fixed
