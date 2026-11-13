@@ -102,13 +102,19 @@ def _review_evidence(
         saved = InvestmentReviewEvidence.model_validate(payload)
     except (FileNotFoundError, TypeError, ValueError):
         saved = InvestmentReviewEvidence(rules=ReviewRules.current(), accounts={})
-    return InvestmentReviewEvidence(
-        rules=saved.rules,
-        accounts={
-            code: saved.accounts.get(code, AccountReviewEvidence(coverage="partial"))
-            for code in accounts
-        },
-    )
+    selected = {
+        code: saved.accounts.get(code, AccountReviewEvidence(coverage="partial"))
+        for code in accounts
+    }
+    if saved.rules.session_move_volatility is None:
+        # Carried-forward rows used the fixed floor alone. Preserve other
+        # observations but wait for a replay before showing new move evidence.
+        selected = {
+            code: evidence.model_copy(update={"holding_moves": [], "coverage": "partial"})
+            for code, evidence in selected.items()
+        }
+        return InvestmentReviewEvidence(rules=ReviewRules.current(), accounts=selected)
+    return InvestmentReviewEvidence(rules=saved.rules, accounts=selected)
 
 
 def _observing(decision: TradeDecision) -> bool:

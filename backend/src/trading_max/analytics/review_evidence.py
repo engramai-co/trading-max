@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
-from collections import defaultdict
+from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from itertools import groupby
+from statistics import stdev
 from typing import Literal
 
 import pandas as pd
@@ -25,6 +26,10 @@ from trading_max.domain import DomainModel
 from trading_max.research.calendar import listing_calendar, market_calendar
 
 SESSION_MOVE_SHARE = 0.05
+SESSION_MOVE_VOLATILITY_MULTIPLE = 2.5
+SESSION_MOVE_LOOKBACK = 60
+SESSION_MOVE_MIN_RETURNS = 20
+SESSION_MOVE_LIMIT = 3
 CASH_SHARE = 0.10
 CASH_MIN_SESSIONS = 10
 WEIGHT_DRIFT_SHARE = 0.03
@@ -37,8 +42,17 @@ _DAY = pd.Timedelta(days=1)
 _TICK = pd.Timedelta(nanoseconds=1)
 
 
+class SessionMoveVolatility(DomainModel):
+    multiple: float
+    lookback_sessions: int
+    min_returns: int
+    max_rows_per_holding: int
+
+
 class ReviewRules(DomainModel):
     session_move_share: float
+    # None identifies the fixed-threshold rule in pre-upgrade snapshots.
+    session_move_volatility: SessionMoveVolatility | None = None
     cash_share: float
     cash_min_sessions: int
     weight_drift_share: float
@@ -50,6 +64,12 @@ class ReviewRules(DomainModel):
     def current(cls) -> ReviewRules:
         return cls(
             session_move_share=SESSION_MOVE_SHARE,
+            session_move_volatility=SessionMoveVolatility(
+                multiple=SESSION_MOVE_VOLATILITY_MULTIPLE,
+                lookback_sessions=SESSION_MOVE_LOOKBACK,
+                min_returns=SESSION_MOVE_MIN_RETURNS,
+                max_rows_per_holding=SESSION_MOVE_LIMIT,
+            ),
             cash_share=CASH_SHARE,
             cash_min_sessions=CASH_MIN_SESSIONS,
             weight_drift_share=WEIGHT_DRIFT_SHARE,
@@ -64,6 +84,9 @@ class HoldingMove(DomainModel):
     ticker: str
     quote_currency: str
     change: float
+    basis: Literal["volatility", "short_history"] | None = None
+    prior_returns: int | None = None
+    threshold: float | None = None
 
 
 class CashSpan(DomainModel):
@@ -353,6 +376,16 @@ def _drifts(
     return sorted(rows, key=lambda row: (row.end, row.ticker), reverse=True)
 
 
+def _evidence_start(end: pd.Timestamp) -> pd.Timestamp:
+    return end - pd.Timedelta(days=EVIDENCE_DAYS - 1)
+
+
+def review_move_history_start(end: pd.Timestamp) -> pd.Timestamp:
+    # Fetch the preceding close as well as the lookback. Allow two calendar
+    # days per session to cover weekends and exchange holidays.
+    return _evidence_start(end) - pd.Timedelta(days=2 * (SESSION_MOVE_LOOKBACK + 1))
+
+
 def build_review_evidence(
     events: Sequence[LedgerEvent],
     listings: Mapping[str, ReviewListing],
@@ -366,7 +399,7 @@ def build_review_evidence(
     """Evaluate recent history and the latest individual fills for one account."""
 
     end = as_of.tz_convert("UTC").tz_localize(None).normalize()
-    start = end - pd.Timedelta(days=EVIDENCE_DAYS - 1)
+    start = _evidence_start(end)
     # A cash streak can start before the observation window. Include the ledger
     # history for cash so qualifying spans keep their actual start and average.
     history_start = (
@@ -390,8 +423,10 @@ def build_review_evidence(
         result.coverage = "partial"
         return result
 
+    listing_start = min(mark_start, review_move_history_start(end))
     markets = {
-        identity: _ListingMarks(listing, mark_start, end) for identity, listing in listings.items()
+        identity: _ListingMarks(listing, listing_start, end)
+        for identity, listing in listings.items()
     }
     states_in_window = [
         replay.at(start.tz_localize("UTC")),
@@ -407,35 +442,50 @@ def build_review_evidence(
         trades = {
             stamp.tz_convert(market.tz).date() for stamp in replay.trade_times.get(identity, ())
         }
-        previous = None
+        previous_close = None
+        previous_price = None
+        prior: deque[float | None] = deque(maxlen=SESSION_MOVE_LOOKBACK)
+        qualifying: deque[HoldingMove] = deque(maxlen=SESSION_MOVE_LIMIT)
         for day, closed in market.schedule["close"].items():
             if closed > as_of:
                 break
+            price = _positive(market.adjusted.get(day))
+            change = price / previous_price - 1 if price and previous_price else None
             if (
                 day >= start
-                and previous is not None
+                and previous_close is not None
                 and day.date() not in trades
-                and (
-                    replay.at(previous[1]).holdings.get(identity, 0.0) > _ZERO
-                    and replay.at(closed).holdings.get(identity, 0.0) > _ZERO
-                )
+                and replay.at(previous_close).holdings.get(identity, 0.0) > _ZERO
+                and replay.at(closed).holdings.get(identity, 0.0) > _ZERO
             ):
-                before, after = (
-                    _positive(market.adjusted.get(previous[0])),
-                    _positive(market.adjusted.get(day)),
-                )
-                if before is None or after is None:
+                if change is None or not math.isfinite(change):
                     result.coverage = "partial"
-                elif abs(change := after / before - 1) >= SESSION_MOVE_SHARE - 1e-12:
-                    result.holding_moves.append(
-                        HoldingMove(
-                            date=day.date(),
-                            ticker=market.listing.ticker,
-                            quote_currency=market.listing.quote_currency,
-                            change=change,
-                        )
+                elif abs(change) >= SESSION_MOVE_SHARE - 1e-12:
+                    returns = [value for value in prior if value is not None]
+                    enough_history = len(returns) >= SESSION_MOVE_MIN_RETURNS
+                    threshold = (
+                        max(SESSION_MOVE_SHARE, SESSION_MOVE_VOLATILITY_MULTIPLE * stdev(returns))
+                        if enough_history
+                        else SESSION_MOVE_SHARE
                     )
-            previous = (day, closed)
+                    if abs(change) >= threshold - 1e-12:
+                        qualifying.append(
+                            HoldingMove(
+                                date=day.date(),
+                                ticker=market.listing.ticker,
+                                quote_currency=market.listing.quote_currency,
+                                change=change,
+                                basis="volatility" if enough_history else "short_history",
+                                prior_returns=len(returns),
+                                threshold=threshold,
+                            )
+                        )
+            # Each slot represents a scheduled session, including those with a
+            # missing close. Never bridge a gap or use today's own return.
+            prior.append(change if change is not None and math.isfinite(change) else None)
+            previous_close = closed
+            previous_price = price
+        result.holding_moves.extend(qualifying)
     result.holding_moves.sort(key=lambda row: (row.date, abs(row.change), row.ticker), reverse=True)
 
     fx = _FxMarks(fx_frames, mark_start, end)

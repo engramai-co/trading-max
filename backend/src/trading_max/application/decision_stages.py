@@ -49,6 +49,7 @@ from trading_max.analytics.review_evidence import (
     ReviewListing,
     ReviewRules,
     build_review_evidence,
+    review_move_history_start,
 )
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
@@ -72,7 +73,7 @@ class AccountDecisionStage:
     """Publish decision outcomes and reconciled allocation evidence."""
 
     name = "accounts.decisions"
-    version = "decision-review-stage-v6"
+    version = "decision-review-stage-v7"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -207,6 +208,7 @@ class AccountDecisionStage:
                 history_loader=capture_fx(self.history_loader),
                 memo=memo,
                 now=now,
+                listing_history_start=review_move_history_start(end_day),
             )
         except HistoricalNavError as exc:
             # The decision benchmark needs a dollar cross. An unrelated
@@ -221,6 +223,7 @@ class AccountDecisionStage:
                     memo=memo,
                     now=now,
                     allow_missing_usd=True,
+                    listing_history_start=review_move_history_start(end_day),
                 )
                 partial = self._evidence(profile, account, trades, prices, fx_frames)
             return {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}, partial

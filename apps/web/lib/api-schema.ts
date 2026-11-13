@@ -3910,6 +3910,8 @@ export interface components {
         };
         /** HoldingMove */
         HoldingMove: {
+            /** Basis */
+            basis?: ("volatility" | "short_history") | null;
             /** Change */
             change: number;
             /**
@@ -3917,8 +3919,12 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Priorreturns */
+            priorReturns?: number | null;
             /** Quotecurrency */
             quoteCurrency: string;
+            /** Threshold */
+            threshold?: number | null;
             /** Ticker */
             ticker: string;
         };
@@ -6418,6 +6424,7 @@ export interface components {
             recentFillLimit: number;
             /** Sessionmoveshare */
             sessionMoveShare: number;
+            sessionMoveVolatility?: components["schemas"]["SessionMoveVolatility"] | null;
             /** Weightdriftdays */
             weightDriftDays: number;
             /** Weightdriftshare */
@@ -7222,6 +7229,17 @@ export interface components {
             upside: number;
             /** Value */
             value: number;
+        };
+        /** SessionMoveVolatility */
+        SessionMoveVolatility: {
+            /** Lookbacksessions */
+            lookbackSessions: number;
+            /** Maxrowsperholding */
+            maxRowsPerHolding: number;
+            /** Minreturns */
+            minReturns: number;
+            /** Multiple */
+            multiple: number;
         };
         /**
          * SessionSchedule
