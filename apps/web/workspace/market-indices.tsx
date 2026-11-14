@@ -91,6 +91,8 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
       : global?.phase === "completed" ? t("已收盘", "Closed")
       : global?.phase === "live" ? t("盘中", "Open") : t("最近报价", "Latest quote");
     const day = global?.referenceDate;
+    // A finished global day is named by its MSCI date; the publication clock belongs to another day here.
+    const closedDay = day && !global?.pricesStale && global?.phase === "completed" ? day : null;
     const time = stamp && formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
     if (acwi && global?.acwiMove != null) {
       quotes.set(acwi.index.id, {
@@ -103,9 +105,10 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
       {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
         {stamp && <>
           <span>{phase}</span>
-          <span><time dateTime={stamp}>{t("截至 ", "As of ")}{day && !global?.pricesStale && global?.phase === "completed"
-            ? `${formatCalendarDate(day, locale)} ${time}`
-            : global?.phase === "live" && !global.pricesStale ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
+          <span>{closedDay
+            ? <time dateTime={closedDay}>{formatCalendarDate(closedDay, locale)}</time>
+            : <time dateTime={stamp}>{t("截至 ", "As of ")}{global?.phase === "live" && !global.pricesStale
+              ? time : formatDateTime(stamp, locale, timeZone)}</time>}</span>
         </>}
         {global?.pricesStale && <span>{t("全球报价未更新", "Global quotes haven’t updated")}</span>}
         {error && <><span>{stamp ? t("部分指数未更新", "Some indices haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
