@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.47.3] - 2026-11-14
+
+### Fixed
+
+- Research headers show a fund's closing date and daily price change correctly, instead of the previous session's date or a near-zero change.
+
 ## [1.47.2] - 2026-11-14
 
 ### Fixed
