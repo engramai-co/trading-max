@@ -1450,6 +1450,15 @@ class ResearchLedger:
         }
         fundamental = {"metrics": metrics, "currency": "USD" if reference else None}
         quote = make_quote(ticker, market or {}, fundamental)
+        previous = number(price.get("previous_close")) if price else None
+        if (
+            quote.change is None
+            and quote.price is not None
+            and previous is not None
+            and previous > 0
+        ):
+            quote.change = quote.price - previous
+            quote.change_pct = quote.change / previous
         if listing and not price:
             position = next(iter(self._held_funds(manifest)[listing].values()))["positions"][0]
             currency, _ = major_quote_unit(str(position.get("price_currency") or ""))

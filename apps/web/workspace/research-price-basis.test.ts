@@ -70,6 +70,14 @@ const held = {
   brokerAsOf: "2026-11-04T15:50:01Z",
   brokerListing: "US:SYNT",
 };
+const fundClose = {
+  ...close,
+  price: 96,
+  change: -4,
+  changePct: -0.04,
+  asOf: "2026-11-13",
+  delayMinutes: null,
+};
 
 describe("research price basis", () => {
   it("prices a held security like the holdings page and measures today from the last close", () => {
@@ -184,6 +192,59 @@ describe("research price basis", () => {
     // Yesterday's mid-session quote is not a close.
     expect(previousClose({ ...close, asOf: "2026-11-03T18:00:00Z" }, held.brokerAsOf)).toBeNull();
     expect(previousClose(close, null)).toBeNull();
+  });
+
+  it.each(["2026-11-13T16:00:00Z", "2026-11-14T16:20:00Z"])(
+    "uses the close before the fund's quote date for a broker price at %s",
+    (brokerAsOf) => {
+      const fundPosition = { ...held, brokerPrice: 95, brokerAsOf };
+      expect(previousClose(fundClose, brokerAsOf)).toBe(100);
+      expect(priceBasis(fundPosition, fundClose, null, null, new Date(brokerAsOf)))
+        .toMatchObject({ source: "broker", price: 95, change: -5, changePct: -0.05 });
+      const noChange = { ...fundClose, change: null, changePct: null };
+      expect(priceBasis(fundPosition, noChange, null, null, new Date(brokerAsOf)))
+        .toMatchObject({ source: "broker", price: 95, change: null, changePct: null });
+    },
+  );
+
+  it("uses a date-only fund close for the next broker session even without a reported change", () => {
+    const quote = { ...fundClose, change: null, changePct: null };
+    const brokerAsOf = "2026-11-16T15:00:00Z";
+    expect(previousClose(quote, brokerAsOf)).toBe(96);
+    expect(priceBasis({ ...held, brokerPrice: 99, brokerAsOf }, quote, null, null, new Date(brokerAsOf)))
+      .toMatchObject({ source: "broker", price: 99, change: 3, changePct: 3 / 96 });
+    expect(previousClose(quote, "2026-11-17T15:00:00Z")).toBeNull();
+  });
+
+  it("shows an unheld fund's own close and change through the weekend and the opening grace period", () => {
+    const saturday = new Date("2026-11-14T16:20:00Z");
+    expect(priceBasis({ held: false }, fundClose, null, null, saturday)).toMatchObject({
+      source: "quote",
+      price: 96,
+      change: -4,
+      changePct: -0.04,
+      time: { kind: "close", date: "2026-11-13", stale: false },
+    });
+    expect(quoteTime(fundClose, new Date("2026-11-16T14:44:59Z"))).toMatchObject({ stale: false });
+    expect(quoteTime(fundClose, new Date("2026-11-16T14:45:00Z"))).toMatchObject({ stale: true });
+    const delayed = { ...fundClose, delayMinutes: 20 };
+    expect(quoteTime(delayed, new Date("2026-11-16T15:04:59Z"))).toMatchObject({ stale: false });
+    expect(quoteTime(delayed, new Date("2026-11-16T15:05:00Z"))).toMatchObject({ stale: true });
+  });
+
+  it("keeps the fund's close date when the exchange schedule is missing or no longer covers it", () => {
+    const now = new Date("2026-11-14T16:20:00Z");
+    const outside = { ...fundClose, asOf: "2026-10-30" };
+    const expired = { ...fundClose, schedule: builtWednesday };
+    expect(quoteTime(outside, now)).toEqual({ kind: "close", date: outside.asOf, stale: true });
+    expect(previousClose(outside, "2026-11-02T16:00:00Z")).toBeNull();
+    expect(quoteTime(expired, now)).toMatchObject({ stale: false });
+    expect(quoteTime(expired, new Date(builtWednesday.until))).toEqual({
+      kind: "close", date: expired.asOf, stale: true,
+    });
+    const unknown = { ...outside, schedule: null };
+    expect(quoteTime(unknown, now)).toEqual({ kind: "close", date: unknown.asOf, stale: false });
+    expect(previousClose(unknown, "2026-11-02T16:00:00Z")).toBeNull();
   });
 
   it("measures the daily change only from the immediately preceding session", () => {

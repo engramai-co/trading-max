@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
+from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY, FundListingIdentity
 
 from services.api.trading_max_api import research as research_module
 from services.api.trading_max_api.artifacts import ArtifactStore
@@ -254,6 +255,61 @@ def _artifact_ref(key: str, sha: str) -> ArtifactInfo:
     return ArtifactInfo(
         key=key, source_path=key, size_bytes=1, sha256=sha, media_type="application/json"
     )
+
+
+@pytest.mark.parametrize(
+    ("previous_close", "change", "change_pct"),
+    [
+        ({"previous_close": 100.0}, -4.0, -0.04),
+        ({}, None, None),
+        ({"previous_close": 0}, None, None),
+    ],
+)
+@pytest.mark.parametrize(
+    ("ticker", "currency", "exchange", "zone", "mic"),
+    [
+        ("TEST.L", "GBP", "LSE", "Europe/London", "XLON"),
+        ("QQQ", "USD", "NMS", "America/New_York", None),
+    ],
+)
+def test_fund_lens_daily_change_uses_the_published_previous_close(
+    tmp_path, monkeypatch, previous_close, change, change_pct, ticker, currency, exchange, zone, mic
+):
+    ledger = ResearchLedger(ArtifactStore(tmp_path), WatchlistStore(tmp_path))
+    isin = "ZZ0000000011" if mic else None
+    if mic:
+        listing = FundListingIdentity(
+            ticker=ticker, isin=isin, mic=mic, symbol="TEST", exchange=exchange
+        )
+        monkeypatch.setattr(ledger, "held_fund", lambda *_: listing)
+    payloads = {
+        FUND_PRICE_DIRECTORY_KEY: {
+            "rows": [
+                {
+                    "ticker": ticker,
+                    "isin": isin,
+                    "mic": mic,
+                    "spot": 96.0,
+                    "as_of": "2026-11-13",
+                    "currency": currency,
+                    "exchange": exchange,
+                    "timezone": zone,
+                    **previous_close,
+                },
+            ]
+        }
+    }
+    monkeypatch.setattr(ledger, "_read_optional", lambda _manifest, key: payloads.get(key, {}))
+    manifest = SnapshotManifest(
+        run_id="synthetic",
+        scope="research",
+        source="test",
+        created_at=datetime(2026, 11, 14, 16, 20, tzinfo=UTC),
+        artifacts=[_artifact_ref(FUND_PRICE_DIRECTORY_KEY, "a" * 64)],
+    )
+    quote = ledger.lens_snapshot(ticker, "overview", manifest).context.quote
+    assert (quote.price, quote.currency, quote.as_of) == (96.0, currency, "2026-11-13")
+    assert (quote.change, quote.change_pct) == (change, change_pct)
 
 
 def test_analyst_lens_revision_follows_the_earnings_calendar(tmp_path):

@@ -13,6 +13,7 @@ from trading_max.application.research_stages import (
     EarningsArtifactStage,
     FinancialsArtifactStage,
     FundamentalsArtifactStage,
+    FundPriceStage,
     MarketSnapshotStage,
     OptionsArtifactStage,
     TechnicalArtifactStage,
@@ -21,6 +22,7 @@ from trading_max.application.research_stages import (
 )
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
 from trading_max.research.fundamentals import YFinanceResearchService
+from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY, FUND_PRICES_KEY
 from trading_max.research.market import MarketResearchService
 from trading_max.worker import StageExecutionError
 from yfinance._http import HTTPError
@@ -130,6 +132,67 @@ def test_research_stages_use_one_immutable_market_input(tmp_path) -> None:
     assert adr_result.artifacts[0].key == "research/adr.json"
     assert technical_result.artifacts[0].dependency_artifact_ids == [market_ref.artifact_id]
     assert options_result.artifacts[0].dependency_artifact_ids == [market_ref.artifact_id]
+
+
+@pytest.mark.parametrize(
+    ("as_of", "points", "previous_close"),
+    [
+        (
+            "2026-11-13",
+            [{"date": "2026-11-12", "close": 100.0}, {"date": "2026-11-13", "close": 96.0}],
+            100.0,
+        ),
+        ("2026-11-13", [{"date": "2026-11-13", "close": 96.0}], None),
+        (
+            "2026-11-12",
+            [{"date": "2026-11-12", "close": 100.0}, {"date": "2026-11-13", "close": 96.0}],
+            None,
+        ),
+    ],
+)
+def test_fund_price_stage_publishes_previous_close_with_the_matching_spot(
+    tmp_path, as_of, points, previous_close
+):
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    source = artifacts.put_json(
+        key="research/market_snapshot.json",
+        payload={
+            "fund_listings": {"TEST.L": {"mic": "XLON"}},
+            "technical": {
+                "rows": [
+                    {
+                        "ticker": "TEST.L",
+                        "as_of": as_of,
+                        "price": 96.0,
+                        "currency": "GBP",
+                        "exchange": "LSE",
+                        "timezone": "Europe/London",
+                        "price_series": points,
+                    }
+                ]
+            },
+        },
+        kind="market-snapshot",
+    )
+    price_ref, directory_ref = (
+        FundPriceStage(artifacts).run(_context(source.ref.artifact_id)).artifacts
+    )
+    assert price_ref.key == FUND_PRICES_KEY
+    assert directory_ref.key == FUND_PRICE_DIRECTORY_KEY
+    row = artifacts.get_json(price_ref.artifact_id).payload["rows"][0]
+    published = artifacts.get_json(directory_ref.artifact_id).payload["rows"][0]
+    assert row["price_series"] == points
+    assert published == {
+        "ticker": "TEST.L",
+        "mic": "XLON",
+        "as_of": as_of,
+        "spot": 96.0,
+        "currency": "GBP",
+        "exchange": "LSE",
+        "timezone": "Europe/London",
+        "previous_close": previous_close,
+    }
+    assert row["previous_close"] == previous_close
 
 
 def test_technical_stage_fails_loudly_without_market_input(tmp_path) -> None:

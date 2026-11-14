@@ -232,7 +232,7 @@ class FundPriceStage:
     """Project listing prices from the same completed bars as technical research."""
 
     name = "research.fund_prices"
-    version = "fund-prices-v2"
+    version = "fund-prices-v3"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -245,20 +245,27 @@ class FundPriceStage:
         if not listings:
             return StageResult()
         batch = source.payload["technical"]
-        rows = [
-            {
-                "ticker": row["ticker"],
-                **listings[row["ticker"]],
-                "as_of": row["as_of"],
-                "spot": row["price"],
-                "currency": row["currency"],
-                "exchange": row["exchange"],
-                "timezone": row["timezone"],
-                "price_series": row["price_series"],
-            }
-            for row in batch["rows"]
-            if row["ticker"] in listings
-        ]
+        rows = []
+        for row in batch["rows"]:
+            ticker = row["ticker"]
+            if ticker not in listings:
+                continue
+            as_of, series = row["as_of"], row["price_series"]
+            rows.append(
+                {
+                    "ticker": ticker,
+                    **listings[ticker],
+                    "as_of": as_of,
+                    "spot": row["price"],
+                    "currency": row["currency"],
+                    "exchange": row["exchange"],
+                    "timezone": row["timezone"],
+                    "price_series": series,
+                    "previous_close": series[-2]["close"]
+                    if len(series) >= 2 and series[-1]["date"] == as_of
+                    else None,
+                }
+            )
         warnings = [
             f"{ticker}: fund price history unavailable"
             for ticker in sorted(listings.keys() - {row["ticker"] for row in rows})
