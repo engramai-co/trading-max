@@ -291,15 +291,17 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             {rows.map(({ market, indexId, move, contribution, notOpen }) => {
               const selected = active === market || (market === "em" && active != null && EM_MARKETS.has(active));
               const index = INDEX_NAMES[indexId];
+              const status = quoteStatus(move, notOpen);
               const label = <span className="mx-global-row-label">
-                <strong>{name(market)} · {index ? t(...index) : indexId}</strong><small>{notOpen ? preOpen : change(move)}</small>
+                <strong>{name(market)} · {index ? t(...index) : indexId}</strong>
+                <small>{notOpen ? preOpen : <><span className="sr-only">{status ? status + t("，", ", ") : ""}{t("涨跌 ", "Move ")}</span>{change(move)}</>}</small>
               </span>;
-              const content = <>{label}<ContributionBar value={contribution} limit={limit} /><span className="mx-global-pp">{pp(contribution)}</span></>;
+              const content = <>{label}<ContributionBar value={contribution} limit={limit} /><span className="mx-global-pp"><span className="sr-only">{t("贡献 ", "Contribution ")}</span>{pp(contribution)}</span></>;
               return <li key={market}>
                 {market === "em" ? <Link className="mx-global-row" href="/sectors?market=global&index=msci-em" prefetch={false}
-                  data-linked={selected || undefined} {...bindings(market)} aria-label={accessible(market, move, contribution, notOpen)}>{content}</Link>
+                  data-linked={selected || undefined} {...bindings(market)}>{content}</Link>
                 : <Link className="mx-global-row" href={url(market)} prefetch={false} data-linked={selected || undefined}
-                  onClick={(event) => open(event, market)} aria-label={accessible(market, move, contribution, notOpen)} {...bindings(market)}>
+                  onClick={(event) => open(event, market)} {...bindings(market)}>
                   {content}
                 </Link>}
               </li>;

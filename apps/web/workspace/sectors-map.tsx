@@ -1,7 +1,7 @@
 "use client";
 
 import { useComputedColorScheme } from "@mantine/core";
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import type { SectorGroup, SectorGroupingKind } from "@/lib/types";
 import { formatDeltaPercent } from "@/ui/formatters";
@@ -110,6 +110,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
   flat: boolean;
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>, key: string) => void;
 }) {
+  const detailsId = useId();
   const t = useCopy();
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("light");
@@ -141,9 +142,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
     : [];
   const breadth = group.breadth;
   const counted = breadth.up + breadth.flat + breadth.down;
-  const spoken = [
-    name,
-    change,
+  const details = [
     flat ? null : locale === "zh" ? `上涨 ${breadth.up} 只，下跌 ${breadth.down} 只` : `${breadth.up} up, ${breadth.down} down`,
     group.streak < 2 ? null : locale === "zh" ? `连续 ${group.streak} 日前三` : `top three for ${group.streak} sessions`,
   ].filter(Boolean).join(t("，", ", "));
@@ -157,9 +156,9 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
       data-roomy={roomy ? "" : undefined}
       data-narrow={narrow ? "" : undefined}
       aria-pressed={selected}
-      aria-label={spoken}
+      aria-describedby={details ? detailsId : undefined}
       // Blocks too small for the strip still answer on hover with all three layers.
-      title={!flat && roomy && (showChip || !chip) ? undefined : spoken}
+      title={!flat && roomy && (showChip || !chip) ? undefined : [name, change, details].filter(Boolean).join(t("，", ", "))}
       tabIndex={selected ? 0 : -1}
       style={{ left, top, width, height, ...fill(group.change, scheme), ...wash(group.change) }}
       onClick={(event) => {
@@ -168,14 +167,16 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
       }}
       onKeyDown={(event) => onKeyDown(event, group.key)}
     >
-      <span className="mx-sector-head" aria-hidden="true">
-        {showName && <span className="mx-sector-name">{name}</span>}
+      {details && <span id={detailsId} hidden>{details}</span>}
+      <span className="mx-sector-head">
+        <span className={showName ? "mx-sector-name" : "sr-only"}>{name}</span>
         {showChange && (
           <span className="mx-sector-move">
             <span className="mx-sector-change">{change}</span>
-            {showChip && <span className="mx-sector-streak">{chip}</span>}
+            {showChip && <span className="mx-sector-streak" aria-hidden="true">{chip}</span>}
           </span>
         )}
+        {!showChange && <span className="sr-only"> {change}</span>}
         {roomy && counted > 0 && (
           <span className="mx-sector-breadth">
             <i data-tone="up" style={{ flexGrow: breadth.up }} />

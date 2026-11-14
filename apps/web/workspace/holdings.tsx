@@ -301,10 +301,8 @@ function Positions() {
                             <button
                               className="mx-table-button"
                               onClick={() => selectHolding(h)}
-                              aria-label={
-                                t("查看持仓 ", "View position ") + h.ticker
-                              }
                             >
+                              <span className="sr-only">{t("查看持仓 ", "View position ")}</span>
                               <SecurityPeek ticker={h.ticker} range="1D" position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
                                 <Instrument ticker={h.ticker} name={h.name} />
                               </SecurityPeek>
