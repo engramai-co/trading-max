@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.47.2] - 2026-11-14
+
+### Fixed
+
+- The global market card and Markets page name a closed global day by its date alone, instead of pairing it with a publication time from the next day.
+
 ## [1.47.1] - 2026-11-14
 
 ### Fixed
