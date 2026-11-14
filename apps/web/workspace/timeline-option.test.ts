@@ -28,6 +28,25 @@ const options = () =>
   );
 
 describe("shared performance timeline", () => {
+  it("keeps a short single chart's axis labels inside its canvas", () => {
+    const dates = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(2026, 10, 13, 8, i * 10)).toISOString());
+    const single = [{ label: "Net P&L", lines: [{ name: "P&L", values: [0, -3, -6, -9, -8, -8] }] }];
+    const grid = (plotHeight?: number) => {
+      const option = timelineOption(dates, single, colours, String, undefined, [], String,
+        undefined, undefined, undefined, undefined, plotHeight);
+      return (option.grid as Array<{ top: number; height: number }>)[0];
+    };
+    // The overview's day chart is 240px tall: plot, then one line of times, all inside it.
+    expect(grid(240).top + grid(240).height + 30).toBeLessThanOrEqual(240);
+    // Taller charts keep their established plot.
+    expect(grid(314).height).toBe(210);
+    expect(grid().height).toBe(210);
+    // Dates across two years carry a second label line.
+    const twoYears = timelineOption(["2025-12-30", "2026-01-02"], single, colours, String, undefined, [], String,
+      undefined, undefined, undefined, undefined, 264);
+    const span = (twoYears.grid as Array<{ top: number; height: number }>)[0];
+    expect(span.top + span.height + 44).toBeLessThanOrEqual(264);
+  });
   it("plots outage estimates with dashed fluctuations and exposes their source in hover cards", () => {
     const dates = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(2026, 9, 14, 12, i * 10)).toISOString());
     const values = [100, 102, 95, 108, 103, 101];
