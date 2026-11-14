@@ -16,12 +16,17 @@ updates:
       frontend-dependencies:
         patterns: ["*"]
     ignore:
-      # Next 16.4.5 drops the Content-Encoding label from compressed route
-      # responses. Hold 16.4.4–16.4.5 until a browser check passes.
+      # These Next versions break Content-Encoding on compressed route responses.
       - dependency-name: "next"
-        versions: ["16.4.4", "16.4.5"]
+        versions: ["16.4.4", "16.4.5", "16.4.6"]
       - dependency-name: "eslint-config-next"
-        versions: ["16.4.4", "16.4.5"]
+        versions: ["16.4.4", "16.4.5", "16.4.6"]
+      # openapi-typescript requires TypeScript ^5.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # The Next ESLint config's import, accessibility and React plugins require ESLint 9 or older.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 5
   - package-ecosystem: github-actions
     directory: /
