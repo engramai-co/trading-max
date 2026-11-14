@@ -87,6 +87,21 @@ function sessionOf({ sessions, until }: Calendar, instant: Date) {
   return sessions.findLastIndex((s) => s.open <= time);
 }
 
+function quoteObservation(asOf: string, known: Calendar | null) {
+  // A daily bar names the exchange's completed session, with no time zone.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+    const index = known?.sessions.findIndex((s) => s.date === asOf) ?? -1;
+    return { kind: "close", index, date: asOf } as const;
+  }
+  const instant = validInstant(asOf);
+  if (!instant) return null;
+  const index = known ? sessionOf(known, instant) : -1;
+  const session = known?.sessions[index];
+  return session && instant.valueOf() >= session.close
+    ? { kind: "close", index, date: session.date } as const
+    : { kind: "time", index, instant } as const;
+}
+
 /** Whether the quote's schedule has run out: a session it does not list may have opened. */
 export function scheduleExpired(quote: Quote | undefined, now: Date) {
   const known = calendar(quote);
@@ -104,46 +119,45 @@ export function inSession(quote: Quote | undefined, now: Date) {
 
 /** How to name the time of a research quote, and whether it is late. */
 export function quoteTime(quote: Quote, now: Date): PriceTime | null {
-  const asOf = validInstant(quote.asOf);
-  if (!asOf || !quote.asOf) return null;
-  const delayMinutes = quote.delayMinutes ?? null;
+  const { asOf } = quote;
+  if (!asOf) return null;
   const known = calendar(quote);
-  // An unknown exchange makes no claim about sessions.
-  if (!known) return { kind: "time", asOf: quote.asOf, stale: false, delayMinutes };
+  const observation = quoteObservation(asOf, known);
+  if (!observation) return null;
+  const delayMinutes = quote.delayMinutes ?? null;
   const lateAfter = ((delayMinutes ?? 0) + LATE_MINUTES) * MINUTE;
   // A schedule that has run out cannot show anything as current.
-  const expired = now.valueOf() >= known.until;
-  const index = sessionOf(known, asOf);
-  const session = known.sessions[index];
-  if (session && asOf.valueOf() >= session.close) {
+  const expired = known != null && now.valueOf() >= known.until;
+  if (observation.kind === "close") {
+    const { date, index } = observation;
     // A close is current until the next session has traded for longer than the delay.
-    const next = known.sessions[index + 1];
-    const stale = expired || (next != null && now.valueOf() >= next.open + lateAfter);
-    return { kind: "close", date: session.date, stale };
+    const next = known?.sessions[index + 1];
+    const stale = known != null &&
+      (expired || index < 0 || (next != null && now.valueOf() >= next.open + lateAfter));
+    return { kind: "close", date, stale };
   }
-  const stale = expired || now.valueOf() - asOf.valueOf() > lateAfter;
-  return { kind: "time", asOf: quote.asOf, stale, delayMinutes };
+  // An unknown exchange makes no claim about freshness.
+  const stale = known != null && (expired || now.valueOf() - observation.instant.valueOf() > lateAfter);
+  return { kind: "time", asOf, stale, delayMinutes };
 }
 
 /** The close before the broker price's session, when the quote can tell it. */
 export function previousClose(quote: Quote, brokerAsOf: string | null | undefined) {
-  const quoted = validInstant(quote.asOf);
   const broker = validInstant(brokerAsOf);
   const known = calendar(quote);
-  if (quote.price == null || !quoted || !broker || !known) return null;
+  if (quote.price == null || !quote.asOf || !broker || !known) return null;
+  const observation = quoteObservation(quote.asOf, known);
+  if (!observation) return null;
   // A price observed outside a session belongs to the latest session before it;
   // one the schedule does not reach belongs to none it can compare.
   const brokerSession = sessionOf(known, broker);
-  const quoteSession = sessionOf(known, quoted);
+  const quoteSession = observation.index;
   if (brokerSession < 0 || quoteSession < 0) return null;
   if (quoteSession === brokerSession)
     return quote.change != null ? quote.price - quote.change : null;
   // Only the immediately preceding session's close is the reference for the
   // broker's session; an older close would turn several sessions into one change.
-  return quoteSession === brokerSession - 1 &&
-    quoted.valueOf() >= known.sessions[quoteSession].close
-    ? quote.price
-    : null;
+  return quoteSession === brokerSession - 1 && observation.kind === "close" ? quote.price : null;
 }
 
 /**

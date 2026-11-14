@@ -4,6 +4,16 @@ import { prepareHistory } from "../lib/portfolio/prepared";
 const runId = "synthetic-etf-lenses";
 const date = "2026-11-11";
 const stamp = date + "T16:30:00Z";
+const fundQuote = {
+  price: 600, change: -25, changePct: -0.04, currency: "GBP", asOf: date,
+  source: "synthetic", exchange: "LSE", listing: "LSE:EQQQ",
+  schedule: {
+    sessions: ["2026-11-10", date, "2026-11-12"].map((session) => ({
+      date: session, open: session + "T08:00:00Z", close: session + "T16:30:00Z",
+    })),
+    until: "2026-11-13T08:00:00Z",
+  },
+};
 const isin = "ZZ0000000011";
 const peerIsin = "ZZ0000000022";
 const evidence = { coverage: "available", sourceUrl: "https://issuer.example/etf", effectiveAt: date, fetchedAt: stamp, parserVersion: "fixture" };
@@ -111,7 +121,7 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
         ticker, view, runId, generatedAt: stamp, fundamentals: { metrics: {} },
         technical: isFund && view === "technical" ? technical : null,
         technicalSummary: isFund && view === "overview" ? technical : null,
-        context: { quote: { ticker, price: 600, currency: "GBP", asOf: stamp, source: "synthetic", exchange: "LSE" },
+        context: { quote: { ticker, ...isFund ? fundQuote : { price: 600, currency: "GBP", asOf: stamp, source: "synthetic", exchange: "LSE" } },
           assetType: isFund ? "ETF" : "EQUITY", capabilities: [], datasets: [] },
         nextEarningsDate: ticker === "TEST" ? "2026-11-19" : null,
       } });
@@ -269,6 +279,29 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(page.getByText("EQQQ.L 还不在研究清单里")).toHaveCount(0);
     await page.goto("/research?ticker=UNKNOWN");
     await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
+  });
+
+  test("the fund header shows the daily move and the correct session close", async ({ page }, info) => {
+    await synthetic(page);
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/research?ticker=EQQQ.L");
+    const price = page.locator(".mx-security-price");
+    await expect(price.locator(".mx-security-change")).toHaveText("-4.00% (-£25.00)");
+    const close = price.locator(".mx-quote-as-of");
+    await expect(close).toHaveText("11月11日收盘");
+    await expect(close.locator(".mx-tag-warn")).toHaveCount(0);
+    expect(await price.evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= innerWidth + 1;
+    })).toBe(true);
+    const screenshotDir = process.env.FUND_QUOTE_QA_DIR;
+    if (screenshotDir) {
+      await page.screenshot({
+        path: `${screenshotDir}/fund-header-${info.project.name}.png`,
+        animations: "disabled",
+        scale: "css",
+      });
+    }
   });
 
   test("research keeps seven fund lenses and links the overview score to its diagnosis", async ({ page }, info) => {
