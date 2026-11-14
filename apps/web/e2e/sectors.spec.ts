@@ -727,7 +727,8 @@ test.describe("market index layer", () => {
     await expect(ranking).toContainText(/部分报价不可用|Partial quote coverage/);
     await expect(ranking).toContainText(/汇率与其他|Currency and other/);
     await expect(page.locator(".mx-index-global .mx-index-stamp")).toContainText(/已收盘|Closed/);
-    await expect(page.locator('.mx-index-global time[datetime="2026-11-12T19:00:00Z"]')).toContainText(/11月12日 19:00|12 Nov 19:00/);
+    // A finished day is named by its MSCI date alone; the publication clock is another day's in London.
+    await expect(page.locator('.mx-index-global time[datetime="2026-11-12"]')).toHaveText(/^(11月12日|12 Nov)$/);
     await expect(ranking.getByRole("link", { name: /英国.*未开盘.*0.00 pp|UK.*Not open.*0.00 pp/ })).toBeVisible();
     await expect(map.getByRole("link", { name: /英国.*未开盘|UK.*Not open/ })).toHaveAttribute("data-neutral", "true");
     await expect(ranking.locator(".mx-global-total")).toContainText("-0.44%");
@@ -822,7 +823,7 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/\/sectors\?view=sectors$/);
     await expect(sectors).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".mx-global-benchmark")).toHaveCount(3);
-    await expect(page.locator(".mx-index-global time")).toHaveAttribute("datetime", "2026-11-12T19:00:00Z");
+    await expect(page.locator(".mx-index-global time")).toHaveAttribute("datetime", "2026-11-12");
     await page.reload();
     await expect(sectors).toHaveAttribute("aria-pressed", "true");
 

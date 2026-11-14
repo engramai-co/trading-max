@@ -414,12 +414,14 @@ function GlobalStamp({ answer }: { answer: GlobalMarketContribution }) {
   );
   const phase = answer.phase === "completed" ? t("已收盘", "Closed") : answer.phase === "live" ? t("盘中", "Open") : null;
   const time = formatDate(stamp, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  // A finished day is named by its MSCI date; the publication clock belongs to the next day in Europe and Asia.
+  const closedDay = answer.phase === "completed" ? answer.referenceDate : null;
   return (
     <div className="mx-sectors-clock">
       {phase && <span>{phase}</span>}
-      <span><time dateTime={stamp}>{t("截至 ", "As of ")}{answer.phase === "completed" && answer.referenceDate
-        ? formatCalendarDate(answer.referenceDate, locale) + " " + time
-        : answer.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time></span>
+      <span>{closedDay
+        ? <time dateTime={closedDay}>{formatCalendarDate(closedDay, locale)}</time>
+        : <time dateTime={stamp}>{t("截至 ", "As of ")}{answer.phase === "live" ? time : formatDateTime(stamp, locale, timeZone)}</time>}</span>
     </div>
   );
 }
