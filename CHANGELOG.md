@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.47.1] - 2026-11-14
+
+### Fixed
+
+- The Overview net P&L chart keeps its time axis and lowest value label inside the chart on short ranges.
+
 ## [1.47.0] - 2026-11-13
 
 ### Added
