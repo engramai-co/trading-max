@@ -138,6 +138,9 @@ export function Help({
 }) {
   const t = useCopy();
   const [opened, setOpened] = useState(false);
+  const explanation = typeof label === "string"
+    ? label + t("说明", " explained")
+    : t("查看说明", "Read explanation");
   return (
     <Popover
       opened={opened}
@@ -160,11 +163,7 @@ export function Help({
           type="button"
           className={tag ? "mx-tag-help" : "mx-info"}
           data-mantine-stop-propagation={opened || undefined}
-          aria-label={
-            typeof label === "string"
-              ? label + t("说明", " explained")
-              : t("查看说明", "Read explanation")
-          }
+          aria-label={tag ? undefined : explanation}
           onClick={() => setOpened((value) => !value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -173,7 +172,7 @@ export function Help({
             }
           }}
         >
-          {tag ?? <Question size={16} aria-hidden="true" />}
+          {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <Question size={16} aria-hidden="true" />}
         </button>
       </Popover.Target>
       <Popover.Dropdown className="mx-help-popover" data-mantine-stop-propagation="true"

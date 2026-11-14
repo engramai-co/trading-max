@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.47.4] - 2026-11-14
+
+### Changed
+- Updated web dependencies, including Mantine 9.8.0, TanStack Query 5.107.1, React 19.3.1, Playwright 1.65.0, and Vitest 5.1.0.
+
 ## [1.47.3] - 2026-11-14
 
 ### Fixed
