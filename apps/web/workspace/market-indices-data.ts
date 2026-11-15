@@ -65,7 +65,19 @@ export function comparable(a: IndexIdentity, b: IndexIdentity, gbp: boolean, per
 
 type HistorySeries = Pick<IndexHistory, "points" | "gaps">;
 
+const alignedCache = new WeakMap<HistorySeries, WeakMap<HistorySeries, Map<IndexRange, ReturnType<typeof alignHistory>>>>();
+const timelineCache = new WeakMap<HistorySeries, Array<{ at: string; left: number | null; right: undefined }>>();
+
+function canonicalUtc(at: string) {
+  if (at.endsWith("Z")) {
+    if (at.length === 24) return at;
+    if (at.length === 20) return at.slice(0, -1) + ".000Z";
+  }
+  return new Date(at).toISOString();
+}
+
 function comparisonSlot(at: string, period: IndexRange) {
+  if (period !== "MAX" && period !== "1D" && period !== "1W" && period !== "1M") return canonicalUtc(at);
   const time = Date.parse(at);
   if (period === "MAX") {
     // Yahoo weekly bars can end on different weekdays. Compare the observed
@@ -86,24 +98,53 @@ function observations({ points, gaps }: HistorySeries, slot: (at: string) => str
 }
 
 export function indexHistoryRows(history: HistorySeries) {
-  return [...observations(history, (at) => at)].sort(([a], [b]) => a.localeCompare(b))
-    .map(([at, left]) => ({ at, left, right: undefined }));
+  const found = timelineCache.get(history);
+  if (found) return found;
+  const rows = history.gaps?.length
+    ? [...observations(history, (at) => at)].sort(([a], [b]) => a.localeCompare(b))
+      .map(([at, left]) => ({ at, left, right: undefined }))
+    : (history.points ?? []).map(({ at, value }) => ({ at, left: value, right: undefined }));
+  timelineCache.set(history, rows);
+  return rows;
 }
 
 /** Use the first shared slot as the base. Only known gaps break a stroke. */
 export function alignIndices(first: HistorySeries, second: HistorySeries, period: IndexRange) {
+  let peers = alignedCache.get(first);
+  if (!peers) alignedCache.set(first, peers = new WeakMap());
+  let ranges = peers.get(second);
+  if (!ranges) peers.set(second, ranges = new Map());
+  let rows = ranges.get(period);
+  if (!rows) ranges.set(period, rows = alignHistory(first, second, period));
+  return rows;
+}
+
+function alignHistory(first: HistorySeries, second: HistorySeries, period: IndexRange) {
+  const a = first.points, b = second.points;
+  // Same-date, complete feeds are already ordered by the API. Avoid building
+  // two maps and sorting tens of thousands of identical keys.
+  if (a?.length && a.length === b?.length && !first.gaps?.length && !second.gaps?.length
+    && !["1D", "1W", "1M", "MAX"].includes(period)
+    && a[0].value > 0 && b[0].value > 0
+    && a.every((point, i) => point.at === b[i].at && (i === 0 || point.at > a[i - 1].at))) {
+    return a.map((point, i) => ({
+      at: canonicalUtc(point.at),
+      left: point.value * 100 / a[0].value,
+      right: b[i].value * 100 / b[0].value,
+    }));
+  }
   const slot = (at: string) => comparisonSlot(at, period);
   const left = observations(first, slot);
   const right = observations(second, slot);
   const times = [...new Set([...left.keys(), ...right.keys()])].sort();
   const start = times.find((at) => (left.get(at) ?? 0) > 0 && (right.get(at) ?? 0) > 0);
   if (!start) return [];
-  const a = left.get(start)!;
-  const b = right.get(start)!;
+  const leftBase = left.get(start)!;
+  const rightBase = right.get(start)!;
   const rebase = (value: number | null | undefined, base: number) => value == null ? value : value * 100 / base;
   return times.filter((at) => at >= start).map((at) => ({
     at,
-    left: rebase(left.get(at), a),
-    right: rebase(right.get(at), b),
+    left: rebase(left.get(at), leftBase),
+    right: rebase(right.get(at), rightBase),
   }));
 }

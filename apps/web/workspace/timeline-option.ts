@@ -1,6 +1,7 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
+import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { numeric } from "@/lib/numeric";
 import { percent } from "@/workspace/data";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
@@ -60,10 +61,12 @@ export function timelineOption(
   moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
   /** The canvas height of a single-layer chart. A short chart shrinks its plot to keep its axis labels inside. */
   plotHeight?: number,
+  plotWidth = 1000,
 ): EChartsOption & { series: SeriesOption[] } {
   const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
-  const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : times.indexOf(position);
+  const timestampRows = calendar ? undefined : new Map(times.map((time, index) => [time, index]));
+  const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : timestampRows?.get(position) ?? -1;
   const hasEstimates = provenance?.some((point) => point.estimated) ?? false;
   const labels = calendar && display ? timelineLabels(calendar.categories, display) : undefined;
   // Keep every date candidate: resampling an eight-label subset to five
@@ -272,8 +275,10 @@ export function timelineOption(
           ...calendar,
           anchors: calendar.rowIndexes.map((_, position) => markPositions.has(position) || !!calendar.anchors?.[position]),
         } : calendar;
-        const data = historySeries(dates, line.values, false, plotCalendar);
-        const gaps = historyGapSeries(data);
+        const rawData = historySeries(dates, line.values, false, plotCalendar);
+        const gaps = historyGapSeries(rawData);
+        const data = layer.drawdown || line.step ? rawData
+          : [...sampleLine(rawData, plotWidth, (point) => point.value[0]!, (point) => point.value[1], (point) => markPositions.has(point.value[0]!))];
         const strokes = hasEstimates
           ? historySourceSeries(data, (position) => provenance?.[rowAt(position)]?.estimated ?? false)
           : { observed: data, reconstructed: [] };

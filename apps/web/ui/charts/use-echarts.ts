@@ -151,7 +151,7 @@ export function useECharts(
       chart.setOption(noMotion ? { ...entry, animation: false } : entry, { notMerge: true });
       lastApplied.current = latest.current;
       canvas.dataset.tmChartReady = "true";
-      performance.mark("tm:chart-ready");
+      canvas.dataset.tmChartAppliedAt = String(performance.mark("tm:chart-ready").startTime);
     };
     initialize();
     const resizeObserver = new ResizeObserver(() => {
@@ -166,6 +166,7 @@ export function useECharts(
       chartRef.current = null;
       lastApplied.current = null;
       delete canvas.dataset.tmChartReady;
+      delete canvas.dataset.tmChartAppliedAt;
       setController(controller, null);
     };
   }, [hasOption, profile, controller, status]);
@@ -176,6 +177,7 @@ export function useECharts(
       // new model, so animationDurationUpdate alone wouldn't prevent replay.
       chartRef.current.setOption({ ...themedOption, animation: false }, { notMerge: true });
       lastApplied.current = themedOption;
+      if (canvasRef.current) canvasRef.current.dataset.tmChartAppliedAt = String(performance.now());
     }
   }, [locked, themedOption]);
 

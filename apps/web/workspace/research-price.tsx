@@ -73,7 +73,7 @@ export function PriceHistory({
   const comparison = params.get("benchmark") ?? "none";
   const [eventTrack, setEventTrack] = useState<boolean>();
   const chart = useRef<ECharts | null>(null);
-  const selection = useRef<number | null>(null);
+  const [selection, setSelection] = useState<number | null>(null);
   const inlineChart = useRef<HTMLDivElement | null>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
@@ -179,7 +179,7 @@ export function PriceHistory({
     } catch {
       /* Optional view preference. */
     }
-    selection.current = null;
+    setSelection(null);
     chart.current?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
   };
   const toggleFull = (next: boolean) => {
@@ -338,7 +338,8 @@ export function PriceHistory({
             key={zoomKey}
             research
             customGestures
-            selection={selection}
+            initialSelection={selection}
+            onSelectionChange={setSelection}
             readout={{
               positions: plottedCloses.flatMap((v, index) => v == null ? [] : [index]),
               latest: `${formatValue(value(points.at(-1)!.close))}${normalized ? "" : ` ${priceData.currency}`}`,

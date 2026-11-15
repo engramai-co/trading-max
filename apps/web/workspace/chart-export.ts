@@ -43,8 +43,7 @@ export function exportChartCsv(rows: ChartRecord[]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export async function exportChartPng(chart: ECharts, label: string, reading: string, dark: boolean) {
-  const background = dark ? "#17181b" : "#fff";
+export async function exportChartPng(chart: ECharts, label: string, reading: string, background: string, foreground: string) {
   const image = new Image();
   image.src = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: background });
   await image.decode();
@@ -57,7 +56,7 @@ export async function exportChartPng(chart: ECharts, label: string, reading: str
   if (!ctx) throw new Error("PNG unavailable");
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = dark ? "#f2f3f5" : "#17191c";
+  ctx.fillStyle = foreground;
   ctx.font = "600 27px system-ui";
   ctx.fillText(label, 22, 38, canvas.width - 44);
   ctx.font = "24px system-ui";

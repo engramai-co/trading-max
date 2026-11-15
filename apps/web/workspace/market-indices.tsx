@@ -6,8 +6,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
+import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useLocale } from "@/components/locale-provider";
+import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
@@ -222,6 +224,36 @@ function pointsText(value: number | null | undefined, locale: ReturnType<typeof 
   return value == null ? "—" : `${formatNumber(value, locale, { maximumFractionDigits: 2, signDisplay: "exceptZero" })} ${unit}`;
 }
 
+type PlotRow = { at: string; left?: number | null; right?: number | null };
+type PlotLine = ReturnType<typeof buildIndexPlotLine>;
+const indexLines = new WeakMap<readonly PlotRow[], Map<string, PlotLine>>();
+
+function buildIndexPlotLine(rows: readonly PlotRow[], key: "left" | "right", width: number) {
+  const data: Array<{ value: [number, number | null]; symbolSize: number }> = [];
+  let observed = 0, missing = false;
+  rows.forEach((row, i) => {
+    const value = row[key];
+    if (value === undefined) return;
+    if (value == null) missing = true;
+    else observed++;
+    data.push({ value: [i, value], symbolSize: 4 });
+  });
+  return {
+    visible: sampleLine(data, width, (point) => point.value[0], (point) => point.value[1]),
+    gaps: missing ? historyGapSeries(data) : [],
+    single: observed === 1,
+  };
+}
+
+function indexPlotLine(rows: readonly PlotRow[], key: "left" | "right", width: number) {
+  let set = indexLines.get(rows);
+  if (!set) indexLines.set(rows, set = new Map());
+  const id = key + width;
+  let line = set.get(id);
+  if (!line) set.set(id, line = buildIndexPlotLine(rows, key, width));
+  return line;
+}
+
 export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparison, update, phone }: {
   id: string;
   market: IndexScope;
@@ -231,6 +263,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   update: (changes: Record<string, string | null>) => void;
   phone: boolean;
 }) {
+  useChartRuntime();
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const { name, basis } = useNames();
@@ -311,8 +344,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const points = history?.points ?? [];
   const matched = history && peerHistory && history.range === peerHistory.range &&
     history.currency === peerHistory.currency ? alignIndices(history, peerHistory, period) : [];
-  const pairedEnds = matched.filter(({ left, right }) => left != null && right != null);
-  const commonEnd = pairedEnds.length > 1 ? pairedEnds.at(-1) : undefined;
+  const lastPaired = matched.findLastIndex(({ left, right }) => left != null && right != null);
+  const commonEnd = lastPaired > 0 ? matched[lastPaired] : undefined;
   const seriesReturn = (value: number | undefined | null) => formatDeltaPercent(value == null ? null : value / 100 - 1, locale, 2);
   const readingUnit = index.kind === "volatility" ? t("点", "pts") : seriesCurrency;
   const error = query.error ?? peerQuery.error;
@@ -328,16 +361,11 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   };
   const chartName = name(index);
   const peerName = peer ? name(peer) : "";
-  const sparseAxis = shortRange || period === "MAX";
-  const axisLabels = plotRows.map(({ at }) => formatDate(new Date(at), locale, axisDateOptions));
-  const firstInPeriod = axisLabels.flatMap((label, i) => i === 0 || label !== axisLabels[i - 1] ? [i] : []);
-  const labelStep = Math.ceil(firstInPeriod.length / (phone ? 5 : 8));
-  const ticks = new Set(firstInPeriod.filter((_, i) => i % labelStep === 0));
-  if (sparseAxis && firstInPeriod.length > 1) {
-    // Pin the final date to the end without printing that date twice.
-    ticks.delete(firstInPeriod.at(-1)!);
-    ticks.add(plotRows.length - 1);
-  }
+  // Select a small number of x-axis labels before formatting any dates.
+  // A numeric slot axis keeps 50,000 category strings out of the renderer.
+  const count = Math.min(plotRows.length, phone ? 4 : 8);
+  const ticks = [...new Set(Array.from({ length: count }, (_, i) => Math.round(i * (plotRows.length - 1) / Math.max(1, count - 1))))];
+  const axisLabels = new Map(ticks.map((position) => [position, formatDate(plotRows[position].at, locale, axisDateOptions)]));
   const indexUnit = matched.length ? t("点（起点 100）", "pts (base 100)")
     : readingUnit ?? t("点", "pts");
   const indexValue = (value: number) => `${formatNumber(value, locale, { maximumFractionDigits: 2 })} ${indexUnit}`;
@@ -354,7 +382,10 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const chartLabel = matched.length
     ? locale === "zh" ? `${chartName} 与 ${peerName}，起点归 100` : `${chartName} and ${peerName}, rebased to 100`
     : chartName;
-  const primaryPositions = plotRows.flatMap((row, position) => row.left == null && row.right == null ? [] : [position]);
+  const primaryPositions = plotRows.reduce<number[]>((positions, row, position) => {
+    if (row.left != null || row.right != null) positions.push(position);
+    return positions;
+  }, []);
   const latestIndexRow = plotRows.findLast((row) => row.left != null);
   const indexReadout = {
     positions: primaryPositions,
@@ -367,7 +398,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           time: row.at, zone: intraday ? timeZone : "UTC",
           currency: matched.length || index.kind === "volatility" ? "" : seriesCurrency ?? "",
           basis: matched.length ? "rebased to 100" : index.basis,
-          source: feed?.index.source ?? index.source ?? "Index provider",
+          source: feed?.index?.source ?? index.source ?? "Index provider",
           gapType: plotRows[position - 1]?.[key] === null ? "after-missing-observation" : "",
           series, value: row[key]!,
         }]);
@@ -447,21 +478,18 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               animation: false,
               grid: { top: 17, right: 18, bottom: 31, left: 58 },
               xAxis: {
-                type: "category", boundaryGap: false, data: plotRows.map(({ at }) => at),
-                axisLabel: {
-                  formatter: (_at, position) => !sparseAxis || ticks.has(position) ? axisLabels[position] : "",
-                  ...(sparseAxis ? { interval: (position: number) => ticks.has(position) } : {}),
-                },
+                type: "value", min: 0, max: Math.max(1, plotRows.length - 1), minInterval: 1,
+                axisLabel: { customValues: ticks, formatter: (position) => axisLabels.get(position) ?? "" },
+                axisTick: { show: false },
+                splitLine: { show: false },
               },
               yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5,
                 name: matched.length ? undefined : readingUnit ?? undefined, nameGap: 5 },
               series: [...lines, ...compared].flatMap(({ key, label, colour, dashed }): SeriesOption[] => {
-                const data = plotRows.flatMap((row, position) => row[key] === undefined
-                  ? [] : [{ value: [position, row[key]], symbolSize: 4 }]);
-                const gaps = historyGapSeries(data);
+                const { visible, gaps, single } = indexPlotLine(plotRows, key, phone ? 270 : 800);
                 return [{
-                  id: key, name: label, type: "line", data, connectNulls: false,
-                  showSymbol: data.filter(({ value }) => value[1] != null).length === 1,
+                  id: key, name: label, type: "line", data: [...visible], connectNulls: false,
+                  showSymbol: single,
                   lineStyle: { width: 2, color: colour, type: dashed ? "dashed" : "solid" },
                   itemStyle: { color: colour },
                 }, ...(gaps.length ? [{
@@ -494,7 +522,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
-        {history && <IndexDrawdownChart rows={indexHistoryRows(history)} />}
+        {history && <IndexDrawdownChart history={history} />}
       </section>
       {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
         context.data && <IndexContextPanels context={context.data} phone={phone} />}

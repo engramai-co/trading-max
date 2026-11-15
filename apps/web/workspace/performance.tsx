@@ -250,7 +250,14 @@ export function PerformanceContent({
     range: rangeName(actualRange, t("全部", "All")),
     unit: view === "returns" ? "%" : "GBP",
     primary: view === "returns"
-      ? returnLines.map((line) => ({ label: line.name, values: line.values, percentage: true, signed: true }))
+      ? [
+          ...returnLines.map((line) => ({ label: line.name, values: line.values, percentage: true, signed: true })),
+          ...(returnLines.length === 2 ? [{
+            label: t("相差", "Difference"), unit: "pp" as const, optional: true,
+            values: returnLines[0].values.map((value, index) => value == null || returnLines[1].values[index] == null
+              ? null : value - returnLines[1].values[index]!),
+          }] : []),
+        ]
       : [
           { label: t("区间净盈亏", "Period P&L"), values: periodPnls, percentages: money.pnlPercents, signed: true },
           { label: t("盈亏回撤", "P&L drawdown"), values: moneyDrawdown, percentages: moneyDrawdownPercents, signed: true },

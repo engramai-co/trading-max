@@ -109,6 +109,7 @@ export function TimelineChart({
     observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
     moneyLayout,
     plotHeight,
+    phone ? 320 : 950,
   );
   // Solid is the default. Key only the source exceptions that produced a
   // visible stroke after sampling, using the same series as the chart.

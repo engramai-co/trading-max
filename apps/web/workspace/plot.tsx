@@ -1,6 +1,6 @@
 "use client";
 
-import { FocusTrap, useComputedColorScheme } from "@mantine/core";
+import { FocusTrap } from "@mantine/core";
 import { ArrowsOut, ArrowsIn } from "@phosphor-icons/react";
 import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
@@ -67,7 +67,8 @@ export function Plot({
   overlay,
   fullscreen = false,
   customGestures = false,
-  selection,
+  initialSelection = null,
+  onSelectionChange,
 }: {
   label: string;
   option: (colours: ChartColours) => EChartsOption;
@@ -80,19 +81,19 @@ export function Plot({
   overlay?: ReactNode;
   fullscreen?: boolean;
   customGestures?: boolean;
-  selection?: RefObject<number | null>;
+  initialSelection?: number | null;
+  onSelectionChange?: (position: number | null) => void;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const description = useId();
   const [reading, setReading] = useState("");
   const [pinned, setPinned] = useState(false);
-  const [picked, setPicked] = useState<number | null>(() => selection?.current ?? null);
+  const [picked, setPicked] = useState<number | null>(initialSelection);
   const [expanded, setExpanded] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
   const closeTrigger = useRef<HTMLButtonElement>(null);
-  const scheme = useComputedColorScheme("light");
   useEffect(() => {
     if (!expanded) return;
     const previous = document.body.style.overflow;
@@ -125,7 +126,11 @@ export function Plot({
         type: "inside", disabled: true, xAxisIndex: Array.isArray(custom.xAxis) ? custom.xAxis.map((_, i) => i) : 0,
         filterMode: "none",
       }] : undefined),
-      xAxis: themeAxes(custom.xAxis, colours, true),
+      ...(readout ? { axisPointer: undefined } : {}),
+      xAxis: themeAxes(readout
+        ? Array.isArray(custom.xAxis) ? custom.xAxis.map((axis) => ({ ...axis, axisPointer: { show: false } }))
+          : custom.xAxis ? { ...custom.xAxis, axisPointer: { show: false } } : undefined
+        : custom.xAxis, colours, true),
       yAxis: themeAxes(custom.yAxis, colours),
       legend: Array.isArray(custom.legend)
         ? custom.legend.map((legend) => ({
@@ -173,7 +178,7 @@ export function Plot({
     control,
     (instance) => {
       setPicked(null);
-      if (selection) selection.current = null;
+      onSelectionChange?.(null);
       setPinned(false);
       onZoom?.(instance);
     },
@@ -197,20 +202,25 @@ export function Plot({
   }, [control, ref, expanded, customGestures]);
   const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
     ? picked : null;
+  const drawCursor = useRef<() => void>(() => {});
   useLayoutEffect(() => {
-    const el = cursor.current;
-    const bounds = ref.current;
-    if (!el || !bounds) return;
-    const draw = () => {
+    drawCursor.current = () => {
+      const el = cursor.current;
+      const bounds = ref.current;
+      if (!el || !bounds) return;
       const x = active == null ? NaN : control.current?.convertToPixel({ xAxisIndex: 0 }, active);
       el.style.visibility = typeof x === "number" && x >= 0 && x <= bounds.clientWidth ? "visible" : "hidden";
       if (typeof x === "number") el.style.transform = `translateX(${x}px)`;
     };
-    draw();
-    const observer = new ResizeObserver(draw);
+    drawCursor.current();
+  }, [active, control, ref, status]);
+  useLayoutEffect(() => {
+    const bounds = ref.current;
+    if (!bounds) return;
+    const observer = new ResizeObserver(() => drawCursor.current());
     observer.observe(bounds);
     return () => observer.disconnect();
-  }, [active, control, ref, status]);
+  }, [ref]);
 
   const pickAt = (event: PointerEvent<HTMLDivElement>) => {
     if (!readout) return null;
@@ -224,12 +234,12 @@ export function Plot({
     if (typeof target !== "number" || !Number.isFinite(target) || readout.gap?.(target)) return null;
     return readout.positions[closestChartPosition(readout.positions, target)] ?? null;
   };
-  const choose = (point: number | null) => {
+  const choose = (point: number | null, remember = false) => {
     setPicked(point);
-    if (selection) selection.current = point;
+    if (remember) onSelectionChange?.(point);
   };
   const dismiss = () => {
-    choose(null);
+    choose(null, true);
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
@@ -288,7 +298,11 @@ export function Plot({
           }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</button>
           <button type="button" onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</button>
           <button type="button" onClick={() => void action(async () => {
-            if (control.current) await exportChartPng(control.current, label, currentReading, scheme === "dark");
+            if (control.current && ref.current) {
+              const css = getComputedStyle(ref.current);
+              await exportChartPng(control.current, label, currentReading,
+                css.getPropertyValue("--mx-surface").trim(), css.getPropertyValue("--mx-ink").trim());
+            }
           })}>{t("导出 PNG", "Export PNG")}</button>
           <span role="status">{exportStatus}</span>
         </div>
@@ -347,7 +361,7 @@ export function Plot({
           if (readout) {
             const position = pickAt(event);
             if (position === active && pinned || position == null) dismiss();
-            else { choose(position); setPinned(true); }
+            else { choose(position, true); setPinned(true); }
             return;
           }
           if (pinned) {
@@ -382,7 +396,7 @@ export function Plot({
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
               if (pinned) dismiss();
-              else if (values.length) { choose(active ?? values.at(-1)!); setPinned(true); }
+              else if (values.length) { choose(active ?? values.at(-1)!, true); setPinned(true); }
               return;
             }
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !values.length) return;
@@ -390,7 +404,7 @@ export function Plot({
             const index = active == null ? values.length - 1 : closestChartPosition(values, active);
             const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
               : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
-            choose(values[next]);
+            choose(values[next], true);
             return;
           }
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))

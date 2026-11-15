@@ -8,6 +8,7 @@ export type TimelineTooltipRow = {
   percentages?: Array<number | null>;
   signed?: boolean;
   optional?: boolean;
+  unit?: "pp";
 };
 
 export type TimelineTooltip = {
@@ -24,7 +25,8 @@ export function timelineReadoutRows(content: TimelineTooltip, index: number) {
     if (value == null && row.optional) return [];
     const relative = numeric(row.percentages?.[index]);
     const formatted = value == null ? "—"
-      : row.percentage ? percent(value, true, 2) : `${currency(value, "GBP", 2)} GBP`;
+      : row.unit === "pp" ? `${value > 0 ? "+" : ""}${(value * 100).toFixed(2)} pp`
+        : row.percentage ? percent(value, true, 2) : `${currency(value, "GBP", 2)} GBP`;
     return [`${row.label}: ${formatted}${relative == null ? "" : ` · ${percent(relative, true, 2)}`}`];
   });
 }

@@ -158,6 +158,9 @@
     padding: 0;
     border: 0;
   }
+  .mx-monthly-returns .mx-month-table td.mx-month-return {
+    padding: 0;
+  }
   .mx-month-return button,
   .mx-month-return .mx-heat-empty {
     display: grid;
@@ -192,7 +195,8 @@
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--mx-surface);
-  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  padding-block: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-bottom));
+  padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
 }
 .mx-chart-actions {
   display: flex;
