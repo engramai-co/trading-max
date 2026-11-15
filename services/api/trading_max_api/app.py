@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import os
@@ -20,16 +21,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 from trading_max import __version__ as trading_max_version
+from trading_max.infrastructure import SqliteDatabase
 from trading_max.infrastructure.eodhd_index_prices import EodhdIndexPrices
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.ingestion.cfd_imports import MAX_CFD_IMPORT_BYTES, CfdImportStore
+from trading_max.llm import ProviderError, build_model
 from trading_max.reference import CatalogSecurityMaster
 from trading_max.research.facts import fingerprint
 from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
 from trading_max.research.market import MarketResearchService
 
+from .agent.deps import AssistantDepsFactory
+from .agent.runtime import build_assistant_agent, run_settings
+from .agent.service import AssistantService, AssistantUnavailable, BoundModel
+from .agent.store import SqliteConversationStore
+from .agent.tools import build_assistant_toolset
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
 from .broker_runtime import broker_profiles_loader
@@ -55,12 +63,17 @@ from .logging_setup import configure_logging
 from .market_data_runtime import market_price_source_factory, reconstruction_loader_factory
 from .models import ResearchOverview, SnapshotManifest
 from .oauth import OAuthCredentialVault, OAuthLoginManager
-from .provider_runtime import ProviderRuntimeError, make_provider_factory
+from .provider_runtime import (
+    ProviderRuntimeError,
+    make_provider_factory,
+    resolve_assistant_connection,
+)
 from .research import ResearchLedger
 from .research_funds import FundResearchService
 from .research_journal import ResearchJournalStore
 from .research_prices import SecurityPriceHistory
 from .routes.analysis import router as analysis_router
+from .routes.assistant import router as assistant_router
 from .routes.imports import router as imports_router
 from .routes.indices import router as indices_router
 from .routes.local_workspace import router as local_workspace_router
@@ -72,11 +85,19 @@ from .routes.system import router as system_router
 from .scheduler import NightlyScheduler
 from .sector_monitor import SectorMonitor
 from .security_entity_resolution import OpenCodeWebSearchResolver
-from .settings import SettingsRepository
+from .settings import MIGRATIONS, SettingsRepository
 from .typed_analysis import TypedAnalysisManager
 from .typed_jobs import TypedJobManager
 from .valuation_assumptions import ValuationAssumptionsStore
 from .watchlist import SecuritySearchService, WatchlistStore
+
+# A refusal before any run starts: disabled or not consented is not the user's
+# configuration error; an unreadable credential store is a server condition.
+_ASSISTANT_REFUSAL_STATUS = {
+    "assistant_disabled": 403,
+    "assistant_consent_required": 403,
+    "credential_store_unavailable": 503,
+}
 
 
 def create_app(
@@ -109,6 +130,29 @@ def create_app(
         settings,
         preferences,
         credentials,
+    )
+
+    async def bind_assistant_model() -> BoundModel:
+        try:
+            connection = await asyncio.to_thread(
+                resolve_assistant_connection, settings, preferences, credentials
+            )
+            model = build_model(connection.to_model_connection())
+        except ProviderRuntimeError as exc:
+            status = _ASSISTANT_REFUSAL_STATUS.get(exc.code, 409)
+            raise AssistantUnavailable(exc.code, status) from None
+        except ProviderError as exc:
+            raise AssistantUnavailable(exc.code, 409) from None
+        return BoundModel(model, run_settings(connection.reasoning))
+
+    assistant_database = SqliteDatabase(
+        settings.data_root / "trading_max.db", migrations_dir=MIGRATIONS
+    )
+    assistant = AssistantService(
+        agent=build_assistant_agent([build_assistant_toolset()]),
+        store=SqliteConversationStore(assistant_database),
+        bind_model=bind_assistant_model,
+        deps_for_run=AssistantDepsFactory(store=store).for_run,
     )
     web_entity_resolver = OpenCodeWebSearchResolver(provider_factory)
     security_search = SecuritySearchService(
@@ -469,6 +513,7 @@ def create_app(
         jobs.close()
         analysis.close()
         oauth_login.close()
+        assistant_database.close()
         preferences.close()
 
     app = FastAPI(
@@ -546,6 +591,7 @@ def create_app(
     app.state.market_prices = market_prices
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
+    app.state.assistant = assistant
     app.state.validation_secret = validation_secret
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research
@@ -570,6 +616,7 @@ def create_app(
     app.include_router(research_router)
     app.include_router(sectors_router)
     app.include_router(indices_router)
+    app.include_router(assistant_router)
     return app
 
 

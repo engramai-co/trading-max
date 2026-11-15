@@ -1,12 +1,12 @@
-"""Compatibility constructor; OpenAI transport is provided by pi-ai."""
+"""Compatibility constructor; OpenAI transport is provided by Pydantic AI."""
 
-from .pi import PiProvider
+from .model import ModelProvider
 from .prompts import _input, _instructions, _response_schema
 
 __all__ = ["OpenAIResponsesProvider", "_input", "_instructions", "_response_schema"]
 
 
-class OpenAIResponsesProvider(PiProvider):
+class OpenAIResponsesProvider(ModelProvider):
     def __init__(
         self,
         *,

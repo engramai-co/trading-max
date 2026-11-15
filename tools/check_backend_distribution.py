@@ -20,18 +20,27 @@ def validate_distributions(directory: Path) -> None:
     }
     if not references:
         raise ValueError("backend reference data is missing from the source checkout")
-    for name in ("package.json", "package-lock.json", "index.mjs", "complete.mjs", "oauth.mjs"):
+    for name in ("package.json", "package-lock.json", "index.mjs", "oauth.mjs"):
         references[f"synthesis/_pi/{name}"] = (
             ROOT / "backend/src/trading_max/synthesis/_pi" / name
         ).read_bytes()
+    for name in ("__init__.py", "completion.py", "model.py", "device_login.py"):
+        references[f"llm/{name}"] = (ROOT / "backend/src/trading_max/llm" / name).read_bytes()
+    forbidden = ("/synthesis/_pi/complete.mjs", "/synthesis/_pi/node_modules/")
     with zipfile.ZipFile(directory / f"{stem}-py3-none-any.whl") as wheel:
         names = wheel.namelist()
+        if any(part in name for name in names for part in forbidden):
+            raise ValueError("wheel contains stale model bridge files or Node dependencies")
         for name, expected in references.items():
             member = f"trading_max/{name}"
             if names.count(member) != 1 or wheel.read(member) != expected:
                 raise ValueError(f"wheel reference data is missing, duplicated or changed: {name}")
     with tarfile.open(directory / f"{stem}.tar.gz") as source:
         names = source.getnames()
+        if any(part in name for name in names for part in forbidden):
+            raise ValueError(
+                "source archive contains stale model bridge files or Node dependencies"
+            )
         for name, expected in references.items():
             member = f"{stem}/src/trading_max/{name}"
             if names.count(member) != 1:

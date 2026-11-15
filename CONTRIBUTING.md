@@ -40,11 +40,15 @@ Requirements:
 git clone https://github.com/engramai-co/trading-max.git
 cd trading-max
 uv sync --all-packages --group dev --frozen
-npm run llm:install
+npm run oauth:install
 npm --prefix apps/web ci --no-audit --no-fund
 uv run pytest services/api/tests backend/tests
 npm --prefix apps/web run build
 ```
+
+`npm run oauth:install` installs the ChatGPT device-code login helper. Model
+inference uses the Python environment. `npm run test:llm` tests login;
+the Python suite verifies model requests against synthetic Pi baselines.
 
 Use a separate synthetic state root for manual development. Never point tests
 or development commands at a production state directory.
@@ -124,7 +128,7 @@ The normal CI and Release checks still run. It cannot be combined with
 
 ```bash
 uv sync --all-packages --group dev --frozen
-npm run llm:install
+npm run oauth:install
 npm run test:llm
 uv run ruff check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py
 uv run ruff format --check backend services/api tools deploy/macos/*.py deploy/local/install-macos-service.py

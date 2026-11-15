@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from trading_max.synthesis.providers.pi import ProviderError, decode_json, user_message
+from trading_max.synthesis.providers.model import ProviderError, decode_json, user_message
 
 from .provider_runtime import ProviderRuntimeError
 
@@ -32,8 +32,7 @@ class OpenCodeWebSearchResolver:
     """Run an approved model tool loop with only one web search exposed.
 
     The historical class name remains public for compatibility. Runtime routing
-    supplies the selected Pi provider. The workflow still decides both calls;
-    Pi does not run an autonomous agent loop.
+    supplies the selected provider. The workflow decides both calls.
     """
 
     def __init__(

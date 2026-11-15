@@ -19,7 +19,7 @@ from trading_max.research import (
     TaxonomyWorkflowDecision,
     TaxonomyWorkflowEngine,
 )
-from trading_max.synthesis.providers.pi import ProviderError
+from trading_max.synthesis.providers.model import ProviderError
 
 from .watchlist import WatchlistStore
 

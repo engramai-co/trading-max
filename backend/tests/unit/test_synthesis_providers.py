@@ -1,8 +1,4 @@
 import json
-import os
-import subprocess
-from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from trading_max.synthesis import (
@@ -15,7 +11,7 @@ from trading_max.synthesis import (
     SynthesisResponse,
     create_provider,
 )
-from trading_max.synthesis.providers import pi
+from trading_max.synthesis.providers import model as transport
 from trading_max.synthesis.providers.openai import _instructions
 
 
@@ -80,11 +76,11 @@ def test_decision_review_prompt_asks_for_readable_dates() -> None:
         (OpenAIResponsesProvider, "openai"),
     ],
 )
-def test_provider_uses_pi_and_preserves_domain_contract(monkeypatch, provider_cls, name) -> None:
+def test_provider_preserves_domain_contract(monkeypatch, provider_cls, name) -> None:
     captured = {}
 
-    def invoke(request, timeout):
-        captured.update(request)
+    async def request_completion(connection, **options):
+        captured.update(connection=connection, **options)
         return {
             "text": json.dumps(response_payload()),
             "usage": {
@@ -96,14 +92,14 @@ def test_provider_uses_pi_and_preserves_domain_contract(monkeypatch, provider_cl
             },
         }
 
-    monkeypatch.setattr(pi, "_invoke", invoke)
+    monkeypatch.setattr(transport, "request_completion", request_completion)
     result = provider_cls(api_key="synthetic-key", model="saved-model").analyze(
         definition(), {"snapshotRunId": "synthetic-run"}
     )
-    assert captured["provider"] == name
-    assert captured["model"] == "saved-model"
-    assert "schema" in captured["context"]["systemPrompt"]
-    assert captured["json"] is True
+    assert captured["connection"].provider == name
+    assert captured["connection"].model == "saved-model"
+    assert "schema" in captured["system"]
+    assert captured["json_output"] is True
     if name == "openai":
         for item in [captured["schema"], *captured["schema"]["$defs"].values()]:
             assert set(item["required"]) == set(item["properties"])
@@ -116,73 +112,17 @@ def test_provider_uses_pi_and_preserves_domain_contract(monkeypatch, provider_cl
 
 @pytest.mark.parametrize("text", ["", "[]", '{"headline":{}}', "not JSON"])
 def test_invalid_domain_output_is_not_persistable(monkeypatch, text) -> None:
-    monkeypatch.setattr(pi, "_invoke", lambda *_: {"text": text, "usage": {}})
+    async def request_completion(*_args, **_kwargs):
+        return {"text": text, "usage": {}}
+
+    monkeypatch.setattr(transport, "request_completion", request_completion)
     provider = DeepSeekProvider(api_key="synthetic-key", model="saved-model")
     with pytest.raises(ProviderError, match="provider_invalid_output"):
         provider.analyze(definition(), {})
 
 
-def test_bridge_uses_stdin_not_arguments_env_or_logs(monkeypatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "ambient-key")
-    monkeypatch.setenv("NODE_OPTIONS", "untrusted-option")
-
-    def run(command, **kwargs):
-        assert "synthetic-key" not in repr(command)
-        assert "OPENAI_API_KEY" not in kwargs["env"]
-        assert "NODE_OPTIONS" not in kwargs["env"]
-        assert json.loads(kwargs["input"])["apiKey"] == "synthetic-key"
-        assert kwargs["timeout"] == 25
-        return SimpleNamespace(returncode=0, stdout='{"text":"OK"}', stderr="")
-
-    monkeypatch.setattr(pi.subprocess, "run", run)
-    assert pi._invoke({"provider": "deepseek", "apiKey": "synthetic-key"}, 20)["text"] == "OK"
-
-
-@pytest.mark.parametrize(
-    "output, returncode, expected",
-    [
-        ('{"error":"provider_auth_failed"}', 0, "provider_auth_failed"),
-        ('{"error":"synthetic-key must not leak"}', 0, "provider_unavailable"),
-        ("not-json-with-synthetic-key", 1, "provider_runtime_unavailable"),
-    ],
-)
-def test_bridge_errors_never_include_child_output(monkeypatch, output, returncode, expected):
-    monkeypatch.setattr(
-        pi.subprocess,
-        "run",
-        lambda *a, **k: SimpleNamespace(
-            returncode=returncode, stdout=output, stderr="synthetic-key"
-        ),
-    )
-    with pytest.raises(ProviderError, match=expected) as error:
-        pi._invoke({"provider": "deepseek"}, 1)
-    assert "synthetic-key" not in str(error.value)
-
-
-def test_bridge_timeout_is_safe(monkeypatch):
-    def run(*args, **kwargs):
-        raise subprocess.TimeoutExpired("node synthetic-key", 1, output="private context")
-
-    monkeypatch.setattr(pi.subprocess, "run", run)
-    with pytest.raises(ProviderError, match="provider_unavailable") as error:
-        pi._invoke({"provider": "deepseek"}, 1)
-    assert error.value.__suppress_context__
-
-
-_BRIDGE_MODULES = Path(pi.__file__).resolve().parents[1] / "_pi" / "node_modules"
-
-
-@pytest.mark.skipif(
-    not _BRIDGE_MODULES.is_dir() and not os.environ.get("CI"),
-    reason="model bridge dependencies are not installed; run `npm run llm:install`",
-)
-def test_installed_bridge_imports_pi_without_ambient_auth():
-    with pytest.raises(ProviderError, match="provider_not_configured"):
-        pi._invoke({"provider": "deepseek", "apiKey": ""}, 5)
-
-
 def test_provider_factory_rejects_missing_credentials_and_unknown_provider() -> None:
-    with pytest.raises(RuntimeError, match="deepseek credential"):
+    with pytest.raises(ProviderError, match="provider_not_configured"):
         create_provider(provider="deepseek", model="flash")
     with pytest.raises(ValueError, match="unsupported"):
         create_provider(provider="unknown", model="test")

@@ -41,6 +41,7 @@ contracts.
 - [Trading 212 ingestion](architecture/trading212-ingestion.md),
   [security identity and GICS](architecture/security-master-and-gics.md), and
   [optional LLM synthesis](architecture/llm-synthesis.md)
+- [Assistant agent runtime](architecture/agent-runtime.md)
 
 ## Operate and recover
 

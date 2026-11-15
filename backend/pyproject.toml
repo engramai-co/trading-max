@@ -13,6 +13,7 @@ dependencies = [
     "openpyxl>=3.1,<4",
     "pandas>=2.2",
     "pydantic>=2.11,<3",
+    "pydantic-ai-slim[anthropic,google,openai]==2.68.0",
     "pypdf>=6.15,<7",
     "xlrd>=2.0,<3",
     "yfinance>=0.2.54",
@@ -36,7 +37,8 @@ packages = ["src/trading_max"]
 artifacts = ["src/trading_max/reference/data/*.json"]
 
 [tool.hatch.build]
-exclude = ["**/node_modules/**", "**/_pi/test/**"]
+# Keep the device-login scripts and lock; dependent Node packages are installed separately.
+exclude = ["**/node_modules/**", "**/_pi/test/**", "**/_pi/complete.mjs"]
 
 [tool.hatch.build.targets.sdist]
 artifacts = ["src/trading_max/reference/data/*.json"]

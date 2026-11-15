@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .llm_routing import MAX_MODEL_ID_LENGTH, LLMProvider, ProviderAuth
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -671,6 +673,9 @@ class IntegrationSummary(ApiModel):
         "eodhd",
         "anthropic",
         "google",
+        "openrouter",
+        "ollama",
+        "lmstudio",
     ]
     profile: str | None = None
     enabled: bool = False
@@ -694,6 +699,58 @@ class LLMProviderDescriptor(ApiModel):
     models: list[str] = Field(default_factory=list)
     default_model: str
     auth_method: Literal["api_key", "oauth"] = "api_key"
+
+
+AssistantReasoning = Literal["minimal", "low", "medium", "high", "xhigh"]
+_MAX_ASSISTANT_ROUTE_LENGTH = MAX_MODEL_ID_LENGTH + 20
+
+
+class AssistantPreferences(ApiModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+    route: str | None
+    reasoning: AssistantReasoning | None
+    accepted_consent_revision: int | None
+    accepted_at: datetime | None
+    revision: int
+    updated_at: datetime
+
+
+class AssistantPreferencesUpdate(ApiModel):
+    enabled: bool | None = None
+    route: str | None = Field(default=None, max_length=_MAX_ASSISTANT_ROUTE_LENGTH)
+    reasoning: AssistantReasoning | None = None
+    accepted_consent_revision: int | None = Field(default=None, ge=1, strict=True)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class AssistantProviderDescriptor(ApiModel):
+    provider: LLMProvider
+    label: str
+    base_url: str
+    models: list[str]
+    default_model: str | None
+    auth_method: ProviderAuth
+    freeform_models: bool
+    local: bool
+
+
+class AssistantSettingsResponse(AssistantPreferences):
+    consent_revision: int
+    providers: list[AssistantProviderDescriptor]
+    integrations: list[IntegrationSummary]
+
+
+class AssistantIntegrationCandidate(ApiModel):
+    api_key: str | None = Field(default=None, min_length=1, max_length=500, repr=False)
+    model: str = Field(min_length=1, max_length=MAX_MODEL_ID_LENGTH)
+    base_url: str | None = Field(default=None, max_length=2_000)
+
+
+class AssistantIntegrationRequest(AssistantIntegrationCandidate):
+    validation_token: str = Field(min_length=1, max_length=2_000)
+    enabled: bool = True
 
 
 class LLMRoutePolicy(ApiModel):

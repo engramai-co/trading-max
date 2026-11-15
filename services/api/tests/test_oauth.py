@@ -6,9 +6,13 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import anyio
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
-from trading_max.synthesis.providers.pi import ProviderError
+from trading_max.llm import ProviderError
+from trading_max.llm import model as transport
+from trading_max.synthesis.providers.model import user_message
 
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.config import Settings
@@ -126,28 +130,60 @@ def test_rotating_refresh_is_serialized_and_persisted_before_inference(tmp_path,
     credentials = InMemoryCredentialStore({REFERENCE: json.dumps(credential())})
     calls = []
 
-    def invoke(request, timeout):
-        if request.get("operation") == "resolve":
-            calls.append(request["credential"]["refresh"])
-            time.sleep(0.01)
-            return {
-                "auth": {"apiKey": "rotated-access"},
-                "credential": credential("rotated-refresh"),
-            }
+    async def mock(request):
+        if request.url.host == "auth.openai.com":
+            assert b"grant_type=refresh_token" in request.content
+            assert b"refresh_token=synthetic-refresh" in request.content
+            calls.append("refresh")
+            await anyio.sleep(0.04)
+            return httpx2.Response(
+                200,
+                json={
+                    "access_token": "rotated-access",
+                    "refresh_token": "rotated-refresh",
+                    "expires_in": 3600,
+                },
+            )
+        assert request.url.host == "chatgpt.com"
+        assert request.headers["authorization"] == "Bearer rotated-access"
+        assert request.headers["chatgpt-account-id"] == "synthetic-account"
         assert json.loads(credentials.get(REFERENCE))["refresh"] == "rotated-refresh"
-        raise ProviderError(provider="openai-codex", code="provider_unavailable")
+        calls.append("inference")
+        return httpx2.Response(400, json={"error": {"message": "synthetic upstream failure"}})
 
-    monkeypatch.setattr("services.api.trading_max_api.oauth._invoke", invoke)
-    monkeypatch.setattr("trading_max.synthesis.providers.pi._invoke", invoke)
+    monkeypatch.setattr(transport, "_base_transport", lambda: httpx2.MockTransport(mock))
     vaults = [OAuthCredentialVault(tmp_path, credentials) for _ in range(2)]
+
+    def complete(vault):
+        with pytest.raises(ProviderError, match="provider_model_rejected"):
+            vault.provider("gpt-5.6-luna").complete(messages=[user_message("Fixture")])
+
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda vault: vault.authorize(), vaults))
-    assert calls == ["synthetic-refresh", "rotated-refresh"]
-    assert results == [{"apiKey": "rotated-access"}] * 2
-    with pytest.raises(ProviderError):
-        vaults[0].provider("gpt-5.6-luna").complete(messages=[])
-    assert json.loads(credentials.get(REFERENCE))["refresh"] == "rotated-refresh"
+        list(pool.map(complete, vaults))
+    assert calls == ["refresh", "inference", "inference"]
+    saved = json.loads(credentials.get(REFERENCE))
+    assert saved["access"] == "rotated-access"
+    assert saved["refresh"] == "rotated-refresh"
+    assert saved["expires"] > time.time() * 1000
     assert "synthetic" not in (tmp_path / ".openai-oauth.lock").read_text()
+
+
+def test_failed_or_redirected_refresh_is_never_replayed(tmp_path, monkeypatch):
+    credentials = InMemoryCredentialStore({REFERENCE: json.dumps(credential())})
+    calls = []
+
+    def mock(request):
+        calls.append(request.url)
+        assert request.url.host == "auth.openai.com"
+        return httpx2.Response(307, headers={"location": "https://fixture.invalid/forward"})
+
+    monkeypatch.setattr(transport, "_base_transport", lambda: httpx2.MockTransport(mock))
+    with pytest.raises(ProviderError, match="provider_auth_failed"):
+        OAuthCredentialVault(tmp_path, credentials).provider("gpt-5.6-luna").complete(
+            messages=[user_message("Fixture")]
+        )
+    assert len(calls) == 1
+    assert json.loads(credentials.get(REFERENCE)) == credential()
 
 
 def test_keychain_failure_does_not_report_connected_or_change_default(tmp_path, monkeypatch):
@@ -207,8 +243,8 @@ def test_oauth_factory_resolves_latest_credential_at_request_time(tmp_path, monk
     )
     provider = factory("ticker")
     assert provider.name == "openai-codex" and provider.model == "gpt-5.6-luna"
-    assert provider.api_key == ""
+    assert provider.connection.api_key is None
     vault.delete(preferences)
     with pytest.raises(ProviderError, match="provider_not_configured"):
-        provider.complete(messages=[])
+        provider.complete(messages=[user_message("Fixture")])
     preferences.close()

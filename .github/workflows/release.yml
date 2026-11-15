@@ -62,7 +62,7 @@ jobs:
 
       - name: Install and test Pi model transport
         run: |
-          npm run llm:install
+          npm run oauth:install
           npm run test:llm
 
       - name: Install deployment test shell

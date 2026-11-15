@@ -9,18 +9,16 @@ import secrets
 import subprocess
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from trading_max.synthesis.providers.pi import (
-    PI_ROOT,
-    PiProvider,
-    ProviderError,
-    _invoke,
-    _node,
-    bridge_environment,
-)
+import anyio
+from pydantic_ai.providers.openai_codex import OpenAICodexCredentials, OpenAICodexCredentialSource
+from trading_max.llm import ProviderError
+from trading_max.llm.device_login import PI_ROOT, bridge_environment, node_executable
+from trading_max.llm.model import TimedCodexCredentials
+from trading_max.synthesis.providers.model import ModelProvider
 
 from .credentials import CredentialStore, CredentialStoreError, secret_fingerprint
 from .llm_routing import provider_spec
@@ -45,34 +43,93 @@ def _credential(value: object) -> dict:
 
 
 @contextmanager
-def _credential_lock(path: Path):
-    """Serialize refresh across API/worker processes; the lock file has no secrets."""
+def _credential_lock_file(path: Path):
+    """Open the shared lock file; it contains no credentials."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
         raise CredentialStoreError("invalid credential lock")
     with path.open("a+b") as handle:
         path.chmod(0o600)
-        deadline = time.monotonic() + 60
+        if os.name == "nt":
+            handle.write(b"\0")
+            handle.flush()
+        yield handle
+
+
+def _try_credential_lock(handle) -> bool:
+    try:
         if os.name == "nt":
             import msvcrt
 
-            handle.write(b"\0")
-            handle.flush()
-        while True:
-            try:
-                if os.name == "nt":
-                    handle.seek(0)
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
 
-                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    raise CredentialStoreError("credential store busy") from None
-                time.sleep(0.05)
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+@contextmanager
+def _credential_lock(path: Path):
+    """Serialize synchronous sign-in or disconnect with model refresh."""
+    with _credential_lock_file(path) as handle:
+        deadline = time.monotonic() + 60
+        while not _try_credential_lock(handle):
+            if time.monotonic() >= deadline:
+                raise CredentialStoreError("credential store busy")
+            time.sleep(0.05)
         yield
+
+
+class _KeychainCodexCredentialSource(OpenAICodexCredentialSource):
+    def __init__(self, credentials: CredentialStore, lock_path: Path):
+        self._store = credentials
+        self._lock_path = lock_path
+
+    async def load(self) -> OpenAICodexCredentials:
+        try:
+            stored = await anyio.to_thread.run_sync(self._store.get, REFERENCE)
+            if not stored:
+                raise ProviderError(provider=PROVIDER, code="provider_not_configured")
+            value = _credential(json.loads(stored))
+            return TimedCodexCredentials(
+                access_token=value["access"],
+                refresh_token=value["refresh"],
+                account_id=value["accountId"],
+                expires_ms=float(value["expires"]),
+            )
+        except (CredentialStoreError, OSError, KeyError, TypeError, ValueError):
+            raise ProviderError(provider=PROVIDER, code="provider_auth_failed") from None
+
+    async def save(self, credentials: OpenAICodexCredentials) -> None:
+        if not isinstance(credentials, TimedCodexCredentials):
+            raise ProviderError(provider=PROVIDER, code="provider_auth_failed")
+        value = {
+            "type": "oauth",
+            "access": credentials.access_token,
+            "refresh": credentials.refresh_token,
+            "accountId": credentials.account_id,
+            "expires": round(credentials.expires_ms),
+        }
+        await anyio.to_thread.run_sync(self._store.put, REFERENCE, json.dumps(value))
+
+    @asynccontextmanager
+    async def refresh_lock(self):
+        try:
+            with _credential_lock_file(self._lock_path) as handle:
+                # Wait without holding the event loop or deferring cancellation.
+                with anyio.fail_after(60):
+                    while not _try_credential_lock(handle):  # noqa: ASYNC110 - another process owns the lock
+                        await anyio.sleep(0.05)
+                # Once a grant starts, cancellation cannot strand a rotated
+                # token before the native provider saves it.
+                with anyio.CancelScope(shield=True), anyio.fail_after(25):
+                    yield
+        except (CredentialStoreError, OSError):
+            raise ProviderError(provider=PROVIDER, code="provider_auth_failed") from None
 
 
 class OAuthCredentialVault:
@@ -80,36 +137,17 @@ class OAuthCredentialVault:
         self.credentials = credentials
         self.lock_path = root / ".openai-oauth.lock"
 
-    def authorize(self) -> dict:
-        try:
-            with _credential_lock(self.lock_path):
-                stored = self.credentials.get(REFERENCE)
-                if not stored:
-                    raise ProviderError(provider=PROVIDER, code="provider_not_configured")
-                credential = _credential(json.loads(stored))
-                result = _invoke(
-                    {
-                        "provider": PROVIDER,
-                        "operation": "resolve",
-                        "credential": credential,
-                    },
-                    30,
-                )
-                refreshed = _credential(result["credential"])
-                # Save a rotated refresh token BEFORE any inference request can fail.
-                if refreshed != credential:
-                    self.credentials.put(REFERENCE, json.dumps(refreshed))
-                return {"apiKey": result["auth"]["apiKey"]}
-        except (CredentialStoreError, OSError, KeyError, TypeError, ValueError):
-            raise ProviderError(provider=PROVIDER, code="provider_auth_failed") from None
+    def credential_source(self) -> OpenAICodexCredentialSource:
+        """Return an explicit, lazy credential source for a new model instance."""
+        return _KeychainCodexCredentialSource(self.credentials, self.lock_path)
 
-    def provider(self, model: str) -> PiProvider:
-        return PiProvider(
-            api_key="",
+    def provider(self, model: str) -> ModelProvider:
+        return ModelProvider(
+            api_key=None,
             model=model,
             provider_name=PROVIDER,
             base_url=provider_spec(PROVIDER).base_url,
-            authorization=self.authorize,
+            codex_credentials=self.credential_source(),
         )
 
     def save(self, credential: dict, preferences: SettingsRepository, model: str, default: bool):
@@ -219,7 +257,7 @@ class OAuthLoginManager:
         watchdog = None
         try:
             process = subprocess.Popen(  # noqa: S603
-                [_node(), str(PI_ROOT / "index.mjs")],
+                [node_executable(), str(PI_ROOT / "index.mjs")],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,

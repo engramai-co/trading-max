@@ -1,0 +1,348 @@
+"""Assistant runtime: Pydantic AI loop, Vercel AI stream and SQLite conversations."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+import anyio
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from pydantic_ai import Agent, Conversation, FunctionToolset, RunContext, Tool
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelRequest, ToolReturnPart
+from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.models.wrapper import WrapperModel
+from trading_max.infrastructure import SqliteDatabase
+
+from services.api.trading_max_api.agent.runtime import build_assistant_agent, run_settings
+from services.api.trading_max_api.agent.service import (
+    AssistantService,
+    AssistantUnavailable,
+    BoundModel,
+)
+from services.api.trading_max_api.agent.store import SqliteConversationStore
+from services.api.trading_max_api.routes.assistant import router
+
+MIGRATIONS = Path(__file__).resolve().parents[3] / "backend" / "migrations"
+
+
+@dataclass(frozen=True)
+class SyntheticDeps:
+    page: str | None
+    timezone: str | None
+    total: float = 1234.5
+
+
+def lookup_total(ctx: RunContext[SyntheticDeps]) -> dict:
+    """Synthetic portfolio total."""
+    return {"status": "ok", "data": {"total": ctx.deps.total}, "evidence_id": "ev_test"}
+
+
+def save_note(ctx: RunContext[SyntheticDeps], text: str) -> str:
+    """A synthetic write that needs approval (infrastructure check only)."""
+    return f"saved:{text}"
+
+
+def toolset() -> FunctionToolset:
+    return FunctionToolset([Tool(lookup_total), Tool(save_note, requires_approval=True)])
+
+
+def database(path: Path) -> SqliteDatabase:
+    return SqliteDatabase(path / "trading_max.db", migrations_dir=MIGRATIONS)
+
+
+def answer_after_tool(tool: str, args: str = "{}"):
+    seen: list[list] = []
+
+    async def stream(messages, info: AgentInfo):
+        seen.append(list(messages))
+        last = messages[-1]
+        if isinstance(last, ModelRequest) and any(
+            isinstance(part, ToolReturnPart) for part in last.parts
+        ):
+            yield "Total is "
+            yield "1,234.50 [ev_test]."
+            return
+        yield {0: DeltaToolCall(name=tool, json_args=args, tool_call_id=f"call_{len(seen)}")}
+
+    return stream, seen
+
+
+def make_app(tmp_path: Path, stream, *, bind=None) -> tuple[FastAPI, AssistantService]:
+    async def bound() -> BoundModel:
+        return BoundModel(FunctionModel(stream_function=stream), run_settings(None))
+
+    service = AssistantService(
+        agent=build_assistant_agent([toolset()]),
+        store=SqliteConversationStore(database(tmp_path)),
+        bind_model=bind or bound,
+        deps_for_run=lambda page, tz: SyntheticDeps(page, tz),
+    )
+    app = FastAPI()
+    app.state.settings = type("S", (), {"api_token": None})()
+    app.state.assistant = service
+    app.include_router(router)
+    return app, service
+
+
+def events(body: str) -> list[dict]:
+    return [
+        json.loads(line[6:])
+        for line in body.splitlines()
+        if line.startswith("data: ") and line[6:] != "[DONE]"
+    ]
+
+
+def user_turn(chat: str, message_id: str, text: str) -> dict:
+    return {
+        "trigger": "submit-message",
+        "id": chat,
+        "messages": [{"id": message_id, "role": "user", "parts": [{"type": "text", "text": text}]}],
+    }
+
+
+def test_store_survives_a_fresh_process_and_prunes_on_delete(tmp_path):
+    async def scenario():
+        agent = Agent(TestModel())
+        store = SqliteConversationStore(database(tmp_path))
+        conversation = await store.load("c1") or Conversation(conversation_id="c1")
+        result = await agent.run("What is my total?", conversation=conversation)
+        await store.save(result, scope="workspace")
+
+        fresh = SqliteConversationStore(database(tmp_path))
+        loaded = await fresh.load("c1", scope="workspace")
+        assert loaded is not None
+        assert len(loaded.messages) == len(result.all_messages())
+        assert await fresh.load("c1", scope="other") is None
+        assert [r.conversation_id for r in await fresh.list_conversations(scope="workspace")] == [
+            "c1"
+        ]
+        assert (await fresh.titles(["c1"]))["c1"] == "What is my total?"
+        assert len(await fresh.read_history((await fresh.read_record("c1")).head_id, limit=1)) == 1
+
+        await fresh.delete("c1", scope="workspace")
+        assert await fresh.read_record("c1") is None
+        with fresh._database.read() as connection:  # noqa: SLF001 - verifying erasure
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM assistant_conversation_entries"
+                ).fetchone()[0]
+                == 0
+            )
+
+    import asyncio
+
+    asyncio.run(scenario())
+
+
+def test_stale_revision_is_a_conflict(tmp_path):
+    from pydantic_ai.conversation_store import ConversationConflict
+
+    async def scenario():
+        store = SqliteConversationStore(database(tmp_path))
+        agent = Agent(TestModel())
+        result = await agent.run("hello", conversation=Conversation(conversation_id="c2"))
+        await store.save(result)
+        record = await store.read_record("c2")
+        with pytest.raises(ConversationConflict):
+            await store.write_record(record, expected_revision="not-the-revision")
+
+    import asyncio
+
+    asyncio.run(scenario())
+
+
+def test_chat_streams_a_tool_grounded_answer_and_keeps_history_on_the_server(tmp_path):
+    stream, seen = answer_after_tool("lookup_total")
+    app, _ = make_app(tmp_path, stream)
+    client = TestClient(app)
+
+    first = client.post(
+        "/v1/assistant/chat?page=overview&tz=Asia/Shanghai",
+        json=user_turn("chat1", "u1", "What is my total?"),
+    )
+    assert first.status_code == 200
+    chunks = events(first.text)
+    kinds = [chunk["type"] for chunk in chunks]
+    assert "tool-input-available" in kinds and "tool-output-available" in kinds
+    text = "".join(chunk.get("delta", "") for chunk in chunks if chunk["type"] == "text-delta")
+    assert text == "Total is 1,234.50 [ev_test]."
+    assert any(chunk.get("type") == "data-conversation-saved" for chunk in chunks)
+    instructions = seen[0][0].instructions or ""
+    assert "Asia/Shanghai" in instructions and "overview page" in instructions
+
+    listed = client.get("/v1/assistant/conversations").json()
+    assert [row["id"] for row in listed] == ["chat1"]
+    assert listed[0]["title"] == "What is my total?"
+
+    # The second turn sends only the new message; the server supplies the history.
+    second = client.post("/v1/assistant/chat", json=user_turn("chat1", "u2", "And again?"))
+    assert second.status_code == 200
+    history = seen[-2]
+    assert any(
+        isinstance(message, ModelRequest)
+        and any(getattr(part, "content", None) == "What is my total?" for part in message.parts)
+        for message in history
+    )
+
+    stored = client.get("/v1/assistant/conversations/chat1").json()
+    assert stored["id"] == "chat1"
+    assert [message["role"] for message in stored["messages"]].count("user") == 2
+
+    assert client.delete("/v1/assistant/conversations/chat1").status_code == 204
+    assert client.get("/v1/assistant/conversations/chat1").status_code == 404
+
+
+def test_unavailable_assistant_and_invalid_ids_are_rejected_before_any_run(tmp_path):
+    async def disabled() -> BoundModel:
+        raise AssistantUnavailable("assistant_disabled", 403)
+
+    stream, seen = answer_after_tool("lookup_total")
+    app, _ = make_app(tmp_path, stream, bind=disabled)
+    client = TestClient(app)
+    response = client.post("/v1/assistant/chat", json=user_turn("chat2", "u1", "hi"))
+    assert response.status_code == 403
+    assert response.json() == {"detail": {"code": "assistant_disabled"}}
+    bad = client.post("/v1/assistant/chat", json=user_turn("../etc", "u1", "hi"))
+    assert bad.status_code == 422
+    assert seen == []
+
+
+def test_upstream_error_text_never_reaches_the_client(tmp_path):
+    async def failing(messages, info: AgentInfo):
+        raise ModelHTTPError(
+            status_code=401, model_name="m", body={"error": "key sk-SECRET at https://x"}
+        )
+        yield ""  # pragma: no cover - makes this an async generator
+
+    app, _ = make_app(tmp_path, failing)
+    response = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat3", "u1", "hi"))
+    assert response.status_code == 200
+    errors = [chunk for chunk in events(response.text) if chunk["type"] == "error"]
+    assert errors and errors[0]["errorText"] == "provider_auth_failed"
+    assert "SECRET" not in response.text and "https://x" not in response.text
+    # A failed run is not saved.
+    assert TestClient(app).get("/v1/assistant/conversations").json() == []
+
+
+def test_an_approval_resumes_in_a_fresh_process(tmp_path):
+    stream, _ = answer_after_tool("save_note", '{"text":"hi"}')
+    app, _ = make_app(tmp_path, stream)
+    first = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat4", "u1", "save hi"))
+    request = next(c for c in events(first.text) if c["type"] == "tool-approval-request")
+    call = next(c for c in events(first.text) if c["type"] == "tool-input-available")
+
+    # A new service on the same database stands in for a restarted API process.
+    restarted, _ = make_app(tmp_path, stream)
+    approve = {
+        "trigger": "submit-message",
+        "id": "chat4",
+        "messages": [
+            {
+                "id": "a1",
+                "role": "assistant",
+                "parts": [
+                    {
+                        "type": "tool-save_note",
+                        "toolCallId": call["toolCallId"],
+                        "state": "approval-responded",
+                        "input": {"text": "hi"},
+                        "approval": {"id": request["approvalId"], "approved": True},
+                    }
+                ],
+            }
+        ],
+    }
+    second = TestClient(restarted).post("/v1/assistant/chat", json=approve)
+    outputs = [c for c in events(second.text) if c["type"] == "tool-output-available"]
+    assert outputs and outputs[0]["output"] == "saved:hi"
+
+
+class CountingModel(WrapperModel):
+    """Records context entry and exit, which own the provider's HTTP client."""
+
+    def __init__(self, wrapped):
+        super().__init__(wrapped)
+        self.entered = 0
+        self.exited = 0
+
+    async def __aenter__(self):
+        self.entered += 1
+        return await super().__aenter__()
+
+    async def __aexit__(self, *args):
+        self.exited += 1
+        return await super().__aexit__(*args)
+
+
+def test_the_model_client_is_released_after_the_stream(tmp_path):
+    stream, _ = answer_after_tool("lookup_total")
+    model = CountingModel(FunctionModel(stream_function=stream))
+
+    async def bound() -> BoundModel:
+        return BoundModel(model, run_settings(None))
+
+    app, _ = make_app(tmp_path, stream, bind=bound)
+    response = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat5", "u1", "hi"))
+    assert response.status_code == 200
+    assert (model.entered, model.exited) == (1, 1)
+
+
+def test_closing_the_connection_cancels_the_run(tmp_path):
+    import socket
+    import threading
+    import time
+
+    import httpx
+    import uvicorn
+
+    started = threading.Event()
+
+    async def slow(messages, info: AgentInfo):
+        yield "first "
+        started.set()
+        for _ in range(100):
+            await anyio.sleep(0.05)
+            yield "."
+
+    model = CountingModel(FunctionModel(stream_function=slow))
+
+    async def bound() -> BoundModel:
+        return BoundModel(model, run_settings(None))
+
+    app, _ = make_app(tmp_path, slow, bind=bound)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started and time.monotonic() < deadline:
+            time.sleep(0.02)
+        with (
+            httpx.Client(timeout=10) as client,
+            client.stream(
+                "POST",
+                f"http://127.0.0.1:{port}/v1/assistant/chat",
+                json=user_turn("chat6", "u1", "go"),
+            ) as response,
+        ):
+            assert response.status_code == 200
+            for _ in response.iter_raw():
+                if started.is_set():
+                    break
+        deadline = time.monotonic() + 5
+        while model.exited == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert model.exited == 1
+        # A stopped run is not saved.
+        assert TestClient(app).get("/v1/assistant/conversations").json() == []
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)

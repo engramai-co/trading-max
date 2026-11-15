@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -12,6 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from starlette.concurrency import run_in_threadpool
+from trading_max import llm
 from trading_max.analytics.alpaca_prices import AlpacaDataError, AlpacaHistoricalClient
 from trading_max.infrastructure.eodhd_index_prices import EodhdError
 from trading_max.ingestion.brokers.trading212 import (
@@ -19,16 +22,17 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212Credentials,
     Trading212Error,
 )
-from trading_max.synthesis import ProviderError
-from trading_max.synthesis.providers.pi import PiProvider, user_message
 
+from ..assistant_settings import ASSISTANT_CONSENT_REVISION, AssistantSettingsError
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
     PROVIDER_REGISTRY,
     LLMRouteError,
     ProviderSpec,
+    provider_base_url,
     provider_routes,
     provider_spec,
+    validate_model,
 )
 from ..market_data_runtime import alpaca_budget
 from ..models import (
@@ -36,6 +40,12 @@ from ..models import (
     AlpacaIntegrationCandidate,
     AlpacaIntegrationRequest,
     ApiModel,
+    AssistantIntegrationCandidate,
+    AssistantIntegrationRequest,
+    AssistantPreferences,
+    AssistantPreferencesUpdate,
+    AssistantProviderDescriptor,
+    AssistantSettingsResponse,
     AutomationSettings,
     AutomationSettingsUpdate,
     CfdAccountPreferenceUpdate,
@@ -61,7 +71,10 @@ from ..models import (
     UserProfile,
     UserProfilePatch,
 )
-from ..provider_runtime import ProviderRuntimeError
+from ..provider_runtime import (
+    ProviderRuntimeError,
+    assistant_provider_credentials,
+)
 from ..valuation_assumptions import (
     ValuationAssumptionsHistoryEntry,
     ValuationAssumptionsState,
@@ -132,18 +145,13 @@ def _check_openai_compatible_connection(
     base_url: str,
     provider_label: str,
 ) -> str:
-    provider = PiProvider(
-        api_key=api_key,
-        model=model,
-        base_url=base_url,
-        provider_name=provider_label.lower(),
-        max_attempts=1,
+    asyncio.run(
+        llm.check_connection(
+            llm.ModelConnection(
+                provider=provider_label.lower(), model=model, base_url=base_url, api_key=api_key
+            )
+        )
     )
-    result = provider.complete(
-        messages=[user_message("Reply with OK.")], max_tokens=32, timeout=20, temperature=0
-    )
-    if not result.get("text", "").strip():
-        raise ValueError("provider returned an empty completion")
     return f"{provider_label} connectivity check succeeded"
 
 
@@ -155,7 +163,11 @@ def _integration_overview(request: Request) -> IntegrationOverview:
         ("alpaca", None),
         ("trading212", "invest"),
         ("trading212", "isa"),
-        *((spec.provider, None) for spec in PROVIDER_REGISTRY.values() if not spec.legacy),
+        *(
+            (spec.provider, None)
+            for spec in PROVIDER_REGISTRY.values()
+            if not spec.legacy and "portfolio" in spec.allowed_workloads
+        ),
     )
     existing = {(item.provider, item.profile): item for item in preferences.list_integrations()}
     integrations: list[IntegrationSummary] = []
@@ -208,7 +220,7 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
                 "message": "the operating-system credential store is unavailable",
             },
         )
-    if isinstance(exc, (ProviderRuntimeError, ProviderError, EodhdError)):
+    if isinstance(exc, (ProviderRuntimeError, llm.ProviderError, EodhdError)):
         code = exc.code
     elif isinstance(exc, AlpacaDataError):
         code = (
@@ -236,7 +248,17 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
         code = "provider_invalid_output"
     else:
         code = "integration_test_failed"
-    status_code = 503 if code in {"provider_unavailable", "provider_rate_limited"} else 422
+    status_code = (
+        503
+        if code
+        in {
+            "provider_unavailable",
+            "provider_rate_limited",
+            "provider_runtime_unavailable",
+            "credential_store_unavailable",
+        }
+        else 422
+    )
     return HTTPException(
         status_code=status_code,
         detail={
@@ -341,9 +363,12 @@ def _require_validation_token(
         ) from exc
 
 
-def _llm_spec_or_404(provider: str) -> ProviderSpec:
+def _llm_spec_or_404(provider: str, *, workload: str = "portfolio") -> ProviderSpec:
     try:
-        return provider_spec(provider)
+        spec = provider_spec(provider)
+        if workload not in spec.allowed_workloads:
+            raise LLMRouteError("provider is not available for this workload")
+        return spec
     except LLMRouteError as exc:
         raise HTTPException(
             status_code=404,
@@ -700,6 +725,209 @@ def delete_deepseek(request: Request) -> None:
     except CredentialStoreError as exc:
         raise _safe_integration_error(exc) from exc
     preferences.remove_integration(provider="deepseek", profile=None)
+
+
+def _assistant_settings(
+    request: Request, preferences: AssistantPreferences | None = None
+) -> AssistantSettingsResponse:
+    repository = app_service(request, "settings_repository")
+    if preferences is None:
+        preferences = repository.get_assistant_preferences()
+    specs = [spec for spec in PROVIDER_REGISTRY.values() if "assistant" in spec.allowed_workloads]
+    integrations = {item.provider: item for item in repository.list_integrations()}
+    return AssistantSettingsResponse(
+        **preferences.model_dump(by_alias=False),
+        consent_revision=ASSISTANT_CONSENT_REVISION,
+        providers=[
+            AssistantProviderDescriptor(
+                provider=spec.provider,
+                label=spec.label,
+                base_url=spec.base_url,
+                models=list(spec.models),
+                default_model=spec.default_model,
+                auth_method=spec.auth_method,
+                freeform_models=spec.freeform_models,
+                local=spec.local,
+            )
+            for spec in specs
+        ],
+        integrations=[
+            integrations.get(spec.provider)
+            or IntegrationSummary(
+                integration_id=spec.credential_ref,
+                provider=spec.provider,
+                needs_secret=not spec.local,
+                updated_at=preferences.updated_at,
+            )
+            for spec in specs
+        ],
+    )
+
+
+@router.get("/v1/settings/assistant", response_model=AssistantSettingsResponse)
+def get_assistant_settings(request: Request) -> AssistantSettingsResponse:
+    return _assistant_settings(request)
+
+
+@router.put(
+    "/v1/settings/assistant",
+    response_model=AssistantSettingsResponse,
+    dependencies=[Depends(require_write_auth)],
+)
+def save_assistant_settings(
+    body: AssistantPreferencesUpdate, request: Request
+) -> AssistantSettingsResponse:
+    repository = app_service(request, "settings_repository")
+    try:
+        preferences = repository.save_assistant_preferences(body)
+    except AssistantSettingsError as exc:
+        raise HTTPException(
+            status_code=409 if exc.code == "assistant_preferences_conflict" else 422,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from None
+    return _assistant_settings(request, preferences)
+
+
+def _assistant_candidate(
+    body: AssistantIntegrationCandidate, spec: ProviderSpec
+) -> AssistantIntegrationCandidate:
+    try:
+        model = validate_model(spec, body.model)
+    except LLMRouteError:
+        raise HTTPException(status_code=422, detail={"code": "model_not_allowed"}) from None
+    try:
+        base_url = provider_base_url(spec, body.base_url)
+    except LLMRouteError as exc:
+        raise HTTPException(
+            status_code=422, detail={"code": "provider_url_not_allowed", "message": str(exc)}
+        ) from None
+    if body.api_key is not None and not body.api_key.strip():
+        raise HTTPException(status_code=422, detail={"code": "provider_auth_failed"})
+    if spec.auth_method == "oauth" and body.api_key is not None:
+        raise HTTPException(status_code=422, detail={"code": "oauth_login_required"})
+    return AssistantIntegrationCandidate(api_key=body.api_key, model=model, base_url=base_url)
+
+
+def _assistant_candidate_digest(request: Request, candidate: AssistantIntegrationCandidate) -> str:
+    # Bind receipts to the assistant settings flow without exposing a secret digest
+    # that someone could use to test candidate keys offline.
+    payload = candidate.model_dump_json(by_alias=True).encode()
+    return hmac.digest(
+        request.app.state.validation_secret, b"assistant\0" + payload, "sha256"
+    ).hex()
+
+
+@router.post(
+    "/v1/settings/llm/providers/{provider}/assistant/test",
+    response_model=IntegrationTestResult,
+    dependencies=[Depends(require_write_auth)],
+)
+async def test_assistant_provider(
+    provider: str, body: AssistantIntegrationCandidate, request: Request
+) -> IntegrationTestResult:
+    spec = _llm_spec_or_404(provider, workload="assistant")
+    candidate = _assistant_candidate(body, spec)
+    key = candidate.api_key
+    codex_credentials = None
+    try:
+        if key is None and not spec.local:
+            key, codex_credentials = await run_in_threadpool(
+                assistant_provider_credentials,
+                app_service(request, "settings"),
+                spec,
+                app_service(request, "credential_store"),
+            )
+        await llm.check_connection(
+            llm.ModelConnection(
+                provider=spec.provider,
+                model=candidate.model,
+                base_url=candidate.base_url or spec.base_url,
+                api_key=key,
+                codex_credentials=codex_credentials,
+            )
+        )
+    except Exception as exc:
+        raise _safe_integration_error(exc) from None
+    return IntegrationTestResult(
+        integration_id=spec.credential_ref,
+        status="succeeded",
+        tested_at=datetime.now(UTC),
+        message=f"{spec.label} assistant connectivity check succeeded",
+        model=candidate.model,
+        validation_token=(
+            _validation_token(
+                request,
+                integration_id=spec.credential_ref,
+                digest=_assistant_candidate_digest(request, candidate),
+            )
+            if spec.local or candidate.api_key is not None
+            else None
+        ),
+    )
+
+
+@router.put(
+    "/v1/settings/llm/providers/{provider}/assistant",
+    response_model=IntegrationSummary,
+    dependencies=[Depends(require_write_auth)],
+)
+def save_assistant_provider(
+    provider: str, body: AssistantIntegrationRequest, request: Request
+) -> IntegrationSummary:
+    spec = _llm_spec_or_404(provider, workload="assistant")
+    candidate = _assistant_candidate(body, spec)
+    if spec.auth_method == "oauth":
+        raise HTTPException(status_code=422, detail={"code": "oauth_login_required"})
+    if candidate.api_key is None and not spec.local:
+        raise HTTPException(status_code=422, detail={"code": "provider_not_configured"})
+    _require_validation_token(
+        request,
+        integration_id=spec.credential_ref,
+        digest=_assistant_candidate_digest(request, candidate),
+        token=body.validation_token,
+    )
+
+    repository = app_service(request, "settings_repository")
+    credentials = app_service(request, "credential_store")
+    previous = repository.get_integration(spec.provider)
+    try:
+        if candidate.api_key is not None:
+            credentials.put(spec.credential_ref, candidate.api_key)
+        elif previous is not None and previous.credential_fingerprint:
+            credentials.delete(spec.credential_ref)
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from None
+    return repository.save_integration(
+        provider=spec.provider,
+        profile=None,
+        enabled=body.enabled,
+        model=candidate.model,
+        base_url=candidate.base_url,
+        credential_fingerprint=(
+            secret_fingerprint(candidate.api_key) if candidate.api_key is not None else None
+        ),
+        test_status="succeeded",
+    )
+
+
+@router.delete(
+    "/v1/settings/llm/providers/{provider}/assistant",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_write_auth)],
+)
+def delete_assistant_provider(provider: str, request: Request) -> None:
+    spec = _llm_spec_or_404(provider, workload="assistant")
+    if "portfolio" in spec.allowed_workloads:
+        delete_llm_provider(spec.provider, request)
+        return
+    repository = app_service(request, "settings_repository")
+    previous = repository.get_integration(spec.provider)
+    if not spec.local or (previous is not None and previous.credential_fingerprint):
+        try:
+            app_service(request, "credential_store").delete(spec.credential_ref)
+        except CredentialStoreError as exc:
+            raise _safe_integration_error(exc) from None
+    repository.remove_integration(provider=spec.provider, profile=None)
 
 
 @router.get(

@@ -230,7 +230,7 @@ class Release:
             prepare()
             commands = [
                 ["uv", "sync", "--all-packages", "--group", "dev", "--frozen"],
-                ["npm", "run", "llm:install"],
+                ["npm", "run", "oauth:install"],
                 ["npm", "--prefix", "apps/web", "ci", "--no-audit", "--no-fund"],
                 ["npm", "--prefix", "apps/web", "run", "build"],
                 ["npm", "--prefix", "apps/desktop", "ci", "--no-audit", "--no-fund"],
