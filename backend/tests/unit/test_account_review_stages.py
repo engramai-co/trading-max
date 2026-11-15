@@ -208,7 +208,13 @@ def test_account_review_stage_consumes_typed_lenses_and_publishes_both_accounts(
     assert markers.ref.kind == "trade_markers"
     marker_rows = markers.payload["rows"]
     assert {row["ticker"] for row in marker_rows} == {"HOLD", "LOSS", "WIN"}
-    assert next(row for row in marker_rows if row["ticker"] == "HOLD") == {
+    hold = next(row for row in marker_rows if row["ticker"] == "HOLD")
+    fills = hold.pop("fills")
+    assert [(fill["account"], fill["amount"], fill["currency"]) for fill in fills] == [
+        ("invest", 100.0, "GBP"),
+        ("isa", 100.0, "GBP"),
+    ]
+    assert hold == {
         "ticker": "HOLD",
         "date": "2026-08-01",
         "accounts": ["invest", "isa"],

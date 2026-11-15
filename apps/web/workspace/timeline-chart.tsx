@@ -9,8 +9,8 @@ import { Legend, Plot } from "./charts";
 import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
-import { timelineOption, type TimelineLayer } from "./timeline-option";
-import type { TimelineTooltip } from "./timeline-tooltip";
+import { includeDailyMarkers, timelineOption, type TimelineLayer } from "./timeline-option";
+import { timelineReadoutRows, type TimelineTooltip } from "./timeline-tooltip";
 import { valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
 import type { NavPoint } from "@/lib/types";
 import type { HistorySelection } from "@/lib/portfolio/prepared";
@@ -34,6 +34,7 @@ export function TimelineChart({
   height,
   drawdownHeading,
   emptyHeadingLevel,
+  fullscreen = false,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -52,6 +53,7 @@ export function TimelineChart({
   height?: number;
   drawdownHeading?: ReactNode;
   emptyHeadingLevel?: 2 | 3;
+  fullscreen?: boolean;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -88,6 +90,9 @@ export function TimelineChart({
       </>
     );
   }
+  const timestamp = (time: number) => formatDate(time, locale, !dailyDates.has(time)
+    ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
+    : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
   const option = timelineOption(dates, layers, colours, (time) => {
     const zone = intraday ? timeZone : "UTC";
     // One line per date; the year appears only on dates outside the
@@ -98,14 +103,13 @@ export function TimelineChart({
       ? day
       : day + "\n" + year;
   },
-    timeline, details, (time) => formatDate(time, locale, !dailyDates.has(time)
-      ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
-      : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }),
+    timeline, details, timestamp,
     tooltip,
     display,
     observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
     moneyLayout,
     plotHeight,
+    phone ? 320 : 950,
   );
   // Solid is the default. Key only the source exceptions that produced a
   // visible stroke after sampling, using the same series as the chart.
@@ -113,26 +117,70 @@ export function TimelineChart({
     { type: "estimate", dash: "4 3", label: t("重建估算", "Estimate") },
     { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
   ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
+  const calendar = timeline && moneyLayout ? includeDailyMarkers(timeline, dates, layers) : timeline;
+  const rows = new Map<number, number>();
+  const hasValues = (row: number) => layers.some((layer) => layer.lines.some((line) => line.values[row] != null));
+  (calendar?.rowIndexes ?? dates.map((_, i) => i)).forEach((row, position) => {
+    if (row != null && hasValues(row)) rows.set(calendar ? position : Date.parse(dates[row]), row);
+  });
+  const positions = [...rows.keys()];
+  const latestRow = rows.get(positions.at(-1)!)!;
+  const readoutContent = tooltip ?? {
+    primary: layers[0].lines.map((line) => ({ ...line, label: line.name, percentage: layers[0].percentage })),
+    secondary: [...layers.slice(1).flatMap((layer) => layer.lines.map((line) => ({ ...line, label: line.name, percentage: layer.percentage }))), ...details],
+  };
+  const gaps = option.series.flatMap((series) => {
+    if (series.id !== "history-gap:0:0" || !("data" in series) || !Array.isArray(series.data)) return [];
+    return series.data.flatMap((point, index, all) => {
+      if (index % 3 !== 0 || !Array.isArray(point) || !Array.isArray(all[index + 1])) return [];
+      return [[Number(point[0]), Number((all[index + 1] as number[])[0])] as const];
+    });
+  });
   const plot = (
     <Plot
+      key={range ?? label}
       label={label}
+      fullscreen={fullscreen}
+      overlay={moneyLayout && <>
+        <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
+          <Legend items={layers[1].lines.map((line) => ({ label: line.name, dashed: line.dashed, colour: "var(--mx-muted)" }))} />
+        </div>
+        <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>{drawdownHeading}</div>
+      </>}
+      readout={{
+        positions,
+        latest: timelineReadoutRows(readoutContent, latestRow)[0] ?? "",
+        records: fullscreen ? (position) => {
+          const row = rows.get(position);
+          if (row == null) return [];
+          const source = observations?.[row]?.valuationSource ?? "portfolio history";
+          return layers.flatMap((layer) => layer.lines.flatMap((line) => {
+            const value = line.values[row];
+            if (value == null) return [];
+            return [{
+              time: dates[row], zone: dates[row].includes("T") ? timeZone : "UTC", currency: layer.percentage ? "%" : "GBP",
+              basis: layer.percentage ? "fractional return" : "amount", source,
+              gapType: gaps.some(([, end]) => position === end) ? "after-missing-observation" : "",
+              series: line.name, value,
+            }];
+          }));
+        } : undefined,
+        gap: (position) => gaps.some(([start, end]) => position > start + (calendar ? 0.5 : 0) && position < end - (calendar ? 0.5 : 0)),
+        point: (position) => {
+          const row = rows.get(position);
+          if (row == null) return "";
+          const marks = layers.flatMap((layer) => layer.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []);
+          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row), ...new Set(marks),
+            ...(observations?.[row] ? [valuationNote(observations[row], t)] : [])].join("\n");
+        },
+      }}
       height={plotHeight}
       option={() => option}
     />
   );
   return (
     <>
-      {moneyLayout ? (
-        <div className="mx-money-timeline">
-          <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
-            <Legend items={layers[1].lines.map((line) => ({ label: line.name, dashed: line.dashed }))} />
-          </div>
-          <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>
-            {drawdownHeading}
-          </div>
-          {plot}
-        </div>
-      ) : plot}
+      {moneyLayout ? <div className="mx-money-timeline">{plot}</div> : plot}
       {sourceKeys.length > 0 && (
         <div className="mx-chart-legend mx-source-legend">
           {sourceKeys.map((key) => (

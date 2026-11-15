@@ -113,27 +113,31 @@ export function portfolioCalendarDateKey(
 }
 
 /**
- * Fold weekend dates out of the portfolio's London working-week display.
+ * Fold the closed weekend window out of the portfolio's London display.
  * This is a presentation rule; retained observations and cash flows stay intact.
  */
 export function isPortfolioWeekendDisplayTimestamp(
   value: string | number,
   timeZone = DEFAULT_PORTFOLIO_TIME_ZONE,
+  wholeDays = false,
 ) {
-  const parts = zonedDateTimeParts(value, timeZone);
+  const historicalDate = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const parts = zonedDateTimeParts(historicalDate ? value + "T12:00:00Z" : value, timeZone);
   if (!parts) return true;
   const dayOfWeek = new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
-  return dayOfWeek !== 6 && dayOfWeek !== 0;
+  if (wholeDays || historicalDate) return dayOfWeek !== 6 && dayOfWeek !== 0;
+  return dayOfWeek === 6 ? parts.hour < 2 : dayOfWeek === 0 ? parts.hour >= 22 : true;
 }
 
 export function omitPortfolioWeekendDisplayWindow(
   timeline: { categories: string[]; rowIndexes: Array<number | null> },
   timeZone = DEFAULT_PORTFOLIO_TIME_ZONE,
+  wholeDays = false,
 ) {
   const categories: string[] = [];
   const rowIndexes: Array<number | null> = [];
   timeline.categories.forEach((category, index) => {
-    if (!isPortfolioWeekendDisplayTimestamp(category, timeZone)) return;
+    if (!isPortfolioWeekendDisplayTimestamp(category, timeZone, wholeDays)) return;
     categories.push(category);
     rowIndexes.push(timeline.rowIndexes[index] ?? null);
   });

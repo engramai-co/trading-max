@@ -362,9 +362,10 @@ test.describe("valuation refresh", () => {
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
     await expect(chart).not.toHaveAccessibleName(/历史分位/);
     await expect(section.getByRole("button", { name: "P25–P75" })).toHaveCount(0);
+    await expect(section.getByText("有效样本不足，暂无分位带")).toBeVisible();
     await peScreenshot(page, "ntm-short", testInfo.project.name);
     await section.getByRole("button", { name: isMobile ? "TTM" : "滚动 P/E" }).click();
-    await expect(section.getByText("暂无可计算的滚动 P/E")).toBeVisible();
+    await expect(section.getByText("此标的暂不支持滚动 P/E 历史")).toBeVisible();
   });
 
 });

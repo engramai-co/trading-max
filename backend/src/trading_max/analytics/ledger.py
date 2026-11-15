@@ -310,6 +310,7 @@ def transaction_marker_rows(
                     "sell_price_quantity": 0.0,
                     "buy_priced_quantity": 0.0,
                     "sell_priced_quantity": 0.0,
+                    "fills": [],
                 },
             )
             marker["accounts"].add(str(account).strip().lower())
@@ -317,6 +318,18 @@ def transaction_marker_rows(
             quantity = row.get("Shares")
             quantity_value = abs(float(quantity)) if pd.notna(quantity) else 0.0
             marker[f"{side}_quantity"] += quantity_value
+            total = row.get("TotalN")
+            currency = _currency(row.get("Currency (Total)")) or None
+            marker["fills"].append(
+                {
+                    "at": timestamp.isoformat(),
+                    "side": side,
+                    "account": str(account).strip().lower(),
+                    "quantity": quantity_value,
+                    "amount": abs(float(total)) if pd.notna(total) and currency else None,
+                    "currency": currency,
+                }
+            )
             price = row.get("PriceN")
             if pd.notna(price) and quantity_value > 0:
                 marker[f"{side}_price_quantity"] += float(price) * quantity_value
@@ -332,6 +345,7 @@ def transaction_marker_rows(
         buy_price_quantity = marker.pop("buy_price_quantity")
         sell_price_quantity = marker.pop("sell_price_quantity")
         marker["kind"] = kind
+        marker["fills"].sort(key=lambda fill: fill["at"])
         marker["accounts"] = sorted(marker["accounts"])
         marker["buy_quantity"] = round(marker["buy_quantity"], 8)
         marker["sell_quantity"] = round(marker["sell_quantity"], 8)

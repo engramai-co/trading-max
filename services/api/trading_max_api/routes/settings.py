@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from trading_max.analytics.alpaca_prices import AlpacaDataError, AlpacaHistoricalClient
+from trading_max.infrastructure.eodhd_index_prices import EodhdError
 from trading_max.ingestion.brokers.trading212 import (
     Trading212Client,
     Trading212Credentials,
@@ -41,6 +42,9 @@ from ..models import (
     CfdImportStatus,
     DeepSeekIntegrationCandidate,
     DeepSeekIntegrationRequest,
+    EodhdIntegrationCandidate,
+    EodhdIntegrationRequest,
+    EodhdIntegrationUpdate,
     IntegrationOverview,
     IntegrationSummary,
     IntegrationTestResult,
@@ -204,7 +208,7 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
                 "message": "the operating-system credential store is unavailable",
             },
         )
-    if isinstance(exc, (ProviderRuntimeError, ProviderError)):
+    if isinstance(exc, (ProviderRuntimeError, ProviderError, EodhdError)):
         code = exc.code
     elif isinstance(exc, AlpacaDataError):
         code = (
@@ -997,3 +1001,92 @@ def delete_alpaca(request: Request) -> None:
     except CredentialStoreError as exc:
         raise _safe_integration_error(exc) from exc
     preferences.remove_integration(provider="alpaca", profile=None)
+
+
+@router.post(
+    "/v1/settings/integrations/eodhd/test",
+    response_model=IntegrationTestResult,
+    dependencies=[Depends(require_write_auth)],
+)
+def test_eodhd(body: EodhdIntegrationCandidate, request: Request) -> IntegrationTestResult:
+    now = datetime.now(UTC)
+    try:
+        app_service(request, "eodhd_prices").test(body.api_key, now)
+    except Exception as exc:
+        raise _safe_integration_error(exc) from None
+    return IntegrationTestResult(
+        integration_id="eodhd:default",
+        status="succeeded",
+        tested_at=now,
+        message="Native daily index data verified",
+        validation_token=_validation_token(
+            request, integration_id="eodhd:default", digest=_candidate_digest(body)
+        ),
+    )
+
+
+@router.put(
+    "/v1/settings/integrations/eodhd",
+    response_model=IntegrationSummary,
+    dependencies=[Depends(require_write_auth)],
+)
+def save_eodhd(body: EodhdIntegrationRequest, request: Request) -> IntegrationSummary:
+    candidate = EodhdIntegrationCandidate(api_key=body.api_key)
+    _require_validation_token(
+        request,
+        integration_id="eodhd:default",
+        digest=_candidate_digest(candidate),
+        token=body.validation_token,
+    )
+    preferences = app_service(request, "settings_repository")
+    try:
+        app_service(request, "credential_store").put(
+            preferences.credential_reference("eodhd"), body.api_key
+        )
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
+    return preferences.save_integration(
+        provider="eodhd",
+        profile=None,
+        enabled=body.enabled,
+        model=None,
+        base_url=None,
+        credential_fingerprint=secret_fingerprint(body.api_key),
+        test_status="succeeded",
+    )
+
+
+@router.patch(
+    "/v1/settings/integrations/eodhd",
+    response_model=IntegrationSummary,
+    dependencies=[Depends(require_write_auth)],
+)
+def toggle_eodhd(body: EodhdIntegrationUpdate, request: Request) -> IntegrationSummary:
+    preferences = app_service(request, "settings_repository")
+    existing = preferences.get_integration("eodhd")
+    if existing is None or not existing.configured:
+        raise HTTPException(status_code=409, detail="configure and test EODHD first")
+    if body.enabled:
+        try:
+            raw = app_service(request, "credential_store").get(
+                preferences.credential_reference("eodhd")
+            )
+        except CredentialStoreError as exc:
+            raise _safe_integration_error(exc) from exc
+        if not raw:
+            raise HTTPException(status_code=409, detail="configure and test EODHD first")
+    return preferences.set_integration_enabled("eodhd", body.enabled)
+
+
+@router.delete(
+    "/v1/settings/integrations/eodhd",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_write_auth)],
+)
+def delete_eodhd(request: Request) -> None:
+    preferences = app_service(request, "settings_repository")
+    try:
+        app_service(request, "credential_store").delete(preferences.credential_reference("eodhd"))
+    except CredentialStoreError as exc:
+        raise _safe_integration_error(exc) from exc
+    preferences.remove_integration(provider="eodhd", profile=None)

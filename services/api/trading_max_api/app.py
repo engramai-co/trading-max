@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 from trading_max import __version__ as trading_max_version
+from trading_max.infrastructure.eodhd_index_prices import EodhdIndexPrices
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
@@ -35,6 +36,7 @@ from .broker_runtime import broker_profiles_loader
 from .config import Settings
 from .credentials import (
     CredentialStore,
+    CredentialStoreError,
     default_credential_store,
 )
 from .dashboard import build_dashboard_data
@@ -510,6 +512,20 @@ def create_app(
     app.state.analysis = analysis
     app.state.alert_monitor = alert_monitor
     app.state.sector_monitor = sector_monitor
+    eodhd = EodhdIndexPrices(settings.data_root)
+
+    def eodhd_configuration() -> tuple[int, str] | None:
+        integration = preferences.get_integration("eodhd")
+        if integration and integration.enabled and integration.configured:
+            try:
+                key = credentials.get(preferences.credential_reference("eodhd"))
+            except CredentialStoreError:
+                return None
+            if key:
+                return integration.revision, key
+        return None
+
+    app.state.eodhd_prices = eodhd
     app.state.indices = IndexService(
         settings.data_root,
         store,
@@ -517,6 +533,8 @@ def create_app(
         market_prices,
         universes=market_universes,
         depth=index_depth,
+        eodhd=eodhd,
+        eodhd_configuration=eodhd_configuration,
     )
     app.state.research = research
     app.state.estimate_history = jobs.estimate_history

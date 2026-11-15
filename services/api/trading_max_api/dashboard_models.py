@@ -800,6 +800,15 @@ class PriceSeriesPoint(ApiModel):
     sma200: float | None
 
 
+class ResearchTradeFill(ApiModel):
+    at: str
+    side: Literal["buy", "sell"]
+    account: Literal["invest", "isa"]
+    quantity: float
+    amount: float | None
+    currency: str | None
+
+
 class ResearchTradeMarker(ApiModel):
     ticker: str
     date: str
@@ -811,6 +820,7 @@ class ResearchTradeMarker(ApiModel):
     sell_quantity: float
     buy_average_price: float | None
     sell_average_price: float | None
+    fills: list[ResearchTradeFill] = Field(default_factory=list)
 
 
 class BenchmarkPricePoint(ApiModel):

@@ -58,6 +58,7 @@ class SparkSeries:
     stale: bool = False
     session_start: int | None = None
     source: str = YAHOO_SOURCE
+    granularity: str | None = None
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:

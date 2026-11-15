@@ -9,7 +9,7 @@ import pytest
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.scheduler import NightlyScheduler
 from services.api.trading_max_api.typed_jobs import TypedJobManager
-from services.api.trading_max_api.watchlist import WatchlistStore
+from services.api.trading_max_api.watchlist import SecuritySearchService, WatchlistStore
 
 
 def test_missed_full_refresh_slot_is_submitted_once(
@@ -133,6 +133,7 @@ def test_scheduled_research_covers_held_listings_and_watchlist(
 ):
     watchlist = WatchlistStore(tmp_path)
     seed_watchlist(watchlist, "BE", "TSM")
+    watchlist.add(SecuritySearchService(watchlist).exact("QQQ"))
     jobs = TypedJobManager(ArtifactStore(tmp_path), watchlist)
     positions = [
         SimpleNamespace(broker_ticker=code, ticker=code)
@@ -162,8 +163,8 @@ def test_scheduled_research_covers_held_listings_and_watchlist(
         scheduler._tick()
         [job] = jobs.list()
         assert job.trigger == "research"
-        assert job.tickers == ["BE", "TSM", "TSM.L", "HELD", "READY.L"]
-        assert watchlist.tickers() == ["BE", "TSM"]
+        assert job.tickers == ["BE", "TSM", "QQQ", "TSM.L", "HELD", "READY.L"]
+        assert watchlist.tickers() == ["BE", "TSM", "QQQ"]
     finally:
         scheduler.close()
         jobs.close()

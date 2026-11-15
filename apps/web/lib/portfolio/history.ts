@@ -1,5 +1,6 @@
 import type { NavPoint } from "@/lib/types";
 import {
+  isPortfolioWeekendDisplayTimestamp,
   naturalCalendarTimeline,
   naturalDayBounds,
   omitPortfolioWeekendDisplayWindow,
@@ -168,7 +169,7 @@ export function selectPortfolioHistory({
     timeline = omitPortfolioWeekendDisplayWindow(naturalCalendarTimeline(
       chartDates, 10,
       calendarDays, false, true, CALENDAR_ZONE, end,
-    ));
+    ), CALENDAR_ZONE, range !== "1W" && range !== "1M");
     timeline.displayIntervalMinutes = interval;
   } else if (source === "daily" && points.length) {
     // Reduce drawing only. Financial calculations retain all eligible records,
@@ -183,7 +184,7 @@ export function selectPortfolioHistory({
     }
   }
   const coverage = summarizeTimelineCoverage(timeline.categories, timeline.rowIndexes, 1);
-  const visiblePoints = points.filter((point) => weekday(historyDay(point.date)));
+  const visiblePoints = points.filter((point) => isPortfolioWeekendDisplayTimestamp(point.date, CALENDAR_ZONE, range !== "1W" && range !== "1M"));
   coverage.status = visiblePoints.length === 0 ? "empty" : visiblePoints.length === 1 ? "single" : timeline.rowIndexes.some((row) => row == null) ? "partial" : "complete";
   coverage.firstObservedAt = visiblePoints[0]?.date ?? null;
   coverage.lastObservedAt = visiblePoints.at(-1)?.date ?? null;

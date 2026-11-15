@@ -156,6 +156,16 @@ describe("chart percent domains", () => {
     expect(isPortfolioWeekendDisplayTimestamp("2026-12-07T00:00:00Z")).toBe(true);
   });
 
+  it.each([
+    ["2026-03-28T01:59:59Z", "2026-03-28T02:00:00Z", "2026-03-29T20:59:59Z", "2026-03-29T21:00:00Z"],
+    ["2026-10-24T00:59:59Z", "2026-10-24T01:00:00Z", "2026-10-25T21:59:59Z", "2026-10-25T22:00:00Z"],
+  ])("folds the exact London boundaries across a GMT/BST transition", (before, start, last, end) => {
+    expect([before, start, last, end].map((stamp) => isPortfolioWeekendDisplayTimestamp(stamp)))
+      .toEqual([true, false, false, true]);
+    expect(omitPortfolioWeekendDisplayWindow({ categories: [before, start, last, end], rowIndexes: [0, 1, null, 3] }))
+      .toEqual({ categories: [before, end], rowIndexes: [0, 3] });
+  });
+
   it("compresses the quiet weekend without turning it into a coverage gap", () => {
     const timeline = omitPortfolioWeekendDisplayWindow({
       categories: [

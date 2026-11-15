@@ -547,6 +547,7 @@ def analyze_ticker(
     prior20_high, prior20_low = high.iloc[-21:-1], low.iloc[-21:-1]
     prior63_high, prior63_low = high.iloc[-64:-1], low.iloc[-64:-1]
     high52, low52 = high.tail(252).max(), low.tail(252).min()
+    unavailable_benchmark = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
     metrics: dict[str, Any] = {
         "ticker": label,
         "yf_ticker": yf_ticker,
@@ -619,11 +620,11 @@ def analyze_ticker(
             "above_52w_low": _pct_distance(price, _finite(low52)),
         },
         "relative_strength": {
-            "spy_20d": _relative_stats(close, benchmarks["SPY"], 20),
-            "spy_63d": _relative_stats(close, benchmarks["SPY"], 63),
-            "spy_126d": _relative_stats(close, benchmarks["SPY"], 126),
-            "qqq_63d": _relative_stats(close, benchmarks["QQQ"], 63),
-            "soxx_63d": _relative_stats(close, benchmarks["SOXX"], 63),
+            "spy_20d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 20),
+            "spy_63d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 63),
+            "spy_126d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 126),
+            "qqq_63d": _relative_stats(close, benchmarks.get("QQQ", unavailable_benchmark), 63),
+            "soxx_63d": _relative_stats(close, benchmarks.get("SOXX", unavailable_benchmark), 63),
         },
         "seasonality": _monthly_seasonality(close),
         "seasonality_coverage": _seasonality_coverage(close),

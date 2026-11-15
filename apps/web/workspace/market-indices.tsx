@@ -1,13 +1,15 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowClockwise, CaretRight } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowUpRight, CaretRight } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
 import { useLayoutEffect, useRef } from "react";
+import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useLocale } from "@/components/locale-provider";
+import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
@@ -16,12 +18,13 @@ import { useGlobalContribution, type GlobalMarketContribution } from "./global-m
 import Link from "./link";
 import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
 import {
-  alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
+  alignIndices, comparable, indexHistoryRows, indexHref, researchIndexHref, useIndexCatalog,
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
 import { sparkline } from "./sectors-data";
 
+const IndexDrawdownChart = dynamic(() => import("./index-drawdown-chart").then((module) => module.IndexDrawdownChart));
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
 
 function useNames() {
@@ -191,6 +194,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   return (
+    <div className="mx-index-card-stack">
     <Link
       href={indexHref(index)}
       prefetch={false}
@@ -214,11 +218,47 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       </span>
       {notice && <small className="mx-index-freshness">{notice}</small>}
     </Link>
+    <Link className="mx-text-link mx-index-to-research" href={researchIndexHref(index)} prefetch={false}
+      aria-label={name(index) + " · " + t("在研究台打开", "Open in research")}>
+      <span className="mx-index-to-research-label">{t("在研究台打开", "Open in research")}</span>
+      <ArrowUpRight size={16} aria-hidden="true" />
+    </Link>
+    </div>
   );
 }
 
 function pointsText(value: number | null | undefined, locale: ReturnType<typeof useLocale>["locale"], unit: string) {
   return value == null ? "—" : `${formatNumber(value, locale, { maximumFractionDigits: 2, signDisplay: "exceptZero" })} ${unit}`;
+}
+
+type PlotRow = { at: string; left?: number | null; right?: number | null };
+type PlotLine = ReturnType<typeof buildIndexPlotLine>;
+const indexLines = new WeakMap<readonly PlotRow[], Map<string, PlotLine>>();
+
+function buildIndexPlotLine(rows: readonly PlotRow[], key: "left" | "right", width: number) {
+  const data: Array<{ value: [number, number | null]; symbolSize: number }> = [];
+  let observed = 0, missing = false;
+  rows.forEach((row, i) => {
+    const value = row[key];
+    if (value === undefined) return;
+    if (value == null) missing = true;
+    else observed++;
+    data.push({ value: [i, value], symbolSize: 4 });
+  });
+  return {
+    visible: sampleLine(data, width, (point) => point.value[0], (point) => point.value[1]),
+    gaps: missing ? historyGapSeries(data) : [],
+    single: observed === 1,
+  };
+}
+
+function indexPlotLine(rows: readonly PlotRow[], key: "left" | "right", width: number) {
+  let set = indexLines.get(rows);
+  if (!set) indexLines.set(rows, set = new Map());
+  const id = key + width;
+  let line = set.get(id);
+  if (!line) set.set(id, line = buildIndexPlotLine(rows, key, width));
+  return line;
 }
 
 export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparison, update, phone }: {
@@ -230,6 +270,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   update: (changes: Record<string, string | null>) => void;
   phone: boolean;
 }) {
+  useChartRuntime();
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const { name, basis } = useNames();
@@ -243,6 +284,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const index = catalog.data?.find((item) => item.id === id && item.scope === market)
     ?? cachedHistory[0]?.[1]?.index
     ?? client.getQueryData<IndexMarket>(["market-indices", market])?.quotes.find((quote) => quote.index.id === id)?.index;
+  const hasHistory = Boolean(index?.ranges.length && (index.symbol || index.source === "EODHD"));
   const targetPeriod = !index?.ranges.length || index.ranges.includes(requestedPeriod)
     ? requestedPeriod : index.ranges.at(-1)!;
   const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, targetPeriod));
@@ -253,7 +295,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     queryFn: ({ signal }: { signal: AbortSignal }) => readApi<IndexHistory>(
       `/indices/${identifier}/history?range=${targetPeriod}&currency=${gbp ? "GBP" : "local"}`, signal,
     ),
-    enabled: Boolean(identifier && index?.symbol),
+    enabled: Boolean(identifier && hasHistory),
     staleTime: 60_000,
     refetchInterval: targetPeriod === "1D" ? 60_000 : false as const,
     retry: 0,
@@ -269,7 +311,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     retry: 0,
   });
   useLayoutEffect(() => {
-    if (!index || (index.symbol && query.isPending) || lastFocused.current === id) return;
+    if (!index || (hasHistory && query.isPending) || lastFocused.current === id) return;
     const frame = requestAnimationFrame(() => {
       const heading = title.current;
       if (!heading?.getClientRects().length) return;
@@ -279,7 +321,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       lastFocused.current = id;
     });
     return () => cancelAnimationFrame(frame);
-  }, [id, index, query.isPending]);
+  }, [id, index, hasHistory, query.isPending]);
   if (!index) {
     if (catalog.isSuccess) return <Empty title={t("没有这个市场指数", "Index not found in this market")}
       description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
@@ -310,8 +352,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const points = history?.points ?? [];
   const matched = history && peerHistory && history.range === peerHistory.range &&
     history.currency === peerHistory.currency ? alignIndices(history, peerHistory, period) : [];
-  const pairedEnds = matched.filter(({ left, right }) => left != null && right != null);
-  const commonEnd = pairedEnds.length > 1 ? pairedEnds.at(-1) : undefined;
+  const lastPaired = matched.findLastIndex(({ left, right }) => left != null && right != null);
+  const commonEnd = lastPaired > 0 ? matched[lastPaired] : undefined;
   const seriesReturn = (value: number | undefined | null) => formatDeltaPercent(value == null ? null : value / 100 - 1, locale, 2);
   const readingUnit = index.kind === "volatility" ? t("点", "pts") : seriesCurrency;
   const error = query.error ?? peerQuery.error;
@@ -327,21 +369,18 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   };
   const chartName = name(index);
   const peerName = peer ? name(peer) : "";
-  const sparseAxis = shortRange || period === "MAX";
-  const axisLabels = plotRows.map(({ at }) => formatDate(new Date(at), locale, axisDateOptions));
-  const firstInPeriod = axisLabels.flatMap((label, i) => i === 0 || label !== axisLabels[i - 1] ? [i] : []);
-  const labelStep = Math.ceil(firstInPeriod.length / (phone ? 5 : 8));
-  const ticks = new Set(firstInPeriod.filter((_, i) => i % labelStep === 0));
-  if (sparseAxis && firstInPeriod.length > 1) {
-    // Pin the final date to the end without printing that date twice.
-    ticks.delete(firstInPeriod.at(-1)!);
-    ticks.add(plotRows.length - 1);
-  }
+  // Select a small number of x-axis labels before formatting any dates.
+  // A numeric slot axis keeps 50,000 category strings out of the renderer.
+  const count = Math.min(plotRows.length, phone ? 4 : 8);
+  const ticks = [...new Set(Array.from({ length: count }, (_, i) => Math.round(i * (plotRows.length - 1) / Math.max(1, count - 1))))];
+  const axisLabels = new Map(ticks.map((position) => [position, formatDate(plotRows[position].at, locale, axisDateOptions)]));
+  const indexUnit = matched.length ? t("点（起点 100）", "pts (base 100)")
+    : readingUnit ?? t("点", "pts");
+  const indexValue = (value: number) => `${formatNumber(value, locale, { maximumFractionDigits: 2 })} ${indexUnit}`;
   const readPoint = (position: number) => {
     const row = plotRows[position];
     if (!row || (row.left == null && row.right == null)) return "";
-    const reading = (label: string, value: number) =>
-      `${label}: ${formatNumber(value, locale, { maximumFractionDigits: 2 })}${matched.length || !readingUnit ? "" : " " + readingUnit}`;
+    const reading = (label: string, value: number) => `${label}: ${indexValue(value)}`;
     return [
       formatDate(new Date(row.at), locale, dateOptions),
       ...(row.left == null ? [] : [reading(chartName, row.left)]),
@@ -351,7 +390,32 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const chartLabel = matched.length
     ? locale === "zh" ? `${chartName} 与 ${peerName}，起点归 100` : `${chartName} and ${peerName}, rebased to 100`
     : chartName;
-  const primaryPositions = plotRows.flatMap((row, position) => row.left === undefined ? [] : [position]);
+  const primaryPositions = plotRows.reduce<number[]>((positions, row, position) => {
+    if (row.left != null || row.right != null) positions.push(position);
+    return positions;
+  }, []);
+  const latestIndexRow = plotRows.findLast((row) => row.left != null);
+  const indexReadout = {
+    positions: primaryPositions,
+    latest: latestIndexRow?.left != null ? indexValue(latestIndexRow.left) : "—",
+    point: readPoint,
+    records: (position: number) => {
+      const row = plotRows[position];
+      return ([["left", chartName, history], ["right", peerName, peerHistory]] as const).flatMap(([key, series, feed]) =>
+        row?.[key] == null ? [] : [{
+          time: row.at, zone: intraday ? timeZone : "UTC",
+          currency: matched.length || index.kind === "volatility" ? "" : seriesCurrency ?? "",
+          basis: matched.length ? "rebased to 100" : index.basis,
+          source: feed?.index?.source ?? index.source ?? "Index provider",
+          gapType: plotRows[position - 1]?.[key] === null ? "after-missing-observation" : "",
+          series, value: row[key]!,
+        }]);
+    },
+    gap: (position: number) => {
+      const row = plotRows[Math.round(position)];
+      return !row || (row.left == null && row.right == null);
+    },
+  };
   const retry = () => {
     void query.refetch();
     if (peer) void peerQuery.refetch();
@@ -362,16 +426,21 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <div className="mx-index-provenance">
+            <Link className="mx-text-link" href={researchIndexHref(index)}>
+              {t("在研究台打开", "Open in research")}
+            </Link>
             <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency} · {index.symbol ?? index.compiler}</span>
             <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
-              {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {!hasHistory && index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {period === "1D" && <p>{t("显示最近交易日的 5 分钟线。", "5-minute bars for the latest trading session.")}</p>}
               {shortRange && <p>{period === "1W"
                 ? t("显示近 7 天的 30 分钟线。", "30-minute bars over the last seven days.")
                 : t("显示近一个月的小时线。", "Hourly bars over the last calendar month.")} {t("回撤使用图中价格，年化波动率使用已结束工作日的最后一个价格。英镑换算使用同频率的汇率。", "Drawdown uses the plotted bars. Annualised volatility uses the last reading of each completed weekday. GBP conversion uses FX bars at the same interval.")}</p>}
-              {period === "MAX" && <p>{t("图中显示已结束周线的期末日期。回撤和年化波动率按周线计算；英镑换算使用此前已完成的汇率周线。", "Dates mark the end of completed weekly bars. Drawdown and annualised volatility use weekly bars. GBP conversion uses the most recent prior weekly FX close.")}</p>}
-              {!intraday && period !== "MAX" && <p>{history?.hourlyClose
+              {period === "MAX" && history?.sourceInterval === "1d" && history.displayInterval === "1wk" &&
+                <p>{t("从最早日线开始，每周保留最后一个交易日的读数。回撤和波动率按显示的读数计算。", "History starts at the earliest daily observation and displays each week’s last close. Risk figures use the plotted observations.")}</p>}
+              {!intraday && history?.displayInterval === "1d" && <p>{history?.hourlyClose
                 ? t("日线取自纽约时间 17:00 的小时线。", "Daily values come from the 17:00 New York hourly bar.")
                 : null} {t("回撤和年化波动率使用完整日线。英镑换算使用此前已完成的汇率日线。", "Drawdown and annualised volatility use completed daily bars. GBP conversion uses the most recent prior daily FX close.")}</p>}
               {matched.length > 0 && (intraday || period === "MAX") && <p>{period === "MAX"
@@ -380,7 +449,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             </Help>
           </div>
         </div>
-        {index.symbol && <div className="mx-index-controls">
+        {hasHistory && <div className="mx-index-controls">
           {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={targetPeriod}
             options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
             onChange={(value) => update({ range: value === "1Y" ? null : value })} />}
@@ -399,49 +468,45 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             searchable
           />}
         </div>}
-        {!points.length && index.rights === "licensed-source-required"
+        {!points.length && !hasHistory && index.rights === "licensed-source-required"
           ? <Empty title={t("官方指数走势需要授权数据", "Official index history requires a licensed source")}
               description={t("当前工作区没有获授权的指数报价。可查看基金市价走势；它不同于基金净值或官方指数总回报。", "This workspace has no licensed index feed. The ETF’s listed price is available as a proxy and differs from its NAV and the official index total return.")}
               action={index.id === "ftse-all-world" && <Link className="mx-text-link" href="/sectors?market=global&index=ftse-all-world-etf">
                 {t("查看富时全球 ETF 市价代理", "View FTSE All-World ETF price proxy")}
               </Link>} />
-          : !points.length && index.symbol && query.isPending
+          : !points.length && hasHistory && query.isPending
             ? <Pending label={t("正在加载走势", "Loading index history")} />
             : !points.length && !query.isError
               ? <Empty title={t("此范围没有可用的走势", "No history for this range")}
                   description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
               : null}
+        {history?.coverageReason === "source-interval-mismatch" &&
+          <p className="mx-form-help">{t("数据源未返回日线。已保留原始频率：", "The provider did not return daily bars. Reported interval: ")}
+            {history.sourceInterval ?? t("未知", "unknown")}</p>}
+        {history?.coverageReason === "daily-coverage-incomplete" &&
+          <p className="mx-form-help">{t("此区间的日线覆盖不完整。", "Daily history is incomplete for this range.")}</p>}
         {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
-        {points.length > 0 && <Plot label={chartLabel} height={phone ? 235 : 300}
-          readPoint={(position) => readPoint(primaryPositions[position])}
+        {points.length > 0 && <Plot fullscreen label={chartLabel} height={phone ? 235 : 300}
+          readout={indexReadout}
           option={(colours) => {
-            const lines = [{ key: "left" as const, label: chartName, colour: colours.text, dashed: false }];
+            const lines = [{ key: "left" as const, label: chartName, colour: colours.brand, dashed: false }];
             const compared = matched.length ? [{ key: "right" as const, label: peerName, colour: colours.axis, dashed: true }] : [];
             return {
               animation: false,
               grid: { top: 17, right: 18, bottom: 31, left: 58 },
               xAxis: {
-                type: "category", boundaryGap: false, data: plotRows.map(({ at }) => at),
-                axisLabel: {
-                  formatter: (_at, position) => !sparseAxis || ticks.has(position) ? axisLabels[position] : "",
-                  ...(sparseAxis ? { interval: (position: number) => ticks.has(position) } : {}),
-                },
+                type: "value", min: 0, max: Math.max(1, plotRows.length - 1), minInterval: 1,
+                axisLabel: { customValues: ticks, formatter: (position) => axisLabels.get(position) ?? "" },
+                axisTick: { show: false },
+                splitLine: { show: false },
               },
               yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5,
                 name: matched.length ? undefined : readingUnit ?? undefined, nameGap: 5 },
-              tooltip: { trigger: "axis", formatter: (input) => {
-                const rows = Array.isArray(input) ? input : [input];
-                const row = rows.find((entry) => !String(entry.seriesId).startsWith("history-gap:"));
-                const position = Array.isArray(row?.value) ? row.value[0] : undefined;
-                return typeof position === "number" ? readPoint(position) : "";
-              } },
               series: [...lines, ...compared].flatMap(({ key, label, colour, dashed }): SeriesOption[] => {
-                const data = plotRows.flatMap((row, position) => row[key] === undefined
-                  ? [] : [{ value: [position, row[key]], symbolSize: 4 }]);
-                const gaps = historyGapSeries(data);
+                const { visible, gaps, single } = indexPlotLine(plotRows, key, phone ? 270 : 800);
                 return [{
-                  id: key, name: label, type: "line", data, connectNulls: false,
-                  showSymbol: data.filter(({ value }) => value[1] != null).length === 1,
+                  id: key, name: label, type: "line", data: [...visible], connectNulls: false,
+                  showSymbol: single,
                   lineStyle: { width: 2, color: colour, type: dashed ? "dashed" : "solid" },
                   itemStyle: { color: colour },
                 }, ...(gaps.length ? [{
@@ -474,6 +539,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
+        {history && <IndexDrawdownChart history={history} />}
       </section>
       {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
         context.data && <IndexContextPanels context={context.data} phone={phone} />}

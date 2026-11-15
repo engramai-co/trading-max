@@ -1,6 +1,7 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
+import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { numeric } from "@/lib/numeric";
 import { percent } from "@/workspace/data";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
@@ -19,15 +20,16 @@ export type TimelineLayer = {
   drawdown?: boolean;
   zeroBaseline?: boolean;
   markerDate?: string;
+  markers?: Array<{ date: string; name: string }>;
 };
 
 /** Daily views normally plot the day's last reading. Include an intraday
  * drawdown observation before that reading so every layer shares its cursor. */
-function includeDailyMarkers(calendar: CalendarTimeline, dates: string[], layers: TimelineLayer[]): CalendarTimeline {
+export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[], layers: TimelineLayer[]): CalendarTimeline {
   if (calendar.categories[0]?.includes("T")) return calendar;
   const selected = new Set(calendar.rowIndexes);
   const additions = new Map<string, number[]>();
-  for (const date of new Set(layers.map((layer) => layer.markerDate))) {
+  for (const date of new Set(layers.flatMap((layer) => [layer.markerDate, ...(layer.markers ?? []).map((mark) => mark.date)]))) {
     if (!date) continue;
     const row = dates.indexOf(date);
     if (row < 0 || selected.has(row)) continue;
@@ -59,10 +61,12 @@ export function timelineOption(
   moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
   /** The canvas height of a single-layer chart. A short chart shrinks its plot to keep its axis labels inside. */
   plotHeight?: number,
+  plotWidth = 1000,
 ): EChartsOption & { series: SeriesOption[] } {
   const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
-  const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : times.indexOf(position);
+  const timestampRows = calendar ? undefined : new Map(times.map((time, index) => [time, index]));
+  const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : timestampRows?.get(position) ?? -1;
   const hasEstimates = provenance?.some((point) => point.estimated) ?? false;
   const labels = calendar && display ? timelineLabels(calendar.categories, display) : undefined;
   // Keep every date candidate: resampling an eight-label subset to five
@@ -256,19 +260,25 @@ export function timelineOption(
         const colour =
           colours[
             line.colour ??
-              (index === 0 ? "brand" : index === 1 ? "accent" : "secondary")
+              (axis === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")
           ];
-        const markerRow = layer.markerDate == null ? -1 : dates.indexOf(layer.markerDate);
-        const markerValue = line.values[markerRow];
-        const markerPosition = markerRow < 0 ? -1 : calendar ? calendar.rowIndexes.indexOf(markerRow) : times[markerRow];
-        const hasMarker = markerPosition >= 0 && markerValue != null;
+        const marks = [...(layer.markers ?? []), ...(layer.markerDate ? [{ date: layer.markerDate, name: layer.label }] : [])];
+        const markPoints = marks.flatMap(({ date, name }) => {
+          const row = dates.indexOf(date);
+          if (row < 0 || line.values[row] == null) return [];
+          const position = calendar ? calendar.rowIndexes.indexOf(row) : times[row];
+          return position < 0 ? [] : [{ coord: [position, line.values[row]!], name }];
+        });
+        const markPositions = new Set(markPoints.map(({ coord }) => coord[0]));
         // The same genuine observation anchors both the visible stroke and the marker.
-        const plotCalendar = calendar && hasMarker ? {
+        const plotCalendar = calendar && markPositions.size ? {
           ...calendar,
-          anchors: calendar.rowIndexes.map((_, position) => position === markerPosition || !!calendar.anchors?.[position]),
+          anchors: calendar.rowIndexes.map((_, position) => markPositions.has(position) || !!calendar.anchors?.[position]),
         } : calendar;
-        const data = historySeries(dates, line.values, false, plotCalendar);
-        const gaps = historyGapSeries(data);
+        const rawData = historySeries(dates, line.values, false, plotCalendar);
+        const gaps = historyGapSeries(rawData);
+        const data = layer.drawdown || line.step ? rawData
+          : [...sampleLine(rawData, plotWidth, (point) => point.value[0]!, (point) => point.value[1], (point) => markPositions.has(point.value[0]!))];
         const strokes = hasEstimates
           ? historySourceSeries(data, (position) => provenance?.[rowAt(position)]?.estimated ?? false)
           : { observed: data, reconstructed: [] };
@@ -294,14 +304,14 @@ export function timelineOption(
             type: line.dashed ? "dashed" : "solid",
           },
           itemStyle: { color: colour },
-          markPoint: hasMarker ? {
+          markPoint: markPoints.length ? {
             silent: true,
             symbol: "circle",
             symbolSize: 7,
             itemStyle: { color: colour, borderColor: colours.tooltip, borderWidth: 1.5 },
             label: { show: false },
             tooltip: { show: false },
-            data: [{ name: layer.label, coord: [markerPosition, markerValue] }],
+            data: markPoints,
           } : undefined,
           markLine: layer.zeroBaseline && index === 0 ? {
             silent: true,
@@ -313,7 +323,7 @@ export function timelineOption(
         } satisfies SeriesOption;
         // Fill is a quiet visual silhouette. The solid/dashed strokes retain
         // observation boundaries; the fill never supplies hover values or rows.
-        const area = line.area ? [{
+        const area = line.area && line.values.filter((v) => v != null).length >= 3 ? [{
           id: `history-area:${axis}:${index}`,
           type: "line" as const,
           xAxisIndex: axis,

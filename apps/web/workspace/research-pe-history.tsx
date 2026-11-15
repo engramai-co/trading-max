@@ -7,7 +7,7 @@ import { formatDate, formatCalendarDate } from "@/ui/formatters";
 import { compact, number } from "@/workspace/data";
 import type { EChartsOption } from "echarts";
 import { useCallback, useMemo, useState } from "react";
-import { Plot } from "./charts";
+import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
@@ -75,7 +75,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
   const { locale } = useLocale();
   const [chosen, choose] = useState<Basis>();
   const [mode, setMode] = useState<"quartiles" | "deviation">("quartiles");
-  const basis = chosen ?? (trailing?.points.length ? "trailing" : "forward");
+  const basis = chosen ?? (trailing?.points.length || !forward ? "trailing" : "forward");
   const isTrailing = basis === "trailing";
   const title = isTrailing ? t("滚动 P/E", "Trailing P/E") : "NTM P/E";
   const distribution = (isTrailing ? trailing : forward)?.distribution;
@@ -116,13 +116,6 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
   }, [isTrailing, points]);
 
   const option = useCallback((c: ChartColours): EChartsOption => {
-    const band = distribution && (mode === "quartiles"
-      ? { low: distribution.lowerQuartile, middle: distribution.median, high: distribution.upperQuartile }
-      : {
-          low: Math.max(0, distribution.mean - distribution.standardDeviation),
-          middle: distribution.mean,
-          high: distribution.mean + distribution.standardDeviation,
-        });
     const endNote = [
       rank == null ? "" : `P${Math.round(rank * 100)}`,
       latest?.forward?.source === "yahoo-forward-pe" ? "Yahoo" : "",
@@ -178,20 +171,6 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           showSymbol: false,
           lineStyle: { opacity: 0 },
           itemStyle: { color: c.text },
-          ...(band && {
-            markArea: {
-              silent: true,
-              itemStyle: { color: c.axis, opacity: 0.12 },
-              data: [[{ yAxis: band.low }, { yAxis: band.high }]],
-            },
-            markLine: {
-              silent: true,
-              symbol: "none",
-              label: { show: false },
-              lineStyle: { color: c.axis, type: "dashed", width: 1 },
-              data: [{ yAxis: band.middle }],
-            },
-          }),
           markPoint: {
             silent: true,
             symbol: "circle",
@@ -209,14 +188,6 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           showSymbol: false,
           lineStyle: { color: c.text, width: 1.7 },
         },
-        ...(band ? [{
-          type: "line" as const,
-          data: [[plot.readings[0][0], band.low], [plot.readings.at(-1)![0], band.high]],
-          silent: true,
-          tooltip: { show: false },
-          showSymbol: false,
-          lineStyle: { opacity: 0 },
-        }] : []),
       ],
       tooltip: {
         formatter: (input) => {
@@ -225,9 +196,21 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
         },
       },
     };
-  }, [displayMultiple, distribution, latest, latestValue, mode, plot, points.length, rank, readPoint, title]);
+  }, [displayMultiple, latest, latestValue, plot, points.length, rank, readPoint, title]);
 
-  if (!trailing?.points.length && !forward?.points.length) return null;
+  const nonPositive = isTrailing
+    ? latest?.trailing?.earningsIndex != null && (trailing?.earnings[latest.trailing.earningsIndex]?.eps ?? Infinity) <= 0
+    : latest?.forward?.eps != null && latest.forward.eps <= 0;
+  const supported = isTrailing ? trailing != null : true;
+  const emptyReason = !supported ? t("此标的暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable for this security")
+    : !points.length ? t("历史存档尚无记录", "History archive is empty")
+    : nonPositive ? t("EPS 不为正，无法计算 P/E", "P/E is undefined for nonpositive EPS")
+    : t("有效样本不足", "Not enough valid observations");
+  const samples = distribution?.samples ?? plot.observed.length;
+  const validDates = points
+    .filter((point) => point.pe != null && (isTrailing || !distribution || point.segment === latest?.segment))
+    .map((point) => point.date);
+  const info = validDates.length ? `${date(validDates[0])} – ${date(validDates.at(-1)!)} · ${number(samples, 0)} ${t("个有效读数", "valid readings")}` : undefined;
 
   return (
     <Panel
@@ -270,21 +253,22 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           "阴影为 P25–P75 或均值 ±1σ，虚线为中位数或均值。分布和 Pxx 只与最新值同口径的存档比较，至少需 30 个有效日期。相隔超过 7 天的观测不连线。",
           "The band shows P25–P75 or mean ±1σ; the dashed line is the median or mean. The band and percentile compare the latest reading with at least 30 valid archive dates on the same basis. Observations more than seven days apart are not joined.",
         )}</p>
-        {distribution && latest && <p>{date(points[0].date)} – {date(latest.date)} · {number(distribution.samples, 0)} {t("个有效读数", "valid readings")}</p>}
+        {info && <p>{info}</p>}
       </>}
     >
       {!plot.observed.length ? (
-        <Empty title={isTrailing
-          ? t("暂无可计算的滚动 P/E", "No meaningful trailing P/E in this period")
-          : points.length
-            ? t("现有存档暂无可计算的远期 P/E", "No meaningful forward P/E in the archive")
-            : t("暂无远期 P/E 存档", "No forward P/E archive yet")} />
+        <Empty title={emptyReason} />
       ) : (
         <>
-          {latestValue === null && <p>{isTrailing
+          {!distribution && <p className="mx-price-caveat">{t("有效样本不足，暂无分位带", "Not enough observations for a percentile band")}</p>}
+          {latestValue === null && nonPositive && <p className="mx-price-caveat">{t("最新 EPS 不为正，无法计算 P/E", "Latest EPS is nonpositive; P/E is undefined")}</p>}
+          {latestValue === null && !nonPositive && <p>{isTrailing
             ? t("最新收盘暂无 P/E", "No P/E for the latest close")
             : t("最新存档暂无 P/E", "No P/E for the latest archive date")}</p>}
-          <Plot
+          <PercentileBand
+            distribution={distribution}
+            level={mode === "quartiles" ? "P25–P75" : "mean ±1σ"}
+            extent={[plot.readings[0][0], plot.readings.at(-1)![0]]}
             key={basis}
             research
             height={265}

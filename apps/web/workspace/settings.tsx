@@ -49,6 +49,7 @@ import {
 
 import { OpenAIOAuthConnection } from "./settings-oauth";
 
+import { IndexMarketData } from "./settings-index-data";
 import { ReconstructionMarketData } from "./settings-market-data";
 
 import { LocalOnboarding } from "./local-onboarding";
@@ -211,6 +212,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                 </div>
               </Panel>
               <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} />
+              <IndexMarketData integration={data.integrations.find((item) => item.provider === "eodhd")} />
               {!desktop && <CfdImports />}
               </>}
             </>

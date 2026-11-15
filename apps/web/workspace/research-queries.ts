@@ -9,11 +9,12 @@ export function researchLensQuery(
   view: string,
   revision?: string | null,
   detail = "full",
+  preview = false,
 ) {
   return queryOptions({
-    queryKey: researchLensKey(ticker, view, detail, revision),
+    queryKey: preview ? [...researchLensKey(ticker, view, detail, revision), "preview"] : researchLensKey(ticker, view, detail, revision),
     queryFn: ({ signal }) => readApi<ResearchLensSnapshot>(
-      `/research/${encodeURIComponent(ticker)}/lens/${view}?limit=30&detail=${detail}${revision ? "&revision=" + encodeURIComponent(revision) : ""}`,
+      `/research/${encodeURIComponent(ticker)}/lens/${view}?limit=30&detail=${detail}${preview ? "&preview=true" : ""}${revision ? "&revision=" + encodeURIComponent(revision) : ""}`,
       signal,
     ),
     staleTime: 60_000,

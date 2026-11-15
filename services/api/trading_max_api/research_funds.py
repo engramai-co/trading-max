@@ -20,12 +20,16 @@ from trading_max.infrastructure.fund_holdings import (
     USER_AGENT,
     OfficialFundHoldingsProvider,
 )
+from trading_max.infrastructure.fund_premium_discount import FundPremiumDiscount, premium_file
 from trading_max.infrastructure.fund_profiles import parse_ishares_profile
+from trading_max.infrastructure.fund_tracking_import import DailyTracking
 from trading_max.reference import SecurityDescriptor
+from trading_max.reference.fund_benchmarks import FundBenchmark, fund_benchmark
+from trading_max.reference.indices import INDEX_REGISTRY
 from trading_max.research.facts import fingerprint, number
 
 from .index_models import IndexIdentity
-from .indices import active_indices, index_identity
+from .indices import index_identity
 from .models import ApiModel
 from .valuation_assumptions import _atomic_write
 
@@ -38,6 +42,7 @@ class FundResearch(ApiModel):
     isin: str | None = None
     index_name: str | None = None
     benchmark: IndexIdentity | None = None
+    benchmark_relationship: FundBenchmark | None = None
     share_currency: str | None = None
     base_currency: str | None = None
     income_use: str | None = None
@@ -53,6 +58,8 @@ class FundResearch(ApiModel):
     profile: FundShareClass | None = None
     reading: ETFReading | None = None
     one_year_tracking: ETFTracking | None = None
+    daily_tracking: DailyTracking | None = None
+    premium_discount: FundPremiumDiscount | None = None
     matches: list[ETFMatch] = Field(default_factory=list)
     disclosures: list[ETFDisclosure] = Field(default_factory=list)
     uk_reporting_fund: UKReportingFund | None = None
@@ -67,10 +74,18 @@ class FundResearch(ApiModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+def benchmark_fields(isin: str | None) -> dict:
+    mapping = fund_benchmark(isin)
+    return {
+        "benchmark_relationship": mapping,
+        "benchmark": index_identity(INDEX_REGISTRY[mapping.benchmark_id])
+        if mapping and mapping.relation != "unconfirmed"
+        else None,
+    }
+
+
 def _profile_fields(profile: FundShareClass) -> dict:
     fields = profile.model_dump(by_alias=False, exclude_none=True)
-    benchmark = next((item for item in active_indices() if item.id == profile.benchmark_id), None)
-    fields["benchmark"] = index_identity(benchmark) if benchmark else None
     size = profile.share_class_size
     if size is not None:
         fields["total_assets_label"] = f"{size.currency} {size.amount:,.0f}"
@@ -89,6 +104,7 @@ def fund_research_from_snapshot(
     profile = holdings.profile if holdings else None
     return FundResearch(
         **{
+            **benchmark_fields(reading.isin),
             "ticker": ticker,
             "fetched_at": holdings.fetched_at if holdings else "",
             "source_url": holdings.source_url if holdings else None,
@@ -118,8 +134,34 @@ def fund_research_from_snapshot(
 class FundResearchService:
     def __init__(self, root: Path):
         self.root = root / "research-cache" / "funds"
+        self.workspace_root = root
+        self.tracking_root = root / "reference" / "fund-tracking"
         self.provider = OfficialFundHoldingsProvider(root)
         self.lock = threading.RLock()
+
+    def with_daily_tracking(self, fund: FundResearch) -> FundResearch:
+        mapping = fund_benchmark(fund.isin)
+        if mapping is None:
+            return fund
+        fields = {}
+        if mapping.relation == "unconfirmed":
+            fields["tracking_error_state"] = "hedged-comparison-unconfirmed"
+        if path := premium_file(self.workspace_root, mapping.isin, fund.ticker.upper()):
+            try:
+                premiums = FundPremiumDiscount.model_validate_json(path.read_bytes())
+                if premiums.isin == mapping.isin and premiums.ticker == fund.ticker.upper():
+                    fields["premium_discount"] = premiums
+            except (OSError, ValueError):
+                pass
+        try:
+            data = DailyTracking.model_validate_json(
+                (self.tracking_root / (mapping.isin + ".json")).read_bytes()
+            )
+        except (OSError, ValueError):
+            return fund.model_copy(update=fields)
+        if data.isin == mapping.isin and data.benchmark_id == mapping.benchmark_id:
+            fields["daily_tracking"] = data
+        return fund.model_copy(update=fields)
 
     def get(self, ticker: str, metrics: dict) -> FundResearch:
         with self.lock:
@@ -149,10 +191,13 @@ class FundResearchService:
                             {
                                 **previous.model_dump(by_alias=False),
                                 **_profile_fields(previous.profile),
+                                **benchmark_fields(previous.isin),
                                 "ticker": ticker,
                             }
                         )
-                    return previous.model_copy(update={"ticker": ticker})
+                    return previous.model_copy(
+                        update={"ticker": ticker, **benchmark_fields(previous.isin)}
+                    )
             result = FundResearch(
                 ticker=ticker,
                 fetched_at=datetime.now(UTC).isoformat(),
@@ -220,6 +265,7 @@ class FundResearchService:
                 result = FundResearch.model_validate(
                     {**result.model_dump(by_alias=False), **_profile_fields(result.profile)}
                 )
+            result = result.model_copy(update=benchmark_fields(result.isin))
             if result.holdings_state == "holdings-stale":
                 result.state = "stale"
             elif result.holdings is None and not result.profile and result.expense_ratio is None:

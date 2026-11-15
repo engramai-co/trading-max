@@ -492,3 +492,41 @@ test.describe("CFD import", () => {
     expect(unexpected).toEqual([]);
   });
 });
+
+test("an EODHD key is tested and saved with index history off by default", async ({ page }) => {
+  let source: IntegrationSummary | undefined;
+  const requests: string[] = [];
+  const { unexpected } = await open(page, () => overview(source ? [source] : []));
+  await page.route("**/api/backend/settings/integrations/eodhd/test", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ apiKey: "synthetic-secret" });
+    requests.push("test");
+    await route.fulfill({ json: { validationToken: "synthetic-receipt" } });
+  });
+  await page.route("**/api/backend/settings/integrations/eodhd", async (route) => {
+    if (route.request().method() === "PUT") {
+      expect(route.request().postDataJSON()).toEqual({
+        apiKey: "synthetic-secret", validationToken: "synthetic-receipt", enabled: false,
+      });
+      source = { ...alpaca(false), integrationId: "eodhd:default", provider: "eodhd" };
+      requests.push("save");
+    } else {
+      expect(route.request().method()).toBe("PATCH");
+      expect(route.request().postDataJSON()).toEqual({ enabled: true });
+      source = { ...alpaca(true, 2), integrationId: "eodhd:default", provider: "eodhd" };
+      requests.push("enable");
+    }
+    await route.fulfill({ json: source });
+  });
+  await page.getByRole("button", { name: "Connect EODHD" }).click();
+  await page.getByRole("dialog").getByLabel(/API key/).fill("synthetic-secret");
+  await page.getByRole("button", { name: "Test and save" }).click();
+  const toggle = page.getByRole("switch", { name: "EODHD", exact: true });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).not.toBeChecked();
+  await toggle.focus();
+  await toggle.press("Space");
+  await expect(toggle).toBeChecked();
+  expect(requests).toEqual(["test", "save", "enable"]);
+  expect(unexpected).toEqual([]);
+  expect(await cacheText(page)).not.toContain("synthetic-secret");
+});

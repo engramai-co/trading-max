@@ -6,7 +6,6 @@ import {
   ScatterChart,
 } from "echarts/charts";
 import {
-  DataZoomInsideComponent,
   DataZoomSliderComponent,
   MarkAreaComponent,
   MarkPointComponent,
@@ -17,7 +16,6 @@ import { use as registerModules } from "echarts/core";
 registerModules([
   CandlestickChart,
   CustomChart,
-  DataZoomInsideComponent,
   DataZoomSliderComponent,
   GaugeChart,
   HeatmapChart,

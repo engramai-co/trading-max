@@ -3,30 +3,30 @@
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
 import { Button, Group, Modal, TextInput } from "@mantine/core";
 import { MagnifyingGlass } from "@phosphor-icons/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, jsonRequest } from "@/workspace/data";
+import { api } from "@/workspace/data";
 import { Empty, Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
-import { indexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
+import { researchIndexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
 
 export function SecurityFinder({
   opened,
   onClose,
   initial,
-  onAdded,
+  onSelect,
 }: {
   opened: boolean;
   onClose: () => void;
   initial: string;
-  onAdded: (ticker: string) => Promise<void>;
+  onSelect: (security: SecuritySearchResult) => void;
 }) {
   const t = useCopy();
   const [text, setText] = useState("");
   const [search, setSearch] = useState(() => (initial.trim().length >= 2 ? initial.trim() : ""));
   const currentText = (text || initial).trim();
   const showingCurrentSearch = search === currentText;
-  const indices = matchIndices(useIndexCatalog(opened && currentText.length >= 2).data, currentText);
+  const indices = matchIndices(useIndexCatalog(opened && currentText.length >= 2).data, currentText).slice(0, 5);
   const query = useQuery({
     queryKey: ["workspace-security-search", opened ? search : "", 3],
     enabled: opened && search.length >= 2,
@@ -36,11 +36,6 @@ export function SecurityFinder({
       ),
     staleTime: 60_000,
     retry: 0,
-  });
-  const add = useMutation({
-    mutationFn: (security: SecuritySearchResult) =>
-      api("/watchlist", jsonRequest("POST", { security, refresh: true })),
-    onSuccess: async (_, security) => onAdded(security.ticker),
   });
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -79,15 +74,15 @@ export function SecurityFinder({
         </Group>
       </form>
       {indices.length > 0 && <div className="mx-index-search">
+        <h3>{t("指数", "Indices")}</h3>
         {indices.map((index) => (
-          <Link key={index.id} className="mx-row-link mx-research-index-result" href={indexHref(index)} onClick={onClose}>
+          <Link key={index.id} className="mx-row-link mx-research-index-result" href={researchIndexHref(index)} onClick={onClose}>
             <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
-            <span className="mx-form-help">{t("指数", "Index")}</span>
+            <span className="mx-form-help">{index.variant}</span>
             <span>{t("查看", "Open")}</span>
           </Link>
         ))}
       </div>}
-      {add.isError && <Notice tone="bad">{add.error.message}</Notice>}
       {!showingCurrentSearch ? null : query.isError ? (
         <Notice tone="bad">
           {t(
@@ -107,13 +102,9 @@ export function SecurityFinder({
                 <Button
                   size="xs"
                   variant={r.alreadyWatched ? "default" : "light"}
-                  loading={add.isPending && add.variables?.ticker === r.ticker}
-                  disabled={add.isPending}
-                  onClick={() =>
-                    r.alreadyWatched ? void onAdded(r.ticker) : add.mutate(r)
-                  }
+                  onClick={() => onSelect(r)}
                 >
-                  {r.alreadyWatched ? t("查看", "Open") : t("添加", "Add")}
+                  {t("查看", "Open")}
                 </Button>
               </div>
             ))}

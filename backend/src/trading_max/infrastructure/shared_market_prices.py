@@ -315,6 +315,20 @@ class SharedMarketPrices:
             "5y-daily", symbol, {"range": "5y", "interval": "1d"}, 30 * 60, not_before=not_before
         )
 
+    def dated_history(self, symbol: str, start: datetime, end: datetime) -> SparkSeries | None:
+        """Ask for daily bars between explicit boundaries and preserve the actual interval."""
+        return self._chart(
+            f"dated:{start.date()}:{end.date()}",
+            symbol,
+            {
+                "period1": str(int(start.timestamp())),
+                "period2": str(int(end.timestamp())),
+                "interval": "1d",
+            },
+            4 * 3600,
+            observe_granularity=True,
+        )
+
     def history_bars(
         self, symbol: str, window: Literal["1W", "1M", "1Y", "MAX"], now: datetime
     ) -> SparkSeries | None:
@@ -347,6 +361,7 @@ class SharedMarketPrices:
         ttl: int,
         *,
         not_before: datetime | None = None,
+        observe_granularity: bool = False,
     ) -> SparkSeries | None:
         symbol = symbol.strip().upper()
 
@@ -354,7 +369,7 @@ class SharedMarketPrices:
             response = _yahoo_get(CHART_URL + quote(symbol, safe=""), params, 12)
             if response.status_code == 429:
                 raise SparkRateLimited("Yahoo Finance is rate-limiting price requests")
-            if response.status_code == 404:
+            if response.status_code == 404 or (observe_granularity and response.status_code == 422):
                 return {}
             if response.status_code != 200:
                 raise RuntimeError(f"Yahoo chart returned HTTP {response.status_code}")
@@ -364,8 +379,10 @@ class SharedMarketPrices:
             row = rows[0]
             meta = row.get("meta") or {}
             interval = params["interval"]
-            granularity = meta.get("dataGranularity", interval)
-            if granularity != interval and (interval, granularity) != ("60m", "1h"):
+            granularity = meta.get("dataGranularity")
+            if not observe_granularity and (
+                granularity not in {None, interval} and (interval, granularity) != ("60m", "1h")
+            ):
                 return {}
             quotes = row.get("indicators", {}).get("quote") or [{}]
             timestamps, closes = _points(row.get("timestamp"), quotes[0].get("close"))
@@ -378,6 +395,7 @@ class SharedMarketPrices:
                         # chartPreviousClose refers to the beginning of the whole range.
                         previous_close=_price(meta.get("previousClose")),
                         timezone=meta.get("exchangeTimezoneName"),
+                        granularity=granularity if isinstance(granularity, str) else None,
                     )
                 }
                 if timestamps
@@ -389,5 +407,10 @@ class SharedMarketPrices:
             return {symbol: item} if item is not None else {}
 
         return self._read(
-            kind, [symbol], ttl, load, not_before=not_before, alpaca_load=alpaca_load
+            kind,
+            [symbol],
+            ttl,
+            load,
+            not_before=not_before,
+            alpaca_load=None if observe_granularity else alpaca_load,
         ).get(symbol)

@@ -573,7 +573,7 @@ class SecuritySearchResult(ApiModel):
 
 class SecuritySearchResponse(ApiModel):
     query: str
-    source: Literal["openfigi", "watchlist"]
+    source: Literal["openfigi", "watchlist", "registry"]
     corrected_query: str | None = None
     results: list[SecuritySearchResult] = Field(default_factory=list)
 
@@ -668,6 +668,7 @@ class IntegrationSummary(ApiModel):
         "openai-codex",
         "opencode",
         "alpaca",
+        "eodhd",
         "anthropic",
         "google",
     ]
@@ -769,6 +770,19 @@ class AlpacaIntegrationRequest(AlpacaIntegrationCandidate):
 
 
 class AlpacaEnhancementUpdate(ApiModel):
+    enabled: bool
+
+
+class EodhdIntegrationCandidate(ApiModel):
+    api_key: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._-]+$")
+
+
+class EodhdIntegrationRequest(EodhdIntegrationCandidate):
+    validation_token: str = Field(min_length=1, max_length=2_000)
+    enabled: bool = False
+
+
+class EodhdIntegrationUpdate(ApiModel):
     enabled: bool
 
 
