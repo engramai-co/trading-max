@@ -4,6 +4,36 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-11-15
+
+### Added
+
+- Open indices directly in Research with price history, constituents and grouped tracking funds, and see matching portfolio exposure without sharing it in the link.
+- Compare up to three matching index series and explore log scale, drawdown, rolling volatility, constituent breadth and contribution.
+- Open registered US ETF peers and other verified securities in read-only research before adding them to the research list.
+- Chart daily ETF tracking difference and rolling tracking error. Show premium or discount separately when market price and NAV have verified matching timestamps.
+- Record exact share-class benchmark identities and import daily issuer NAV and benchmark returns for supported funds, with currency and hedge checks.
+- Archive dated index valuation snapshots separately by source, including covered-weight estimates from SEC filings and issuer holdings.
+- Optionally connect EODHD for native daily history on TOPIX, Hang Seng TECH, CSI 300 and KOSPI 200.
+- Price charts can show account trades, earnings, dividends and splits in an event track, grouped by day. New trade records retain the original settlement amount and currency.
+- Main charts show a fixed reading above the plot, with one shared selection for pointer, touch and keyboard and a count when observations are sparse.
+- Portfolio and index drawdowns show the peak, trough and observed recovery, or explain when a data gap prevents confirming recovery.
+- Portfolio return heat grids show monthly, quarterly and annual TWR with partial coverage identified. Select a period to inspect that date range in the main chart.
+- Quarterly analyst readings show reported EPS, estimates and their difference. Historical firm targets and forward target snapshots are shown separately.
+- Main charts support fullscreen inspection and local CSV and PNG export. Copy the current reading from the chart menu.
+
+### Changed
+
+- Research now opens a fixed three-month candlestick preview and uses candlesticks by default in Technicals. The full chart groups advanced controls, and the price chart stays beside the technical score at desktop app widths.
+- The P/E history section stays visible when its archive or sample is insufficient and explains why. Its percentile band supports quartiles, a median and an optional mean and standard deviation view.
+- Dense time series retain peaks, troughs and gap boundaries while reducing the number of points drawn. Readouts and exports continue to use original observations.
+
+### Fixed
+
+- Portfolio week and month timelines fold the London weekend from Saturday 02:00 through Sunday 22:00 across clock changes. Index one-day history is labeled as five-minute data.
+- Preserve the first S&P 500 daily observation in the full history and disclose the actual frequency when a provider returns coarser data.
+- Explain why held securities stay in research in the manage menu.
+
 ## [1.48.0] - 2026-11-15
 
 ### Changed
