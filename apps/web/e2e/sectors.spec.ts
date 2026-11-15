@@ -787,7 +787,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors?market=global");
     const benchmarks = page.locator(".mx-global-benchmark");
     await expect(benchmarks).toHaveCount(4);
-    await expect(benchmarks.getByRole("link")).toHaveCount(5);
+    await expect(benchmarks.locator("a.mx-index-card")).toHaveCount(5);
     await expect(page.locator(".mx-global-proxy")).toContainText(/ETF 市价代理|ETF price proxies/);
     await expect(page.locator("#index-card-ftse-all-world")).toHaveCount(0);
     const map = page.getByRole("group", { name: /全球市场地图|World market map/ });

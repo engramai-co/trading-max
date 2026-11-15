@@ -376,7 +376,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
-              {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {!hasHistory && index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
               {shortRange && <p>{period === "1W"
                 ? t("显示近 7 天的 30 分钟线。", "30-minute bars over the last seven days.")
                 : t("显示近一个月的小时线。", "Hourly bars over the last calendar month.")} {t("回撤使用图中价格，年化波动率使用已结束工作日的最后一个价格。英镑换算使用同频率的汇率。", "Drawdown uses the plotted bars. Annualised volatility uses the last reading of each completed weekday. GBP conversion uses FX bars at the same interval.")}</p>}
