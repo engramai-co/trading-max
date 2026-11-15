@@ -33,16 +33,17 @@ test.describe("allocation composition", () => {
     await page.getByRole("group", { name: "Allocation chart" }).getByRole("button", { name: /^(Composition|Mix)$/ }).click();
   });
 
-  test("uses the same blue slate for the lead slice and ranked bars in both appearances", async ({ page }) => {
+  test("preserves the lead slice and one allocation table in both appearances", async ({ page }) => {
     const controls = page.getByRole("group", { name: "Allocation chart" });
     const leadKey = page.getByRole("button", { name: "United States 70.0%" }).locator("i");
-    const leadBar = page.locator(".mx-allocation-ranking__track > span").first();
+    const table = page.getByRole("table", { name: "Complete allocation details" });
     for (const [colorScheme, colour] of [["light", "rgb(52, 70, 93)"], ["dark", "rgb(133, 149, 169)"]] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
       await expect(leadKey).toHaveCSS("background-color", colour);
-      await controls.getByRole("button", { name: "Rank", exact: true }).click();
-      await expect(leadBar).toHaveCSS("background-color", colour);
+      await controls.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(table).toBeVisible();
+      await expect(page.locator(".mx-allocation-ranking__track")).toHaveCount(0);
       await controls.getByRole("button", { name: /^(Composition|Mix)$/ }).click();
     }
   });

@@ -91,7 +91,8 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
         ) : (
           <>
             <div>
-              <h3>Yahoo Finance</h3>
+              <h3>Alpaca</h3>
+              <p>{t("可选。连接后可补充美股历史行情。", "Optional. Connect to add US market history.")}</p>
             </div>
             <Button disabled={busy} onClick={() => setOpened(true)}>{t("连接 Alpaca", "Connect Alpaca")}</Button>
           </>
@@ -100,17 +101,17 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
         <span role="status" className="sr-only">{requested !== undefined ? t("正在保存…", "Saving…") : null}</span>
       </div>
       <Stack gap="md">
-        {integration?.configured && (
+
+        {integration?.lastTestAt && <Freshness date={integration.lastTestAt} label={t("连接测试", "Connection tested")} />}
+        {outcome === "failed" && <Notice tone="bad">{t("无法更改设置，请检查 Alpaca 连接后重试。", "Could not update settings. Check the Alpaca connection and retry.")}</Notice>}
+        {outcome === "saved" && <Notice tone="good">{t("设置已保存，下一次账户更新会重新计算历史重建。", "Saved. The next account update will recalculate reconstruction history.")}</Notice>}
+        <details>
+          <summary>{integration?.configured ? t("管理 Alpaca 密钥", "Manage Alpaca keys") : t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>        {integration?.configured && (
           <Group>
             <Button variant="default" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
             <Button variant="subtle" color="red" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
           </Group>
         )}
-        {integration?.lastTestAt && <Freshness date={integration.lastTestAt} label={t("连接测试", "Connection tested")} />}
-        {outcome === "failed" && <Notice tone="bad">{t("无法更改设置，请检查 Alpaca 连接后重试。", "Could not update settings. Check the Alpaca connection and retry.")}</Notice>}
-        {outcome === "saved" && <Notice tone="good">{t("设置已保存，下一次账户更新会重新计算历史重建。", "Saved. The next account update will recalculate reconstruction history.")}</Notice>}
-        <details>
-          <summary>{t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>
           <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
           <a href="https://app.alpaca.markets/dashboard/overview" target="_blank" rel="noreferrer">{t("打开 Alpaca → Paper → API Keys", "Open Alpaca → Paper → API Keys")}</a>
         </details>

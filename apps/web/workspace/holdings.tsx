@@ -16,7 +16,7 @@ import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
+import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
@@ -69,7 +69,7 @@ export function HoldingsWorkspace() {
 function Positions() {
   const t = useCopy();
   const [barColour] = useAllocationChartColours();
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const query = useDashboardLens("holdings-positions");
@@ -108,9 +108,16 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
+  const accountStamp = (holding: Holding) => positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
+  const snapshotBasis = (holding: Holding) => {
+    const at = accountStamp(holding);
+    return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
+      ? <time dateTime={at}>{formatDateTime(at, locale, timeZone, now)}</time>
+      : t("时间未提供", "time unavailable")}</small>;
+  };
   function selectHolding(holding: Holding) {
     // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
-    const accountAsOf = positionData?.accounts?.find((item) => item.code === holding.account)?.asOf;
+    const accountAsOf = accountStamp(holding);
     setSelected({ holding, accountAsOf, runId: positionData?.runId, scope: account });
   }
   // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
@@ -322,6 +329,7 @@ function Positions() {
                               </td>
                               <td className="mx-align-right">
                                 {currency(h.currentPrice, h.priceCurrency, 2)}
+                                {snapshotBasis(h)}
                               </td>
                               <td className="mx-align-right">
                                 {currency(h.fxImpactGbp, "GBP", 2)}
@@ -445,8 +453,9 @@ function Positions() {
                             {t("成本", "Cost")} {currency(h.costGbp, "GBP", 2)}
                           </span>
                           <span>
-                            {t("现价", "Price")}{" "}
+                            {t("报价", "Price")}{" "}
                             {currency(h.currentPrice, h.priceCurrency, 2)}
+                            {snapshotBasis(h)}
                           </span>
                         </footer>
                       )}

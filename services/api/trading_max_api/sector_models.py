@@ -158,6 +158,12 @@ class SectorBoardResponse(ApiModel):
     market: SectorMarketCode
     markets: list[SectorMarketStatus] = Field(default_factory=list)
     board: SectorBoard | None = None
+    board_issue: (
+        Literal["not_configured", "no_coverage", "fetch_failed", "awaiting_collection"] | None
+    ) = Field(
+        default=None,
+        description="Why the selected board is missing or could not update; the last board may still be present.",
+    )
     monitor: SectorMonitorState | None = Field(
         default=None,
         description="Refresh schedule, so an empty board can say when the next update runs.",

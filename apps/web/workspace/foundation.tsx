@@ -20,7 +20,7 @@ import { useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useStat
 import { useLocale } from "@/components/locale-provider";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
-import type { ChangeTone } from "./data";
+import { isReadTimeout, type ChangeTone } from "./data";
 import { indicatorStart } from "./selection-indicator";
 import { useAltDigitModifier } from "./shortcut-platform";
 import { LocalWorkspaceContext } from "./loading-context";
@@ -420,7 +420,9 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
 export function QueryError({
   retry,
   showDataStatusLink = true,
+  error,
 }: {
+  error?: unknown;
   retry: () => unknown;
   showDataStatusLink?: boolean;
 }) {
@@ -429,7 +431,8 @@ export function QueryError({
   return (
     <Panel>
       <Empty
-        title={t("暂时无法读取数据", "Data is temporarily unavailable")}
+        title={isReadTimeout(error)
+          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable")}
         description={detail}
         action={
           <Group>

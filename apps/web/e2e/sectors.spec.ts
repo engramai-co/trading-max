@@ -696,6 +696,74 @@ test.describe("market index layer", () => {
     await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
   });
 
+  test("sector board shows whether collection is unconfigured, uncovered, or temporarily failed", async ({ page }) => {
+    await mockIndices(page);
+    for (const [boardIssue, expected] of [
+      ["not_configured", /板块采集尚未配置|Sector collection isn’t configured/],
+      ["no_coverage", /没有可用的板块篮子或交易日历|No supported sector basket or market calendar/],
+      ["fetch_failed", /最近一次采集未能取得行情|The last collection could not retrieve quotes/],
+    ] as const) {
+      await page.route("**/api/backend/sectors?market=us", (route) => route.fulfill({ json: {
+        market: "us", markets: [], boardIssue, board: null,
+      } }), { times: 1 });
+      await page.goto("/sectors?market=us");
+      await expect(page.getByText(expected)).toBeVisible();
+    }
+  });
+
+  test("retains comparison and last chart while changing the currency or timing out", async ({ page }) => {
+    await mockIndices(page);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const requests: string[] = [];
+    await page.route("**/api/backend/indices/*/history?**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("range") === "6M") return route.fulfill({ status: 504, json: {} });
+      if (url.searchParams.get("currency") === "GBP") {
+        requests.push(url.pathname.split("/").at(-2)!);
+        await gate;
+      }
+      return route.fallback();
+    });
+    await page.goto("/sectors?market=us&index=sp-500&compare=nasdaq-100");
+    const chart = page.locator(".mx-index-history [data-tm-chart-ready=true]");
+    await expect(chart).toBeVisible();
+    await expect(page.locator(".mx-index-legend strong")).toHaveCount(2);
+    await expect(page.locator(".mx-index-legend strong").first()).toContainText("%");
+    await page.getByRole("button", { name: "GBP", exact: true }).click();
+    await expect(page.locator(".mx-index-provenance")).toContainText("USD");
+    await expect(page.locator(".mx-index-history")).toContainText(/显示上一次走势|showing previous chart/);
+    await expect(chart).toBeVisible();
+    await expect(page).toHaveURL(/compare=nasdaq-100.*currency=GBP/);
+    release();
+    await expect(page.locator(".mx-index-provenance")).toContainText("GBP");
+    expect(requests.sort()).toEqual(["nasdaq-100", "sp-500"]);
+    await page.getByRole("button", { name: "6M", exact: true }).click();
+    await expect(page.locator(".mx-index-history")).toContainText(/走势请求超时|History request timed out/);
+    await expect(chart).toBeVisible();
+  });
+
+  test("groups JP price proxies and explains licensed index and global exceptions", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await mockIndices(page, { global: { ...globalFixture, weightsAsOf: null, residual: null, rows: [], state: "unavailable" } });
+    await page.goto("/sectors?market=jp");
+    const groups = page.locator(".mx-index-group");
+    await expect(groups.filter({ hasText: /官方指数|Official indices/ })).toContainText(/日经 225|Nikkei 225/);
+    await expect(groups.filter({ hasText: /ETF 市价代理|ETF price proxies/ })).toContainText("TOPIX");
+    for (const card of await groups.locator(".mx-index-card").all()) {
+      const box = (await card.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+    }
+    await page.goto("/sectors?market=global&index=ftse-all-world");
+    await expect(page.getByText(/官方指数走势需要授权数据|Official index history requires a licensed source/)).toBeVisible();
+    await expect(page.getByRole("link", { name: /查看富时全球 ETF 市价代理|View FTSE All-World ETF price proxy/ })).toHaveAttribute("href", /index=ftse-all-world-etf/);
+    await page.goto("/sectors?market=global");
+    await expect(page.locator(".mx-global-ranking")).toContainText(/缺少带日期的 ACWI 持仓权重|Dated ACWI holdings weights are missing/);
+    await expect(page.locator(".mx-global-ranking")).toContainText(/本地行情覆盖|Local quote coverage/);
+    await expect(page.locator(".mx-global-panel")).toContainText(/本币涨跌|local index move/);
+  });
+
   test("opens index-only markets without a sector board request", async ({ page }) => {
     await mockIndices(page);
     let requests = 0;
@@ -716,8 +784,9 @@ test.describe("market index layer", () => {
     await mockIndices(page);
     await page.goto("/sectors?market=global");
     const benchmarks = page.locator(".mx-global-benchmark");
-    await expect(benchmarks).toHaveCount(3);
-    await expect(benchmarks.getByRole("link")).toHaveCount(6);
+    await expect(benchmarks).toHaveCount(4);
+    await expect(benchmarks.getByRole("link")).toHaveCount(5);
+    await expect(page.locator(".mx-global-proxy")).toContainText(/ETF 市价代理|ETF price proxies/);
     await expect(page.locator("#index-card-ftse-all-world")).toHaveCount(0);
     const map = page.getByRole("group", { name: /全球市场地图|World market map/ });
     const shape = map.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
@@ -753,7 +822,9 @@ test.describe("market index layer", () => {
       expect(leadBox && dockBox && leadBox.y + leadBox.height < dockBox.y).toBe(true);
       expect(await row.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
       await expect(page.locator("#index-card-msci-em-imi .mx-index-freshness")).toBeVisible();
+      await page.locator(".mx-global-proxy summary").click();
       await expect(page.locator("#index-card-ftse-all-world-etf .mx-index-freshness")).toBeVisible();
+      await page.locator(".mx-global-proxy summary").click();
     }
     await panel.getByRole("button", { name: /对 MSCI 全球的贡献说明|Contribution to MSCI ACWI explained/ }).click();
     await expect(page.getByText(/权重来自 iShares|Weights come from iShares/)).toBeVisible();
@@ -822,7 +893,7 @@ test.describe("market index layer", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/sectors\?view=sectors$/);
     await expect(sectors).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".mx-global-benchmark")).toHaveCount(3);
+    await expect(page.locator(".mx-global-benchmark")).toHaveCount(4);
     await expect(page.locator(".mx-index-global time")).toHaveAttribute("datetime", "2026-11-12");
     await page.reload();
     await expect(sectors).toHaveAttribute("aria-pressed", "true");

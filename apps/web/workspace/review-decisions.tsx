@@ -10,10 +10,10 @@ import {
   useEffectEvent,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
+import type { EChartsType as ECharts } from "echarts/core";
 import { useLocale } from "@/components/locale-provider";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
@@ -475,72 +475,126 @@ export function decisionTooltip(row: TradeDecision, horizon: Horizon, days: numb
 }
 
 /** Every decision by date and effect; the one the page opened on is larger, ringed and drawn on top. */
+export function groupDecisionsByDate(rows: TradeDecision[]) {
+  const days = new Map<string, TradeDecision[]>();
+  for (const row of rows) {
+    const group = days.get(row.date) ?? [];
+    group.push(row);
+    days.set(row.date, group);
+  }
+  return [...days].sort(([a], [b]) => a.localeCompare(b));
+}
+
 function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[]; horizon: Horizon; days: number; focus?: TradeDecision }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const chart = useRef<ECharts | null>(null);
+  const listId = useId();
+  const groups = groupDecisionsByDate(rows);
+  const focusKey = focus ? decisionParam(focus) : undefined;
+  const [picked, setPicked] = useState<{ date: string | null; focusKey?: string }>();
+  const selected = picked && picked.focusKey === focusKey ? picked.date : focus?.date ?? null;
+  const pick = (date: string) => setPicked({ date: selected === date ? null : date, focusKey });
+  const active = groups.find(([date]) => date === selected);
   const largest = Math.max(1, ...rows.map((row) => row.amountGbp));
-  const option = useMemo(
-    () => (colours: Record<string, string>) => {
-      const point = (row: TradeDecision) => {
-        const effect = decisionEffect(row, horizon);
-        const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
-        const size = 6 + 16 * Math.sqrt(row.amountGbp / largest);
-        const ring = row === focus ? { borderColor: colours.text, borderWidth: 2 } : null;
-        return {
-          value: [Date.parse(row.date), effect ?? 0],
-          symbolSize: ring ? Math.max(16, size + 8) : size,
-          itemStyle: effect == null
-            ? { color: "transparent", borderColor: colour, borderWidth: 1.5, ...ring }
-            : { color: colour, opacity: ring ? 1 : 0.85, ...ring },
-          row,
-        };
-      };
-      // The legend names the shape; its upper half is the gain colour and its
-      // lower half the loss colour, as points sit above or below £0.
-      const split = {
-        type: "linear" as const,
-        x: 0,
-        y: 0,
-        x2: 0,
-        y2: 1,
-        colorStops: [
-          { offset: 0, color: colours.positive },
-          { offset: 0.5, color: colours.positive },
-          { offset: 0.5, color: colours.negative },
-          { offset: 1, color: colours.negative },
-        ],
-      };
-      return {
-        grid: { top: 40, right: 18, bottom: 30, left: 64 },
-        tooltip: {
-          trigger: "item" as const,
-          formatter: (input: unknown) => decisionTooltip((input as { data: { row: TradeDecision } }).data.row, horizon, days, t, locale),
-        },
-        xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
-        yAxis: {
-          type: "value" as const,
-          axisLabel: { formatter: (value: number) => signedMoney(value) },
-          splitLine: { lineStyle: { color: colours.grid, type: "dashed" as const } },
-        },
-        series: (["buy", "sell"] as const).map((side) => ({
-          type: "scatter" as const,
-          name: side === "buy" ? t("买入", "Buys") : t("卖出", "Sells"),
-          symbol: side === "buy" ? "circle" : "diamond",
-          // Points carry their own outcome colour; this colour reaches only the legend.
-          itemStyle: { color: split },
-          // Later points draw over earlier ones, and this series over the other.
-          z: focus?.side === side ? 3 : 2,
-          data: rows.filter((row) => row.side === side && row !== focus).concat(focus?.side === side ? [focus] : []).map(point),
-          markLine: side === "buy"
-            ? { silent: true, symbol: "none", data: [{ yAxis: 0 }], lineStyle: { color: colours.axis, type: "solid" as const, width: 1 }, label: { show: false } }
-            : undefined,
-        })),
-        legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-      };
+  const groupRows = (group: TradeDecision[]) => group.map((row) => decisionEffect(row, horizon))
+    .filter((value): value is number => value != null);
+  // The cluster marker is plotted at the average of observed decisions; the
+  // expanded list carries every actual outcome and every unobserved decision.
+  const groupValue = (group: TradeDecision[]) => {
+    const values = groupRows(group);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  };
+  const point = (row: TradeDecision, colours: Record<string, string>) => {
+    const effect = decisionEffect(row, horizon);
+    const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
+    const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
+    const ring = row.date === selected ? { borderColor: colours.text, borderWidth: 2 } : null;
+    return {
+      value: [Date.parse(row.date), effect ?? 0],
+      symbolSize: ring ? Math.max(16, size + 8) : size,
+      itemStyle: effect == null
+        ? { color: "transparent", borderColor: colour, borderWidth: 1.5, ...ring }
+        : { color: colour, opacity: ring ? 1 : 0.85, ...ring },
+      row,
+    };
+  };
+  const option = (colours: Record<string, string>) => ({
+    grid: { top: 40, right: 26, bottom: 30, left: 64 },
+    tooltip: {
+      trigger: "item" as const,
+      formatter: (input: unknown) => {
+        const { row, date, group } = (input as { data: { row?: TradeDecision; date?: string; group?: TradeDecision[] } }).data;
+        if (row) return decisionTooltip(row, horizon, days, t, locale);
+        if (!group || !date) return "";
+        return `${formatCalendarDate(date, locale)} · ${group.length} ${t("笔决定", "decisions")}`;
+      },
     },
-    [rows, horizon, days, focus, largest, locale, t],
-  );
-  return <Plot research label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />;
+    xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
+    yAxis: {
+      type: "value" as const,
+      axisLabel: { formatter: (value: number) => signedMoney(value) },
+      splitLine: { lineStyle: { color: colours.grid, type: "dashed" as const } },
+    },
+    series: [
+      ...(["buy", "sell"] as const).map((side) => ({
+        type: "scatter" as const,
+        name: side === "buy" ? t("买入", "Buys") : t("卖出", "Sells"),
+        symbol: side === "buy" ? "circle" : "diamond",
+        itemStyle: { color: colours.axis },
+        data: groups.filter(([, group]) => group.length === 1 && group[0].side === side)
+          .map(([, [row]]) => point(row, colours)),
+        markLine: side === "buy"
+          ? { silent: true, symbol: "none", data: [{ yAxis: 0 }], lineStyle: { color: colours.axis, type: "solid" as const, width: 1 }, label: { show: false } }
+          : undefined,
+      })),
+      {
+        type: "scatter" as const,
+        name: t("同日决定", "Same-day decisions"),
+        symbol: "roundRect",
+        symbolSize: [32, 23],
+        z: 4,
+        itemStyle: { color: colours.tooltip, borderColor: colours.axis, borderWidth: 1 },
+        data: groups.filter(([, group]) => group.length > 1).map(([date, group]) => ({
+          value: [Date.parse(date), groupValue(group)], date, group,
+          itemStyle: date === selected ? { borderColor: colours.brand, borderWidth: 2 } : undefined,
+          label: { show: true, formatter: "+" + group.length, color: colours.tooltipText },
+        })),
+      },
+    ],
+    legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
+  });
+  const clusters = groups.filter(([, group]) => group.length > 1);
+  return <>
+    <div onClick={(event) => {
+      const instance = chart.current;
+      const bounds = instance?.getDom().getBoundingClientRect();
+      if (!instance || !bounds || !(event.target instanceof Node) || !instance.getDom().contains(event.target)) return;
+      const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+      let match: { date: string; distance: number } | undefined;
+      for (const [date, group] of groups) {
+        const [px, py] = instance.convertToPixel({ gridIndex: 0 }, [Date.parse(date), groupValue(group)]);
+        const distance = Math.hypot(x - px, y - py);
+        if (distance <= (group.length > 1 ? 19 : 13) && (!match || distance < match.distance)) match = { date, distance };
+      }
+      if (match) pick(match.date);
+    }}>
+      <Plot research controller={chart} label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />
+    </div>
+    {clusters.length > 0 && <p className="mx-muted">{t("同日多笔决定按已观测结果的平均值标记，可展开逐笔查看。", "Same-day markers use the average observed result. Open a date to read each decision.")}</p>}
+    {clusters.length > 0 && <div className="mx-decision-clusters" role="group" aria-label={t("同日决定", "Same-day decisions")}>
+      {clusters.map(([date, group]) => <button type="button" className="mx-index-retry" key={date}
+        aria-controls={listId} aria-expanded={date === active?.[0]} onClick={() => pick(date)}>
+        {formatCalendarDate(date, locale)} <strong>+{group.length}</strong>
+      </button>)}
+    </div>}
+    <div id={listId} hidden={!active}>
+      {active && <section aria-label={t("所选日期的决定", "Decisions on the selected date")} className="mx-decision-day">
+        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {t("笔决定", "decisions")}</h3>
+        {decisionKeys(active[1]).map((key, i) => <DecisionRow key={key} row={active[1][i]} horizon={horizon} days={days} sided />)}
+      </section>}
+    </div>
+  </>;
 }
 
 /** How the same-day round trips did, and how much of each day's range they took. */

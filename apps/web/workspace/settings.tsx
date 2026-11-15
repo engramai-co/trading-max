@@ -171,6 +171,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                         key={profile}
                         title={name}
                         integration={existing}
+                        nextStep={t("连接后，前往数据状态开始更新。", "Once connected, start an update in Data status.")}
                         onOpen={() => {
                           setSaved(null);
                           setConnection({
@@ -197,6 +198,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                         "Yahoo Finance-compatible source",
                       )}
                     </h3>
+                    <p>{t("无需配置；可直接查看公开行情与证券研究。", "Ready to use for public quotes and security research.")}</p>
                   </div>
                   <Button
                     component={Link}
@@ -225,6 +227,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                       title={provider.label}
                       connectLabel={t("连接模型", "Connect model")}
                       subtitle={provider.defaultModel}
+                      nextStep={t("连接后，在下方为研究用途选择模型。", "Once connected, choose a model for each research task below.")}
                       integration={(provider.provider === "openai" ? data.integrations.find((i) => i.provider === "openai-codex" && i.configured && i.enabled) : undefined) ??
                         data.integrations.find((i) => i.provider === provider.provider)}
                       onOpen={() => openModel(provider)}
@@ -335,12 +338,14 @@ function ConnectionCard({
   integration,
   onOpen,
   connectLabel,
+  nextStep,
 }: {
   title: string;
   subtitle?: string;
   integration?: IntegrationSummary;
   onOpen: () => void;
   connectLabel?: string;
+  nextStep: string;
 }) {
   const t = useCopy();
   const connected =
@@ -360,6 +365,7 @@ function ConnectionCard({
         </Tag>
       </div>
       {subtitle && <p>{subtitle}</p>}
+      <p className="mx-form-help">{nextStep}</p>
       {integration?.lastTestAt && (
         <Freshness
           date={integration.lastTestAt}

@@ -92,6 +92,10 @@ export class ApiError extends Error {
     super(message);
   }
 }
+export function isReadTimeout(error: unknown) {
+  return error instanceof Error && (error.name === "TimeoutError" ||
+    error instanceof ApiError && (error.status === 408 || error.status === 504));
+}
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch("/api/backend" + path, {
     cache: "no-store",
@@ -114,6 +118,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return response.json();
+}
+/** Bound slow research reads without turning navigation cancellation into a timeout. */
+export function readApi<T>(path: string, signal: AbortSignal) {
+  return api<T>(path, { signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) });
 }
 export const jsonRequest = (method: string, body: unknown): RequestInit => ({
   method,

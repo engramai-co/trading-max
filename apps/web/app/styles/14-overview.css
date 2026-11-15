@@ -649,7 +649,8 @@
   color: var(--mx-warning);
 }
 
-/* The total leads and the two balances share a column at the end; today's move reads in the period panel below. */
+/* The total leads and the two balances share a column at the end; today's move reads in the period panel below.
+   Phones reverse the order: the period move and its drivers lead, the total and balances follow on short lines. */
 .mx-overview-totals {
   display: grid;
   grid-template-columns: minmax(13rem, 1fr) minmax(0, max-content);
@@ -730,5 +731,113 @@
       linear-gradient(var(--mx-placeholder) 0 0) 0 27px / 52% 38px no-repeat,
       linear-gradient(var(--mx-placeholder) 0 0) 100% 96px / 24% 14px no-repeat,
       linear-gradient(var(--mx-placeholder) 0 0) 100% 120px / 20% 12px no-repeat;
+  }
+}
+
+/* Phones: the period move leads the summary. The period panel below keeps its range control and chart. */
+.mx-overview-lead {
+  display: none;
+}
+@media (max-width: 767px) {
+  .mx-overview-read .mx-overview-lead {
+    display: grid;
+    gap: var(--mx-space-tight);
+    margin-bottom: var(--mx-space-items);
+  }
+  .mx-overview-lead-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--mx-space-items);
+  }
+  .mx-overview-lead-label {
+    color: var(--mx-muted);
+    font-size: var(--mx-text-label);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .mx-page .mx-overview-lead-head .mx-text-link {
+    padding-inline: 0;
+  }
+  .mx-overview-lead-figure {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--mx-space-group);
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .mx-page .mx-overview-lead-figure strong {
+    font-size: clamp(30px, 10vw, 40px);
+    font-weight: 600;
+    line-height: 1.12;
+    letter-spacing: -0.035em;
+    overflow-wrap: anywhere;
+  }
+  .mx-overview-lead-figure > span {
+    font-size: var(--mx-text-title);
+  }
+  .mx-page .mx-overview-lead .mx-day-drivers {
+    margin: 0;
+  }
+  .mx-overview-read .mx-overview-lead-pending {
+    display: block;
+    min-height: 92px;
+  }
+  .mx-overview-lead-pending > .mx-loading-shape {
+    background:
+      linear-gradient(var(--mx-placeholder) 0 0) 0 2px / 14% 12px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 24px / 52% 38px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 74px / 62% 14px no-repeat;
+  }
+  /* The total and the two balances support the move: the total on one line, the balances on the next. */
+  .mx-page .mx-overview-read .mx-overview-totals {
+    min-height: 0;
+    gap: var(--mx-space-tight);
+  }
+  .mx-page .mx-overview-read .mx-overview-totals > .mx-metric-large {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--mx-space-group);
+  }
+  .mx-page .mx-overview-read .mx-overview-totals > .mx-metric-large .mx-number {
+    margin-top: 0;
+    font-size: var(--mx-text-metric);
+    letter-spacing: -0.02em;
+  }
+  .mx-page .mx-overview-read .mx-overview-statistics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mx-space-tight) var(--mx-space-panel);
+    padding: 0;
+    border-block-start: 0;
+  }
+  .mx-page .mx-overview-read .mx-overview-statistics .mx-metric {
+    justify-content: flex-start;
+    gap: 0 6px;
+  }
+  .mx-page .mx-overview-read .mx-overview-statistics .mx-metric-label {
+    font-size: var(--mx-text-body);
+  }
+  .mx-page .mx-overview-read .mx-overview-statistics .mx-number {
+    margin-inline-start: 0;
+    font-size: var(--mx-text-body);
+  }
+  .mx-overview-read .mx-loading-summary {
+    min-height: 158px;
+  }
+  .mx-overview-read .mx-loading-summary > .mx-loading-shape {
+    background:
+      linear-gradient(var(--mx-placeholder) 0 0) 0 2px / 14% 12px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 24px / 52% 38px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 74px / 62% 14px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 108px / 46% 20px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 140px / 58% 13px no-repeat;
+  }
+  /* The move leads the summary above, so the period panel shows its chart without repeating it. */
+  .mx-page .mx-overview-history .mx-period-figure,
+  .mx-page .mx-overview-history .mx-data-body > .mx-day-drivers {
+    display: none;
   }
 }

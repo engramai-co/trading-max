@@ -97,7 +97,8 @@ const sectors = {
   },
 };
 
-async function open(page: Page, locale: "zh" | "en", { estimated = false, large = false, range = "1W" } = {}) {
+/** Answers every backend request with the synthetic account, so any layout can load the overview. */
+async function prepare(page: Page, locale: "zh" | "en", { estimated = false, large = false } = {}) {
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   // No write leaves the page, and every backend request is answered here.
@@ -117,9 +118,15 @@ async function open(page: Page, locale: "zh" | "en", { estimated = false, large 
     return route.fulfill({ json });
   });
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
+}
+
+async function open(page: Page, locale: "zh" | "en", { estimated = false, large = false, range = "1W" } = {}) {
+  await prepare(page, locale, { estimated, large });
   await page.goto("/?scope=invest&range=" + range);
-  // The period figure lists its movers: today's under 1D, the five days' under 5D.
+  // The period figure lists its movers: today's under 1D, the five days' under 5D. On phones the move and its two
+  // largest movers lead the summary; the panel keeps its own list for wider windows.
   await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
+  await expect(page.locator(".mx-overview-lead .mx-day-drivers a")).toHaveCount(2);
   await expect(page.locator(".mx-attention a")).toHaveCount(1);
   await expect(page.locator(".mx-overview-holdings .mx-ledger-item")).toHaveCount(1);
   await expect(page.locator(".mx-overview-sector-grid a")).toHaveCount(SECTORS.length);
@@ -262,15 +269,40 @@ test.describe("overview on phones", () => {
     });
   }
 
-  test("supporting figures are stacked and right-aligned", async ({ page, isMobile }) => {
+  test("the period move leads, then the total and one line of balances", async ({ page, isMobile }) => {
     test.skip(!isMobile, "The phone layout");
-    await open(page, "zh");
+    await open(page, "zh", { range: "1D" });
+    const lead = page.locator(".mx-overview-lead");
+    await expect(lead.locator(".mx-overview-lead-label")).toHaveText("今日");
+    await expect(page.locator(".mx-overview-history .mx-period-figure")).toBeHidden();
+    await expect(page.locator(".mx-overview-history .mx-data-body > .mx-day-drivers")).toBeHidden();
+    const figure = await page.locator(".mx-overview-history .mx-period-figure strong").textContent();
+    await expect(lead.locator(".mx-overview-lead-figure strong")).toHaveText(figure ?? "");
     for (const width of [375, 390]) {
       await resize(page, width);
+      const move = (await lead.boundingBox())!;
+      const totals = (await page.locator(".mx-overview-totals").boundingBox())!;
+      expect(move.y + move.height, `the move sits above the total at ${width}px`).toBeLessThanOrEqual(totals.y + 0.5);
       const [pnl, cash] = (await page.evaluate(statistics)).cells;
-      expect(cash.top, `two rows at ${width}px`).toBeGreaterThanOrEqual(pnl.bottom);
-      expect(Math.abs(pnl.figureRight - cash.figureRight), `aligned figures at ${width}px`).toBeLessThan(1);
+      expect(cash.top, `the balances share a line at ${width}px`).toBeLessThan(pnl.bottom);
     }
+  });
+
+  test("an earlier session names its day instead of today", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "The phone layout");
+    await prepare(page, "zh");
+    await page.clock.setFixedTime(new Date(new Date(brokerAsOf).getTime() + 2 * 86_400_000));
+    await page.goto("/?scope=invest&range=1D");
+    await expect(page.locator(".mx-overview-lead .mx-overview-lead-label")).toHaveText("11月3日");
+  });
+
+  test("wider windows keep the move in the period panel", async ({ page, isMobile }) => {
+    test.skip(isMobile, "The desktop layout");
+    await prepare(page, "zh");
+    await page.goto("/?scope=invest&range=1D");
+    await expect(page.locator(".mx-overview-history .mx-period-figure")).toBeVisible();
+    await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
+    await expect(page.locator(".mx-overview-lead")).toBeHidden();
   });
 });
 

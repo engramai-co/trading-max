@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-11-15
+
+### Changed
+- On phones, the overview leads with the period's move and its two largest drivers, followed by the portfolio value and balances. An earlier session is named by its date instead of reading as today.
+- Separate official market indices from ETF price proxies and show complete index cards on phones.
+- Lead holdings look-through with the top-three concentration and the share that could not be resolved to securities. Show the broker quote, cost, and weight first in position details.
+- Group same-day trade decisions in the review timeline and show the history needed to review an empty account or CFD account.
+- Give each connection a clear next step and place scheduled-update explanations in Data status.
+
+### Fixed
+- Keep compatible index comparisons when switching currency, and show each line’s return on the same currency and time basis.
+- Date broker snapshot prices and market quote previews separately. Keep published snapshots distinct from the update job log and first-time setup.
+- Explain missing sector and contribution data, link licensed index pages to labelled ETF proxies, show saved fund details while research updates, and date archived option chains.
+- Keep the last index or research reading available during slow requests, and identify timeouts separately.
+
 ## [1.47.4] - 2026-11-14
 
 ### Changed

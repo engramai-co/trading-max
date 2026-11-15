@@ -15,6 +15,7 @@ import { Fragment, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
   deriveHealthTone,
+  snapshotLifecycle,
   durationBetween,
   formatAge,
   flowVerificationText,
@@ -73,13 +74,14 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const Actions = desktop ? Group : Fragment;
   const controlsProps = desktop ? { className: "mx-activity-controls", open: controlsOpen, onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => setControlsOpen(event.currentTarget.open) } : {};
   const data = query.data;
-  const latestRunId = data?.health?.latestRunId;
+  const latestRunId = data?.health?.latestRunId ?? data?.readiness?.latestRunId;
   const activity = activityState(data ?? null, localWorkspace);
   const tone = desktop ? activity.tone : deriveHealthTone(data ?? null, localWorkspace);
+  const snapshot = snapshotLifecycle(data, tone);
   // A reachable service is not fresh data: snapshots publish several times a
   // day, so a day without one means updates stopped.
   const snapshotAge = data?.health?.artifactAgeSeconds;
-  const staleHours = !readOnly && tone === "ready" && snapshotAge != null && snapshotAge > 86_400
+  const staleHours = !readOnly && tone === "ready" && snapshot === "published" && snapshotAge != null && snapshotAge > 86_400
     ? Math.floor(snapshotAge / 3600) : null;
   const staleAge = staleHours == null ? "" : formatAge(snapshotAge, locale);
   const job =
@@ -97,6 +99,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   // Service details earn a panel only when something is wrong; otherwise the schedule takes their place.
   const serviceIssue = Boolean(data) && (!apiReachable || !worker?.healthy || bootstrapIssue || Boolean(data?.errors.length));
   const lastSuccess = data?.health?.queue.last_success_at;
+  const snapshotTime = data && snapshot === "published" && snapshotAge != null && Number.isFinite(Date.parse(data.checkedAt))
+    ? new Date(Date.parse(data.checkedAt) - snapshotAge * 1000).toISOString() : null;
   const scopes = [
     { value: "all", label: t("账户、流水与研究", "Accounts, history & research") },
     { value: "accounts", label: t("账户与流水", "Accounts & history") },
@@ -111,7 +115,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       ? t("演示快照", "Demo snapshot")
       : staleHours != null
       ? locale === "zh" ? `服务在线，但已 ${staleAge}没有完成更新` : `Service online · no completed update for ${staleAge}`
-      : tone === "setup"
+      : snapshot === "setup"
       ? t("等待首次同步", "Ready for your first sync")
       : tone === "ready"
       ? t("数据服务运行正常", "Your data service is ready")
@@ -123,12 +127,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const subtitle =
     staleHours != null
       ? t("各页面显示的是上一次成功更新的数据。开始更新，或检查自动更新是否已关闭。", "Pages show the last successful update. Start an update, or check whether scheduled updates are off.")
-      : tone === "setup"
+      : snapshot === "setup"
       ? t("本机服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
       : tone === "ready"
       ? null
       : tone === "running"
-        ? latestRunId ? t(
+        ? snapshot === "published" ? t(
             "更新完成前，仍可查看上一次成功发布的快照。",
             "Your last successfully published snapshot stays available while the update runs.",
           ) : t(
@@ -140,7 +144,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             "Check the service status and task details below to find the unfinished step.",
           );
   const schedule = data && (
-    <Panel title={t("下一次自动更新", "Next scheduled updates")}>
+    <Panel title={t("下一次自动更新", "Next scheduled updates")}
+      description={t("运行服务的设备需要保持开机，且任务服务正在运行。", "Scheduled updates run while the host device and its worker are running.")}>
       <Facts
         rows={(
           [
@@ -164,6 +169,14 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           ),
         ])}
       />
+      <details className="mx-chart-data">
+        <summary>{t("更新范围说明", "What each schedule updates")}</summary>
+        <ul className="mx-review-prerequisites">
+          <li>{t("账户状态与日内采样：在活动时段刷新余额、持仓并保存日内观测点。", "Account state and intraday sampling: refresh balances and positions and record intraday readings during the active window.")}</li>
+          <li>{t("绩效：使用已核对的账户历史计算收益、回撤和风险。", "Performance: calculate returns, drawdowns and risk from reconciled account history.")}</li>
+          <li>{t("研究、板块与每日对账：更新证券资料，在交易时段采集板块行情，并每日核对账户流水。", "Research, sectors and daily reconciliation: update research, collect sector quotes during market hours and reconcile cash flows daily.")}</li>
+        </ul>
+      </details>
       <details className="mx-chart-data">
         <summary>{t("运行诊断详情", "Runtime diagnostics")}</summary>
         <Facts
@@ -254,6 +267,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               {subtitle && <p>{subtitle}</p>}
               {readOnly && tone === "ready" ? (
                 <DemoAsOf date={demoSnapshot.data?.brokerAsOf} />
+              ) : snapshotTime ? (
+                <Freshness date={snapshotTime} label={t("已发布快照", "Published snapshot")} />
               ) : serviceIssue || !lastSuccess ? (
                 <Freshness date={data.checkedAt} label={t("检查时间", "Checked")} />
               ) : (
@@ -478,18 +493,19 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     ? t("没有符合筛选的任务", "No matching tasks")
                     : desktop && readOnly
                       ? t("演示不执行更新任务", "The demo does not run updates")
-                      : t(
-                        "第一次更新，从这里开始",
-                        "Your first update starts here",
-                      )
+                      : snapshot === "setup"
+                        ? t("完成设置后才会有记录", "Update history starts after setup")
+                        : t("暂无更新任务记录", "No update jobs recorded")
                 }
-                description={desktop && readOnly ? t(
-                  "这里展示模拟资料；在你自己的工作区中，更新记录会显示每次采集的进度与结果。",
-                  "These are synthetic records. In your own workspace, this list shows the progress and outcome of each update.",
-                ) : t(
-                  "连接账户后，选择更新范围并开始更新。",
-                  "Connect an account, choose a scope, and start an update.",
-                )}
+                description={data.jobs.length
+                  ? t("选择其他状态查看任务。", "Choose another status to find updates.")
+                  : readOnly
+                    ? t("此处显示工作区采集的进度和结果。", "This list shows collection progress and results for your workspace.")
+                    : snapshot === "published"
+                      ? t("现有快照仍可查看。开始更新后，任务会显示在这里。", "The published snapshot remains available. New jobs will appear here after you start an update.")
+                      : snapshot === "setup"
+                        ? t("先在设置中连接账户，再开始首次同步。", "Connect an account in Settings to start your first sync.")
+                        : t("在上方选择范围并开始更新；如果无法启动，请检查服务状态。", "Choose a scope and start an update above. If it cannot start, check the service status.")}
               />
             )}
           </Panel>

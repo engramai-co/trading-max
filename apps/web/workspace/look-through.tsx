@@ -19,7 +19,6 @@ import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
 import { AllocationComposition } from "./allocation-composition";
-import { AllocationRanking } from "./allocation-ranking";
 import { companyAllocation } from "./company-allocation";
 import { currency, number, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -350,7 +349,10 @@ function Exposure({
     r.country != null
       ? countryLabel(str(r.country))
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
-  const coverageLow = data.lookthroughCoveragePct < COVERAGE_FLOOR;
+  const top = companyComposition.rows.slice(0, 3);
+  const concentration = top.reduce((sum, row) => sum + (row.weight ?? 0), 0);
+  // The backend measures resolved securities against total invested value.
+  const unresolved = data.investedValueGbp > 0 ? Math.max(0, 1 - data.lookthroughCoveragePct) : null;
   const classificationLow = data.gicsCoveragePct < COVERAGE_FLOOR;
   const dimensions = [
     { value: "companies" as const, label: t("公司", "Companies") },
@@ -361,18 +363,10 @@ function Exposure({
   ];
   return (
     <>
-      {/* One quiet line: what the look-through covers and when it was taken. */}
       <div className="mx-exposure-basis">
-        <span>
-          {number(data.underlyingCount, 0)}
-          {t(" 只底层证券", " underlying securities")}
-        </span>
-        {coverageLow && (
-          <Tag tone="warn">
-            {t("ETF 穿透覆盖 ", "ETF look-through ")}
-            {percent(data.lookthroughCoveragePct)}
-          </Tag>
-        )}
+        <span title={top.map(({ name }) => name).join(" · ")}>{t("前三大公司", "Top three companies")} <strong>{percent(concentration)}</strong></span>
+        <span>{t("未穿透及非证券", "Unresolved & non-security")} <strong>{percent(unresolved)}</strong></span>
+        <span className="mx-exposure-denominator">{t("占已投资资产", "of invested assets")}</span>
         {classificationLow && (
           <Tag tone="warn">
             {t("GICS 分类覆盖 ", "GICS classified ")}
@@ -723,39 +717,24 @@ function Exposure({
         ) : (
           <div style={{ marginTop: 18 }}>
             <Group justify="space-between" mb="md">
-              <span className="mx-form-help">
-                {chart === "pie" && allocations.length > 12
-                  ? t("前 12 项与其余分类", "Top 12 and other categories")
-                  : t("前 12 项", "Top 12")}
-              </span>
               <Segments
                 label={t("配置图形", "Allocation chart")}
                 value={chart}
                 onChange={setChart}
                 options={[
-                  { value: "rank", label: t("排名", "Rank") },
+                  { value: "rank", label: t("明细", "Details") },
                   { value: "pie", label: t("组成", "Composition"), short: t("组成", "Mix") },
                 ]}
               />
             </Group>
-            {chart === "rank" ? (
-              <AllocationRanking
-                rows={allocations.slice(0, 12).map((row) => ({
-                  name: allocationLabel(row),
-                  value: numeric(row.valueGbp),
-                  weight: numeric(row.allocationPct),
-                }))}
-              />
-            ) : (
-              <AllocationComposition
-                key={`${view}-${snapshot}`}
-                rows={allocations.map((row) => ({
-                  name: allocationLabel(row),
-                  value: numeric(row.valueGbp),
-                  weight: numeric(row.allocationPct),
-                }))}
-              />
-            )}
+            {chart === "pie" && <AllocationComposition
+              key={`${view}-${snapshot}`}
+              rows={allocations.map((row) => ({
+                name: allocationLabel(row),
+                value: numeric(row.valueGbp),
+                weight: numeric(row.allocationPct),
+              }))}
+            />}
             <EvidenceTable
               key={view}
               label={t("完整配置明细", "Complete allocation details")}

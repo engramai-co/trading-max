@@ -4,7 +4,7 @@ import type { components } from "../lib/api-schema";
 // A synthetic account with two scored decisions and three that a link can open; between fetches
 // only their context changes.
 const asOf = "2026-10-20T12:00:00Z";
-type Context = { benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean; observations?: boolean };
+type Context = { benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean; renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
 // A twin is another security sold the same day under the same ticker; settled, the sale's 20 days are done.
@@ -51,6 +51,11 @@ function decisions(context: Context) {
       ] : [],
     },
     ...linked(context),
+    ...(context.cluster ? Array.from({ length: 4 }, (_, i) => ({
+      ...scored, date: "2026-09-02", ticker: "SYNC" + (i + 1), name: "Synthetic cluster " + (i + 1),
+      side: "buy", kind: "B", amountGbp: 100 * (i + 1), effectHorizonGbp: 10,
+      effectToDateGbp: 12, returnHorizon: 0.1, returnToDate: 0.12, events: [],
+    })) : []),
   ];
 }
 
@@ -84,8 +89,8 @@ async function serve(page: Page, context: () => Context) {
       totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
       accounts: [{ code: "A", isInvestable: true, totalValueGbp: 2000 }],
       // Enough of the account review for its highlights: a realized gain and a loss to open.
-      selectedAccountReview: { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
-      selectedAccountDecisions: { status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: decisions(context()) },
+      selectedAccountReview: context().empty ? null : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
+      selectedAccountDecisions: context().empty ? null : { status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: decisions(context()) },
       decisionReviews: { A: { status: "available", horizonDays: 20, observingCount: 1, decisions: linked(context()) } },
       ...(context().observations ? { reviewEvidence: observations(url.searchParams.get("account") ?? undefined) } : {}),
     } });
@@ -441,4 +446,31 @@ test("review shows dated observations, comparable fills and account coverage", a
   await page.goto("/account-analysis?account=B&reviewView=decisions");
   await expect(page.getByText("暂无可重算的成交")).toBeVisible();
   await expect(page.getByRole("table", { name: /买入 SYNE/ })).toHaveCount(0);
+});
+
+test("same-day cluster opens each of five decisions and closes from the same control", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+  await serve(page, () => ({ benchmark: 0.021, events: false, cluster: true }));
+  await page.goto("/account-analysis?account=A&reviewView=decisions");
+  const list = page.getByRole("region", { name: /所选日期的决定|Decisions on the selected date/ });
+  const marker = page.getByRole("group", { name: /同日决定|Same-day decisions/ }).getByRole("button", { name: /\+5/ });
+  await expect(marker).toHaveAttribute("aria-expanded", "false");
+  if (isMobile) await marker.tap();
+  else await marker.press("Enter");
+  await expect(marker).toHaveAttribute("aria-expanded", "true");
+  await expect(list.getByRole("link")).toHaveCount(5);
+  await expect(list).toContainText("Synthetic cluster 4");
+  await marker.click();
+  await expect(list).toBeHidden();
+});
+
+test("CFD without history offers prerequisites and the import screen", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await serve(page, () => ({ benchmark: 0, events: false, empty: true }));
+  await page.goto("/account-analysis?account=C");
+  await expect(page.getByText(/CFD 已平仓交易及费用|Closed CFD trades and fees/)).toBeVisible();
+  await expect(page.getByText(/入金、出金与转账|Deposits, withdrawals and transfers/)).toBeVisible();
+  await page.getByRole("button", { name: /导入 CFD 历史|Import CFD history/ }).click();
+  await expect(page).toHaveURL(/reviewView=imports/);
 });

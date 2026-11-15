@@ -135,7 +135,7 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
     if (path.endsWith("/journal")) return route.fulfill({ json: { ticker: "EQQQ", notes: [], models: [] } });
     if (path.endsWith("/prices")) return route.fulfill({ json: url.searchParams.get("interval") === "15m" ? {
       ticker: "EQQQ", requestedInterval: "15m", actualInterval: "15m", asOf: stamp,
-      currency: "GBP", points: sessionBars, tradeMarkers: [], availableSessions: 2,
+      currency: "GBP", timezone: "Europe/London", source: "Synthetic market feed", points: sessionBars, tradeMarkers: [], availableSessions: 2,
     } : {
       ticker: "EQQQ", requestedInterval: "1d", actualInterval: "1d", asOf: stamp,
       currency: "GBP", points, tradeMarkers: markers, availableSessions: points.length,
@@ -247,6 +247,8 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
     await expect(peek).toContainText("今日");
     await expect(peek).toContainText("+4.17%");
+    await expect(peek.locator(".mx-peek-basis")).toContainText("Synthetic market feed");
+    await expect(peek.locator(".mx-peek-basis time")).toHaveAttribute("datetime", sessionBars.at(-1)!.date);
     await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
     expect(requests.some((path) => path.endsWith("/prices"))).toBe(true);
   });
@@ -256,6 +258,9 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/holdings");
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().click();
     const drawer = page.getByRole("dialog");
+    await expect(drawer.locator(".mx-position-summary")).toContainText("券商快照报价");
+    await expect(drawer.locator(".mx-position-summary")).toContainText("买入总成本");
+    await expect(drawer.locator(".mx-position-summary")).toContainText("组合权重");
     await expect(drawer).toContainText(reading.indexName);
     await expect(drawer).toContainText("0.30%");
     await drawer.locator("summary").filter({ hasText: "基金底层持仓" }).click();
@@ -275,10 +280,26 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await synthetic(page, undefined, summary, false, true);
     await page.goto("/research?ticker=EQQQ.L");
     await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(7);
-    await expect(page.getByText("正在读取证券研究…", { exact: true })).toBeAttached();
+    await expect(page.getByText("基金研究正在更新。", { exact: true })).toBeVisible();
+    await expect(page.getByText(isin, { exact: true })).toBeVisible();
     await expect(page.getByText("EQQQ.L 还不在研究清单里")).toHaveCount(0);
     await page.goto("/research?ticker=UNKNOWN");
     await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
+  });
+
+  test("options separates the dated archive and unavailable current chain", async ({ page }) => {
+    await synthetic(page);
+    await page.route("**/api/backend/research/TEST/lens/options?**", (route) => route.fulfill({ json: {
+      ticker: "TEST", view: "options", runId, generatedAt: stamp,
+      options: { capturedAt: "2026-11-03T16:00:00Z", contracts: [], expiries: [{ expiry: "2026-11-20" }],
+        availability: { currentExpiries: [] }, spot: 100, currency: "GBP" },
+    } }));
+    await page.goto("/research?ticker=TEST&view=options");
+    await expect(page.getByText("当前期权数据不可用", { exact: true })).toBeVisible();
+    await expect(page.locator('.mx-tag time[datetime="2026-11-03T16:00:00Z"]')).toBeVisible();
+    await page.getByRole("button", { name: "查看历史快照" }).click();
+    await expect(page).toHaveURL(/chainMode=history/);
+    await expect(page.getByText("当前期权数据不可用", { exact: true })).toHaveCount(0);
   });
 
   test("the fund header shows the daily move and the correct session close", async ({ page }, info) => {

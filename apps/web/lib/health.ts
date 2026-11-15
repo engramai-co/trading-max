@@ -124,6 +124,12 @@ export function deriveHealthTone(details: HealthDetails | null, localWorkspace =
   return probeFailure || unhealthy ? "degraded" : "ready";
 }
 
+/** Publication and job history are independent. A copied or seeded snapshot may have no job log. */
+export function snapshotLifecycle(details: HealthDetails | undefined, tone: HealthTone) {
+  if (details?.health?.latestRunId || details?.readiness?.latestRunId) return "published";
+  return tone === "setup" ? "setup" : "unpublished";
+}
+
 export function latestStage(job: RefreshJob | null): RefreshJob["stages"][number] | null {
   if (!job || job.stages.length === 0) return null;
   return (
