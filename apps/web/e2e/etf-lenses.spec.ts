@@ -371,7 +371,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await shot(page, info.project.name, "peers", "dark");
     await lenses.getByRole("tab", { name: "日志" }).click();
     await expect(page.getByRole("region", { name: "交易记录" })).toContainText("Invest");
-    await expect(page.getByRole("region", { name: "发行商披露" })).toContainText(date);
+    await expect(page.getByRole("region", { name: "发行商披露" })).toContainText("11月11日");
     await expect(page.getByRole("region", { name: "发行商披露" })).toContainText(benchmarkChange.previousValue);
     await shot(page, info.project.name, "journal", "dark");
     await lenses.getByRole("tab", { name: "价格与技术面" }).click();

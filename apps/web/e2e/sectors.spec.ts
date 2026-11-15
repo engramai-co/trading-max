@@ -731,12 +731,20 @@ test.describe("market index layer", () => {
     await expect(page.locator(".mx-index-legend strong")).toHaveCount(2);
     await expect(page.locator(".mx-index-legend strong").first()).toContainText("%");
     await page.getByRole("button", { name: "GBP", exact: true }).click();
-    await expect(page.locator(".mx-index-provenance")).toContainText("USD");
+    // The chart help names the displayed series; it keeps USD until the GBP history arrives.
+    const basis = page.locator(".mx-index-history").getByRole("button", { name: /指数数据与口径|Index data and basis/ });
+    const seriesLine = page.locator(".mx-help-popover .mx-help-body p").first();
+    await basis.click();
+    await expect(seriesLine).toHaveText(/· USD$/);
+    await page.keyboard.press("Escape");
     await expect(page.locator(".mx-index-history")).toContainText(/显示上一次走势|showing previous chart/);
     await expect(chart).toBeVisible();
     await expect(page).toHaveURL(/compare=nasdaq-100.*currency=GBP/);
     release();
-    await expect(page.locator(".mx-index-provenance")).toContainText("GBP");
+    await expect(page.locator(".mx-index-history")).not.toContainText(/显示上一次走势|showing previous chart/);
+    await basis.click();
+    await expect(seriesLine).toHaveText(/· GBP$/);
+    await page.keyboard.press("Escape");
     expect(requests.sort()).toEqual(["nasdaq-100", "sp-500"]);
     await page.getByRole("button", { name: "6M", exact: true }).click();
     await expect(page.locator(".mx-index-history")).toContainText(/走势请求超时|History request timed out/);
