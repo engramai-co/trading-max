@@ -774,9 +774,11 @@ test.describe("market index layer", () => {
     await expect(page.locator("#index-card-msci-world")).toBeVisible();
     await selectMarket(page, /瑞士|Switzerland/, true);
     await expect(page).toHaveURL(/market=ch/);
-    await page.getByRole("link", { name: /瑞士市场指数|SMI/ }).click();
+    await page.getByRole("link", { name: /瑞士市场指数|SMI/ })
+      .and(page.locator('a[href*="/sectors"]')).click();
     await expect(page).toHaveURL(/market=ch&index=smi/);
     await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
+    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toBeVisible();
     expect(requests).toBe(0);
   });
 
@@ -961,7 +963,7 @@ test.describe("market index layer", () => {
     await page.getByRole("button", { name: /添加证券|Add security/ }).first().click();
     await page.getByRole("textbox", { name: /搜索证券|Search securities/ }).fill("^GSPC");
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
-    await expect(page).toHaveURL(/sectors\?market=us&index=sp-500/);
+    await expect(page).toHaveURL(/research\?type=index&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
   });
 
@@ -1112,7 +1114,8 @@ test.describe("market index layer", () => {
         });
         await mockIndices(page);
         await page.goto("/sectors?market=us");
-        await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })).toBeVisible();
+        await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })
+          .and(page.locator('a[href*="/sectors"]'))).toBeVisible();
         await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
         await settle(page);
