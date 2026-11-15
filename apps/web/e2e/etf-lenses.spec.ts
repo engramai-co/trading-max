@@ -160,6 +160,11 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     let release!: () => void;
     const late = new Promise<void>((resolve) => { release = resolve; });
     await synthetic(page, late);
+    // The fund's ISIN names its issuer logo; a fund ticker alone can belong to another company.
+    const fundLogo = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === "/api/company-logo/EQQQ" && url.searchParams.has("isin");
+    });
     await page.goto("/?range=1D");
     const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");
     const stocks = ledger.locator('[data-asset-class="stocks"]');
@@ -173,6 +178,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(funds.locator(headings)).toContainText("技术");
     await expect(funds.locator(headings)).not.toContainText("重叠");
     await expect(funds.locator('a.mx-ledger-link:visible, a.mx-ledger-item:visible')).toHaveAttribute("href", "/research?ticker=EQQQ.L&view=technical&technicalView=data");
+    expect(new URL((await fundLogo).url()).searchParams.get("isin")).toBe(isin);
     await expect(funds.locator('.mx-ledger-flag[title*="RSI 22"]')).toBeVisible();
     const etf = funds.locator(".mx-ledger-etf");
     const figures = etf.locator('> span[aria-hidden="true"]');
@@ -189,7 +195,9 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
         : cell.closest("dd")?.previousElementSibling?.textContent;
     }));
     expect(associatedHeadings).toEqual(["跟踪差"]);
-    await expect(etf.first()).toHaveAttribute("aria-label", /2026-10-31/);
+    // Hover text and the accessible name read dates in the reader's locale and leave the source link to the research page.
+    await expect(etf.first()).toHaveAttribute("aria-label", /截至 10月31日/);
+    await expect(etf.first()).not.toHaveAttribute("aria-label", /https?:|\d{4}-\d{2}-\d{2}/);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=warning]")).toHaveCount(2);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=down]")).toHaveCount(1);
     await ledger.evaluate((node) => node.closest(".mx-overview-holdings")?.scrollIntoView({ block: "center", behavior: "instant" }));

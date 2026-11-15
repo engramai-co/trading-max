@@ -11,7 +11,8 @@ import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./a
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
-import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy } from "./etf-data";
+import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type EvidenceTime } from "./etf-data";
+import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
 import { holdingsLedger, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
 import { SecurityPeek } from "./security-peek";
@@ -81,8 +82,8 @@ function TrackingCell({ display, description, status, facts }: {
   </span>;
 }
 
-function figures(row: LedgerRow, t: Copy) {
-  const tracking = row.fund ? trackingDisplay(row.etf, t, true) : undefined;
+function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
+  const tracking = row.fund ? trackingDisplay(row.etf, t, when, true) : undefined;
   const hasTracking = row.etf?.tracking.differencePp != null && row.etf.tracking.state !== "incomparable";
   return {
     day: row.dayClosed ? <ClosedMarket /> : <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
@@ -119,6 +120,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   account: string;
 }) {
   const t = useCopy();
+  const when = useEvidenceTime();
   const { locale } = useLocale();
   const { today, now } = useCurrentDay();
   const palette = useAllocationChartColours();
@@ -180,7 +182,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                   {columns.map((column) => <th scope="col" key={column.key} id={groupId + "-" + column.key}>{column.label}</th>)}
                 </tr>
                 {rows.map((row, index) => {
-                  const cells = figures(row, t);
+                  const cells = figures(row, t, when);
                   const rowId = groupId + "-row-" + index;
                   const headers = (column: string) => rowId + " " + groupId + "-" + column;
                   return (
@@ -194,7 +196,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                                 ? t("今日涨跌", "Today’s move") : dayLabel(row.dayDate ?? ledger.columnDay),
                               share: row.day, closed: row.dayClosed, price: row.quotePrice, currency: row.quoteCurrency, asOf: brokerAsOf,
                             }}>
-                            <Instrument ticker={row.ticker} name={row.name} small />
+                            <Instrument ticker={row.ticker} name={row.name} isin={row.isin} small />
                           </SecurityPeek>
                         </Link>
                       </th>
@@ -224,13 +226,13 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                 </div>
                 <ol>
                   {rows.map((row) => {
-                    const cells = figures(row, t);
+                    const cells = figures(row, t, when);
                     return (
                       <li key={row.ticker}>
                         <Link className="mx-ledger-item" href={row.href} {...keys(rowFocus(row))}>
                           <span className="mx-ledger-item-head">
                             {dot(row)}
-                            <Instrument ticker={row.ticker} name={row.name} small />
+                            <Instrument ticker={row.ticker} name={row.name} isin={row.isin} small />
                             <strong><span className="sr-only">{weightLabel} </span>{percent(row.weight)}</strong>
                           </span>
                           <dl>

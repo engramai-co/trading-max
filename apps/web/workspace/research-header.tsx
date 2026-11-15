@@ -9,7 +9,7 @@ import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import { currency, object, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
-import { Panel, Tag, UpdateFailure, useCopy } from "./foundation";
+import { companyLogoSrc, Panel, Tag, UpdateFailure, useCopy } from "./foundation";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 import Link from "./link";
 import { priceBasis, type PriceTime } from "./research-price-basis";
@@ -67,7 +67,8 @@ export function SecurityHeader({
 }: {
   ticker: string;
   selected: Pick<ResearchInstrument, "name" | "exchange" | "held" | "directValueGbp" | "exposureGbp"> &
-    Partial<Pick<ResearchInstrument, "brokerPrice" | "brokerPriceCurrency" | "brokerAsOf" | "brokerListing" | "usFundPeers">>;
+    Partial<Pick<ResearchInstrument, "brokerPrice" | "brokerPriceCurrency" | "brokerAsOf" | "brokerListing" | "usFundPeers">> &
+    { fundIsin?: string | null };
   quote: ResearchLensSnapshot | undefined;
   quotePending: boolean;
   failure?: { updatedAt: number; retry: () => unknown };
@@ -94,8 +95,8 @@ export function SecurityHeader({
       <div className="mx-security-header">
         <div className="mx-security-name">
           <Avatar
-            key={ticker}
-            src={`/api/company-logo/${encodeURIComponent(ticker)}`}
+            key={ticker + (selected.fundIsin ?? "")}
+            src={companyLogoSrc(ticker, selected.fundIsin)}
             alt=""
             aria-hidden="true"
             size={48}

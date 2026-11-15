@@ -66,28 +66,6 @@
   margin-top: 10px;
   padding: 9px 0;
 }
-.mx-index-to-research {
-  align-items: center;
-  display: inline-flex;
-  min-height: 28px;
-  margin-top: 4px;
-}
-.mx-index-card-stack {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.mx-index-to-research > svg {
-  display: none;
-}
-.mx-index-card-stack > .mx-index-card {
-  flex: 1;
-}
-.mx-index-card-stack > .mx-index-to-research {
-  align-self: flex-end;
-  margin-right: 5px;
-}
 .mx-index-research-chart-tools {
   align-items: flex-start;
   display: flex;
@@ -269,24 +247,5 @@
   .mx-index-research-waterfall > div {
     font-size: 12px;
     grid-template-columns: minmax(74px, 32%) 1fr 62px;
-  }
-  .mx-index-card-stack > .mx-index-card {
-    padding-inline-end: 44px;
-  }
-  .mx-index-card-stack > .mx-index-to-research {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-end: 0;
-    width: 44px;
-    min-height: 0;
-    margin: 0;
-    justify-content: center;
-    border-radius: var(--mx-radius-sm, 7px);
-  }
-  .mx-index-to-research-label {
-    display: none;
-  }
-  .mx-index-to-research > svg {
-    display: block;
   }
 }

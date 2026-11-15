@@ -311,7 +311,7 @@ function Positions() {
                             >
                               <span className="sr-only">{t("查看持仓 ", "View position ")}</span>
                               <SecurityPeek ticker={h.ticker} range="1D" position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
-                                <Instrument ticker={h.ticker} name={h.name} />
+                                <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
                               </SecurityPeek>
                             </button>
                           </td>
@@ -413,7 +413,7 @@ function Positions() {
                       onClick={() => selectHolding(h)}
                     >
                       <div>
-                        <Instrument ticker={h.ticker} name={h.name} />
+                        <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
                         <span className="mx-row-value">
                           {currency(h.currentValueGbp, "GBP", 2)}
                           <small>
