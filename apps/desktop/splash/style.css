@@ -9,6 +9,7 @@
   --soft:#edf5ff;
   --green:#2f7a49;
   --danger:#b4473a;
+  --warning:#80530c;
   --ease:cubic-bezier(.22,1,.36,1);
   font:14px/1.6 "Avenir Next",Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Segoe UI",sans-serif;
   color:var(--ink);
@@ -369,8 +370,8 @@ button:focus-visible,input:focus-visible {
 .status.good>.dot {
   background:var(--green)
 }
-.status.error>.dot {
-  background:var(--danger)
+.status.warn>.dot {
+  background:var(--warning)
 }
 .status.working>.dot {
   background:var(--blue)
@@ -574,7 +575,8 @@ body.picker .choice {
     --blue:#7eb3ff;
     --soft:#1a2638;
     --green:#78cf91;
-    --danger:#ff958a
+    --danger:#ff958a;
+    --warning:#f4c35f
   }
   button {
     color:#0e213c
@@ -625,3 +627,9 @@ body.picker .local-recent .recent-name span { overflow:hidden; text-overflow:ell
 body.picker .demo-row { padding-top:20px; }
 body.picker footer { margin-top:24px; padding-top:16px; }
 button:not(.text-button) { min-height:40px; }
+
+#recent[data-primary], #local-recents:has([data-primary]) {
+  border-color:color-mix(in oklab,var(--blue) 40%,var(--line));
+  background:var(--soft);
+}
+.local-recent button { flex-shrink:0; }

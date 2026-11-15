@@ -45,7 +45,8 @@
 .connection-state { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
 .connection-state::before { content:""; height:6px; width:6px; background:var(--muted); border-radius:50%; }
 .connection-state.connected::before { background:var(--green); }
-.connection-state.error::before { background:var(--danger); }
+.connection-state.error { color:var(--warning); }
+.connection-state.error::before { background:var(--warning); }
 .workspace-card-actions { display:flex; gap:10px; margin-top:20px; }
 .about-product { display:flex; gap:18px; align-items:center; margin:0 0 32px; }
 .about-product h2 { font-size:22px; letter-spacing:-.5px; margin:0 0 4px; }
@@ -76,3 +77,14 @@
 }
 #app-language { color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; }
 #app-language:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+.app-versions {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  padding:12px 0;
+  margin:0 0 14px;
+  border-block:1px solid var(--line);
+}
+.app-versions dt { color:var(--muted); font-size:12px; }
+.app-versions dd { margin:2px 0 0; font-size:18px; font-weight:650; font-variant-numeric:tabular-nums; }

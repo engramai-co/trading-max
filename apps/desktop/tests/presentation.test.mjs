@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { workspacePresentation, savedRemote, recentWorkspacePresentation } from "../splash/presentation.mjs";
+import { workspacePresentation, savedRemote, recentWorkspacePresentation, preferredWorkspace } from "../splash/presentation.mjs";
 
 test("an active local workspace never inherits the saved remote service identity", () => {
   const view = workspacePresentation({
@@ -86,12 +86,22 @@ test("deleted recents are unavailable and removable even when their page is stil
     action: "return", label: "Back to workspace", canForget: false,
   });
   assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: false }, state, "en"), {
-    action: null, label: "Unavailable", canForget: true,
+    action: "locate", label: "Choose location", canForget: true,
   });
   assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: false }, {}, "zh-CN"), {
-    action: null, label: "不可用", canForget: true,
+    action: "locate", label: "选择位置", canForget: true,
   });
   assert.deepEqual(recentWorkspacePresentation({ ...workspace, available: true }, {}, "zh-CN"), {
     action: "open", label: "打开", canForget: true,
   });
+});
+
+test("the active workspace leads the welcome list; an offline disk offers recovery", () => {
+  const available = { path: "/tmp/synthetic-online", available: true };
+  const offline = { path: "/tmp/synthetic-offline", available: false };
+  const state = { profile: { mode: "remote", url: "https://saved.example.test" }, workspaces: [offline, available] };
+  assert.deepEqual(preferredWorkspace(state), { kind: "remote" });
+  assert.deepEqual(preferredWorkspace({ ...state, mode: "local", workspace: available }), { kind: "local", path: available.path });
+  assert.equal(recentWorkspacePresentation(available, state, "en", true).label, "Continue workspace");
+  assert.equal(recentWorkspacePresentation(offline, state, "en").action, "locate");
 });

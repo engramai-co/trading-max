@@ -42,10 +42,15 @@ const WORKSPACE_CHROME_SCRIPT: &str = r#"(function () {
 })();"#;
 #[cfg(target_os = "macos")]
 extern "C" {
-    fn trading_max_install_drag_strip(window: *mut std::ffi::c_void, height: f64);
+    fn trading_max_install_drag_strip(
+        window: *mut std::ffi::c_void,
+        height: f64,
+        retry: extern "C" fn(),
+    );
     fn trading_max_set_connection_notice(
         window: *mut std::ffi::c_void,
         message: *const std::ffi::c_char,
+        retry_title: *const std::ffi::c_char,
     );
 }
 
@@ -121,6 +126,7 @@ struct Desktop {
     root: PathBuf,
     runtime: Runtime,
     session: Mutex<Session>,
+    retained_retry: Mutex<Option<u64>>,
     exiting: AtomicBool,
 }
 impl Desktop {
@@ -260,6 +266,31 @@ fn home(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
         }
     });
 }
+#[cfg(target_os = "macos")]
+static NATIVE_RETRY_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+fn retry_retained_connection(desktop: &Desktop, snapshot: &Session) -> bool {
+    if snapshot.workspace_available()
+        && snapshot
+            .desired
+            .as_ref()
+            .is_some_and(|profile| profile.mode == Mode::Remote)
+        && matches!(snapshot.stage.as_str(), "offline" | "reconnecting")
+    {
+        *desktop.retained_retry.lock().unwrap() = Some(snapshot.generation);
+        return true;
+    }
+    false
+}
+
+#[cfg(target_os = "macos")]
+extern "C" fn retry_native_connection() {
+    if let Some(app) = NATIVE_RETRY_APP.get() {
+        let desktop = app.state::<Arc<Desktop>>();
+        retry_retained_connection(&desktop, &desktop.snapshot());
+    }
+}
+
 fn connection_notice(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64) {
     let handle = app.clone();
     let desktop = desktop.clone();
@@ -272,14 +303,25 @@ fn connection_notice(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation:
             #[cfg(target_os = "macos")]
             if let Ok(native) = window.ns_window() {
                 let message = match snapshot.stage.as_str() {
-                    "reconnecting" => "连接中断 · 正在重连，数据可能未更新",
-                    "offline" => "连接中断 · 数据可能未更新，请在「连接」菜单重试",
+                    "reconnecting" => snapshot.app_language.text(
+                        "连接中断，正在重连。数据可能未更新。",
+                        "Connection lost. Reconnecting; data may be out of date.",
+                    ),
+                    "offline" => snapshot.app_language.text(
+                        "连接中断。当前数据可能未更新。",
+                        "Connection lost. Data may be out of date.",
+                    ),
                     _ => "",
                 };
                 let message = std::ffi::CString::new(message).unwrap();
                 // AppKit-only status in the existing title band, no remote IPC
                 // or injected account data, and no overlay on the portfolio.
-                unsafe { trading_max_set_connection_notice(native, message.as_ptr()) };
+                let retry =
+                    std::ffi::CString::new(snapshot.app_language.text("重新连接", "Reconnect"))
+                        .unwrap();
+                unsafe {
+                    trading_max_set_connection_notice(native, message.as_ptr(), retry.as_ptr())
+                };
             }
         }
     });
@@ -419,7 +461,14 @@ fn create_workspace_window(
     #[cfg(target_os = "macos")]
     if let Ok(ns_window) = window.ns_window() {
         // Called on the main thread by the connection driver.
-        unsafe { trading_max_install_drag_strip(ns_window, WORKSPACE_CHROME_BAND) };
+        let _ = NATIVE_RETRY_APP.set(app.clone());
+        unsafe {
+            trading_max_install_drag_strip(
+                ns_window,
+                WORKSPACE_CHROME_BAND,
+                retry_native_connection,
+            )
+        };
     }
     let exit = app.clone();
     window.on_window_event(move |event| {
@@ -509,6 +558,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
     let mut loading_since = Instant::now();
     let mut recovery = recovery::RemoteRecovery::default();
     let mut monitor_remote = false;
+    let mut last_probe = Instant::now();
     while !desktop.exiting.load(Ordering::Relaxed) {
         let snapshot = desktop.snapshot();
         let generation = snapshot.generation;
@@ -524,6 +574,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
             match &snapshot.desired {
                 None => {}
                 Some(profile) if profile.mode == Mode::Remote => {
+                    last_probe = Instant::now();
                     if let Some(delay) = check_remote(
                         &app,
                         &desktop,
@@ -574,18 +625,44 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                 } else if snapshot.stage == "connecting" {
                     desktop.update(generation, |s| s.message = runtime.message);
                 }
-            } else if monitor_remote && Instant::now() >= next_probe {
-                let after = check_remote(
-                    &app,
-                    &desktop,
-                    generation,
-                    profile,
-                    &mut recovery,
-                    &mut loading_since,
-                );
-                monitor_remote = after.is_some();
-                if let Some(delay) = after {
-                    next_probe = Instant::now() + delay;
+            } else {
+                let manual = {
+                    let mut requested = desktop.retained_retry.lock().unwrap();
+                    if *requested == Some(generation)
+                        && last_probe.elapsed() >= Duration::from_secs(3)
+                    {
+                        requested.take();
+                        snapshot.workspace_available()
+                            && matches!(snapshot.stage.as_str(), "offline" | "reconnecting")
+                    } else {
+                        if requested.is_some() && *requested != Some(generation) {
+                            requested.take();
+                        }
+                        false
+                    }
+                };
+                if manual || monitor_remote && Instant::now() >= next_probe {
+                    if manual
+                        && desktop.update(generation, |session| {
+                            session.stage = "reconnecting".into();
+                            session.retry_at_ms = None;
+                        })
+                    {
+                        connection_notice(&app, &desktop, generation);
+                    }
+                    last_probe = Instant::now();
+                    let after = check_remote(
+                        &app,
+                        &desktop,
+                        generation,
+                        profile,
+                        &mut recovery,
+                        &mut loading_since,
+                    );
+                    monitor_remote = after.is_some();
+                    if let Some(delay) = after {
+                        next_probe = Instant::now() + delay;
+                    }
                 }
             }
             let current = desktop.snapshot();
@@ -1035,6 +1112,9 @@ fn retry_connection(
 ) -> Result<(), String> {
     local_command(&window)?;
     let snapshot = desktop.snapshot();
+    if retry_retained_connection(&desktop, &snapshot) {
+        return Ok(());
+    }
     let profile = snapshot.desired.unwrap_or(snapshot.profile).validated()?;
     request_connection(&app, &desktop, Some(profile), false)
 }
@@ -1192,6 +1272,7 @@ fn set_app_language(
             }
         }
     }
+    connection_notice(&app, &desktop, desktop.snapshot().generation);
     Ok(language)
 }
 
@@ -1305,6 +1386,9 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             "reconnect" => {
                 let snapshot = desktop.snapshot();
+                if retry_retained_connection(&desktop, &snapshot) {
+                    return;
+                }
                 if let Ok(profile) = snapshot.desired.unwrap_or(snapshot.profile).validated() {
                     let _ = request_connection(app, &desktop, Some(profile), false);
                 } else {
@@ -1403,6 +1487,7 @@ fn main() {
                     desired: None,
                     dismiss_settings: false,
                 }),
+                retained_retry: Mutex::new(None),
                 exiting: AtomicBool::new(false),
             });
             app.manage(desktop.clone());
@@ -1482,6 +1567,30 @@ mod tests {
             artifact_age_seconds: Some(10.0),
         }
     }
+    #[test]
+    fn a_manual_retry_keeps_the_open_page_and_generation() {
+        let session = remote_session("offline");
+        let root = std::env::temp_dir().join("trading-max-retry-no-write");
+        let desktop = Desktop {
+            runtime: Runtime::new(root.clone(), root.clone()),
+            root,
+            retained_retry: Mutex::new(None),
+            session: Mutex::new(session.clone()),
+            exiting: AtomicBool::new(false),
+        };
+        assert!(retry_retained_connection(&desktop, &session));
+        assert_eq!(
+            *desktop.retained_retry.lock().unwrap(),
+            Some(session.generation)
+        );
+        assert_eq!(desktop.snapshot().active_url, session.active_url);
+        assert_eq!(desktop.snapshot().generation, session.generation);
+        assert!(!retry_retained_connection(
+            &desktop,
+            &remote_session("connecting")
+        ));
+    }
+
     #[test]
     fn a_long_outage_preserves_the_live_page_and_recovers_without_navigation() {
         let mut session = remote_session("ready");
@@ -1725,6 +1834,7 @@ mod tests {
         let desktop = Desktop {
             runtime: Runtime::new(root.clone(), root.clone()),
             root: root.clone(),
+            retained_retry: Mutex::new(None),
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
@@ -1774,6 +1884,7 @@ mod tests {
         let desktop = Desktop {
             runtime: Runtime::new(root.clone(), root.clone()),
             root: root.clone(),
+            retained_retry: Mutex::new(None),
             exiting: AtomicBool::new(false),
             session: Mutex::new(Session {
                 app_version: env!("CARGO_PKG_VERSION"),
