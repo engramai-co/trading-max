@@ -18277,6 +18277,24 @@
               }
             ]
           },
+          "boardIssue": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_configured",
+                  "no_coverage",
+                  "fetch_failed",
+                  "awaiting_collection"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the selected board is missing or could not update; the last board may still be present.",
+            "title": "Boardissue"
+          },
           "market": {
             "enum": [
               "us",

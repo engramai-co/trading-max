@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/lib/api-schema";
-import { api } from "@/workspace/data";
+import { readApi } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
 
 export type IndexIdentity = components["schemas"]["IndexIdentity"];
@@ -35,7 +35,7 @@ export function useIndexCatalog(enabled = true) {
   const demonstration = useDemonstration();
   return useQuery({
     queryKey: ["index-catalog"],
-    queryFn: ({ signal }) => api<IndexIdentity[]>("/indices/catalog", { signal }),
+    queryFn: ({ signal }) => readApi<IndexIdentity[]>("/indices/catalog", signal),
     enabled: enabled && !demonstration,
     staleTime: 30 * 60_000,
     retry: 0,

@@ -132,6 +132,9 @@ export async function proxyToBackend(
       performance.now() - startedAt,
     );
   } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return Response.json({ detail: "Portfolio backend timed out" }, { status: 504, headers: PRIVATE_JSON_HEADERS });
+    }
     return backendUnavailable(
       error instanceof Error ? error.message : "Portfolio backend is unavailable",
     );

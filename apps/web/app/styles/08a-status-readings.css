@@ -1,0 +1,81 @@
+.mx-position-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: 12px 20px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-position-summary .mx-number {
+  overflow-wrap: anywhere;
+}
+.mx-exposure-basis strong {
+  color: var(--mx-ink);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 767px) {
+  .mx-exposure-basis {
+    column-gap: 9px;
+    row-gap: 3px;
+  }
+  .mx-exposure-denominator {
+    white-space: nowrap;
+  }
+}
+.mx-holding-quote-basis {
+  display: block;
+  color: var(--mx-muted);
+  font-variant-numeric: tabular-nums;
+}
+.mx-peek-basis {
+  margin: 4px 0 0;
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-review-prerequisites {
+  margin: 0 0 12px;
+  padding-inline-start: 1.2em;
+}
+.mx-review-prerequisites li + li {
+  margin-block-start: 6px;
+}
+.mx-decision-clusters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-block: 4px;
+}
+.mx-decision-clusters button {
+  min-height: 32px;
+}
+.mx-decision-clusters button[aria-expanded="true"] {
+  color: var(--mx-accent);
+}
+.mx-decision-day {
+  margin-block-start: 10px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-decision-day h3 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+@media (max-width: 767px) {
+  .mx-health-hero {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: start;
+  }
+  .mx-health-hero > .mx-health-symbol {
+    width: 32px;
+    height: 32px;
+  }
+  .mx-health-symbol > svg {
+    width: 23px;
+    height: 23px;
+  }
+  /* The heading already says why the status needs attention. */
+  .mx-health-hero > .mx-tag {
+    display: none;
+  }
+}

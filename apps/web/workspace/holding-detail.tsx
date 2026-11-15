@@ -88,11 +88,14 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
         listing={listing}
         detail={<span className="mx-position-account">{account}</span>}
       />
+      <div className="mx-position-summary">
+        <Metric label={t("券商快照报价", "Broker snapshot price")} value={quote.price}
+          note={accountAsOf ? formatDateTime(accountAsOf, locale, timeZone, now) : t("时间未提供", "Time unavailable")} />
+        <Metric label={t("买入总成本", "Total purchase cost")} value={currency(holding.costGbp, "GBP", 2)} />
+        <Metric label={t("组合权重", "Portfolio weight")} value={weight} />
+      </div>
       <div className="mx-position-impact">
-        <div className="mx-position-value">
-          <Metric large label={t("当前市值", "Current market value")} value={currency(holding.currentValueGbp, "GBP", 2)} />
-          <span className="mx-position-weight">{locale === "zh" ? `占组合 ${weight}` : `${weight} of portfolio`}</span>
-        </div>
+        <Metric label={t("当前市值", "Current market value")} value={currency(holding.currentValueGbp, "GBP", 2)} />
         <dl className="mx-position-moves">
           <PositionMove label={dayLabel} amount={holding.dayChangeGbp} ratio={holding.dayChangePct} closed={Boolean(holding.dayChangeClosedOn)} />
           <PositionMove label={t("浮动盈亏", "Unrealized P&L")} amount={holding.pnlGbp} ratio={holding.pnlPct} />
@@ -100,9 +103,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
       </div>
       <Facts rows={[
         [t("持有数量", "Quantity"), quantity === "—" ? quantity : `${quantity} ${unit}`],
-        [t("当前价格", "Current price"), quote.price],
-        [t("买入总成本", "Total purchase cost"), currency(holding.costGbp, "GBP", 2)],
-        [
+        ...(quote.dilutedCost === "—" ? [] : [[
           <span key="diluted-cost" className="mx-position-cost-label">
             {dilutedCostLabel}
             <Help label={t("摊薄成本", "Diluted cost")}>
@@ -110,7 +111,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
             </Help>
           </span>,
           quote.dilutedCost,
-        ],
+        ]] satisfies ComponentProps<typeof Facts>["rows"]),
       ]} />
       {holding.isFund && runId ? <FundPosition holding={holding} runId={runId} />
         : !holding.isFund && <NextStockEvent ticker={holding.ticker} runId={runId} today={today} now={now} />}
@@ -160,16 +161,24 @@ function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
   const holdings = current?.holdings;
   const top = [...(holdings?.holdings ?? [])].filter((item) => item.weightPct > 0)
     .sort((a, b) => b.weightPct - a.weightPct).slice(0, 10);
+  const income = reading?.incomeUse === "Accumulating" ? t("累积", "Accumulating")
+    : reading?.incomeUse === "Distributing" ? t("派息", "Distributing") : reading?.incomeUse;
+  const fundRows: ComponentProps<typeof Facts>["rows"] = [];
+  const unavailable: string[] = [];
+  if (reading?.indexName) fundRows.push([t("跟踪指数", "Tracked index"), reading.indexName]);
+  else unavailable.push(t("跟踪指数", "tracked index"));
+  if (fee !== missing) fundRows.push([feeLabel, <span key="fee" role="group" title={feeEvidence} aria-label={feeEvidence}>{fee}</span>]);
+  else unavailable.push(feeLabel);
+  if (income) fundRows.push([t("收益分配", "Income use"), income]);
+  else unavailable.push(t("收益分配", "income use"));
+  if (tracking.display !== missing) fundRows.push([t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...tracking} />]);
+  else unavailable.push(t("一年跟踪差", "1-year tracking difference"));
+  if (reading?.overlap?.value != null) fundRows.push([t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" {...overlap} />]);
+  else unavailable.push(t("组合重叠", "portfolio overlap"));
   return (
     <>
-      <Facts rows={[
-        [t("跟踪指数", "Tracked index"), reading?.indexName || missing],
-        [feeLabel, <span key="fee" role="group" title={feeEvidence} aria-label={feeEvidence}>{fee}</span>],
-        [t("收益分配", "Income use"), reading?.incomeUse === "Accumulating" ? t("累积", "Accumulating")
-          : reading?.incomeUse === "Distributing" ? t("派息", "Distributing") : reading?.incomeUse ?? missing],
-        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...tracking} />],
-        [t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" {...overlap} />],
-      ]} />
+      {fundRows.length > 0 && <Facts rows={fundRows} />}
+      {unavailable.length > 0 && <p className="mx-muted">{t("基金资料未齐：", "Fund data missing: ")}{unavailable.join(t("、", ", "))}</p>}
       <details className="mx-position-calculation">
         <summary>{t("基金底层持仓", "Underlying holdings")}</summary>
         {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓已过期", "Holdings stale")}</Tag>}

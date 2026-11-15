@@ -31,7 +31,7 @@ import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "
 import { formatDateTime } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
-import { Empty, Page, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { Empty, Page, Pending, Segments, useCopy } from "./foundation";
 import { GlobalMarkets } from "./global-markets";
 import { GlobalSectors, GlobalViewSwitch, globalView, useGlobalSectors } from "./global-sectors";
 import Link from "./link";
@@ -103,7 +103,7 @@ export function SectorsWorkspace() {
   const board = !indicesOnly && shown?.board?.market === market ? shown.board : null;
   const switching = !rejected && Boolean(data?.board) && !board && query.isFetching;
   // A failed background refresh keeps the board on screen and says so beside its time.
-  const refreshFailed = query.isError && board != null && !rejected;
+  const refreshFailed = (query.isError || shown?.boardIssue === "fetch_failed") && board != null && !rejected;
   const status = shown?.markets.find((item) => item.market === market);
   const kinds = board?.groupings.map((grouping) => grouping.kind) ?? [];
   // The URL's grouping and sector belong to the requested market, so a fallback board ignores them.
@@ -263,27 +263,39 @@ export function SectorsWorkspace() {
     </button>
   );
   // A retry behind a fallback board is pending too, but the fallback stays on screen.
-  const body = indicesOnly ? null : !rejected && (query.isPending || switching) ? (
+  const boardIssue = indicesOnly || status?.calendarKnown === false ? "no_coverage"
+    : query.isError ? "fetch_failed"
+      : shown?.boardIssue ?? (status?.lastError ? "fetch_failed"
+        : shown?.monitor?.enabled === false ? "not_configured" : "awaiting_collection");
+  const nextRun = shown?.monitor?.nextRunAt;
+  const sectorNext = nextRun
+    ? t("下一次采集：", "Next collection: ") + formatDateTime(nextRun, locale, timeZone)
+    : t("请在数据状态查看板块行情的更新计划。", "Check the sector quote schedule in Data status.");
+  const body = indicesOnly
+    ? <p className="mx-index-note">{t("本市场仅有指数覆盖。可切换市场查看板块。", "Only index quotes are covered here. Switch markets to see sector boards.")}</p>
+    : !rejected && (query.isPending || switching) ? (
     <Pending />
-  ) : query.isError && !board ? (
-    <QueryError retry={query.refetch} />
   ) : !board || !groups.length ? (
     <section className="mx-panel">
       <Empty
         headingLevel={2}
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
         description={demonstration
-          ? t("此市场没有演示板块数据。", "Sector data for this market is not included in the demo.")
-          : status?.calendarKnown === false
-          ? undefined
-          : data?.monitor?.enabled === false
-          ? t("开启「证券研究与每日对账」，在交易时段自动更新板块。", "Turn on Research & daily reconciliation to update sectors during trading hours.")
-          : data?.monitor?.nextRunAt
-            ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)
-            : undefined}
-        action={!demonstration && data?.monitor?.enabled === false
-          ? <Button component={Link} href="/settings" variant="default">{t("打开设置", "Open settings")}</Button>
-          : undefined}
+          ? t("演示不包含此市场的板块。可切换到有演示数据的市场。", "This market isn’t in the demo. Switch to another market to see a sample board.")
+          : boardIssue === "no_coverage"
+            ? t("本市场没有可用的板块篮子或交易日历。可查看上方指数，或切换到其他市场。", "No supported sector basket or market calendar is available here. Use the index list above or choose another market.")
+            : boardIssue === "not_configured"
+              ? t("板块采集尚未配置。请在更新计划中开启自动采集。", "Sector collection isn’t configured. Enable collection in the update schedule.")
+              : boardIssue === "fetch_failed"
+                ? t("最近一次采集未能取得行情。请重试读取，或在数据状态查看下一次采集。", "The last collection could not retrieve quotes. Retry loading or check Data status for the next collection.")
+                : t("尚未发布板块快照。", "No sector snapshot has been published yet.") + " " + sectorNext}
+        action={demonstration ? undefined : boardIssue === "not_configured"
+          ? <Button component={Link} href="/settings?tab=automation" variant="default">{t("打开设置", "Open settings")}</Button>
+          : boardIssue === "fetch_failed"
+            ? <Button variant="default" onClick={() => void query.refetch()} loading={query.isFetching}>{t("重试读取", "Retry loading")}</Button>
+            : boardIssue === "awaiting_collection"
+              ? <Button component={Link} href="/health" variant="default">{t("查看数据状态", "Data status")}</Button>
+              : undefined}
       />
     </section>
   ) : (

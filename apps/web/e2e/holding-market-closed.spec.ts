@@ -65,6 +65,8 @@ test("a closed listing replaces the day figure on each position surface", async 
   const position = phone ? page.getByRole("button", { name: new RegExp("SYNUS.*" + accessible) })
     : page.getByRole("row").filter({ hasText: "SYNUS" });
   await expect(position.getByText("休市", { exact: true })).toBeVisible();
+  await expect(position.locator(".mx-holding-quote-basis")).toContainText("券商快照");
+  await expect(position.locator(".mx-holding-quote-basis time")).toHaveAttribute("datetime", brokerAsOf);
   if (phone) await position.tap();
   else await position.getByRole("button", { name: /查看持仓 SYNUS/ }).click();
   const drawer = page.getByRole("dialog");

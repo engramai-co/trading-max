@@ -40,6 +40,7 @@ def test_sector_route_serves_an_empty_state_then_a_stored_board(tmp_path: Path) 
         assert empty.status_code == 200
         payload = empty.json()
         assert payload["board"] is None
+        assert payload["boardIssue"] == "not_configured"
         assert [market["market"] for market in payload["markets"]] == [
             "us",
             "uk",

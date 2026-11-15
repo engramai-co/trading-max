@@ -24,7 +24,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, jsonRequest } from "@/workspace/data";
+import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
   Empty,
   LoadingStatus,
@@ -44,7 +44,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { SecurityFinder } from "./research-finder";
-import { FundJournal, FundWorkbench } from "./research-funds";
+import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
@@ -112,7 +112,8 @@ export function ResearchWorkspace() {
   const runtime = useChartRuntime("research");
   const shell = useQuery({
     queryKey: researchShellKey,
-    queryFn: ({ signal }) => api<ResearchShell>("/research/shell", { signal }),
+    queryFn: ({ signal }) => readApi<ResearchShell>("/research/shell", signal),
+    retry: (count, error) => count < 1 && !isReadTimeout(error),
     refetchInterval: (q) =>
       q.state.data?.instruments.some(
         (i) => i.status === "pending" || i.status === "running",
@@ -148,7 +149,7 @@ export function ResearchWorkspace() {
   const tab = isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
     : ["tracking", "peers"].includes(requestedTab) ? "overview" : requestedTab;
   const fetching = selected?.status === "pending" || selected?.status === "running";
-  const awaitingHeldFund = Boolean(isFund && selected?.held && fetching && tab === "overview");
+  const awaitingHeldFund = Boolean(isFund && selected?.held && fetching && ["overview", "tracking", "fundamentals", "peers"].includes(tab));
 
   const lensName = ["financials", "tracking", "peers"].includes(tab) ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
@@ -185,8 +186,8 @@ export function ResearchWorkspace() {
   const switching = Boolean(shown && (!currentLens || lens.isPlaceholderData) && !lens.isError);
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
-  const waitingForResearch = !shown && !technicalPrice && (
-    overviewWaiting || awaitingHeldFund || lens.isPending || fetching && !lens.isError
+  const waitingForResearch = !shown && !technicalPrice && !awaitingHeldFund && (
+    !lens.isError && (overviewWaiting || lens.isPending || fetching)
   );
   const exploreHolding = (symbol: string) => {
     const target = instruments.find((i) => i.ticker === symbol);
@@ -390,10 +391,12 @@ export function ResearchWorkspace() {
     >
       {(shell.isPending || Boolean(selected && waitingForResearch)) &&
         <LoadingStatus label={t("正在读取证券研究…", "Loading security research…")} />}
-      {shell.isPending ? (
-        <Pending shape="research" quiet />
-      ) : !shell.data && shell.isError ? (
-        <QueryError retry={shell.refetch} />
+      {!shell.data ? (
+        <>
+          {ticker && <section className="mx-panel"><h2>{ticker}</h2></section>}
+          {shell.isPending ? <Pending shape="research" quiet />
+            : <QueryError retry={shell.refetch} error={shell.error} />}
+        </>
       ) : (
         <div
           className="mx-research-layout"
@@ -506,16 +509,21 @@ export function ResearchWorkspace() {
                       : isFund && value === "ledger" ? t("日志", "Journal") : shortTitles[value],
                   }))}
                 />
+                {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
+                  {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
+                </Notice>}
                 {operation.isError && (
                   <Notice tone="bad">
                     {t("操作未完成：", "The action did not complete: ")}
                     {operation.error.message}
                   </Notice>
                 )}
-                {waitingForResearch ? (
-                  <Panel className="mx-research-wait">
-                    <Pending shape="chart" height={338} quiet />
-                  </Panel>
+                {awaitingHeldFund && !shown && !technicalPrice && tab !== "options" && tab !== "ledger" ? (
+                  <FundPending ticker={ticker} runId={revision ?? undefined} />
+                ) : waitingForResearch ? (
+                  tab === "overview" && prices.data && runtime.status === "ready"
+                    ? <PricePreview ticker={ticker} query={prices} pending />
+                    : <Panel className="mx-research-wait"><Pending shape="chart" height={338} quiet /></Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
                 {displayTab === "overview" && shown && (!isFund || selected.status !== "pending") && (runtime.status === "failed"
@@ -579,7 +587,7 @@ export function ResearchWorkspace() {
                     />
                   </Panel>
                 ) : lens.isError && !displayData ? (
-                  <QueryError retry={lens.refetch} />
+                  <QueryError retry={lens.refetch} error={lens.error} />
                 ) : (
                   displayData && (
                     <>

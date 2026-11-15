@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { inRange } from "@/lib/portfolio/nav";
 import type { ResearchPriceSeries } from "@/lib/types";
-import { formatCalendarDate } from "@/ui/formatters";
+import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { useFinePointer } from "@/ui/pointer";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { ClosedMarket } from "./closed-market";
@@ -22,14 +22,29 @@ type PeekSession = { label: string; share: number | null; closed?: boolean; pric
 export type PeekRange = "1D" | "3M";
 
 type Bar = { date: string; close: number | null };
+function hasClose(point: Bar): point is { date: string; close: number } {
+  return point.close != null && Number.isFinite(point.close);
+}
+
+function QuoteBasis({ label, date, source, exchangeTimezone }: {
+  label: string; date?: string | null; source?: string | null; exchangeTimezone?: string | null;
+}) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  const exchangeLocal = !!date && date.length > 10 && !/(?:Z|[+-]\d\d:\d\d)$/.test(date);
+  return <p className="mx-peek-basis">{[label, source].filter(Boolean).join(" · ")} · {date
+    ? <time dateTime={date}>{date.length === 10 ? formatCalendarDate(date, locale) : exchangeLocal
+        ? formatCalendarDate(date.slice(0, 10), locale) + " " + date.slice(11, 16) + " " + (exchangeTimezone || t("交易所时间", "exchange time"))
+        : formatDateTime(date, locale, timeZone)}</time>
+    : t("时间未提供", "time unavailable")}</p>;
+}
 
 /**
  * The latest session's closes, led by the close before it, from intraday bars dated in exchange time. The
  * reference close makes the line and the change start where the session's move does.
  */
 export function latestSession(points: Bar[]) {
-  const bars = points.filter((point): point is { date: string; close: number } =>
-    point.close != null && Number.isFinite(point.close));
+  const bars = points.filter(hasClose);
   const day = bars.at(-1)?.date.slice(0, 10) ?? null;
   if (!day) return { day, closes: [] as number[], change: null, bars: 0 };
   const session = bars.filter((bar) => bar.date.slice(0, 10) === day).map((bar) => bar.close);
@@ -94,6 +109,7 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
           {quoteValue(session.price, session.currency, "")}
         </strong>
       </div>
+      <QuoteBasis label={t("券商快照", "Broker snapshot")} date={session.asOf} />
       <Facts rows={[
         [session.label, session.closed ? <ClosedMarket /> : <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}
           title={t("券商日内持仓变动，以当日首次观测为基准", "Broker position move since the session’s first observation")}>
@@ -122,6 +138,7 @@ function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition
   });
   const { day, closes, change, bars } = latestSession(query.data?.points ?? []);
   const last = closes.at(-1);
+  const lastDate = query.data?.points.findLast(hasClose)?.date;
   const label = !day || day === today ? t("今日", "Today") : formatCalendarDate(day, locale, now);
   return (
     <>
@@ -129,6 +146,9 @@ function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition
         <span>{ticker}</span>
         <strong>{last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"}</strong>
       </div>
+      {last != null && <QuoteBasis label={query.data?.actualInterval === "1d"
+        ? t("收盘价", "Close") : t("行情", "Market quote")} date={lastDate}
+        source={query.data?.source ?? t("来源未提供", "Source unavailable")} exchangeTimezone={query.data?.timezone} />}
       {query.isPending ? (
         <div className="mx-peek-skeleton" />
       ) : bars > 1 ? (
@@ -149,9 +169,9 @@ function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition
 function PeekBody({ ticker, position }: { ticker: string; position?: PeekPosition }) {
   const t = useCopy();
   const query = useQuery(researchPriceQuery(ticker, undefined, "1d", "3M"));
-  const closes = inRange(query.data?.points ?? [], "3M")
-    .map((point) => point.close)
-    .filter((value): value is number => value != null && Number.isFinite(value));
+  const points = inRange(query.data?.points ?? [], "3M").filter(hasClose);
+  const closes = points.map(({ close }) => close);
+  const lastDate = points.at(-1)?.date;
   const first = closes[0];
   const last = closes.at(-1);
   const change = first && last != null ? last / first - 1 : null;
@@ -161,6 +181,8 @@ function PeekBody({ ticker, position }: { ticker: string; position?: PeekPositio
         <span>{ticker}</span>
         <strong>{last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"}</strong>
       </div>
+      {last != null && <QuoteBasis label={t("收盘价", "Close")} date={lastDate}
+        source={query.data?.source ?? t("来源未提供", "Source unavailable")} exchangeTimezone={query.data?.timezone} />}
       {query.isPending ? (
         <div className="mx-peek-skeleton" />
       ) : closes.length > 1 ? (

@@ -7255,6 +7255,11 @@ export interface components {
         SectorBoardResponse: {
             board?: components["schemas"]["SectorBoard"] | null;
             /**
+             * Boardissue
+             * @description Why the selected board is missing or could not update; the last board may still be present.
+             */
+            boardIssue?: ("not_configured" | "no_coverage" | "fetch_failed" | "awaiting_collection") | null;
+            /**
              * Market
              * @enum {string}
              */

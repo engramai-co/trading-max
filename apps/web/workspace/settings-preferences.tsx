@@ -62,55 +62,22 @@ export function AutomationPreferences() {
           key: "liveEnabled",
           enabled: s.liveEnabled,
           title: t("账户状态与日内走势", "Account state & intraday history"),
-          description: t(
-            "在活动时段刷新余额、持仓并保存日内观测点。",
-            "Refresh balances and positions, and record intraday observations during the active window.",
-          ),
-          schedule:
-            (s.liveWindowStart === "00:00" && s.liveWindowEnd === "00:00"
-              ? t("全天", "All day")
-              : s.liveWindowStart + "–" + s.liveWindowEnd) +
-            " · " +
-            s.liveTimezone +
-            " · " +
-            number(s.liveIntervalSeconds / 60) +
-            t(" 分钟", " min"),
         },
         {
           key: "performanceEnabled",
           enabled: s.performanceEnabled,
           title: t("收益与风险计算", "Performance calculations"),
-          description: t(
-            "基于正式账户历史更新收益、回撤和风险指标。",
-            "Update returns, drawdowns, and risk metrics from official account history.",
-          ),
-          schedule:
-            number(s.performanceIntervalSeconds / 60) +
-            t(" 分钟", " min") +
-            " · " +
-            s.performanceTimezone,
         },
         {
           key: "researchEnabled",
           enabled: s.researchEnabled,
           title: t("证券研究与每日对账", "Research & daily reconciliation"),
-          description:
-            t(
-              "更新关注列表的市场数据和模型，开盘时段每 10 分钟更新板块行情；每日账户流水对账安排在 ",
-              "Update watchlist market data and models, and sectors every 10 minutes while markets are open. Daily account reconciliation runs at ",
-            ) +
-            s.dailyReconciliationLocalTime +
-            " · " +
-            s.researchTimezone,
-          schedule:
-            s.researchLocalTimes.join(" / ") + " · " + s.researchTimezone,
         },
       ]
     : [];
   return (
     <Panel
       title={t("自动更新", "Automatic updates")}
-      help={t("运行服务的设备需要保持开机，且任务服务正在运行。", "The device hosting the service must remain on with its task worker running.")}
     >
       {query.isPending ? (
         <Pending />
@@ -130,8 +97,7 @@ export function AutomationPreferences() {
             <div className="mx-setting-row" key={row.key}>
               <div>
                 <h3>{row.title}</h3>
-                <p>{row.description}</p>
-                <span className="mx-form-help">{row.schedule}</span>
+
               </div>
               <Switch
                 aria-label={row.title}
@@ -149,6 +115,7 @@ export function AutomationPreferences() {
               />
             </div>
           ))}
+          <Link className="mx-text-link" href="/health">{t("查看运行时间与更新记录", "See the schedule and update history")}</Link>
           <div className="mx-form-help" role="status">
             {mutation.isPending ? t("正在保存…", "Saving…") : mutation.isSuccess ? t("更新计划已保存", "Schedule saved") : null}
           </div>

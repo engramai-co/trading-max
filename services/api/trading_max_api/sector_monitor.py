@@ -985,11 +985,25 @@ class SectorMonitor:
         chosen = market or default_market(
             (status for status in statuses if status.market in {"us", "uk", "hk", "kr", "jp"}), now
         )
+        board = self.boards.load(chosen)
+        monitor = self.status()
+        status = next((item for item in statuses if item.market == chosen), None)
+        groups = board is not None and any(group.groups for group in board.groupings)
+        issue = None
+        if status is None or not status.calendar_known:
+            issue = "no_coverage"
+        elif not monitor.enabled and not groups:
+            issue = "not_configured"
+        elif status.last_error:
+            issue = "fetch_failed"
+        elif not groups:
+            issue = "awaiting_collection" if board is None else "no_coverage"
         return SectorBoardResponse(
             market=chosen,
             markets=statuses,
-            board=self.boards.load(chosen),
-            monitor=self.status(),
+            board=board,
+            board_issue=issue,
+            monitor=monitor,
         )
 
     # Thread ------------------------------------------------------------

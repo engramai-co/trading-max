@@ -29,7 +29,6 @@ import {
   Help,
   Instrument,
   Metric,
-  Notice,
   Page,
   Panel,
   Pending,
@@ -279,6 +278,22 @@ export function AccountReviewWorkspace() {
     </Page>
   );
 }
+function ReviewPrerequisites({ cfd, onImports }: { cfd: boolean; onImports: () => void }) {
+  const t = useCopy();
+  return <Panel title={t("开始复盘所需的记录", "History needed for review")}>
+    <ul className="mx-review-prerequisites">
+      <li>{cfd
+        ? t("CFD 已平仓交易及费用：导出券商的详细历史 CSV。", "Closed CFD trades and fees: export the broker’s detailed history CSV.")
+        : t("成交历史：在设置中连接账户，授予只读交易历史权限。", "Fills: connect the account in Settings with read-only history access.")}</li>
+      <li>{cfd
+        ? t("入金、出金与转账：导出同一区间的资金流水 CSV。导入后更新 CFD 复盘。", "Deposits, withdrawals and transfers: export the cash history CSV for the same dates. Update CFD review after importing.")
+        : t("入金、出金与估值历史：运行一次账户与流水更新。", "Cash flows and valuation history: run an Accounts & history update.")}</li>
+    </ul>
+    {cfd ? <button type="button" className="mx-index-retry" onClick={onImports}>{t("导入 CFD 历史", "Import CFD history")}</button>
+      : <Link className="mx-text-link" href="/settings?tab=accounts">{t("设置账户连接", "Set up account connections")}</Link>}
+  </Panel>;
+}
+
 function AccountJournal({
   data,
   code,
@@ -356,7 +371,7 @@ function AccountJournal({
   const caveat = t("已实现现金权益", "Realized cash equity");
   return (
     <>
-      <Bento className="mx-review-bento">
+      {!unavailable ? <Bento className="mx-review-bento">
       <Panel bare className="mx-bento-wide">
         <div className="mx-metric-grid mx-metric-lead">
           <Metric
@@ -418,7 +433,10 @@ function AccountJournal({
       {!unavailable && (
         <ReviewHighlights review={review} cfd={cfd} onEvidence={openEvidence} />
       )}
-      </Bento>
+      </Bento> : account?.totalValueGbp != null && <Panel>
+        <Metric label={t("券商快照市值", "Broker snapshot value")} value={currency(account.totalValueGbp, "GBP", 2)} />
+        <Freshness date={account.asOf ?? data.brokerAsOf} />
+      </Panel>}
       <section
         ref={evidence}
         tabIndex={-1}
@@ -431,15 +449,9 @@ function AccountJournal({
           label={t("复盘角度", "Review perspective")}
           options={views}
         />
-        {unavailable && tab !== "decisions" && (
-          <Notice>
-            {t(
-              "这份快照没有完整的历史复盘记录。已知的账户数据仍会显示；完成完整更新后可获得更丰富的分析。",
-              "This snapshot has no complete historical review. Available account data remains visible; a full update can add further analysis.",
-            )}
-          </Notice>
-        )}
-        {tab === "imports" && cfd ? (
+        {unavailable && tab !== "imports" && (tab !== "decisions" || !decisionsAvailable) ? (
+          <ReviewPrerequisites cfd={cfd} onImports={() => update({ reviewView: "imports" })} />
+        ) : tab === "imports" && cfd ? (
           <CfdImports />
         ) : tab === "decisions" && !cfd ? (
           <>

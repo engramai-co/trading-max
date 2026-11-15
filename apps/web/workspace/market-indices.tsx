@@ -2,7 +2,7 @@
 
 import { Select } from "@mantine/core";
 import { ArrowClockwise, CaretRight } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
@@ -10,7 +10,7 @@ import { useLayoutEffect, useRef } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
-import { api } from "@/workspace/data";
+import { api, isReadTimeout, readApi } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
@@ -38,10 +38,12 @@ function useNames() {
 }
 
 const GLOBAL_GROUPS = [
-  { name: ["全球", "Global"], ids: ["msci-acwi", "ftse-all-world-etf"] },
+  { name: ["全球", "Global"], ids: ["msci-acwi"] },
   { name: ["发达", "Developed"], ids: ["msci-world", "msci-world-ex-usa"] },
   { name: ["新兴", "Emerging"], ids: ["msci-em", "msci-em-imi"] },
 ] as const;
+
+const GLOBAL_PRICE_PROXIES = new Set(["ftse-all-world-etf"]);
 
 const GLOBAL_CARD_NAMES: Record<string, string> = {
   "msci-acwi": "MSCI ACWI",
@@ -123,6 +125,10 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
             return quote && card(quote);
           })}</div>
         </section>)}
+        {[...quotes.values()].some(({ index }) => GLOBAL_PRICE_PROXIES.has(index.id)) && <details className="mx-global-benchmark mx-global-proxy">
+          <summary>{t("ETF 市价代理", "ETF price proxies")}</summary>
+          <div>{[...quotes.values()].filter(({ index }) => GLOBAL_PRICE_PROXIES.has(index.id)).map(card)}</div>
+        </details>}
       </div>}
     </section>;
   }
@@ -130,9 +136,16 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
     <section className="mx-index-strip" aria-label={t("市场指数", "Market indices")}>
       {marketName && <h2 className="mx-index-scope">{marketName}</h2>}
       {query.isPending ? <Pending label={t("正在加载指数", "Loading indices")} compact /> : null}
-      {query.data && <div className="mx-index-cards">
-        {query.data.quotes.map(card)}
-      </div>}
+      {query.data && <details className="mx-index-directory" open={!marketName || undefined}>
+        <summary>{t("全部指数", "All indices")}</summary>
+        {(["official", "proxy"] as const).map((kind) => {
+          const group = query.data.quotes.filter(({ index }) => (index.kind === "etf-price") === (kind === "proxy"));
+          return group.length > 0 && <section key={kind} className="mx-index-group">
+            <h3>{kind === "proxy" ? t("ETF 市价代理", "ETF price proxies") : t("官方指数", "Official indices")}</h3>
+            <div className="mx-index-cards">{group.map(card)}</div>
+          </section>;
+        })}
+      </details>}
       {(newest || error) && <div className="mx-index-stamp">
         {newest && <time dateTime={newest}>{t("指数截至 ", "Indices as of ")}{formatDateTime(newest, locale, timeZone)}</time>}
         {error && <>
@@ -222,51 +235,86 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const { name, basis } = useNames();
   const title = useRef<HTMLHeadingElement>(null);
   const lastFocused = useRef<string | null>(null);
+  const client = useQueryClient();
   const catalog = useIndexCatalog();
-  const index = catalog.data?.find((item) => item.id === id && item.scope === market);
-  const period = !index?.ranges.length || index.ranges.includes(requestedPeriod)
+  const cachedHistory = client.getQueriesData<IndexHistory>({ queryKey: ["index-history", id] })
+    .filter(([, value]) => value?.index.scope === market && value.points?.length)
+    .sort(([a], [b]) => (client.getQueryState(b)?.dataUpdatedAt ?? 0) - (client.getQueryState(a)?.dataUpdatedAt ?? 0));
+  const index = catalog.data?.find((item) => item.id === id && item.scope === market)
+    ?? cachedHistory[0]?.[1]?.index
+    ?? client.getQueryData<IndexMarket>(["market-indices", market])?.quotes.find((quote) => quote.index.id === id)?.index;
+  const targetPeriod = !index?.ranges.length || index.ranges.includes(requestedPeriod)
     ? requestedPeriod : index.ranges.at(-1)!;
-  const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, period));
+  const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, targetPeriod));
   const peer = peers.find((item) => item.id === comparison);
+  const incompatiblePeer = !peer && catalog.data?.find((item) => item.id === comparison);
   const historyQuery = (identifier?: string) => ({
-    queryKey: ["index-history", identifier, period, gbp],
-    queryFn: ({ signal }: { signal: AbortSignal }) => api<IndexHistory>(
-      `/indices/${identifier}/history?range=${period}&currency=${gbp ? "GBP" : "local"}`, { signal },
+    queryKey: ["index-history", identifier, targetPeriod, gbp],
+    queryFn: ({ signal }: { signal: AbortSignal }) => readApi<IndexHistory>(
+      `/indices/${identifier}/history?range=${targetPeriod}&currency=${gbp ? "GBP" : "local"}`, signal,
     ),
     enabled: Boolean(identifier && index?.symbol),
     staleTime: 60_000,
-    refetchInterval: period === "1D" ? 60_000 : false as const,
+    refetchInterval: targetPeriod === "1D" ? 60_000 : false as const,
     retry: 0,
   });
   const query = useQuery(historyQuery(index?.id));
   const peerQuery = useQuery(historyQuery(peer?.id));
   const context = useQuery({
     queryKey: ["index-context", index?.id],
-    queryFn: ({ signal }) => api<IndexContext>(`/indices/${index?.id}/context`, { signal }),
+    queryFn: ({ signal }) => readApi<IndexContext>(`/indices/${index?.id}/context`, signal),
     enabled: !!index,
     refetchInterval: 4 * 60_000,
     staleTime: 60_000,
     retry: 0,
   });
   useLayoutEffect(() => {
-    if (!index || (index.symbol && query.isPending) || lastFocused.current === index.id) return;
+    if (!index || (index.symbol && query.isPending) || lastFocused.current === id) return;
     const frame = requestAnimationFrame(() => {
       const heading = title.current;
       if (!heading?.getClientRects().length) return;
       if (!heading.closest(".mx-index-detail")?.contains(document.activeElement)) {
         heading.focus({ preventScroll: true });
       }
-      lastFocused.current = index.id;
+      lastFocused.current = id;
     });
     return () => cancelAnimationFrame(frame);
-  }, [index, query.isPending]);
-  if (catalog.isPending) return <Pending />;
-  if (catalog.isError) return <QueryError retry={catalog.refetch} showDataStatusLink={false} />;
-  if (!index) return <Empty title={t("没有这个市场指数", "Index not found in this market")} />;
-  const history = query.data;
-  const peerHistory = peerQuery.data;
+  }, [id, index, query.isPending]);
+  if (!index) {
+    if (catalog.isSuccess) return <Empty title={t("没有这个市场指数", "Index not found in this market")}
+      description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
+    return <div className="mx-index-detail"><section className="mx-panel mx-index-history">
+      <div className="mx-index-title"><h2 ref={title} tabIndex={-1}>{id}</h2></div>
+      {catalog.isError ? <QueryError retry={catalog.refetch} error={catalog.error} showDataStatusLink={false} />
+        : <Pending label={t("正在加载指数", "Loading index")} />}
+    </section></div>;
+  }
+  // Keep the last reading for this index while the new basis loads. A chart
+  // can only compare responses for the same range and currency.
+  const requestedHistory = query.data?.points?.length ? query.data : undefined;
+  const requestedPeer = peerQuery.data;
+  const holdPreviousPair = Boolean(peer && (peerQuery.isPending || peerQuery.isError ||
+    requestedPeer?.state === "unavailable"));
+  const priorPair = peer && holdPreviousPair ? cachedHistory.find(([key, history]) => {
+    const other = client.getQueryData<IndexHistory>(["index-history", peer.id, key[2], key[3]]);
+    return other?.points?.length && other.currency === history?.currency;
+  }) : undefined;
+  const history = priorPair?.[1] ?? requestedHistory ?? cachedHistory[0]?.[1] ?? query.data;
+  const historyKey = (priorPair ?? cachedHistory.find(([, value]) => value === history))?.[0];
+  const peerHistory = peer && historyKey ? client.getQueryData<IndexHistory>(
+    ["index-history", peer.id, historyKey[2], historyKey[3]],
+  ) : requestedPeer;
+  const period = history?.range ?? targetPeriod;
+  const seriesCurrency = history?.currency ?? (gbp ? "GBP" : index.currency);
+  const showingPrevious = Boolean(history?.points?.length && (history !== query.data || holdPreviousPair));
   const points = history?.points ?? [];
-  const matched = history && peerHistory ? alignIndices(history, peerHistory, period) : [];
+  const matched = history && peerHistory && history.range === peerHistory.range &&
+    history.currency === peerHistory.currency ? alignIndices(history, peerHistory, period) : [];
+  const pairedEnds = matched.filter(({ left, right }) => left != null && right != null);
+  const commonEnd = pairedEnds.length > 1 ? pairedEnds.at(-1) : undefined;
+  const seriesReturn = (value: number | undefined | null) => formatDeltaPercent(value == null ? null : value / 100 - 1, locale, 2);
+  const readingUnit = index.kind === "volatility" ? t("点", "pts") : seriesCurrency;
+  const error = query.error ?? peerQuery.error;
   const plotRows = matched.length ? matched : history ? indexHistoryRows(history) : [];
   const shortRange = period === "1W" || period === "1M";
   const intraday = period === "1D" || shortRange;
@@ -292,7 +340,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const readPoint = (position: number) => {
     const row = plotRows[position];
     if (!row || (row.left == null && row.right == null)) return "";
-    const reading = (label: string, value: number) => `${label}: ${formatNumber(value, locale, { maximumFractionDigits: 2 })}`;
+    const reading = (label: string, value: number) =>
+      `${label}: ${formatNumber(value, locale, { maximumFractionDigits: 2 })}${matched.length || !readingUnit ? "" : " " + readingUnit}`;
     return [
       formatDate(new Date(row.at), locale, dateOptions),
       ...(row.left == null ? [] : [reading(chartName, row.left)]),
@@ -313,7 +362,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <div className="mx-index-provenance">
-            <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : index.currency} · {index.symbol ?? index.compiler}</span>
+            <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency} · {index.symbol ?? index.compiler}</span>
             <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
@@ -332,12 +381,12 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           </div>
         </div>
         {index.symbol && <div className="mx-index-controls">
-          {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={period}
+          {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={targetPeriod}
             options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
             onChange={(value) => update({ range: value === "1Y" ? null : value })} />}
           {index.currency && index.currency !== "GBP" && <Segments label={t("币种", "Currency")} value={gbp ? "GBP" : "local"}
             options={[{ value: "local", label: index.currency }, { value: "GBP", label: "GBP" }]}
-            onChange={(value) => update({ currency: value === "GBP" ? "GBP" : null, compare: null })} />}
+            onChange={(value) => update({ currency: value === "GBP" ? "GBP" : null })} />}
           {peers.length > 0 && <Select
             size="xs"
             className="mx-index-compare"
@@ -350,9 +399,19 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             searchable
           />}
         </div>}
-        {query.isPending && index.symbol ? <Pending label={t("正在加载走势", "Loading index history")} /> : null}
-        {!points.length && (!query.isPending || !index.symbol) &&
-          <Empty title={t("暂无此范围的走势", "No history for this range")} />}
+        {!points.length && index.rights === "licensed-source-required"
+          ? <Empty title={t("官方指数走势需要授权数据", "Official index history requires a licensed source")}
+              description={t("当前工作区没有获授权的指数报价。可查看基金市价走势；它不同于基金净值或官方指数总回报。", "This workspace has no licensed index feed. The ETF’s listed price is available as a proxy and differs from its NAV and the official index total return.")}
+              action={index.id === "ftse-all-world" && <Link className="mx-text-link" href="/sectors?market=global&index=ftse-all-world-etf">
+                {t("查看富时全球 ETF 市价代理", "View FTSE All-World ETF price proxy")}
+              </Link>} />
+          : !points.length && index.symbol && query.isPending
+            ? <Pending label={t("正在加载走势", "Loading index history")} />
+            : !points.length && !query.isError
+              ? <Empty title={t("此范围没有可用的走势", "No history for this range")}
+                  description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
+              : null}
+        {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
         {points.length > 0 && <Plot label={chartLabel} height={phone ? 235 : 300}
           readPoint={(position) => readPoint(primaryPositions[position])}
           option={(colours) => {
@@ -368,7 +427,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
                   ...(sparseAxis ? { interval: (position: number) => ticks.has(position) } : {}),
                 },
               },
-              yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5 },
+              yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5,
+                name: matched.length ? undefined : readingUnit ?? undefined, nameGap: 5 },
               tooltip: { trigger: "axis", formatter: (input) => {
                 const rows = Array.isArray(input) ? input : [input];
                 const row = rows.find((entry) => !String(entry.seriesId).startsWith("history-gap:"));
@@ -394,23 +454,28 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             };
           }} />}
         {matched.length > 0 && peer && <div className="mx-index-legend">
-          <span>{chartName}</span><span>{name(peer)}</span><span>{t("起点归 100", "Rebased to 100")}</span>
+          <span>{chartName} <strong>{seriesReturn(commonEnd?.left)}</strong></span>
+          <span>{name(peer)} <strong>{seriesReturn(commonEnd?.right)}</strong></span>
+          <span>{t("区间回报 · 起点归 100", "Period return · Rebased to 100")}</span>
         </div>}
-        {peer && !matched.length && !peerQuery.isPending && <p className="mx-index-note">{t("没有可比较的共同日期。", "No common observations to compare.")}</p>}
+        {peer && !matched.length && !peerQuery.isPending && !peerQuery.isError && <p className="mx-index-note">{t("没有可比较的共同日期。请选择其他时间范围。", "No common observations to compare. Choose another range.")}</p>}
         <div className="mx-index-stamp">
           {history?.asOf && <time dateTime={history.asOf}>{t("截至 ", "Through ")}{intraday
             ? formatDateTime(history.asOf, locale, timeZone)
             : formatDate(new Date(history.asOf), locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</time>}
           {(!!history?.gaps?.length || (matched.length > 0 && !!peerHistory?.gaps?.length)) && <span>{t("历史数据不完整", "Partial history")}</span>}
-          {(query.isError || peerQuery.isError || history?.state === "stale" || (index.symbol && history?.state === "unavailable")) &&
-            <><span>{t("走势未能更新", "History did not update")}</span><RetryIndices retry={retry} busy={query.isFetching || peerQuery.isFetching} /></>}
+          {showingPrevious && (query.isFetching || peerQuery.isFetching) && <span role="status">{t("正在更新，显示上一次走势", "Updating · showing previous chart")} · {period}</span>}
+          {(error || query.data?.state === "stale" || (index.symbol && query.data?.state === "unavailable") || requestedPeer?.state === "unavailable") &&
+            <><span role="status">{isReadTimeout(error)
+              ? t("走势请求超时", "History request timed out") : t("走势未能更新", "History did not update")}
+              {showingPrevious && <> · {t("上一次走势", "Previous chart")} · {period}</>}</span><RetryIndices retry={retry} busy={query.isFetching || peerQuery.isFetching} /></>}
         </div>
         <dl className="mx-index-metrics">
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
       </section>
-      {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} showDataStatusLink={false} /> :
+      {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
         context.data && <IndexContextPanels context={context.data} phone={phone} />}
     </div>
   );

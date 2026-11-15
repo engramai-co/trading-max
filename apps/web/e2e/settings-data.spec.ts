@@ -108,6 +108,8 @@ test.describe("reconstruction market data", () => {
     await expect(toggle).not.toBeChecked();
     // On touch the switch takes taps across a 44px band of its row.
     if (isMobile) expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(panel.getByRole("button", { name: "Update Alpaca keys", exact: true })).toBeHidden();
+    await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await expect(panel.getByRole("button", { name: "Update Alpaca keys", exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Remove keys", exact: true })).toBeVisible();
     // The source name and the state tag are gone: the switch alone carries the state.
@@ -279,6 +281,7 @@ test.describe("reconstruction market data", () => {
     await expect(toggle).toBeChecked();
     await expect(toggle).toHaveAttribute("aria-busy", "true");
     await expect(panel().locator(".sr-only[role=status]")).toHaveText("Saving…");
+    await panel().getByText("Manage Alpaca keys", { exact: true }).click();
     await expect(panel().getByRole("button", { name: "Remove keys", exact: true })).toBeDisabled();
     await expect(panel().getByRole("button", { name: "Update Alpaca keys", exact: true })).toBeDisabled();
     await toggle.focus();
@@ -343,6 +346,7 @@ test.describe("reconstruction market data", () => {
       configured = false;
       await route.fulfill({ status: 204 });
     });
+    await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await panel.getByRole("button", { name: "Remove keys", exact: true }).click();
     await page.getByRole("dialog", { name: "Remove Alpaca keys" }).getByRole("button", { name: "Remove keys", exact: true }).click();
     await expect(panel.locator("input[role=switch]")).toBeDisabled();
@@ -350,7 +354,7 @@ test.describe("reconstruction market data", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(panel.locator("input[role=switch]")).toHaveCount(0);
     // Without keys nothing switches: the row names the source in use and offers Alpaca beside it.
-    await expect(panel.getByRole("heading", { name: "Yahoo Finance", level: 3, exact: true })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: "Alpaca", level: 3, exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Connect Alpaca", exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Remove keys", exact: true })).toHaveCount(0);
     expect(await axe(page)).toEqual([]);
@@ -388,6 +392,7 @@ test.describe("reconstruction market data", () => {
     patching.release();
     await expect(panel.getByRole("alert")).toContainText("Could not update settings");
     await expect(remove).toBeEnabled();
+    await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await remove.click();
     const dialog = page.getByRole("dialog", { name: "Remove Alpaca keys" });
     await dialog.getByRole("button", { name: "Remove keys", exact: true }).click();
@@ -441,6 +446,7 @@ test.describe("reconstruction market data", () => {
     await expect(panel.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await expect(panel.getByRole("alert")).toHaveCount(0);
     // The removal's confirmation removes the keys once.
+    await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await panel.getByRole("button", { name: "Remove keys", exact: true }).click();
     const removal = page.getByRole("dialog", { name: "Remove Alpaca keys" });
     await pressTwice(removal.getByRole("button", { name: "Remove keys", exact: true }));

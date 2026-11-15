@@ -137,7 +137,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     cancelDismiss();
     pinned.current = pin;
     trigger.current = node;
-    const below = hit.top < 135;
+    const below = hit.top < 135 || hit.top - host.top < 130;
     setInspection({
       market, below,
       x: hit.left + hit.width / 2 - host.left,
@@ -168,7 +168,13 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const residual = answer?.residual;
   const values = [...rows.map((row) => row.contribution), residual ?? 0];
   const limit = Math.max(0.00001, -Math.min(...values) / 0.76, Math.max(...values) / 0.24);
-  const priced = total != null && residual != null;
+  const priced = total != null && residual != null && rows.length > 0;
+  const coveredMarkets = answer?.markets.filter(({ move }) => move != null).length ?? 0;
+  const noContribution = !answer?.weightsAsOf
+    ? t("缺少带日期的 ACWI 持仓权重。请稍后重试，或单独查看各市场。", "Dated ACWI holdings weights are missing. Retry later or open a market individually.")
+    : total == null
+      ? t("行情源未返回同一时段的 MSCI ACWI 比较价格。请在下一交易时段重试。", "The source returned no comparable MSCI ACWI prices for this session. Retry in the next session.")
+      : t("成分报价尚不足以估算贡献。请稍后重试。", "There are too few constituent quotes to estimate contribution. Retry later.");
   const inspectedMove = answer?.markets.find(({ market }) => market === inspection?.market);
   const inspectedContribution = rows.find(({ market }) => market === inspection?.market)?.contribution;
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
@@ -186,6 +192,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           </Help>
         </div>
         {total != null && <div className="mx-global-move" data-tone={tone(total)}>{change(total)}</div>}
+        <p className="mx-global-colour-key">{t("地图颜色：各市场指数的本币涨跌", "Map colours: local index moves")}</p>
       </header>
       <div ref={mapHost} className="mx-global-map" data-testid="global-map" onKeyDown={(event) => {
         if (event.key !== "Escape" || !inspection) return;
@@ -273,7 +280,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         {query.isError && !answer ? <QueryError retry={query.refetch} showDataStatusLink={false} />
           : query.isPending ? <Pending label={t("正在加载贡献", "Loading contributions")} compact />
           : !priced ? <div className="mx-global-status" role="status">
-            {t("暂无可用的贡献估算", "No contribution estimate available")}
+            <div><strong>{t("暂无可用的贡献估算", "No contribution estimate available")}</strong>
+              <p>{noContribution}</p>
+              {answer && <p>{t("本地行情覆盖", "Local quote coverage")} · {coveredMarkets} / {answer.markets.length}
+                {answer.asOf && <> · <time dateTime={answer.asOf}>{formatDateTime(answer.asOf, locale, timeZone)}</time></>}</p>}
+            </div>
             <button className="mx-index-retry" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>
               {t("重试", "Retry")}
             </button>

@@ -147,7 +147,10 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
         {relationship}
         <Empty title={notApplicable
           ? t("此基金暂无适用的期权标的", "No applicable options underlying")
-          : t("暂无期权链", "Option chain unavailable")} />
+          : t("当前期权数据不可用", "Current chain unavailable")}
+          description={notApplicable
+            ? t("此份额没有可用的期权标的。可返回基金概览查看现有资料。", "There’s no options underlying for this listing. Return to the fund overview for available research.")
+            : t("行情源没有可用的期权链，也没有保存的合约。可更新研究后重试。", "The quote source returned no chain and there are no saved contracts. Refresh research and try again.")} />
       </Panel>
     );
   const historical = params.get("chainMode") === "history";
@@ -191,11 +194,11 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
         action={
           <Group gap="sm">
             {(historical || !current.length) && (
-              <Tag tone="warn">{t("历史快照", "Historical snapshot")}</Tag>
+              <Tag tone="warn">{options.capturedAt
+                ? <>{t("存档期权链", "Archived chain")} · <time dateTime={options.capturedAt}>{when(options.capturedAt)}</time></>
+                : t("存档期权链 · 日期未提供", "Archived chain · date unavailable")}</Tag>
             )}
-            <span className="mx-muted">
-              {when(options.capturedAt)}
-            </span>
+            {!historical && current.length > 0 && <span className="mx-muted">{when(options.capturedAt)}</span>}
           </Group>
         }
       >
@@ -246,10 +249,10 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
               "最后成功快照已过时。可以更新研究或查看历史合约。",
               "The last successful snapshot is historical. Refresh research or inspect the captured contracts.",
             )}
-            action={
+            action={available.length > 0 && !historical &&
               <Button
                 variant="light"
-                onClick={() => update({ chainMode: "history" })}
+                onClick={() => update({ chainMode: "history", expiries: null })}
               >
                 {t("查看历史快照", "View historical snapshot")}
               </Button>

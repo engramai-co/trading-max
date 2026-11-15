@@ -3,16 +3,16 @@
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { currency, number, percent, safeUrl } from "@/workspace/data";
-import { api, object, str } from "./data";
+import { object, readApi, str } from "./data";
 import {
   fieldEvidence, overlapDisplay, signedPoints, trackingDisplay,
   type Copy, type ETFReading, type FundEvidence,
 } from "./etf-data";
 import { EvidenceReading } from "./etf-reading";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Facts, Freshness, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
 import { indexHref } from "./market-indices-data";
 import { researchPriceQuery } from "./research-queries";
@@ -25,11 +25,11 @@ type Holding = components["schemas"]["FundHolding"];
 type FundSize = components["schemas"]["FundSize"];
 type FundMode = "overview" | "tracking" | "holdings" | "peers";
 
-export function fundQuery(ticker: string, runId: string, detail: "profile" | "full" | "journal" | "peers" = "full") {
+export function fundQuery(ticker: string, runId: string | undefined, detail: "profile" | "full" | "journal" | "peers" = "full") {
   return queryOptions({
     queryKey: ["research-fund", ticker, runId, detail],
-    queryFn: ({ signal }) => api<Fund>(
-      `/research/${encodeURIComponent(ticker)}/fund?runId=${encodeURIComponent(runId)}&detail=${detail}`, { signal },
+    queryFn: ({ signal }) => readApi<Fund>(
+      `/research/${encodeURIComponent(ticker)}/fund?detail=${detail}${runId ? "&runId=" + encodeURIComponent(runId) : ""}`, signal,
     ),
     staleTime: 60_000,
     retry: false,
@@ -71,16 +71,47 @@ export function FundWorkbench({ data, mode, onExplore, usPeers = [] }: {
   return <FundIssuerLens data={data} mode={mode} onExplore={onExplore} />;
 }
 
+function useSavedFund(ticker: string) {
+  const client = useQueryClient();
+  return client.getQueriesData<Fund>({ queryKey: ["research-fund", ticker] })
+    .filter(([, value]) => value && value.state !== "pending" && (value.isin || value.indexName || value.profile))
+    .sort(([a], [b]) => (client.getQueryState(b)?.dataUpdatedAt ?? 0) - (client.getQueryState(a)?.dataUpdatedAt ?? 0))[0]?.[1];
+}
+
+function FundUpdating({ fund }: { fund?: Fund }) {
+  const t = useCopy();
+  const rows: [string, string][] = [
+    ...(fund?.isin ? [["ISIN", fund.isin] as [string, string]] : []),
+    ...(fund?.indexName ? [[t("跟踪指数", "Tracked index"), fund.indexName] as [string, string]] : []),
+    ...(fund?.issuer ? [[t("发行商", "Issuer"), fund.issuer] as [string, string]] : []),
+    ...(fund?.shareCurrency ? [[t("份额币种", "Share-class currency"), fund.shareCurrency] as [string, string]] : []),
+  ];
+  return <Panel title={t("基金概况", "Fund profile")}>
+    <p role="status" className="mx-muted">{t("基金研究正在更新。", "Fund research is updating.")}</p>
+    {rows.length > 0 && <Facts rows={rows} />}
+    {fund?.fetchedAt && <Freshness date={fund.fetchedAt} label={t("上次获取", "Last retrieved")} />}
+  </Panel>;
+}
+
+export function FundPending({ ticker, runId }: { ticker: string; runId?: string }) {
+  const query = useQuery(fundQuery(ticker, runId, "profile"));
+  const saved = useSavedFund(ticker);
+  return <>{query.isError && <QueryError error={query.error} retry={query.refetch} />}
+    <FundUpdating fund={saved ?? query.data} /></>;
+}
+
 function FundIssuerLens({ data, mode, onExplore }: {
   data: ResearchLensSnapshot; mode: Exclude<FundMode, "peers">; onExplore: (ticker: string) => void;
 }) {
-  const t = useCopy();
   const query = useQuery(fundQuery(data.ticker, data.runId, mode === "holdings" ? "full" : "profile"));
-  if (query.isPending || query.data?.state === "pending") return <Pending shape="holdings" label={t("正在读取基金…", "Loading fund…")} />;
-  if (!query.data) return <QueryError retry={query.refetch} />;
-  const fund = query.data;
+  const saved = useSavedFund(data.ticker);
+  const updating = query.isPending || query.data?.state === "pending";
+  if (!query.data && query.isError && !saved) return <QueryError retry={query.refetch} error={query.error} />;
+  if (updating) return <FundUpdating fund={saved ?? query.data} />;
+  const fund = query.data ?? saved;
+  if (!fund) return null;
   return <>
-    {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
+    {query.isError && <UpdateFailure updatedAt={query.dataUpdatedAt || Date.parse(fund.fetchedAt)} retry={query.refetch} />}
     {mode === "overview" ? <FundOverview fund={fund} data={data} />
       : mode === "tracking" ? <FundTracking fund={fund} />
         : <FundHoldings fund={fund} onExplore={onExplore} />}

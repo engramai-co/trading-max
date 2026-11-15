@@ -2,7 +2,7 @@ import { researchLensKey } from "@/lib/dashboard-query";
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { queryOptions } from "@tanstack/react-query";
 import { previousForIdentity } from "./loading-state";
-import { api } from "@/workspace/data";
+import { isReadTimeout, readApi } from "@/workspace/data";
 
 export function researchLensQuery(
   ticker: string,
@@ -12,11 +12,12 @@ export function researchLensQuery(
 ) {
   return queryOptions({
     queryKey: researchLensKey(ticker, view, detail, revision),
-    queryFn: ({ signal }) => api<ResearchLensSnapshot>(
+    queryFn: ({ signal }) => readApi<ResearchLensSnapshot>(
       `/research/${encodeURIComponent(ticker)}/lens/${view}?limit=30&detail=${detail}${revision ? "&revision=" + encodeURIComponent(revision) : ""}`,
-      { signal },
+      signal,
     ),
     staleTime: 60_000,
+    retry: (count, error) => count < 1 && !isReadTimeout(error),
     // A refresh can retain this security's view; navigation must never borrow
     // another company's numbers or another lens's partial fields.
     placeholderData: (previous, query) =>
@@ -33,12 +34,12 @@ export function researchPriceQuery(
 ) {
   return queryOptions({
     queryKey: ["workspace-prices", ticker, interval, window ?? "MAX", revision],
-    queryFn: ({ signal }) => api<ResearchPriceSeries>(
+    queryFn: ({ signal }) => readApi<ResearchPriceSeries>(
       `/research/${encodeURIComponent(ticker)}/prices?limit=2000&interval=${interval}${window ? `&window=${window}` : ""}`,
-      { signal },
+      signal,
     ),
     staleTime: 300_000,
     placeholderData: (previous, query) => previousForIdentity(previous, query?.queryKey[1], ticker),
-    retry: 1,
+    retry: (count, error) => count < 1 && !isReadTimeout(error),
   });
 }
