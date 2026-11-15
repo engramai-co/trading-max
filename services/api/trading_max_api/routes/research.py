@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import suppress
 from datetime import UTC, datetime
 from time import perf_counter
@@ -13,6 +14,7 @@ from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
+from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
 from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
@@ -52,10 +54,13 @@ from ..models import (
     WatchlistMutation,
     WatchlistState,
 )
-from ..research_funds import FundResearch, fund_research_from_snapshot
+from ..research_funds import FundResearch, benchmark_fields, fund_research_from_snapshot
 from ..research_journal import ResearchJournal, ResearchModelSaveRequest, ResearchNoteInput
+from ..research_public import public_lens
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _valuation_preview(
@@ -547,6 +552,20 @@ def research_prices(
             published.coverage_end = published.points[-1].date if published.points else None
             return price_window(published, window)
         try:
+            public = security_prices.get(reference.ticker, "1d", market_etf=True)
+            public.requested_interval = interval
+            public.coverage_reason = (
+                "requested-interval-unavailable-daily-history-retained"
+                if interval != "1d"
+                else None
+            )
+            public.points = public.points[-limit:]
+            public.coverage_start = public.points[0].date if public.points else None
+            public.coverage_end = public.points[-1].date if public.points else None
+            return price_window(public, window)
+        except Exception:
+            LOGGER.debug("Public OHLC history unavailable; trying daily closes")
+        try:
             series = app_service(request, "market_prices").history(reference.ticker)
         except Exception:
             series = None
@@ -690,7 +709,19 @@ def research_lens(
     response: Response,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     detail: Literal["full", "summary", "seasonality", "documents"] = "full",
+    preview: bool = False,
 ) -> ResearchLensSnapshot:
+    if preview:
+        manifest = latest_or_503(request)
+        try:
+            security = app_service(request, "security_search").exact(ticker)
+        except SecuritySearchError as exc:
+            raise HTTPException(status_code=502, detail="security-search-unavailable") from exc
+        if security is None:
+            raise HTTPException(status_code=404, detail="unknown-security-listing")
+        return public_lens(
+            security, view, detail, manifest, app_service(request, "security_prices")
+        )
     started = perf_counter()
     diagnostics: dict[str, str] = {}
     payload = request.app.state.cached_research_lens(
@@ -726,7 +757,7 @@ def research_fund(
     ticker: str,
     request: Request,
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
-    detail: Literal["profile", "full", "journal", "peers"] = "full",
+    detail: Literal["profile", "full", "journal", "peers", "tracking"] = "full",
 ) -> FundResearch:
     store = app_service(request, "store")
     try:
@@ -739,14 +770,22 @@ def research_fund(
     # has curated identity evidence and needs no issuer request to open.
     reference = us_fund(ticker)
     if reference and not listing:
-        return FundResearch(
+        isin = US_FUND_ISINS.get(reference.ticker)
+        fund = FundResearch(
             ticker=reference.ticker,
+            isin=isin,
+            **benchmark_fields(isin),
             fetched_at="",
             index_name=reference.benchmark,
             source_url=reference.source_url,
             share_currency="USD",
             domicile="US",
-            state="missing",
+            state="available",
+        )
+        return (
+            app_service(request, "research_funds").with_daily_tracking(fund)
+            if detail in {"full", "tracking"}
+            else fund
         )
     portfolio = read_etf_portfolio(store, manifest.run_id)
     reading = (
@@ -759,7 +798,10 @@ def research_fund(
         try:
             snapshot = (
                 read_etf_detail(
-                    store, manifest.run_id, isin, include_holdings=detail in {"profile", "full"}
+                    store,
+                    manifest.run_id,
+                    isin,
+                    include_holdings=detail in {"profile", "full", "tracking"},
                 )
                 if isin
                 else ETFDetail(reading=reading)
@@ -785,17 +827,44 @@ def research_fund(
                 comparison = store.read_json(manifest.run_id, ETF_PEERS_KEY).get(isin)
                 if comparison is not None:
                     fund.peer_comparison = ETFPeerComparison.model_validate(comparison)
-        return fund
+        return (
+            app_service(request, "research_funds").with_daily_tracking(fund)
+            if detail in {"full", "tracking"}
+            else fund
+        )
     if listing:
         # Held fund lenses use the account publication, never a second issuer fetch.
-        return FundResearch(
-            ticker=listing.ticker, isin=listing.isin or None, fetched_at="", state="pending"
+        return app_service(request, "research_funds").with_daily_tracking(
+            FundResearch(
+                ticker=listing.ticker,
+                isin=listing.isin or None,
+                fetched_at="",
+                state="pending",
+                **benchmark_fields(listing.isin),
+            )
         )
     lens = research.lens_snapshot(ticker, "fundamentals", manifest)
-    if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
-        raise HTTPException(status_code=422, detail="fund-research-not-applicable")
     info = (lens.fundamentals or {}).get("metrics") or {}
+    curated = london_fund_benchmark(ticker)
+    if curated is not None and not info.get("isin"):
+        info = {**info, "isin": curated.isin}
+    if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
+        search = app_service(request, "security_search")
+        try:
+            security = search.exact(ticker)
+        except SecuritySearchError:
+            security = None
+        if not security or (security.security_type or "").upper() not in {
+            "ETF",
+            "ETP",
+            "MUTUALFUND",
+        }:
+            raise HTTPException(status_code=422, detail="fund-research-not-applicable")
+        info = {**info, "longName": security.name}
     if detail in {"journal", "peers"}:
         return FundResearch(ticker=ticker, isin=info.get("isin"), fetched_at="")
-    fund = app_service(request, "research_funds").get(ticker, info)
+    service = app_service(request, "research_funds")
+    fund = service.get(ticker, info)
+    if detail in {"full", "tracking"}:
+        fund = service.with_daily_tracking(fund)
     return fund if detail == "full" else fund.model_copy(update={"holdings": None})

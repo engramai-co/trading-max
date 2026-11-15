@@ -4,6 +4,7 @@ import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
   ResearchShell,
+  SecuritySearchResponse,
 } from "@/lib/types";
 import {
   ActionIcon,
@@ -43,6 +44,7 @@ import {
 import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
+import { IndexResearchWorkspace } from "./research-index";
 import { SecurityFinder } from "./research-finder";
 import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
@@ -96,6 +98,11 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 }
 
 export function ResearchWorkspace() {
+  const { params } = useRouteState();
+  return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
+}
+
+function SecurityResearchWorkspace() {
   const t = useCopy();
   const { params, update } = useRouteState("push");
   const wide = useMediaQuery("(min-width: 1280px)");
@@ -129,16 +136,41 @@ export function ResearchWorkspace() {
   const [defaultTicker, setDefaultTicker] = useState("");
   if (!defaultTicker && firstTicker) setDefaultTicker(firstTicker);
   const requested = requestedTicker?.trim() || defaultTicker || firstTicker;
-  const { selected, candidates } = resolveResearchIdentity(
-    instruments,
-    requested,
-  );
+  const { selected: listed, candidates } = resolveResearchIdentity(instruments, requested);
+  const previewTicker = (listed?.ticker ?? requested).toUpperCase();
+  const previewOnly = !listed || (listed.watchlisted === false && !listed.held);
+  const previewKey = (symbol: string) => ["research-preview-security", symbol];
+  const security = useQuery({
+    queryKey: previewKey(previewTicker),
+    enabled: Boolean(shell.data && previewOnly && candidates.length === 0 && previewTicker.length >= 2),
+    queryFn: async ({ signal }) => (await api<SecuritySearchResponse>(
+      "/securities/search?q=" + encodeURIComponent(previewTicker), { signal },
+    )).results.find((row) => row.ticker === previewTicker) ?? null,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const selected = listed ?? (previewOnly && security.data ? {
+    ticker: security.data.ticker,
+    name: security.data.name,
+    exchange: security.data.exchange,
+    watchlisted: false,
+    isFund: ["ETF", "ETP", "MUTUALFUND"].includes(security.data.securityType?.toUpperCase() ?? ""),
+    held: false,
+    status: "partial" as const,
+    lastRunId: null,
+    watchlistTicker: null,
+    categoryId: "",
+    directValueGbp: 0,
+    exposureGbp: 0,
+    gics: null,
+  } : undefined);
   const ticker = selected?.ticker ?? requested;
+  const readOnly = Boolean(selected && selected.watchlisted === false && !selected.held);
   useEffect(() => {
-    if (selected && requestedTicker && requestedTicker !== selected.ticker) {
-      update({ ticker: selected.ticker });
+    if (ticker && requestedTicker && requestedTicker !== ticker) {
+      update({ ticker });
     }
-  }, [selected, requestedTicker, update]);
+  }, [ticker, requestedTicker, update]);
   const requestedTab: ResearchTab = researchTabs.includes(params.get("view") as ResearchTab)
     ? params.get("view") as ResearchTab : "overview";
   const cached = client.getQueriesData<ResearchLensSnapshot>({ queryKey: ["workspace-research", ticker] })
@@ -146,7 +178,9 @@ export function ResearchWorkspace() {
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .find(({ data }) => data?.ticker === ticker)?.data;
   const isFund = Boolean(selected?.isFund || ["ETF", "MUTUALFUND"].includes(cached?.context?.assetType ?? ""));
-  const tab = isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
+  const tab = readOnly && !(isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]).includes(requestedTab)
+    ? "overview"
+    : isFund ? fundResearchTab(requestedTab, params.get("fundMode"))
     : ["tracking", "peers"].includes(requestedTab) ? "overview" : requestedTab;
   const fetching = selected?.status === "pending" || selected?.status === "running";
   const awaitingHeldFund = Boolean(isFund && selected?.held && fetching && ["overview", "tracking", "fundamentals", "peers"].includes(tab));
@@ -159,7 +193,7 @@ export function ResearchWorkspace() {
     : lensName === "fundamentals" && (isFund || params.get("financialMode") !== "full") ? "summary"
     : "full";
   const lens = useQuery({
-    ...researchLensQuery(ticker, lensName, revision, detail),
+    ...researchLensQuery(ticker, lensName, revision, detail, readOnly),
     enabled: Boolean(selected),
   });
   const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ?? cached;
@@ -202,10 +236,12 @@ export function ResearchWorkspace() {
       action,
       categoryId,
     }: {
-      action: "refresh" | "remove" | "move";
+      action: "refresh" | "remove" | "move" | "add";
       categoryId?: string;
     }) =>
-      action === "refresh" && isFund && (selected?.held || selected?.watchlisted === false)
+      action === "add" && security.data
+      ? api("/watchlist", jsonRequest("POST", { security: security.data, refresh: true }))
+      : action === "refresh" && isFund && (selected?.held || selected?.watchlisted === false)
       ? api("/refresh", jsonRequest("POST", { scope: "research", skipSync: true, tickers: [ticker] }))
       : api(
         "/watchlist/" + encodeURIComponent(selected?.watchlistTicker ?? ticker),
@@ -382,6 +418,8 @@ export function ResearchWorkspace() {
               busy={operation.isPending || fetching && !awaitingHeldFund}
               pending={operation.isPending}
               onRefresh={() => operation.mutate({ action: "refresh" })}
+              onAdd={readOnly ? () => { if (security.data) operation.mutate({ action: "add" }); } : undefined}
+              addDisabled={readOnly && !security.data}
               onManage={() => setManage(true)}
               onRemove={() => setRemoveConfirm(true)}
             />
@@ -431,6 +469,8 @@ export function ResearchWorkspace() {
                   ))}
                 </Stack>
               </Panel>
+            ) : !selected && security.isFetching ? (
+              <Pending shape="research" quiet />
             ) : !selected ? (
               <Panel>
                 <Empty
@@ -458,7 +498,7 @@ export function ResearchWorkspace() {
                         setFinder(true);
                       }}
                     >
-                      {ticker ? t("加入研究清单", "Add to research list") : t("查找证券", "Find a security")}
+                      {t("查找证券", "Find a security")}
                     </Button>
                   }
                 />
@@ -497,7 +537,9 @@ export function ResearchWorkspace() {
                   label={t("证券研究视角", "Security research perspective")}
                   value={tab === "financials" ? "fundamentals" : tab}
                   onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
-                  options={(isFund
+                  options={(readOnly
+                    ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
+                    : isFund
                     ? ["overview", "fundamentals", "technical", "tracking", "peers", "options", "ledger"] as ResearchTab[]
                     : ["overview", "fundamentals", "technical", "analyst", "valuation", "options", "ledger"] as ResearchTab[]
                   ).map((value) => ({
@@ -676,9 +718,9 @@ export function ResearchWorkspace() {
         onClose={() => setFinder(false)}
         key={finderQuery}
         initial={finderQuery || (selected ? "" : ticker)}
-        onAdded={async (value) => {
-          await shell.refetch();
-          update({ ticker: value, fromFund: isFund ? ticker : null });
+        onSelect={(result) => {
+          client.setQueryData(previewKey(result.ticker), result);
+          update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
           setFinder(false);
           setFinderQuery("");
         }}

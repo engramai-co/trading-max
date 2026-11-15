@@ -320,7 +320,7 @@ const fakeIndex = (
   symbol: string, currency: string | null, kind: IndexIdentity["kind"] = "index",
 ): IndexIdentity => ({
   id, scope, name, nameZh, symbol, currency, kind, compiler: "Synthetic fixture",
-  compilerId: id, basis: kind === "volatility" ? "implied-volatility" : "price",
+  compilerId: id, familyId: id, seriesCode: symbol, hedging: "unhedged", basis: kind === "volatility" ? "implied-volatility" : "price",
   calendar: "SYNTH", historyYears: 5, ranges: ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"], rights: "provider-terms", aliases: [],
   source: "Synthetic fixture",
 });
@@ -536,11 +536,11 @@ test.describe("market index layer", () => {
       if (url.pathname.startsWith("/api/backend/")) paths.push(url.pathname + url.search);
     });
     await page.goto("/sectors");
-    await expect(page.locator(".mx-global-benchmark a")).toHaveCount(6);
+    await expect(page.locator(".mx-global-benchmark a.mx-index-card")).toHaveCount(6);
     expect(paths).not.toContain("/api/backend/indices?scope=cn");
     await selectMarket(page, /A 股|China A/, true);
     await expect(page).toHaveURL(/\/sectors\?market=cn$/);
-    const cards = page.locator(".mx-index-cards a");
+    const cards = page.locator(".mx-index-cards a.mx-index-card");
     await expect(cards).toHaveCount(4);
     await expect(cards.first()).toHaveAccessibleName(/沪深 300|CSI 300/);
     await expect(cards.last()).toHaveAccessibleName(/创业板指|ChiNext/);
@@ -617,8 +617,8 @@ test.describe("market index layer", () => {
     await mockIndices(page);
     await page.goto("/sectors");
     await selectMarket(page, /日股|Japan|^JP$/);
-    const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ });
-    await expect(page.getByRole("link", { name: /TOPIX ETF/ })).toBeVisible();
+    const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ }).and(page.locator("a.mx-index-card"));
+    await expect(page.getByRole("link", { name: /TOPIX ETF/ }).and(page.locator("a.mx-index-card"))).toBeVisible();
     await expect(page.getByText(/板块篮子：MSCI Japan|Sector basket: MSCI Japan/)).toBeVisible();
     await card.click();
     await expect(page).toHaveURL(/market=jp&index=nikkei-225/);
@@ -641,7 +641,7 @@ test.describe("market index layer", () => {
     await selectMarket(page, /欧洲|Europe/);
     await received;
     await expect(page).toHaveURL(/market=eu$/);
-    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(4);
     await expect(page.locator("#index-card-stoxx-europe-600")).toBeVisible();
     await expect(page.locator(".mx-sectors-clock")).toContainText(/盘中|Open/);
     await expect(page.getByRole("button", { name: /我的主题|My themes/ })).toHaveCount(0);
@@ -680,7 +680,7 @@ test.describe("market index layer", () => {
       return route.fulfill({ json: { ...data, board: null } });
     });
     await page.goto("/sectors?market=eu");
-    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(4);
     await expect(page.getByRole("heading", { name: /还没有欧洲板块数据|No Europe sector data yet/ })).toBeVisible();
   });
 
@@ -774,9 +774,11 @@ test.describe("market index layer", () => {
     await expect(page.locator("#index-card-msci-world")).toBeVisible();
     await selectMarket(page, /瑞士|Switzerland/, true);
     await expect(page).toHaveURL(/market=ch/);
-    await page.getByRole("link", { name: /瑞士市场指数|SMI/ }).click();
+    await page.getByRole("link", { name: /瑞士市场指数|SMI/ })
+      .and(page.locator('a[href*="/sectors"]')).click();
     await expect(page).toHaveURL(/market=ch&index=smi/);
     await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
+    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toBeVisible();
     expect(requests).toBe(0);
   });
 
@@ -785,7 +787,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors?market=global");
     const benchmarks = page.locator(".mx-global-benchmark");
     await expect(benchmarks).toHaveCount(4);
-    await expect(benchmarks.getByRole("link")).toHaveCount(5);
+    await expect(benchmarks.getByRole("link").and(page.locator("a.mx-index-card"))).toHaveCount(5);
     await expect(page.locator(".mx-global-proxy")).toContainText(/ETF 市价代理|ETF price proxies/);
     await expect(page.locator("#index-card-ftse-all-world")).toHaveCount(0);
     const map = page.getByRole("group", { name: /全球市场地图|World market map/ });
@@ -961,7 +963,7 @@ test.describe("market index layer", () => {
     await page.getByRole("button", { name: /添加证券|Add security/ }).first().click();
     await page.getByRole("textbox", { name: /搜索证券|Search securities/ }).fill("^GSPC");
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
-    await expect(page).toHaveURL(/sectors\?market=us&index=sp-500/);
+    await expect(page).toHaveURL(/research\?type=index&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
   });
 
@@ -985,7 +987,7 @@ test.describe("market index layer", () => {
         await page.getByRole("menuitem", { name: market.names }).click();
       }
       await expect(page).toHaveURL(new RegExp(`market=${market.code}$`));
-      await expect(page.locator(".mx-index-cards a")).toHaveCount(market.ids.length);
+      await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(market.ids.length);
       const card = page.locator(`#index-card-${market.ids[0]}`);
       await expect(card).toBeVisible();
       const rows = page.locator(".mx-sector-list > li");
@@ -1078,7 +1080,7 @@ test.describe("market index layer", () => {
       await mockIndices(page, { now: EUROPE_FIXTURE_TIME });
       const capture = async (market: string, step = "") => {
         await page.goto(`/sectors?market=${market}`);
-        await expect(page.locator(".mx-index-cards a").first()).toBeVisible();
+        await expect(page.locator(".mx-index-cards a.mx-index-card").first()).toBeVisible();
         await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
         await page.evaluate(() => document.fonts.ready);
@@ -1112,7 +1114,8 @@ test.describe("market index layer", () => {
         });
         await mockIndices(page);
         await page.goto("/sectors?market=us");
-        await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })).toBeVisible();
+        await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })
+          .and(page.locator('a[href*="/sectors"]'))).toBeVisible();
         await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
         await settle(page);

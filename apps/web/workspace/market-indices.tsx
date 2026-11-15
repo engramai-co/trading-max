@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowClockwise, CaretRight } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowUpRight, CaretRight } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
@@ -18,7 +18,7 @@ import { useGlobalContribution, type GlobalMarketContribution } from "./global-m
 import Link from "./link";
 import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
 import {
-  alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
+  alignIndices, comparable, indexHistoryRows, indexHref, researchIndexHref, useIndexCatalog,
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
@@ -194,6 +194,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   return (
+    <div className="mx-index-card-stack">
     <Link
       href={indexHref(index)}
       prefetch={false}
@@ -217,6 +218,12 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       </span>
       {notice && <small className="mx-index-freshness">{notice}</small>}
     </Link>
+    <Link className="mx-text-link mx-index-to-research" href={researchIndexHref(index)} prefetch={false}
+      aria-label={name(index) + " · " + t("在研究台打开", "Open in research")}>
+      <span className="mx-index-to-research-label">{t("在研究台打开", "Open in research")}</span>
+      <ArrowUpRight size={16} aria-hidden="true" />
+    </Link>
+    </div>
   );
 }
 
@@ -277,6 +284,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const index = catalog.data?.find((item) => item.id === id && item.scope === market)
     ?? cachedHistory[0]?.[1]?.index
     ?? client.getQueryData<IndexMarket>(["market-indices", market])?.quotes.find((quote) => quote.index.id === id)?.index;
+  const hasHistory = Boolean(index?.ranges.length && (index.symbol || index.source === "EODHD"));
   const targetPeriod = !index?.ranges.length || index.ranges.includes(requestedPeriod)
     ? requestedPeriod : index.ranges.at(-1)!;
   const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, targetPeriod));
@@ -287,7 +295,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     queryFn: ({ signal }: { signal: AbortSignal }) => readApi<IndexHistory>(
       `/indices/${identifier}/history?range=${targetPeriod}&currency=${gbp ? "GBP" : "local"}`, signal,
     ),
-    enabled: Boolean(identifier && index?.symbol),
+    enabled: Boolean(identifier && hasHistory),
     staleTime: 60_000,
     refetchInterval: targetPeriod === "1D" ? 60_000 : false as const,
     retry: 0,
@@ -303,7 +311,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     retry: 0,
   });
   useLayoutEffect(() => {
-    if (!index || (index.symbol && query.isPending) || lastFocused.current === id) return;
+    if (!index || (hasHistory && query.isPending) || lastFocused.current === id) return;
     const frame = requestAnimationFrame(() => {
       const heading = title.current;
       if (!heading?.getClientRects().length) return;
@@ -313,7 +321,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       lastFocused.current = id;
     });
     return () => cancelAnimationFrame(frame);
-  }, [id, index, query.isPending]);
+  }, [id, index, hasHistory, query.isPending]);
   if (!index) {
     if (catalog.isSuccess) return <Empty title={t("没有这个市场指数", "Index not found in this market")}
       description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
@@ -418,17 +426,21 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <div className="mx-index-provenance">
+            <Link className="mx-text-link" href={researchIndexHref(index)}>
+              {t("在研究台打开", "Open in research")}
+            </Link>
             <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency} · {index.symbol ?? index.compiler}</span>
             <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
-              {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {!hasHistory && index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
               {period === "1D" && <p>{t("显示最近交易日的 5 分钟线。", "5-minute bars for the latest trading session.")}</p>}
               {shortRange && <p>{period === "1W"
                 ? t("显示近 7 天的 30 分钟线。", "30-minute bars over the last seven days.")
                 : t("显示近一个月的小时线。", "Hourly bars over the last calendar month.")} {t("回撤使用图中价格，年化波动率使用已结束工作日的最后一个价格。英镑换算使用同频率的汇率。", "Drawdown uses the plotted bars. Annualised volatility uses the last reading of each completed weekday. GBP conversion uses FX bars at the same interval.")}</p>}
-              {period === "MAX" && <p>{t("图中显示已结束周线的期末日期。回撤和年化波动率按周线计算；英镑换算使用此前已完成的汇率周线。", "Dates mark the end of completed weekly bars. Drawdown and annualised volatility use weekly bars. GBP conversion uses the most recent prior weekly FX close.")}</p>}
-              {!intraday && period !== "MAX" && <p>{history?.hourlyClose
+              {period === "MAX" && history?.sourceInterval === "1d" && history.displayInterval === "1wk" &&
+                <p>{t("从最早日线开始，每周保留最后一个交易日的读数。回撤和波动率按显示的读数计算。", "History starts at the earliest daily observation and displays each week’s last close. Risk figures use the plotted observations.")}</p>}
+              {!intraday && history?.displayInterval === "1d" && <p>{history?.hourlyClose
                 ? t("日线取自纽约时间 17:00 的小时线。", "Daily values come from the 17:00 New York hourly bar.")
                 : null} {t("回撤和年化波动率使用完整日线。英镑换算使用此前已完成的汇率日线。", "Drawdown and annualised volatility use completed daily bars. GBP conversion uses the most recent prior daily FX close.")}</p>}
               {matched.length > 0 && (intraday || period === "MAX") && <p>{period === "MAX"
@@ -437,7 +449,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             </Help>
           </div>
         </div>
-        {index.symbol && <div className="mx-index-controls">
+        {hasHistory && <div className="mx-index-controls">
           {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={targetPeriod}
             options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
             onChange={(value) => update({ range: value === "1Y" ? null : value })} />}
@@ -456,18 +468,23 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             searchable
           />}
         </div>}
-        {!points.length && index.rights === "licensed-source-required"
+        {!points.length && !hasHistory && index.rights === "licensed-source-required"
           ? <Empty title={t("官方指数走势需要授权数据", "Official index history requires a licensed source")}
               description={t("当前工作区没有获授权的指数报价。可查看基金市价走势；它不同于基金净值或官方指数总回报。", "This workspace has no licensed index feed. The ETF’s listed price is available as a proxy and differs from its NAV and the official index total return.")}
               action={index.id === "ftse-all-world" && <Link className="mx-text-link" href="/sectors?market=global&index=ftse-all-world-etf">
                 {t("查看富时全球 ETF 市价代理", "View FTSE All-World ETF price proxy")}
               </Link>} />
-          : !points.length && index.symbol && query.isPending
+          : !points.length && hasHistory && query.isPending
             ? <Pending label={t("正在加载走势", "Loading index history")} />
             : !points.length && !query.isError
               ? <Empty title={t("此范围没有可用的走势", "No history for this range")}
                   description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
               : null}
+        {history?.coverageReason === "source-interval-mismatch" &&
+          <p className="mx-form-help">{t("数据源未返回日线。已保留原始频率：", "The provider did not return daily bars. Reported interval: ")}
+            {history.sourceInterval ?? t("未知", "unknown")}</p>}
+        {history?.coverageReason === "daily-coverage-incomplete" &&
+          <p className="mx-form-help">{t("此区间的日线覆盖不完整。", "Daily history is incomplete for this range.")}</p>}
         {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
         {points.length > 0 && <Plot fullscreen label={chartLabel} height={phone ? 235 : 300}
           readout={indexReadout}

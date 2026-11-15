@@ -1116,7 +1116,7 @@ def test_held_ucits_and_us_etfs_publish_independent_option_rows(
                 job_id="synthetic-research-slot",
                 scope="research",
                 trigger="research",
-                tickers=("EQGB.L",),
+                tickers=("EQGB.L", "QQQ"),
             )
         )
         scheduled = store.immutable_artifacts.get_json(result.artifacts[0].artifact_id).payload
@@ -1126,6 +1126,8 @@ def test_held_ucits_and_us_etfs_publish_independent_option_rows(
             "SMH.L",
             "SMH",
         }
+        qqq = next(row for row in scheduled["technical"]["rows"] if row["ticker"] == "QQQ")
+        assert qqq["technical_score"] is not None and qqq["price"] > 0
         assert len(option_calls) == 3
         latest = store.latest_manifest()
         assert store.read_json(latest.run_id, "research/options.json") == chains

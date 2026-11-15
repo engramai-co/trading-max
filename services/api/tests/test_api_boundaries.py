@@ -445,6 +445,10 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
         assert ticker == "SMH"
         return SparkSeries(ticker, (int(now.timestamp()),), (101.0,), fetched_at=now)
 
+    def unavailable(*_args, **_kwargs):
+        raise ValueError("no synthetic OHLC")
+
+    monkeypatch.setattr(boundary_client.app.state.security_prices, "get", unavailable)
     monkeypatch.setattr(boundary_client.app.state.market_prices, "history", prices)
     response = boundary_client.get("/v1/research/SMH/prices?interval=60m")
     assert response.status_code == 200
@@ -470,3 +474,87 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
     response = boundary_client.get("/v1/research/SMH/prices?interval=1d")
     assert response.status_code == 200
     assert response.json()["source"] == "Alpaca (SIP)"
+
+
+@pytest.mark.parametrize("ticker", ["QQQ", "QQQM", "SMH", "EEM", "VEA", "MTUM", "SOXX"])
+def test_registered_etf_exact_search_is_local(boundary_client, monkeypatch, ticker):
+    def unexpected(*_args):
+        pytest.fail("A registered ETF must not query fuzzy providers")
+
+    monkeypatch.setattr(boundary_client.app.state.security_search, "_fuzzy_results", unexpected)
+    search = boundary_client.get(f"/v1/securities/search?q={ticker.lower()}").json()
+    assert search["source"] == "registry"
+    [result] = search["results"]
+    assert result["ticker"] == ticker and result["securityType"] == "ETF"
+
+
+def test_eodhd_settings_leave_provider_off_until_enabled(boundary_client, monkeypatch):
+    client = boundary_client
+    calls = []
+    monkeypatch.setattr(client.app.state.eodhd_prices, "test", lambda key, _: calls.append(key))
+    path = "/v1/settings/integrations/eodhd"
+    key = "synthetic-secret"
+    assert client.get("/v1/indices/history").status_code in {404, 422}
+    result = client.post(path + "/test", json={"apiKey": key})
+    assert result.status_code == 200 and key not in result.text
+    token = result.json()["validationToken"]
+    saved = client.put(path, json={"apiKey": key, "validationToken": token})
+    assert saved.status_code == 200 and not saved.json()["enabled"] and key not in saved.text
+    assert client.app.state.credential_store.get("eodhd:default") == key
+    default = client.get("/v1/indices/topix-index/history?range=MAX").json()
+    assert default["state"] == "unavailable" and not default["index"]["ranges"]
+    assert client.patch(path, json={"enabled": True}).json()["enabled"]
+    catalogue = client.get("/v1/indices/catalog").json()
+    assert "MAX" in next(row for row in catalogue if row["id"] == "topix-index")["ranges"]
+    assert client.delete(path).status_code == 204
+    assert client.app.state.credential_store.get("eodhd:default") is None
+    assert calls == [key]
+
+
+def test_public_peer_lens_scores_bars_without_publishing_research(boundary_client, monkeypatch):
+    from datetime import date, timedelta
+
+    from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
+
+    client = boundary_client
+    store = client.app.state.store
+    artifact = store.immutable_artifacts.put_json(
+        key="research/coverage.json", payload={"rows": []}
+    )
+    immutable = store.immutable_snapshots.publish(
+        scope="research",
+        source="synthetic",
+        artifacts=[artifact],
+    )
+    points = [
+        {
+            "date": (date(2026, 1, 5) + timedelta(days=n)).isoformat(),
+            "close": 20 + n / 100,
+            "open": 20,
+            "low": 18,
+            "high": 24,
+            "volume": 1000,
+            "sma20": None,
+            "sma50": None,
+            "sma200": None,
+        }
+        for n in range(310)
+        if (date(2026, 1, 5) + timedelta(days=n)).weekday() < 5
+    ]
+    series = ResearchPriceSeries(
+        ticker="QQQ",
+        as_of=points[-1]["date"],
+        currency="USD",
+        timezone="America/New_York",
+        exchange_calendar="XNYS",
+        available_sessions=len(points),
+        points=points,
+    )
+    monkeypatch.setattr(client.app.state.security_prices, "get", lambda *_a, **_k: series)
+    response = client.get("/v1/research/QQQ/lens/overview?detail=summary&preview=true")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["context"]["quote"]["price"] == points[-1]["close"]
+    assert data["technicalSummary"]["score"] is not None
+    assert not client.get("/v1/watchlist").json()["items"]
+    assert store.latest_manifest().run_id == immutable.manifest.run_id

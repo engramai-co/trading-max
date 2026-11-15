@@ -27,6 +27,7 @@ from trading_max.infrastructure.alpaca_market_prices import (
     market_price_sources,
 )
 from trading_max.infrastructure.durable_files import atomic_bytes
+from trading_max.infrastructure.eodhd_index_prices import EODHD_SOURCE, EodhdIndexPrices
 from trading_max.infrastructure.sector_prices import SparkSeries
 from trading_max.infrastructure.sector_universe import SectorUniverseProvider
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
@@ -50,6 +51,7 @@ from .index_models import (
     IndexMarket,
     IndexPoint,
     IndexQuote,
+    IndexSourceCodes,
 )
 from .sector_models import SectorBreadth, SectorMarketCode, SectorSessionWindow
 from .sector_monitor import SectorBoardStore
@@ -77,7 +79,16 @@ MSCI_ZONE = ZoneInfo("America/New_York")
 BROKER_KEY = "account/broker_snapshot_metrics.json"
 
 
-def index_identity(spec: IndexSpec, source: str = "Yahoo Finance") -> IndexIdentity:
+def index_identity(
+    spec: IndexSpec, source: str = "Yahoo Finance", *, eodhd_enabled: bool = False
+) -> IndexIdentity:
+    ranges = spec.ranges
+    if spec.eodhd and eodhd_enabled:
+        ranges = (
+            *[period for period in ranges if period in INTRADAY_MINUTES],
+            *DAILY_WINDOWS,
+            "MAX",
+        )
     return IndexIdentity(
         id=spec.id,
         scope=spec.scope,
@@ -85,16 +96,21 @@ def index_identity(spec: IndexSpec, source: str = "Yahoo Finance") -> IndexIdent
         name_zh=spec.name_zh,
         compiler=spec.compiler,
         compiler_id=spec.compiler_id,
+        family_id=spec.family,
+        series_code=spec.series,
+        variant=spec.variant,
+        hedging=spec.hedging if spec.kind == "index" else "unknown",
+        source_codes=IndexSourceCodes(yahoo=spec.symbol, fred=spec.fred, eodhd=spec.eodhd),
         symbol=spec.symbol,
         currency=spec.currency,
         calendar=spec.calendar,
         basis=spec.basis,
         kind=spec.kind,
         history_years=spec.history_years,
-        ranges=list(spec.ranges),
+        ranges=list(ranges),
         rights=spec.rights,
         aliases=list(spec.aliases),
-        source=source if spec.symbol else None,
+        source=source if spec.symbol or source == EODHD_SOURCE else None,
     )
 
 
@@ -183,6 +199,86 @@ def _weekly_rows(
     return rows
 
 
+def _daily_rows(
+    series: SparkSeries | None, zone: ZoneInfo, start: date, end: date
+) -> list[tuple[datetime, float | None]]:
+    zone = _provider_zone(series, zone)
+    return [
+        (_midnight(day), value)
+        for stamp, value in _rows(series)
+        if start <= (day := stamp.astimezone(zone).date()) <= end
+    ]
+
+
+def _weekly_from_daily(rows: list[tuple[datetime, float | None]]) -> list[tuple[datetime, float]]:
+    valid = {at: value for at, value in rows if value is not None}
+    if not valid:
+        return []
+    weeks = {}
+    for at, value in sorted(valid.items()):
+        weeks[at.date() - timedelta(days=at.weekday())] = (at, value)
+    first = min(valid)
+    return sorted({(first, valid[first]), *weeks.values()})
+
+
+def _daily_window(
+    prices: SharedMarketPrices,
+    symbol: str,
+    start: date,
+    end: date,
+    zone: ZoneInfo,
+) -> SparkSeries | None:
+    return prices.dated_history(
+        symbol,
+        datetime.combine(start, datetime.min.time(), zone),
+        datetime.combine(end + timedelta(days=1), datetime.min.time(), zone),
+    )
+
+
+def _long_daily(
+    prices: SharedMarketPrices,
+    spec: IndexSpec,
+    end: date,
+    zone: ZoneInfo,
+) -> tuple[SparkSeries | None, list[tuple[datetime, float | None]], bool]:
+    first_known = date(1927, 12, 30) if spec.id == "sp-500" else None
+    start = first_known or date(1900, 1, 1)
+    result = _daily_window(prices, spec.symbol, start, end, zone)
+    daily = _daily_rows(result, zone, start, end) if result and result.granularity == "1d" else []
+    first = min((at.date() for at, value in daily if value is not None), default=None)
+    if first is not None and (first_known is None or first <= first_known):
+        return result, daily, False
+
+    # Providers can refuse or downsample a long request. Stitch only validated
+    # daily windows, with no overlap or substitute observations.
+    rows = []
+    representative = result
+    missing_after_start = False
+    while start <= end:
+        until = min(date(start.year + 20, 1, 1) - timedelta(days=1), end)
+        part = _daily_window(prices, spec.symbol, start, until, zone)
+        if part and part.granularity == "1d":
+            window = _daily_rows(part, zone, start, until)
+            if any(value is not None for _, value in window):
+                representative = part
+                rows.extend(window)
+            elif rows:
+                missing_after_start = True
+        elif rows:
+            missing_after_start = True
+        start = until + timedelta(days=1)
+    if rows:
+        first = next(at.date() for at, value in rows if value is not None)
+        return (
+            representative,
+            rows,
+            missing_after_start or bool(first_known and first > first_known),
+        )
+    if daily:
+        return result, daily, True
+    return result, [], bool(first_known)
+
+
 def _hourly_closes(series: SparkSeries | None) -> list[tuple[datetime, float | None]]:
     # The 17:00 New York bar matched 248 of 251 published MSCI World
     # closes within 0.05% in a one-year comparison, including both DST shifts.
@@ -261,6 +357,8 @@ class IndexService:
         now: Callable[[], datetime] | None = None,
         universes: SectorUniverseProvider | None = None,
         depth: IndexDepth | None = None,
+        eodhd: EodhdIndexPrices | None = None,
+        eodhd_configuration: Callable[[], tuple[int, str] | None] | None = None,
     ) -> None:
         self.store = store
         self.boards = boards
@@ -286,7 +384,20 @@ class IndexService:
         self._ndx_cache: tuple[datetime, IndexBasket | None] | None = None
         self._ndx_late_attempts: tuple[str, int] | None = None
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
-        self._histories: dict[tuple[str, str, bool], tuple[datetime, IndexHistory]] = {}
+        self.eodhd = eodhd
+        self.eodhd_configuration = eodhd_configuration
+        self._histories: dict[tuple[str, str, bool, int], tuple[datetime, IndexHistory]] = {}
+
+    def catalog(self) -> list[IndexIdentity]:
+        enabled = bool(self.eodhd_configuration and self.eodhd_configuration())
+        return [
+            index_identity(
+                spec,
+                EODHD_SOURCE if spec.eodhd and enabled and not spec.symbol else "Yahoo Finance",
+                eodhd_enabled=enabled,
+            )
+            for spec in active_indices()
+        ]
 
     def _global_reference(self) -> tuple[datetime, GlobalReference]:
         with self._global_clock_lock:
@@ -358,7 +469,7 @@ class IndexService:
 
     def _market(self, scope: IndexScope) -> IndexMarket:
         now = self.now()
-        specs = list(active_indices(scope))
+        specs = [spec for spec in active_indices(scope) if spec.market_visible]
         clocks = {spec.id: _index_clock(spec, now) for spec in specs if spec.symbol}
         self._sync_market_source()
         cached = self._markets.get(scope)
@@ -567,7 +678,10 @@ class IndexService:
         return result
 
     def history(self, spec: IndexSpec, period: IndexRange, gbp: bool) -> IndexHistory:
-        key = (spec.id, period, gbp)
+        configuration = (
+            self.eodhd_configuration() if spec.eodhd and self.eodhd_configuration else None
+        )
+        key = (spec.id, period, gbp, configuration[0] if configuration else 0)
         with self._lock:
             self._sync_market_source()
             now = self.now()
@@ -575,11 +689,17 @@ class IndexService:
             if cached and now - cached[0] < timedelta(minutes=4):
                 return cached[1]
             currency = "GBP" if gbp and spec.currency else spec.currency
-            result = IndexHistory(index=index_identity(spec), range=period, currency=currency)
+            result = IndexHistory(
+                index=index_identity(spec, eodhd_enabled=bool(configuration)),
+                range=period,
+                currency=currency,
+            )
             try:
-                result = self._history(spec, period, gbp, result, now)
+                result = self._history(spec, period, gbp, result, now, configuration)
             except Exception:
                 LOGGER.debug("Index history read failed", exc_info=True)
+            if configuration and self.eodhd_configuration() != configuration:
+                return IndexHistory(index=index_identity(spec), range=period, currency=currency)
             if not result.points and cached and cached[1].points:
                 result = cached[1].model_copy(update={"state": "stale"})
             self._histories[key] = (now, result)
@@ -592,8 +712,9 @@ class IndexService:
         gbp: bool,
         result: IndexHistory,
         now: datetime,
+        configuration: tuple[int, str] | None = None,
     ) -> IndexHistory:
-        if spec.symbol is None or period not in spec.ranges:
+        if period not in result.index.ranges:
             return result
         zone, window, _ = _index_clock(spec, now)
         day = now.astimezone(zone).date()
@@ -601,13 +722,40 @@ class IndexService:
         quote = None
         is_intraday = period in INTRADAY_MINUTES
         series = None
+        if period in INTRADAY_MINUTES:
+            result.source_interval = result.display_interval = f"{INTRADAY_MINUTES[period]}m"
+        last_complete = (
+            date.fromisoformat(window.date)
+            if window and board_complete(window, now)
+            else date.fromisoformat(window.date) - timedelta(days=1)
+            if window
+            else day - timedelta(days=1)
+        )
+        eodhd = (
+            self.eodhd.history(spec.eodhd, configuration[1], now, zone, end=last_complete)
+            if self.eodhd and spec.eodhd and configuration and not is_intraday
+            else None
+        )
+        if not spec.symbol and eodhd is None:
+            return result
         if period == "1D":
             quote = next((q for q in self.market(spec.scope).quotes if q.index.id == spec.id), None)
             points = quote.points if quote else []
             if quote:
                 result.index = quote.index
         else:
-            if period == "1W" or period == "1M":
+            if eodhd is not None:
+                series = eodhd
+                start = (
+                    date(1900, 1, 1)
+                    if period == "MAX"
+                    else (pd.Timestamp(day) - DAILY_WINDOWS[period]).date()
+                )
+                rows = _daily_rows(series, zone, start, last_complete)
+                result.source_interval = result.display_interval = "1d"
+                if period != "MAX" and rows and rows[0][0].date() > start + timedelta(days=8):
+                    result.coverage_reason = "daily-coverage-incomplete"
+            elif period == "1W" or period == "1M":
                 series = self.prices.history_bars(spec.symbol, period, now)
                 cut = (
                     now - timedelta(days=7)
@@ -624,16 +772,21 @@ class IndexService:
                 ]
                 zone = _provider_zone(series, zone)
             elif period == "MAX":
-                series = self.prices.history_bars(spec.symbol, period, now)
-                rows = _weekly_rows(series, zone, now)
+                series, daily, incomplete = _long_daily(self.prices, spec, last_complete, zone)
+                if daily:
+                    rows = _weekly_from_daily(daily)
+                    result.source_interval = "1d"
+                    result.display_interval = "1wk"
+                    if incomplete:
+                        result.coverage_reason = "daily-coverage-incomplete"
+                else:
+                    result.source_interval = series.granularity if series else None
+                    result.display_interval = result.source_interval
+                    result.coverage_reason = (
+                        "source-interval-mismatch" if series else "daily-coverage-incomplete"
+                    )
+                    rows = _daily_rows(series, zone, date(1900, 1, 1), last_complete)
             else:
-                last_complete = (
-                    date.fromisoformat(window.date)
-                    if window and board_complete(window, now)
-                    else date.fromisoformat(window.date) - timedelta(days=1)
-                    if window
-                    else day - timedelta(days=1)
-                )
                 cut_day = (
                     pd.Timestamp(window.date if window else day) - DAILY_WINDOWS[period]
                 ).date()
@@ -642,16 +795,24 @@ class IndexService:
                     series = self.prices.history_bars(spec.symbol, "1Y", now)
                     rows = _hourly_closes(series)
                     result.hourly_close = True
+                    result.source_interval = "60m"
+                    result.display_interval = "1d"
                 else:
-                    series = self.prices.history(spec.symbol)
+                    series = _daily_window(self.prices, spec.symbol, cut_day, last_complete, zone)
+                    result.source_interval = series.granularity if series else None
+                    result.display_interval = result.source_interval
+                    if series is not None and result.source_interval != "1d":
+                        result.coverage_reason = "source-interval-mismatch"
                     rows = [
-                        (_midnight(at.astimezone(zone).date()), value)
-                        for at, value in _rows(series)
-                        if value is not None or window or at.astimezone(zone).weekday() < 5
+                        (at, value)
+                        for at, value in _daily_rows(series, zone, cut_day, last_complete)
+                        if value is not None or window or at.weekday() < 5
                     ]
                 rows = [(at, value) for at, value in rows if cut_day <= at.date() <= last_complete]
-                if window and (
-                    first := next((at for at, value in rows if value is not None), None)
+                if (
+                    window
+                    and result.display_interval == "1d"
+                    and (first := next((at for at, value in rows if value is not None), None))
                 ):
                     observed = {at.date().isoformat() for at, value in rows if value is not None}
                     calendar = _CLOCKS[spec.calendar][0]
@@ -670,14 +831,14 @@ class IndexService:
             if not window or is_intraday or period == "MAX":
                 gaps.update(at for at, value in rows if value is None and at not in values)
         if series is not None:
-            result.index = index_identity(spec, series.source)
+            result.index = index_identity(spec, series.source, eodhd_enabled=bool(configuration))
         if gbp and spec.currency not in {None, "GBP"} and points:
             fx = f"{spec.currency}GBP=X"
             if period == "1D":
                 rates = _points(self.prices.intraday([fx]).get(fx))
             elif period == "1W" or period == "1M":
                 rates = _points(self.prices.history_bars(fx, period, now))
-            elif period == "MAX":
+            elif period == "MAX" and result.display_interval != "1d":
                 series = self.prices.history_bars(fx, period, now)
                 rates = [
                     IndexPoint(at=at, value=value)
@@ -705,14 +866,14 @@ class IndexService:
             result.gaps = sorted(gaps)
             result.state = (
                 "stale"
-                if quote and quote.state == "stale"
-                else ("partial" if gaps else "available")
+                if (quote and quote.state == "stale") or (eodhd and eodhd.stale)
+                else ("partial" if gaps or result.coverage_reason else "available")
             )
             if period in {"1W", "1M"}:
                 result.max_drawdown, result.volatility = _short_risk(points, gaps, zone, now)
-            elif not is_intraday:
+            elif not is_intraday and result.display_interval in {"1wk", "1d"}:
                 result.max_drawdown, result.volatility = _risk(
-                    points, gaps, periods_per_year=52 if period == "MAX" else 252
+                    points, gaps, periods_per_year=52 if result.display_interval == "1wk" else 252
                 )
         return result
 
@@ -1014,4 +1175,5 @@ class IndexService:
             prices_source=prices_source,
             fetched_at=fetched_at,
             holdings_fetched_at=holdings_fetched_at,
+            members=members,
         )

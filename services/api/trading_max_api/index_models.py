@@ -4,10 +4,25 @@ from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field
-from trading_max.reference.indices import IndexBasis, IndexKind, IndexRange, IndexScope, UsageRights
+from trading_max.reference.indices import (
+    IndexBasis,
+    IndexHedge,
+    IndexKind,
+    IndexRange,
+    IndexScope,
+    IndexVariant,
+    UsageRights,
+)
 
+from .dashboard_models import TechnicalScoreSummary
 from .models import ApiModel
 from .sector_models import SectorBreadth
+
+
+class IndexSourceCodes(ApiModel):
+    yahoo: str | None = None
+    fred: str | None = None
+    eodhd: str | None = None
 
 
 class IndexIdentity(ApiModel):
@@ -17,6 +32,11 @@ class IndexIdentity(ApiModel):
     name_zh: str
     compiler: str
     compiler_id: str
+    family_id: str = ""
+    series_code: str = ""
+    variant: IndexVariant | None = None
+    hedging: IndexHedge = "unknown"
+    source_codes: IndexSourceCodes = Field(default_factory=IndexSourceCodes)
     symbol: str | None
     currency: str | None
     calendar: str
@@ -102,6 +122,9 @@ class IndexHistory(ApiModel):
     state: Literal["available", "partial", "unavailable", "stale"] = "unavailable"
     as_of: datetime | None = None
     hourly_close: bool = False
+    source_interval: str | None = None
+    display_interval: str | None = None
+    coverage_reason: Literal["source-interval-mismatch", "daily-coverage-incomplete"] | None = None
 
 
 class IndexContribution(ApiModel):
@@ -129,6 +152,7 @@ class IndexBasket(ApiModel):
     prices_source: str = "Yahoo Finance"
     fetched_at: datetime | None = None
     holdings_fetched_at: datetime | None = None
+    members: list[IndexContribution] = Field(default_factory=list)
 
 
 class IndexBreadthPoint(ApiModel):
@@ -204,3 +228,88 @@ class IndexContext(ApiModel):
     vix_stale: bool = False
     valuation: IndexValuationSnapshot | None = None
     valuation_reference: IndexValuationReference | None = None
+
+
+class IndexConstituent(ApiModel):
+    ticker: str
+    name: str
+    isin: str | None = None
+    weight: float
+    move: float | None = None
+    contribution: float | None = None
+    industry: str | None = None
+    country: str | None = None
+
+
+class IndexComposition(ApiModel):
+    source: str
+    source_url: str | None = None
+    holdings_date: str
+    session_date: str | None = None
+    as_of: datetime | None = None
+    coverage: float | None = None
+    basket_basis: Literal["issuer-portfolio", "market-proxy", "official"]
+    weighting: Literal["cap", "price", "other"] = "other"
+    members: list[IndexConstituent] = Field(default_factory=list)
+    up: int | None = None
+    flat: int | None = None
+    down: int | None = None
+    uncovered: int | None = None
+    highs_52w: int | None = None
+    lows_52w: int | None = None
+    eligible_52w: int | None = None
+    equal_weight_move: float | None = None
+    cap_weight_move: float | None = None
+    price_weight_move: float | None = None
+    total_move: float | None = None
+    waterfall: list[IndexContribution] = Field(default_factory=list)
+
+
+class IndexProduct(ApiModel):
+    isin: str
+    ticker: str
+    name: str
+    benchmark_id: str
+    group: Literal["held", "same-benchmark", "same-family", "similar", "related"]
+    relationship: Literal[
+        "exact",
+        "same-family-other-variant",
+        "similar-exposure",
+        "related-different-structure",
+        "unconfirmed",
+    ]
+    evidence_url: str
+    evidence_date: date
+    share_currency: str
+    domicile: str
+    hedged: bool
+    expense_ratio: float | None = None
+    replication: str | None = None
+    income_use: str | None = None
+    size: float | None = None
+    size_currency: str | None = None
+    size_basis: Literal["share-class", "fund"] | None = None
+    tracking_difference: float | None = None
+    value_gbp: float | None = None
+
+
+class IndexExposure(ApiModel):
+    as_of: str
+    direct_gbp: float
+    look_through_gbp: float
+    total_gbp: float
+    matched_isins: int
+
+
+IndexLens = Literal["overview", "constituents", "tracking"]
+
+
+class IndexResearch(ApiModel):
+    index: IndexIdentity
+    depth: Literal["L0", "L1", "L2", "L3"] = "L0"
+    quote: IndexQuote | None = None
+    technical: TechnicalScoreSummary | None = None
+    composition: IndexComposition | None = None
+    products: list[IndexProduct] = Field(default_factory=list)
+    exposure: IndexExposure | None = None
+    valuation: IndexValuationSnapshot | None = None

@@ -66,7 +66,8 @@ export function SecurityHeader({
   onSwitch,
 }: {
   ticker: string;
-  selected: ResearchInstrument;
+  selected: Pick<ResearchInstrument, "name" | "exchange" | "held" | "directValueGbp" | "exposureGbp"> &
+    Partial<Pick<ResearchInstrument, "brokerPrice" | "brokerPriceCurrency" | "brokerAsOf" | "brokerListing" | "usFundPeers">>;
   quote: ResearchLensSnapshot | undefined;
   quotePending: boolean;
   failure?: { updatedAt: number; retry: () => unknown };
@@ -179,6 +180,8 @@ export function SecurityActions({
   busy,
   pending,
   onRefresh,
+  onAdd,
+  addDisabled,
   onManage,
   onRemove,
 }: {
@@ -188,6 +191,8 @@ export function SecurityActions({
   busy: boolean;
   pending: boolean;
   onRefresh: () => void;
+  onAdd?: () => void;
+  addDisabled?: boolean;
   onManage: () => void;
   onRemove: () => void;
 }) {
@@ -195,7 +200,7 @@ export function SecurityActions({
   return (
     <div className="mx-research-actions">
       {/* Phones show the icon alone; the name stays 更新研究 in every state. */}
-      <Button
+      {onAdd ? <Button loading={busy} disabled={addDisabled} onClick={onAdd}>{t("加入研究清单", "Add to research list")}</Button> : <Button
         className="mx-research-refresh"
         aria-label={t("更新研究", "Update research")}
         variant="default"
@@ -204,7 +209,7 @@ export function SecurityActions({
         onClick={() => onRefresh()}
       >
         {busy ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
-      </Button>
+      </Button>}
       {watchlisted && <Menu shadow="md" position="bottom-end">
         <Menu.Target>
           <ActionIcon aria-label={t("管理当前证券", "Manage this security")}>
@@ -217,16 +222,18 @@ export function SecurityActions({
               ? t("调整研究分类", "Change research category")
               : t("尚未设置研究分类", "No research categories configured")}
           </Menu.Item>
-          <Menu.Item
-            color="red"
-            disabled={held || pending}
-            leftSection={<Trash size={15} />}
-            onClick={() => onRemove()}
-          >
-            {held
-              ? t("持仓标的保留在研究中", "Held securities stay in research")
-              : t("从研究清单移除", "Remove from research")}
-          </Menu.Item>
+          {held ? (
+            <Menu.Label c="var(--mantine-color-text)">{t("持仓标的保留在研究中", "Held securities stay in research")}</Menu.Label>
+          ) : (
+            <Menu.Item
+              color="red"
+              disabled={pending}
+              leftSection={<Trash size={15} />}
+              onClick={onRemove}
+            >
+              {t("从研究清单移除", "Remove from research")}
+            </Menu.Item>
+          )}
         </Menu.Dropdown>
       </Menu>}
     </div>
