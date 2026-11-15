@@ -705,14 +705,18 @@ export function Facts({ rows }: { rows: Array<[ReactNode, ReactNode]> }) {
     </dl>
   );
 }
-function SecurityMark({ ticker }: { ticker: string }) {
+/** The listing's logo; an ISIN, when known, identifies it before the ticker does. */
+export function companyLogoSrc(ticker: string, isin?: string | null) {
+  return "/api/company-logo/" + encodeURIComponent(ticker) + (isin ? "?isin=" + encodeURIComponent(isin) : "");
+}
+function SecurityMark({ ticker, isin }: { ticker: string; isin?: string | null }) {
   const [failed, setFailed] = useState(false);
   return (
     <span className="mx-monogram mx-company-logo" aria-hidden="true">
       {!failed ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={"/api/company-logo/" + encodeURIComponent(ticker)}
+          src={companyLogoSrc(ticker, isin)}
           alt=""
           loading="lazy"
           decoding="async"
@@ -731,16 +735,19 @@ export function Instrument({
   small = false,
   listing,
   detail,
+  isin,
 }: {
   ticker: string;
   name?: string;
   small?: boolean;
   listing?: string;
   detail?: ReactNode;
+  /** Identifies the logo when the ticker is ambiguous, as fund tickers often are. */
+  isin?: string | null;
 }) {
   return (
     <div className={"mx-instrument" + (small ? " mx-instrument-small" : "")}>
-      <SecurityMark key={ticker} ticker={ticker} />
+      <SecurityMark key={ticker + (isin ?? "")} ticker={ticker} isin={isin} />
       <span>
         <strong>{ticker}{listing && <span className="mx-instrument-listing"> · {listing}</span>}</strong>
         {name && <span className="mx-instrument-name">{name}</span>}

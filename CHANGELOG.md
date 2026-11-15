@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.49.2] - 2026-11-15
+
+### Changed
+- Markets index cards open the index's chart, and the chart's title row holds the single link to the index's research page instead of a link under every card. The ticker and currency moved into the chart's help.
+
+### Fixed
+- Fund logos are looked up by ISIN, so London-listed funds show their issuer's mark and a fund no longer borrows the logo of a company that shares its ticker.
+- Fund evidence help shows dates and fetch times in your time zone and no longer reads out full source links; each source stays linked on the fund's research page.
+
 ## [1.49.1] - 2026-11-15
 
 ### Fixed

@@ -13,7 +13,7 @@ import { signedPounds } from "./day-drivers";
 import { Facts, Help, Instrument, Metric, Tag, useCopy } from "./foundation";
 import { etfDetailQuery, etfPortfolioQuery, fieldEvidence, findETF, overlapDisplay, trackingDisplay } from "./etf-data";
 import { researchLensQuery } from "./research-queries";
-import { EvidenceReading } from "./etf-reading";
+import { EvidenceReading, useEvidenceTime } from "./etf-reading";
 import { holdingQuantityUnit, holdingQuote } from "./holding-detail-data";
 import Link from "./link";
 
@@ -85,6 +85,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
       <Instrument
         ticker={holding.ticker}
         name={holding.name}
+        isin={holding.fundIsin}
         listing={listing}
         detail={<span className="mx-position-account">{account}</span>}
       />
@@ -146,18 +147,19 @@ function NextStockEvent({ ticker, runId, today, now }: { ticker: string; runId?:
 
 function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
   const t = useCopy();
+  const when = useEvidenceTime();
   const portfolio = useQuery({ ...etfPortfolioQuery(runId), enabled: !holding.fundIsin });
   const summary = portfolio.data?.runId === runId ? findETF(portfolio.data.funds, holding.ticker) : undefined;
   const isin = holding.fundIsin || summary?.isin || "";
   const detail = useQuery({ ...etfDetailQuery(runId, isin), enabled: Boolean(isin) });
   const current = detail.data?.runId === runId ? detail.data : undefined;
   const reading = current?.reading ?? summary;
-  const tracking = trackingDisplay(reading, t);
-  const overlap = overlapDisplay(reading, t);
+  const tracking = trackingDisplay(reading, t, when);
+  const overlap = overlapDisplay(reading, t, when);
   const missing = t("暂无", "Unavailable");
   const fee = reading?.expenseRatio == null ? missing : percent(reading.expenseRatio, false, 2);
   const feeLabel = reading?.feeBasis === "OCF" ? t("持续费用率", "Ongoing charge") : t("总费用率", "Total expense ratio");
-  const feeEvidence = fieldEvidence(feeLabel, fee, reading?.evidence?.expense_ratio, t);
+  const feeEvidence = fieldEvidence(feeLabel, fee, reading?.evidence?.expense_ratio, t, when);
   const holdings = current?.holdings;
   const top = [...(holdings?.holdings ?? [])].filter((item) => item.weightPct > 0)
     .sort((a, b) => b.weightPct - a.weightPct).slice(0, 10);
@@ -184,8 +186,8 @@ function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
         {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓已过期", "Holdings stale")}</Tag>}
         {top.length ? <Facts rows={top.map((item) => {
           const weight = percent(item.weightPct / 100, false, 2);
-          const basis = [reading?.issuer, holdings?.evidence?.holdings?.sourceUrl,
-            t("发行商持仓权重", "Issuer holdings weight") + " " + weight, holdings?.asOf].filter(Boolean).join(" · ");
+          const basis = [reading?.issuer, t("发行商持仓权重", "Issuer holdings weight") + " " + weight,
+            holdings?.asOf && t("截至 ", "As of ") + when(holdings.asOf)].filter(Boolean).join(" · ");
           return [item.name || item.ticker || item.isin,
             <span key={item.isin || item.name} role="group" title={basis} aria-label={basis}>{weight}</span>];
         })} /> : <p role="status">{

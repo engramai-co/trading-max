@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowClockwise, ArrowUpRight, CaretRight } from "@phosphor-icons/react";
+import { ArrowClockwise, CaretRight, ChartBar } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
@@ -13,7 +13,7 @@ import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
-import { Empty, Help, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { Empty, Help, Pending, QueryError, Segments, TextLink, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
@@ -194,7 +194,6 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   return (
-    <div className="mx-index-card-stack">
     <Link
       href={indexHref(index)}
       prefetch={false}
@@ -218,12 +217,6 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       </span>
       {notice && <small className="mx-index-freshness">{notice}</small>}
     </Link>
-    <Link className="mx-text-link mx-index-to-research" href={researchIndexHref(index)} prefetch={false}
-      aria-label={name(index) + " · " + t("在研究台打开", "Open in research")}>
-      <span className="mx-index-to-research-label">{t("在研究台打开", "Open in research")}</span>
-      <ArrowUpRight size={16} aria-hidden="true" />
-    </Link>
-    </div>
   );
 }
 
@@ -425,12 +418,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       <section className="mx-panel mx-index-history">
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
-          <div className="mx-index-provenance">
-            <Link className="mx-text-link" href={researchIndexHref(index)}>
-              {t("在研究台打开", "Open in research")}
-            </Link>
-            <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency} · {index.symbol ?? index.compiler}</span>
-            <Help label={t("指数数据与口径", "Index data and basis")}>
+          <Help label={t("指数数据与口径", "Index data and basis")}>
+              <p>{index.symbol ?? index.compiler} · {index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency}</p>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
               {!hasHistory && index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
@@ -446,7 +435,12 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               {matched.length > 0 && (intraday || period === "MAX") && <p>{period === "MAX"
                 ? t("对比使用同一日历周内的读数，周线的结束日可能不同。", "Comparison uses readings from the same calendar week; bar end dates can differ.")
                 : t("对比使用同一时间段内的读数。", "Comparison uses readings within the same time slot.")}</p>}
-            </Help>
+          </Help>
+          <div className="mx-index-title-action">
+            <TextLink href={researchIndexHref(index)}>
+              <ChartBar size={14} aria-hidden="true" />
+              {t("指数研究", "Index research")}
+            </TextLink>
           </div>
         </div>
         {hasHistory && <div className="mx-index-controls">

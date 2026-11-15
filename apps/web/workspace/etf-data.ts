@@ -7,6 +7,8 @@ export type ETFPortfolio = components["schemas"]["ETFPortfolio"];
 export type ETFDetail = components["schemas"]["ETFDetail"];
 export type FundEvidence = components["schemas"]["FundEvidence"];
 export type Copy = (zh: string, en: string) => string;
+/** Formats an evidence date (YYYY-MM-DD) or instant for hover text and accessible names. */
+export type EvidenceTime = (value: string) => string;
 
 export function etfPortfolioQuery(runId: string, account = "total") {
   return queryOptions({
@@ -38,7 +40,13 @@ export function signedPoints(value: number) {
   return (rounded > 0 ? "+" : rounded < 0 ? "−" : "") + Math.abs(rounded).toFixed(2);
 }
 
-export function trackingDisplay(reading: Pick<ETFReading, "tracking" | "issuer" | "indexName"> | undefined, t: Copy, short = false) {
+/**
+ * The one-year tracking reading for a fund. Hover text and the accessible name name the basis, issuer, index,
+ * period and fetch time in the reader's locale; the source document stays a link on the fund's research page.
+ */
+export function trackingDisplay(
+  reading: Pick<ETFReading, "tracking" | "issuer" | "indexName"> | undefined, t: Copy, when: EvidenceTime, short = false,
+) {
   const tracking = reading?.tracking;
   const missing = t("暂无", "Unavailable");
   const value = tracking?.differencePp;
@@ -46,15 +54,14 @@ export function trackingDisplay(reading: Pick<ETFReading, "tracking" | "issuer" 
     : value == null ? missing : signedPoints(value) + (short ? "" : " pp");
   const name = t("一年跟踪差", "1-year tracking difference");
   const basis = t("份额净值总回报减去发行商披露的指数总回报", "Share-class NAV total return minus issuer-published benchmark total return");
-  const period = tracking?.periodEnd ?? t("期末未提供", "Period end unavailable");
+  const period = tracking?.periodEnd ? t("截至 ", "As of ") + when(tracking.periodEnd) : t("期末未提供", "Period end unavailable");
   const status = tracking?.state === "stale" ? t("已过期", "Stale") : undefined;
   const hedge = (value: string | null | undefined) => value === "unhedged"
     ? t("未对冲", "Unhedged") : value ?? t("对冲未确认", "Hedging unconfirmed");
   const details = tracking ? [
-    reading?.issuer, tracking.evidence?.sourceUrl, reading?.indexName,
-    tracking.evidence?.fetchedAt && t("读取于 ", "Fetched ") + tracking.evidence.fetchedAt,
+    reading?.issuer, reading?.indexName, period,
     `${tracking.currency ?? "—"} · ${hedge(tracking.navHedging)} / ${tracking.benchmarkCurrency ?? "—"} · ${hedge(tracking.benchmarkHedging)}`,
-    period,
+    tracking.evidence?.fetchedAt && t("读取于 ", "Fetched ") + when(tracking.evidence.fetchedAt),
   ].filter(Boolean) : [];
   return {
     display, status,
@@ -62,15 +69,15 @@ export function trackingDisplay(reading: Pick<ETFReading, "tracking" | "issuer" 
   };
 }
 
-export function overlapDisplay(reading: Pick<ETFReading, "overlap" | "issuer" | "evidence"> | undefined, t: Copy) {
+export function overlapDisplay(reading: Pick<ETFReading, "overlap" | "issuer" | "evidence"> | undefined, t: Copy, when: EvidenceTime) {
   const overlap = reading?.overlap;
   const display = overlap?.value == null ? t("暂无", "Unavailable") : percent(overlap.value, false, 0);
   const status = overlap?.state === "stale" ? t("日期未验证", "Dates unverified") : undefined;
   const missing = t("暂无", "Unavailable");
   const fundCoverage = overlap?.fundCoverage == null ? missing : percent(overlap.fundCoverage);
   const restCoverage = overlap?.restCoverage == null ? missing : percent(overlap.restCoverage);
-  const otherDates = overlap?.restHoldingsDates?.join(", ") || missing;
-  const fundDate = overlap?.fundHoldingsDate ?? missing;
+  const otherDates = overlap?.restHoldingsDates?.length ? overlap.restHoldingsDates.map(when).join(t("、", ", ")) : missing;
+  const fundDate = overlap?.fundHoldingsDate ? when(overlap.fundHoldingsDate) : missing;
   return {
     display, status, fundCoverage, restCoverage,
     description: [
@@ -80,15 +87,16 @@ export function overlapDisplay(reading: Pick<ETFReading, "overlap" | "issuer" | 
       overlap && [
         t("覆盖率 · 基金 / 其余组合", "Coverage · fund / rest") + `: ${fundCoverage} / ${restCoverage}`,
         t("持仓日期 · 基金 / 其余基金", "Holdings dates · fund / other funds") + `: ${fundDate} / ${otherDates}`,
-        t("账户快照", "Account snapshot") + `: ${overlap.portfolioAsOf ?? missing}`,
+        t("账户快照", "Account snapshot") + `: ${overlap.portfolioAsOf ? when(overlap.portfolioAsOf) : missing}`,
       ].join(" · "),
-      reading?.issuer, reading?.evidence?.holdings_date?.sourceUrl,
-      reading?.evidence?.holdings_date?.fetchedAt && t("读取于 ", "Fetched ") + reading.evidence.holdings_date.fetchedAt, status,
+      reading?.issuer,
+      reading?.evidence?.holdings_date?.fetchedAt && t("读取于 ", "Fetched ") + when(reading.evidence.holdings_date.fetchedAt), status,
     ].filter(Boolean).join(" · "),
   };
 }
 
-export function fieldEvidence(label: string, value: string, evidence: FundEvidence | undefined, t: Copy) {
-  return [label + " " + value, evidence?.sourceUrl, evidence?.effectiveAt ?? t("日期未披露", "Effective date undisclosed"),
-    evidence?.fetchedAt && t("读取于 ", "Fetched ") + evidence.fetchedAt].filter(Boolean).join(" · ");
+export function fieldEvidence(label: string, value: string, evidence: FundEvidence | undefined, t: Copy, when: EvidenceTime) {
+  return [label + " " + value,
+    evidence?.effectiveAt ? t("截至 ", "As of ") + when(evidence.effectiveAt) : t("日期未披露", "Effective date undisclosed"),
+    evidence?.fetchedAt && t("读取于 ", "Fetched ") + when(evidence.fetchedAt)].filter(Boolean).join(" · ");
 }

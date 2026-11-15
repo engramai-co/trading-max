@@ -157,15 +157,12 @@
 .mx-index-title h3 {
   font-size: 16px;
 }
-.mx-index-title > span,
-.mx-index-provenance > span {
+.mx-index-title > span {
   color: var(--mx-muted);
   font-size: 12px;
 }
-.mx-index-provenance {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
+.mx-index-title-action {
+  margin-inline-start: auto;
 }
 .mx-index-controls,
 .mx-index-legend {

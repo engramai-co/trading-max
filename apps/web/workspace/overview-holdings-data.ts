@@ -26,6 +26,8 @@ export type LedgerRow = {
   pnl: number | null;
   fund: boolean;
   etf?: ETFReading;
+  /** The fund's ISIN, which identifies its issuer logo. */
+  isin: string | null;
   score: number | null;
   upside: number | null;
   /** Index into the allocation palette for this row's own donut segment; null shares the neutral segment. */
@@ -119,6 +121,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
     const coloured = index < COLOURED_HOLDINGS || signal !== undefined;
+    const etf = fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined;
     return {
       ticker,
       name: positions[0].name,
@@ -131,7 +134,8 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       dayDate: move.date && move.date !== columnDay ? move.date : null,
       pnl: combinedHoldingPnl(positions),
       fund,
-      etf: fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined,
+      etf,
+      isin: positions[0].fundIsin || etf?.isin || null,
       score: finite(holdingTechnical(technical, ticker, positions)?.score),
       upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
       colour: coloured ? colours++ : null,

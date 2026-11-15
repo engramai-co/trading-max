@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logoCandidates, safeDomain, safeIsin, safeTicker } from "@/lib/company-logo";
 
 const MAX_LOGO_BYTES = 512_000;
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -8,19 +9,6 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/svg+xml",
   "image/webp",
 ]);
-
-function safeTicker(value: string) {
-  const ticker = value.trim().toUpperCase();
-  return /^[A-Z0-9._-]{1,24}$/.test(ticker) ? ticker : null;
-}
-
-function safeDomain(value: string | null) {
-  if (!value) return null;
-  const domain = value.trim().toLowerCase();
-  return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)
-    ? domain
-    : null;
-}
 
 async function fetchLogo(url: string) {
   try {
@@ -55,13 +43,8 @@ export async function GET(
   if (!ticker) {
     return NextResponse.json({ detail: "invalid ticker" }, { status: 400 });
   }
-  const domain = safeDomain(new URL(request.url).searchParams.get("domain"));
-  const candidates = [
-    `https://assets.parqet.com/logos/symbol/${encodeURIComponent(ticker)}`,
-    ...(domain
-      ? [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`]
-      : []),
-  ];
+  const params = new URL(request.url).searchParams;
+  const candidates = logoCandidates(ticker, safeIsin(params.get("isin")), safeDomain(params.get("domain")));
   for (const candidate of candidates) {
     const logo = await fetchLogo(candidate);
     if (!logo) continue;

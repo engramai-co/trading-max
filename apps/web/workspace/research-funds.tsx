@@ -10,7 +10,7 @@ import {
   fieldEvidence, overlapDisplay, signedPoints, trackingDisplay,
   type Copy, type ETFReading, type FundEvidence,
 } from "./etf-data";
-import { EvidenceReading } from "./etf-reading";
+import { EvidenceReading, useEvidenceTime } from "./etf-reading";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Freshness, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
@@ -45,7 +45,8 @@ const hedge = (value: string | null | undefined, t: Copy) => value === "unhedged
   ? t("未对冲", "Unhedged") : value ? value + t(" 对冲", " hedged") : absent(t);
 
 function SourceValue({ label, value, evidence, t }: { label: string; value: string; evidence?: FundEvidence; t: Copy }) {
-  const description = fieldEvidence(label, value, evidence, t);
+  const when = useEvidenceTime();
+  const description = fieldEvidence(label, value, evidence, t, when);
   return <span role="group" aria-label={description} title={description}>{value}</span>;
 }
 
@@ -121,6 +122,7 @@ function FundIssuerLens({ data, mode, onExplore }: {
 
 function UKReporting({ fund }: { fund: Fund }) {
   const t = useCopy();
+  const when = useEvidenceTime();
   const status = fund.ukReportingFund;
   if (!status) return absent(t);
   const label = {
@@ -132,12 +134,12 @@ function UKReporting({ fund }: { fund: Fund }) {
   }[status.state];
   const basis = status.ceasedOn && status.state === "ceased" ? status.ceasedOn : status.effectiveFrom;
   return <span className="mx-etf-evidence">
-    <span>{label}{basis && <> · <time dateTime={basis}>{basis}</time></>}</span>
+    <span>{label}{basis && <> · <time dateTime={basis}>{when(basis)}</time></>}</span>
     <Help label={t("英国申报基金状态", "UK reporting fund status")}>
-      <p>{t("HMRC 名单", "HMRC register")}{status.publicationDate && ` · ${status.publicationDate}`}</p>
-      {status.effectiveFrom && <p>{t("生效日期", "Effective from")} · {status.effectiveFrom}</p>}
-      {status.ceasedOn && <p>{t("终止日期", "Ceased on")} · {status.ceasedOn}</p>}
-      {status.evidence?.fetchedAt && <p>{t("读取于", "Fetched")} {status.evidence.fetchedAt}</p>}
+      <p>{t("HMRC 名单", "HMRC register")}{status.publicationDate && ` · ${when(status.publicationDate)}`}</p>
+      {status.effectiveFrom && <p>{t("生效日期", "Effective from")} · {when(status.effectiveFrom)}</p>}
+      {status.ceasedOn && <p>{t("终止日期", "Ceased on")} · {when(status.ceasedOn)}</p>}
+      {status.evidence?.fetchedAt && <p>{t("读取于", "Fetched")} {when(status.evidence.fetchedAt)}</p>}
       <p>{sourceLink(status.evidence?.sourceUrl, t("HMRC 原始名单", "Original HMRC register"))}</p>
       <p>{t("含按英国开放政府许可 3.0 版使用的公共部门信息。", "Contains public sector information licensed under the Open Government Licence v3.0.")}</p>
     </Help>
@@ -146,9 +148,10 @@ function UKReporting({ fund }: { fund: Fund }) {
 
 function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }) {
   const t = useCopy(), reading = fundReading(fund);
+  const when = useEvidenceTime();
   const { profile } = fund;
   const facts = profile?.evidence;
-  const overlap = overlapDisplay(reading, t);
+  const overlap = overlapDisplay(reading, t, when);
   const fee = fund.expenseRatio == null ? absent(t) : percent(fund.expenseRatio, false, 2);
   const feeName = profile?.feeBasis === "OCF" ? t("持续费用率", "Ongoing charge") : t("总费用率", "Total expense ratio");
   const source = t("发行商原文", "Issuer source");
@@ -157,7 +160,7 @@ function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }
   return (
     <Panel title={t("基金概况", "Fund profile")} action={sourceLink(fund.sourceUrl, source)}>
       <dl className="mx-etf-summary">
-        <div><dt>{t("跟踪质量", "Tracking quality")}</dt><dd><EvidenceReading {...trackingDisplay(reading, t)} /></dd></div>
+        <div><dt>{t("跟踪质量", "Tracking quality")}</dt><dd><EvidenceReading {...trackingDisplay(reading, t, when)} /></dd></div>
         <div><dt>{t("交易摩擦", "Trading costs")}</dt><dd>
           <SourceValue label={feeName} value={fee} evidence={facts?.expense_ratio} t={t} />
           <Help label={t("交易摩擦口径", "Trading costs basis")}>
@@ -199,6 +202,7 @@ function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }
 
 function FundTracking({ fund }: { fund: Fund }) {
   const t = useCopy(), reading = fundReading(fund);
+  const when = useEvidenceTime();
   const annual = fund.annualReturns ?? [];
   const errorLabel = t("发行商披露的跟踪误差", "Issuer-published tracking error");
   const error = fund.trackingError == null ? absent(t) : percent(fund.trackingError, false, 2);
@@ -213,7 +217,7 @@ function FundTracking({ fund }: { fund: Fund }) {
             href={researchIndexHref({ id: fund.benchmarkRelationship.comparisonId })}>{t("在研究台打开", "Open in research")}</Link>] as const]
           .map(([label, value]): [string, React.ReactNode] => [label, value]) : []),
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
-        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t)} />],
+        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t, when)} />],
         [errorLabel, <SourceValue key="tracking-error" label={errorLabel} value={error} evidence={fund.profile?.evidence?.tracking_error} t={t} />],
         [t("日度净值历史", "Daily NAV history"), fund.dailyTracking?.points.length
           ? sourceLink(fund.dailyTracking.sourceUrl, t("发行商文件", "Issuer file")) : absent(t)],
@@ -244,7 +248,7 @@ function FundTracking({ fund }: { fund: Fund }) {
 }
 
 function annualBasis(fund: Fund, year: number) {
-  return [fund.issuer, fund.sourceUrl, fund.returnBasis, fund.indexName, fund.returnCurrency, year + "-12-31"].filter(Boolean).join(" · ");
+  return [fund.issuer, fund.returnBasis, fund.indexName, fund.returnCurrency, String(year)].filter(Boolean).join(" · ");
 }
 
 function underlying(holding: Holding) {
@@ -253,14 +257,16 @@ function underlying(holding: Holding) {
 
 function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: string) => void }) {
   const t = useCopy(), reading = fundReading(fund);
+  const when = useEvidenceTime();
   const snapshot = fund.holdings;
   const all = [...(snapshot?.holdings ?? [])].filter(underlying).sort((a, b) => b.weightPct - a.weightPct);
   const top = all.slice(0, 10);
-  const overlap = overlapDisplay(reading, t);
+  const overlap = overlapDisplay(reading, t, when);
   const weight = (n: number) => percent(n / 100, false, 2);
   const totalWeight = (snapshot?.holdings ?? []).reduce((sum, item) => sum + item.weightPct, 0);
   const topWeight = top.reduce((sum, item) => sum + item.weightPct, 0);
-  const topBasis = [fund.issuer, snapshot?.evidence?.holdings?.sourceUrl, t("发行商持仓权重", "Issuer portfolio weights"), snapshot?.asOf].filter(Boolean).join(" · ");
+  const topBasis = [fund.issuer, t("发行商持仓权重", "Issuer portfolio weights"),
+    snapshot?.asOf && t("截至 ", "As of ") + when(snapshot.asOf)].filter(Boolean).join(" · ");
   const allocations = [
     { label: t("行业", "Sectors"), values: snapshot?.industryWeights, evidence: snapshot?.evidence?.industry_weights },
     { label: t("地域", "Countries"), values: snapshot?.countryWeights, evidence: snapshot?.evidence?.country_weights },
@@ -337,6 +343,7 @@ function USFundPeers({ peers }: { peers: USFundPeer[] }) {
 
 function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: boolean }) {
   const t = useCopy();
+  const when = useEvidenceTime();
   const query = useQuery(fundQuery(data.ticker, data.runId, "peers"));
   if (query.isPending) return <Pending />;
   if (query.isError) return <QueryError retry={query.refetch} />;
@@ -354,7 +361,7 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
     <>
       <p>{[comparison.benchmark, comparison.domicile, hedge(comparison.hedging, t), income(comparison.incomeUse, t)].join(" · ")}</p>
       <p>{t("分位按数值从低到高排列，并列取中间位置。每项只与有同口径读数的份额比较。", "Percentiles rank values from low to high, with ties at the midpoint. Each metric uses only share classes with comparable readings.")}</p>
-      <p>{t("快照时间", "Snapshot time")} · {comparison.publishedAt}</p>
+      <p>{t("快照时间", "Snapshot time")} · {when(comparison.publishedAt)}</p>
     </>
   }>
     <EvidenceTable label={t("同类 ETF 对比", "Compare peer ETFs")} rows={comparison.funds} columns={[
@@ -368,10 +375,10 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
         ? <SourceValue t={t} label={size} value={currency(row.shareClassSize.value, row.shareClassSize.basis, 0)} evidence={row.shareClassSize.evidence} />
         : "—" },
       { label: tracking, numeric: true, value: (row) => row.tracking
-        ? <EvidenceReading {...trackingDisplay({ tracking: row.tracking, indexName: comparison.benchmark }, t)} />
+        ? <EvidenceReading {...trackingDisplay({ tracking: row.tracking, indexName: comparison.benchmark }, t, when)} />
         : "—" },
       { label: overlap, numeric: true, value: (row) => row.overlap
-        ? <EvidenceReading {...overlapDisplay({ overlap: row.overlap, evidence: row.overlapEvidence ? { holdings_date: row.overlapEvidence } : undefined }, t)} />
+        ? <EvidenceReading {...overlapDisplay({ overlap: row.overlap, evidence: row.overlapEvidence ? { holdings_date: row.overlapEvidence } : undefined }, t, when)} />
         : "—" },
     ]} />
     <details className="mx-details">
@@ -380,7 +387,7 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
         const rank = comparison.ranks?.[key];
         const title = rank && [
           t("可比份额", "Comparable share classes") + ": " + rank.comparableIsins.join(", "),
-          t("快照时间", "Snapshot time") + ": " + comparison.publishedAt,
+          t("快照时间", "Snapshot time") + ": " + when(comparison.publishedAt),
         ].join(" · ");
         return [label, rank
           ? <span className="mx-etf-evidence" key={key} title={title}>
@@ -395,6 +402,7 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
 
 export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const when = useEvidenceTime();
   const fund = useQuery(fundQuery(data.ticker, data.runId, "journal"));
   const prices = useQuery(researchPriceQuery(data.ticker, data.runId, "1d"));
   const marks = [...(prices.data?.tradeMarkers ?? [])].sort((a, b) => b.date.localeCompare(a.date));
@@ -404,7 +412,7 @@ export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
       {prices.isPending ? <Pending /> : prices.isError ? <QueryError retry={prices.refetch} /> : marks.length ? <EvidenceTable
         label={t("交易记录", "Trade marks")} rows={marks}
         columns={[
-          { label: t("交易日", "Trade date"), value: (row) => <time title={t("券商交易流水", "Broker transaction ledger")}>{row.date}</time> },
+          { label: t("交易日", "Trade date"), value: (row) => <time dateTime={row.date} title={t("券商交易流水", "Broker transaction ledger")}>{when(row.date)}</time> },
           { label: t("标记", "Mark"), value: (row) => row.kind },
           { label: t("账户", "Accounts"), value: (row) => row.accounts.map((a) => a === "isa" ? "ISA" : "Invest").join(" / ") },
         ]}
@@ -413,15 +421,16 @@ export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
     <Panel title={t("指数变动与持仓披露", "Index changes & holdings disclosures")}>
       {fund.isPending ? <Pending /> : fund.isError ? <QueryError retry={fund.refetch} /> : disclosures.length ? <EvidenceTable
         label={t("发行商披露", "Issuer disclosures")} rows={disclosures} columns={[
-          { label: t("日期", "Date"), value: (row) => <time title={t("观察于", "Observed") + " " + row.observedAt}>{row.effectiveAt ?? row.observedAt.slice(0, 10)}</time> },
+          { label: t("日期", "Date"), value: (row) => <time dateTime={row.effectiveAt ?? row.observedAt.slice(0, 10)}
+            title={t("观察于 ", "Observed ") + when(row.observedAt)}>{when(row.effectiveAt ?? row.observedAt.slice(0, 10))}</time> },
           { label: t("事项", "Event"), value: (row) => row.kind === "holdings"
             ? sourceLink(row.sourceUrl, t("持仓披露", "Holdings disclosure")) ?? t("持仓披露", "Holdings disclosure")
             : <span className="mx-etf-evidence">
               {`${row.previousValue ?? "—"} → ${row.value}`}
               <Help label={t("基准变更记录", "Observed benchmark change")}>
-                <p>{t("观察于", "Observed")} {row.observedAt}</p>
-                <p>{t("生效日期", "Effective date")} · {row.effectiveAt ?? absent(t)}</p>
-                {row.evidence?.fetchedAt && <p>{t("读取于", "Fetched")} {row.evidence.fetchedAt}</p>}
+                <p>{t("观察于", "Observed")} {when(row.observedAt)}</p>
+                <p>{t("生效日期", "Effective date")} · {row.effectiveAt ? when(row.effectiveAt) : absent(t)}</p>
+                {row.evidence?.fetchedAt && <p>{t("读取于", "Fetched")} {when(row.evidence.fetchedAt)}</p>}
                 <p>{sourceLink(row.sourceUrl, t("当前发行商来源", "Current issuer source"))}</p>
                 <p>{sourceLink(row.previousEvidence?.sourceUrl, t("先前发行商来源", "Previous issuer source"))}</p>
               </Help>
