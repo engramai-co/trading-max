@@ -18,6 +18,17 @@ export type TimelineTooltip = {
   secondary: TimelineTooltipRow[];
 };
 
+export function timelineReadoutRows(content: TimelineTooltip, index: number) {
+  return [...content.primary, ...content.secondary].flatMap((row) => {
+    const value = numeric(row.values[index]);
+    if (value == null && row.optional) return [];
+    const relative = numeric(row.percentages?.[index]);
+    const formatted = value == null ? "—"
+      : row.percentage ? percent(value, true, 2) : `${currency(value, "GBP", 2)} GBP`;
+    return [`${row.label}: ${formatted}${relative == null ? "" : ` · ${percent(relative, true, 2)}`}`];
+  });
+}
+
 // Account names and provenance can come from providers. ECharts HTML formatters
 // must treat every label as text, including labels used by local mock accounts.
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (char) => ({

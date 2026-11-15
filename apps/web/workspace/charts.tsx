@@ -11,7 +11,7 @@ import type {
   XAXisComponentOption,
   YAXisComponentOption,
 } from "echarts";
-import { useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { compact, number, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
@@ -19,6 +19,7 @@ import { Empty, Pending, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
+import { closestChartPosition, type ChartReadout } from "./chart-readout";
 import { chartNumber } from "./research-chart-format";
 
 function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
@@ -71,6 +72,8 @@ export function Plot({
   controller,
   onZoom,
   readPoint,
+  readout,
+  overlay,
 }: {
   label: string;
   option: (colours: ChartColours) => EChartsOption;
@@ -79,12 +82,18 @@ export function Plot({
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
+  readout?: ChartReadout;
+  overlay?: ReactNode;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const description = useId();
   const [reading, setReading] = useState("");
   const [pinned, setPinned] = useState(false);
+  const [picked, setPicked] = useState<number | null>(null);
+  const cursor = useRef<HTMLDivElement>(null);
+  const frame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const colours = useChartColours();
   const settings = useMemo<EChartsOption>(() => {
@@ -134,10 +143,11 @@ export function Plot({
         ...(custom.tooltip && !Array.isArray(custom.tooltip)
           ? custom.tooltip
           : {}),
+        ...(readout ? { show: false, triggerOn: "none" } : {}),
       },
 
     };
-  }, [colours, option, research, locale]);
+  }, [colours, option, research, locale, readout]);
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;
@@ -145,24 +155,86 @@ export function Plot({
     settings,
     research ? "research" : "core",
     control,
-    onZoom,
+    (instance) => {
+      setPicked(null);
+      setPinned(false);
+      onZoom?.(instance);
+    },
     undefined,
-    pinned || Boolean(reading),
+    pinned || picked != null || Boolean(reading),
   );
+  const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
+    ? picked : null;
+  useLayoutEffect(() => {
+    const el = cursor.current;
+    const bounds = ref.current;
+    if (!el || !bounds) return;
+    const draw = () => {
+      const x = active == null ? NaN : control.current?.convertToPixel({ xAxisIndex: 0 }, active);
+      el.style.visibility = typeof x === "number" && x >= 0 && x <= bounds.clientWidth ? "visible" : "hidden";
+      if (typeof x === "number") el.style.transform = `translateX(${x}px)`;
+    };
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(bounds);
+    return () => observer.disconnect();
+  }, [active, control, ref, status]);
+
+  const pickAt = (event: PointerEvent<HTMLDivElement>) => {
+    if (!readout) return null;
+    const instance = control.current;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+    const axes = Array.isArray(settings.xAxis) ? settings.xAxis.length : 1;
+    if (!instance || !Array.from({ length: axes }, (_, i) => i).some((gridIndex) =>
+      instance.containPixel({ gridIndex }, [x, y]))) return null;
+    const target = instance.convertFromPixel({ xAxisIndex: 0 }, x);
+    if (typeof target !== "number" || !Number.isFinite(target) || readout.gap?.(target)) return null;
+    return readout.positions[closestChartPosition(readout.positions, target)] ?? null;
+  };
+  const choose = (point: number | null) => {
+    setPicked(point);
+  };
   const dismiss = () => {
+    choose(null);
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
     setReading("");
   };
   return (
+    <>
+    {readout && <div className="mx-chart-readout">
+      <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
+        {(readout.observationCount ?? readout.positions.length) < 3 && <span data-chart-sparse="true">
+          {t("仅", "Only")} {readout.observationCount ?? readout.positions.length} {t("个观测", "observations")}
+        </span>}
+      </div>
+      <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"} aria-live="polite" aria-atomic="true">
+        {(active == null
+          ? readout.positions.length ? readout.point(readout.positions.at(-1)!) : ""
+          : readout.point(active)).split("\n").filter(Boolean).map((line, i) => <span key={i}>{line}</span>)}
+      </div>
+    </div>}
     <div className="mx-plot" style={{ height }}>
+      {overlay}
       <div
         role="group"
         aria-roledescription={t("交互图表", "Interactive chart")}
         aria-label={label}
         aria-describedby={description}
         tabIndex={0}
+        onPointerMove={(event) => {
+          if (!readout || pinned || event.pointerType === "touch" || event.buttons) return;
+          const position = pickAt(event);
+          cancelAnimationFrame(frame.current);
+          frame.current = requestAnimationFrame(() => choose(position));
+        }}
+        onPointerLeave={() => {
+          cancelAnimationFrame(frame.current);
+          if (readout && !pinned) choose(null);
+        }}
+        onPointerCancel={() => { touchStart.current = null; }}
         onPointerDown={(event) => {
           if (event.pointerType === "touch")
             touchStart.current = { x: event.clientX, y: event.clientY };
@@ -176,6 +248,12 @@ export function Plot({
             Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
           )
             return;
+          if (readout) {
+            const position = pickAt(event);
+            if (position === active && pinned || position == null) dismiss();
+            else { choose(position); setPinned(true); }
+            return;
+          }
           if (pinned) {
             dismiss();
             return;
@@ -189,14 +267,30 @@ export function Plot({
           });
           setPinned(true);
         }}
-        onBlur={() => { if (!pinned && reading) dismiss(); }}
+        onBlur={() => { if (!pinned && (reading || active != null)) dismiss(); }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
-            if (pinned || reading) {
+            if (pinned || reading || active != null) {
               event.preventDefault();
               event.stopPropagation();
             }
             dismiss();
+            return;
+          }
+          if (readout) {
+            const values = readout.positions;
+            if (event.key === " " || event.key === "Enter") {
+              event.preventDefault();
+              if (pinned) dismiss();
+              else if (values.length) { choose(active ?? values.at(-1)!); setPinned(true); }
+              return;
+            }
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !values.length) return;
+            event.preventDefault();
+            const index = active == null ? values.length - 1 : closestChartPosition(values, active);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
+              : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
+            choose(values[next]);
             return;
           }
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
@@ -231,6 +325,7 @@ export function Plot({
         ref={ref}
         style={{ height: "100%", width: "100%" }}
       />
+      {readout && <div className="mx-chart-cursor" ref={cursor} aria-hidden="true" />}
       {status !== "ready" && <div className="mx-plot-loading">
         {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
           : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
@@ -255,6 +350,7 @@ export function Plot({
         </button>
       )}
     </div>
+    </>
   );
 }
 
@@ -433,10 +529,34 @@ export function HistoryChart({
         boundaryGap: [0, 0] as [number, number],
         axisLabel: { formatter: formatAxisDate },
       };
+  const observations = new Map<number, number>();
+  (timeline?.rowIndexes ?? dates.map((_, index) => index)).forEach((row, position) => {
+    if (row != null && lines.some((line) => line.values[row] != null)) observations.set(timeline ? position : Date.parse(dates[row]), row);
+  });
+  const positions = [...observations.keys()];
+  const latest = positions.at(-1)!;
+  const formatValue = (value: number | null) => value == null ? "—"
+    : percentage ? percent(value, true, 2) : currencyTick ? `${number(value, 2)} GBP` : number(value, 2);
+  const readout: ChartReadout = {
+    positions,
+    latest: formatValue(lines[0].values[observations.get(latest)!]),
+    point: (position) => {
+      const row = observations.get(position)!;
+      return [
+        formatDate(dates[row], locale, {
+          year: "numeric", month: "short", day: "numeric",
+          ...(intraday ? { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone } : { timeZone: "UTC" }),
+        }),
+        ...lines.map((line) => `${line.name}: ${formatValue(line.values[row])}`),
+        notes?.[row],
+      ].filter(Boolean).join("\n");
+    },
+  };
   return (
     <>
       <Plot
         label={label}
+        readout={readout}
         height={height}
         option={(c) => ({
           xAxis: {
@@ -562,7 +682,7 @@ export function HistoryChart({
               id: `history-gap:${i}`, type: "line" as const, data: gaps,
               silent: true, tooltip: { show: false }, symbol: "none", showSymbol: false,
               connectNulls: false,
-              lineStyle: { color: colour, width: 1.5, type: "dashed" as const, opacity: 0.65 },
+              lineStyle: { color: colour, width: 1.5, type: "dotted" as const, opacity: 0.65 },
               emphasis: { disabled: true },
             } satisfies SeriesOption] : [])];
           }),
@@ -601,15 +721,15 @@ export function HistoryChart({
 export function Legend({
   items,
 }: {
-  items: Array<{ label: string; colour?: string; dashed?: boolean }>;
+  items: Array<{ label: string; colour?: string; dashed?: boolean; dotted?: boolean }>;
 }) {
   return (
     <div className="mx-chart-legend">
       {items.map((item, i) => (
         <span key={item.label}>
-          {item.dashed ? (
+          {item.dashed || item.dotted ? (
             <svg width="15" height="4" aria-hidden="true">
-              <path d="M0 2h15" stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray="4 3" />
+              <path d="M0 2h15" stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray={item.dotted ? "1 4" : "4 3"} />
             </svg>
           ) : <i style={{ background: item.colour ?? `var(--mx-chart-${i})` }} />}
           {item.label}

@@ -1,0 +1,86 @@
+.mx-chart-readout {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-block: 8px 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-chart-readout-latest,
+.mx-chart-readout-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  align-items: baseline;
+}
+.mx-chart-readout-latest strong {
+  font-size: 14px;
+}
+.mx-chart-readout-latest span {
+  color: var(--mx-muted);
+}
+.mx-chart-readout-values {
+  color: var(--mx-muted);
+  min-height: 1.5em;
+}
+.mx-chart-readout-values span:first-child {
+  color: var(--mx-ink);
+}
+.mx-chart-cursor {
+  position: absolute;
+  inset: 12px auto 28px 0;
+  visibility: hidden;
+  pointer-events: none;
+  border-inline-start: 1px dashed var(--mx-muted);
+}
+
+.mx-price-tools {
+  container: mx-price-tools / inline-size;
+}
+.mx-price-common {
+  min-width: 0;
+}
+.mx-price-advanced {
+  flex-basis: 100%;
+  font-size: 13px;
+}
+.mx-price-advanced > summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.mx-price-advanced > div {
+  padding-top: 10px;
+}
+.mx-price-footer {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mx-price-caveat {
+  color: var(--mx-warning);
+  font-size: 12px;
+}
+.mx-event-track button[aria-expanded="true"] {
+  border-color: var(--mx-brand);
+}
+.mx-price-event-records {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-price-event-records li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--mx-border);
+}
+@container mx-price-tools (width < 365px) {
+  .mx-price-tools > .mx-segments:has(> button:nth-of-type(8)) {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+}

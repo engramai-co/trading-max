@@ -15979,6 +15979,66 @@
         "title": "ResearchTimelinePoint",
         "type": "object"
       },
+      "ResearchTradeFill": {
+        "properties": {
+          "account": {
+            "enum": [
+              "invest",
+              "isa"
+            ],
+            "title": "Account",
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "side",
+          "account",
+          "quantity",
+          "amount",
+          "currency"
+        ],
+        "title": "ResearchTradeFill",
+        "type": "object"
+      },
       "ResearchTradeMarker": {
         "properties": {
           "accounts": {
@@ -16014,6 +16074,13 @@
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "fills": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchTradeFill"
+            },
+            "title": "Fills",
+            "type": "array"
           },
           "kind": {
             "enum": [

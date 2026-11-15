@@ -337,11 +337,13 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     ticks.delete(firstInPeriod.at(-1)!);
     ticks.add(plotRows.length - 1);
   }
+  const indexUnit = matched.length ? t("点（起点 100）", "pts (base 100)")
+    : readingUnit ?? t("点", "pts");
+  const indexValue = (value: number) => `${formatNumber(value, locale, { maximumFractionDigits: 2 })} ${indexUnit}`;
   const readPoint = (position: number) => {
     const row = plotRows[position];
     if (!row || (row.left == null && row.right == null)) return "";
-    const reading = (label: string, value: number) =>
-      `${label}: ${formatNumber(value, locale, { maximumFractionDigits: 2 })}${matched.length || !readingUnit ? "" : " " + readingUnit}`;
+    const reading = (label: string, value: number) => `${label}: ${indexValue(value)}`;
     return [
       formatDate(new Date(row.at), locale, dateOptions),
       ...(row.left == null ? [] : [reading(chartName, row.left)]),
@@ -351,7 +353,17 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const chartLabel = matched.length
     ? locale === "zh" ? `${chartName} 与 ${peerName}，起点归 100` : `${chartName} and ${peerName}, rebased to 100`
     : chartName;
-  const primaryPositions = plotRows.flatMap((row, position) => row.left === undefined ? [] : [position]);
+  const primaryPositions = plotRows.flatMap((row, position) => row.left == null && row.right == null ? [] : [position]);
+  const latestIndexRow = plotRows.findLast((row) => row.left != null);
+  const indexReadout = {
+    positions: primaryPositions,
+    latest: latestIndexRow?.left != null ? indexValue(latestIndexRow.left) : "—",
+    point: readPoint,
+    gap: (position: number) => {
+      const row = plotRows[Math.round(position)];
+      return !row || (row.left == null && row.right == null);
+    },
+  };
   const retry = () => {
     void query.refetch();
     if (peer) void peerQuery.refetch();
@@ -367,6 +379,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
               {index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
+              {period === "1D" && <p>{t("显示最近交易日的 5 分钟线。", "5-minute bars for the latest trading session.")}</p>}
               {shortRange && <p>{period === "1W"
                 ? t("显示近 7 天的 30 分钟线。", "30-minute bars over the last seven days.")
                 : t("显示近一个月的小时线。", "Hourly bars over the last calendar month.")} {t("回撤使用图中价格，年化波动率使用已结束工作日的最后一个价格。英镑换算使用同频率的汇率。", "Drawdown uses the plotted bars. Annualised volatility uses the last reading of each completed weekday. GBP conversion uses FX bars at the same interval.")}</p>}
@@ -413,9 +426,9 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               : null}
         {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
         {points.length > 0 && <Plot label={chartLabel} height={phone ? 235 : 300}
-          readPoint={(position) => readPoint(primaryPositions[position])}
+          readout={indexReadout}
           option={(colours) => {
-            const lines = [{ key: "left" as const, label: chartName, colour: colours.text, dashed: false }];
+            const lines = [{ key: "left" as const, label: chartName, colour: colours.brand, dashed: false }];
             const compared = matched.length ? [{ key: "right" as const, label: peerName, colour: colours.axis, dashed: true }] : [];
             return {
               animation: false,
@@ -429,12 +442,6 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               },
               yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5,
                 name: matched.length ? undefined : readingUnit ?? undefined, nameGap: 5 },
-              tooltip: { trigger: "axis", formatter: (input) => {
-                const rows = Array.isArray(input) ? input : [input];
-                const row = rows.find((entry) => !String(entry.seriesId).startsWith("history-gap:"));
-                const position = Array.isArray(row?.value) ? row.value[0] : undefined;
-                return typeof position === "number" ? readPoint(position) : "";
-              } },
               series: [...lines, ...compared].flatMap(({ key, label, colour, dashed }): SeriesOption[] => {
                 const data = plotRows.flatMap((row, position) => row[key] === undefined
                   ? [] : [{ value: [position, row[key]], symbolSize: 4 }]);

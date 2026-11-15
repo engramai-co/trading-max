@@ -23,7 +23,7 @@ export type TimelineLayer = {
 
 /** Daily views normally plot the day's last reading. Include an intraday
  * drawdown observation before that reading so every layer shares its cursor. */
-function includeDailyMarkers(calendar: CalendarTimeline, dates: string[], layers: TimelineLayer[]): CalendarTimeline {
+export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[], layers: TimelineLayer[]): CalendarTimeline {
   if (calendar.categories[0]?.includes("T")) return calendar;
   const selected = new Set(calendar.rowIndexes);
   const additions = new Map<string, number[]>();
@@ -256,7 +256,7 @@ export function timelineOption(
         const colour =
           colours[
             line.colour ??
-              (index === 0 ? "brand" : index === 1 ? "accent" : "secondary")
+              (axis === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")
           ];
         const markerRow = layer.markerDate == null ? -1 : dates.indexOf(layer.markerDate);
         const markerValue = line.values[markerRow];
@@ -313,7 +313,7 @@ export function timelineOption(
         } satisfies SeriesOption;
         // Fill is a quiet visual silhouette. The solid/dashed strokes retain
         // observation boundaries; the fill never supplies hover values or rows.
-        const area = line.area ? [{
+        const area = line.area && line.values.filter((v) => v != null).length >= 3 ? [{
           id: `history-area:${axis}:${index}`,
           type: "line" as const,
           xAxisIndex: axis,

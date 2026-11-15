@@ -6463,6 +6463,27 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ResearchTradeFill */
+        ResearchTradeFill: {
+            /**
+             * Account
+             * @enum {string}
+             */
+            account: "invest" | "isa";
+            /** Amount */
+            amount: number | null;
+            /** At */
+            at: string;
+            /** Currency */
+            currency: string | null;
+            /** Quantity */
+            quantity: number;
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "buy" | "sell";
+        };
         /** ResearchTradeMarker */
         ResearchTradeMarker: {
             /** Accounts */
@@ -6475,6 +6496,8 @@ export interface components {
             buyQuantity: number;
             /** Date */
             date: string;
+            /** Fills */
+            fills?: components["schemas"]["ResearchTradeFill"][];
             /**
              * Kind
              * @enum {string}

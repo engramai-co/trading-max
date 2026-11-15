@@ -1,20 +1,21 @@
 "use client";
-import { researchPriceQuery } from "./research-queries";
+import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Checkbox, Drawer, Group, Modal, Select } from "@mantine/core";
+import { Button, Checkbox, Group, Modal, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { Legend, Plot } from "./charts";
-import { compact, compactTick, number, object, objects, percent, str } from "@/workspace/data";
+import { candleSeries, candleValues, priceBarReading, priceGapConnectors, priceSlots } from "./research-price-candles";
+import { PriceEventTrack, priceEventDays } from "./research-price-events";
+import { compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,
-  Facts,
   Freshness,
   Panel,
   Pending,
@@ -58,7 +59,7 @@ export function PriceHistory({
     : "3M";
   const requested = params.get("interval");
   const interval = resolvePriceInterval(range, requested, full);
-  const style = params.get("priceStyle") === "candles" ? "candles" : "line";
+  const style = params.get("priceStyle") === "line" ? "line" : "candles";
   const scale = full ? (params.get("priceScale") ?? "linear") : "linear";
   const averages = params.get("ma") === "on";
   const selectedMa = params.get("highlightMa");
@@ -70,7 +71,7 @@ export function PriceHistory({
   const rsi = full && params.get("rsi") === "on";
   const macd = full && params.get("macd") === "on";
   const comparison = full ? (params.get("benchmark") ?? "none") : "none";
-  const [events, setEvents] = useState(false);
+  const [eventTrack, setEventTrack] = useState<boolean>();
   const chart = useRef<ECharts | null>(null);
   const inlineChart = useRef<HTMLDivElement | null>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
@@ -145,21 +146,32 @@ export function PriceHistory({
   const normalized = scale === "percent" || comparable,
     anchor = comparable ? matched[0] : points[0];
   const benchmarkAnchor = benchmarkPoints.get(anchor?.date)?.close;
-  const candle =
-    style === "candles" &&
-    !normalized &&
-    points.every((p) => p.open != null && p.high != null && p.low != null);
+  const bars = candleValues(points);
+  const candle = style === "candles" && !normalized && bars.some((bar) => bar[0] != null);
+  const marketDay = new Intl.DateTimeFormat("en-CA", { timeZone: priceData?.timezone ?? "UTC", dateStyle: "short" });
+  const slots = priceSlots(points, actualInterval, (date) => marketDay.format(new Date(date)));
+  const slotDates = slots.map((slot) => slot.date);
+  const slotCandles = slots.map((slot) => slot.bar ? bars[slot.index] : [null, null, null, null]);
   const value = (price: number | null | undefined) =>
     price == null ? null : normalized ? price / anchor.close - 1 : price;
-  const markers = (priceData?.tradeMarkers ?? []).filter((m) =>
-    dates.some((d) => d.slice(0, 10) === m.date.slice(0, 10)),
-  );
-  const corporate = (priceData?.events ?? []).filter((e) =>
-    dates.some((d) => d.slice(0, 10) === String(e.date).slice(0, 10)),
-  );
-  const earnings = objects(object(context?.analyst).earningsEvents).filter(
-    (e) => dates.some((d) => d.slice(0, 10) === str(e.date).slice(0, 10)),
-  );
+  const plottedCloses = slots.map((slot) => !slot.bar || (comparable && slot.date < anchor.date) || (candle && bars[slot.index][0] == null)
+    ? null : value(slot.bar.close));
+  const gapSeries = priceGapConnectors(plottedCloses);
+  const visibleDays = new Set(dates.map((date) => date.slice(0, 10)));
+  const markers = (priceData?.tradeMarkers ?? []).filter((m) => visibleDays.has(m.date.slice(0, 10)));
+  const corporate = (priceData?.events ?? []).filter((e) => visibleDays.has(str(e.date).slice(0, 10)));
+  const eventQuery = useQuery({ ...researchLensQuery(ticker, "analyst", runId), enabled: full || eventTrack === true, retry: false });
+  const earnings = objects(object(eventQuery.data?.analyst ?? context?.analyst).earningsEvents).filter((e) => visibleDays.has(str(e.date).slice(0, 10)));
+  const days = priceEventDays(markers, corporate, earnings);
+  const showEvents = eventTrack ?? (full || markers.length > 0);
+  const labels = { open: t("开盘", "Open"), high: t("最高", "High"), low: t("最低", "Low"), close: t("收盘", "Close") };
+  const formatValue = (v: number | null) => normalized ? percent(v, true, 2) : number(v, 2);
+  const zoom = (factor: number) => {
+    const saved = savedZoom();
+    const span = Math.min(100, Math.max(5, (saved.end - saved.start) * factor));
+    const start = Math.max(0, Math.min(100 - span, (saved.start + saved.end - span) / 2));
+    chart.current?.dispatchAction({ type: "dataZoom", start, end: start + span });
+  };
   const reset = () => {
     try {
       sessionStorage.removeItem(zoomKey);
@@ -196,196 +208,69 @@ export function PriceHistory({
     });
   };
   const tools = (
-      <div className="mx-price-tools">
-        <Segments
-          label={t("价格区间", "Price range")}
-          value={range}
-          onChange={(v) => {
-            update({
-              priceRange: v,
-              interval:
-                full && supportsPriceRange(interval, v) ? interval : null,
-            });
-            reset();
-          }}
-          options={ranges
-            .filter((v) => full || compactPriceRanges.includes(v) || v === range)
-            .map((v) => ({
+    <div className="mx-price-tools">
+      <Segments
+        label={t("价格区间", "Price range")}
+        value={range}
+        onChange={(v) => {
+          update({ priceRange: v, interval: full && supportsPriceRange(interval, v) ? interval : null });
+          reset();
+        }}
+        options={ranges.filter((v) => full || compactPriceRanges.includes(v) || v === range)
+          .map((v) => ({ value: v, label: v === "ALL" ? t("全部", "All") : v }))}
+      />
+      <Group gap="xs" className="mx-price-common">
+        <Segments label={t("价格样式", "Price style")} value={style} onChange={(v) => update({ priceStyle: v })}
+          options={[{ value: "candles", label: t("K 线", "Candles") }, { value: "line", label: t("线", "Line") }]} />
+        <Checkbox size="xs" label="SMA" checked={averages}
+          onChange={(e) => update({ ma: e.currentTarget.checked ? "on" : null, highlightMa: null })} />
+        <Checkbox size="xs" label={t("事件", "Events")} checked={showEvents}
+          onChange={(e) => setEventTrack(e.currentTarget.checked)} />
+        {full && <Button variant="default" size="compact-sm" onClick={() => toggleFull(false)}>
+          {t("退出完整图表", "Close full chart")}
+        </Button>}
+      </Group>
+      {full && <details className="mx-price-advanced">
+        <summary>{t("高级", "Advanced")}</summary>
+        <Group gap="sm">
+          <Select w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
+            onChange={(v) => { update({ interval: v }); reset(); }}
+            data={intervals.map((v, i) => ({
               value: v,
-              // Same word as the portfolio periods; seven 44px cells share a phone row, or rows of four and three.
-              label: v === "ALL" ? t("全部", "All") : v,
-            }))}
-        />
-        <Group gap="xs">
-          {full && (
-            <Select
-              w={145}
-              aria-label={t("行情粒度", "Bar interval")}
-              value={interval}
-              onChange={(v) => {
-                update({ interval: v });
-                reset();
-              }}
-              data={intervals.map((v, i) => ({
-                value: v,
-                label:
-                  [
-                    t("15 分钟", "15 min"),
-                    t("1 小时", "1 hour"),
-                    t("日线", "Daily"),
-                    t("周线", "Weekly"),
-                  ][i] +
-                  (!supportsPriceRange(v, range)
-                    ? t(" · 范围不支持", " · unavailable for range")
-                    : ""),
-                disabled: !supportsPriceRange(v, range),
-              }))}
-            />
-          )}
-          <Segments
-            label={t("价格样式", "Price style")}
-            value={style}
-            onChange={(v) => update({ priceStyle: v })}
-            options={[
-              { value: "line", label: t("线", "Line") },
-              { value: "candles", label: t("K 线", "Candles") },
-            ]}
-          />
-          {full && (
-            <Select
-              w={110}
-              aria-label={t("纵轴", "Price axis")}
-              value={scale}
-              onChange={(v) => update({ priceScale: v })}
-              data={[
-                { value: "linear", label: t("线性", "Linear") },
-                { value: "log", label: t("对数", "Log") },
-                { value: "percent", label: t("涨跌幅", "Return %") },
-              ]}
-            />
-          )}
-          {full && (
-            <Button variant="default" size="compact-sm" onClick={reset}>
-              {t("恢复范围", "Reset zoom")}
-            </Button>
-          )}
-          {full && (
-            <Button
-              component="a"
-              href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
-              target="_blank"
-              rel="noreferrer"
-              variant="subtle"
-              size="compact-sm"
-            >
-              TradingView ↗
-            </Button>
-          )}
-          <Button
-            variant="default"
-            size="compact-sm"
-            onClick={() => toggleFull(!full)}
-          >
-            {full
-              ? t("退出完整图表", "Close full chart")
-              : t("完整图表", "Full chart")}
-          </Button>
-        </Group>
-      </div>
-  );
-  const content = (
-    <>
-      {(!compactChart || full) && tools}
-      <div className="mx-price-layers">
-        <Group gap="lg">
-          <Checkbox
-            size="xs"
-            label={
-              full
-                ? t("均线", "Averages")
-                : `SMA ${averagePeriods.join(" / ")} · ${actualInterval === "1d" ? t("日线", "daily") : actualInterval}`
-            }
-            checked={averages}
-            onChange={(e) =>
-              update({
-                ma: e.currentTarget.checked ? "on" : "off",
-                highlightMa: null,
-              })
-            }
-          />
-          {full && averages && (
-            <Checkbox.Group
-              aria-label={t("均线周期", "Average periods")}
-              value={averagePeriods}
-              onChange={(v) =>
-                update({
-                  maPeriods: v.join(","),
-                  highlightMa: null,
-                  ma: v.length ? "on" : "off",
-                })
-              }
-            >
-              <Group gap="sm">
-                {["20", "50", "200"].map((v) => (
-                  <Checkbox
-                    key={v}
-                    size="xs"
-                    value={v}
-                    label={
-                      v +
-                      (actualInterval === "1d"
-                        ? t(" 日", " days")
-                        : t(" 根", " bars"))
-                    }
-                  />
-                ))}
-              </Group>
-            </Checkbox.Group>
-          )}
-          {full && (
-            <Checkbox
-              size="xs"
-              label="RSI 14"
-              checked={rsi}
-              onChange={(e) =>
-                update({ rsi: e.currentTarget.checked ? "on" : null })
-              }
-            />
-          )}
-          {full && (
-            <Checkbox
-              size="xs"
-              label="MACD 12/26/9"
-              checked={macd}
-              onChange={(e) =>
-                update({ macd: e.currentTarget.checked ? "on" : null })
-              }
-            />
-          )}
-          <Button
-            variant="subtle"
-            size="compact-xs"
-            onClick={() => setEvents(true)}
-          >
-            {t("事件记录", "Events")} (
-            {markers.length + corporate.length + earnings.length})
-          </Button>
-        </Group>
-        {full && (
-          <Select
-            w={165}
-            aria-label={t("基准对比", "Benchmark comparison")}
-            value={comparison}
+              label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
+              disabled: !supportsPriceRange(v, range),
+            }))} />
+          <Select w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
+            data={[
+              { value: "linear", label: t("线性", "Linear") },
+              { value: "log", label: t("对数", "Log") },
+              { value: "percent", label: t("涨跌幅", "Return %") },
+            ]} />
+          <Select w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
             onChange={(v) => update({ benchmark: v === "none" ? null : v })}
             data={[
               { value: "none", label: t("加入对比", "Compare with") },
               { value: "SPY", label: "SPY · S&P 500 ETF" },
               { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
               { value: "VT", label: "VT · Global stocks" },
-            ]}
-          />
-        )}
-      </div>
+            ]} />
+          {averages && <Checkbox.Group aria-label={t("均线周期", "Average periods")}
+            value={averagePeriods} onChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
+            <Group gap="sm">
+              {["20", "50", "200"].map((v) => <Checkbox key={v} size="xs" value={v} label={`SMA ${v}`} />)}
+            </Group>
+          </Checkbox.Group>}
+          <Checkbox size="xs" label="RSI 14" checked={rsi} onChange={(e) => update({ rsi: e.currentTarget.checked ? "on" : null })} />
+          <Checkbox size="xs" label="MACD 12/26/9" checked={macd} onChange={(e) => update({ macd: e.currentTarget.checked ? "on" : null })} />
+          <Button component="a" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
+            target="_blank" rel="noreferrer" variant="subtle" size="compact-sm">TradingView ↗</Button>
+        </Group>
+      </details>}
+    </div>
+  );
+  const content = (
+    <>
+      {tools}
       {query.isPending && !priceData ? (
         <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
       ) : query.isError && !priceData ? (
@@ -444,8 +329,33 @@ export function PriceHistory({
                   )}
             </p>
           )}
+          {style === "candles" && !candle && !normalized && <p className="mx-price-caveat" role="status">
+            {t("暂无 OHLC，仅显示收盘价", "OHLC unavailable; closing prices shown")}
+          </p>}
           <Plot
+            key={zoomKey}
             research
+            readout={{
+              positions: plottedCloses.flatMap((v, index) => v == null ? [] : [index]),
+              latest: `${formatValue(value(points.at(-1)!.close))}${normalized ? "" : ` ${priceData.currency}`}`,
+              gap: (index) => plottedCloses[Math.round(index)] == null,
+              point: (index) => {
+                const p = slots[index].bar!;
+                const other = benchmarkPoints.get(p.date)?.close;
+                return [
+                  ...priceBarReading({ ...p, close: value(p.close)! }, formatDate(p.date), normalized ? "%" : priceData.currency, labels, formatValue, candle),
+                  ...(comparable && other != null && benchmarkAnchor ? [
+                    `${comparison} ${formatValue(other / benchmarkAnchor - 1)}`,
+                    `${t("差值", "Difference")} ${number((p.close / anchor.close - other / benchmarkAnchor) * 100, 2)} pp`,
+                  ] : []),
+                  `${t("成交量", "Volume")} ${number(p.volume, 0)}`,
+                  ...(averages ? (["sma20", "sma50", "sma200"] as const).filter((k) => averagePeriods.includes(k.slice(3)))
+                    .map((k) => `${k.toUpperCase()} ${formatValue(value(p[k]))}`) : []),
+                  ...(rsi ? [`RSI 14 ${number(p.rsi14, 2)}`] : []),
+                  ...(macd ? [`MACD ${number(p.macd, 3)}`, `${t("信号", "Signal")} ${number(p.macdSignal, 3)}`] : []),
+                ].join("\n");
+              },
+            }}
             controller={chart}
             onZoom={(instance) => {
               const current = (
@@ -496,34 +406,15 @@ export function PriceHistory({
               ];
               const series: SeriesOption[] = [
                 candle
-                  ? {
-                      type: "candlestick",
-                      name: ticker,
-                      data: points.map((p) => [
-                        p.open!,
-                        p.close,
-                        p.low!,
-                        p.high!,
-                      ]),
-                      itemStyle: {
-                        color: c.positive,
-                        color0: c.negative,
-                        borderColor: c.positive,
-                        borderColor0: c.negative,
-                      },
-                    }
+                  ? candleSeries(ticker, slotCandles, c)
                   : {
                       type: "line",
                       name: ticker,
-                      data: points.map((p) =>
-                        comparable && p.date < anchor.date
-                          ? null
-                          : value(p.close),
-                      ),
-                      showSymbol: points.length === 1,
+                      data: plottedCloses,
+                      showSymbol: points.length < 3,
                       connectNulls: false,
                       lineStyle: { width: 2, color: c.brand },
-                      areaStyle: normalized
+                      areaStyle: normalized || points.length < 3
                         ? undefined
                         : { color: c.brand, opacity: 0.04 },
                     },
@@ -534,13 +425,13 @@ export function PriceHistory({
                   name: comparison,
                   showSymbol: false,
                   connectNulls: false,
-                  data: points.map((p) => {
-                    const b = benchmarkPoints.get(p.date);
-                    return p.date < anchor.date || !b
+                  data: slots.map(({ date, bar }) => {
+                    const b = benchmarkPoints.get(date);
+                    return !bar || date < anchor.date || !b
                       ? null
                       : b.close / benchmarkAnchor - 1;
                   }),
-                  lineStyle: { color: c.secondary, width: 1.6 },
+                  lineStyle: { color: c.text, width: 1.6, type: "dashed" },
                 });
               if (averages)
                 (["sma20", "sma50", "sma200"] as const)
@@ -555,9 +446,10 @@ export function PriceHistory({
                           : t(" · ", " · ") + actualInterval),
                       showSymbol: false,
                       connectNulls: false,
-                      data: points.map((p) => value(p[key])),
+                      data: slots.map(({ bar }) => value(bar?.[key])),
                       lineStyle: {
-                        color: [c.accent, c.secondary, c.axis][i],
+                        color: [c.text, c.axis, c.text][i],
+                        type: ["solid", "dashed", "dotted"][i] as "solid" | "dashed" | "dotted",
                         width: selectedMa === key ? 2.5 : 1.2,
                         opacity: selectedMa && selectedMa !== key ? 0.3 : 1,
                       },
@@ -568,14 +460,8 @@ export function PriceHistory({
                 name: t("成交量", "Volume"),
                 xAxisIndex: 1,
                 yAxisIndex: 1,
-                data: points.map((p, i) => ({
-                  value: p.volume,
-                  itemStyle: {
-                    color:
-                      i && p.close < points[i - 1].close ? c.negative : c.brand,
-                    opacity: 0.45,
-                  },
-                })),
+                data: slots.map(({ bar }) => bar?.volume ?? null),
+                itemStyle: { color: c.axis, opacity: 0.52 },
                 barMaxWidth: 14,
               });
               if (rsi) {
@@ -585,7 +471,7 @@ export function PriceHistory({
                   name: "RSI 14",
                   xAxisIndex: index,
                   yAxisIndex: index,
-                  data: points.map((p) => p.rsi14),
+                  data: slots.map(({ bar }) => bar?.rsi14 ?? null),
                   connectNulls: false,
                   showSymbol: false,
                   lineStyle: { color: c.secondary, width: 1.4 },
@@ -607,10 +493,10 @@ export function PriceHistory({
                       name: i ? t("信号", "Signal") : "MACD",
                       xAxisIndex: index,
                       yAxisIndex: index,
-                      data: points.map((p) => p[key]),
+                      data: slots.map(({ bar }) => bar?.[key] ?? null),
                       connectNulls: false,
                       showSymbol: false,
-                      lineStyle: { color: i ? c.accent : c.brand, width: 1.4 },
+                      lineStyle: { color: i ? c.axis : c.text, width: 1.4, type: i ? "dashed" : "solid" },
                     }),
                   ),
                   {
@@ -618,11 +504,11 @@ export function PriceHistory({
                     name: t("MACD 差值", "MACD histogram"),
                     xAxisIndex: index,
                     yAxisIndex: index,
-                    data: points.map((p) => ({
-                      value: p.macdHistogram,
+                    data: slots.map(({ bar }) => ({
+                      value: bar?.macdHistogram ?? null,
                       itemStyle: {
                         color:
-                          (p.macdHistogram ?? 0) < 0 ? c.negative : c.positive,
+                          (bar?.macdHistogram ?? 0) < 0 ? c.negative : c.positive,
                         opacity: 0.5,
                       },
                     })),
@@ -635,7 +521,7 @@ export function PriceHistory({
                 eventDay &&
                 eventDay >= dates[0]?.slice(0, 10) &&
                 eventDay <= dates.at(-1)!.slice(0, 10)
-                  ? dates.findIndex((d) => d.slice(0, 10) >= eventDay)
+                  ? slotDates.findIndex((d) => d.slice(0, 10) >= eventDay)
                   : -1;
               if (
                 eventIndex >= 0 &&
@@ -651,9 +537,15 @@ export function PriceHistory({
                     formatter: eventDay ?? "",
                     position: "insideEndTop",
                   },
-                  data: [{ xAxis: dates[eventIndex] }],
+                  data: [{ xAxis: slotDates[eventIndex] }],
                 };
               }
+              if (gapSeries.length) series.push({
+                id: "history-gap:price", type: "line", data: gapSeries,
+                silent: true, tooltip: { show: false }, showSymbol: false, connectNulls: false,
+                lineStyle: { color: c.axis, type: "dotted", width: 1.5 },
+                emphasis: { disabled: true },
+              });
               return {
                 grid: positions.map((p) => ({
                   left: 64,
@@ -662,43 +554,9 @@ export function PriceHistory({
                   height: p.height + "%",
                 })),
                 axisPointer: { link: [{ xAxisIndex: "all" }] },
-                tooltip: {
-                  formatter: (input) => {
-                    const entry = (Array.isArray(input) ? input : [input])[0];
-                    const p = points[entry?.dataIndex];
-                    return !p
-                      ? ""
-                      : [
-                          formatDate(p.date) + " · " + priceData.currency,
-                          `${t("收盘", "Close")}  ${number(p.close, 2)}`,
-                          ...(candle
-                            ? [
-                                `O ${number(p.open, 2)}   H ${number(p.high, 2)}   L ${number(p.low, 2)}`,
-                              ]
-                            : []),
-                          `${t("成交量", "Volume")}  ${compact(p.volume, locale)}`,
-                          ...(averages
-                            ? (["sma20", "sma50", "sma200"] as const)
-                                .filter((k) =>
-                                  averagePeriods.includes(k.slice(3)),
-                                )
-                                .map(
-                                  (k) =>
-                                    `${k.toUpperCase()} · ${priceData.actualInterval}  ${number(p[k], 2)}`,
-                                )
-                            : []),
-                          ...(rsi ? [`RSI 14  ${number(p.rsi14, 2)}`] : []),
-                          ...(macd
-                            ? [
-                                `MACD  ${number(p.macd, 3)}   ${t("信号", "Signal")} ${number(p.macdSignal, 3)}`,
-                              ]
-                            : []),
-                        ].join("\n");
-                  },
-                },
                 xAxis: panes.map((_, i) => ({
                   type: "category",
-                  data: dates,
+                  data: slotDates,
                   gridIndex: i,
                   boundaryGap: candle,
                   axisLine: { show: false },
@@ -745,8 +603,7 @@ export function PriceHistory({
                     lineStyle: { color: c.grid, type: "dashed" },
                   },
                 })),
-                dataZoom: full
-                  ? [
+                dataZoom: [
                       {
                         type: "inside",
                         xAxisIndex: panes.map((_, i) => i),
@@ -754,17 +611,16 @@ export function PriceHistory({
                         zoomOnMouseWheel: "ctrl",
                         moveOnMouseWheel: false,
                       },
-                      {
-                        type: "slider",
+                      ...(full ? [{
+                        type: "slider" as const,
                         xAxisIndex: panes.map((_, i) => i),
                         bottom: 0,
                         height: 18,
                         showDetail: false,
                         borderColor: c.grid,
                         ...savedZoom(),
-                      },
-                    ]
-                  : [],
+                      }] : []),
+                    ],
                 series,
               };
             }}
@@ -772,63 +628,26 @@ export function PriceHistory({
           {/* A single series needs no legend; a comparison names both lines. */}
           {comparable && (
             <Legend
-              items={[{ label: ticker }, { label: comparison, colour: "var(--mx-chart-2)" }]}
+              items={[{ label: ticker }, { label: comparison, colour: "var(--mx-ink)", dashed: true }]}
             />
           )}
-          <div className="mx-chart-footer">
+          {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: "var(--mx-muted)", dotted: true }]} />}
+          <div className="mx-chart-footer mx-price-footer">
+            <Group gap={4} aria-label={t("图表缩放", "Chart zoom")}>
+              <Button variant="default" size="compact-sm" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
+              <Button variant="default" size="compact-sm" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}>−</Button>
+              <Button variant="subtle" size="compact-sm" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>
+            </Group>
             <span>
               {isIntraday
                 ? formatDate(points[0].date) + " → " + formatDate(points.at(-1)!.date)
                 : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
             </span>
           </div>
-          {full && markers.length + corporate.length + earnings.length > 0 && (
-            <div
-              className="mx-event-track"
-              aria-label={t("事件时间轴", "Event timeline")}
-            >
-              {[
-                ...markers.map((m) => ({
-                  date: m.date,
-                  label: m.kind,
-                  id: "",
-                })),
-                ...corporate.map((e) => ({
-                  date: String(e.date),
-                  id: "",
-                  label:
-                    e.kind === "split"
-                      ? t("拆股", "Split")
-                      : t("分红", "Dividend"),
-                })),
-                ...earnings.map((e) => ({
-                  date: str(e.date),
-                  label: t("财报", "Earnings"),
-                  id: str(e.id),
-                })),
-              ]
-                .sort((a, b) => a.date.localeCompare(b.date))
-                .slice(-14)
-                .map((e, i) => (
-                  <button
-                    key={i}
-                    onClick={() =>
-                      e.id
-                        ? update({
-                            view: "analyst",
-                            analystView: "events",
-                            eventId: e.id,
-                            eventDate: e.date,
-                          })
-                        : setEvents(true)
-                    }
-                  >
-                    <time>{e.date.slice(5, 10)}</time>
-                    <strong>{e.label}</strong>
-                  </button>
-                ))}
-            </div>
-          )}
+          {showEvents && <PriceEventTrack
+            days={full || eventTrack === true ? days : days.filter((day) => day.marker)}
+            openEarnings={(event) => update({ view: "analyst", analystView: "events", eventId: event.id, eventDate: event.date, chart: null })}
+          />}
           <details className="mx-chart-data">
             <summary>
               {t("行情与指标明细", "Price & indicator records")}
@@ -878,7 +697,7 @@ export function PriceHistory({
       <Panel
         className={compactChart ? "mx-tech-chart" : undefined}
         title={t("价格走势", "Price chart")}
-        action={compactChart && !full ? tools : undefined}
+        action={<Button variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
         help={t(
           "行情为拆股及分红调整后价格。均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。比较按同币种和共同起点归一化。",
           "Prices are split and dividend adjusted. Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. Comparisons share currency and starting time.",
@@ -899,78 +718,6 @@ export function PriceHistory({
       >
         <div className="mx-full-chart">{full && content}</div>
       </Modal>
-      <Drawer
-        position="right"
-        size="lg"
-        opened={events}
-        onClose={() => setEvents(false)}
-        title={t("事件记录", "Events")}
-      >
-        <div className="mx-note-list">
-          {!markers.length && !corporate.length && !earnings.length ? (
-            <Empty title={t("区间内没有记录", "No records in this range")} />
-          ) : (
-            <>
-              {markers.map((m, i) => (
-                <article key={i}>
-                  <h3>
-                    {formatCalendarDate(m.date, locale)} · {m.kind}
-                  </h3>
-                  <Facts
-                    rows={[
-                      [t("买入数量", "Bought"), number(m.buyQuantity, 4)],
-                      [
-                        t("买入成交均价", "Average execution · buys"),
-                        number(m.buyAveragePrice, 2),
-                      ],
-                      [t("卖出数量", "Sold"), number(m.sellQuantity, 4)],
-                      [
-                        t("卖出成交均价", "Average execution · sells"),
-                        number(m.sellAveragePrice, 2),
-                      ],
-                      [t("账户", "Accounts"), m.accounts.join(" · ")],
-                    ]}
-                  />
-                </article>
-              ))}
-              {corporate.map((e, i) => (
-                <article key={"event" + i}>
-                  <h3>
-                    {formatCalendarDate(String(e.date), locale)} ·{" "}
-                    {e.kind === "split"
-                      ? t("拆股", "Split")
-                      : t("分红", "Dividend")}
-                  </h3>
-                  <p>
-                    {number(e.value, 4)} {String(e.currency ?? "")}
-                  </p>
-                </article>
-              ))}
-              {earnings.map((e, i) => (
-                <article key={"earnings" + i}>
-                  <h3>
-                    {String(e.date)} · {t("财报", "Earnings")}
-                  </h3>
-                  <Button
-                    variant="subtle"
-                    onClick={() => {
-                      setEvents(false);
-                      update({
-                        view: "analyst",
-                        analystView: "events",
-                        eventId: String(e.id),
-                        eventDate: String(e.date),
-                      });
-                    }}
-                  >
-                    {t("查看实际与预期", "Reported results & estimates")}
-                  </Button>
-                </article>
-              ))}
-            </>
-          )}
-        </div>
-      </Drawer>
     </>
   );
 }

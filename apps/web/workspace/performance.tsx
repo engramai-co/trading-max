@@ -162,7 +162,7 @@ export function PerformanceContent({
   const returnLines: ChartLine[] = [
     {
       name: t("组合 TWR", "Portfolio TWR"),
-      colour: "text",
+      colour: "brand",
       area: true,
       values: returnsPoints.map((p) =>
         periodReturn(
@@ -173,7 +173,7 @@ export function PerformanceContent({
     },
     ...(comparison?.comparisons ?? []).map((entry, i): ChartLine => ({
       ...entry,
-      colour: (["axis", "accent", "secondary"] as const)[i],
+      colour: (["axis", "text", "axis"] as const)[i],
       dashed: true,
     })),
   ];
@@ -382,7 +382,7 @@ export function PerformanceContent({
             )}
               {view === "returns" && <Legend items={returnLines.map((line, i) => ({
                 label: line.name, dashed: line.dashed,
-                colour: ["var(--mx-ink)", "var(--mx-muted)", "var(--mx-chart-1)", "var(--mx-chart-2)"][i],
+                colour: ["var(--mx-brand)", "var(--mx-muted)", "var(--mx-ink)", "var(--mx-muted)"][i],
               }))} />}
               <TimelineChart
                 emptyHeadingLevel={2}

@@ -124,6 +124,14 @@ def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
         ],
     )
 
+    assert [
+        [(fill["side"], fill["amount"], fill["currency"]) for fill in marker.pop("fills")]
+        for marker in markers
+    ] == [
+        [("buy", 100.0, "GBP"), ("buy", 330.0, "GBP")],
+        [("buy", 118.0, "GBP"), ("sell", 240.0, "GBP")],
+        [("buy", 10.0, "GBP")],
+    ]
     assert markers == [
         {
             "ticker": "NEW",
