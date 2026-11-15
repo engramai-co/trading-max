@@ -132,9 +132,13 @@ test.describe("primary chart reading", () => {
       const dialog = page.getByRole("dialog");
       await expect(dialog.locator("[data-tm-chart-ready]")).toBeVisible();
       await expect(dialog.getByLabel("Bar interval")).not.toBeVisible();
-      await dialog.getByText("Advanced", { exact: true }).click();
-      await expect(dialog.getByLabel("Bar interval")).toBeVisible();
-      await dialog.getByText("Advanced", { exact: true }).click();
+      const advanced = dialog.getByText("Advanced", { exact: true });
+      if (isMobile) expect((await advanced.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await advanced.click();
+      const interval = dialog.getByRole("combobox", { name: "Bar interval" });
+      await expect(interval).toBeVisible();
+      if (isMobile) expect((await interval.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await advanced.click();
       const rows = await dialog.getByRole("group", { name: "Price range" }).getByRole("button").evaluateAll((buttons) =>
         buttons.map((button) => Math.round(button.getBoundingClientRect().y)));
       expect(rows.every((row) => rows.filter((other) => row === other).length > 1)).toBe(true);

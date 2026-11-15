@@ -37,6 +37,7 @@ import {
 } from "./research-price-settings";
 
 const intervals = priceIntervals;
+const fullSelectStyles = { input: { height: 44, minHeight: 44 } };
 export function PriceHistory({
   ticker,
   runId,
@@ -233,20 +234,20 @@ export function PriceHistory({
       {full && <details className="mx-price-advanced">
         <summary>{t("高级", "Advanced")}</summary>
         <Group gap="sm">
-          <Select w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
+          <Select styles={fullSelectStyles} w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
             onChange={(v) => { update({ interval: v }); reset(); }}
             data={intervals.map((v, i) => ({
               value: v,
               label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
               disabled: !supportsPriceRange(v, range),
             }))} />
-          <Select w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
+          <Select styles={fullSelectStyles} w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
             data={[
               { value: "linear", label: t("线性", "Linear") },
               { value: "log", label: t("对数", "Log") },
               { value: "percent", label: t("涨跌幅", "Return %") },
             ]} />
-          <Select w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
+          <Select styles={fullSelectStyles} w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
             onChange={(v) => update({ benchmark: v === "none" ? null : v })}
             data={[
               { value: "none", label: t("加入对比", "Compare with") },
