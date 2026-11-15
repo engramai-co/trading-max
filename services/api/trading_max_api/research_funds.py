@@ -20,6 +20,7 @@ from trading_max.infrastructure.fund_holdings import (
     USER_AGENT,
     OfficialFundHoldingsProvider,
 )
+from trading_max.infrastructure.fund_premium_discount import FundPremiumDiscount, premium_file
 from trading_max.infrastructure.fund_profiles import parse_ishares_profile
 from trading_max.infrastructure.fund_tracking_import import DailyTracking
 from trading_max.reference import SecurityDescriptor
@@ -58,6 +59,7 @@ class FundResearch(ApiModel):
     reading: ETFReading | None = None
     one_year_tracking: ETFTracking | None = None
     daily_tracking: DailyTracking | None = None
+    premium_discount: FundPremiumDiscount | None = None
     matches: list[ETFMatch] = Field(default_factory=list)
     disclosures: list[ETFDisclosure] = Field(default_factory=list)
     uk_reporting_fund: UKReportingFund | None = None
@@ -132,6 +134,7 @@ def fund_research_from_snapshot(
 class FundResearchService:
     def __init__(self, root: Path):
         self.root = root / "research-cache" / "funds"
+        self.workspace_root = root
         self.tracking_root = root / "reference" / "fund-tracking"
         self.provider = OfficialFundHoldingsProvider(root)
         self.lock = threading.RLock()
@@ -143,6 +146,13 @@ class FundResearchService:
         fields = {}
         if mapping.relation == "unconfirmed":
             fields["tracking_error_state"] = "hedged-comparison-unconfirmed"
+        if path := premium_file(self.workspace_root, mapping.isin, fund.ticker.upper()):
+            try:
+                premiums = FundPremiumDiscount.model_validate_json(path.read_bytes())
+                if premiums.isin == mapping.isin and premiums.ticker == fund.ticker.upper():
+                    fields["premium_discount"] = premiums
+            except (OSError, ValueError):
+                pass
         try:
             data = DailyTracking.model_validate_json(
                 (self.tracking_root / (mapping.isin + ".json")).read_bytes()

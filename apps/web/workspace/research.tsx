@@ -44,6 +44,7 @@ import {
 import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
+import { IndexResearchWorkspace } from "./research-index";
 import { SecurityFinder } from "./research-finder";
 import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
@@ -97,6 +98,11 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 }
 
 export function ResearchWorkspace() {
+  const { params } = useRouteState();
+  return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
+}
+
+function SecurityResearchWorkspace() {
   const t = useCopy();
   const { params, update } = useRouteState("push");
   const wide = useMediaQuery("(min-width: 1280px)");

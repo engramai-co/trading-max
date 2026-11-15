@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/lib/api-schema";
 import { readApi } from "@/workspace/data";
-import { useDemonstration } from "./demonstration";
 
 export type IndexIdentity = components["schemas"]["IndexIdentity"];
 export type IndexScope = IndexIdentity["scope"];
 export type IndexQuote = components["schemas"]["IndexQuote"];
 export type IndexMarket = components["schemas"]["IndexMarket"];
 export type IndexHistory = components["schemas"]["IndexHistory"];
+export type IndexResearch = components["schemas"]["IndexResearch"];
+export type IndexComposition = components["schemas"]["IndexComposition"];
+export type IndexConstituent = components["schemas"]["IndexConstituent"];
+export type IndexProduct = components["schemas"]["IndexProduct"];
 export type IndexContext = components["schemas"]["IndexContext"];
 export type IndexContribution = components["schemas"]["IndexContribution"];
 export type IndexPoint = components["schemas"]["IndexPoint"];
@@ -27,16 +30,31 @@ export function indexHref(index: Pick<IndexIdentity, "scope" | "id">) {
   return `/sectors?market=${index.scope}&index=${index.id}`;
 }
 
+export function researchIndexHref(index: Pick<IndexIdentity, "id">, view?: "overview" | "price" | "constituents" | "tracking") {
+  return `/research?type=index&index=${index.id}${view && view !== "overview" ? `&view=${view}` : ""}`;
+}
+
+const starter = ["nasdaq-100", "sp-500", "msci-world-ex-usa", "msci-usa-momentum", "msci-em",
+  "marketvector-semiconductor-screened", "msci-semiconductors-screened", "msci-world", "msci-acwi", "ftse-100", "nikkei-225"];
+
+export const savedIndexKey = "trading_max-research-indexes";
+
+export function indexDirectory(indices: IndexIdentity[] | undefined, saved: readonly string[] = []) {
+  return [...(indices ?? [])].sort((a, b) => {
+    const rank = (item: IndexIdentity) => { const i = starter.indexOf(item.id); return i < 0 ? starter.length : i; };
+    return Number(saved.includes(b.id)) - Number(saved.includes(a.id)) || rank(a) - rank(b) || a.name.localeCompare(b.name);
+  });
+}
+
 function key(value: string) {
   return value.toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}^]/gu, "");
 }
 
 export function useIndexCatalog(enabled = true) {
-  const demonstration = useDemonstration();
   return useQuery({
     queryKey: ["index-catalog"],
     queryFn: ({ signal }) => readApi<IndexIdentity[]>("/indices/catalog", signal),
-    enabled: enabled && !demonstration,
+    enabled,
     staleTime: 30 * 60_000,
     retry: 0,
   });
@@ -45,7 +63,7 @@ export function useIndexCatalog(enabled = true) {
 export function matchIndices(indices: IndexIdentity[] | undefined, query: string) {
   const value = key(query);
   if (value.length < 2) return [];
-  return (indices ?? [])
+  return indexDirectory(indices)
     .map((index) => {
       const candidates = [index.name, index.nameZh, index.symbol ?? "", ...index.aliases].map(key);
       const rank = candidates.some((name) => name === value) ? 2
@@ -54,7 +72,6 @@ export function matchIndices(indices: IndexIdentity[] | undefined, query: string
     })
     .filter(({ rank }) => rank > 0)
     .sort((a, b) => b.rank - a.rank)
-    .slice(0, 5)
     .map(({ index }) => index);
 }
 

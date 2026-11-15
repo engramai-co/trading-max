@@ -16,7 +16,7 @@ import { useGlobalContribution, type GlobalMarketContribution } from "./global-m
 import Link from "./link";
 import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
 import {
-  alignIndices, comparable, indexHistoryRows, indexHref, useIndexCatalog,
+  alignIndices, comparable, indexHistoryRows, indexHref, researchIndexHref, useIndexCatalog,
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
@@ -191,6 +191,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   return (
+    <div className="mx-index-card-stack">
     <Link
       href={indexHref(index)}
       prefetch={false}
@@ -214,6 +215,11 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       </span>
       {notice && <small className="mx-index-freshness">{notice}</small>}
     </Link>
+    <Link className="mx-text-link mx-index-to-research" href={researchIndexHref(index)} prefetch={false}
+      aria-label={name(index) + " · " + t("在研究台打开", "Open in research")}>
+      {t("在研究台打开", "Open in research")}
+    </Link>
+    </div>
   );
 }
 
@@ -363,6 +369,9 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <div className="mx-index-provenance">
+            <Link className="mx-text-link" href={researchIndexHref(index)}>
+              {t("在研究台打开", "Open in research")}
+            </Link>
             <span>{index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency} · {index.symbol ?? index.compiler}</span>
             <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>

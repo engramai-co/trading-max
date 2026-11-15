@@ -6,13 +6,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const { path = [] } = await params;
   const overview = path.length === 1 && ["catalog", "global-contribution", "global-sectors"].includes(path[0]);
   const detail = path.length === 2 && /^[a-z0-9-]{1,60}$/.test(path[0])
-    && (path[1] === "history" || path[1] === "context");
-  if ((path.length && !overview && !detail) || process.env.TRADING_MAX_ENV === "desktop-preview") {
+    && ["history", "context", "research"].includes(path[1]);
+  if ((path.length && !overview && !detail) || (process.env.TRADING_MAX_ENV === "desktop-preview" && path[0] !== "catalog")) {
     return privateJsonResponse(request, { detail: "Indices unavailable" }, { status: 404 });
   }
   const input = new URL(request.url).searchParams;
   const query = new URLSearchParams();
-  for (const key of path.length === 0 ? ["scope"] : path[1] === "history" ? ["range", "currency"] : []) {
+  for (const key of path.length === 0 ? ["scope"] : path[1] === "history" ? ["range", "currency"] : path[1] === "research" ? ["view"] : []) {
     const value = input.get(key);
     if (value != null) query.set(key, value);
   }

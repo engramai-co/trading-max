@@ -11,8 +11,11 @@ from ..index_models import (
     IndexContext,
     IndexHistory,
     IndexIdentity,
+    IndexLens,
     IndexMarket,
+    IndexResearch,
 )
+from ..index_research import index_research
 from ..indices import active_indices
 from .dependencies import app_service
 
@@ -59,4 +62,14 @@ def index_history(
 
 @router.get("/v1/indices/{index_id}/context", response_model=IndexContext)
 def index_context(request: Request, index_id: IndexId) -> IndexContext:
-    return app_service(request, "indices").context(_find(index_id))
+    context = app_service(request, "indices").context(_find(index_id))
+    if context.basket is not None:
+        context.basket = context.basket.model_copy(update={"members": []})
+    return context
+
+
+@router.get("/v1/indices/{index_id}/research", response_model=IndexResearch)
+def research_index(
+    request: Request, index_id: IndexId, view: IndexLens = "overview"
+) -> IndexResearch:
+    return index_research(app_service(request, "indices"), _find(index_id), view)

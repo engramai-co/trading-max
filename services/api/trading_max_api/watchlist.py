@@ -20,6 +20,7 @@ from trading_max.reference import (
     SecurityDescriptor,
     infer_gics_eligibility,
 )
+from trading_max.reference.fund_benchmarks import london_fund_benchmark
 from trading_max.research import TaxonomyCatalog, TaxonomyWorkflowDecision
 from trading_max.research.fund_references import us_fund
 from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY
@@ -1072,6 +1073,24 @@ class SecuritySearchService:
                         bloomberg_ticker=f"{fund.ticker} US Equity",
                         figi="",
                         canonical_ticker=fund.ticker,
+                        identity_source="issuer-registry",
+                        security_type="ETF",
+                    )
+                ],
+            )
+
+        if fund := london_fund_benchmark(normalized):
+            return SecuritySearchResponse(
+                query=normalized,
+                source="registry",
+                results=[
+                    SecuritySearchResult(
+                        ticker=normalized.upper(),
+                        name=fund.ticker,
+                        exchange="LSE",
+                        bloomberg_ticker=f"{fund.ticker} LN Equity",
+                        figi="",
+                        canonical_ticker=normalized.upper(),
                         identity_source="issuer-registry",
                         security_type="ETF",
                     )

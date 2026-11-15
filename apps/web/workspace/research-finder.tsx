@@ -8,7 +8,7 @@ import { useState } from "react";
 import { api } from "@/workspace/data";
 import { Empty, Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
-import { indexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
+import { researchIndexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
 
 export function SecurityFinder({
   opened,
@@ -26,7 +26,7 @@ export function SecurityFinder({
   const [search, setSearch] = useState(() => (initial.trim().length >= 2 ? initial.trim() : ""));
   const currentText = (text || initial).trim();
   const showingCurrentSearch = search === currentText;
-  const indices = matchIndices(useIndexCatalog(opened && currentText.length >= 2).data, currentText);
+  const indices = matchIndices(useIndexCatalog(opened && currentText.length >= 2).data, currentText).slice(0, 5);
   const query = useQuery({
     queryKey: ["workspace-security-search", opened ? search : "", 3],
     enabled: opened && search.length >= 2,
@@ -74,10 +74,11 @@ export function SecurityFinder({
         </Group>
       </form>
       {indices.length > 0 && <div className="mx-index-search">
+        <h3>{t("指数", "Indices")}</h3>
         {indices.map((index) => (
-          <Link key={index.id} className="mx-row-link mx-research-index-result" href={indexHref(index)} onClick={onClose}>
+          <Link key={index.id} className="mx-row-link mx-research-index-result" href={researchIndexHref(index)} onClick={onClose}>
             <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
-            <span className="mx-form-help">{t("指数", "Index")}</span>
+            <span className="mx-form-help">{index.variant}</span>
             <span>{t("查看", "Open")}</span>
           </Link>
         ))}

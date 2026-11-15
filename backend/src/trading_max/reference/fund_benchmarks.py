@@ -55,6 +55,30 @@ FUND_BENCHMARKS = {
     row.isin: row
     for row in (
         _entry(
+            "IE00B5BMR087",
+            "CSPX",
+            "sp-500-nr",
+            "https://www.ishares.com/uk/individual/en/products/253743/ishares-core-s-p-500-ucits-etf-cspx",
+        ),
+        _entry(
+            "IE00B53SZB19",
+            "CNDX",
+            "nasdaq-100-nr",
+            "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf-acc-fund",
+        ),
+        _entry(
+            "IE00B4L5Y983",
+            "SWDA",
+            "msci-world-nr",
+            "https://www.ishares.com/uk/individual/en/products/251882/ishares-msci-world-ucits-etf-acc-fund",
+        ),
+        _entry(
+            "IE00B6R52259",
+            "SSAC",
+            "msci-acwi-nr",
+            "https://www.ishares.com/uk/individual/en/products/251850/ishares-msci-acwi-ucits-etf",
+        ),
+        _entry(
             "IE00BYVTMW98",
             "EQGB",
             "nasdaq-100-nr",
@@ -162,3 +186,11 @@ US_FUND_ISINS = {row.ticker: row.isin for row in FUND_BENCHMARKS.values() if row
 
 def fund_benchmark(isin: str | None) -> FundBenchmark | None:
     return FUND_BENCHMARKS.get((isin or "").strip().upper())
+
+
+_LONDON_FUNDS = {row.ticker + ".L": row for row in FUND_BENCHMARKS.values() if row.domicile == "IE"}
+
+
+def london_fund_benchmark(ticker: str) -> FundBenchmark | None:
+    """Resolve an exact qualified listing registered from an issuer's evidence."""
+    return _LONDON_FUNDS.get(ticker.upper())

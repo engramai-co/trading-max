@@ -14,7 +14,7 @@ from trading_max.analytics.etf_journal import ETF_JOURNAL_KEY, ETFDisclosure
 from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
-from trading_max.reference.fund_benchmarks import US_FUND_ISINS
+from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
 from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
@@ -757,7 +757,7 @@ def research_fund(
     ticker: str,
     request: Request,
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
-    detail: Literal["profile", "full", "journal", "peers"] = "full",
+    detail: Literal["profile", "full", "journal", "peers", "tracking"] = "full",
 ) -> FundResearch:
     store = app_service(request, "store")
     try:
@@ -771,7 +771,7 @@ def research_fund(
     reference = us_fund(ticker)
     if reference and not listing:
         isin = US_FUND_ISINS.get(reference.ticker)
-        return FundResearch(
+        fund = FundResearch(
             ticker=reference.ticker,
             isin=isin,
             **benchmark_fields(isin),
@@ -781,6 +781,11 @@ def research_fund(
             share_currency="USD",
             domicile="US",
             state="available",
+        )
+        return (
+            app_service(request, "research_funds").with_daily_tracking(fund)
+            if detail in {"full", "tracking"}
+            else fund
         )
     portfolio = read_etf_portfolio(store, manifest.run_id)
     reading = (
@@ -793,7 +798,10 @@ def research_fund(
         try:
             snapshot = (
                 read_etf_detail(
-                    store, manifest.run_id, isin, include_holdings=detail in {"profile", "full"}
+                    store,
+                    manifest.run_id,
+                    isin,
+                    include_holdings=detail in {"profile", "full", "tracking"},
                 )
                 if isin
                 else ETFDetail(reading=reading)
@@ -821,7 +829,7 @@ def research_fund(
                     fund.peer_comparison = ETFPeerComparison.model_validate(comparison)
         return (
             app_service(request, "research_funds").with_daily_tracking(fund)
-            if detail in {"profile", "full"}
+            if detail in {"full", "tracking"}
             else fund
         )
     if listing:
@@ -837,6 +845,9 @@ def research_fund(
         )
     lens = research.lens_snapshot(ticker, "fundamentals", manifest)
     info = (lens.fundamentals or {}).get("metrics") or {}
+    curated = london_fund_benchmark(ticker)
+    if curated is not None and not info.get("isin"):
+        info = {**info, "isin": curated.isin}
     if not lens.context or lens.context.asset_type not in {"ETF", "MUTUALFUND"}:
         search = app_service(request, "security_search")
         try:
@@ -849,9 +860,11 @@ def research_fund(
             "MUTUALFUND",
         }:
             raise HTTPException(status_code=422, detail="fund-research-not-applicable")
-        info = {"longName": security.name}
+        info = {**info, "longName": security.name}
     if detail in {"journal", "peers"}:
         return FundResearch(ticker=ticker, isin=info.get("isin"), fetched_at="")
     service = app_service(request, "research_funds")
-    fund = service.with_daily_tracking(service.get(ticker, info))
+    fund = service.get(ticker, info)
+    if detail in {"full", "tracking"}:
+        fund = service.with_daily_tracking(fund)
     return fund if detail == "full" else fund.model_copy(update={"holdings": None})

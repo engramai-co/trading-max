@@ -380,6 +380,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/indices/{index_id}/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Research Index */
+        get: operations["research_index_v1_indices__index_id__research_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs": {
         parameters: {
             query?: never;
@@ -3723,6 +3740,33 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** FundPremiumDiscount */
+        FundPremiumDiscount: {
+            /** Isin */
+            isin: string;
+            /** Points */
+            points: components["schemas"]["FundPremiumObservation"][];
+            /** Sourceurl */
+            sourceUrl: string;
+            /** Ticker */
+            ticker: string;
+        };
+        /** FundPremiumObservation */
+        FundPremiumObservation: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Currency */
+            currency: string;
+            /** Nav */
+            nav: number;
+            /** Premium */
+            premium: number;
+            /** Price */
+            price: number;
+        };
         /** FundResearch */
         FundResearch: {
             /** Annualreturns */
@@ -3764,6 +3808,7 @@ export interface components {
             methodology?: string | null;
             oneYearTracking?: components["schemas"]["ETFTracking"] | null;
             peerComparison?: components["schemas"]["ETFPeerComparison"] | null;
+            premiumDiscount?: components["schemas"]["FundPremiumDiscount"] | null;
             profile?: components["schemas"]["FundShareClass"] | null;
             reading?: components["schemas"]["ETFReading"] | null;
             /** Replication */
@@ -4321,6 +4366,8 @@ export interface components {
             laggards: components["schemas"]["IndexContribution"][];
             /** Leaders */
             leaders: components["schemas"]["IndexContribution"][];
+            /** Members */
+            members?: components["schemas"]["IndexContribution"][];
             /**
              * Pricessource
              * @default Yahoo Finance
@@ -4394,6 +4441,77 @@ export interface components {
             /** Eligible50 */
             eligible50: number;
         };
+        /** IndexComposition */
+        IndexComposition: {
+            /** Asof */
+            asOf?: string | null;
+            /**
+             * Basketbasis
+             * @enum {string}
+             */
+            basketBasis: "issuer-portfolio" | "market-proxy" | "official";
+            /** Capweightmove */
+            capWeightMove?: number | null;
+            /** Coverage */
+            coverage?: number | null;
+            /** Down */
+            down?: number | null;
+            /** Eligible52W */
+            eligible52w?: number | null;
+            /** Equalweightmove */
+            equalWeightMove?: number | null;
+            /** Flat */
+            flat?: number | null;
+            /** Highs52W */
+            highs52w?: number | null;
+            /** Holdingsdate */
+            holdingsDate: string;
+            /** Lows52W */
+            lows52w?: number | null;
+            /** Members */
+            members?: components["schemas"]["IndexConstituent"][];
+            /** Priceweightmove */
+            priceWeightMove?: number | null;
+            /** Sessiondate */
+            sessionDate?: string | null;
+            /** Source */
+            source: string;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Totalmove */
+            totalMove?: number | null;
+            /** Uncovered */
+            uncovered?: number | null;
+            /** Up */
+            up?: number | null;
+            /** Waterfall */
+            waterfall?: components["schemas"]["IndexContribution"][];
+            /**
+             * Weighting
+             * @default other
+             * @enum {string}
+             */
+            weighting: "cap" | "price" | "other";
+        };
+        /** IndexConstituent */
+        IndexConstituent: {
+            /** Contribution */
+            contribution?: number | null;
+            /** Country */
+            country?: string | null;
+            /** Industry */
+            industry?: string | null;
+            /** Isin */
+            isin?: string | null;
+            /** Move */
+            move?: number | null;
+            /** Name */
+            name: string;
+            /** Ticker */
+            ticker: string;
+            /** Weight */
+            weight: number;
+        };
         /** IndexContext */
         IndexContext: {
             basket?: components["schemas"]["IndexBasket"] | null;
@@ -4428,6 +4546,19 @@ export interface components {
             name: string;
             /** Weight */
             weight: number;
+        };
+        /** IndexExposure */
+        IndexExposure: {
+            /** Asof */
+            asOf: string;
+            /** Directgbp */
+            directGbp: number;
+            /** Lookthroughgbp */
+            lookThroughGbp: number;
+            /** Matchedisins */
+            matchedIsins: number;
+            /** Totalgbp */
+            totalGbp: number;
         };
         /** IndexFundHolding */
         IndexFundHolding: {
@@ -4571,6 +4702,56 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** IndexProduct */
+        IndexProduct: {
+            /** Benchmarkid */
+            benchmarkId: string;
+            /** Domicile */
+            domicile: string;
+            /**
+             * Evidencedate
+             * Format: date
+             */
+            evidenceDate: string;
+            /** Evidenceurl */
+            evidenceUrl: string;
+            /** Expenseratio */
+            expenseRatio?: number | null;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "held" | "same-benchmark" | "same-family" | "similar" | "related";
+            /** Hedged */
+            hedged: boolean;
+            /** Incomeuse */
+            incomeUse?: string | null;
+            /** Isin */
+            isin: string;
+            /** Name */
+            name: string;
+            /**
+             * Relationship
+             * @enum {string}
+             */
+            relationship: "exact" | "same-family-other-variant" | "similar-exposure" | "related-different-structure" | "unconfirmed";
+            /** Replication */
+            replication?: string | null;
+            /** Sharecurrency */
+            shareCurrency: string;
+            /** Size */
+            size?: number | null;
+            /** Sizebasis */
+            sizeBasis?: ("share-class" | "fund") | null;
+            /** Sizecurrency */
+            sizeCurrency?: string | null;
+            /** Ticker */
+            ticker: string;
+            /** Trackingdifference */
+            trackingDifference?: number | null;
+            /** Valuegbp */
+            valueGbp?: number | null;
+        };
         /** IndexQuote */
         IndexQuote: {
             /** Asof */
@@ -4595,6 +4776,23 @@ export interface components {
              * @enum {string}
              */
             state: "unavailable" | "observed" | "live" | "closed" | "stale";
+        };
+        /** IndexResearch */
+        IndexResearch: {
+            composition?: components["schemas"]["IndexComposition"] | null;
+            /**
+             * Depth
+             * @default L0
+             * @enum {string}
+             */
+            depth: "L0" | "L1" | "L2" | "L3";
+            exposure?: components["schemas"]["IndexExposure"] | null;
+            index: components["schemas"]["IndexIdentity"];
+            /** Products */
+            products?: components["schemas"]["IndexProduct"][];
+            quote?: components["schemas"]["IndexQuote"] | null;
+            technical?: components["schemas"]["TechnicalScoreSummary"] | null;
+            valuation?: components["schemas"]["IndexValuationSnapshot"] | null;
         };
         /** IndexSourceCodes */
         IndexSourceCodes: {
@@ -9493,6 +9691,39 @@ export interface operations {
             };
         };
     };
+    research_index_v1_indices__index_id__research_get: {
+        parameters: {
+            query?: {
+                view?: "overview" | "constituents" | "tracking";
+            };
+            header?: never;
+            path: {
+                index_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexResearch"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_jobs_v1_jobs_get: {
         parameters: {
             query?: {
@@ -10119,7 +10350,7 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
-                detail?: "profile" | "full" | "journal" | "peers";
+                detail?: "profile" | "full" | "journal" | "peers" | "tracking";
             };
             header?: never;
             path: {

@@ -540,7 +540,7 @@ test.describe("market index layer", () => {
     expect(paths).not.toContain("/api/backend/indices?scope=cn");
     await selectMarket(page, /A 股|China A/, true);
     await expect(page).toHaveURL(/\/sectors\?market=cn$/);
-    const cards = page.locator(".mx-index-cards a");
+    const cards = page.locator(".mx-index-cards a.mx-index-card");
     await expect(cards).toHaveCount(4);
     await expect(cards.first()).toHaveAccessibleName(/沪深 300|CSI 300/);
     await expect(cards.last()).toHaveAccessibleName(/创业板指|ChiNext/);
@@ -641,7 +641,7 @@ test.describe("market index layer", () => {
     await selectMarket(page, /欧洲|Europe/);
     await received;
     await expect(page).toHaveURL(/market=eu$/);
-    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(4);
     await expect(page.locator("#index-card-stoxx-europe-600")).toBeVisible();
     await expect(page.locator(".mx-sectors-clock")).toContainText(/盘中|Open/);
     await expect(page.getByRole("button", { name: /我的主题|My themes/ })).toHaveCount(0);
@@ -680,7 +680,7 @@ test.describe("market index layer", () => {
       return route.fulfill({ json: { ...data, board: null } });
     });
     await page.goto("/sectors?market=eu");
-    await expect(page.locator(".mx-index-cards a")).toHaveCount(4);
+    await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(4);
     await expect(page.getByRole("heading", { name: /还没有欧洲板块数据|No Europe sector data yet/ })).toBeVisible();
   });
 
@@ -985,7 +985,7 @@ test.describe("market index layer", () => {
         await page.getByRole("menuitem", { name: market.names }).click();
       }
       await expect(page).toHaveURL(new RegExp(`market=${market.code}$`));
-      await expect(page.locator(".mx-index-cards a")).toHaveCount(market.ids.length);
+      await expect(page.locator(".mx-index-cards a.mx-index-card")).toHaveCount(market.ids.length);
       const card = page.locator(`#index-card-${market.ids[0]}`);
       await expect(card).toBeVisible();
       const rows = page.locator(".mx-sector-list > li");
@@ -1078,7 +1078,7 @@ test.describe("market index layer", () => {
       await mockIndices(page, { now: EUROPE_FIXTURE_TIME });
       const capture = async (market: string, step = "") => {
         await page.goto(`/sectors?market=${market}`);
-        await expect(page.locator(".mx-index-cards a").first()).toBeVisible();
+        await expect(page.locator(".mx-index-cards a.mx-index-card").first()).toBeVisible();
         await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
         await page.evaluate(() => document.fonts.ready);

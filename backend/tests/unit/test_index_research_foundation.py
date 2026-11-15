@@ -176,3 +176,25 @@ def test_bottom_up_uses_point_in_time_earnings_and_weighted_harmonic_mean(tmp_pa
     archive_valuation(tmp_path, row.model_copy(update={"source_kind": "official", "pe": 22}))
     assert (tmp_path / "sp-500/us-bottom-up/2026-03-04.json").is_file()
     assert (tmp_path / "sp-500/official/2026-03-04.json").is_file()
+
+
+def test_premium_requires_same_time_currency_and_unadjusted_market_price():
+    from trading_max.infrastructure.fund_premium_discount import paired_premiums
+
+    fields = (
+        "isin,listing,market_at,nav_at,market_price,nav,price_currency,nav_currency,price_basis\n"
+    )
+    good = "IE00BYVTMW98,EQGB.L,2026-01-05T16:30:00+00:00,2026-01-05T11:30:00-05:00,505,5,GBp,GBP,unadjusted"
+    wrong_time = good.replace("11:30:00", "11:31:00")
+    wrong_currency = good.replace("GBp,GBP", "GBp,USD")
+    adjusted = good.replace("unadjusted", "adjusted")
+    points = paired_premiums(
+        "IE00BYVTMW98",
+        "EQGB.L",
+        "https://issuer.example",
+        fields + "\n".join([good, wrong_time, wrong_currency, adjusted]),
+    ).points
+    assert len(points) == 1 and points[0].premium == pytest.approx(0.01)
+    assert points[0].price == 5.05 and points[0].currency == "GBP"
+    with pytest.raises(ValueError, match="no-exact-time"):
+        paired_premiums("IE00BYVTMW98", "EQGB.L", "https://issuer.example", fields + wrong_time)

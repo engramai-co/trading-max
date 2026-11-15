@@ -405,3 +405,49 @@ unknown. The covered-weight P/E is covered weight divided by the sum of
 weighted signed earnings yields. A nonpositive yield has no P/E. The
 archive records the basket date, sample size and share of the basket
 covered; it is a current-basket estimate.
+
+## Index research and composition
+
+An index opens at `/research?type=index&index=<series-id>&view=<lens>`. The
+Markets detail still accepts its original links and both entry points use
+the same registry ID. Overview, constituents and tracking products use
+separate lens requests. Index technical scores reuse the shared scoring
+engine on observed daily price levels; unavailable high/low, volume and
+relative factors remain uncovered. Comparison requires a matching
+series currency, return variant, hedge basis and observed interval, with
+at most three series normalised at their first common observation.
+
+Tracking products are curated with the source and evidence date, grouped
+separately by exact benchmark, family, similar exposure and structure.
+Personal exposure is read from the selected broker snapshot and its
+look-through publication, joined to the dated basket by ISIN; it stays
+out of links and is separate from held fund value. A browser-local saved
+index can have no licensed price or composition data.
+
+For constituent coverage, "unchanged" uses a ±0.05% band. The app counts
+missing quotes separately, and 52-week new highs/lows require 240
+prior dated closes in 52 weeks plus that session's close. Weighting and
+breadth describe the dated basket, not historical index membership. Price
+contribution shows the five largest positive and negative drivers; the
+rest includes only covered constituents. A residual uses the same index
+session and observations within five minutes.
+
+For a licensed Nikkei 225 price-weighted input, place
+`<data-root>/reference/index-constituents/nikkei-225.json`. This file
+takes the dates `holdingsDate` and `sessionDate`, an offset-aware
+`asOf` instant, optional `indexAsOf` and `indexMove`, and exactly 225
+distinct `members` with `ticker` (Tokyo listing), `name`, optional
+`isin`, `priorAdjustedPrice`, and `move` (a fraction or null). The
+operator supplies official price-adjustment factors reflected in
+`priorAdjustedPrice`; the app calculates weights and reconciles only
+same-session readings. Without the file it shows the missing composition
+instead of applying cap weights.
+
+ETF premium or discount is optional and separate from tracking. For an
+issuer-supported listing, `tools/import_fund_premium.py` imports a
+local CSV with `isin,listing,market_at,nav_at,market_price,nav,price_currency,nav_currency,price_basis`.
+Supply `--csv`, `--isin`, `--ticker`, `--source-url` and an
+external `--data-root`. It requires the unadjusted market price,
+an exact timestamp match with an explicit time zone and the same
+major currency after pence conversion. No estimated FX or NAV timing
+is used. A file with no comparable observations yields no chart.

@@ -7435,6 +7435,73 @@
         "title": "FundListing",
         "type": "object"
       },
+      "FundPremiumDiscount": {
+        "additionalProperties": false,
+        "properties": {
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FundPremiumObservation"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "isin",
+          "ticker",
+          "sourceUrl",
+          "points"
+        ],
+        "title": "FundPremiumDiscount",
+        "type": "object"
+      },
+      "FundPremiumObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "nav": {
+            "title": "Nav",
+            "type": "number"
+          },
+          "premium": {
+            "title": "Premium",
+            "type": "number"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "at",
+          "price",
+          "nav",
+          "currency",
+          "premium"
+        ],
+        "title": "FundPremiumObservation",
+        "type": "object"
+      },
       "FundResearch": {
         "properties": {
           "annualReturns": {
@@ -7631,6 +7698,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ETFPeerComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "premiumDiscount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundPremiumDiscount"
               },
               {
                 "type": "null"
@@ -9508,6 +9585,13 @@
             "title": "Leaders",
             "type": "array"
           },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Members",
+            "type": "array"
+          },
           "pricesSource": {
             "default": "Yahoo Finance",
             "title": "Pricessource",
@@ -9704,6 +9788,302 @@
         "title": "IndexBreadthPoint",
         "type": "object"
       },
+      "IndexComposition": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "basketBasis": {
+            "enum": [
+              "issuer-portfolio",
+              "market-proxy",
+              "official"
+            ],
+            "title": "Basketbasis",
+            "type": "string"
+          },
+          "capWeightMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capweightmove"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "down": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Down"
+          },
+          "eligible52w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eligible52W"
+          },
+          "equalWeightMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equalweightmove"
+          },
+          "flat": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flat"
+          },
+          "highs52w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highs52W"
+          },
+          "holdingsDate": {
+            "title": "Holdingsdate",
+            "type": "string"
+          },
+          "lows52w": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lows52W"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/IndexConstituent"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "priceWeightMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priceweightmove"
+          },
+          "sessionDate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessiondate"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "totalMove": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalmove"
+          },
+          "uncovered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncovered"
+          },
+          "up": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up"
+          },
+          "waterfall": {
+            "items": {
+              "$ref": "#/components/schemas/IndexContribution"
+            },
+            "title": "Waterfall",
+            "type": "array"
+          },
+          "weighting": {
+            "default": "other",
+            "enum": [
+              "cap",
+              "price",
+              "other"
+            ],
+            "title": "Weighting",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "holdingsDate",
+          "basketBasis"
+        ],
+        "title": "IndexComposition",
+        "type": "object"
+      },
+      "IndexConstituent": {
+        "properties": {
+          "contribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "move": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "ticker",
+          "name",
+          "weight"
+        ],
+        "title": "IndexConstituent",
+        "type": "object"
+      },
       "IndexContext": {
         "properties": {
           "basket": {
@@ -9832,6 +10212,39 @@
           "contribution"
         ],
         "title": "IndexContribution",
+        "type": "object"
+      },
+      "IndexExposure": {
+        "properties": {
+          "asOf": {
+            "title": "Asof",
+            "type": "string"
+          },
+          "directGbp": {
+            "title": "Directgbp",
+            "type": "number"
+          },
+          "lookThroughGbp": {
+            "title": "Lookthroughgbp",
+            "type": "number"
+          },
+          "matchedIsins": {
+            "title": "Matchedisins",
+            "type": "integer"
+          },
+          "totalGbp": {
+            "title": "Totalgbp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "asOf",
+          "directGbp",
+          "lookThroughGbp",
+          "totalGbp",
+          "matchedIsins"
+        ],
+        "title": "IndexExposure",
         "type": "object"
       },
       "IndexFundHolding": {
@@ -10276,6 +10689,176 @@
         "title": "IndexPoint",
         "type": "object"
       },
+      "IndexProduct": {
+        "properties": {
+          "benchmarkId": {
+            "title": "Benchmarkid",
+            "type": "string"
+          },
+          "domicile": {
+            "title": "Domicile",
+            "type": "string"
+          },
+          "evidenceDate": {
+            "format": "date",
+            "title": "Evidencedate",
+            "type": "string"
+          },
+          "evidenceUrl": {
+            "title": "Evidenceurl",
+            "type": "string"
+          },
+          "expenseRatio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expenseratio"
+          },
+          "group": {
+            "enum": [
+              "held",
+              "same-benchmark",
+              "same-family",
+              "similar",
+              "related"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "hedged": {
+            "title": "Hedged",
+            "type": "boolean"
+          },
+          "incomeUse": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incomeuse"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "relationship": {
+            "enum": [
+              "exact",
+              "same-family-other-variant",
+              "similar-exposure",
+              "related-different-structure",
+              "unconfirmed"
+            ],
+            "title": "Relationship",
+            "type": "string"
+          },
+          "replication": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replication"
+          },
+          "shareCurrency": {
+            "title": "Sharecurrency",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "sizeBasis": {
+            "anyOf": [
+              {
+                "enum": [
+                  "share-class",
+                  "fund"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizebasis"
+          },
+          "sizeCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sizecurrency"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          },
+          "trackingDifference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingdifference"
+          },
+          "valueGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuegbp"
+          }
+        },
+        "required": [
+          "isin",
+          "ticker",
+          "name",
+          "benchmarkId",
+          "group",
+          "relationship",
+          "evidenceUrl",
+          "evidenceDate",
+          "shareCurrency",
+          "domicile",
+          "hedged"
+        ],
+        "title": "IndexProduct",
+        "type": "object"
+      },
       "IndexQuote": {
         "properties": {
           "asOf": {
@@ -10355,6 +10938,86 @@
           "index"
         ],
         "title": "IndexQuote",
+        "type": "object"
+      },
+      "IndexResearch": {
+        "properties": {
+          "composition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexComposition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "default": "L0",
+            "enum": [
+              "L0",
+              "L1",
+              "L2",
+              "L3"
+            ],
+            "title": "Depth",
+            "type": "string"
+          },
+          "exposure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexExposure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexIdentity"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/IndexProduct"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexQuote"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "technical": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TechnicalScoreSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valuation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexValuationSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "IndexResearch",
         "type": "object"
       },
       "IndexSourceCodes": {
@@ -23696,6 +24359,66 @@
         ]
       }
     },
+    "/v1/indices/{index_id}/research": {
+      "get": {
+        "operationId": "research_index_v1_indices__index_id__research_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_id",
+            "required": true,
+            "schema": {
+              "maxLength": 60,
+              "minLength": 1,
+              "pattern": "^[a-z0-9-]+$",
+              "title": "Index Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "overview",
+              "enum": [
+                "overview",
+                "constituents",
+                "tracking"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexResearch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Index",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
     "/v1/jobs": {
       "get": {
         "operationId": "list_jobs_v1_jobs_get",
@@ -24647,7 +25370,8 @@
                 "profile",
                 "full",
                 "journal",
-                "peers"
+                "peers",
+                "tracking"
               ],
               "title": "Detail",
               "type": "string"

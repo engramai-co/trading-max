@@ -284,6 +284,34 @@ class IndexDepth:
             return None, ref
         return IndexValuationSnapshot(**ref.model_dump(), **snapshot.model_dump()), ref
 
+    def new_highs_lows(
+        self,
+        scope: str,
+        session_date: str,
+        symbols: set[str],
+    ) -> tuple[int, int, int] | None:
+        cache = _read(self.root / f"{scope}-closes.json", _BreadthInputs)
+        if cache is None:
+            return None
+        highs, lows, eligible = 0, 0, 0
+        day = date.fromisoformat(session_date)
+        for symbol in symbols:
+            item = cache.closes.get(symbol)
+            if item is None or session_date not in item.values:
+                continue
+            window = {
+                d: close
+                for d, close in item.values.items()
+                if day - timedelta(weeks=52) <= date.fromisoformat(d) < day
+            }
+            if len(window) < 240:
+                continue
+            current = item.values[session_date]
+            eligible += 1
+            highs += current > max(window.values())
+            lows += current < min(window.values())
+        return (highs, lows, eligible) if eligible else None
+
     @staticmethod
     def _market_dates(market: SectorMarketCode, now: datetime, *, days: int) -> list[str]:
         today = now.astimezone(ZoneInfo(MARKETS[market].timezone)).date()

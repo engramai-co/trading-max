@@ -1175,4 +1175,5 @@ class IndexService:
             prices_source=prices_source,
             fetched_at=fetched_at,
             holdings_fetched_at=holdings_fetched_at,
+            members=members,
         )

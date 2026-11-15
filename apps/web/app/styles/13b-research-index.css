@@ -1,0 +1,273 @@
+.mx-index-research {
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-index-research-back {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  padding: 0 8px;
+  min-height: 40px;
+}
+
+.mx-index-research-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 28px;
+  margin-bottom: 18px;
+}
+.mx-index-research-hero h2 {
+  font-size: clamp(22px, 2.4vw, 32px);
+  margin: 0;
+  letter-spacing: -.025em;
+  line-height: 1.24;
+}
+.mx-index-research-basis,
+.mx-index-research-provenance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-research-basis {
+  margin-top: 7px;
+}
+.mx-index-research-level {
+  align-items: baseline;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  text-align: right;
+}
+.mx-index-research-level strong {
+  font-size: clamp(25px, 3vw, 37px);
+  font-weight: 600;
+  letter-spacing: -.025em;
+}
+.mx-index-research-level small {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--mx-muted);
+}
+.mx-index-research-body {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+.mx-index-research-body > * {
+  min-width: 0;
+}
+.mx-index-research-market {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 9px 0;
+}
+.mx-index-to-research {
+  align-items: center;
+  display: inline-flex;
+  min-height: 28px;
+  margin-top: 4px;
+}
+.mx-index-card-stack {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mx-index-card-stack > .mx-index-card {
+  flex: 1;
+}
+.mx-index-card-stack > .mx-index-to-research {
+  align-self: flex-end;
+  margin-right: 5px;
+}
+.mx-index-research-chart-tools {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.mx-index-research-chart-tools > div:last-child {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mx-index-research-chart-tools .mantine-MultiSelect-root {
+  min-width: 164px;
+  max-width: 380px;
+}
+.mx-index-research-chart-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin: 0 14px 0 4px;
+  padding-top: 4px;
+  color: var(--mx-muted);
+}
+.mx-index-research-chart-top strong {
+  margin-inline-start: 5px;
+}
+.mx-index-research-caveat,
+.mx-index-research-level small.mx-index-research-caveat {
+  color: var(--mx-warning);
+}
+.mx-index-research-risk {
+  border-top: 1px solid var(--mx-border);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  margin-top: 10px;
+}
+.mx-index-research-risk-chart {
+  min-width: 0;
+}
+.mx-index-research-risk-chart h3 {
+  margin: 12px 0 3px;
+  font-size: 13px;
+}
+.mx-index-research-risk-chart p {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-index-research-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 30px;
+}
+.mx-index-research-overview > :last-child {
+  flex: 1;
+}
+.mx-index-research-products {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mx-index-research-products li {
+  align-items: start;
+  border-top: 1px solid var(--mx-border);
+  display: grid;
+  gap: 8px 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  padding: 10px 0;
+}
+.mx-index-research-products li > div {
+  display: grid;
+  gap: 3px;
+}
+.mx-index-research-products li > div:last-child {
+  text-align: right;
+}
+.mx-index-research-products li small {
+  color: var(--mx-muted);
+}
+.mx-index-research-product-group + .mx-index-research-product-group {
+  margin-top: 16px;
+}
+.mx-index-research-product-group h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.mx-index-research-heatmap {
+  position: relative;
+  margin: 16px 0;
+  min-height: clamp(215px, 27vw, 350px);
+}
+.mx-index-research-heatmap > div {
+  position: absolute;
+  background: color-mix(in oklab, var(--mx-heat-hue, var(--mx-soft)) var(--mx-heat-blend), var(--mx-surface));
+  border: 1px solid var(--mx-border);
+  overflow: hidden;
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  text-align: center;
+}
+.mx-index-research-heatmap > div[data-tone="none"] {
+  background: var(--mx-soft);
+}
+.mx-index-research-heatmap > div[data-tone="up"] {
+  --mx-heat-hue: var(--mx-up);
+}
+.mx-index-research-heatmap > div[data-tone="down"] {
+  --mx-heat-hue: var(--mx-down);
+}
+.mx-index-research-heatmap > div span {
+  font-size: 12px;
+}
+.mx-index-research-waterfall {
+  margin: 16px 0 4px;
+}
+.mx-index-research-waterfall > div {
+  display: grid;
+  grid-template-columns: minmax(60px, 180px) 1fr 74px;
+  gap: 9px;
+  align-items: center;
+  min-height: 28px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-index-research-waterfall > div > :last-child {
+  text-align: right;
+}
+.mx-index-research-waterfall-axis {
+  background: var(--mx-soft);
+  border-radius: 3px;
+  height: 8px;
+  position: relative;
+}
+.mx-index-research-waterfall-axis > i {
+  position: absolute;
+  inset-block: -2px;
+  border-left: 1px solid var(--mx-muted);
+}
+.mx-index-research-waterfall-axis > b {
+  height: 100%;
+  position: absolute;
+  border-radius: 3px;
+}
+.mx-index-research-waterfall-axis > b[data-tone="up"] {
+  background: var(--mx-up);
+}
+.mx-index-research-waterfall-axis > b[data-tone="down"] {
+  background: var(--mx-down);
+}
+.mx-index-search > h3 {
+  font-size: 14px;
+  margin: 14px 0 3px;
+}
+@media (max-width: 48em) {
+  .mx-index-research-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mx-index-research-level {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .mx-index-research-level small {
+    flex-basis: auto;
+  }
+  .mx-index-research-risk {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-index-research-risk-chart + .mx-index-research-risk-chart {
+    border-top: 1px solid var(--mx-border);
+  }
+  .mx-index-research-chart-tools .mantine-MultiSelect-root {
+    max-width: min(310px, 100%);
+  }
+  .mx-index-research-waterfall > div {
+    font-size: 12px;
+    grid-template-columns: minmax(74px, 32%) 1fr 62px;
+  }
+  .mx-index-to-research {
+    min-height: 36px;
+    margin-top: 0;
+  }
+}

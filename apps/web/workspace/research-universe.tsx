@@ -2,11 +2,12 @@
 
 import type { ResearchShell } from "@/lib/types";
 import { ActionIcon, Checkbox, Group, Select, TextInput } from "@mantine/core";
+import { useLocalStorage } from "@mantine/hooks";
 import { MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Instrument, useCopy } from "./foundation";
 import Link from "./link";
-import { indexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
+import { indexDirectory, researchIndexHref, matchIndices, savedIndexKey, useIndexCatalog } from "./market-indices-data";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
 
@@ -109,8 +110,13 @@ export function UniverseList({
   onSelect: (ticker: string) => void;
 }) {
   const t = useCopy();
-  const catalog = useIndexCatalog(filter.trim().length >= 2 && !heldOnly && category === "all");
-  const indices = !heldOnly && category === "all" ? matchIndices(catalog.data, filter) : [];
+  const [saved] = useLocalStorage<string[]>({ key: savedIndexKey, defaultValue: [] });
+  const isIndexCategory = category === "indices";
+  const catalog = useIndexCatalog(isIndexCategory || (filter.trim().length >= 2 && !heldOnly && category === "all"));
+  const indices = isIndexCategory && !filter.trim()
+    ? indexDirectory(catalog.data, saved)
+    : isIndexCategory || (!heldOnly && category === "all")
+      ? matchIndices(catalog.data, filter).slice(0, isIndexCategory ? 60 : 5) : [];
   return (
     <>
       <TextInput
@@ -129,6 +135,7 @@ export function UniverseList({
         onChange={(v) => setCategory(v ?? "all")}
         data={[
           { value: "all", label: t("全部分类", "All categories") },
+          { value: "indices", label: t("指数", "Indices") },
           ...(categories).map((c) => ({
             value: c.id,
             label:
@@ -153,12 +160,13 @@ export function UniverseList({
         mt="md"
         size="xs"
         checked={heldOnly}
+        disabled={isIndexCategory}
         onChange={(e) => setHeldOnly(e.currentTarget.checked)}
         label={t("仅看我的持仓", "Held in my portfolio")}
       />
       <div className="mx-watchlist">
         {indices.map((index) => (
-          <Link key={index.id} className="mx-watchlist-item mx-research-index-result" href={indexHref(index)}>
+          <Link key={index.id} className="mx-watchlist-item mx-research-index-result" href={researchIndexHref(index)}>
             <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
             <span className="mx-form-help">{t("指数", "Index")}</span>
           </Link>
