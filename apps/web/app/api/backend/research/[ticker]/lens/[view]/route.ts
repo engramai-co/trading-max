@@ -33,13 +33,14 @@ export async function GET(
     );
   }
   const detail = params.get("detail") ?? "full";
+  const preview = params.get("preview") === "true";
   const revision = params.get("revision");
   if (!["full", "summary", "seasonality", "documents"].includes(detail))
     return NextResponse.json({ detail: "Unsupported detail" }, { status: 400 });
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/lens/${view}?limit=${requested}&detail=${detail}`,
+    `/v1/research/${encodeURIComponent(ticker)}/lens/${view}?limit=${requested}&detail=${detail}${preview ? "&preview=true" : ""}`,
     { signal: request.signal },
     request.headers.get("accept-encoding"),
-    requested === 30 ? (response) => rememberDesktopSnapshotResponse(researchLensKey(ticker, view, detail, revision), response) : undefined,
+    requested === 30 && !preview ? (response) => rememberDesktopSnapshotResponse(researchLensKey(ticker, view, detail, revision), response) : undefined,
   );
 }

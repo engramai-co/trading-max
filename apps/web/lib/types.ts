@@ -358,7 +358,7 @@ export type SecuritySearchResult = {
 
 export type SecuritySearchResponse = {
   query: string;
-  source: "openfigi" | "watchlist";
+  source: "openfigi" | "watchlist" | "registry";
   correctedQuery?: string | null;
   results: SecuritySearchResult[];
 };
@@ -570,7 +570,7 @@ export type UserProfile = {
 
 export type IntegrationSummary = {
   integrationId: string;
-  provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "anthropic" | "google";
+  provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "eodhd" | "anthropic" | "google";
   profile: string | null;
   enabled: boolean;
   configured: boolean;

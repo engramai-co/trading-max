@@ -4,10 +4,24 @@ from datetime import date, datetime
 from typing import Literal
 
 from pydantic import Field
-from trading_max.reference.indices import IndexBasis, IndexKind, IndexRange, IndexScope, UsageRights
+from trading_max.reference.indices import (
+    IndexBasis,
+    IndexHedge,
+    IndexKind,
+    IndexRange,
+    IndexScope,
+    IndexVariant,
+    UsageRights,
+)
 
 from .models import ApiModel
 from .sector_models import SectorBreadth
+
+
+class IndexSourceCodes(ApiModel):
+    yahoo: str | None = None
+    fred: str | None = None
+    eodhd: str | None = None
 
 
 class IndexIdentity(ApiModel):
@@ -17,6 +31,11 @@ class IndexIdentity(ApiModel):
     name_zh: str
     compiler: str
     compiler_id: str
+    family_id: str = ""
+    series_code: str = ""
+    variant: IndexVariant | None = None
+    hedging: IndexHedge = "unknown"
+    source_codes: IndexSourceCodes = Field(default_factory=IndexSourceCodes)
     symbol: str | None
     currency: str | None
     calendar: str
@@ -102,6 +121,9 @@ class IndexHistory(ApiModel):
     state: Literal["available", "partial", "unavailable", "stale"] = "unavailable"
     as_of: datetime | None = None
     hourly_close: bool = False
+    source_interval: str | None = None
+    display_interval: str | None = None
+    coverage_reason: Literal["source-interval-mismatch", "daily-coverage-incomplete"] | None = None
 
 
 class IndexContribution(ApiModel):

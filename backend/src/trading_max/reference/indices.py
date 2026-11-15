@@ -14,6 +14,8 @@ IndexScope = Literal[
 ]
 IndexRange = Literal["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"]
 IndexBasis = Literal["price", "net-return", "total-return", "implied-volatility"]
+IndexVariant = Literal["PR", "NR", "GR", "TR"]
+IndexHedge = Literal["unhedged", "currency-hedged", "unknown"]
 IndexKind = Literal["index", "etf-price", "volatility"]
 UsageRights = Literal["provider-terms", "licensed-source-required"]
 
@@ -39,6 +41,36 @@ class IndexSpec:
     hourly_close: bool = False
     # A market-board proxy may supply dated weights, never index attribution.
     proxy_basket: str | None = None
+    family_id: str | None = None
+    return_variant: IndexVariant | None = None
+    hedging: IndexHedge = "unhedged"
+    fred: str | None = None
+    eodhd: str | None = None
+    market_visible: bool = True
+
+    @property
+    def family(self) -> str:
+        return self.family_id or self.benchmark
+
+    @property
+    def series(self) -> str:
+        return self.symbol if self.kind == "etf-price" and self.symbol else self.compiler_id
+
+    @property
+    def variant(self) -> IndexVariant | None:
+        if self.kind != "index":
+            return None
+        if self.return_variant:
+            return self.return_variant
+        match self.basis:
+            case "price":
+                return "PR"
+            case "net-return":
+                return "NR"
+            case "total-return":
+                return "TR"
+            case _:
+                return None
 
     @property
     def ranges(self) -> tuple[IndexRange, ...]:
@@ -71,6 +103,7 @@ INDEX_REGISTRY = {
             "USD",
             "XNYS",
             basket="us",
+            fred="SP500",
             aliases=("标普", "SPX", "S&P 500 Index (Net)", "S&P 500 Index (Net Total Return)"),
         ),
         IndexSpec(
@@ -84,6 +117,7 @@ INDEX_REGISTRY = {
             "USD",
             "XNAS",
             basket="ndx",
+            fred="NASDAQ100",
             aliases=(
                 "纳指",
                 "NDX",
@@ -103,6 +137,7 @@ INDEX_REGISTRY = {
             "USD",
             "XNYS",
             aliases=("道琼斯", "DJIA"),
+            fred="DJIA",
         ),
         IndexSpec(
             "russell-2000",
@@ -127,6 +162,7 @@ INDEX_REGISTRY = {
             "XCBF",
             basis="implied-volatility",
             kind="volatility",
+            fred="VIXCLS",
         ),
         IndexSpec(
             "ftse-100",
@@ -171,6 +207,7 @@ INDEX_REGISTRY = {
             "JPY",
             "XTKS",
             aliases=("日经", "日経平均", "Nikkei Stock Average"),
+            fred="NIKKEI225",
         ),
         IndexSpec(
             "topix",
@@ -271,6 +308,7 @@ INDEX_REGISTRY = {
             "EUR",
             "XETR",
             basis="total-return",
+            return_variant="GR",
         ),
         IndexSpec(
             "cac-40", "eu", "CAC 40", "法国 CAC 40", "Euronext", "PX1", "^FCHI", "EUR", "XPAR"
@@ -288,6 +326,7 @@ INDEX_REGISTRY = {
             "CNY",
             "XSHG",
             history_years=0,
+            eodhd="CSI300.INDX",
         ),
         IndexSpec(
             "sse-composite",
@@ -462,6 +501,241 @@ INDEX_REGISTRY = {
     )
 }
 
+# These are distinct series. They are catalogued without adding new quote
+# requests to the existing market-board batches.
+_EXTRA_INDICES = (
+    IndexSpec(
+        "nasdaq-100-nr",
+        "us",
+        "Nasdaq-100 Notional Net Total Return",
+        "纳斯达克 100 净回报",
+        "Nasdaq",
+        "XNDXNNR",
+        "^XNDXNNR",
+        "USD",
+        "XNAS",
+        basis="net-return",
+        family_id="nasdaq-100",
+        history_years=0,
+        market_visible=False,
+        basket="ndx",
+    ),
+    IndexSpec(
+        "nasdaq-100-gr",
+        "us",
+        "Nasdaq-100 Total Return",
+        "纳斯达克 100 总回报",
+        "Nasdaq",
+        "XNDX",
+        "^XNDX",
+        "USD",
+        "XNAS",
+        basis="total-return",
+        return_variant="GR",
+        family_id="nasdaq-100",
+        history_years=0,
+        market_visible=False,
+        basket="ndx",
+    ),
+    IndexSpec(
+        "sp-500-gr",
+        "us",
+        "S&P 500 Total Return",
+        "标普 500 总回报",
+        "S&P DJI",
+        "SP500TR",
+        "^SP500TR",
+        "USD",
+        "XNYS",
+        basis="total-return",
+        return_variant="GR",
+        family_id="sp-500",
+        market_visible=False,
+        basket="us",
+    ),
+    IndexSpec(
+        "msci-usa-momentum",
+        "us",
+        "MSCI USA Momentum",
+        "MSCI 美国动量",
+        "MSCI",
+        "703025",
+        "^703025-USD-NETR",
+        "USD",
+        "MSCI-global",
+        basis="net-return",
+        history_years=0,
+        market_visible=False,
+    ),
+    IndexSpec(
+        "msci-world-ex-usa-nr",
+        "global",
+        "MSCI World ex USA Net Return",
+        "MSCI 世界（除美国）净回报",
+        "MSCI",
+        "991000",
+        "^991000-USD-NETR",
+        "USD",
+        "MSCI-global",
+        basis="net-return",
+        family_id="msci-world-ex-usa",
+        history_years=0,
+        market_visible=False,
+    ),
+    IndexSpec(
+        "msci-em-nr",
+        "global",
+        "MSCI Emerging Markets Net Return",
+        "MSCI 新兴市场净回报",
+        "MSCI",
+        "891800",
+        "^891800-USD-NETR",
+        "USD",
+        "MSCI-global",
+        basis="net-return",
+        family_id="msci-em",
+        history_years=0,
+        market_visible=False,
+    ),
+    IndexSpec(
+        "marketvector-semiconductor-screened",
+        "us",
+        "MarketVector US Listed Semiconductor 10% Capped Screened",
+        "美国上市半导体筛选 10% 限权",
+        "MarketVector",
+        "MVSMCTR",
+        None,
+        "USD",
+        "XNYS",
+        basis="net-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "msci-semiconductors-screened",
+        "global",
+        "MSCI ACWI IMI Semiconductors & Semiconductor Equipment Screened Select Capped",
+        "MSCI 全球半导体及设备筛选限权",
+        "MSCI",
+        "NU738380",
+        None,
+        "USD",
+        "MSCI-global",
+        basis="net-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "ftse-developed-ex-us-all-cap",
+        "global",
+        "FTSE Developed All Cap ex US",
+        "富时发达市场（除美国）全市值",
+        "FTSE Russell",
+        "ACDXUSR",
+        None,
+        "USD",
+        "FTSE-global",
+        basis="total-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "msci-usa-momentum-sr",
+        "us",
+        "MSCI USA Momentum SR Variant",
+        "MSCI 美国动量 SR",
+        "MSCI",
+        "USA-MOMENTUM-SR",
+        None,
+        "USD",
+        "MSCI-global",
+        basis="total-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "marketvector-semiconductor-25",
+        "us",
+        "MarketVector US Listed Semiconductor 25",
+        "美国上市半导体 25",
+        "MarketVector",
+        "MVSMHTR",
+        None,
+        "USD",
+        "XNYS",
+        basis="total-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "ice-nyse-semiconductor",
+        "us",
+        "NYSE Semiconductor",
+        "纽交所半导体",
+        "ICE Data Indices",
+        "NYSE-SEMICONDUCTOR",
+        None,
+        "USD",
+        "XNYS",
+        basis="total-return",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "topix-index",
+        "jp",
+        "TOPIX",
+        "东证股价指数",
+        "JPX",
+        "TOPIX",
+        None,
+        "JPY",
+        "XTKS",
+        family_id="topix",
+        eodhd="TOPX.INDX",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "hang-seng-tech-index",
+        "hk",
+        "Hang Seng TECH",
+        "恒生科技指数",
+        "Hang Seng Indexes",
+        "HSTECH",
+        None,
+        "HKD",
+        "XHKG",
+        family_id="hang-seng-tech",
+        eodhd="HSTECH.INDX",
+        history_years=0,
+        rights="licensed-source-required",
+        market_visible=False,
+    ),
+    IndexSpec(
+        "kospi-200",
+        "kr",
+        "KOSPI 200",
+        "韩国 KOSPI 200",
+        "KRX",
+        "KOSPI200",
+        "^KS200",
+        "KRW",
+        "XKRX",
+        eodhd="KOSPI200.INDX",
+        history_years=0,
+        market_visible=False,
+    ),
+)
+INDEX_REGISTRY.update((spec.id, spec) for spec in _EXTRA_INDICES)
+
 
 def _key(value: str) -> str:
     return "".join(char for char in value.casefold() if char.isalnum() or char == "^")
@@ -474,7 +748,7 @@ _BENCHMARK_NAMES = {
     for spec in INDEX_REGISTRY.values()
     for label in (spec.name, *spec.aliases)
     for name in (label, label + " Index")
-    if label.isascii()
+    if spec.market_visible and label.isascii()
 }
 
 

@@ -320,7 +320,7 @@ const fakeIndex = (
   symbol: string, currency: string | null, kind: IndexIdentity["kind"] = "index",
 ): IndexIdentity => ({
   id, scope, name, nameZh, symbol, currency, kind, compiler: "Synthetic fixture",
-  compilerId: id, basis: kind === "volatility" ? "implied-volatility" : "price",
+  compilerId: id, familyId: id, seriesCode: symbol, hedging: "unhedged", basis: kind === "volatility" ? "implied-volatility" : "price",
   calendar: "SYNTH", historyYears: 5, ranges: ["1D", "1W", "1M", "3M", "6M", "1Y", "3Y", "5Y", "MAX"], rights: "provider-terms", aliases: [],
   source: "Synthetic fixture",
 });

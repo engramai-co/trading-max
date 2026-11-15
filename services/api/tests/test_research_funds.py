@@ -132,6 +132,7 @@ def test_held_fund_lenses_use_same_published_reading_without_issuer_io():
             state=SimpleNamespace(
                 store=store,
                 research=SimpleNamespace(held_fund=lambda *_: None),
+                research_funds=SimpleNamespace(with_daily_tracking=lambda fund: fund),
             )
         )
     )

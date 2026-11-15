@@ -18,6 +18,11 @@ from trading_max.infrastructure.alpaca_market_prices import (
     market_price_sources,
 )
 from trading_max.infrastructure.durable_files import atomic_bytes
+from trading_max.infrastructure.index_valuation_archive import (
+    ValuationObservation,
+    archive_valuation,
+    bottom_up_valuation,
+)
 from trading_max.infrastructure.sector_prices import (
     BATCH_SIZE,
     YAHOO_SOURCE,
@@ -250,6 +255,8 @@ class IndexDepth:
     ) -> None:
         self.root = root / "state" / "indices" / "depth-v1"
         self.valuation_root = root / "reference" / "index-valuations"
+        self.valuation_archive = root / "state" / "indices" / "valuation-v1"
+        self.sec_source = root / "reference" / "sec-companyfacts"
         self.prices = prices
         self.universes = universes or SectorUniverseProvider(root)
         self._attempts: dict[str, tuple[str, datetime, int]] = {}
@@ -314,6 +321,30 @@ class IndexDepth:
         check_active: Callable[[], None],
     ) -> None:
         """Run only after the market monitor's ordinary quote work."""
+        for key, ref in VALUATION_REFERENCES.items():
+            if INDEX_REGISTRY[key].scope != market and market != "us":
+                continue
+            check_active()
+            snapshot, _ = self.valuation(INDEX_REGISTRY[key], now)
+            if snapshot is not None:
+                try:
+                    archive_valuation(
+                        self.valuation_archive,
+                        ValuationObservation(
+                            index_id=key,
+                            source_kind="official" if ref.basis == "index" else "fund-proxy",
+                            source_url=ref.source_url,
+                            method="Published index snapshot"
+                            if ref.basis == "index"
+                            else "Issuer portfolio snapshot",
+                            as_of=snapshot.as_of,
+                            recorded_at=now,
+                            pe=snapshot.pe,
+                            forward_pe=snapshot.forward_pe,
+                        ),
+                    )
+                except OSError:
+                    LOGGER.debug("Index valuation archive unavailable", exc_info=True)
         if market == "us":
             self._refresh_vix(now, check_active)
         try:
@@ -492,6 +523,22 @@ class IndexDepth:
                 ),
             )
             for key, basket in baskets.items():
+                if market == "us" and (self.sec_source / "company_tickers.json").is_file():
+                    check_active()
+                    valuation = bottom_up_valuation(
+                        self.sec_source,
+                        key,
+                        basket,
+                        {
+                            symbol: row.values[day]
+                            for symbol, row in closes.items()
+                            if day in row.values
+                        },
+                        date.fromisoformat(day),
+                        now,
+                    )
+                    if valuation is not None:
+                        archive_valuation(self.valuation_archive, valuation)
                 if snapshot := _breadth(basket, dates, closes, now):
                     previous = self.breadth(INDEX_REGISTRY[key])
                     if (

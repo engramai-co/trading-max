@@ -19,6 +19,7 @@ export function useResearchUniverse(instruments: ResearchInstrument[]) {
   const displayed = instruments
     .filter(
       (i) =>
+        (i.watchlisted !== false || i.held) &&
         (!heldOnly || i.held) &&
         (category === "all" || i.categoryId === category) &&
         (i.ticker + i.name).toLowerCase().includes(filter.trim().toLowerCase()),

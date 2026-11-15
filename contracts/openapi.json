@@ -4572,6 +4572,200 @@
         "title": "ConsensusEstimate",
         "type": "object"
       },
+      "DailyTracking": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmarkCurrency": {
+            "title": "Benchmarkcurrency",
+            "type": "string"
+          },
+          "benchmarkId": {
+            "title": "Benchmarkid",
+            "type": "string"
+          },
+          "benchmarkUnit": {
+            "enum": [
+              "growth-of-10000",
+              "index-points"
+            ],
+            "title": "Benchmarkunit",
+            "type": "string"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "navCurrency": {
+            "title": "Navcurrency",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/DailyTrackingPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "returnBasis": {
+            "const": "net-total-return",
+            "default": "net-total-return",
+            "title": "Returnbasis",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "available",
+              "insufficient-common-dates",
+              "hedged-comparison-unconfirmed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyTrackingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "isin",
+          "benchmarkId",
+          "state",
+          "navCurrency",
+          "benchmarkCurrency",
+          "benchmarkUnit",
+          "sourceUrl",
+          "points"
+        ],
+        "title": "DailyTracking",
+        "type": "object"
+      },
+      "DailyTrackingPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmarkLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarklevel"
+          },
+          "cumulativeDifference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulativedifference"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "fundReturnLevel": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fundreturnlevel"
+          },
+          "nav": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nav"
+          },
+          "rollingTrackingError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollingtrackingerror"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "title": "DailyTrackingPoint",
+        "type": "object"
+      },
+      "DailyTrackingSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "commonObservations": {
+            "title": "Commonobservations",
+            "type": "integer"
+          },
+          "dailyReturnObservations": {
+            "title": "Dailyreturnobservations",
+            "type": "integer"
+          },
+          "firstDate": {
+            "format": "date",
+            "title": "Firstdate",
+            "type": "string"
+          },
+          "lastDate": {
+            "format": "date",
+            "title": "Lastdate",
+            "type": "string"
+          },
+          "trackingDifference": {
+            "title": "Trackingdifference",
+            "type": "number"
+          },
+          "trackingError": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trackingerror"
+          }
+        },
+        "required": [
+          "firstDate",
+          "lastDate",
+          "commonObservations",
+          "dailyReturnObservations",
+          "trackingDifference"
+        ],
+        "title": "DailyTrackingSummary",
+        "type": "object"
+      },
       "DashboardLensSnapshot": {
         "description": "A page-scoped dashboard payload.\n\nDashboard routes render a stable shell first and request exactly one lens.\nOptional fields are populated only when the selected interface needs them,\npreventing account history, look-through data, and research tables from\nbeing shipped to unrelated pages.",
         "properties": {
@@ -6248,6 +6442,63 @@
         "title": "ETFTracking",
         "type": "object"
       },
+      "EodhdIntegrationCandidate": {
+        "properties": {
+          "apiKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Apikey",
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiKey"
+        ],
+        "title": "EodhdIntegrationCandidate",
+        "type": "object"
+      },
+      "EodhdIntegrationRequest": {
+        "properties": {
+          "apiKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Apikey",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "validationToken": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Validationtoken",
+            "type": "string"
+          }
+        },
+        "required": [
+          "apiKey",
+          "validationToken"
+        ],
+        "title": "EodhdIntegrationRequest",
+        "type": "object"
+      },
+      "EodhdIntegrationUpdate": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EodhdIntegrationUpdate",
+        "type": "object"
+      },
       "EstimateObservation": {
         "additionalProperties": false,
         "properties": {
@@ -6899,6 +7150,83 @@
         "title": "FrozenValuationBasis",
         "type": "object"
       },
+      "FundBenchmark": {
+        "additionalProperties": false,
+        "properties": {
+          "benchmarkId": {
+            "title": "Benchmarkid",
+            "type": "string"
+          },
+          "comparisonId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparisonid"
+          },
+          "domicile": {
+            "default": "IE",
+            "enum": [
+              "IE",
+              "US"
+            ],
+            "title": "Domicile",
+            "type": "string"
+          },
+          "evidenceDate": {
+            "format": "date",
+            "title": "Evidencedate",
+            "type": "string"
+          },
+          "evidenceUrl": {
+            "title": "Evidenceurl",
+            "type": "string"
+          },
+          "hedged": {
+            "default": false,
+            "title": "Hedged",
+            "type": "boolean"
+          },
+          "isin": {
+            "title": "Isin",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "exact",
+              "same-family-other-variant",
+              "similar-exposure",
+              "related-different-structure",
+              "unconfirmed"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "shareCurrency": {
+            "default": "USD",
+            "title": "Sharecurrency",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "isin",
+          "ticker",
+          "benchmarkId",
+          "relation",
+          "evidenceUrl",
+          "evidenceDate"
+        ],
+        "title": "FundBenchmark",
+        "type": "object"
+      },
       "FundEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -7131,6 +7459,26 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/IndexIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "benchmarkRelationship": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundBenchmark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dailyTracking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyTracking"
               },
               {
                 "type": "null"
@@ -9545,6 +9893,21 @@
             ],
             "title": "Asof"
           },
+          "coverageReason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "source-interval-mismatch",
+                  "daily-coverage-incomplete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coveragereason"
+          },
           "currency": {
             "anyOf": [
               {
@@ -9555,6 +9918,17 @@
               }
             ],
             "title": "Currency"
+          },
+          "displayInterval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayinterval"
           },
           "gaps": {
             "items": {
@@ -9604,6 +9978,17 @@
             ],
             "title": "Range",
             "type": "string"
+          },
+          "sourceInterval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceinterval"
           },
           "state": {
             "default": "unavailable",
@@ -9677,6 +10062,21 @@
             ],
             "title": "Currency"
           },
+          "familyId": {
+            "default": "",
+            "title": "Familyid",
+            "type": "string"
+          },
+          "hedging": {
+            "default": "unknown",
+            "enum": [
+              "unhedged",
+              "currency-hedged",
+              "unknown"
+            ],
+            "title": "Hedging",
+            "type": "string"
+          },
           "historyYears": {
             "title": "Historyyears",
             "type": "integer"
@@ -9747,6 +10147,11 @@
             "title": "Scope",
             "type": "string"
           },
+          "seriesCode": {
+            "default": "",
+            "title": "Seriescode",
+            "type": "string"
+          },
           "source": {
             "anyOf": [
               {
@@ -9758,6 +10163,9 @@
             ],
             "title": "Source"
           },
+          "sourceCodes": {
+            "$ref": "#/components/schemas/IndexSourceCodes"
+          },
           "symbol": {
             "anyOf": [
               {
@@ -9768,6 +10176,23 @@
               }
             ],
             "title": "Symbol"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "enum": [
+                  "PR",
+                  "NR",
+                  "GR",
+                  "TR"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant"
           }
         },
         "required": [
@@ -9930,6 +10355,45 @@
           "index"
         ],
         "title": "IndexQuote",
+        "type": "object"
+      },
+      "IndexSourceCodes": {
+        "properties": {
+          "eodhd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eodhd"
+          },
+          "fred": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fred"
+          },
+          "yahoo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Yahoo"
+          }
+        },
+        "title": "IndexSourceCodes",
         "type": "object"
       },
       "IndexValuationReference": {
@@ -10242,6 +10706,7 @@
               "openai-codex",
               "opencode",
               "alpaca",
+              "eodhd",
               "anthropic",
               "google"
             ],
@@ -18965,7 +19430,8 @@
           "source": {
             "enum": [
               "openfigi",
-              "watchlist"
+              "watchlist",
+              "registry"
             ],
             "title": "Source",
             "type": "string"
@@ -24459,6 +24925,16 @@
               "title": "Detail",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "preview",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Preview",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -25537,6 +26013,221 @@
           }
         },
         "summary": "Test Deepseek",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/integrations/eodhd": {
+      "delete": {
+        "operationId": "delete_eodhd_v1_settings_integrations_eodhd_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Eodhd",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "toggle_eodhd_v1_settings_integrations_eodhd_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EodhdIntegrationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Toggle Eodhd",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "save_eodhd_v1_settings_integrations_eodhd_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EodhdIntegrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Eodhd",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/v1/settings/integrations/eodhd/test": {
+      "post": {
+        "operationId": "test_eodhd_v1_settings_integrations_eodhd_test_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EodhdIntegrationCandidate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Eodhd",
         "tags": [
           "settings"
         ]

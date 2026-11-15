@@ -21,6 +21,7 @@ from trading_max.reference import (
     infer_gics_eligibility,
 )
 from trading_max.research import TaxonomyCatalog, TaxonomyWorkflowDecision
+from trading_max.research.fund_references import us_fund
 from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY
 
 from .artifacts import ArtifactStore
@@ -733,6 +734,13 @@ class SecuritySearchService:
             )
         )
 
+    def exact(self, ticker: str) -> SecuritySearchResult | None:
+        """Return a verified listing only, without substituting a nearby ticker."""
+        return next(
+            (row for row in self.search(ticker, limit=20).results if row.ticker == ticker.upper()),
+            None,
+        )
+
     def _enrich_result(self, result: SecuritySearchResult) -> SecuritySearchResult:
         # A refresh can update the catalog without restarting the API process.
         self.security_master = CatalogSecurityMaster.from_state_root(self.watchlist.path.parent)
@@ -1019,7 +1027,10 @@ class SecuritySearchService:
                 "query": query,
                 "results": [
                     item.model_copy(
-                        update={"already_watched": item.ticker in tickers or item.figi in figis}
+                        update={
+                            "already_watched": item.ticker in tickers
+                            or bool(item.figi and item.figi in figis)
+                        }
                     )
                     for item in response.results[:limit]
                 ],
@@ -1047,6 +1058,24 @@ class SecuritySearchService:
         if exact_local:
             return SecuritySearchResponse(
                 query=normalized, source="watchlist", results=exact_local[:limit]
+            )
+
+        if fund := us_fund(normalized):
+            return SecuritySearchResponse(
+                query=normalized,
+                source="registry",
+                results=[
+                    SecuritySearchResult(
+                        ticker=fund.ticker,
+                        name=fund.name,
+                        exchange=fund.exchange,
+                        bloomberg_ticker=f"{fund.ticker} US Equity",
+                        figi="",
+                        canonical_ticker=fund.ticker,
+                        identity_source="issuer-registry",
+                        security_type="ETF",
+                    )
+                ],
             )
 
         ranked = [(match_score(normalized, item.name, item.ticker), item) for item in local]

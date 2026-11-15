@@ -1057,6 +1057,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/integrations/eodhd": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Eodhd */
+        put: operations["save_eodhd_v1_settings_integrations_eodhd_put"];
+        post?: never;
+        /** Delete Eodhd */
+        delete: operations["delete_eodhd_v1_settings_integrations_eodhd_delete"];
+        options?: never;
+        head?: never;
+        /** Toggle Eodhd */
+        patch: operations["toggle_eodhd_v1_settings_integrations_eodhd_patch"];
+        trace?: never;
+    };
+    "/v1/settings/integrations/eodhd/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Eodhd */
+        post: operations["test_eodhd_v1_settings_integrations_eodhd_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/integrations/trading212/{profile}": {
         parameters: {
             query?: never;
@@ -2767,6 +2803,77 @@ export interface components {
             /** Periodend */
             periodEnd?: string | null;
         };
+        /** DailyTracking */
+        DailyTracking: {
+            /** Benchmarkcurrency */
+            benchmarkCurrency: string;
+            /** Benchmarkid */
+            benchmarkId: string;
+            /**
+             * Benchmarkunit
+             * @enum {string}
+             */
+            benchmarkUnit: "growth-of-10000" | "index-points";
+            /** Isin */
+            isin: string;
+            /** Navcurrency */
+            navCurrency: string;
+            /** Points */
+            points: components["schemas"]["DailyTrackingPoint"][];
+            /**
+             * Returnbasis
+             * @default net-total-return
+             * @constant
+             */
+            returnBasis: "net-total-return";
+            /** Sourceurl */
+            sourceUrl: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "insufficient-common-dates" | "hedged-comparison-unconfirmed";
+            summary?: components["schemas"]["DailyTrackingSummary"] | null;
+        };
+        /** DailyTrackingPoint */
+        DailyTrackingPoint: {
+            /** Benchmarklevel */
+            benchmarkLevel?: number | null;
+            /** Cumulativedifference */
+            cumulativeDifference?: number | null;
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Fundreturnlevel */
+            fundReturnLevel?: number | null;
+            /** Nav */
+            nav?: number | null;
+            /** Rollingtrackingerror */
+            rollingTrackingError?: number | null;
+        };
+        /** DailyTrackingSummary */
+        DailyTrackingSummary: {
+            /** Commonobservations */
+            commonObservations: number;
+            /** Dailyreturnobservations */
+            dailyReturnObservations: number;
+            /**
+             * Firstdate
+             * Format: date
+             */
+            firstDate: string;
+            /**
+             * Lastdate
+             * Format: date
+             */
+            lastDate: string;
+            /** Trackingdifference */
+            trackingDifference: number;
+            /** Trackingerror */
+            trackingError?: number | null;
+        };
         /**
          * DashboardLensSnapshot
          * @description A page-scoped dashboard payload.
@@ -3241,6 +3348,28 @@ export interface components {
              */
             state: "available" | "stale" | "incomparable" | "missing";
         };
+        /** EodhdIntegrationCandidate */
+        EodhdIntegrationCandidate: {
+            /** Apikey */
+            apiKey: string;
+        };
+        /** EodhdIntegrationRequest */
+        EodhdIntegrationRequest: {
+            /** Apikey */
+            apiKey: string;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Validationtoken */
+            validationToken: string;
+        };
+        /** EodhdIntegrationUpdate */
+        EodhdIntegrationUpdate: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** EstimateObservation */
         EstimateObservation: {
             /** Consensus */
@@ -3446,6 +3575,45 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** FundBenchmark */
+        FundBenchmark: {
+            /** Benchmarkid */
+            benchmarkId: string;
+            /** Comparisonid */
+            comparisonId?: string | null;
+            /**
+             * Domicile
+             * @default IE
+             * @enum {string}
+             */
+            domicile: "IE" | "US";
+            /**
+             * Evidencedate
+             * Format: date
+             */
+            evidenceDate: string;
+            /** Evidenceurl */
+            evidenceUrl: string;
+            /**
+             * Hedged
+             * @default false
+             */
+            hedged: boolean;
+            /** Isin */
+            isin: string;
+            /**
+             * Relation
+             * @enum {string}
+             */
+            relation: "exact" | "same-family-other-variant" | "similar-exposure" | "related-different-structure" | "unconfirmed";
+            /**
+             * Sharecurrency
+             * @default USD
+             */
+            shareCurrency: string;
+            /** Ticker */
+            ticker: string;
+        };
         /** FundEvidence */
         FundEvidence: {
             /**
@@ -3562,6 +3730,8 @@ export interface components {
             /** Basecurrency */
             baseCurrency?: string | null;
             benchmark?: components["schemas"]["IndexIdentity"] | null;
+            benchmarkRelationship?: components["schemas"]["FundBenchmark"] | null;
+            dailyTracking?: components["schemas"]["DailyTracking"] | null;
             /** Disclosures */
             disclosures?: components["schemas"]["ETFDisclosure"][];
             /** Domicile */
@@ -4276,8 +4446,12 @@ export interface components {
         IndexHistory: {
             /** Asof */
             asOf?: string | null;
+            /** Coveragereason */
+            coverageReason?: ("source-interval-mismatch" | "daily-coverage-incomplete") | null;
             /** Currency */
             currency?: string | null;
+            /** Displayinterval */
+            displayInterval?: string | null;
             /** Gaps */
             gaps?: string[];
             /**
@@ -4295,6 +4469,8 @@ export interface components {
              * @enum {string}
              */
             range: "1D" | "1W" | "1M" | "3M" | "6M" | "1Y" | "3Y" | "5Y" | "MAX";
+            /** Sourceinterval */
+            sourceInterval?: string | null;
             /**
              * State
              * @default unavailable
@@ -4321,6 +4497,17 @@ export interface components {
             compilerId: string;
             /** Currency */
             currency: string | null;
+            /**
+             * Familyid
+             * @default
+             */
+            familyId: string;
+            /**
+             * Hedging
+             * @default unknown
+             * @enum {string}
+             */
+            hedging: "unhedged" | "currency-hedged" | "unknown";
             /** Historyyears */
             historyYears: number;
             /** Id */
@@ -4346,10 +4533,18 @@ export interface components {
              * @enum {string}
              */
             scope: "global" | "us" | "eu" | "uk" | "jp" | "hk" | "kr" | "cn" | "tw" | "in" | "ca" | "au" | "ch";
+            /**
+             * Seriescode
+             * @default
+             */
+            seriesCode: string;
             /** Source */
             source: string | null;
+            sourceCodes?: components["schemas"]["IndexSourceCodes"];
             /** Symbol */
             symbol: string | null;
+            /** Variant */
+            variant?: ("PR" | "NR" | "GR" | "TR") | null;
         };
         /** IndexMarket */
         IndexMarket: {
@@ -4400,6 +4595,15 @@ export interface components {
              * @enum {string}
              */
             state: "unavailable" | "observed" | "live" | "closed" | "stale";
+        };
+        /** IndexSourceCodes */
+        IndexSourceCodes: {
+            /** Eodhd */
+            eodhd?: string | null;
+            /** Fred */
+            fred?: string | null;
+            /** Yahoo */
+            yahoo?: string | null;
         };
         /** IndexValuationReference */
         IndexValuationReference: {
@@ -4532,7 +4736,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "anthropic" | "google";
+            provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "eodhd" | "anthropic" | "google";
             /**
              * Revision
              * @default 1
@@ -7551,7 +7755,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "openfigi" | "watchlist";
+            source: "openfigi" | "watchlist" | "registry";
         };
         /** SecuritySearchResult */
         SecuritySearchResult: {
@@ -10056,6 +10260,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 detail?: "full" | "summary" | "seasonality" | "documents";
+                preview?: boolean;
             };
             header?: never;
             path: {
@@ -10705,6 +10910,140 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DeepSeekIntegrationCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTestResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_eodhd_v1_settings_integrations_eodhd_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EodhdIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_eodhd_v1_settings_integrations_eodhd_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    toggle_eodhd_v1_settings_integrations_eodhd_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EodhdIntegrationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_eodhd_v1_settings_integrations_eodhd_test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EodhdIntegrationCandidate"];
             };
         };
         responses: {

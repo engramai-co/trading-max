@@ -67,6 +67,20 @@ class FakePrices:
             (f"2026-11-06T{hour}:00:00+00:00", 115),
         )
 
+    def dated_history(self, symbol, start, end):
+        if start.year == 1927:
+            return replace(
+                bars(
+                    symbol,
+                    ("1927-12-30T15:00:00+00:00", 100),
+                    ("1928-01-06T15:00:00+00:00", 110),
+                    ("1928-01-13T15:00:00+00:00", 105),
+                    ("2026-11-06T15:00:00+00:00", 300),  # provider-appended live price
+                ),
+                granularity="1d",
+            )
+        return replace(self.history(symbol), granularity="1d")
+
     def history_bars(self, symbol, window, now):
         self.history_calls.append((symbol, window, now))
         if window == "MAX":
@@ -310,14 +324,16 @@ def test_intraday_history_uses_same_window_fx_with_interval_tolerance(api, perio
     ]
 
 
-def test_max_uses_completed_weekly_bars_and_weekly_annualisation(api):
+def test_max_keeps_first_daily_observation_and_samples_weekly(api):
     client, _, _ = api
     result = client.get("/v1/indices/sp-500/history?range=MAX").json()
     assert [point["at"] for point in result["points"]] == [
-        "1999-10-13T00:00:00Z",
-        "1999-10-20T00:00:00Z",
-        "1999-10-27T00:00:00Z",
+        "1927-12-30T00:00:00Z",
+        "1928-01-06T00:00:00Z",
+        "1928-01-13T00:00:00Z",
     ]
+    assert result["sourceInterval"] == "1d"
+    assert result["displayInterval"] == "1wk"
     assert result["volatility"] == pytest.approx(statistics.stdev([0.1, 105 / 110 - 1]) * 52**0.5)
     assert result["gaps"] == []
 
@@ -625,3 +641,20 @@ def test_taiwan_quote_uses_matching_provider_close_when_daily_bar_is_null(api, c
         assert quote["state"] == "unavailable"
         assert quote["level"] is None
         assert response["refreshFailed"]
+
+
+def test_coarse_source_is_labelled_without_daily_risk(api, monkeypatch):
+    client, prices, _ = api
+    monkeypatch.setattr(
+        prices,
+        "dated_history",
+        lambda symbol, *_: replace(
+            prices.history(symbol),
+            granularity="1mo",
+        ),
+    )
+    result = client.get("/v1/indices/sp-500/history?range=MAX").json()
+    assert result["points"] and result["state"] == "partial"
+    assert result["sourceInterval"] == result["displayInterval"] == "1mo"
+    assert result["coverageReason"] == "source-interval-mismatch"
+    assert result["volatility"] is None

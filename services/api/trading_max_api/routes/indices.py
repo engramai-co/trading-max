@@ -13,7 +13,7 @@ from ..index_models import (
     IndexIdentity,
     IndexMarket,
 )
-from ..indices import active_indices, index_identity
+from ..indices import active_indices
 from .dependencies import app_service
 
 router = APIRouter(tags=["indices"])
@@ -28,8 +28,8 @@ def _find(index_id: str) -> IndexSpec:
 
 
 @router.get("/v1/indices/catalog", response_model=list[IndexIdentity])
-def index_catalog() -> list[IndexIdentity]:
-    return [index_identity(item) for item in active_indices()]
+def index_catalog(request: Request) -> list[IndexIdentity]:
+    return app_service(request, "indices").catalog()
 
 
 @router.get("/v1/indices", response_model=IndexMarket)
