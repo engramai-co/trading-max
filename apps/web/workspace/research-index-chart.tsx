@@ -66,6 +66,19 @@ export function rollingIndexRisk(values: (number | null)[], periods: number) {
   return { drawdown, volatility };
 }
 
+export function indexLogDomain(series: (number | null)[][]) {
+  const observed = series.flat().filter((value): value is number => value != null && value > 0);
+  if (!observed.length) return {};
+  const low = Math.log(Math.min(...observed));
+  const high = Math.log(Math.max(...observed));
+  const padding = Math.max(.012, (high - low) * .055);
+  return {
+    min: Math.exp(low - padding),
+    max: Math.exp(high + padding),
+    logBase: Math.min(10, Math.exp(Math.max(.04, (high - low) / 4))),
+  };
+}
+
 export function ResearchIndexChart({ index, catalogue, preview = false, demonstration = false }: {
   index: IndexIdentity; catalogue: IndexIdentity[]; preview?: boolean; demonstration?: boolean;
 }) {
@@ -120,6 +133,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
     gap: (i: number) => primary[Math.round(i)] == null, observationCount: positions.length } };
   const tools = !preview && hasRange;
   const logarithmic = log && ["1Y", "3Y", "5Y", "MAX"].includes(period);
+  const logDomain = logarithmic ? indexLogDomain(values) : {};
   return (
     <Panel title={label} help={t(
       "区间回报从图中首个有效读数计算。对比按第一个共同日期归一为 100；只允许同币种、同回报口径和同对冲的指数。",
@@ -169,10 +183,12 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
                 return {
                   animation: false,
                   grid: { left: 64, right: 15, top: comparing ? 40 : 17, bottom: 30 },
-                  legend: comparing ? { show: true, data: labels, textStyle: { color: colours.text } } : undefined,
+                  legend: comparing ? { type: "scroll", top: 2, left: "center", show: true, data: labels,
+                    textStyle: { color: colours.text } } : undefined,
                   xAxis: { type: "category", data: dates, boundaryGap: false,
                     axisLabel: { formatter: (at: string) => period === "MAX" ? at.slice(0, 4) : stamp(at) } },
-                  yAxis: { type: logarithmic ? "log" : "value", scale: true, splitNumber: 4 },
+                  yAxis: { type: logarithmic ? "log" : "value", scale: true, splitNumber: 4,
+                    ...logDomain, axisLabel: { formatter: valueText } },
                   tooltip: { trigger: "axis", valueFormatter: (value) => typeof value === "number" ? valueText(value) : "—" },
                   series: [...series, {
                     id: "history-gap:index", type: "line",

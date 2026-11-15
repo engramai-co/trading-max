@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { alignResearchIndices, rollingIndexRisk } from "./research-index-chart";
+import { alignResearchIndices, indexLogDomain, rollingIndexRisk } from "./research-index-chart";
 import type { IndexHistory } from "./market-indices-data";
 
 const history = (values: [string, number][], gaps: string[] = []): IndexHistory => ({
@@ -15,6 +15,15 @@ describe("index research chart arithmetic", () => {
     ]);
     expect(result.dates).toEqual(["2026-01-02", "2026-01-05", "2026-01-06"]);
     expect(result.values).toEqual([[100, 120, null], [100, 150, 162.5], [100, null, 120]]);
+  });
+
+  test("log bounds preserve a narrow observed range without zooming out a decade", () => {
+    const domain = indexLogDomain([[100, 115, 120], [101, 117, null]]);
+    expect(domain.min).toBeLessThan(100);
+    expect(domain.max).toBeGreaterThan(120);
+    expect(domain.max).toBeLessThan(130);
+    expect(domain.logBase).toBeGreaterThan(1);
+    expect(indexLogDomain([[null]])).toEqual({});
   });
 
   test("rolling volatility needs a gap-free sample and drawdown keeps the high water mark", () => {
