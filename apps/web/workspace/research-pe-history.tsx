@@ -207,7 +207,9 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
     : nonPositive ? t("EPS 不为正，无法计算 P/E", "P/E is undefined for nonpositive EPS")
     : t("有效样本不足", "Not enough valid observations");
   const samples = distribution?.samples ?? plot.observed.length;
-  const validDates = points.filter((p) => p.pe != null).map((p) => p.date);
+  const validDates = points
+    .filter((point) => point.pe != null && (isTrailing || !distribution || point.segment === latest?.segment))
+    .map((point) => point.date);
   const info = validDates.length ? `${date(validDates[0])} – ${date(validDates.at(-1)!)} · ${number(samples, 0)} ${t("个有效读数", "valid readings")}` : undefined;
 
   return (
