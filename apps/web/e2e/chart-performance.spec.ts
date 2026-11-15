@@ -75,6 +75,7 @@ test("benchmarks two 50k-point index lines at 4× CPU", async ({ browser, page, 
       } finally {
         window.requestAnimationFrame = original;
         node.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse" }));
+        node.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
       }
       return durations;
     });
