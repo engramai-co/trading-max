@@ -14,7 +14,8 @@ import { EvidenceReading } from "./etf-reading";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Freshness, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
-import { indexHref } from "./market-indices-data";
+import { researchIndexHref } from "./market-indices-data";
+import { DailyTrackingSeries, PremiumDiscountSeries } from "./research-fund-tracking-series";
 import { researchPriceQuery } from "./research-queries";
 import { usFundRelation } from "./research-fund-reference";
 
@@ -25,7 +26,7 @@ type Holding = components["schemas"]["FundHolding"];
 type FundSize = components["schemas"]["FundSize"];
 type FundMode = "overview" | "tracking" | "holdings" | "peers";
 
-export function fundQuery(ticker: string, runId: string | undefined, detail: "profile" | "full" | "journal" | "peers" = "full") {
+export function fundQuery(ticker: string, runId: string | undefined, detail: "profile" | "full" | "journal" | "peers" | "tracking" = "full") {
   return queryOptions({
     queryKey: ["research-fund", ticker, runId, detail],
     queryFn: ({ signal }) => readApi<Fund>(
@@ -103,7 +104,7 @@ export function FundPending({ ticker, runId }: { ticker: string; runId?: string 
 function FundIssuerLens({ data, mode, onExplore }: {
   data: ResearchLensSnapshot; mode: Exclude<FundMode, "peers">; onExplore: (ticker: string) => void;
 }) {
-  const query = useQuery(fundQuery(data.ticker, data.runId, mode === "holdings" ? "full" : "profile"));
+  const query = useQuery(fundQuery(data.ticker, data.runId, mode === "holdings" ? "full" : mode === "tracking" ? "tracking" : "profile"));
   const saved = useSavedFund(data.ticker);
   const updating = query.isPending || query.data?.state === "pending";
   if (!query.data && query.isError && !saved) return <QueryError retry={query.refetch} error={query.error} />;
@@ -163,7 +164,8 @@ function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }
             <Facts rows={[
               [feeName, fee],
               [t("买卖价差", "Bid–ask spread"), absent(t)],
-              [t("溢折价", "Premium / discount"), absent(t)],
+              [t("溢折价", "Premium / discount"), fund.premiumDiscount?.points.length
+          ? sourceLink(fund.premiumDiscount.sourceUrl, t("发行商资料", "Issuer data")) : absent(t)],
             ]} />
           </Help>
         </dd></div>
@@ -204,16 +206,25 @@ function FundTracking({ fund }: { fund: Fund }) {
     <Panel title={t("指数与跟踪", "Index & tracking")} action={sourceLink(fund.sourceUrl, t("发行商原文", "Issuer source"))}>
       <Facts rows={[
         [t("跟踪指数", "Tracked index"), fund.benchmark
-          ? <Link className="mx-text-link" href={indexHref(fund.benchmark)}>{fund.indexName}</Link>
+          ? <Link className="mx-text-link" href={researchIndexHref(fund.benchmark)}>{fund.indexName}</Link>
           : fund.indexName ?? absent(t)],
+        ...(fund.benchmarkRelationship?.relation === "unconfirmed" && fund.benchmarkRelationship.comparisonId
+          ? [[t("指数家族", "Index family"), <Link key="family" className="mx-text-link"
+            href={researchIndexHref({ id: fund.benchmarkRelationship.comparisonId })}>{t("在研究台打开", "Open in research")}</Link>] as const]
+          .map(([label, value]): [string, React.ReactNode] => [label, value]) : []),
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
         [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t)} />],
         [errorLabel, <SourceValue key="tracking-error" label={errorLabel} value={error} evidence={fund.profile?.evidence?.tracking_error} t={t} />],
-        [t("日度净值历史", "Daily NAV history"), absent(t)],
-        [t("日度跟踪误差", "Daily tracking error"), absent(t)],
-        [t("溢折价", "Premium / discount"), absent(t)],
+        [t("日度净值历史", "Daily NAV history"), fund.dailyTracking?.points.length
+          ? sourceLink(fund.dailyTracking.sourceUrl, t("发行商文件", "Issuer file")) : absent(t)],
+        [t("溢折价", "Premium / discount"), fund.premiumDiscount?.points.length
+          ? sourceLink(fund.premiumDiscount.sourceUrl, t("发行商资料", "Issuer data")) : absent(t)],
         [t("买卖价差", "Bid–ask spread"), absent(t)],
       ]} />
+      <PremiumDiscountSeries data={fund.premiumDiscount} />
+      <DailyTrackingSeries data={fund.dailyTracking} hedgeUnconfirmed={
+        fund.benchmarkRelationship?.relation === "unconfirmed" || fund.trackingErrorState === "hedged-comparison-unconfirmed"
+      } />
       {fund.profile?.indexRules && <details className="mx-details"><summary>{t("指数规则", "Index rules")}</summary><p>{fund.profile.indexRules}</p></details>}
       {annual.length ? <EvidenceTable
         label={t("年度净值与指数总回报", "Annual NAV and benchmark total returns")}
