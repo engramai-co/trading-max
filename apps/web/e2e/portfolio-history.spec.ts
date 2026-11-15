@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { historyPage, prepareHistory } from "../lib/portfolio/prepared";
 import { PORTFOLIO_RANGES } from "../lib/portfolio/history";
 import type { NavPoint } from "../lib/types";
@@ -40,6 +40,11 @@ async function observations(disclosure: Locator) {
   expect(columns.every((index) => index !== -1)).toBe(true);
   return table.locator("tbody tr").evaluateAll((rows, indexes) => rows.map((row) =>
     indexes.map((index) => row.children[index].textContent)), columns);
+}
+
+/** Phones lead the overview with the period move, so its figure and performance link live in that lead block. */
+function periodMove(page: Page, isMobile: boolean) {
+  return isMobile ? page.locator(".mx-overview-lead") : page.locator(".mx-overview-history");
 }
 
 test.describe("overview to performance", () => {
@@ -88,7 +93,8 @@ test.describe("overview to performance", () => {
       await expect(overview.getByRole("heading", { name: "Period P&L", exact: true })).toBeVisible();
       await expect(overview).not.toContainText("Cumulative net contributions");
       await expect(overview).not.toContainText("Some periods have no observations");
-      await expect(overview.locator(".mx-period-figure")).toContainText("£10.00");
+      await expect(periodMove(page, isMobile).locator(isMobile ? ".mx-overview-lead-figure" : ".mx-period-figure"))
+        .toContainText("£10.00");
       await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
       await expect(overview.locator(".mx-chart-data, .mx-source-legend, .mx-tag-help")).toHaveCount(0);
       if (range === "1D") {
@@ -97,7 +103,7 @@ test.describe("overview to performance", () => {
         await page.keyboard.press("Escape");
       }
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
-      await overview.getByRole("link", { name: "View performance" }).click();
+      await periodMove(page, isMobile).getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
       await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
       await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), rangeLabel, isMobile);
@@ -122,7 +128,7 @@ test.describe("overview to performance", () => {
     await activeRange("1D");
     await chooseRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
     await activeRange("6M");
-    await overview.getByRole("link", { name: "View performance" }).click();
+    await periodMove(page, isMobile).getByRole("link", { name: "View performance" }).click();
     await expect(page).toHaveURL(/view=money&range=6M/);
     const home = page.getByRole("link", { name: isMobile ? "Home" : "Overview", exact: true });
     await expect(home).toHaveAttribute("href", "/");
@@ -137,7 +143,7 @@ test.describe("overview to performance", () => {
     await chooseRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
     await page.reload();
     await selectedRange(overview.locator(".mx-dashboard-ranges"), "6M", isMobile);
-    await overview.getByRole("link", { name: "View performance" }).click();
+    await periodMove(page, isMobile).getByRole("link", { name: "View performance" }).click();
     await chooseRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);
     await page.reload();
     await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);

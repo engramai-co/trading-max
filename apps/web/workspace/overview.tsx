@@ -45,7 +45,7 @@ import {
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import { Narrative } from "./narrative";
-import { HistoryCoverage, HistoryHelp, PeriodSpan } from "./history-coverage";
+import { HistoryCoverage, HistoryHelp, PeriodSpan, periodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
 import { portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
@@ -187,6 +187,13 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
             </div>
           ) : <>
+          <OverviewLead
+            selection={displayed?.selection ?? selection}
+            data={displayed?.history}
+            failed={history.isError}
+            dayAttribution={data?.dayAttribution}
+            windowAttribution={data?.windowAttribution}
+          />
           <div className="mx-overview-totals">
             <Metric
               large
@@ -276,6 +283,75 @@ function Attention({ items }: { items: AttentionItem[] }) {
         ),
       )}
     </nav>
+  );
+}
+/** The calendar day it is now where the reader is, as YYYY-MM-DD. */
+function localDay(timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+/**
+ * Phones lead with the period move and the two positions that drove it most; the total and balances follow. Wider
+ * windows keep the move in the period panel, so the stylesheet shows this block only below 768px. It reads the
+ * same history as the panel, so both always show one figure.
+ */
+function OverviewLead({ selection, data, failed, dayAttribution, windowAttribution }: {
+  selection: Parameters<typeof usePortfolioHistory>[0];
+  data?: ReturnType<typeof usePortfolioHistory>["data"];
+  failed: boolean;
+  dayAttribution?: DashboardLens["dayAttribution"];
+  windowAttribution?: DashboardLens["windowAttribution"];
+}) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  const { range, scope } = selection;
+  if (!data) {
+    return failed ? null : (
+      <div className="mx-overview-lead mx-overview-lead-pending" aria-hidden="true">
+        <div className="mx-loading-shape" />
+      </div>
+    );
+  }
+  const { history, money } = data;
+  const { points } = history;
+  const attribution = range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : undefined;
+  const drivers = attribution ? dayDrivers({
+    attribution,
+    scope,
+    day: history.endDay,
+    dates: points.map((p) => p.date),
+    pnls: money.pnls,
+    openings: data.openings,
+    cutOff: history.pendingCashFlows,
+    limit: 2,
+  }) : null;
+  // Today's move says so; an earlier session names its day, so a closed market never reads as today.
+  const label = range !== "1D" ? rangeName(range, t("全部", "All"))
+    : history.endDay === localDay(timeZone) ? t("今日", "Today")
+      : periodSpan(points, locale, timeZone) || t("今日", "Today");
+  return (
+    <div className="mx-overview-lead">
+      <div className="mx-overview-lead-head">
+        <span className="mx-overview-lead-label">{label}</span>
+        <TextLink href={portfolioPerformanceHref(scope, range)}>
+          <ChartLine size={14} />
+          {t("收益分析", "View performance")}
+        </TextLink>
+      </div>
+      <div className="mx-overview-lead-figure">
+        <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
+          {currency(money.pnl, "GBP", 2)}
+        </strong>
+        {money.pnl != null && (
+          <span
+            className={"mx-" + tone(money.pnl)}
+            title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}
+          >
+            {percent(money.pnlPercents.at(-1), true, 2)}
+          </span>
+        )}
+      </div>
+      {drivers && <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />}
+    </div>
   );
 }
 function OverviewHistory({
