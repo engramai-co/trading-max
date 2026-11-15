@@ -35,7 +35,7 @@ test("benchmarks two 50k-point index lines at 4× CPU", async ({ browser, page, 
     const series = uri.pathname.includes("nasdaq") ? right : left;
     const range = uri.searchParams.get("range");
     const points = range === "3M" ? series.slice(-12_000) : series;
-    await route.fulfill({ json: { state: "available", asOf: points.at(-1)!.at, currency: "USD", points, gaps: [] } });
+    await route.fulfill({ json: { state: "available", range, index: { scope: "us", source: "Synthetic index" }, asOf: points.at(-1)!.at, currency: "USD", points, gaps: [] } });
   });
   const startups: number[] = [], frames: number[] = [];
   const host = page.locator(".mx-index-history");

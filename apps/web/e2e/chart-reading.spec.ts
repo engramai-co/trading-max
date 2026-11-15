@@ -160,7 +160,7 @@ test.describe("primary chart reading", () => {
 
   test("the index 1D caption says five minutes and empty slots are skipped", async ({ page }) => {
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
-      state: "available", asOf: "2026-10-30T13:40:00Z", currency: "USD",
+      state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: "2026-10-30T13:40:00Z", currency: "USD",
       points: [{ at: "2026-10-30T13:30:00Z", value: 500 }, { at: "2026-10-30T13:35:00Z", value: 502 }],
       gaps: ["2026-10-30T13:40:00Z"],
     } }));

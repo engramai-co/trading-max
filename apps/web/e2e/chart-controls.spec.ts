@@ -15,7 +15,7 @@ test.describe("chart evidence and fullscreen", () => {
 
   test("fullscreen preserves a reading, downloads only visible records and restores focus", async ({ page }) => {
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
-      state: "available", asOf: observations.at(-1)!.at, currency: "USD",
+      state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: observations.at(-1)!.at, currency: "USD",
       points: observations.filter((_, index) => index !== 9), gaps: [observations[9].at],
     } }));
     await page.goto("/sectors?market=us&index=sp-500&range=1D");
@@ -62,7 +62,7 @@ test.describe("chart evidence and fullscreen", () => {
       { at: "2026-10-09T00:00:00Z", value: 98 },
     ];
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
-      state: "partial", asOf: points.at(-1)!.at, currency: "USD", points, gaps: ["2026-10-07T00:00:00Z"],
+      state: "partial", range: "1Y", index: { scope: "us", source: "Synthetic index" }, asOf: points.at(-1)!.at, currency: "USD", points, gaps: ["2026-10-07T00:00:00Z"],
     } }));
     await page.goto("/sectors?market=us&index=sp-500&range=1Y");
     await page.getByText("Index drawdown", { exact: true }).click();
@@ -102,7 +102,7 @@ test("a pinch zooms while a vertical swipe leaves the time range alone", async (
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
   await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
-    state: "available", asOf: observations.at(-1)!.at, currency: "USD", points: observations, gaps: [],
+    state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: observations.at(-1)!.at, currency: "USD", points: observations, gaps: [],
   } }));
   await page.goto("/sectors?market=us&index=sp-500&range=1D");
   await page.locator(".mx-index-history").getByRole("button", { name: "Fullscreen", exact: true }).click();
