@@ -228,9 +228,6 @@ export function PriceHistory({
           onChange={(e) => update({ ma: e.currentTarget.checked ? "on" : null, highlightMa: null })} />
         <Checkbox size="xs" label={t("事件", "Events")} checked={showEvents}
           onChange={(e) => setEventTrack(e.currentTarget.checked)} />
-        {full && <Button variant="default" size="compact-sm" onClick={() => toggleFull(false)}>
-          {t("退出完整图表", "Close full chart")}
-        </Button>}
       </Group>
       {full && <details className="mx-price-advanced">
         <summary>{t("高级", "Advanced")}</summary>
@@ -737,6 +734,7 @@ export function PriceHistory({
         fullScreen
         opened={full}
         onClose={() => toggleFull(false)}
+        closeButtonProps={{ "aria-label": t("退出全屏", "Exit fullscreen"), size: 44 }}
         title={ticker + " · " + t("完整图表", "Full chart")}
       >
         <div className="mx-full-chart">{full && content}</div>

@@ -83,6 +83,27 @@ test.describe("dashboard readings", () => {
     await expect(monthly).toHaveAttribute("open", "");
   });
 
+  test("selects a TWR heat cell and returns to the previous chart interval", async ({ page }) => {
+    const monthDates = ["2025-12-31", "2026-01-30", "2026-02-27", "2026-03-12"];
+    const sample = monthDates.map((date, index) => ({ ...nav[index], date, totalTwr: [0, 0.2, 0.08, 0.134][index] }));
+    await page.route("**/api/backend/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const projection = { ...fixture(firstRun), brokerAsOf: "2026-03-12T17:00:00Z", nav: sample };
+      return route.fulfill({ json: path.endsWith("/dashboard/lens/analytics") ? projection : supportingData(path, firstRun) });
+    });
+    await page.goto("/analytics?view=returns&range=3M");
+    const grid = page.locator(".mx-monthly-returns");
+    await grid.getByText("Periodic returns (TWR)", { exact: true }).click();
+    await grid.getByRole("button", { name: "Quarter", exact: true }).click();
+    const cell = grid.getByRole("button", { name: /2026-Q1 · \+8.00%.*Partial coverage/ });
+    await cell.press("Enter");
+    await expect(page).toHaveURL(/returnFrom=2025-12-31&returnTo=2026-02-27/);
+    await expect(cell).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".mx-chart-readout-latest")).toContainText("+8.00%");
+    await page.getByRole("button", { name: "Restore previous range" }).click();
+    await expect(page).toHaveURL(/range=3M$/);
+  });
+
   test("takes the selected account to risk and requests all history", async ({ page }) => {
     await page.route("**/api/backend/**", (route) => {
       const path = new URL(route.request().url()).pathname;

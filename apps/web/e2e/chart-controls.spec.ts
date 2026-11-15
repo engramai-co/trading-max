@@ -94,3 +94,45 @@ test.describe("chart evidence and fullscreen", () => {
     expect((await reading.boundingBox())!.y + (await reading.boundingBox())!.height).toBeLessThanOrEqual((await chart.boundingBox())!.y + 1);
   });
 });
+
+test("a pinch zooms while a vertical swipe leaves the time range alone", async ({ browser, page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL || isMobile || browser.browserType().name() !== "chromium", "Uses Chromium touch input.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+  await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
+    state: "available", asOf: observations.at(-1)!.at, currency: "USD", points: observations, gaps: [],
+  } }));
+  await page.goto("/sectors?market=us&index=sp-500&range=1D");
+  await page.locator(".mx-index-history").getByRole("button", { name: "Fullscreen", exact: true }).click();
+  const full = page.getByRole("dialog");
+  const chart = full.locator("[data-tm-chart-ready]");
+  await expect(chart).toBeVisible();
+  const box = (await chart.boundingBox())!;
+  const x = Math.floor(box.x + box.width * 0.55);
+  const y = Math.floor(box.y + 110);
+  async function countRecords() {
+    await full.getByText("More", { exact: true }).click();
+    const ready = page.waitForEvent("download");
+    await full.getByRole("button", { name: "Export CSV" }).click();
+    const data = await readFile((await (await ready).path())!, "utf-8");
+    await full.getByText("More", { exact: true }).click();
+    return data.split(/\r?\n/).length - 1;
+  }
+  expect(await countRecords()).toBe(20);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x - 30, y, id: 1 }, { x: x + 30, y, id: 2 }] });
+  for (const dx of [38, 46, 54, 62]) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - dx, y, id: 1 }, { x: x + dx, y, id: 2 }] });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  const zoomed = await countRecords();
+  expect(zoomed).toBeLessThan(20);
+  expect(zoomed).toBeGreaterThan(3);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+  for (const dy of [10, 24, 48, 75]) {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 2, y: y - dy, id: 1 }] });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  expect(await countRecords()).toBe(zoomed);
+});

@@ -143,6 +143,10 @@ test.describe("primary chart reading", () => {
       await expect(page).toHaveURL(/priceStyle=line/);
       await expect(dialog.locator("[data-chart-reading]")).not.toContainText("Open");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+      await dialog.getByRole("button", { name: "Exit fullscreen", exact: true }).focus();
+      await page.keyboard.press("Escape");
+      await expect(dialog).not.toBeVisible();
+      await expect(chartPanel.getByRole("button", { name: "Full chart", exact: true })).toBeFocused();
     });
   }
 

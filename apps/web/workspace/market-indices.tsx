@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useLocale } from "@/components/locale-provider";
 import { sampleLine } from "@/lib/portfolio/line-sampling";

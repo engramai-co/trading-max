@@ -135,8 +135,8 @@ test.describe("fixed performance readout", () => {
       const hour = new Date(Date.parse(point.date) + 3_600_000).getUTCHours();
       return hour < 9 || hour >= 16;
     }));
-    await page.goto("/analytics");
-    await page.getByRole("group", { name: "Performance range" }).getByRole("button", { name: "1D", exact: true }).click();
+    await page.goto("/analytics?range=1D");
+    await expect(page.getByRole("button", { name: "1D", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".mx-data-body")).not.toHaveAttribute("aria-busy", "true");
     const chart = page.locator("[data-tm-chart-ready=true]").first();
     await expect(chart).toBeVisible();
