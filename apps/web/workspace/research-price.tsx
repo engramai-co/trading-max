@@ -75,6 +75,7 @@ export function PriceHistory({
   const chart = useRef<ECharts | null>(null);
   const [selection, setSelection] = useState<number | null>(null);
   const inlineChart = useRef<HTMLDivElement | null>(null);
+  const fullButton = useRef<HTMLButtonElement>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
   const current = query.data && !query.isPlaceholderData
@@ -717,7 +718,7 @@ export function PriceHistory({
       <Panel
         className={compactChart ? "mx-tech-chart" : undefined}
         title={t("价格走势", "Price chart")}
-        action={<Button variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
+        action={<Button ref={fullButton} variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
         help={t(
           "行情为拆股及分红调整后价格。均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。比较按同币种和共同起点归一化。",
           "Prices are split and dividend adjusted. Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. Comparisons share currency and starting time.",
@@ -734,6 +735,8 @@ export function PriceHistory({
         fullScreen
         opened={full}
         onClose={() => toggleFull(false)}
+        returnFocus={false}
+        onExitTransitionEnd={() => fullButton.current?.focus({ preventScroll: true })}
         closeButtonProps={{ "aria-label": t("退出全屏", "Exit fullscreen"), size: 44 }}
         title={ticker + " · " + t("完整图表", "Full chart")}
       >

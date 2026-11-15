@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "./link";
 import { useMediaQuery } from "@mantine/hooks";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
