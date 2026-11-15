@@ -1,5 +1,5 @@
 import { pageLanguage } from "./language.mjs";
-import { recentWorkspacePresentation } from "./presentation.mjs";
+import { preferredWorkspace, recentWorkspacePresentation } from "./presentation.mjs";
 
 const { core: { invoke }, webviewWindow: { getCurrentWebviewWindow } } = window.__TAURI__;
 const $ = (id) => document.getElementById(id);
@@ -13,7 +13,7 @@ if (picker) document.body.classList.add("picker");
 
 function renderViewCopy() {
   text("heading", {
-    welcome: picker ? t("工作区", "Workspaces") : t("打开你的投资工作台。", "Open your investment workspace."),
+    welcome: t("工作区", "Workspaces"),
     remote: t("连接你的服务。", "Connect your service."),
     create: t("创建本地工作区。", "Create a local workspace."),
     open: t("继续你的本地记录。", "Continue your local records."),
@@ -132,7 +132,7 @@ function renderStatus(state) {
   const warning = connected && state.probe && (!state.probe.healthy || state.probe.worker_healthy === false);
   const localError = error && state.mode && state.mode !== "remote";
   $("status").hidden = (state.stage === "idle" && !state.detail) || (picker && connected && !warning);
-  $("status").className = "status " + (error || warning ? "error" : connected ? "good" : "working");
+  $("status").className = "status " + (error || warning ? "warn" : connected ? "good" : "working");
   text("message", t(state.message, connectionMessage(state)));
   text("detail", localError ? t("重新打开会继续使用这份工作区。已保存的资料和连接不会被清空。", "Reopen to keep using this workspace and its saved data and connections.") : state.detail || (warning ? t("主机可访问，后台更新状态需要检查。可在数据状态页查看。", "The service is reachable. See Data status to check background updates.") : ""));
   text("freshness", age(state.probe));
@@ -164,7 +164,15 @@ async function refresh() {
       if (picker && initialized && lastReadyGeneration !== state.generation) showView("welcome", false);
       lastReadyGeneration = state.generation;
     }
-    const localKey = JSON.stringify([state.workspaces ?? [], state.stage, state.workspace?.path, language.value]);
+    const preferred = preferredWorkspace(state);
+    const remoteFirst = preferred?.kind === "remote";
+    const remote = $("recent");
+    const local = $("local-recents");
+    if (remoteFirst && local.nextElementSibling === remote) local.before(remote);
+    else if (!remoteFirst && remote.nextElementSibling === local) remote.before(local);
+    remote.toggleAttribute("data-primary", remoteFirst);
+    $("resume").classList.toggle("secondary", !remoteFirst);
+    const localKey = JSON.stringify([state.workspaces ?? [], state.stage, state.workspace?.path, preferred, language.value]);
     if (localKey !== localRecentsKey) {
       localRecentsKey = localKey;
       const container = $("local-recents");
@@ -172,23 +180,34 @@ async function refresh() {
       container.replaceChildren();
       for (const recent of state.workspaces ?? []) {
         const { available, ...workspace } = recent;
-        const entry = recentWorkspacePresentation(recent, state, language.value);
+        const primary = preferred?.kind === "local" && preferred.path === workspace.path;
+        const entry = recentWorkspacePresentation(recent, state, language.value, primary);
         const row = document.createElement("div"); row.className = "recent-body local-recent"; row.title = workspace.path;
+        row.toggleAttribute("data-primary", primary);
         const labels = document.createElement("div"); labels.className = "recent-name";
         const title = document.createElement("strong"); title.textContent = workspace.name;
-        const affordance = document.createElement(entry.action ? "button" : "span");
+        if (!available) {
+          const detail = document.createElement("span");
+          detail.textContent = t("重新接入磁盘，或选择新位置", "Reconnect the disk or choose its new location");
+          labels.append(title, detail);
+        } else labels.append(title);
+        const affordance = document.createElement("button");
         affordance.textContent = entry.label;
-        if (entry.action) {
-          affordance.type = "button";
-          affordance.className = "secondary";
-          affordance.addEventListener("click", () => action(async () => {
+        affordance.type = "button";
+        if (!primary) affordance.className = "secondary";
+        affordance.addEventListener("click", () => {
+          if (entry.action === "locate") {
+            showView("open");
+            $("workspace-path").value = workspace.path;
+            $("pick-folder").focus();
+            return;
+          }
+          void action(async () => {
             if (entry.action === "return") await invoke("open_workspace_page", { page: "current" });
             else await invoke("open_local_workspace", { workspace });
             await refresh();
-          }));
-        } else {
-          affordance.className = "local-recent-status";
-        }
+          });
+        });
         // Forgetting only shortens the list; the workspace folder stays intact.
         const forget = document.createElement("button"); forget.type = "button"; forget.className = "icon-button";
         forget.textContent = "×"; forget.disabled = !entry.canForget;
@@ -197,11 +216,13 @@ async function refresh() {
           await invoke("forget_workspace", { path: workspace.path });
           await refresh();
         }));
-        labels.append(title); row.append(labels, affordance, forget); container.append(row);
+        row.append(labels, affordance, forget);
+        if (primary) container.prepend(row); else container.append(row);
       }
     }
     if (!initialized || view !== "remote") applyProfile(state.profile);
-    text("resume", savedServiceActive(state) ? t("回到工作台", "Back to workspace") : t("打开 →", "Open →"));
+    text("resume", savedServiceActive(state) ? t("回到工作台", "Back to workspace")
+      : remoteFirst ? t("继续工作区", "Continue workspace") : t("打开", "Open"));
     if (!initialized) {
       text("version", state.app_version ? "v" + state.app_version : "");
       initialized = true;

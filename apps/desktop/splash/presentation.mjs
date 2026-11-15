@@ -43,16 +43,27 @@ export function workspacePresentation(state, language = state.app_language) {
   };
 }
 
+// The active workspace wins. Before connection, use the last saved startup mode.
+export function preferredWorkspace(state) {
+  const remote = savedRemote(state.profile);
+  const byRecent = state.workspaces?.find((item) => item.available);
+  const local = state.workspaces?.find((item) => item.available && item.path === state.workspace?.path) ?? byRecent;
+  return remote && ((state.mode ?? state.profile?.mode) === "remote" || !local)
+    ? { kind: "remote" }
+    : local ? { kind: "local", path: local.path } : null;
+}
+
 export function savedRemote(profile) {
   return profile?.mode === "remote" && Boolean(profile.url);
 }
 
-export function recentWorkspacePresentation(workspace, state, language) {
+export function recentWorkspacePresentation(workspace, state, language, preferred = false) {
   const active = workspace.available && state.stage === "ready" && state.workspace?.path === workspace.path;
   return {
-    action: !workspace.available ? null : active ? "return" : "open",
-    label: !workspace.available ? translate(language, "不可用", "Unavailable")
+    action: !workspace.available ? "locate" : active ? "return" : "open",
+    label: !workspace.available ? translate(language, "选择位置", "Choose location")
       : active ? translate(language, "回到工作台", "Back to workspace")
+      : preferred ? translate(language, "继续工作区", "Continue workspace")
       : translate(language, "打开", "Open"),
     canForget: !active,
   };

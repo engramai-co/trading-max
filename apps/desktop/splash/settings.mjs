@@ -34,6 +34,10 @@ for (const button of nav) {
   });
 }
 function renderRelease() {
+  text("available-version", release?.desktop ? "v" + release.desktop.version
+    : release ? t("无适用安装包", "No compatible installer")
+    : updateError ? t("检查未完成", "Could not check")
+    : $("update-result").hidden ? t("尚未检查", "Not checked") : t("正在检查…", "Checking…"));
   if ($("update-result").hidden) return;
   if (!release) {
     text("update-result", updateError ?? t("正在检查官方版本…", "Checking for updates…"));
