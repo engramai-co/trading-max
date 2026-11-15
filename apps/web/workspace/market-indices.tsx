@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowClockwise, CaretRight } from "@phosphor-icons/react";
+import { ArrowClockwise, ArrowUpRight, CaretRight } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
@@ -217,7 +217,8 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
     </Link>
     <Link className="mx-text-link mx-index-to-research" href={researchIndexHref(index)} prefetch={false}
       aria-label={name(index) + " · " + t("在研究台打开", "Open in research")}>
-      {t("在研究台打开", "Open in research")}
+      <span className="mx-index-to-research-label">{t("在研究台打开", "Open in research")}</span>
+      <ArrowUpRight size={16} aria-hidden="true" />
     </Link>
     </div>
   );
