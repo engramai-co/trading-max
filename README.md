@@ -34,9 +34,10 @@
 
 - **Results, not deposits.** Investment results stay separate from money moving
   in and out, for Invest and Stocks ISA together or one account at a time.
-- **Markets.** Global and regional index histories, plus sector maps sized by
-  index weight and coloured by the session's move, with your own exposure beside
-  each sector.
+- **Markets and indices.** Global and regional indices, each with a research
+  page for its history, constituents, breadth and the funds that track it, plus
+  sector maps sized by index weight and coloured by the session's move, with
+  your own exposure beside each sector.
 - **Look-through.** Your direct shares combined with the constituents ETF issuers
   publish: the companies, sectors and countries you actually own, and where they
   overlap.
