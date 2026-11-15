@@ -183,7 +183,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
                 return {
                   animation: false,
                   grid: { left: 64, right: 15, top: comparing ? 40 : 17, bottom: 30 },
-                  legend: comparing ? { type: "scroll", top: 2, left: "center", show: true, data: labels,
+                  legend: comparing ? { top: 2, left: "center", show: true, data: labels,
                     textStyle: { color: colours.text } } : undefined,
                   xAxis: { type: "category", data: dates, boundaryGap: false,
                     axisLabel: { formatter: (at: string) => period === "MAX" ? at.slice(0, 4) : stamp(at) } },

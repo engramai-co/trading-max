@@ -536,7 +536,7 @@ test.describe("market index layer", () => {
       if (url.pathname.startsWith("/api/backend/")) paths.push(url.pathname + url.search);
     });
     await page.goto("/sectors");
-    await expect(page.locator(".mx-global-benchmark a")).toHaveCount(6);
+    await expect(page.locator(".mx-global-benchmark a.mx-index-card")).toHaveCount(6);
     expect(paths).not.toContain("/api/backend/indices?scope=cn");
     await selectMarket(page, /A 股|China A/, true);
     await expect(page).toHaveURL(/\/sectors\?market=cn$/);
@@ -618,7 +618,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors");
     await selectMarket(page, /日股|Japan|^JP$/);
     const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ });
-    await expect(page.getByRole("link", { name: /TOPIX ETF/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /TOPIX ETF/ }).and(page.locator("a.mx-index-card"))).toBeVisible();
     await expect(page.getByText(/板块篮子：MSCI Japan|Sector basket: MSCI Japan/)).toBeVisible();
     await card.click();
     await expect(page).toHaveURL(/market=jp&index=nikkei-225/);

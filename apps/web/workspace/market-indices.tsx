@@ -249,7 +249,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const index = catalog.data?.find((item) => item.id === id && item.scope === market)
     ?? cachedHistory[0]?.[1]?.index
     ?? client.getQueryData<IndexMarket>(["market-indices", market])?.quotes.find((quote) => quote.index.id === id)?.index;
-  const hasHistory = Boolean(index?.ranges.length);
+  const hasHistory = Boolean(index?.ranges.length && (index.symbol || index.source === "EODHD"));
   const targetPeriod = !index?.ranges.length || index.ranges.includes(requestedPeriod)
     ? requestedPeriod : index.ranges.at(-1)!;
   const peers = (catalog.data ?? []).filter((item) => index && comparable(index, item, gbp, targetPeriod));
