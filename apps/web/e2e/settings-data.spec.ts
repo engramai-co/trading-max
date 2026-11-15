@@ -518,7 +518,7 @@ test("an EODHD key is tested and saved with index history off by default", async
     await route.fulfill({ json: source });
   });
   await page.getByRole("button", { name: "Connect EODHD" }).click();
-  await page.getByLabel("API key", { exact: true }).fill("synthetic-secret");
+  await page.getByRole("dialog").getByLabel(/API key/).fill("synthetic-secret");
   await page.getByRole("button", { name: "Test and save" }).click();
   const toggle = page.getByRole("switch", { name: "EODHD", exact: true });
   await expect(toggle).toBeVisible();
