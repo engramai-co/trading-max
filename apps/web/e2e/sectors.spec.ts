@@ -617,7 +617,7 @@ test.describe("market index layer", () => {
     await mockIndices(page);
     await page.goto("/sectors");
     await selectMarket(page, /日股|Japan|^JP$/);
-    const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ });
+    const card = page.getByRole("link", { name: /日经 225|Nikkei 225/ }).and(page.locator("a.mx-index-card"));
     await expect(page.getByRole("link", { name: /TOPIX ETF/ }).and(page.locator("a.mx-index-card"))).toBeVisible();
     await expect(page.getByText(/板块篮子：MSCI Japan|Sector basket: MSCI Japan/)).toBeVisible();
     await card.click();
