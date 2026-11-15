@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.39.1 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.47.4 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.39.1).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.47.4).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.39.1
+## Verified scope for 1.47.4
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
@@ -16,22 +16,32 @@ older-version fixture built from the 1.31.0 source with its updater unchanged;
 the native App shell has not changed since 1.34.0 apart from its version.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.39.1 DMG and reached **Ready to Install**;
+downloaded the exact final 1.47.4 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
-connection and disabled auto-open preference were unchanged. All 20,367
+connection and disabled auto-open preference were unchanged. All 20,384
 installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
 with Cmd-Q stopped its owned services. After a relaunch, the workspaces window
 opened in Simplified Chinese and listed the saved connection.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
-the accepted local bytes. An installed 1.34.0 App discovered and downloaded the
-public 1.39.1 update through App Settings, reached **Ready to Install** and
+the accepted local bytes. An installed 1.39.1 App discovered and downloaded the
+public 1.47.4 update through App Settings, reached **Ready to Install** and
 installed it through **Install and Relaunch**. Its connection preferences were
 unchanged, the installed bundle matched the accepted package exactly, and it
 reconnected to its saved HTTPS service.
 
+Version 1.47.4 brings the workspace's changes since 1.39.1 to the App. Markets
+opens on a Global view with Regions and Sectors, and adds Europe, Taiwan, India,
+Canada, Australia and China A, index breadth, VIX context, and trailing or
+forward P/E history. The overview places today's change under period net P&L,
+lets the sector card show any market, sizes the global map by MSCI ACWI weight
+and lists every holding. ETF research follows the equity layout, with a daily
+technical score, issuer-verified US reference ETFs and their option chains,
+HSBC tracking difference and HMRC reporting status. With Alpaca connected, US
+sector boards, breadth and US ETF history use Alpaca prices. Research headers
+show a fund's closing date and daily change correctly.
 Version 1.39.1 brings the workspace's changes since 1.34.0 to the App. The
 overview puts today's move beside total value, groups holdings into stocks and
 funds, and marks markets that are closed in today's change. The Markets page
