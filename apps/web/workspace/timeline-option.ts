@@ -19,6 +19,7 @@ export type TimelineLayer = {
   drawdown?: boolean;
   zeroBaseline?: boolean;
   markerDate?: string;
+  markers?: Array<{ date: string; name: string }>;
 };
 
 /** Daily views normally plot the day's last reading. Include an intraday
@@ -27,7 +28,7 @@ export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[],
   if (calendar.categories[0]?.includes("T")) return calendar;
   const selected = new Set(calendar.rowIndexes);
   const additions = new Map<string, number[]>();
-  for (const date of new Set(layers.map((layer) => layer.markerDate))) {
+  for (const date of new Set(layers.flatMap((layer) => [layer.markerDate, ...(layer.markers ?? []).map((mark) => mark.date)]))) {
     if (!date) continue;
     const row = dates.indexOf(date);
     if (row < 0 || selected.has(row)) continue;
@@ -258,14 +259,18 @@ export function timelineOption(
             line.colour ??
               (axis === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")
           ];
-        const markerRow = layer.markerDate == null ? -1 : dates.indexOf(layer.markerDate);
-        const markerValue = line.values[markerRow];
-        const markerPosition = markerRow < 0 ? -1 : calendar ? calendar.rowIndexes.indexOf(markerRow) : times[markerRow];
-        const hasMarker = markerPosition >= 0 && markerValue != null;
+        const marks = [...(layer.markers ?? []), ...(layer.markerDate ? [{ date: layer.markerDate, name: layer.label }] : [])];
+        const markPoints = marks.flatMap(({ date, name }) => {
+          const row = dates.indexOf(date);
+          if (row < 0 || line.values[row] == null) return [];
+          const position = calendar ? calendar.rowIndexes.indexOf(row) : times[row];
+          return position < 0 ? [] : [{ coord: [position, line.values[row]!], name }];
+        });
+        const markPositions = new Set(markPoints.map(({ coord }) => coord[0]));
         // The same genuine observation anchors both the visible stroke and the marker.
-        const plotCalendar = calendar && hasMarker ? {
+        const plotCalendar = calendar && markPositions.size ? {
           ...calendar,
-          anchors: calendar.rowIndexes.map((_, position) => position === markerPosition || !!calendar.anchors?.[position]),
+          anchors: calendar.rowIndexes.map((_, position) => markPositions.has(position) || !!calendar.anchors?.[position]),
         } : calendar;
         const data = historySeries(dates, line.values, false, plotCalendar);
         const gaps = historyGapSeries(data);
@@ -294,14 +299,14 @@ export function timelineOption(
             type: line.dashed ? "dashed" : "solid",
           },
           itemStyle: { color: colour },
-          markPoint: hasMarker ? {
+          markPoint: markPoints.length ? {
             silent: true,
             symbol: "circle",
             symbolSize: 7,
             itemStyle: { color: colour, borderColor: colours.tooltip, borderWidth: 1.5 },
             label: { show: false },
             tooltip: { show: false },
-            data: [{ name: layer.label, coord: [markerPosition, markerValue] }],
+            data: markPoints,
           } : undefined,
           markLine: layer.zeroBaseline && index === 0 ? {
             silent: true,

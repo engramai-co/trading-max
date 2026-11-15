@@ -58,21 +58,22 @@ export function PriceHistory({
     ? params.get("priceRange")!
     : "3M";
   const requested = params.get("interval");
-  const interval = resolvePriceInterval(range, requested, full);
+  const interval = resolvePriceInterval(range, requested, true);
   const style = params.get("priceStyle") === "line" ? "line" : "candles";
-  const scale = full ? (params.get("priceScale") ?? "linear") : "linear";
+  const scale = params.get("priceScale") ?? "linear";
   const averages = params.get("ma") === "on";
   const selectedMa = params.get("highlightMa");
-  const averagePeriods = full
+  const averagePeriods = full || params.has("maPeriods")
     ? (params.get("maPeriods") ?? "20,50")
         .split(",")
         .filter((v) => ["20", "50", "200"].includes(v))
     : [...new Set(["20", "50", ...(selectedMa === "sma200" ? ["200"] : [])])];
   const rsi = full && params.get("rsi") === "on";
   const macd = full && params.get("macd") === "on";
-  const comparison = full ? (params.get("benchmark") ?? "none") : "none";
+  const comparison = params.get("benchmark") ?? "none";
   const [eventTrack, setEventTrack] = useState<boolean>();
   const chart = useRef<ECharts | null>(null);
+  const selection = useRef<number | null>(null);
   const inlineChart = useRef<HTMLDivElement | null>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
@@ -178,6 +179,7 @@ export function PriceHistory({
     } catch {
       /* Optional view preference. */
     }
+    selection.current = null;
     chart.current?.dispatchAction({ type: "dataZoom", start: 0, end: 100 });
   };
   const toggleFull = (next: boolean) => {
@@ -335,10 +337,29 @@ export function PriceHistory({
           <Plot
             key={zoomKey}
             research
+            customGestures
+            selection={selection}
             readout={{
               positions: plottedCloses.flatMap((v, index) => v == null ? [] : [index]),
               latest: `${formatValue(value(points.at(-1)!.close))}${normalized ? "" : ` ${priceData.currency}`}`,
               gap: (index) => plottedCloses[Math.round(index)] == null,
+              records: (index) => {
+                const bar = slots[index].bar!;
+                const actual = normalized ? [["close_return", value(bar.close)]]
+                  : [["open", bar.open], ["high", bar.high], ["low", bar.low], ["close", bar.close], ["volume", bar.volume]];
+                if (comparable && benchmarkAnchor) {
+                  const b = benchmarkPoints.get(bar.date);
+                  if (b) actual.push([comparison + "_return", b.close / benchmarkAnchor - 1]);
+                }
+                return actual.flatMap(([series, number]) => typeof number !== "number" ? [] : [{
+                  time: bar.date, zone: isIntraday ? priceData.timezone ?? "UTC" : "UTC",
+                  currency: series === "volume" ? "" : normalized ? "%" : priceData.currency,
+                  basis: normalized ? "fractional return" : priceData.adjustment,
+                  source: series === comparison + "_return" ? benchmark.data?.source ?? "Price comparison" : priceData.source,
+                  gapType: index > 0 && plottedCloses[index - 1] == null ? "after-missing-bar" : "",
+                  series: String(series), value: number,
+                }]);
+              },
               point: (index) => {
                 const p = slots[index].bar!;
                 const other = benchmarkPoints.get(p.date)?.close;
@@ -608,7 +629,8 @@ export function PriceHistory({
                         type: "inside",
                         xAxisIndex: panes.map((_, i) => i),
                         ...savedZoom(),
-                        zoomOnMouseWheel: "ctrl",
+                        disabled: true,
+                        zoomOnMouseWheel: false,
                         moveOnMouseWheel: false,
                       },
                       ...(full ? [{

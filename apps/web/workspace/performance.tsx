@@ -1,8 +1,10 @@
 "use client";
 
-import { Select, Tooltip } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { CaretRight } from "@phosphor-icons/react";
+import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
+import { ReturnGrid } from "./performance-return-grid";
+import { DrawdownReading, drawdownMarks } from "./drawdown-reading";
 import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -14,7 +16,7 @@ import { TimelineChart } from "./timeline-chart";
 import type { TimelineLayer } from "./timeline-option";
 import type { TimelineTooltip } from "./timeline-tooltip";
 import { number, percent, tone } from "@/workspace/data";
-import { inRange, navNumber, observedNav, periodReturn, type Scope } from "@/lib/portfolio/nav";
+import { inRange, navNumber, periodReturn, type Scope } from "@/lib/portfolio/nav";
 import { benchmarkComparison } from "@/lib/portfolio/benchmark-comparison";
 import {
   Empty,
@@ -75,7 +77,10 @@ export function PerformanceContent({
   const range = portfolioRange(params.get("range"));
   const [benchmark, setBenchmark] = useState("VOO");
   const [moneyUnit, setMoneyUnit] = useState("gbp");
-  const requestedRange = view === "risk" ? "ALL" : view === "returns" && range === "1D" ? "3M" : range;
+  const start = params.get("returnFrom"), end = params.get("returnTo");
+  const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
+    ? { start, end } : null;
+  const requestedRange = view === "risk" || customRange ? "ALL" : view === "returns" && range === "1D" ? "3M" : range;
   const selection = useMemo(() => ({ range: requestedRange, scope: requestedScope, detail: "summary" as const }),
     [requestedRange, requestedScope]);
   // The account review lens supplies account history but no benchmark prices.
@@ -124,7 +129,8 @@ export function PerformanceContent({
   }), [daily, data?.intradayNav, actualRange, scope, data?.brokerAsOf, view]);
   const history = view === "money" ? shown?.history?.history ?? fallbackHistory : fallbackHistory;
   const isIntraday = view === "money" && history.source === "intraday";
-  const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) => navNumber(p, scope) != null);
+  const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) =>
+    navNumber(p, scope) != null && (!customRange || actualRange !== "ALL" || p.date >= customRange.start && p.date <= customRange.end));
   const allScope = [
     { value: "total", label: t("全部投资账户", "All investment accounts") },
     { value: "invest", label: accountName(profile, "A") },
@@ -195,6 +201,8 @@ export function PerformanceContent({
     values: drawdowns(line.values, true),
     area: false,
   }));
+  const returnDates = returnsPoints.map((point) => point.date);
+  const returnEpisode = deepestDrawdown(returnDrawdowns[0].values);
   const timelineLayers: TimelineLayer[] = [
     ...(view === "money" ? [
       {
@@ -220,7 +228,10 @@ export function PerformanceContent({
       label: view === "money" ? t("盈亏回撤", "P&L drawdown") : t("期间回撤", "Period drawdown"),
       percentage: view === "returns" || moneyUnit === "percent",
       drawdown: true,
-      markerDate: view === "money" ? money.drawdownEpisode?.trough.date : undefined,
+      markers: view === "money" ? [
+        ...(money.drawdownEpisode ? [{ date: money.drawdownEpisode.trough.date, name: t("低点", "Trough") }] : []),
+        ...(money.drawdownEpisode?.recovery ? [{ date: money.drawdownEpisode.recovery.date, name: t("恢复", "Recovery") }] : []),
+      ] : drawdownMarks(returnEpisode, returnDates, t),
       lines:
         view === "returns"
           ? returnDrawdowns
@@ -303,7 +314,7 @@ export function PerformanceContent({
         </div>
       ) : (
         <>
-          <Panel>
+          <Panel className="mx-performance-chart">
             {/* The tab names the view; the chart's controls share one row. */}
             <div className="mx-toolbar mx-chart-toolbar">
               {view === "money" ? (
@@ -341,7 +352,7 @@ export function PerformanceContent({
                 {runtime.status === "ready" && comparison && comparison.comparisons.length > 0
                   ? <span className="mx-comparison-basis">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
                   : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}
-                <DashboardRanges value={requestedRange} onChange={(value) => update({ range: value })}
+                <DashboardRanges value={requestedRange} onChange={(value) => update({ range: value, returnFrom: null, returnTo: null })}
                   label={t("绩效区间", "Performance range")} intraday={view === "money"} />
               </div>
             </div>
@@ -380,11 +391,17 @@ export function PerformanceContent({
             {view === "money" && moneyUnit === "percent" && points.length > 0 && (navNumber(first, scope) ?? 0) <= 0 && (
               <Notice>{t("期初价值不大于零，无法显示百分比。请选择 GBP。", "Opening value is zero or negative. Select GBP to view amounts.")}</Notice>
             )}
+              {view === "returns" && customRange && <div className="mx-return-range">
+              <PeriodSpan points={points} /><button type="button" className="mx-text-link" onClick={() => update({ returnFrom: null, returnTo: null })}>
+                {t("恢复上个区间", "Restore previous range")}
+              </button>
+            </div>}
               {view === "returns" && <Legend items={returnLines.map((line, i) => ({
                 label: line.name, dashed: line.dashed,
                 colour: ["var(--mx-brand)", "var(--mx-muted)", "var(--mx-ink)", "var(--mx-muted)"][i],
               }))} />}
               <TimelineChart
+                fullscreen
                 emptyHeadingLevel={2}
                 dates={points.map((p) => p.date)}
                 layers={timelineLayers}
@@ -413,6 +430,7 @@ export function PerformanceContent({
                       )
                 }
               />
+            {view === "returns" && <DrawdownReading episode={returnEpisode} dates={returnDates} basis="selected" />}
             {view === "returns" && (
               <div className="mx-table-wrap mx-return-table" tabIndex={0} role="region" aria-label={t("收益与回撤对比", "Return and drawdown comparison")}>
                 <table className="mx-table">
@@ -455,7 +473,10 @@ export function PerformanceContent({
             </div>}
           </Panel>
           {view === "returns" && shown && runtime.status === "ready" && (
-            <div className="mx-data-body" aria-busy={waiting || undefined}><MonthlyReturns points={daily} scope={scope} /></div>
+            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid scope={scope} selected={customRange} onSelect={(period) => {
+              update({ returnFrom: period.start, returnTo: period.end });
+              document.querySelector(".mx-performance-chart")?.scrollIntoView({ block: "start" });
+            }} /></div>
           )}
         </>
       )}
@@ -526,7 +547,10 @@ function RiskDashboard({ data, scope, unavailable, retry }: {
   retry?: () => unknown;
 }) {
   const t = useCopy();
-  const rows = observedNav(data?.nav ?? [], scope, "Drawdown");
+  const rows = inRange(data?.nav?.filter((p) => !p.intraday) ?? [], "ALL");
+  const dates = rows.map((point) => point.date);
+  const drawdown = rows.map((point) => navNumber(point, scope, "Drawdown"));
+  const episode = deepestDrawdown(drawdown);
   return (
     <>
       <Panel
@@ -538,12 +562,14 @@ function RiskDashboard({ data, scope, unavailable, retry }: {
         {unavailable ? <div className="mx-performance-unavailable"><InlineRetry {...unavailable} /></div>
           : !data ? <Pending shape="chart" height={260} quiet />
           : <HistoryChart
+          fullscreen
           label={t("收益回撤曲线", "Portfolio return drawdown")}
-          dates={rows.map((p) => p.date)}
+          dates={dates}
           lines={[
             {
               name: t("回撤", "Drawdown"),
-              values: rows.map((p) => navNumber(p, scope, "Drawdown")),
+              values: drawdown,
+              markers: drawdownMarks(episode, dates, t),
               colour: "negative",
               area: true,
             },
@@ -551,6 +577,7 @@ function RiskDashboard({ data, scope, unavailable, retry }: {
           percentage
           height={260}
         />}
+        {data && <DrawdownReading episode={episode} dates={dates} basis="all" />}
       </Panel>
       {data && <div className="mx-grid">
         {(["A", "B"] as const)
@@ -644,118 +671,5 @@ function RiskCard({
         <InlineRetry label={t("账户风险指标暂不可用", "Account risk metrics unavailable")} retry={retry} />
       ) : <Empty title={t("风险数据暂不可用", "Risk metrics unavailable")} />}
     </Panel>
-  );
-}
-function MonthlyReturns({ points, scope }: { points: NavPoint[]; scope: Scope }) {
-  const t = useCopy();
-  const [open, setOpen] = useState(false);
-  return <Panel>
-    <details className="mx-monthly-returns" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary><CaretRight size={14} aria-hidden="true" />{t("月度收益（TWR）", "Monthly returns (TWR)")}</summary>
-      {open && <>
-        <p>{t("剔除出入金影响的月度收益。首月从最早记录起算，最近一月截至最新记录。", "Monthly returns excluding cash-flow effects. The first month starts at the first observation; the latest month ends at the last available observation.")}</p>
-        <MonthlyReturnTable points={points} scope={scope} />
-      </>}
-    </details>
-  </Panel>;
-}
-
-function MonthlyReturnTable({ points, scope }: { points: NavPoint[]; scope: Scope }) {
-  const t = useCopy();
-  const { locale } = useLocale();
-  const map = new Map<string, number | null>();
-  const sorted = inRange(points, "ALL").filter(
-    (p) => navNumber(p, scope, "Twr") != null,
-  );
-  const months = [...new Set(sorted.map((p) => p.date.slice(0, 7)))];
-  for (const month of months) {
-    const rows = sorted.filter((p) => p.date.startsWith(month));
-    const prior =
-      sorted.filter((p) => p.date.slice(0, 7) < month).at(-1) ?? rows[0];
-    map.set(
-      month,
-      rows.at(-1) === prior
-        ? null
-        : periodReturn(
-            navNumber(prior, scope, "Twr"),
-            navNumber(rows.at(-1), scope, "Twr"),
-          ),
-    );
-  }
-  const years = [...new Set(months.map((m) => m.slice(0, 4)))].reverse();
-  return years.length ? (
-    <>
-      <div
-        className="mx-table-wrap mx-month-table-wrap"
-        tabIndex={0}
-        role="region"
-        aria-label={t("数据表格", "Data table")}
-      >
-        <table className="mx-table mx-month-table">
-          <thead>
-            <tr>
-              <th>{t("年份", "Year")}</th>
-              {Array.from({ length: 12 }, (_, i) => (
-                <th key={i}>{i + 1}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {years.map((year) => (
-              <tr key={year}>
-                <th>{year}</th>
-                {Array.from({ length: 12 }, (_, i) => {
-                  const key = year + "-" + String(i + 1).padStart(2, "0");
-                  const value = map.get(key);
-                  return (
-                    <td
-                      key={key}
-                      className="mx-month-return"
-                    >
-                      <Tooltip label={formatDate(key + "-01T00:00:00Z", locale, { year: "numeric", month: "long", timeZone: "UTC" })}>
-                        <span
-                          className={value == null ? "mx-heat-empty" : "mx-heat-pill mx-" + tone(value)}
-                          // Fill strength follows the size of the move, capped at 10%.
-                          style={value == null ? undefined : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }}
-                        >
-                          {percent(value, true)}
-                        </span>
-                      </Tooltip>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {/* Phones read a year as four rows of three months instead of scrolling sideways. */}
-      <div className="mx-month-cards">
-        {years.map((year) => (
-          <section key={year} aria-label={year}>
-            <h3>{year}</h3>
-            <div>
-              {Array.from({ length: 12 }, (_, i) => {
-                const key = year + "-" + String(i + 1).padStart(2, "0");
-                const value = map.get(key);
-                return (
-                  <span key={key}>
-                    <small>{formatDate(key + "-01T00:00:00Z", locale, { month: "short", timeZone: "UTC" })}</small>
-                    <span
-                      className={value == null ? "mx-heat-empty" : "mx-heat-pill mx-" + tone(value)}
-                      style={value == null ? undefined : { ["--mx-heat" as string]: Math.min(1, Math.abs(value) / 0.1).toFixed(2) }}
-                    >
-                      {percent(value, true)}
-                    </span>
-                  </span>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </>
-  ) : (
-    <Empty title={t("需要更多每日收益记录", "More daily return observations are needed")} />
   );
 }

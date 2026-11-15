@@ -1,3 +1,5 @@
+import type { ChartRecord } from "./chart-export";
+
 /** Coordinates in the chart's first x axis, in ascending order. The value
  * reader uses these same coordinates; a drawn connector is never a point. */
 export type ChartReadout = {
@@ -7,6 +9,8 @@ export type ChartReadout = {
   /** Return no reading for a known missing interval, even near its ends. */
   gap?: (position: number) => boolean;
   observationCount?: number;
+  gridIndexes?: readonly number[];
+  records?: (position: number) => ChartRecord[];
 };
 
 export function closestChartPosition(positions: readonly number[], target: number) {

@@ -1,458 +1,22 @@
 "use client";
 
 import { useLocale } from "@/components/locale-provider";
-import { useChartColours, type ChartColours } from "@/ui/charts/palette";
-import { useECharts } from "@/ui/charts/use-echarts";
 import { formatDate } from "@/ui/formatters";
 import type {
-  ECharts,
-  EChartsOption,
   SeriesOption,
-  XAXisComponentOption,
-  YAXisComponentOption,
 } from "echarts";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { compact, number, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Pending, useCopy } from "./foundation";
+import { Empty, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
-import { closestChartPosition, type ChartReadout } from "./chart-readout";
+import { type ChartReadout } from "./chart-readout";
 import { chartNumber } from "./research-chart-format";
 
-function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
-  axes: T | T[] | undefined,
-  colours: ChartColours,
-  horizontal = false,
-): T | T[] | undefined {
-  const theme = (axis: T): T => ({
-    ...axis,
-    nameTextStyle: { color: colours.axis, ...axis.nameTextStyle },
-    axisLabel: {
-      color: colours.axis,
-      hideOverlap: true,
-      // Keep edge ticks inside without shifting labels centred below bars.
-      ...(horizontal && (axis.type !== "category" || axis.boundaryGap === false) && {
-        alignMinLabel: axis.inverse ? "right" : "left",
-        alignMaxLabel: axis.inverse ? "left" : "right",
-      }),
-      ...(horizontal && axis.type === "category" && axis.boundaryGap === false && {
-        showMinLabel: true,
-        showMaxLabel: true,
-      }),
-      ...axis.axisLabel,
-    },
-    axisLine: {
-      ...axis.axisLine,
-      lineStyle: { color: colours.axis, ...axis.axisLine?.lineStyle },
-    },
-    axisTick: {
-      ...axis.axisTick,
-      lineStyle: { color: colours.axis, ...axis.axisTick?.lineStyle },
-    },
-    splitLine: {
-      ...axis.splitLine,
-      lineStyle: {
-        color: colours.grid,
-        type: "dashed",
-        ...axis.splitLine?.lineStyle,
-      },
-    },
-  });
-  return Array.isArray(axes) ? axes.map(theme) : axes ? theme(axes) : undefined;
-}
-
-export function Plot({
-  label,
-  option,
-  height = 300,
-  research = false,
-  controller,
-  onZoom,
-  readPoint,
-  readout,
-  overlay,
-}: {
-  label: string;
-  option: (colours: ChartColours) => EChartsOption;
-  height?: number;
-  research?: boolean;
-  controller?: RefObject<ECharts | null>;
-  onZoom?: (chart: ECharts) => void;
-  readPoint?: (index: number) => string;
-  readout?: ChartReadout;
-  overlay?: ReactNode;
-}) {
-  const t = useCopy();
-  const { locale } = useLocale();
-  const description = useId();
-  const [reading, setReading] = useState("");
-  const [pinned, setPinned] = useState(false);
-  const [picked, setPicked] = useState<number | null>(null);
-  const cursor = useRef<HTMLDivElement>(null);
-  const frame = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
-  const colours = useChartColours();
-  const settings = useMemo<EChartsOption>(() => {
-    const custom = option(colours);
-    return {
-      backgroundColor: "transparent",
-      textStyle: { color: colours.text, fontSize: 12 },
-      color: [
-        colours.brand,
-        colours.accent,
-        colours.secondary,
-        colours.negative,
-      ],
-      grid: { top: 20, right: 18, bottom: 30, left: 58 },
-      ...custom,
-      xAxis: themeAxes(custom.xAxis, colours, true),
-      yAxis: themeAxes(custom.yAxis, colours),
-      legend: Array.isArray(custom.legend)
-        ? custom.legend.map((legend) => ({
-            ...legend,
-            textStyle: { color: colours.text, ...legend.textStyle },
-          }))
-        : custom.legend
-          ? {
-              ...custom.legend,
-              textStyle: { color: colours.text, ...custom.legend.textStyle },
-            }
-          : undefined,
-      tooltip: {
-        trigger: "axis",
-        renderMode: "richText",
-        backgroundColor: colours.tooltip,
-        textStyle: { color: colours.tooltipText, fontSize: 12 },
-        borderWidth: 1,
-        borderColor: colours.tooltipBorder,
-        shadowBlur: 16,
-        shadowColor: colours.tooltipShadow,
-        shadowOffsetY: 4,
-        padding: 12,
-        confine: true,
-        // Research charts read in the reader's units; portfolio charts keep theirs.
-        valueFormatter: (value) => chartNumber(value, research ? locale : "en"),
-        axisPointer: {
-          type: "line",
-          lineStyle: { color: colours.axis, type: "dashed" },
-        },
-        ...(custom.tooltip && !Array.isArray(custom.tooltip)
-          ? custom.tooltip
-          : {}),
-        ...(readout ? { show: false, triggerOn: "none" } : {}),
-      },
-
-    };
-  }, [colours, option, research, locale, readout]);
-  const internal = useRef<ECharts | null>(null);
-  const selected = useRef(0);
-  const control = controller ?? internal;
-  const { ref, status, retry, applied } = useECharts(
-    settings,
-    research ? "research" : "core",
-    control,
-    (instance) => {
-      setPicked(null);
-      setPinned(false);
-      onZoom?.(instance);
-    },
-    undefined,
-    pinned || picked != null || Boolean(reading),
-  );
-  const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
-    ? picked : null;
-  useLayoutEffect(() => {
-    const el = cursor.current;
-    const bounds = ref.current;
-    if (!el || !bounds) return;
-    const draw = () => {
-      const x = active == null ? NaN : control.current?.convertToPixel({ xAxisIndex: 0 }, active);
-      el.style.visibility = typeof x === "number" && x >= 0 && x <= bounds.clientWidth ? "visible" : "hidden";
-      if (typeof x === "number") el.style.transform = `translateX(${x}px)`;
-    };
-    draw();
-    const observer = new ResizeObserver(draw);
-    observer.observe(bounds);
-    return () => observer.disconnect();
-  }, [active, control, ref, status]);
-
-  const pickAt = (event: PointerEvent<HTMLDivElement>) => {
-    if (!readout) return null;
-    const instance = control.current;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
-    const axes = Array.isArray(settings.xAxis) ? settings.xAxis.length : 1;
-    if (!instance || !Array.from({ length: axes }, (_, i) => i).some((gridIndex) =>
-      instance.containPixel({ gridIndex }, [x, y]))) return null;
-    const target = instance.convertFromPixel({ xAxisIndex: 0 }, x);
-    if (typeof target !== "number" || !Number.isFinite(target) || readout.gap?.(target)) return null;
-    return readout.positions[closestChartPosition(readout.positions, target)] ?? null;
-  };
-  const choose = (point: number | null) => {
-    setPicked(point);
-  };
-  const dismiss = () => {
-    choose(null);
-    control.current?.setOption({ tooltip: { alwaysShowContent: false } });
-    control.current?.dispatchAction({ type: "hideTip" });
-    setPinned(false);
-    setReading("");
-  };
-  return (
-    <>
-    {readout && <div className="mx-chart-readout">
-      <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
-        {(readout.observationCount ?? readout.positions.length) < 3 && <span data-chart-sparse="true">
-          {t("仅", "Only")} {readout.observationCount ?? readout.positions.length} {t("个观测", "observations")}
-        </span>}
-      </div>
-      <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"} aria-live="polite" aria-atomic="true">
-        {(active == null
-          ? readout.positions.length ? readout.point(readout.positions.at(-1)!) : ""
-          : readout.point(active)).split("\n").filter(Boolean).map((line, i) => <span key={i}>{line}</span>)}
-      </div>
-    </div>}
-    <div className="mx-plot" style={{ height }}>
-      {overlay}
-      <div
-        role="group"
-        aria-roledescription={t("交互图表", "Interactive chart")}
-        aria-label={label}
-        aria-describedby={description}
-        tabIndex={0}
-        onPointerMove={(event) => {
-          if (!readout || pinned || event.pointerType === "touch" || event.buttons) return;
-          const position = pickAt(event);
-          cancelAnimationFrame(frame.current);
-          frame.current = requestAnimationFrame(() => choose(position));
-        }}
-        onPointerLeave={() => {
-          cancelAnimationFrame(frame.current);
-          if (readout && !pinned) choose(null);
-        }}
-        onPointerCancel={() => { touchStart.current = null; }}
-        onPointerDown={(event) => {
-          if (event.pointerType === "touch")
-            touchStart.current = { x: event.clientX, y: event.clientY };
-        }}
-        onPointerUp={(event) => {
-          const start = touchStart.current;
-          touchStart.current = null;
-          if (
-            event.pointerType !== "touch" ||
-            !start ||
-            Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8
-          )
-            return;
-          if (readout) {
-            const position = pickAt(event);
-            if (position === active && pinned || position == null) dismiss();
-            else { choose(position); setPinned(true); }
-            return;
-          }
-          if (pinned) {
-            dismiss();
-            return;
-          }
-          const bounds = event.currentTarget.getBoundingClientRect();
-          control.current?.setOption({ tooltip: { alwaysShowContent: true } });
-          control.current?.dispatchAction({
-            type: "showTip",
-            x: event.clientX - bounds.left,
-            y: event.clientY - bounds.top,
-          });
-          setPinned(true);
-        }}
-        onBlur={() => { if (!pinned && (reading || active != null)) dismiss(); }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            if (pinned || reading || active != null) {
-              event.preventDefault();
-              event.stopPropagation();
-            }
-            dismiss();
-            return;
-          }
-          if (readout) {
-            const values = readout.positions;
-            if (event.key === " " || event.key === "Enter") {
-              event.preventDefault();
-              if (pinned) dismiss();
-              else if (values.length) { choose(active ?? values.at(-1)!); setPinned(true); }
-              return;
-            }
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !values.length) return;
-            event.preventDefault();
-            const index = active == null ? values.length - 1 : closestChartPosition(values, active);
-            const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
-              : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
-            choose(values[next]);
-            return;
-          }
-          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
-            return;
-          event.preventDefault();
-          const option = applied.current ?? settings;
-          const series = Array.isArray(option.series) ? option.series[0] : option.series;
-          const count =
-            series && "data" in series && Array.isArray(series.data)
-              ? series.data.length
-              : 0;
-          if (!count) return;
-          selected.current =
-            event.key === "Home"
-              ? 0
-              : event.key === "End"
-                ? count - 1
-                : Math.max(
-                    0,
-                    Math.min(
-                      count - 1,
-                      selected.current + (event.key === "ArrowRight" ? 1 : -1),
-                    ),
-                  );
-          control.current?.dispatchAction({
-            type: "showTip",
-            seriesIndex: 0,
-            dataIndex: selected.current,
-          });
-          setReading(readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t));
-        }}
-        ref={ref}
-        style={{ height: "100%", width: "100%" }}
-      />
-      {readout && <div className="mx-chart-cursor" ref={cursor} aria-hidden="true" />}
-      {status !== "ready" && <div className="mx-plot-loading">
-        {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
-          : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
-      </div>}
-      <span id={description} className="sr-only">
-        {t(
-          "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点固定读数，再次轻点关闭。",
-          "Use arrow keys for adjacent readings, Home and End for the first and last point, and Escape to dismiss. Tap to pin a reading, then tap again to dismiss.",
-        )}
-      </span>
-      <span
-        className="sr-only"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        {reading}
-      </span>
-      {pinned && (
-        <button type="button" className="mx-chart-dismiss" onClick={dismiss}>
-          {t("关闭读数", "Dismiss reading")}
-        </button>
-      )}
-    </div>
-    </>
-  );
-}
-
-function chartReading(
-  option: EChartsOption,
-  index: number,
-  locale: string,
-  t: ReturnType<typeof useCopy>,
-): string {
-  const axes = Array.isArray(option.xAxis) ? option.xAxis : [option.xAxis];
-  const valueAxes = Array.isArray(option.yAxis) ? option.yAxis : [option.yAxis];
-  const series = Array.isArray(option.series) ? option.series : [option.series];
-  const missing = t("无数据", "No data");
-  const format = (v: unknown): string =>
-    typeof v === "number"
-      ? new Intl.NumberFormat(locale, { maximumFractionDigits: 4 }).format(v)
-      : v == null
-        ? missing
-        : String(v);
-  const coordinate = (
-    value: unknown,
-    axis: XAXisComponentOption | YAXisComponentOption | undefined,
-    fallback: (value: unknown) => string,
-  ): string => {
-    if (typeof value !== "number") return fallback(value);
-    if (axis?.type === "category") {
-      const entry = axis.data?.[value];
-      return format(entry && typeof entry === "object" ? entry.value : entry);
-    }
-    if (axis?.type === "time") return new Date(value).toLocaleString(locale);
-    if (axis?.type === "value" || axis?.type === "log") {
-      const formatter = axis.axisLabel?.formatter;
-      if (typeof formatter === "function")
-        return String(formatter(value, index, undefined))
-          .replace(/\{[^{}|]+\|([^{}]*)\}/g, "$1")
-          .replace(/\s+/g, " ");
-      if (typeof formatter === "string")
-        return formatter.replace("{value}", format(value));
-    }
-    return fallback(value);
-  };
-  return series
-    .flatMap((s) => {
-      if (!s || s.silent || !("data" in s) || !Array.isArray(s.data)) return [];
-      const raw = s.data[index];
-      const value =
-        raw && typeof raw === "object" && "value" in raw ? raw.value : raw;
-      const axis =
-        axes[
-          "xAxisIndex" in s && typeof s.xAxisIndex === "number"
-            ? s.xAxisIndex
-            : 0
-        ];
-      const category =
-        axis && "data" in axis && Array.isArray(axis.data)
-          ? axis.data[index]
-          : null;
-      const heading = [category, s.name].filter((v) => v != null).join(" · ");
-      const valueAxis =
-        valueAxes[
-          "yAxisIndex" in s && typeof s.yAxisIndex === "number"
-            ? s.yAxisIndex
-            : 0
-        ];
-      const valueFormatter = !Array.isArray(option.tooltip)
-        ? option.tooltip?.valueFormatter
-        : undefined;
-      const axisFormatter = valueAxis?.axisLabel?.formatter;
-      const formatReading = (v: unknown) => {
-        if (v == null || typeof v !== "number") return format(v);
-        if (typeof valueFormatter === "function")
-          return String(valueFormatter(v, index));
-        if (valueAxis?.type === "value" || valueAxis?.type === "log") {
-          const formatter = valueAxis.axisLabel?.formatter;
-          if (typeof formatter === "function")
-            return String(formatter(v, index, undefined));
-        }
-        if (typeof axisFormatter === "string")
-          return axisFormatter.replace("{value}", format(v));
-        return format(v);
-      };
-      if (s.type === "candlestick" && Array.isArray(value)) {
-        const labels = [
-          t("开盘", "Open"),
-          t("收盘", "Close"),
-          t("最低", "Low"),
-          t("最高", "High"),
-        ];
-        return `${heading}: ${value.map((v, i) => `${labels[i] ?? i} ${format(v)}`).join(", ")}`;
-      }
-      if (
-        Array.isArray(value) &&
-        axis?.type === "time" &&
-        typeof value[0] === "number"
-      )
-        return `${new Date(value[0]).toLocaleString(locale)} · ${s.name ?? ""}: ${value.slice(1).map(formatReading).join(", ")}`;
-      if (Array.isArray(value) && value.length === 2)
-        return `${heading}: ${coordinate(value[0], axis, format)}, ${coordinate(value[1], valueAxis, formatReading)}`;
-      return `${heading}: ${Array.isArray(value) ? value.map((v, i) => (i === value.length - 1 ? formatReading(v) : format(v))).join(", ") : formatReading(value)}`;
-    })
-    .join("; ");
-}
+import { Plot } from "./plot";
+export { Plot } from "./plot";
 
 export type ChartLine = {
   name: string;
@@ -462,6 +26,7 @@ export type ChartLine = {
   area?: boolean;
   type?: "line" | "bar";
   step?: "end";
+  markers?: Array<{ date: string; name: string }>;
 };
 export function HistoryChart({
   dates,
@@ -474,6 +39,7 @@ export function HistoryChart({
   timeline,
   emptyDescription,
   notes,
+  fullscreen = false,
 }: {
   dates: string[];
   lines: ChartLine[];
@@ -485,6 +51,7 @@ export function HistoryChart({
   timeline?: CalendarTimeline;
   emptyDescription?: string;
   notes?: string[];
+  fullscreen?: boolean;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -540,6 +107,13 @@ export function HistoryChart({
   const readout: ChartReadout = {
     positions,
     latest: formatValue(lines[0].values[observations.get(latest)!]),
+    records: fullscreen ? (position) => {
+      const row = observations.get(position)!;
+      return lines.flatMap((line) => line.values[row] == null ? [] : [{
+        time: dates[row], zone: intraday ? timeZone : "UTC", currency: percentage ? "%" : currencyTick ? "GBP" : "",
+        basis: percentage ? "fractional return" : "level", source: notes?.[row] ?? label, series: line.name, value: line.values[row]!,
+      }]);
+    } : undefined,
     point: (position) => {
       const row = observations.get(position)!;
       return [
@@ -548,6 +122,7 @@ export function HistoryChart({
           ...(intraday ? { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone } : { timeZone: "UTC" }),
         }),
         ...lines.map((line) => `${line.name}: ${formatValue(line.values[row])}`),
+        ...new Set(lines.flatMap((line) => line.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? [])),
         notes?.[row],
       ].filter(Boolean).join("\n");
     },
@@ -557,6 +132,7 @@ export function HistoryChart({
       <Plot
         label={label}
         readout={readout}
+        fullscreen={fullscreen}
         height={height}
         option={(c) => ({
           xAxis: {
@@ -675,6 +251,16 @@ export function HistoryChart({
               areaStyle: line.area
                 ? { opacity: 0.08, color: colour }
                 : undefined,
+              markPoint: line.markers?.length ? {
+                silent: true, symbol: "circle", symbolSize: 7,
+                label: { show: false },
+                itemStyle: { color: colour, borderColor: c.tooltip, borderWidth: 1.5 },
+                data: line.markers.flatMap(({ date, name }) => {
+                  const row = dates.indexOf(date);
+                  const x = timeline ? timeline.rowIndexes.indexOf(row) : Date.parse(date);
+                  return row < 0 || x < 0 || line.values[row] == null ? [] : [{ coord: [x, line.values[row]], name }];
+                }),
+              } : undefined,
               emphasis: { focus: "series" },
               barMaxWidth: 24,
             } satisfies SeriesOption;

@@ -22,6 +22,7 @@ import {
 } from "./market-indices-data";
 import { sparkline } from "./sectors-data";
 
+const IndexDrawdownChart = dynamic(() => import("./index-drawdown-chart").then((module) => module.IndexDrawdownChart));
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
 
 function useNames() {
@@ -359,6 +360,18 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     positions: primaryPositions,
     latest: latestIndexRow?.left != null ? indexValue(latestIndexRow.left) : "—",
     point: readPoint,
+    records: (position: number) => {
+      const row = plotRows[position];
+      return ([["left", chartName, history], ["right", peerName, peerHistory]] as const).flatMap(([key, series, feed]) =>
+        row?.[key] == null ? [] : [{
+          time: row.at, zone: intraday ? timeZone : "UTC",
+          currency: matched.length || index.kind === "volatility" ? "" : seriesCurrency ?? "",
+          basis: matched.length ? "rebased to 100" : index.basis,
+          source: feed?.index.source ?? index.source ?? "Index provider",
+          gapType: plotRows[position - 1]?.[key] === null ? "after-missing-observation" : "",
+          series, value: row[key]!,
+        }]);
+    },
     gap: (position: number) => {
       const row = plotRows[Math.round(position)];
       return !row || (row.left == null && row.right == null);
@@ -425,7 +438,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
                   description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
               : null}
         {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
-        {points.length > 0 && <Plot label={chartLabel} height={phone ? 235 : 300}
+        {points.length > 0 && <Plot fullscreen label={chartLabel} height={phone ? 235 : 300}
           readout={indexReadout}
           option={(colours) => {
             const lines = [{ key: "left" as const, label: chartName, colour: colours.brand, dashed: false }];
@@ -481,6 +494,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
+        {history && <IndexDrawdownChart rows={indexHistoryRows(history)} />}
       </section>
       {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
         context.data && <IndexContextPanels context={context.data} phone={phone} />}

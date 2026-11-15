@@ -78,7 +78,7 @@ test.describe("dashboard readings", () => {
 
     const monthly = page.locator(".mx-monthly-returns");
     await expect(monthly.locator("table")).toHaveCount(0);
-    await monthly.getByText("Monthly returns (TWR)", { exact: true }).press("Enter");
+    await monthly.getByText("Periodic returns (TWR)", { exact: true }).press("Enter");
     await expect(monthly.locator("table")).toHaveCount(1);
     await expect(monthly).toHaveAttribute("open", "");
   });

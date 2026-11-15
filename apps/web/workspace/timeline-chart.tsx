@@ -34,6 +34,7 @@ export function TimelineChart({
   height,
   drawdownHeading,
   emptyHeadingLevel,
+  fullscreen = false,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -52,6 +53,7 @@ export function TimelineChart({
   height?: number;
   drawdownHeading?: ReactNode;
   emptyHeadingLevel?: 2 | 3;
+  fullscreen?: boolean;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -137,6 +139,7 @@ export function TimelineChart({
     <Plot
       key={range ?? label}
       label={label}
+      fullscreen={fullscreen}
       overlay={moneyLayout && <>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
           <Legend items={layers[1].lines.map((line) => ({ label: line.name, dashed: line.dashed, colour: "var(--mx-muted)" }))} />
@@ -146,11 +149,27 @@ export function TimelineChart({
       readout={{
         positions,
         latest: timelineReadoutRows(readoutContent, latestRow)[0] ?? "",
+        records: fullscreen ? (position) => {
+          const row = rows.get(position);
+          if (row == null) return [];
+          const source = observations?.[row]?.valuationSource ?? "portfolio history";
+          return layers.flatMap((layer) => layer.lines.flatMap((line) => {
+            const value = line.values[row];
+            if (value == null) return [];
+            return [{
+              time: dates[row], zone: dates[row].includes("T") ? timeZone : "UTC", currency: layer.percentage ? "%" : "GBP",
+              basis: layer.percentage ? "fractional return" : "amount", source,
+              gapType: gaps.some(([, end]) => position === end) ? "after-missing-observation" : "",
+              series: line.name, value,
+            }];
+          }));
+        } : undefined,
         gap: (position) => gaps.some(([start, end]) => position > start + (calendar ? 0.5 : 0) && position < end - (calendar ? 0.5 : 0)),
         point: (position) => {
           const row = rows.get(position);
           if (row == null) return "";
-          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row),
+          const marks = layers.flatMap((layer) => layer.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []);
+          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row), ...new Set(marks),
             ...(observations?.[row] ? [valuationNote(observations[row], t)] : [])].join("\n");
         },
       }}
