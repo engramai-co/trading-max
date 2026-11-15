@@ -15,7 +15,7 @@ are available alongside the research list.
 
 | View | Use it to… |
 |---|---|
-| Overview | See the company, a fixed 3M closing-price line, operating facts, upcoming disclosures, and your exposure |
+| Overview | See the company, a fixed three-month candlestick preview, operating facts, upcoming disclosures, and your exposure |
 | Financials & business | Read statements, operating trends, segments, ownership, and dividends |
 | Price & technicals | Inspect the price chart, technical readings, or seasonality in separate sections |
 | Estimates & events | Compare reported results with expectations and inspect available rating/event history |
@@ -25,6 +25,34 @@ are available alongside the research list.
 
 Availability varies by security and provider. A fund, a bank, and an operating
 company will not have the same datasets or applicable models.
+
+## Research an index or a fund
+
+Indices are a research type of their own. Open one from **Markets** or search
+for it in Research; both lead to the same index. Its views cover the overview,
+price and history, constituents with breadth and contribution, and the funds
+that track it. Funds are grouped by how closely they follow the index: the same
+benchmark first, then the same family, then similar exposure. Your own exposure
+to the index's constituents is shown on your screen and is never written into
+the link.
+
+Comparisons need the same currency, return variant and hedge basis, and allow
+up to three series from their first common observation. Long histories can use a
+log scale, with drawdown and rolling volatility beneath. Some index families
+require a licensed data source; the page says so rather than substituting a
+different series.
+
+A fund's research shows its one-year tracking difference: the share class's NAV
+total return minus the benchmark return its issuer discloses. Daily tracking
+difference and rolling tracking error need the issuer's daily NAV and benchmark
+file, imported into your workspace where the issuer offers one; see
+[market indices](../architecture/market-indices.md). A premium or discount
+appears only when the market price and NAV carry the same timestamp. US ETFs
+that resemble a fund you hold can be opened read-only before you add them to
+the research list.
+
+An optional EODHD key in **Settings** adds native daily history for TOPIX, Hang
+Seng TECH, CSI 300 and KOSPI 200. It is off until you add a key.
 
 ## Follow the financial evidence
 
@@ -49,7 +77,15 @@ diluted shares.
 ## Use the chart at the level you need
 
 The ordinary **Chart** section offers a range, line/candles, volume, and optional
-moving averages. The company overview stays a simple fixed 3M preview.
+moving averages; Technicals opens on candles. The company overview stays a fixed
+three-month candlestick preview.
+
+Every main chart shows its reading above the plot. Pointer, touch and the arrow
+keys move the same selection, and sparse periods say how many observations they
+hold. The event track below the price marks your trades, earnings, dividends and
+splits, with several events on one day combined. Use the chart menu for
+fullscreen, to copy the current reading, or to export CSV or PNG; exports use the
+original observations and stay on your computer.
 
 A candle's body runs from opening to closing price; the wick reaches the high
 and low of that bar. A daily candle and a 15-minute candle cover different
