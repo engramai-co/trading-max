@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.49.1] - 2026-11-15
+
+### Fixed
+- Localize the desktop connection-loss notice, make it readable by assistive technology, and offer in-place reconnection that keeps the workspace open.
+- Give the last workspace priority at startup, help locate workspaces on disconnected disks, and show installed and available App versions side by side.
+
 ## [1.49.0] - 2026-11-15
 
 ### Added
