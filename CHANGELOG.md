@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.52.1] - 2026-11-16
+
+### Security
+- Update Next.js and its ESLint configuration from 16.4.3 to 16.4.6 for GHSA-mfr8-8qww-v76h, an information-disclosure advisory in a cache path the workspace does not use. The desktop App bundles the same update.
+
 ## [1.52.0] - 2026-11-16
 
 ### Changed
