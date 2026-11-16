@@ -84,14 +84,14 @@ function Observations({ rows, showAccount }: { rows: Observation[]; showAccount:
         return (
           <li key={index}>
             <div>
-              <strong>{kind === "cash" ? t("现金占比", "Sustained cash share") : t("持仓权重漂移", "Weight drift")}</strong>
+              <strong>{kind === "cash" ? t("现金占比", "Sustained cash share") : t("占比漂移", "Weight drift")}</strong>
               <small>{[span, name, kind === "cash"
                 ? (locale === "zh" ? `${row.sessions} 个交易日` : `${row.sessions} trading days`)
                 : row.ticker].filter(Boolean).join(" · ")}</small>
             </div>
             {kind === "cash" ? (
               <span>
-                {share(row.peakShare)} <small>{t("峰值", "peak")}</small>
+                {share(row.peakShare)} <small>{t("高点", "peak")}</small>
                 <small>{share(row.averageShare)} {t("平均", "average")}</small>
               </span>
             ) : (
@@ -173,13 +173,13 @@ export function ReviewObservations({ data, showAccount = true }: { data: Evidenc
       <Panel title={t("没操作", "No trades")} action={caveat} help={
         <>
           <p>{volatility ? (locale === "zh"
-            ? `最近 ${rules.evidenceDays} 天：当天没有买卖，且收盘涨跌幅的绝对值达到 ${percentage(rules.sessionMoveShare)}% 或波动阈值中的较高者。波动阈值为该持仓过去 ${volatility.lookbackSessions} 个交易日的日收益率样本标准差的 ${volatility.multiple} 倍，不计当天。可用日收益率不足 ${volatility.minReturns} 个时采用 ${percentage(rules.sessionMoveShare)}%。每个账户的每只持仓只显示最近 ${volatility.maxRowsPerHolding} 条。价格按证券报价币种计算，并已调整拆股影响。`
-            : `Over the last ${rules.evidenceDays} days, a move between consecutive closes qualifies if there was no trade that day and its absolute size reached the higher of ${percentage(rules.sessionMoveShare)}% or ${volatility.multiple} × the sample standard deviation of that holding’s daily returns over the prior ${volatility.lookbackSessions} trading sessions, excluding that day. With fewer than ${volatility.minReturns} usable daily returns, the ${percentage(rules.sessionMoveShare)}% floor applies. Shows up to ${volatility.maxRowsPerHolding} latest moves per holding per account. Prices are split-adjusted and measured in the security’s quote currency.`)
+            ? `最近 ${rules.evidenceDays} 天：当天没有买卖，且收盘涨跌幅的绝对值达到 ${percentage(rules.sessionMoveShare)}% 或波动阈值中的较高者。波动阈值为该持仓过去 ${volatility.lookbackSessions} 个交易日的日收益率样本标准差的 ${volatility.multiple} 倍，不计当天。可用日收益率不足 ${volatility.minReturns} 个时采用 ${percentage(rules.sessionMoveShare)}%。每个账户的每只持仓只显示最近 ${volatility.maxRowsPerHolding} 条。价格按报价币种计算，并已调整拆股影响。`
+            : `Over the last ${rules.evidenceDays} days, a move between consecutive closes qualifies if there was no trade that day and its absolute size reached the higher of ${percentage(rules.sessionMoveShare)}% or ${volatility.multiple} × the sample standard deviation of that holding’s daily returns over the prior ${volatility.lookbackSessions} trading sessions, excluding that day. With fewer than ${volatility.minReturns} usable daily returns, the ${percentage(rules.sessionMoveShare)}% floor applies. Shows up to ${volatility.maxRowsPerHolding} latest moves per holding per account. Prices are split-adjusted and measured in the holding’s quote currency.`)
             : (locale === "zh"
               ? `最近 ${rules.evidenceDays} 天：持仓在连续两次收盘之间涨跌至少 ${percentage(rules.sessionMoveShare)}%，且当天没有买卖。`
               : `Over the last ${rules.evidenceDays} days: a holding moved at least ${percentage(rules.sessionMoveShare)}% between consecutive closes with no trade that day.`)}</p>
           <p>{locale === "zh"
-            ? `现金占比连续至少 ${rules.cashMinSessions} 个伦敦交易日达到 ${percentage(rules.cashShare)}%。持仓权重在 ${rules.weightDriftDays} 个自然日内变动至少 ${percentage(rules.weightDriftShare)} 个百分点，期间没有买卖；每只持仓显示最大变动。两者均以日末账户总值（含现金）为分母。`
+            ? `现金占比连续至少 ${rules.cashMinSessions} 个伦敦交易日达到 ${percentage(rules.cashShare)}%。持仓占比在 ${rules.weightDriftDays} 个自然日内变动至少 ${percentage(rules.weightDriftShare)} 个百分点，期间没有买卖；每只持仓显示最大变动。两者均以日末账户价值（含现金）为分母。`
             : `Cash accounted for at least ${percentage(rules.cashShare)}% for ${rules.cashMinSessions} consecutive London trading days. A holding’s weight changed at least ${percentage(rules.weightDriftShare)} percentage points within ${rules.weightDriftDays} calendar days with no trades; the largest change per holding is shown. Both shares use end-of-day account value including cash.`}</p>
           {coverage}
         </>
@@ -196,8 +196,8 @@ export function ReviewObservations({ data, showAccount = true }: { data: Evidenc
       <Panel title={t("交易副作用", "Trade side effects")} action={caveat} help={
         <>
           <p>{locale === "zh"
-            ? `每个账户显示最近 ${rules.evidenceDays} 天内最多 ${rules.recentFillLimit} 笔成交。按成交时已完成的最近收盘价和日汇率，在同一时点重算成交前后占比。美元计价敞口只计入以 USD 报价的证券，不穿透基金；三项占比均以账户总值（含现金）为分母。`
-            : `Shows up to ${rules.recentFillLimit} fills per account in the last ${rules.evidenceDays} days. Before and after shares use the same latest completed closes and daily FX at the fill time. USD exposure counts securities quoted in USD without looking through funds. All shares use total account value including cash.`}</p>
+            ? `每个账户显示最近 ${rules.evidenceDays} 天内最多 ${rules.recentFillLimit} 笔成交。按成交时已完成的最近收盘价和日汇率，在同一时点重算成交前后占比。美元计价敞口只计入以 USD 报价的持仓，不穿透基金；三项占比均以账户价值（含现金）为分母。`
+            : `Shows up to ${rules.recentFillLimit} fills per account in the last ${rules.evidenceDays} days. Before and after shares use the same latest completed closes and daily FX at the fill time. USD exposure counts holdings quoted in USD without looking through funds. All shares use account value including cash.`}</p>
           {coverage}
         </>
       }>

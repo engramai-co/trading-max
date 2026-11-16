@@ -72,15 +72,15 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
   return <Stack gap="lg">
     <Notice>{t(
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
-      "Use your ChatGPT account’s Codex allowance. Authorization stays on the device running Trading Max. API keys are billed separately.",
+      "Use your ChatGPT account’s Codex allowance. Authorisation stays on the device running Trading Max. API keys are billed separately.",
     )}</Notice>
     <Select label={t("模型", "Model")} data={provider.models} value={model}
       onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} allowDeselect={false} />
     <Checkbox checked={defaultModel} onChange={(event) => setDefaultModel(event.currentTarget.checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
     {current?.state === "pending" && current.userCode && current.verificationUrl && <Stack gap="md" aria-live="polite">
-      <Text fw={600}>{t("在 OpenAI 完成授权", "Authorize with OpenAI")}</Text>
-      <Text size="sm">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorization page. This screen will connect automatically when you finish.")}</Text>
+      <Text fw={600}>{t("在 OpenAI 完成授权", "Authorise with OpenAI")}</Text>
+      <Text size="sm">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorisation page. This screen will connect automatically when you finish.")}</Text>
       <Group justify="space-between" wrap="nowrap">
         <Code fz="xl" p="sm">{current.userCode}</Code>
         <CopyButton value={current.userCode}>{({ copied, copy }) => <Button variant="light" onClick={copy} leftSection={copied ? <Check size={16} /> : <Copy size={16} />}>
@@ -88,7 +88,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
         </Button>}</CopyButton>
       </Group>
       <Button component="a" href={current.verificationUrl} target="_blank" rel="noopener noreferrer" rightSection={<ArrowSquareOut size={16} />}>
-        {t("打开 OpenAI 授权", "Open OpenAI authorization")}
+        {t("打开 OpenAI 授权", "Open OpenAI authorisation")}
       </Button>
       <Text size="sm" c="dimmed">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</Text>
     </Stack>}
@@ -96,7 +96,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
       : t("本次登录未完成或已过期，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete or expired. Try again; if no code appears, check device-code login permissions in ChatGPT security settings.")}</Notice>}
     {pending ? <Group>
-      <Button variant="light" loading>{t("等待授权", "Waiting for authorization")}</Button>
+      <Button variant="light" loading>{t("等待授权", "Waiting for authorisation")}</Button>
       {session && <Button variant="subtle" onClick={() => cancel.mutate()} loading={cancel.isPending}>{t("取消", "Cancel")}</Button>}
     </Group> : <Button onClick={() => { setSession(null); start.mutate(); }} loading={start.isPending}>
       {t("使用 ChatGPT 登录", "Sign in with ChatGPT")}
@@ -106,7 +106,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
     </Text>
     {existing?.configured && <Button color="red" variant="subtle" disabled={pending} loading={disconnect.isPending}
       onClick={() => disconnecting ? disconnect.mutate() : setDisconnecting(true)}>
-      {disconnecting ? t("确认移除此设备的授权", "Confirm removing this device’s authorization") : t("断开 ChatGPT", "Disconnect ChatGPT")}
+      {disconnecting ? t("确认移除此设备的授权", "Confirm removing this device’s authorisation") : t("断开 ChatGPT", "Disconnect ChatGPT")}
     </Button>}
   </Stack>;
 }

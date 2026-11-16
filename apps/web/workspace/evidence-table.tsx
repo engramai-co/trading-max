@@ -46,7 +46,7 @@ export function EvidenceTable<T>({
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
   if (!rows.length)
-    return <Empty title={t("暂无对应记录", "No matching records")} />;
+    return <Empty title={t("没有符合条件的记录", "No matching records")} />;
   return (
     <>
       <div

@@ -237,7 +237,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
           />
           {more(t("基准比较明细", "Benchmark comparison details"), [
             [
-              t("证券 · 共同区间收益", "Security · common-window return"),
+              t("个股 · 共同区间收益", "Stock · common-window return"),
               percent(relative.asset_return, true),
             ],
             [
@@ -363,7 +363,7 @@ const statementNames: Record<string, [string, string]> = {
     "Non-current liabilities",
   ],
   "Long Term Debt": ["长期债务", "Long-term debt"],
-  "Stockholders Equity": ["股东权益", "Stockholders equity"],
+  "Stockholders Equity": ["股东权益", "Shareholders’ equity"],
   "Cash And Cash Equivalents": ["现金及等价物", "Cash and cash equivalents"],
   "Total Debt": ["总债务", "Total debt"],
   "Net Debt": ["净债务", "Net debt"],
@@ -620,8 +620,8 @@ export function FinancialStatements({
             "This statement has no available records",
           )}
           description={t(
-            "数据源覆盖可能因证券与报告期而不同。",
-            "Provider coverage can differ by security and reporting period.",
+            "数据源覆盖可能因公司与报告期而不同。",
+            "Provider coverage can differ by company and reporting period.",
           )}
         />
       )}

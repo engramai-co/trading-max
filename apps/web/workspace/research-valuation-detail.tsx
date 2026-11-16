@@ -98,7 +98,7 @@ export function ValuationWorksheet({
         title={t("年度计算底稿", "Annual projection")}
         action={
           <Select
-            aria-label={t("底稿情景", "Projection scenario")}
+            aria-label={t("底稿情景", "Worksheet scenario")}
             value={worksheet}
             onChange={(v) => onWorksheet(v ?? "base")}
             data={keys.map((k) => ({ value: k, label: scenarioNames[k] }))}
@@ -196,7 +196,7 @@ export function ValuationWorksheet({
             </dd>
             <dt>{t("起始现金流率", "Starting FCF margin")}</dt>
             <dd>{percent(result.basis.startMargin, false, 2)}</dd>
-            <dt>{t("股数", "Shares outstanding")}</dt>
+            <dt>{t("总股数", "Shares outstanding")}</dt>
             <dd>{number(result.basis.shares, 0)}</dd>
           </dl>
           <ul className="mx-source-list">
@@ -321,7 +321,7 @@ export function GrowthContext({
   return (
     <Panel
       className="mx-growth-context"
-      title={t("营收增长参考", "Revenue-growth context")}
+      title={t("营收增长参考", "Revenue-growth reference")}
       help={t(
         "历史 CAGR 按所示年度收入跨度复算；最新季度同比与下一财年共识各用自己的期间。它们是参考，修改模型仍由你决定。",
         "Historical CAGR uses the available annual-revenue span. Latest-quarter YoY and next-fiscal-year consensus retain their own periods. These references do not overwrite your model inputs.",

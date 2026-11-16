@@ -24,7 +24,7 @@ describe("job outcomes", () => {
   it("names a known cause and stays silent otherwise", () => {
     expect(causeKind("network", t)).toBe("Connection failed");
     expect(causeKind("rate_limit", t)).toBe("Rate limited");
-    expect(causeKind("reconciliation", t)).toBe("Positions differ from summary");
+    expect(causeKind("reconciliation", t)).toBe("Holdings differ from summary");
     expect(causeKind(null, t)).toBeNull();
   });
 

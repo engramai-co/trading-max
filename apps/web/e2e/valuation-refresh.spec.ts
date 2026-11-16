@@ -229,7 +229,7 @@ test.describe("valuation refresh", () => {
     expect(state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(0.2);
 
     // Another security never shows this one's preview while its own loads.
-    await page.getByRole("button", { name: "Next security" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page).toHaveURL(/ticker=OTHR/);
     await expect(page.locator(".mx-security-header h2")).toContainText("OTHR");
     await expect(spot).toHaveCount(0);
@@ -304,7 +304,7 @@ test.describe("valuation refresh", () => {
     await expect(chart).not.toHaveAccessibleName(/percentile/);
     await expect(page.getByRole("button", { name: "P25–P75" })).toHaveCount(0);
     state.releaseOther();
-    await page.getByRole("button", { name: "Next security" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page).toHaveURL(/ticker=OTHR/);
     await expect(page.locator(".mx-scenario-spot")).toContainText("55.00");
     await expect(chart).toHaveCount(0);

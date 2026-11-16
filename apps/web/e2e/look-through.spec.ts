@@ -51,8 +51,8 @@ test.describe("look-through companies", () => {
     const first = page.getByRole("button", { name: /SYN01/ });
     const dock = page.getByRole("navigation", { name: "Quick navigation", exact: true });
     expect((await first.boundingBox())!.y).toBeLessThan((await dock.boundingBox())!.y);
-    const above = page.getByRole("navigation", { name: "Underlying asset pages, above the list", exact: true });
-    const below = page.getByRole("navigation", { name: "Underlying asset pages, below the list", exact: true });
+    const above = page.getByRole("navigation", { name: "Underlying holding pages, above the list", exact: true });
+    const below = page.getByRole("navigation", { name: "Underlying holding pages, below the list", exact: true });
     await expect(above).toBeVisible();
     await expect(below).toHaveCount(1);
     const country = page.getByRole("combobox", { name: "Filter country", exact: true });
@@ -146,7 +146,7 @@ for (const { height, title } of [
         const centre = async (control: typeof sort) => { const box = (await control.boundingBox())!; return box.y + box.height / 2; };
         expect(Math.abs((await centre(sort)) - (await centre(views.first())))).toBeLessThan(2);
         for (const control of [
-          page.getByRole("textbox", { name: zh ? "搜索底层资产" : "Search underlying assets", exact: true }),
+          page.getByRole("textbox", { name: zh ? "搜索底层持仓" : "Search underlying holdings", exact: true }),
           page.getByRole("button", { name: zh ? "筛选" : "Filters", exact: true }),
           sort,
           views.first(),

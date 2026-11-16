@@ -25,7 +25,7 @@ export function usePhaseNames(): Record<MarketPhase, string> {
     open: t("盘中", "Open"),
     break: t("午休", "Lunch break"),
     closed: t("已收盘", "Closed"),
-    "pre-open": t("未开盘", "Pre-open"),
+    "pre-open": t("未开盘", "Not open"),
     unknown: "",
   };
 }
@@ -107,7 +107,7 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
         : unsettled && failed ? <Tag tone="warn">{t("收盘价未齐", "Closing prices incomplete")}</Tag>
         : failed ? <Tag tone="warn">{t("更新失败", "Update failed")}</Tag>
         : !monitorOn && phase === "open" ? <Tag tone="warn">{t("自动更新已关闭", "Updates off")}</Tag>
-          : lagging ? <Tag tone="warn">{t("数据滞后", "Delayed")}</Tag> : null}
+          : lagging ? <Tag tone="warn">{t("延迟", "Delayed")}</Tag> : null}
       {sources && source && (
         <Help label={t("板块数据来源", "Sector data sources")}>
           <SectorSources source={source} />

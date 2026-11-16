@@ -184,7 +184,7 @@ export function DayDrivers({ drivers, span = "1D" }: { drivers: Drivers; span?: 
         <li
           title={t(
             "持仓价格变动之外的部分：现金、现金汇率、日内买卖或估值时点差异。",
-            "Change outside position prices: cash, FX on cash, trades within a day or valuation timing.",
+            "Change outside holding prices: cash, FX on cash, trades within a day or valuation timing.",
           )}
         >
           <Tag tone="warn">{t("未归因 ", "Unattributed ") + signedPounds(drivers.unexplained)}</Tag>
