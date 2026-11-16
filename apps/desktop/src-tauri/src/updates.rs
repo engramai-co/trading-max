@@ -352,7 +352,7 @@ pub fn download_url(value: &str) -> Result<tauri::Url, String> {
     let value = normalized(value)?;
     if version(&value)? < version(env!("CARGO_PKG_VERSION"))? {
         return Err(tr(
-            "此版本早于本机 App，未打开降级下载。",
+            "此版本早于已安装的 App，未打开降级下载。",
             "This version is older than the installed app. The downgrade was not opened.",
         ));
     }

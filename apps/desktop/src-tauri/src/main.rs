@@ -211,7 +211,7 @@ fn local_command(window: &WebviewWindow) -> Result<(), String> {
         Ok(())
     } else {
         Err(tr(
-            "原生设置仅供 App 本机界面使用。",
+            "原生设置只在 App 自己的窗口里可用。",
             "Native settings are only available in the app’s own windows.",
         ))
     }
@@ -776,12 +776,12 @@ async fn choose_workspace_folder(
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title(language.text("选择本机文件夹", "Choose a local folder"))
+            .set_title(language.text("选择本地文件夹", "Choose a local folder"))
             .blocking_pick_folder()
             .map(|file| {
                 file.into_path().map_err(|_| {
                     language
-                        .text("请选择本机文件夹。", "Choose a local folder.")
+                        .text("请选择本地文件夹。", "Choose a local folder.")
                         .to_string()
                 })
             })
