@@ -25,17 +25,17 @@ export async function GET(request: Request) {
     || (page != null && (!/^[1-9]\d{0,6}$/.test(page) || openings.length > 0))
     || openings.length > MAX_OPENINGS
     || openings.some((at) => exactInstant(at) == null)) {
-    return privateJsonResponse(request, { detail: "Invalid history selection" }, { status: 400 });
+    return privateJsonResponse({ detail: "Invalid history selection" }, { status: 400 });
   }
   try {
     const selection = { runId, range, scope } as HistorySelection;
     const prepared = await readPreparedHistory(selection);
-    if (page != null) return privateJsonResponse(request, historyPage(prepared, Number(page)));
+    if (page != null) return privateJsonResponse(historyPage(prepared, Number(page)));
     const chart = openings.length ? { ...prepared.chart, openings: pnlsAt(prepared, openings) } : prepared.chart;
     rememberDesktopSnapshot(portfolioHistoryKey(selection, openings), chart);
-    return privateJsonResponse(request, chart);
+    return privateJsonResponse(chart);
   } catch (error) {
-    return privateJsonResponse(request, { detail: "History could not be loaded. Please retry." },
+    return privateJsonResponse({ detail: "History could not be loaded. Please retry." },
       { status: error instanceof HistoryRequestError ? error.status : 503 });
   }
 }

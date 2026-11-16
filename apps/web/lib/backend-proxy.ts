@@ -1,8 +1,5 @@
 import "server-only";
 
-import { Readable, pipeline } from "node:stream";
-import { constants, createBrotliCompress } from "node:zlib";
-
 import { backendFetch, backendUrl } from "@/lib/backend";
 
 export const PRIVATE_JSON_HEADERS = {
@@ -10,58 +7,16 @@ export const PRIVATE_JSON_HEADERS = {
   "Content-Type": "application/json",
 } as const;
 
-const COMPRESSION_MINIMUM_BYTES = 1_024;
-
-type ContentCoding = "br" | "gzip";
-
-function preferredCoding(value?: string | null): ContentCoding | null {
-  if (!value) return null;
-  const weights = new Map<string, number>();
-  for (const item of value.split(",")) {
-    const [coding, ...parameters] = item.trim().toLowerCase().split(";").map((part) => part.trim());
-    const q = parameters.find((part) => part.startsWith("q="));
-    const weight = q ? Number(q.slice(2)) : 1;
-    weights.set(coding, Number.isFinite(weight) && weight >= 0 && weight <= 1 ? weight : 0);
-  }
-  const quality = (coding: ContentCoding) => weights.get(coding) ?? weights.get("*") ?? 0;
-  const br = quality("br"), gzip = quality("gzip");
-  if (br > 0 && br >= gzip) return "br";
-  return gzip > 0 ? "gzip" : null;
-}
-
-function compressedBody(
-  body: ReadableStream<Uint8Array> | null,
-  acceptEncoding?: string | null,
-  contentLength?: number,
-) {
-  const largeEnough = contentLength == null || contentLength >= COMPRESSION_MINIMUM_BYTES;
-  const coding = preferredCoding(acceptEncoding);
-  if (!body || !largeEnough || !coding) return null;
-  if (coding === "gzip") {
-    return { coding, body: (body as ReadableStream<BufferSource>).pipeThrough(new CompressionStream("gzip")) };
-  }
-  const source = Readable.fromWeb(body as Parameters<typeof Readable.fromWeb>[0]);
-  const compressor = createBrotliCompress({ params: {
-    [constants.BROTLI_PARAM_QUALITY]: 4,
-    [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
-    // Let the streaming encoder plan for the complete response without buffering it.
-    [constants.BROTLI_PARAM_SIZE_HINT]: contentLength !== undefined && Number.isSafeInteger(contentLength)
-      ? Math.min(contentLength, 0xffff_ffff) : 0,
-  } });
-  const compressed = Readable.toWeb(compressor) as ReadableStream<Uint8Array>;
-  // Pipeline propagates client cancellation and upstream failures to both streams.
-  pipeline(source, compressor, () => undefined);
-  return { coding, body: compressed };
-}
-
-function privateHeaders(contentType: string, coding?: ContentCoding) {
-  const headers = new Headers({
+/**
+ * Route handlers return plain bodies. Next.js (16.4.5 and later) drops a
+ * handler's own Content-Encoding and compresses the response once itself, so
+ * a pre-compressed body would reach the browser encoded twice.
+ */
+function privateHeaders(contentType: string) {
+  return new Headers({
     "Cache-Control": "private, no-store",
     "Content-Type": contentType,
-    "Vary": "Accept-Encoding",
   });
-  if (coding) headers.set("Content-Encoding", coding);
-  return headers;
 }
 
 function withServerTiming(headers: Headers, durationMs?: number, upstream?: string | null) {
@@ -79,45 +34,28 @@ export function backendUnavailable(detail = "Portfolio backend is not configured
 export function proxyBackendResponse(
   response: Response,
   contentType = "application/json",
-  acceptEncoding?: string | null,
   durationMs?: number,
 ) {
-  const lengthHeader = response.headers.get("content-length");
-  const rawLength = lengthHeader == null ? Number.NaN : Number(lengthHeader);
-  const contentLength = Number.isFinite(rawLength) ? rawLength : undefined;
-  const compressed = compressedBody(response.body, acceptEncoding, contentLength);
-  return new Response(compressed?.body ?? response.body, {
+  return new Response(response.body, {
     status: response.status,
     headers: withServerTiming(
-      privateHeaders(contentType, compressed?.coding),
+      privateHeaders(contentType),
       durationMs,
       response.headers.get("server-timing"),
     ),
   });
 }
 
-export function privateJsonResponse(
-  request: Request,
-  payload: unknown,
-  init: ResponseInit = {},
-) {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  const body = new Blob([bytes]).stream();
-  const compressed = compressedBody(
-    body,
-    request.headers.get("accept-encoding"),
-    bytes.byteLength,
-  );
-  return new Response(compressed?.body ?? body, {
+export function privateJsonResponse(payload: unknown, init: ResponseInit = {}) {
+  return new Response(JSON.stringify(payload), {
     ...init,
-    headers: privateHeaders("application/json", compressed?.coding),
+    headers: privateHeaders("application/json"),
   });
 }
 
 export async function proxyToBackend(
   pathname: string,
   init?: RequestInit,
-  acceptEncoding?: string | null,
   observe?: (response: Response) => void,
 ): Promise<Response> {
   if (!backendUrl()) return backendUnavailable();
@@ -128,7 +66,6 @@ export async function proxyToBackend(
     return proxyBackendResponse(
       response,
       "application/json",
-      acceptEncoding,
       performance.now() - startedAt,
     );
   } catch (error) {

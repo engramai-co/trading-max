@@ -10,7 +10,5 @@ export async function GET(
   return proxyToBackend(
     `/v1/research/${encodeURIComponent(ticker)}/estimate-history` +
       (limit && /^\d{1,4}$/.test(limit) ? `?limit=${limit}` : ""),
-    undefined,
-    request.headers.get("accept-encoding"),
   );
 }

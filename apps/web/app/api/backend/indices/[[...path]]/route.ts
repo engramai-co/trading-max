@@ -8,7 +8,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   const detail = path.length === 2 && /^[a-z0-9-]{1,60}$/.test(path[0])
     && ["history", "context", "research"].includes(path[1]);
   if ((path.length && !overview && !detail) || (process.env.TRADING_MAX_ENV === "desktop-preview" && path[0] !== "catalog")) {
-    return privateJsonResponse(request, { detail: "Indices unavailable" }, { status: 404 });
+    return privateJsonResponse({ detail: "Indices unavailable" }, { status: 404 });
   }
   const input = new URL(request.url).searchParams;
   const query = new URLSearchParams();
@@ -20,6 +20,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
   return proxyToBackend(
     "/v1/indices" + tail + (query.size ? "?" + query.toString() : ""),
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
   );
 }

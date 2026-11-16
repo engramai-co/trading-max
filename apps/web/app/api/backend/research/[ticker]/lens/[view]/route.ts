@@ -40,7 +40,6 @@ export async function GET(
   return proxyToBackend(
     `/v1/research/${encodeURIComponent(ticker)}/lens/${view}?limit=${requested}&detail=${detail}${preview ? "&preview=true" : ""}`,
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
     requested === 30 && !preview ? (response) => rememberDesktopSnapshotResponse(researchLensKey(ticker, view, detail, revision), response) : undefined,
   );
 }

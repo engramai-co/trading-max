@@ -42,9 +42,9 @@ if not payload.get("runId") or not payload.get("artifacts"):
 for route in "/" "/health" "/analytics" "/research" "/holdings" "/review" "/settings"; do
   curl --fail --silent --show-error --max-time 15 "$WEB_BASE$route" >/dev/null
 done
-# Browsers ask for compressed data. The web proxy compresses larger responses
-# itself, so each compressed body must still carry its Content-Encoding label;
-# an unlabelled compressed body leaves every data page unreadable in a browser.
+# Browsers ask for compressed data. Next.js compresses each data response once;
+# a body compressed twice, or without its Content-Encoding label, leaves every
+# data page unreadable in a browser.
 /usr/bin/python3 - "$WEB_BASE" <<'PY'
 import gzip, json, sys, urllib.request
 
