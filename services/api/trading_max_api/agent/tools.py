@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -194,6 +195,11 @@ def _digest(value: Any) -> str:
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _short_id(prefix: str, value: Any) -> str:
+    # 64 bits keep ids unique within a conversation and short enough to cite inline.
+    return prefix + _digest(value)[:16]
+
+
 def _bytes(value: Any) -> int:
     return len(json.dumps(value, allow_nan=False).encode())
 
@@ -269,8 +275,9 @@ class _Read:
                 _source(ref) for key in dict.fromkeys(keys) if (ref := self.ref(key)) is not None
             ],
             "quality": quality,
-            "evidence_id": "ev_"
-            + _digest([self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]),
+            "evidence_id": _short_id(
+                "ev_", [self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]
+            ),
         }
 
     def missing(self, reason: str = "snapshot_missing", *, keys: Iterable[str] = ()) -> Json:
@@ -331,15 +338,25 @@ class _Read:
 
 def _source(ref: ArtifactInfo) -> Json:
     return {
-        "source_id": "src_" + _digest([ref.key, ref.sha256]),
+        "source_id": _short_id("src_", [ref.key, ref.sha256]),
         "as_of": _iso(ref.data_as_of)
         or (ref.generated_at.isoformat() if ref.generated_at else None),
     }
 
 
+_DECIMAL_TEXT = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+
+
 def _number(value: Any) -> float | None:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    """Published money values are decimal strings; older and synthetic ones are numbers."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
         return float(value) if isfinite(value) else None
+    if isinstance(value, str) and len(value) <= 64 and _DECIMAL_TEXT.fullmatch(value.strip()):
+        number = float(value)
+        return number if isfinite(number) else None
     return None
 
 

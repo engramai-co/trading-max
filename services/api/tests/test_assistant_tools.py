@@ -336,7 +336,7 @@ def test_envelope_and_evidence_id(publication, function, args, field):
     assert result["status"] in {"ok", "partial"}, result
     assert result["data"][field]
     assert result["snapshot_id"] == manifest.run_id
-    assert len(result["evidence_id"]) == 67
+    assert len(result["evidence_id"]) == 19
     assert result["evidence_id"] == _call(deps, function, args)["evidence_id"]
     assert result["sources"]
     assert all(set(source) == {"source_id", "as_of"} for source in result["sources"])
@@ -363,6 +363,7 @@ def test_scope_pin_and_broker_position_reconciliation(publication):
     assert holdings["status"] == "partial"
     assert holdings["data"]["items"][0]["ticker"] == "TEST"
     assert holdings["data"]["items"][0]["observed_at"] == "2026-02-03T16:00:00Z"
+
     next_page = _call(
         deps,
         tools.list_holdings,
@@ -376,6 +377,47 @@ def test_scope_pin_and_broker_position_reconciliation(publication):
     for denied in ("isa", "broker_total", "household", "cfd"):
         with pytest.raises(ModelRetry, match="account scope"):
             _call(restricted, tools.list_holdings, tools.HoldingsArgs(scope=denied))
+
+
+def test_published_decimal_strings_are_read_as_amounts(tmp_path):
+    # The worker publishes broker money as decimal strings, e.g. "116686.0631".
+    store = ArtifactStore(tmp_path)
+    account = {
+        "fetched_at": "2026-02-03T16:00:00Z",
+        "total_value_gbp": "1000.25",
+        "cash_gbp": "100.0",
+        "investments_value_gbp": "900.25",
+        "realized_profit_loss_gbp": "-20.5",
+        "unrealized_profit_loss_gbp": "10",
+        "positions": [
+            {
+                "ticker": "TEST",
+                "quantity": "10.5",
+                "current_price": "85.738",
+                "price_currency": "GBP",
+                "current_value_gbp": "900.25",
+                "total_cost_gbp": "890.25",
+                "unrealized_profit_loss_gbp": "10",
+            }
+        ],
+    }
+    ref = store.immutable_artifacts.put_json(
+        key=tools.BROKER,
+        payload={"generated_at_utc": AS_OF, "accounts": {"A": account}},
+        as_of=AS_OF,
+    )
+    store.publish_typed(scope="all", source="synthetic", artifacts=[ref])
+    deps = AssistantDepsFactory(store).for_run()
+    overview = _call(deps, tools.portfolio_overview, tools.Scoped(scope="invest"))
+    assert overview["status"] == "ok"
+    assert overview["data"]["total_value_gbp"] == 1000.25
+    assert overview["data"]["realized_pnl_gbp"] == -20.5
+    holdings = _call(deps, tools.list_holdings, tools.HoldingsArgs(scope="invest"))
+    item = holdings["data"]["items"][0]
+    assert (item["quantity"], item["current_value_gbp"]) == (10.5, 900.25)
+    assert overview["evidence_id"].startswith("ev_") and len(overview["evidence_id"]) == 19
+    for bad in ("nan", "inf", "1e999", "12 GBP", ""):
+        assert tools._number(bad) is None  # noqa: SLF001
 
 
 def test_market_history_and_calendar_parity(publication):
