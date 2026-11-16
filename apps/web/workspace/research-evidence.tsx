@@ -6,7 +6,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
-import type { ReadingItem } from "./chart-readout";
+import type { ChartReadout, ReadingItem } from "./chart-readout";
 import { compact, compactTick, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Facts, Metric, Panel, Segments, useCopy } from "./foundation";
@@ -16,7 +16,7 @@ import { dividendSummary } from "./research-dividends";
 import { EvidenceTable } from "./evidence-table";
 import { filingTitle } from "./research-filings";
 import { useAllocationChartColours, useChartColours } from "@/ui/charts/palette";
-import { bridgeReadout, epsFigure, minus } from "./readout-bridge";
+import { epsFigure, minus } from "./reading-figures";
 
 /** A fiscal period end as the axis names it: month and year, never an ISO date. */
 function periodLabel(end: string, locale: "zh" | "en") {
@@ -111,7 +111,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
       : null;
   const figure = (value: number) =>
     indexed ? number(value, 1) : shares ? percent(value, false, 2) : minus(chartNumber(value, locale));
-  const segmentReadout = bridgeReadout({
+  const segmentReadout: ChartReadout = {
     positions: periods.map((_, i) => i),
     read: (i) => {
       const p = periods[i];
@@ -135,7 +135,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
       return value == null ? [] : [{ value, colour: memberColour(member) }];
     }) : undefined,
     latest: end ? periodLabel(end, locale) : "—",
-  });
+  };
   const prior = rows.filter(
     (s) =>
       numeric(s.fiscalYear) === (numeric(selected[0]?.fiscalYear) ?? 0) - 1 &&
@@ -495,12 +495,12 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
   const series = mode === "ttm" ? summary.trailing : summary.annual;
   // Complete years read as the year; trailing totals as the month they end, like the axis.
   const when = (date: string) => mode === "ttm" ? periodLabel(date, locale) : date;
-  const dividendReadout = bridgeReadout({
+  const dividendReadout: ChartReadout = {
     positions: series.map((_, i) => i),
     read: (i) => series[i] ? { time: when(series[i].date), primary: { value: epsFigure(series[i].value) } } : null,
     marks: (i) => series[i]?.value == null ? [] : [{ value: series[i].value!, colour: colours.brand }],
     latest: series.length ? epsFigure(series.at(-1)!.value) : "—",
-  });
+  };
   return (
     <Panel
       title={t("每股分红", "Dividends per share")}

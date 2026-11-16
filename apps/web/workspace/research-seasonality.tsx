@@ -10,9 +10,10 @@ import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
-import type { ReadingKey } from "./chart-readout";
+import type { ChartReadout, ReadingKey } from "./chart-readout";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
-import { bridgeReadout, minus, readingTone } from "./readout-bridge";
+import { minus } from "./reading-figures";
+import { readingTone, signedPercent } from "./reading-format";
 import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
@@ -178,19 +179,20 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
   const key = (index: number): ReadingKey => {
     const line = pathLines[index];
     const stroke = seasonStroke(colours, line.year, line.benchmark);
-    return { colour: stroke.colour, dashed: stroke.type !== "solid" || undefined };
+    // A benchmark path is dotted, an earlier year dashed; the key draws the same stroke.
+    return line.benchmark ? { colour: stroke.colour, dotted: true } : { colour: stroke.colour, dashed: stroke.type !== "solid" || undefined };
   };
   const dayLabel = (day: number) => formatDate(new Date(Date.UTC(2000, 0, 1 + day)), locale, { month: "short", day: "numeric", timeZone: "UTC" });
   // Every year reads at the same calendar day, so the reading opens wherever the pointer or keys rest.
-  const seasonReadout = bridgeReadout({
+  const seasonReadout: ChartReadout = {
     positions: [...new Set(pathLines.flatMap((line) => line.series.map(([day]) => day)))].sort((a, b) => a - b),
     read: (day) => {
       const values = pathLines.map((line) => changeOnDay(line.series, day));
       if (!pathLines.length || values.every((value) => value == null)) return null;
-      const shown = (value: number | null) => value == null ? "—" : minus(percent(value, true, 2));
+      const shown = (value: number | null) => value == null ? "—" : signedPercent(value);
       return {
         time: dayLabel(day),
-        primary: { label: pathLines[0].name, key: key(0), value: shown(values[0]), tone: readingTone(values[0]) },
+        primary: { label: pathLines[0].name, key: key(0), value: shown(values[0]), tone: readingTone(values[0], 4) },
         groups: [pathLines.slice(1).flatMap((line, offset) => values[offset + 1] == null ? []
           : [{ label: line.name, value: shown(values[offset + 1]), key: key(offset + 1) }])],
       };
@@ -200,7 +202,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
       const value = changeOnDay(line.series, day);
       return value == null ? [] : [{ value, colour: key(index).colour }];
     }),
-  });
+  };
   return (
     <>
       <Panel

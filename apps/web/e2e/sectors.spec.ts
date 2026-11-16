@@ -790,7 +790,7 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/market=ch&index=smi/);
     await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
     // One research entry per Markets view: the selected index's title row, not a link under every card.
-    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toHaveAccessibleName(/指数研究|Index research/);
+    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toHaveAccessibleName(/查看研究|View research/);
     await expect(page.locator('a[href^="/research?type=index"]')).toHaveCount(1);
     expect(requests).toBe(0);
   });

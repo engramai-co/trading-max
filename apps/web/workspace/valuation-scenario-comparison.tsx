@@ -7,7 +7,7 @@ import type { Preview } from "./research-facts";
 import { Plot } from "./charts";
 import { currency, percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
-import { minus } from "./readout-bridge";
+import { minus } from "./reading-figures";
 
 const KEYS = ["bear", "base", "bull"] as const;
 type ScenarioKey = (typeof KEYS)[number];

@@ -242,18 +242,12 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-help-body p + p {
   margin-top: 10px;
 }
-.mx-help-basis {
+/* The closing Data basis paragraph (DataBasis), alike in every help. */
+.mx-help-body .mx-help-basis {
   margin-top: 12px;
 }
-.mx-help-basis h3 {
-  margin: 0;
-  color: var(--mx-muted);
-  font-size: 12px;
+.mx-help-basis strong {
   font-weight: 600;
-  line-height: 1.6;
-}
-.mx-help-basis p {
-  margin: 0;
 }
 /* Phones: help opens as a bottom sheet above the dock and the safe area. The sheet renders
    in a portal outside .mx-app, so it falls back to the phone dock's own 68px. */

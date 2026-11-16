@@ -8,9 +8,10 @@ import { useState } from "react";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
-import type { ReadingKey } from "./chart-readout";
+import type { ChartReadout, ReadingKey } from "./chart-readout";
 import { Empty, Metric, Panel, Segments, useCopy } from "./foundation";
-import { bridgeReadout, minus, readingTone } from "./readout-bridge";
+import { minus } from "./reading-figures";
+import { readingTone } from "./reading-format";
 import { FinancialStatements } from "./research-company";
 import {
   BusinessSegments,
@@ -135,7 +136,7 @@ export function FinancialWorkbench({
   const historyKey = (line: number): ReadingKey => ({ colour: historyColours[line], kind: lineChart ? "line" : "bar" });
   const historyValue = (value: number | null | undefined) => value == null ? "—"
     : ratio ? minus(percent(value, false, 2)) : chart === "shares" ? compact(value, locale) : minus(chartNumber(value, locale));
-  const historyReadout = bridgeReadout({
+  const historyReadout: ChartReadout = {
     positions: periods.map((_, index) => index),
     read: (index) => {
       const at = periods[index];
@@ -149,10 +150,10 @@ export function FinancialWorkbench({
       return value == null ? [] : [{ value, colour: historyColours[line] }];
     }) : undefined,
     latest: periods.length ? historyValue(get(periods.at(-1)!.id, chartMetrics[0])?.value) : "—",
-  });
+  };
   // Each step's own amount is on its bar; the reading adds its share of revenue.
   const revenueTotal = bridge[0]?.to;
-  const bridgeReading = bridgeReadout({
+  const bridgeReading: ChartReadout = {
     positions: bridge.map((_, index) => index),
     read: (index) => {
       const step = bridge[index];
@@ -165,8 +166,8 @@ export function FinancialWorkbench({
       };
     },
     latest: revenueTotal != null ? minus(chartNumber(bridge.at(-1)!.to, locale)) : "—",
-  });
-  const detailReadout = activeDetail ? bridgeReadout({
+  };
+  const detailReadout: ChartReadout | undefined = activeDetail ? {
     positions: periods.map((_, index) => index),
     read: (index) => {
       const at = periods[index];
@@ -180,7 +181,8 @@ export function FinancialWorkbench({
       return {
         time: at.label,
         primary: { value: value == null ? "—" : shown(value) },
-        groups: changeText ? [[{ label: t("较上期", "vs previous"), value: changeText, tone: readingTone(change) }]] : undefined,
+        // A supporting row stays in ink; only the step's own amount takes a tone.
+        groups: changeText ? [[{ label: t("较上期", "vs previous"), value: changeText }]] : undefined,
       };
     },
     marks: (index) => {
@@ -188,7 +190,7 @@ export function FinancialWorkbench({
       return value == null ? [] : [{ value, colour: colours.brand }];
     },
     latest: periods.length ? historyValue(get(periods.at(-1)!.id, activeDetail.metric)?.value) : "—",
-  }) : undefined;
+  } : undefined;
   return (
     <>
       <div className="mx-research-context-toolbar">

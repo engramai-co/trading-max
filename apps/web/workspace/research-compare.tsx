@@ -8,27 +8,29 @@ import type { EChartsOption } from "echarts";
 import { Plot } from "./charts";
 import { number, object, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
-import type { Reading, ReadingItem, ReadingKey } from "./chart-readout";
+import type { ChartReadout, Reading, ReadingItem, ReadingKey } from "./chart-readout";
 import { Empty, Panel, Pending, Segments, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
-import { bridgeReadout, minus, readingTone } from "./readout-bridge";
+import { minus } from "./reading-figures";
+import { comparisonFigures, readingTone, signedPercent } from "./reading-format";
 import { useRouteState } from "./route-state";
 
 /**
- * Up to four lines: the researched company in cobalt, the others in ink and grey, solid or dashed.
+ * Up to four lines: the researched company in cobalt and solid, the others in ink and grey, dashed
+ * or dotted, as comparison lines are everywhere else.
  * The legend swatch, the hover dot and the reading key all take the line's own stroke from here.
  */
 const COMPARE_LINES = [
-  { colour: "brand", dashed: false, width: 2 },
-  { colour: "text", dashed: true, width: 1.6 },
-  { colour: "axis", dashed: false, width: 1.6 },
-  { colour: "axis", dashed: true, width: 1.6 },
-] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dashed: boolean; width: number }>;
+  { colour: "brand", dash: "solid", width: 2 },
+  { colour: "text", dash: "dashed", width: 1.6 },
+  { colour: "axis", dash: "dotted", width: 1.6 },
+  { colour: "axis", dash: "dashed", width: 1.6 },
+] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dash: "solid" | "dashed" | "dotted"; width: number }>;
 
 export function compareStroke(colours: ChartColours, index: number) {
   const line = COMPARE_LINES[Math.min(index, COMPARE_LINES.length - 1)];
-  return { colour: colours[line.colour], dashed: line.dashed, width: line.width };
+  return { colour: colours[line.colour], dashed: line.dash === "dashed", dotted: line.dash === "dotted", width: line.width };
 }
 
 /** Returns from a common start, one line per company, dates as the reader writes them. */
@@ -52,35 +54,33 @@ export function compareReturnsOption(colours: ChartColours, tickers: string[], d
         connectNulls: false,
         color: stroke.colour,
         itemStyle: { color: stroke.colour },
-        lineStyle: { width: stroke.width, color: stroke.colour, type: stroke.dashed ? [6, 4] : "solid" as const },
+        lineStyle: { width: stroke.width, color: stroke.colour, type: stroke.dashed ? [6, 4] : stroke.dotted ? "dotted" as const : "solid" as const },
         data: returns[index],
       };
     }),
   };
 }
 
-/** One date's returns: the researched company leads, the others follow by return, and two lines add their gap. */
+/**
+ * One date's returns, read as every comparison is: the researched company leads, the others follow
+ * by return keyed to their strokes, and two companies add the gap in percentage points.
+ */
 export function compareReading(tickers: string[], dates: string[], returns: Array<Array<number | null>>,
   colours: ChartColours, index: number, locale: Locale): Reading | null {
   if (!dates[index]) return null;
   const key = (line: number): ReadingKey => {
     const stroke = compareStroke(colours, line);
-    return { colour: stroke.colour, dashed: stroke.dashed || undefined };
+    return { colour: stroke.colour, ...(stroke.dashed ? { dashed: true } : {}), ...(stroke.dotted ? { dotted: true } : {}) };
   };
   const value = (line: number) => returns[line]?.[index] ?? null;
-  const shown = (figure: number | null) => minus(percent(figure, true, 2));
-  const others = tickers.slice(1).map((ticker, offset) => ({ ticker, line: offset + 1, figure: value(offset + 1) }))
-    .sort((a, b) => (b.figure ?? -Infinity) - (a.figure ?? -Infinity));
-  const groups: ReadingItem[][] = [others.map(({ ticker, line, figure }) => ({ label: ticker, value: shown(figure), key: key(line) }))];
-  const lead = value(0);
-  if (tickers.length === 2 && lead != null && others[0]?.figure != null) {
-    const gap = (lead - others[0].figure) * 100;
-    groups.push([{ label: locale === "zh" ? "相差" : "Difference", value: minus((gap > 0 ? "+" : "") + gap.toFixed(2)) + " pp", tone: readingTone(gap) }]);
-  }
+  const item = (line: number): ReadingItem => ({
+    label: tickers[line], key: key(line), value: signedPercent(value(line)), tone: readingTone(value(line), 4),
+  });
+  const others = tickers.slice(1).map((_, offset) => offset + 1)
+    .sort((a, b) => (value(b) ?? -Infinity) - (value(a) ?? -Infinity));
   return {
     time: formatCalendarDate(dates[index], locale),
-    primary: { label: tickers[0], key: key(0), value: shown(lead), tone: readingTone(lead) },
-    groups,
+    ...comparisonFigures([0, ...others].map((line) => ({ item: item(line), change: value(line) })), locale === "zh" ? "相差" : "Difference"),
   };
 }
 
@@ -170,7 +170,7 @@ export function ResearchComparison({
     const start = map.get(dates[0]), close = map.get(date);
     return start != null && close != null && start !== 0 ? close / start - 1 : null;
   }));
-  const returnsReadout = bridgeReadout({
+  const returnsReadout: ChartReadout = {
     positions: dates.map((_, index) => index),
     read: (position) => compareReading(tickers, dates, returnSeries, colours, position, locale),
     latest: minus(percent(returnSeries[0]?.at(-1), true, 2)),
@@ -178,7 +178,7 @@ export function ResearchComparison({
       const value = returnSeries[line]?.[position];
       return value == null ? [] : [{ value, colour: compareStroke(colours, line).colour }];
     }),
-  });
+  };
   const metrics = [
     "revenueGrowth",
     "netMargin",

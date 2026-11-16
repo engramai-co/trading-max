@@ -285,6 +285,8 @@ test.describe("valuation refresh", () => {
     // A gap has no percentile; sources and units stay out of the reading.
     await expect(reading).not.toContainText("Percentile");
     await expect(reading).not.toContainText("USD");
+    // On phones the reading strip sits over the panel's controls; close it before switching the band.
+    await chart.press("Escape");
     const deviation = section.getByRole("button", { name: "Mean ±1σ" });
     await deviation.click();
     await expect(deviation).toHaveAttribute("aria-pressed", "true");

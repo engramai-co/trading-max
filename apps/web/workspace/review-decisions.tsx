@@ -27,7 +27,8 @@ import { Empty, Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLay
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
-import { minus, readingTone } from "./readout-bridge";
+import { minus } from "./reading-figures";
+import { readingTone } from "./reading-format";
 import { DecisionNarrative } from "./review-narrative";
 import { SecurityPeek } from "./security-peek";
 
@@ -490,7 +491,7 @@ export function decisionReading(row: TradeDecision, horizon: Horizon, days: numb
           label: t("之后", "Then"),
           value: minus(signedMoney(effect)),
           detail: change == null ? undefined : minus(percent(change, true, 1)),
-          tone: readingTone(Math.round(effect)),
+          tone: readingTone(effect, 0),
         }
       : { value: pendingOutcome(row, horizon, days, t, locale) ?? "—" },
     groups: events.length

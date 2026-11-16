@@ -6,10 +6,9 @@ import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { useChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDateTime, formatDateSpan, formatNumber, formatPercent } from "@/ui/formatters";
-import type { ReadingItem } from "./chart-readout";
+import type { ChartReadout, ReadingItem } from "./chart-readout";
 import { Help, useCopy } from "./foundation";
 import type { IndexContext } from "./market-indices-data";
-import { bridgeReadout } from "./readout-bridge";
 
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
 
@@ -30,7 +29,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
   const latest = rows.find((row) => row.date === history.asOf);
   // The 50-day line is solid ink and the 200-day line dashed grey, on the chart and in the reading.
   const lineColour = (i: number) => i === 0 ? colours.text : colours.axis;
-  const readout = bridgeReadout({
+  const readout: ChartReadout = {
     positions: rows.map((_, position) => position),
     read: (position) => {
       const row = rows[position];
@@ -45,7 +44,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
     },
     marks: (position) => lines.flatMap(({ value }, i) => rows[position]?.[value] == null ? [] : [{ value: rows[position][value]!, colour: lineColour(i) }]),
     latest: latest ? lines.map(({ label, value }) => `${label} ${formatPercent(latest[value], locale, 1)}`).join(" · ") : "—",
-  });
+  };
   const step = Math.max(1, Math.ceil((rows.length - 1) / (phone ? 3 : 6)));
   return (
     <section className="mx-panel mx-index-depth">

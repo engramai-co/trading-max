@@ -33,7 +33,6 @@ import {
   useCopy,
 } from "./foundation";
 import { nearMoneyStrikes } from "./research-math";
-import { bridgeReadout } from "./readout-bridge";
 import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
 
@@ -1042,7 +1041,7 @@ function OptionPlot({
   height?: number;
   readout?: ChartReadout;
 }) {
-  return <Plot research label={label} height={height} readout={readout && bridgeReadout(readout)}
+  return <Plot research label={label} height={height} readout={readout}
     option={typeof option === "function" ? option : () => option} />;
 }
 function Readings({ columns, rows }: { columns: string[]; rows: string[][] }) {

@@ -21,7 +21,7 @@ describe("company comparison returns", () => {
         expect(series.color).toBe(stroke.colour);
         expect(series.itemStyle?.color).toBe(stroke.colour);
         expect(series.lineStyle?.color).toBe(stroke.colour);
-        expect(series.lineStyle?.type).toEqual(stroke.dashed ? [6, 4] : "solid");
+        expect(series.lineStyle?.type).toEqual(stroke.dashed ? [6, 4] : stroke.dotted ? "dotted" : "solid");
       });
     });
 
@@ -33,7 +33,8 @@ describe("company comparison returns", () => {
       for (const row of rows) {
         const line = series.find((item) => item.name === row.label)!;
         expect(row.key.colour).toBe(line.lineStyle?.color);
-        expect(Boolean(row.key.dashed)).toBe(line.lineStyle?.type !== "solid");
+        expect(Boolean(row.key.dashed)).toBe(Array.isArray(line.lineStyle?.type));
+        expect(Boolean(row.key.dotted)).toBe(line.lineStyle?.type === "dotted");
       }
     });
   }
@@ -49,12 +50,19 @@ describe("company comparison returns", () => {
     const reading = compareReading(tickers, dates, returns, chartColours, 2, "en")!;
     expect(reading.primary).toMatchObject({ label: "AAPL", value: "+8.25%", tone: "up" });
     expect(reading.groups![0].map((row) => row.label)).toEqual(["GOOGL", "AMZN", "MSFT"]);
-    expect(reading.groups![0].find((row) => row.label === "MSFT")!.value).toBe("−22.29%");
+    expect(reading.groups![0].find((row) => row.label === "MSFT")).toMatchObject({ value: "−22.29%", tone: "down" });
+  });
+
+  it("draws the comparison lines dashed or dotted, never solid like the researched company", () => {
+    const [lead, ...others] = lines(chartColours);
+    expect(lead.lineStyle?.type).toBe("solid");
+    for (const line of others) expect(line.lineStyle?.type).not.toBe("solid");
   });
 
   it("adds the gap in percentage points when two companies are compared", () => {
     const reading = compareReading(["AAPL", "MSFT"], dates, returns.slice(0, 2), chartColours, 2, "zh")!;
-    expect(reading.groups!.at(-1)).toEqual([{ label: "相差", value: "+30.54 pp", tone: "up" }]);
+    // The gap closes the comparison rows, as in every other comparison reading.
+    expect(reading.groups![0].at(-1)).toEqual({ label: "相差", value: "+30.54 pp", tone: "up" });
   });
 
   it("writes dates as the reader does, never as ISO strings", () => {

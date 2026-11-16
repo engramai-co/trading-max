@@ -28,6 +28,7 @@ import { indicatorStart } from "./selection-indicator";
 import { useAltDigitModifier } from "./shortcut-platform";
 import { LocalWorkspaceContext } from "./loading-context";
 import { scheduleLoadingStatus, updateFailureLabel } from "./loading-state";
+import { DataBasis } from "./reading-card";
 
 export function useCopy() {
   const { locale } = useLocale();
@@ -224,10 +225,8 @@ export function Help({
   const body = (
     <div className="mx-help-body">
       {children}
-      {basis && <section className="mx-help-basis">
-        <h3>{t("数据口径", "Data basis")}</h3>
-        <p>{basis}</p>
-      </section>}
+      {/* The same closing paragraph the chart panels write with DataBasis. */}
+      {basis && <DataBasis>{basis}</DataBasis>}
     </div>
   );
   if (sheet) return (

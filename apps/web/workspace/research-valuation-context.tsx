@@ -6,12 +6,12 @@ import { useChartColours } from "@/ui/charts/palette";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useState, type ReactNode } from "react";
 import { Plot } from "./charts";
-import type { Reading } from "./chart-readout";
+import type { ChartReadout, Reading } from "./chart-readout";
 import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Panel, Segments, TextLink, useCopy } from "./foundation";
-import { bridgeReadout, minus } from "./readout-bridge";
+import { minus } from "./reading-figures";
 import { factIndex } from "./research-facts";
 import type { ResearchPrice } from "./research-price-basis";
 
@@ -178,7 +178,7 @@ export function FilingMultiples({
     return mode === "ps" ? (Number.isFinite(stamp) ? [{ position: stamp, row: r }] : []) : [{ position: index, row: r }];
   }).sort((a, b) => a.position - b.position);
   const at = new Map(plotted.map((point) => [point.position, point.row]));
-  const readout = bridgeReadout({
+  const readout: ChartReadout = {
     positions: plotted.map((point) => point.position),
     read: (position) => {
       const r = at.get(position);
@@ -189,7 +189,7 @@ export function FilingMultiples({
       return value == null ? [] : [{ value, colour: colours.brand }];
     },
     latest: plotted.length ? read(plotted.at(-1)!.row).primary?.value ?? "—" : "—",
-  });
+  };
   return (
     <Panel
       title={t("披露时的估值", "Valuation at disclosure")}

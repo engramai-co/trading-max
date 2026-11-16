@@ -7,10 +7,11 @@ import { formatCalendarDate } from "@/ui/formatters";
 import { compact, number } from "@/workspace/data";
 import type { EChartsOption } from "echarts";
 import { useCallback, useMemo, useState } from "react";
-import type { Reading, ReadingItem } from "./chart-readout";
+import type { ChartReadout, Reading, ReadingItem } from "./chart-readout";
 import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
-import { bridgeReadout, epsFigure, fixed } from "./readout-bridge";
+import { epsFigure } from "./reading-figures";
+import { fixed } from "./reading-format";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
@@ -87,7 +88,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
   const sample = useMemo(() => distribution
     ? points.flatMap((point) => inSample(point) ? [point.pe as number] : []).sort((a, b) => a - b)
     : [], [distribution, points, inSample]);
-  const readout = useMemo(() => {
+  const readout = useMemo<ChartReadout>(() => {
     const times = points.map((point) => Date.parse(point.date));
     const at = new Map(times.map((time, index) => [time, index]));
     const read = (position: number) => {
@@ -99,7 +100,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
         : [];
       return peReading(point, trailing, forward, t, locale, (value) => displayMultiple(value, 2), rank);
     };
-    return bridgeReadout({
+    return {
       positions: times,
       read,
       marks: (position) => {
@@ -107,7 +108,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
         return pe == null ? [] : [{ value: pe, colour: colours.text }];
       },
       latest: latestValue ?? "—",
-    });
+    };
   }, [points, sample, inSample, trailing, forward, t, locale, displayMultiple, colours.text, latestValue]);
 
   const plot = useMemo(() => {

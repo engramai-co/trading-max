@@ -6,7 +6,8 @@ import { useLocale } from "@/components/locale-provider";
 import { useChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { Notice, useCopy } from "./foundation";
-import { bridgeReadout, minus } from "./readout-bridge";
+import type { ChartReadout } from "./chart-readout";
+import { minus } from "./reading-figures";
 import { RiskChart } from "./research-index-chart";
 
 type DailyTracking = components["schemas"]["DailyTracking"];
@@ -45,7 +46,7 @@ export function DailyTrackingSeries({ data, hedgeUnconfirmed }: {
     </div>}
     <div className="mx-index-research-risk">
       <RiskChart dates={dates} values={points.map((row) => row.cumulativeDifference ?? null)}
-        title={t("累计跟踪差", "Cumulative tracking difference")} primary />
+        title={t("累计跟踪差", "Cumulative tracking difference")} primary signed />
       <RiskChart dates={dates} values={points.map((row) => row.rollingTrackingError ?? null)}
         title={t("滚动一年跟踪误差", "Rolling one-year tracking error")} />
     </div>
@@ -57,12 +58,12 @@ function RawSeries({ dates, values, title }: { dates: string[]; values: (number 
   const colours = useChartColours();
   const value = (i: number) => minus(formatNumber(values[i], locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   // One line per chart, so the reading is its date and level; the title carries the currency.
-  const readout = bridgeReadout({
+  const readout: ChartReadout = {
     positions: dates.map((_, i) => i),
     read: (i) => i in dates ? { time: formatCalendarDate(dates[i], locale), primary: { value: value(i) } } : null,
     marks: (i) => values[i] == null ? [] : [{ value: values[i]!, colour: colours.brand }],
     latest: dates.length ? value(dates.length - 1) : "—",
-  });
+  };
   return <section className="mx-index-research-risk-chart" aria-label={title}>
     <h3>{title}</h3>
     <Plot label={title} height={170} readout={readout}
@@ -83,5 +84,5 @@ export function PremiumDiscountSeries({ data }: {
   const t = useCopy();
   if (!data?.points.length) return null;
   return <RiskChart title={t("溢折价 · 同一时点", "Premium / discount · matched timestamps")}
-    dates={data.points.map((row) => row.at)} values={data.points.map((row) => row.premium)} />;
+    dates={data.points.map((row) => row.at)} values={data.points.map((row) => row.premium)} signed />;
 }
