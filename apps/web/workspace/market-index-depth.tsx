@@ -108,7 +108,7 @@ export function IndexVixPanel({ vix, stale }: { vix: NonNullable<IndexContext["v
           {stale ? ` · ${t("未更新", "Stale")}` : ""}</span>
         <Help label={t("VIX 历史参照口径", "How VIX context is measured")} basis={<>
           {`${vix.source} · ${t("抓取于", "retrieved")} ${formatDateTime(vix.fetchedAt, locale, timeZone)}${t("。", ". ")}`}
-          {`${t("样本", "Sample")} ${formatDateSpan(vix.sampleStart, vix.sampleEnd, locale)} · ${formatNumber(vix.sampleSize, locale)} ${t("个交易日", "sessions")}${t("。", ".")}`}
+          {`${t("样本", "Sample")} ${formatDateSpan(vix.sampleStart, vix.sampleEnd, locale)} · ${formatNumber(vix.sampleSize, locale)} ${vix.sampleSize === 1 ? t("个交易日", "session") : t("个交易日", "sessions")}${t("。", ".")}`}
         </>}>
           <p>{t("VIX 衡量标普 500 期权隐含的近 30 日波动率，单位为点。将最近一个已完成的收盘值与此前约 5 年的日收盘比较。常见区间取第 10 至第 90 百分位。", "VIX measures near-term (30-day) volatility implied by S&P 500 options, in points. The latest completed close is compared with about five years of earlier daily closes. The typical range runs from the 10th to the 90th percentile.")}</p>
         </Help>

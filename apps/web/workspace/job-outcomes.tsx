@@ -64,7 +64,8 @@ export function JobOutcomeSummary({
   if (!failures)
     return (
       <p className="mx-job-outcomes mx-muted">
-        {locale === "zh" ? `近 7 天 ${count(finished)} 次更新全部成功` : `All ${count(finished)} updates in the last 7 days succeeded`}
+        {locale === "zh" ? `近 7 天 ${count(finished)} 次更新全部成功`
+          : `${finished === 1 ? "1 update" : "All " + count(finished) + " updates"} in the last 7 days succeeded`}
       </p>
     );
   return (
@@ -72,7 +73,7 @@ export function JobOutcomeSummary({
       <p>
         {locale === "zh"
           ? `近 7 天 ${count(finished)} 次更新，${count(failures)} 次失败（${(rate * 100).toFixed(1)}%）`
-          : `${count(failures)} of ${count(finished)} updates failed in the last 7 days (${(rate * 100).toFixed(1)}%)`}
+          : `${count(failures)} of ${count(finished)} ${finished === 1 ? "update" : "updates"} failed in the last 7 days (${(rate * 100).toFixed(1)}%)`}
       </p>
       <ul>
         {(outcomes.causes ?? []).slice(0, 4).map((cause: Cause) => {

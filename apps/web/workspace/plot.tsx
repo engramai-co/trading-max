@@ -535,7 +535,8 @@ export function Plot({
     {readout && <div className="sr-only">
       <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
         {(readout.observationCount ?? readout.positions.length) < 3 && <span data-chart-sparse="true">
-          {t("仅", "Only")} {readout.observationCount ?? readout.positions.length} {t("个观测", "observations")}
+          {t("仅", "Only")} {readout.observationCount ?? readout.positions.length}{" "}
+          {(readout.observationCount ?? readout.positions.length) === 1 ? t("个观测", "observation") : t("个观测", "observations")}
         </span>}
       </div>
       <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"} aria-live="polite" aria-atomic="true">

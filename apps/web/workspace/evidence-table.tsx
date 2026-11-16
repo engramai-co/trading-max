@@ -58,7 +58,7 @@ export function EvidenceTable<T>({
         <table className="mx-table">
           {/* A single page shows its rows; the count only helps when paging. */}
           <caption className={"mx-table-caption" + (showCount && rows.length > pageSize ? "" : " sr-only")}>
-            {label} · {totalRows ?? rows.length} {t("条记录", "records")}
+            {label} · {totalRows ?? rows.length} {(totalRows ?? rows.length) === 1 ? t("条记录", "record") : t("条记录", "records")}
           </caption>
           <thead>
             <tr>

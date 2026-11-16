@@ -200,10 +200,10 @@ export function AnalystExpectations({
             </strong>
             <span>
               {summary.complete
-                ? summary.knownTotal + t(" 项评级", " ratings")
+                ? summary.knownTotal + (summary.knownTotal === 1 ? t(" 项评级", " rating") : t(" 项评级", " ratings"))
                 : t("评级覆盖不完整", "Incomplete coverage")}
               {historicalPeriod != null &&
-                " · " + historicalPeriod + t(" 个月前", " months ago")}
+                " · " + historicalPeriod + (historicalPeriod === 1 ? t(" 个月前", " month ago") : t(" 个月前", " months ago"))}
             </span>
           </div>
           <ConsensusGauge

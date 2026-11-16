@@ -344,7 +344,7 @@ function Positions() {
                               {currency(h.currentValueGbp, "GBP", 2)}
                             </strong>
                             <small>
-                              {number(h.quantity, 4)} {t("股", "shares")}
+                              {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
                             </small>
                           </td>
                           {hasDay && (
@@ -437,7 +437,7 @@ function Positions() {
                       <footer>
                         <span>
                           {accountName(profile, h.account)} ·{" "}
-                          {number(h.quantity, 4)} {t("股", "shares")}
+                          {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
                         </span>
                         <span className="mx-weight">
                           <span className="mx-mini-bar" aria-hidden="true">

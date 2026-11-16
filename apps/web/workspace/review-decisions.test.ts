@@ -425,6 +425,8 @@ describe("how many decisions came out favourable", () => {
     expect(favourableCount("buy", 170, 325, "en")).toBe("Gained after 170 of 325 buys");
     expect(favourableCount("sell", 120, 251, "zh")).toBe("少亏 120 / 251 次");
     expect(favourableCount("sell", 120, 251, "en")).toBe("Avoided losses after 120 of 251 sells");
+    expect(favourableCount("buy", 1, 1, "en")).toBe("Gained after 1 of 1 buy");
+    expect(favourableCount("sell", 0, 1, "en")).toBe("Avoided losses after 0 of 1 sell");
   });
 
   it("counts the effect, dividends included, so a flat close that paid out is a gain and not a rise", () => {

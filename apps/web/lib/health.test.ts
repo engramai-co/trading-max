@@ -290,6 +290,8 @@ describe("current snapshot flow coverage", () => {
     expect(flowVerificationText(schedule, "zh")).toBe("2 / 25 个估值点待验证");
     expect(flowVerificationText({ ...schedule, flowUnverifiedCount: 0 }))
       .toBe("0 of 25 valuations unverified");
+    expect(flowVerificationText({ ...schedule, flowAnchorCount: 1, flowUnverifiedCount: 1 }))
+      .toBe("1 of 1 valuation unverified");
   });
 
   it("distinguishes missing snapshots, unreadable coverage and empty history from verified data", () => {

@@ -114,7 +114,7 @@ function FillComparison({ row, account, collapsed = false }: { row: Fill; accoun
   const action = row.side === "buy" ? t("买入", "Bought") : t("卖出", "Sold");
   const caption = <>
     <time dateTime={row.filledAt}>{time}</time>
-    {" · " + [account, `${action} ${row.ticker}`, locale === "zh" ? `${row.quantity} 股` : `${row.quantity} shares`].filter(Boolean).join(" · ")}
+    {" · " + [account, `${action} ${row.ticker}`, locale === "zh" ? `${row.quantity} 股` : `${row.quantity} ${Number(row.quantity) === 1 ? "share" : "shares"}`].filter(Boolean).join(" · ")}
   </>;
   const comparisons = [
     ["largestHolding", t("最大持仓占比", "Largest holding")],

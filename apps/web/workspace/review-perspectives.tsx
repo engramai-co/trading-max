@@ -276,7 +276,9 @@ export function TradeQuality({
               [
                 t("中位持有周期", "Median holding duration"),
                 number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) +
-                  (cfd ? t(" 小时", " hours") : t(" 天", " days")),
+                  (number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) === "1"
+                    ? cfd ? t(" 小时", " hour") : t(" 天", " day")
+                    : cfd ? t(" 小时", " hours") : t(" 天", " days")),
               ],
             ]}
           />
@@ -365,7 +367,7 @@ export function TradeQuality({
                   <span className={"mx-row-value mx-" + tone(r.netResultGbp)}>
                     {currency(r.netResultGbp, "GBP", 2)}
                     <small>
-                      {number(r.durationDays, 0)} {t("天", "days")}
+                      {number(r.durationDays, 0)} {number(r.durationDays, 0) === "1" ? t("天", "day") : t("天", "days")}
                       {cfd && str(r.direction) ? " · " + str(r.direction) : ""}
                       {numeric(r.feesGbp) ? " · " + t("费用 ", "Fees ") + currency(r.feesGbp, "GBP", 2) : ""}
                     </small>

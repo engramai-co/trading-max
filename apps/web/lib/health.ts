@@ -31,7 +31,7 @@ export function flowVerificationText(
   const format = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-GB");
   return locale === "zh"
     ? `${format.format(count)} / ${format.format(total)} 个估值点待验证`
-    : `${format.format(count)} of ${format.format(total)} valuations unverified`;
+    : `${format.format(count)} of ${format.format(total)} ${total === 1 ? "valuation" : "valuations"} unverified`;
 }
 
 const ZH_SECOND = "\u79d2";

@@ -203,8 +203,8 @@ export function verdictWord(side: "buy" | "sell", effect: number, t: Copy) {
  * outcomes, not verdicts, and not price moves: a flat close that paid a dividend is a gain.
  */
 export function favourableCount(side: "buy" | "sell", favourable: number, evaluated: number, locale: "zh" | "en") {
-  if (side === "buy") return locale === "zh" ? `赚 ${favourable} / ${evaluated} 次` : `Gained after ${favourable} of ${evaluated} buys`;
-  return locale === "zh" ? `少亏 ${favourable} / ${evaluated} 次` : `Avoided losses after ${favourable} of ${evaluated} sells`;
+  if (side === "buy") return locale === "zh" ? `赚 ${favourable} / ${evaluated} 次` : `Gained after ${favourable} of ${evaluated} ${evaluated === 1 ? "buy" : "buys"}`;
+  return locale === "zh" ? `少亏 ${favourable} / ${evaluated} 次` : `Avoided losses after ${favourable} of ${evaluated} ${evaluated === 1 ? "sell" : "sells"}`;
 }
 
 /** What a decision did, for a list that mixes sides: a T day names the side of the shares beyond its round trip. */
@@ -505,7 +505,7 @@ export function decisionReading(row: TradeDecision, horizon: Horizon, days: numb
 export function clusterReading(date: string, group: TradeDecision[], horizon: Horizon, days: number, t: Copy, locale: "zh" | "en"): Reading {
   const largest = [...group].sort((a, b) => b.amountGbp - a.amountGbp).slice(0, 2);
   return {
-    time: formatCalendarDate(date, locale) + " · " + group.length + " " + t("笔决定", "decisions"),
+    time: formatCalendarDate(date, locale) + " · " + group.length + " " + (group.length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")),
     groups: [largest.map((row) => {
       const effect = decisionEffect(row, horizon);
       return {
@@ -684,7 +684,7 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
     </div>}
     <div id={listId} hidden={!active}>
       {active && <section aria-label={t("所选日期的决定", "Decisions on the selected date")} className="mx-decision-day">
-        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {t("笔决定", "decisions")}</h3>
+        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {active[1].length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")}</h3>
         {decisionKeys(active[1]).map((key, i) => <DecisionRow key={key} row={active[1][i]} horizon={horizon} days={days} sided />)}
       </section>}
     </div>
@@ -971,7 +971,7 @@ export function DecisionReview({
           <p className="mx-muted mx-decision-coverage">
             {locale === "zh"
               ? `${unpriced.length} 项持仓没有可核对的行情，未计入：${unpriced.join("、")}`
-              : `${unpriced.length} holdings have no reconcilable prices and are excluded: ${unpriced.join(", ")}`}
+              : `${unpriced.length} ${unpriced.length === 1 ? "holding has" : "holdings have"} no reconcilable prices and ${unpriced.length === 1 ? "is" : "are"} excluded: ${unpriced.join(", ")}`}
           </p>
         )}
       </Panel>

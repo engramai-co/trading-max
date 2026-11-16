@@ -73,7 +73,7 @@ export function PriceEventTrack({ days, openEarnings }: {
             <li key={i}>
               <span>{fill.side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} · {fill.account.toUpperCase()}</span>
               <time dateTime={fill.at}>{formatDate(fill.at, locale, { dateStyle: "medium", timeStyle: "short", timeZone })}</time>
-              <span>{number(fill.quantity, 4)} {t("股", "shares")}</span>
+              <span>{number(fill.quantity, 4)} {number(fill.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}</span>
               <strong>{fill.amount == null || !fill.currency ? "—" : `${formatNumber(fill.amount, locale, { maximumFractionDigits: 4 })} ${fill.currency}`}</strong>
             </li>
           )) : day.marker && <li>

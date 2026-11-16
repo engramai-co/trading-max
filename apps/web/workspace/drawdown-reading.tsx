@@ -34,7 +34,7 @@ export function DrawdownReading({ episode, dates, basis }: {
     {episode && <dl>
       {marks.map((mark) => <div key={mark.name}><dt>{mark.name}</dt><dd><time dateTime={mark.date}>{displayDate(mark.date)}</time></dd></div>)}
       <div><dt>{t("回撤", "Drawdown")}</dt><dd className="mx-down">{percent(episode.depth, false, 2)}</dd></div>
-      {days != null ? <div><dt>{t("持续时间", "Duration")}</dt><dd>{days} {t("天", "days")}</dd></div>
+      {days != null ? <div><dt>{t("持续时间", "Duration")}</dt><dd>{days} {days === 1 ? t("天", "day") : t("天", "days")}</dd></div>
         : <div><dt>{t("状态", "Status")}</dt><dd>{episode.state === "interrupted"
           ? t("记录缺失，无法确认恢复", "Recovery unverified across a gap")
           : t("尚未恢复", "Not yet recovered")}</dd></div>}

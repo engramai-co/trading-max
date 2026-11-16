@@ -258,7 +258,7 @@ function Attention({ items }: { items: AttentionItem[] }) {
   const age = (hours: number) => {
     const days = Math.floor(hours / 24);
     if (days >= 2) return zh ? `账户数据 ${days} 天未更新` : `No account update for ${days} days`;
-    return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} hours`;
+    return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} ${hours === 1 ? "hour" : "hours"}`;
   };
   return (
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
@@ -271,7 +271,7 @@ function Attention({ items }: { items: AttentionItem[] }) {
             <span>{item.minutes >= 60
               ? Math.floor(item.minutes / 60) + t(" 小时", "h")
               : item.minutes > 0 ? item.minutes + t(" 分钟", "m")
-                : item.failures + t(" 次", " attempts")}</span>
+                : item.failures + (item.failures === 1 ? t(" 次", " attempt") : t(" 次", " attempts"))}</span>
           </Link>
         ) : (
           <Link key="stale" href="/health" data-tone="warning">

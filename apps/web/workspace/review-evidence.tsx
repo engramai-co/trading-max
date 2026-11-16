@@ -27,7 +27,7 @@ function detailRows(data: Json, fields: Field[], t: (zh: string, en: string) => 
             : format === "average"
               ? number(value, 1)
               : format === "days"
-                ? (value == null ? "—" : number(value, 0) + t(" 天", " days"))
+                ? (value == null ? "—" : number(value, 0) + (number(value, 0) === "1" ? t(" 天", " day") : t(" 天", " days")))
                 : format === "number"
                   ? number(value)
                   : reviewLabel(str(value), t) || "—",
@@ -80,7 +80,8 @@ const BEHAVIOR_FIELDS: Field[] = [
 ];
 export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
   const t = useCopy();
-  const days = (value: unknown) => (value == null ? "—" : number(value, 0) + t(" 天", " days"));
+  const days = (value: unknown) => (value == null ? "—"
+    : number(value, 0) + (number(value, 0) === "1" ? t(" 天", " day") : t(" 天", " days")));
   // Observations read like the facts above them: label left, value right, the evidence under the value.
   const observations = objects(data.observations).flatMap((row): Array<[ReactNode, ReactNode]> => {
     // The purchase total already appears above; do not repeat the same fact.

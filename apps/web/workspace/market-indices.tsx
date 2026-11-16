@@ -610,7 +610,7 @@ function IndexContextPanels({ context, phone }: { context: IndexContext; phone: 
             {context.funds.map((fund) => <li key={fund.isin}>
               <Link href={`/research?ticker=${encodeURIComponent(fund.ticker)}&view=tracking`} className="mx-text-link">{fund.ticker}</Link>
               <span>{fund.name}</span>
-              <span>{fund.shares == null ? "—" : `${formatNumber(fund.shares, locale)} ${t("份", "shares")}`}</span>
+              <span>{fund.shares == null ? "—" : `${formatNumber(fund.shares, locale)} ${formatNumber(fund.shares, locale) === "1" ? t("份", "share") : t("份", "shares")}`}</span>
               <strong>{formatCurrency(fund.valueGbp, locale)}</strong>
               <Link href={`/research?ticker=${encodeURIComponent(fund.ticker)}&view=fundamentals`} className="mx-text-link">{t("穿透持仓", "Look through")}</Link>
             </li>)}

@@ -710,7 +710,7 @@ export function ResearchDocuments({
         </button>
       )}
       <span role="status" className="mx-result-count">
-        {rows.length} {t("条记录", "records")}
+        {rows.length} {rows.length === 1 ? t("条记录", "record") : t("条记录", "records")}
       </span>
       {!rows.length ? (
         <Empty title={t("没有符合条件的记录", "No matching records")} />

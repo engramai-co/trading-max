@@ -209,7 +209,10 @@ function IndexOverview({ index, data }: { index: IndexIdentity; data: IndexResea
           ...(data.exposure ? [[t("我的合计敞口", "My combined exposure"),
             <span key="my-exposure">{formatCurrency(data.exposure.totalGbp, locale, "GBP")}
               <Help label={t("我的敞口口径", "My exposure basis")}>
-                <p>{t("按成分 ISIN 合并直接持股与基金穿透。已匹配到 {count} 个 ISIN。", "Direct and fund look-through holdings are folded by constituent ISIN. {count} ISINs matched.").replace("{count}", String(data.exposure.matchedIsins))}</p>
+                <p>{(data.exposure.matchedIsins === 1
+                  ? t("按成分 ISIN 合并直接持股与基金穿透。已匹配到 {count} 个 ISIN。", "Direct and fund look-through holdings are folded by constituent ISIN. {count} ISIN matched.")
+                  : t("按成分 ISIN 合并直接持股与基金穿透。已匹配到 {count} 个 ISIN。", "Direct and fund look-through holdings are folded by constituent ISIN. {count} ISINs matched.")
+                ).replace("{count}", String(data.exposure.matchedIsins))}</p>
                 <p>{t("直接", "Direct")} {formatCurrency(data.exposure.directGbp, locale, "GBP")} · {t("穿透", "Look-through")} {formatCurrency(data.exposure.lookThroughGbp, locale, "GBP")}</p>
                 <p>{formatCalendarDate(data.exposure.asOf, locale)}</p>
               </Help>
