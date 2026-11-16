@@ -13,8 +13,8 @@ import {
   recommendationChange,
 } from "./analyst-data";
 import { Plot } from "./charts";
-import { useChartColours } from "@/ui/charts/palette";
-import { readingText, type Reading } from "./chart-readout";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
+import { readingText, type Reading, type ReadingItem } from "./chart-readout";
 import { fixed, readingTone, signedNumber, signedPercent, telling } from "./reading-format";
 import { DataBasis } from "./reading-card";
 import { currency, number, object, objects, percent, safeUrl, str, tone } from "@/workspace/data";
@@ -460,6 +460,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
 
 function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const colours = useChartColours();
   const [firm, setFirm] = useState(""),
     [action, setAction] = useState("all");
   const a = object(data.analyst),
@@ -487,6 +488,22 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
       : /^-\d+m$/.test(str(v))
         ? Math.abs(parseInt(str(v))) + t(" 个月前", " months ago")
         : str(v);
+  // Each rating keeps its bar's colour on the legend and on the reading's key.
+  const ratingColour = (c: ChartColours, i: number) => [c.positive, c.secondary, c.warning, c.accent, c.negative][i];
+  // A period lists its non-zero counts in the legend's order; the rating counts table keeps every one.
+  const ratingRows = (index: number): ReadingItem[] => {
+    const row = recommendations[index];
+    return row ? ratingKeys.flatMap((key, i) => {
+      const count = numeric(row[key]);
+      return count ? [{ label: labels[i], value: number(count, 0), key: { colour: ratingColour(colours, i), kind: "bar" as const } }] : [];
+    }) : [];
+  };
+  const readRatings = (index: number): Reading | null => {
+    const row = recommendations[index];
+    if (!row) return null;
+    const rows = ratingRows(index);
+    return { time: period(row.period), ...(rows.length ? { groups: [rows] } : {}) };
+  };
   return (
     <>
       {recommendations.length > 0 && (
@@ -497,6 +514,11 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
               "各类评级的分析师数量",
               "Analyst counts by rating category",
             )}
+            readout={{
+              positions: recommendations.map((_, i) => i),
+              read: readRatings,
+              latest: ratingRows(recommendations.length - 1).map((row) => row.label + " " + row.value).join(" · ") || "—",
+            }}
             option={(c) => ({
               legend: {
                 bottom: 0,
@@ -520,15 +542,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
                 name: labels[i],
                 stack: "ratings",
                 barMaxWidth: 44,
-                itemStyle: {
-                  color: [
-                    c.positive,
-                    c.secondary,
-                    c.warning,
-                    c.accent,
-                    c.negative,
-                  ][i],
-                },
+                itemStyle: { color: ratingColour(c, i) },
                 data: recommendations.map((r) => numeric(r[key])),
               })),
             })}
