@@ -93,13 +93,13 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
         <Metric label={t("券商快照报价", "Broker snapshot price")} value={quote.price}
           note={accountAsOf ? formatDateTime(accountAsOf, locale, timeZone, now) : t("时间未提供", "Time unavailable")} />
         <Metric label={t("买入总成本", "Total purchase cost")} value={currency(holding.costGbp, "GBP", 2)} />
-        <Metric label={t("组合权重", "Portfolio weight")} value={weight} />
+        <Metric label={t("组合占比", "Portfolio weight")} value={weight} />
       </div>
       <div className="mx-position-impact">
         <Metric label={t("当前市值", "Current market value")} value={currency(holding.currentValueGbp, "GBP", 2)} />
         <dl className="mx-position-moves">
           <PositionMove label={dayLabel} amount={holding.dayChangeGbp} ratio={holding.dayChangePct} closed={Boolean(holding.dayChangeClosedOn)} />
-          <PositionMove label={t("浮动盈亏", "Unrealized P&L")} amount={holding.pnlGbp} ratio={holding.pnlPct} />
+          <PositionMove label={t("浮动盈亏", "Unrealised P&L")} amount={holding.pnlGbp} ratio={holding.pnlPct} />
         </dl>
       </div>
       <Facts rows={[
@@ -108,7 +108,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
           <span key="diluted-cost" className="mx-position-cost-label">
             {dilutedCostLabel}
             <Help label={t("摊薄成本", "Diluted cost")}>
-              {t("计入已实现交易与回收资金，可能不同于券商买入均价。", "Includes realized trades and recovered capital; it may differ from broker purchase cost.")}
+              {t("计入已实现交易与回收资金，可能不同于券商买入均价。", "Includes realised trades and recovered capital; it may differ from broker purchase cost.")}
             </Help>
           </span>,
           quote.dilutedCost,
@@ -122,11 +122,11 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
       </details>
       <div className="mx-position-actions">
         <Button component={Link} href={researchHref} rightSection={<ArrowRight size={16} />}>
-          {t("研究这项投资", "Research this investment")}
+          {t("查看研究", "View research")}
         </Button>
         {holding.isFund && (
           <Button component={Link} variant="default" href={researchHref + "&view=fundamentals"}>
-            {t("查看底层资产", "View look-through")}
+            {t("查看基金持仓", "View fund holdings")}
           </Button>
         )}
       </div>
@@ -183,7 +183,7 @@ function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
       {unavailable.length > 0 && <p className="mx-muted">{t("基金资料未齐：", "Fund data missing: ")}{unavailable.join(t("、", ", "))}</p>}
       <details className="mx-position-calculation">
         <summary>{t("基金底层持仓", "Underlying holdings")}</summary>
-        {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓已过期", "Holdings stale")}</Tag>}
+        {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓未更新", "Holdings stale")}</Tag>}
         {top.length ? <Facts rows={top.map((item) => {
           const weight = percent(item.weightPct / 100, false, 2);
           const basis = [reading?.issuer, t("发行商持仓权重", "Issuer holdings weight") + " " + weight,

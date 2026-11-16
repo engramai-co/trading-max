@@ -3,6 +3,7 @@
 import {
   ActionIcon,
   Button,
+  CloseButton,
   Group,
   Menu,
   Modal,
@@ -44,8 +45,13 @@ import { researchShellKey } from "@/lib/dashboard-query";
 import { useBuildNavigation } from "@/ui/publication-provider";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
+import { documentTitle, useDocumentTitle } from "./document-title";
+import { useIndexCatalog, useListedIndices } from "./market-indices-data";
 import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
-import { highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace, type SearchResult } from "./command-search";
+import {
+  highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
+  type SearchIndex, type SearchResult,
+} from "./command-search";
 
 function SearchHighlight({ text, query }: { text: string; query: string }) {
   return highlightParts(text, query).map((part, index) => part.match ? <mark key={index}>{part.text}</mark> : <Fragment key={index}>{part.text}</Fragment>);
@@ -83,7 +89,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     {
       href: "/",
       label: t("组合总览", "Overview"),
-      // Six dock cells are about 47px wide on a 320px phone: English names stay short.
+      // Six dock cells are about 47px wide on a 320px phone; every name, Research
+      // and Holdings included, is checked to fit there.
       mobileLabel: t("总览", "Home"),
       icon: SquaresFour,
       group: 0,
@@ -91,7 +98,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     {
       href: "/holdings",
       label: t("持仓与穿透", "Holdings"),
-      mobileLabel: t("持仓", "Assets"),
+      mobileLabel: t("持仓", "Holdings"),
       icon: ChartPieSlice,
       group: 0,
     },
@@ -111,8 +118,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     },
     {
       href: "/research",
-      label: t("证券研究", "Research"),
-      mobileLabel: t("研究", "Stocks"),
+      label: t("研究", "Research"),
+      mobileLabel: t("研究", "Research"),
       icon: ChartBar,
       group: 1,
     },
@@ -126,13 +133,13 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     {
       href: "/health",
       label: t("数据状态", "Data status"),
-      mobileLabel: t("状态", "Data status"),
+      mobileLabel: t("数据状态", "Data status"),
       icon: StackSimple,
       group: 2,
     },
     {
       href: "/settings",
-      label: t("设置与连接", "Connections"),
+      label: t("设置", "Settings"),
       mobileLabel: t("设置", "Settings"),
       icon: GearSix,
       group: 2,
@@ -205,10 +212,24 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     staleTime: 60_000,
     retry: 0,
   });
+  const onIndexPage = pathname === "/research" && params.get("type") === "index";
+  const indexCatalog = useIndexCatalog(searchOpen || onIndexPage);
+  const listedIndices = useListedIndices();
+  const indexName = (id: string) => {
+    const index = indexCatalog.data?.find((item) => item.id === id);
+    return index ? (locale === "zh" ? index.nameZh : index.name) : undefined;
+  };
+  const indices: SearchIndex[] = (indexCatalog.data ?? []).map((index) => ({
+    id: index.id,
+    label: locale === "zh" ? index.nameZh : index.name,
+    detail: index.symbol ?? index.compiler ?? undefined,
+    aliases: [index.name, index.nameZh, index.symbol ?? "", ...index.aliases].join(" "),
+    listed: listedIndices.has(index.id),
+  }));
   const match = query.trim().toLowerCase();
   const pages = navigation.map((item) => ({ href: item.href, label: item.label, aliases: pageAliases[item.href] }));
   const profileId = profile.data?.profileId ?? null;
-  const visit = recentVisit(pathname, new URLSearchParams(routeSearch), pages, locale);
+  const visit = recentVisit(pathname, new URLSearchParams(routeSearch), pages, locale, indexName);
   const visitHref = visit?.href;
   const visitLabel = visit?.label;
   const visitKey = JSON.stringify([visitHref, visitLabel]);
@@ -220,11 +241,16 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   }
   const recent = history.scope === profileId ? history.items.map((item) => {
     const url = new URL(item.href, "https://workspace.invalid");
-    return recentVisit(url.pathname, url.searchParams, pages, locale) ?? item;
+    return recentVisit(url.pathname, url.searchParams, pages, locale, indexName) ?? item;
   }) : [];
   const currentTicker = pathname === "/research" ? params.get("ticker") : null;
+  // The open stock, fund or index names the tab before the page does.
+  useDocumentTitle(documentTitle(
+    pathname === "/research" ? (onIndexPage ? indexName(params.get("index") ?? "") : params.get("ticker")) : null,
+    active?.label,
+  ));
   const results = [
-    ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], recent, currentTicker, locale })
+    ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], indices, recent, currentTicker, locale })
       .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? MagnifyingGlass })),
     ...(match
       ? [
@@ -240,7 +266,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       : []),
   ];
   const selectedIndex = Math.min(index, Math.max(0, results.length - 1));
-  const groups = { recent: t("最近访问", "Recent"), pages: t("页面", "Pages"), research: t("研究清单", "Research list"), holdings: t("持仓搜索", "Search holdings") };
+  const groups = {
+    recent: t("最近访问", "Recent"), pages: t("页面", "Pages"), research: t("研究清单", "Research list"),
+    indices: t("指数", "Indices"), holdings: t("持仓", "Holdings"),
+  };
   useEffect(() => {
     if (searchOpen) resultsRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex, query, searchOpen, results.length]);
@@ -380,7 +409,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         className={className}
         variant="subtle"
         data-search-trigger
-        aria-label={t("搜索页面或证券", "Search pages or securities")}
+        aria-label={t("搜索", "Search")}
         aria-haspopup="dialog"
         aria-expanded={searchOpen}
         aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
@@ -408,7 +437,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {links([0, 1], true)}
         </nav>
         <div className="mx-sidebar-bottom">
-          {desktop ? <DesktopStatus localWorkspace={localWorkspace} demonstration={demonstration} /> : <nav aria-label={t("工作台管理", "Workspace management")}>
+          {desktop ? <DesktopStatus localWorkspace={localWorkspace} demonstration={demonstration} /> : <nav aria-label={t("工作区管理", "Workspace management")}>
             {links([2], true)}
           </nav>}
         </div>
@@ -419,7 +448,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           <div className="mx-topbar-title">
             <span className="mx-topbar-workspace">
               {profile.data?.displayName ||
-                t("工作台", "Workspace")}
+                t("工作区", "Workspace")}
             </span>
             <span className="mx-breadcrumb-divider">/</span>
             <strong>{active?.label}</strong>
@@ -464,7 +493,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         </NavigationGroup>
       </nav>
       <Modal
-        classNames={{ content: "mx-command-dialog" }}
         opened={searchOpen}
         onClose={closeSearch}
         returnFocus={false}
@@ -485,48 +513,50 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           setQuery("");
           setIndex(0);
         }}
-        title={t("搜索页面或证券", "Search pages or securities")}
+        title={t("搜索", "Search")}
+        withCloseButton={false}
+        classNames={{ content: "mx-command-dialog", header: "sr-only", body: "mx-search-body" }}
         size={600}
       >
-        <TextInput
-          data-autofocus
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={true}
-          aria-controls={searchId + "-results"}
-          aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
-          aria-label={t("搜索页面或证券", "Search pages or securities")}
-          placeholder={t(
-            "输入页面名称、代码或公司名…",
-            "Page, ticker, or company…",
-          )}
-          leftSection={<MagnifyingGlass size={20} />}
-          value={query}
-          maxLength={160}
-          onChange={(event) => {
-            setQuery(event.currentTarget.value);
-            setIndex(0);
-          }}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              setIndex((i) =>
-                Math.max(
-                  0,
-                  Math.min(
-                    results.length - 1,
-                    Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
+        <div className="mx-search-row">
+          <TextInput
+            data-autofocus
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={true}
+            aria-controls={searchId + "-results"}
+            aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
+            aria-label={t("搜索", "Search")}
+            placeholder={t("页面、代码或名称", "Page, ticker or name")}
+            leftSection={<MagnifyingGlass size={20} />}
+            value={query}
+            maxLength={160}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                setIndex((i) =>
+                  Math.max(
+                    0,
+                    Math.min(
+                      results.length - 1,
+                      Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
+                    ),
                   ),
-                ),
-              );
-            }
-            if (event.key === "Enter" && results[selectedIndex]) {
-              event.preventDefault();
-              navigate(results[selectedIndex].href);
-            }
-          }}
-        />
+                );
+              }
+              if (event.key === "Enter" && results[selectedIndex]) {
+                event.preventDefault();
+                navigate(results[selectedIndex].href);
+              }
+            }}
+          />
+          <CloseButton className="mx-search-close" size="lg" aria-label={t("关闭", "Close")} onClick={closeSearch} />
+        </div>
         <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>
           {results.map((item, i) => (
             <Fragment key={item.href}>
@@ -556,10 +586,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           ))}
         </div>
         {needsSecurity(query, currentTicker) && (
-          <p className="mx-command-status" role="status">{t("加上证券代码，例如 ARM 技术面。", "Include a ticker, such as ARM technical.")}</p>
+          <p className="mx-command-status" role="status">{t("加上代码，例如 ARM 技术面。", "Add a ticker, such as ARM technical.")}</p>
         )}
         {match && results.every((item) => item.group === "holdings") && !directory.isFetching && !needsSecurity(query, currentTicker) && (
-          <p className="mx-command-status" role="status">{t("没有匹配的页面或证券。", "No matching pages or securities.")}</p>
+          <p className="mx-command-status" role="status">{t("没有找到“", "No results for “") + query.trim() + "”"}</p>
         )}
         {directory.isPending && (
           <p className="mx-command-status" role="status">

@@ -50,7 +50,7 @@ export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?:
         <Progress value={total ? completed / total * 100 : 0} aria-label={t("同步进度", "Sync progress")} />
         <Text size="xs" c="dimmed" mt="sm">{t("可离开此页面；请保持 App 打开和网络连接。", "You can leave this page; keep the App open and connected.")}</Text>
       </div>}
-      {failed && !active && <Notice tone="warn">{t("上次同步未完成。已保存的连接和资料仍在，可以查看原因后重试。", "The last sync did not complete. Saved connections and data remain available; check its status and retry.")}</Notice>}
+      {failed && !active && <Notice tone="warn">{t("上次同步未完成。已保存的连接和数据仍在，可以查看原因后重试。", "The last sync did not complete. Saved connections and data remain available; check its status and retry.")}</Notice>}
       {!ready && connected && !active && job?.status === "succeeded" && <Notice tone="warn">{t("同步任务已结束，数据就绪检查尚未通过。请查看数据状态。", "The sync finished, but readiness checks have not passed. Check Data status.")}</Notice>}
       {start.isError && <Notice tone="warn">{t("未能开始同步，请检查账户连接后重试。", "Could not start the sync. Check your account connection and retry.")}</Notice>}
       {confirm.isError && <Notice tone="warn">{t("数据可能已更新，请重新核对当前金额。", "Data may have changed. Check the current balances again.")}</Notice>}
@@ -59,7 +59,7 @@ export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?:
       <Group>
         {showAccountLink && <Button component={Link} href="/settings?tab=accounts&onboarding=1" variant="default">{t("账户连接", "Account connections")}</Button>}
         {!data.confirmed && !data.canConfirm && <Button disabled={!connected || active} loading={start.isPending} onClick={() => start.mutate()}>{failed ? t("重试同步", "Retry sync") : t("开始首次同步", "Start first sync")}</Button>}
-        {data.confirmed && ready && <Button component={Link} href="/">{t("进入投资工作台", "Open workspace")}</Button>}
+        {data.confirmed && ready && <Button component={Link} href="/">{t("进入工作区", "Open workspace")}</Button>}
         {job && <Button component={Link} href="/health" variant="subtle">{t("查看同步详情", "View sync details")}</Button>}
       </Group>
       <Text size="xs" c="dimmed">{t("App 打开期间可在「更新计划」开启自动记录。退出 App 或 Mac 休眠后暂停更新；模型与 Alpaca 都是可选项。", "Enable automatic recording in Update schedule while the App is open. Updates pause when you quit or the Mac sleeps. Models and Alpaca are optional.")}</Text>
@@ -81,7 +81,7 @@ function BalanceConfirmation({ runId, onConfirm, busy }: { runId: string; onConf
     <Text size="sm">{t("请对照 Trading 212，确认下面的账户价值合理。", "Compare these account values with Trading 212 before continuing.")}</Text>
     {accounts.map((account) => <Group key={account.code} justify="space-between"><Text>{account.code === "A" ? "Invest" : "ISA"}</Text><Text fw={600}>{currency(account.totalValueGbp, "GBP", 2)}</Text></Group>)}
     <Text size="xs" c="dimmed">{t("按 GBP 统一展示；外币账户需对照折算后的金额。", "Values are shown in GBP; compare converted values for foreign-currency accounts.")}</Text>
-    <Checkbox label={t("我已核对，账户金额合理", "I have checked that the account values are plausible")} checked={checked} onChange={(e) => setChecked(e.currentTarget.checked)} />
+    <Checkbox label={t("我已核对，账户价值合理", "I have checked that the account values are plausible")} checked={checked} onChange={(e) => setChecked(e.currentTarget.checked)} />
     <Group><Button loading={busy} disabled={!checked || !accounts.length} onClick={() => onConfirm(runId)}>{t("完成设置", "Finish setup")}</Button></Group>
   </Stack>;
 }

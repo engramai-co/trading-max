@@ -116,7 +116,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
   }
   return (
     <Page
-      title={desktop ? t("工作区设置", "Workspace settings") : t("设置与连接", "Settings & connections")}
+      title={desktop ? t("工作区设置", "Workspace settings") : t("设置", "Settings")}
       description={desktop ? t("账户连接与更新计划保存在当前服务；App 的启动与连接切换在 ⌘, 中管理。", "Accounts and schedules belong to the selected service. Manage App startup and workspace switching with ⌘,.") : undefined}
     >
       <Tabs
@@ -189,7 +189,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
               </Panel>
               {params.get("onboarding") !== "1" && <>
               <Panel
-                title={t("公开市场数据", "Public market research")}
+                title={t("公开市场数据", "Public market data")}
               >
                 <div className="mx-setting-row">
                   <div>
@@ -199,7 +199,6 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                         "Yahoo Finance-compatible source",
                       )}
                     </h3>
-                    <p>{t("无需配置；可直接查看公开行情与证券研究。", "Ready to use for public quotes and security research.")}</p>
                   </div>
                   <Button
                     component={Link}
@@ -207,7 +206,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                     variant="subtle"
                     rightSection={<ArrowRight size={16} />}
                   >
-                    {t("前往研究", "Open research")}
+                    {t("查看研究", "View research")}
                   </Button>
                 </div>
               </Panel>
@@ -381,7 +380,7 @@ function ConnectionCard({
       >
         {connected
           ? t("管理连接", "Manage connection")
-          : (connectLabel ?? t("连接账户", "Connect"))}
+          : (connectLabel ?? t("连接账户", "Connect account"))}
       </Button>
     </div>
   );
@@ -463,8 +462,8 @@ function ConnectionForm({
           {connection.kind === "broker"
             ? t("已有密钥不会回填到表单。", "Saved keys are never filled back into the form.")
             : t(
-                "证券识别请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
-                "Analysis requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
+                "模型请求会发送到你选择的提供商。密钥保存在运行 Trading Max 的设备上，用于该提供商的请求。",
+                "Model requests go to your selected provider. Your key is stored on the device running Trading Max and used for requests to that provider.",
               )}
         </Notice>
       )}
@@ -552,7 +551,7 @@ function ConnectionForm({
           {connection.kind === "model" && (
             <Checkbox
               label={t("设为默认模型", "Use as the default model")}
-              description={t("用于未单独指定模型的证券名称识别。", "Used for security name resolution without a separate assignment.")}
+              description={t("用于未单独指定模型的代码识别。", "Used for ticker matching without a separate assignment.")}
               checked={useAsDefault}
               onChange={(event) => setUseAsDefault(event.currentTarget.checked)}
               disabled={busy}
@@ -698,7 +697,7 @@ function ModelRouting({
     if (!options.some((o) => o.value === route)) options.push({ value: route, label: route });
   }
   const lenses = [
-    { value: "taxonomy", label: t("证券名称识别", "Security name resolution") },
+    { value: "taxonomy", label: t("代码识别", "Ticker matching") },
   ];
   const mutation = useMutation({
     mutationFn: (submitted: { defaultRoute: string; overrides: typeof overrides; expectedRevision: number }) =>
@@ -714,8 +713,8 @@ function ModelRouting({
     <Panel
       title={t("模型分配", "Model assignments")}
       description={t(
-        "模型用于将公司名、简称或描述识别为证券候选。",
-        "Models resolve company names, aliases, or descriptions into security candidates.",
+        "模型把公司名、简称或描述匹配到代码。",
+        "Models match company names, aliases or descriptions to tickers.",
       )}
     >
       <Stack gap="lg">
@@ -730,7 +729,7 @@ function ModelRouting({
         />
         <details className="mx-details">
           <summary>
-            {t("证券识别单独设置", "Override security resolution model")}
+            {t("代码识别单独设置", "Override ticker matching model")}
           </summary>
           <div className="mx-form-grid">
             {lenses.map((lens) => (

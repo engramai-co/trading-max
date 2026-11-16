@@ -53,7 +53,7 @@ function PriceTimeLabel({ time }: { time: PriceTime }) {
 }
 
 /**
- * Name, listing and price of the selected security, shown once. The name is the
+ * Name, listing and price of the selected stock or fund, shown once. The name is the
  * switcher: it opens the research list (or focuses the pinned one).
  */
 export function SecurityHeader({
@@ -110,7 +110,7 @@ export function SecurityHeader({
               <button
                 type="button"
                 className="mx-security-switcher"
-                aria-label={name + t("，切换证券", ", switch security")}
+                aria-label={name + t("，打开研究清单", ", open research list")}
                 aria-expanded={listOpen}
                 onClick={onSwitch}
               >
@@ -173,7 +173,7 @@ export function SecurityHeader({
   );
 }
 
-/** Update and manage the selected security; they close the research tool row. */
+/** Update and manage the selected stock or fund; they close the research tool row. */
 export function SecurityActions({
   held,
   categoriesAvailable,
@@ -213,7 +213,7 @@ export function SecurityActions({
       </Button>}
       {watchlisted && <Menu shadow="md" position="bottom-end">
         <Menu.Target>
-          <ActionIcon aria-label={t("管理当前证券", "Manage this security")}>
+          <ActionIcon aria-label={t("更多操作", "More actions")}>
             <DotsThree size={23} />
           </ActionIcon>
         </Menu.Target>
@@ -223,18 +223,16 @@ export function SecurityActions({
               ? t("调整研究分类", "Change research category")
               : t("尚未设置研究分类", "No research categories configured")}
           </Menu.Item>
-          {held ? (
-            <Menu.Label c="var(--mantine-color-text)">{t("持仓标的保留在研究中", "Held securities stay in research")}</Menu.Label>
-          ) : (
-            <Menu.Item
-              color="red"
-              disabled={pending}
-              leftSection={<Trash size={15} />}
-              onClick={onRemove}
-            >
-              {t("从研究清单移除", "Remove from research")}
-            </Menu.Item>
-          )}
+          {/* Holdings always stay in the list; the item says why it is unavailable. */}
+          <Menu.Item
+            color="red"
+            disabled={held || pending}
+            leftSection={<Trash size={15} />}
+            rightSection={held ? <span className="mx-menu-note">{t("持仓中", "Held")}</span> : undefined}
+            onClick={onRemove}
+          >
+            {t("从研究清单移除", "Remove from research list")}
+          </Menu.Item>
         </Menu.Dropdown>
       </Menu>}
     </div>

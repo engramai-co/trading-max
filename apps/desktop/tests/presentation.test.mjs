@@ -31,7 +31,7 @@ test("an offline service keeps the selected identity but disables service naviga
 test("connection readiness is not presented as successful collection", () => {
   const view = workspacePresentation({ mode: "remote", stage: "ready", probe: { healthy: true } });
   assert.equal(view.status, "已连接");
-  assert.match(view.detail, /资料完整性.*同步与活动/);
+  assert.match(view.detail, /数据完整性.*数据状态/);
   assert.doesNotMatch(view.detail, /任务成功|数据正常/);
   const degraded = workspacePresentation({ mode: "remote", stage: "ready", probe: { healthy: true, worker_healthy: false } });
   assert.equal(degraded.ready, true);

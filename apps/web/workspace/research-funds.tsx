@@ -214,7 +214,7 @@ function FundTracking({ fund }: { fund: Fund }) {
           : fund.indexName ?? absent(t)],
         ...(fund.benchmarkRelationship?.relation === "unconfirmed" && fund.benchmarkRelationship.comparisonId
           ? [[t("指数家族", "Index family"), <Link key="family" className="mx-text-link"
-            href={researchIndexHref({ id: fund.benchmarkRelationship.comparisonId })}>{t("在研究台打开", "Open in research")}</Link>] as const]
+            href={researchIndexHref({ id: fund.benchmarkRelationship.comparisonId })}>{t("查看研究", "View research")}</Link>] as const]
           .map(([label, value]): [string, React.ReactNode] => [label, value]) : []),
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
         [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t, when)} />],
@@ -268,11 +268,11 @@ function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: str
   const weight = (n: number) => percent(n / 100, false, 2);
   const totalWeight = (snapshot?.holdings ?? []).reduce((sum, item) => sum + item.weightPct, 0);
   const topWeight = top.reduce((sum, item) => sum + item.weightPct, 0);
-  const topBasis = [fund.issuer, t("发行商持仓权重", "Issuer portfolio weights"),
+  const topBasis = [fund.issuer, t("发行商持仓权重", "Issuer holdings weights"),
     snapshot?.asOf && t("截至 ", "As of ") + when(snapshot.asOf)].filter(Boolean).join(" · ");
   const allocations = [
-    { label: t("行业", "Sectors"), values: snapshot?.industryWeights, evidence: snapshot?.evidence?.industry_weights },
-    { label: t("地域", "Countries"), values: snapshot?.countryWeights, evidence: snapshot?.evidence?.country_weights },
+    { label: t("板块", "Sectors"), values: snapshot?.industryWeights, evidence: snapshot?.evidence?.industry_weights },
+    { label: t("国家/地区", "Countries"), values: snapshot?.countryWeights, evidence: snapshot?.evidence?.country_weights },
     { label: t("持仓交易币种", "Holding market currencies"), values: snapshot?.currencyWeights, evidence: snapshot?.evidence?.currency_weights },
   ];
   return (
@@ -282,18 +282,18 @@ function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: str
           [t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" {...overlap} />],
           [t("覆盖率 · 基金 / 其余组合", "Coverage · fund / rest"), <span key="coverage" title={overlap.description}>{overlap.fundCoverage} / {overlap.restCoverage}</span>],
           ...(all.length ? [
-            [t("证券数 / 已披露权重", "Securities / disclosed weight"), <span key="total" title={topBasis}>{number(all.length, 0)} / {weight(totalWeight)}</span>],
+            [t("持仓数 / 已披露权重", "Holdings / disclosed weight"), <span key="total" title={topBasis}>{number(all.length, 0)} / {weight(totalWeight)}</span>],
             [t("前十大集中度", "Top-ten concentration"), <span key="concentration" title={topBasis}>{weight(topWeight)}</span>],
           ] as [string, React.ReactNode][] : []),
         ]} />
-        {fund.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓已过期", "Holdings stale")}</Tag>}
+        {fund.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓未更新", "Holdings stale")}</Tag>}
         {top.length ? <EvidenceTable label={t("前十大持仓", "Top ten holdings")} rows={top} columns={[
-          { label: t("证券", "Security"), value: (row) => row.ticker && row.assetClass.toLowerCase().includes("equit")
+          { label: t("名称", "Name"), value: (row) => row.ticker && row.assetClass.toLowerCase().includes("equit")
             ? <button className="mx-text-link" onClick={() => onExplore(row.ticker)}>{row.name || row.ticker}</button>
             : row.name || row.ticker || row.isin },
           { label: t("权重", "Weight"), numeric: true, value: (row) => <span title={topBasis}>{weight(row.weightPct)}</span> },
-          { label: t("行业", "Sector"), value: (row) => row.industry ?? absent(t) },
-          { label: t("地域", "Country"), value: (row) => row.country ?? absent(t) },
+          { label: t("板块", "Sector"), value: (row) => row.industry ?? absent(t) },
+          { label: t("国家/地区", "Country"), value: (row) => row.country ?? absent(t) },
         ]} /> : <Empty title={fund.holdingsState === "data-failed"
           ? t("持仓数据读取失败", "Holdings data failed")
           : t("暂无持仓披露", "No holdings disclosure")} />}
@@ -305,16 +305,16 @@ function FundHoldings({ fund, onExplore }: { fund: Fund; onExplore: (ticker: str
         </details>)}
         <details className="mx-details">
           <summary>{t("重叠明细", "Overlap breakdown")}</summary>
-          {fund.matches?.length ? <EvidenceTable label={t("相同证券的直接及穿透权重", "Direct and look-through weights in shared securities")}
+          {fund.matches?.length ? <EvidenceTable label={t("共同持仓的直接及穿透权重", "Direct and look-through weights in shared holdings")}
             rows={fund.matches}
             columns={[
-              { label: t("证券", "Security"), value: (row) => row.name },
+              { label: t("名称", "Name"), value: (row) => row.name },
               { label: t("基金", "Fund"), numeric: true, value: (row) => <span title={overlap.description}>{percent(row.fundWeight, false, 2)}</span> },
               { label: t("直接持有", "Direct"), numeric: true, value: (row) => <span title={overlap.description}>{row.restDirectWeight > 0 ? percent(row.restDirectWeight, false, 2) : "—"}</span> },
               { label: t("经其他基金", "Via other funds"), value: (row) => Object.keys(row.restViaFund).length
                 ? <ul className="mx-etf-contributors">{Object.entries(row.restViaFund).map(([isin, value]) => <li key={isin} title={overlap.description}>{isin} · {percent(value, false, 2)}</li>)}</ul> : "—" },
             ]}
-          /> : <p>{reading.overlap.value === 0 ? t("没有已识别的共同证券", "No identified securities in common") : absent(t)}</p>}
+          /> : <p>{reading.overlap.value === 0 ? t("没有已识别的共同持仓", "No identified holdings in common") : absent(t)}</p>}
         </details>
       </Panel>
     </>
@@ -411,15 +411,15 @@ export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
   const marks = [...(prices.data?.tradeMarkers ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const disclosures = [...(fund.data?.disclosures ?? [])].sort((a, b) => b.observedAt.localeCompare(a.observedAt));
   return <>
-    <Panel title={t("交易记录", "Trade marks")}>
+    <Panel title={t("交易记录", "Trade records")}>
       {prices.isPending ? <Pending /> : prices.isError ? <QueryError retry={prices.refetch} /> : marks.length ? <EvidenceTable
-        label={t("交易记录", "Trade marks")} rows={marks}
+        label={t("交易记录", "Trade records")} rows={marks}
         columns={[
           { label: t("交易日", "Trade date"), value: (row) => <time dateTime={row.date} title={t("券商交易流水", "Broker transaction ledger")}>{when(row.date)}</time> },
           { label: t("标记", "Mark"), value: (row) => row.kind },
           { label: t("账户", "Accounts"), value: (row) => row.accounts.map((a) => a === "isa" ? "ISA" : "Invest").join(" / ") },
         ]}
-      /> : <Empty title={t("暂无交易记录", "No trade marks")} />}
+      /> : <Empty title={t("暂无交易记录", "No trade records")} />}
     </Panel>
     <Panel title={t("指数变动与持仓披露", "Index changes & holdings disclosures")}>
       {fund.isPending ? <Pending /> : fund.isError ? <QueryError retry={fund.refetch} /> : disclosures.length ? <EvidenceTable

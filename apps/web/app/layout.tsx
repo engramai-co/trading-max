@@ -15,10 +15,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Trading Max Portfolio",
+    default: "Trading Max",
     template: "%s · Trading Max",
   },
-  description: "Portfolio analytics and security research.",
+  description: "Portfolio analytics and investment research.",
 };
 
 export const viewport: Viewport = {

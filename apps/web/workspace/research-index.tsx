@@ -1,24 +1,26 @@
 "use client";
 
-import { ActionIcon, Select } from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
-import { ArrowLeft, BookmarkSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { ActionIcon, Button, Drawer, Menu, Select, Tooltip } from "@mantine/core";
+import { CaretDown, DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { researchShellKey } from "@/lib/dashboard-query";
+import type { ResearchShell } from "@/lib/types";
 import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
-import { api, safeUrl } from "./data";
+import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, Tag, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, useCopy } from "./foundation";
 import Link from "./link";
 import {
-  indexHref, researchIndexHref, savedIndexKey, useIndexCatalog,
+  indexHref, researchIndexHref, useIndexCatalog, useListedIndices,
   type IndexComposition, type IndexConstituent, type IndexIdentity, type IndexProduct, type IndexResearch,
 } from "./market-indices-data";
 import { ResearchIndexChart } from "./research-index-chart";
 import { SecurityFinder } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
+import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { useRouteState } from "./route-state";
 
 const views = ["overview", "price", "constituents", "tracking"] as const;
@@ -41,11 +43,19 @@ export function IndexResearchWorkspace() {
   const demonstration = useDemonstration();
   const { params, update } = useRouteState("push");
   const [finder, setFinder] = useState(false);
-  const [saved, setSaved] = useLocalStorage<string[]>({ key: savedIndexKey, defaultValue: [] });
+  const [listOpen, setListOpen] = useState(false);
   const catalog = useIndexCatalog();
   const catalogue = catalog.data ?? [];
   const id = params.get("index") ?? "";
   const index = catalogue.find((item) => item.id === id);
+  const shell = useQuery({
+    queryKey: researchShellKey,
+    queryFn: ({ signal }) => readApi<ResearchShell>("/research/shell", signal),
+    enabled: listOpen,
+    retry: 0,
+  });
+  const instruments = shell.data?.instruments ?? [];
+  const universe = useResearchUniverse(instruments);
   const view = views.find((value) => value === params.get("view")) ?? "overview";
   const overview = useQuery({
     queryKey: ["index-research", id, "overview"],
@@ -62,27 +72,30 @@ export function IndexResearchWorkspace() {
     retry: 0,
   });
   const quote = overview.data?.quote;
-  const pinned = saved.includes(id);
   const tabLabels = {
     overview: { label: t("概览", "Overview"), short: t("概览", "Overview") },
     price: { label: t("价格与走势", "Price & trend"), short: t("走势", "Price") },
     constituents: { label: t("成分与权重", "Constituents & weights"), short: t("成分", "Members") },
-    tracking: { label: t("跟踪产品", "Tracking products"), short: t("跟踪产品", "Funds") },
+    tracking: { label: t("跟踪产品", "Tracking products"), short: t("跟踪产品", "Products") },
+  };
+  const name = index ? t(index.nameZh, index.name) : "";
+  const openTicker = (ticker: string) => {
+    setListOpen(false);
+    update({ type: null, index: null, view: null, ticker });
   };
   return (
-    <Page title={t("指数研究", "Index research")} titleHidden className="mx-research-page mx-index-research" actions={
+    <Page title={t("研究", "Research")} titleHidden className="mx-research-page mx-index-research" actions={
       <>
-        <Link className="mx-text-link mx-index-research-back" href="/research">
-          <ArrowLeft size={16} aria-hidden="true" />{t("研究清单", "Research list")}
-        </Link>
-        {index && <ActionIcon variant={pinned ? "light" : "default"}
-          aria-label={pinned ? t("取消收藏指数", "Remove saved index") : t("收藏指数", "Save index")}
-          aria-pressed={pinned} onClick={() => setSaved((items) => pinned ? items.filter((item) => item !== id) : [...items, id])}>
-          <BookmarkSimple size={18} weight={pinned ? "fill" : "regular"} />
-        </ActionIcon>}
-        <ActionIcon variant="default" aria-label={t("搜索证券和指数", "Search securities and indices")} onClick={() => setFinder(true)}>
-          <MagnifyingGlass size={18} />
-        </ActionIcon>
+        {!index && <Button className="mx-universe-toggle" variant="default" rightSection={<CaretDown size={14} />}
+          aria-expanded={listOpen} onClick={() => setListOpen(true)}>
+          {t("研究清单", "Research list")}
+        </Button>}
+        <Tooltip label={t("搜索", "Search")}>
+          <ActionIcon variant="default" aria-label={t("搜索", "Search")} onClick={() => setFinder(true)}>
+            <MagnifyingGlass size={17} />
+          </ActionIcon>
+        </Tooltip>
+        {index && <IndexListActions id={index.id} />}
       </>
     }>
       {catalog.isPending ? <Pending shape="research" quiet /> : catalog.isError
@@ -90,13 +103,16 @@ export function IndexResearchWorkspace() {
           ? <Panel><Empty title={t("未找到此指数", "Index not found")} /></Panel> : <>
             <section className="mx-panel mx-index-research-hero">
               <div>
-                <h2>{t(index.nameZh, index.name)}</h2>
+                <h2>
+                  <button type="button" className="mx-security-switcher"
+                    aria-label={name + t("，打开研究清单", ", open research list")}
+                    aria-expanded={listOpen} onClick={() => setListOpen(true)}>
+                    {name}
+                    <CaretDown size={16} aria-hidden="true" />
+                  </button>
+                </h2>
                 <div className="mx-index-research-basis">
                   <span>{[index.compiler, variantLabel(index, t), index.currency].filter(Boolean).join(" · ")}</span>
-                  <Tag>{overview.data?.depth ?? "L0"}</Tag>
-                  <Help label={t("指数研究深度", "Index research depth")}>
-                    {t("L0 只有身份资料；L1 有价格历史；L2 有成分或估值快照；L3 有成分历史和精确跟踪。", "L0: identity. L1: price history. L2: constituents or valuation snapshots. L3: constituent history and exact tracking.")}
-                  </Help>
                 </div>
               </div>
               {quote?.level != null ? <div className="mx-index-research-level">
@@ -110,9 +126,9 @@ export function IndexResearchWorkspace() {
                     ? formatCalendarDate(quote.sessionDate, locale)
                     : formatDateTime(quote.asOf, locale, timeZone)}
                 </small>}
-              </div> : !overview.isPending || demonstration ? <span>{t("暂无报价", "No quote")}</span> : null}
+              </div> : !overview.isPending || demonstration ? <span>{t("无报价", "No quote")}</span> : null}
             </section>
-            <Tabs label={t("指数研究视角", "Index research perspectives")} value={view}
+            <Tabs label={t("研究视角", "Research perspectives")} value={view}
               options={views.map((value) => ({ value, ...tabLabels[value] }))}
               onChange={(next) => update({ view: next === "overview" ? null : next })} />
             <div className="mx-index-research-body">
@@ -134,7 +150,46 @@ export function IndexResearchWorkspace() {
         update({ type: null, index: null, view: null, ticker: security.ticker });
         setFinder(false);
       }} />
+      <Drawer
+        opened={listOpen}
+        onClose={() => setListOpen(false)}
+        title={<UniverseHeading wide={false} pinned={false} onPin={() => undefined}
+          onSearch={() => { setListOpen(false); setFinder(true); }} />}
+        styles={{ title: { flex: 1 }, header: { gap: 8 } }}
+        size={360}
+      >
+        {shell.isError ? <QueryError retry={shell.refetch} /> : <UniverseList
+          state={universe}
+          categories={shell.data?.watchlistCategories ?? []}
+          instruments={instruments}
+          ticker=""
+          indexId={id}
+          onSelect={openTicker}
+        />}
+      </Drawer>
     </Page>
+  );
+}
+
+/** The same list action as a stock or fund: add it, or remove it from the ··· menu. */
+function IndexListActions({ id }: { id: string }) {
+  const t = useCopy();
+  const listed = useListedIndices();
+  return (
+    <div className="mx-research-actions">
+      {listed.has(id) ? <Menu shadow="md" position="bottom-end">
+        <Menu.Target>
+          <ActionIcon aria-label={t("更多操作", "More actions")}>
+            <DotsThree size={23} />
+          </ActionIcon>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item color="red" leftSection={<Trash size={15} />} onClick={() => listed.remove(id)}>
+            {t("从研究清单移除", "Remove from research list")}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu> : <Button onClick={() => listed.add(id)}>{t("加入研究清单", "Add to research list")}</Button>}
+    </div>
   );
 }
 
@@ -154,7 +209,7 @@ function IndexOverview({ index, data }: { index: IndexIdentity; data: IndexResea
           ...(data.exposure ? [[t("我的合计敞口", "My combined exposure"),
             <span key="my-exposure">{formatCurrency(data.exposure.totalGbp, locale, "GBP")}
               <Help label={t("我的敞口口径", "My exposure basis")}>
-                <p>{t("按成分 ISIN 合并直接持股与基金穿透。已匹配到 {count} 个份额。", "Direct and fund look-through positions are folded by constituent ISIN. {count} ISINs matched.").replace("{count}", String(data.exposure.matchedIsins))}</p>
+                <p>{t("按成分 ISIN 合并直接持股与基金穿透。已匹配到 {count} 个 ISIN。", "Direct and fund look-through holdings are folded by constituent ISIN. {count} ISINs matched.").replace("{count}", String(data.exposure.matchedIsins))}</p>
                 <p>{t("直接", "Direct")} {formatCurrency(data.exposure.directGbp, locale, "GBP")} · {t("穿透", "Look-through")} {formatCurrency(data.exposure.lookThroughGbp, locale, "GBP")}</p>
                 <p>{formatCalendarDate(data.exposure.asOf, locale)}</p>
               </Help>
@@ -163,7 +218,7 @@ function IndexOverview({ index, data }: { index: IndexIdentity; data: IndexResea
       </div>
     </Panel>}
     {!!data.products?.length && <Panel title={t("跟踪产品", "Tracking products")} action={
-      <Link className="mx-text-link" href={researchIndexHref(index, "tracking")}>{t("展开", "View products")}</Link>
+      <Link className="mx-text-link" href={researchIndexHref(index, "tracking")}>{t("查看全部", "View all")}</Link>
     }>
       <ProductRows products={data.products.slice(0, 3)} simple />
     </Panel>}
@@ -173,7 +228,7 @@ function IndexOverview({ index, data }: { index: IndexIdentity; data: IndexResea
 function relation(value: IndexProduct["relationship"], t: Copy) {
   return ({
     exact: t("同基准", "Same benchmark"),
-    "same-family-other-variant": t("同族不同口径", "Same family, different basis"),
+    "same-family-other-variant": t("同系列，口径不同", "Same family, different basis"),
     "similar-exposure": t("相似敞口", "Similar exposure"),
     "related-different-structure": t("相关但结构不同", "Related, different structure"),
     unconfirmed: t("对冲口径未确认", "Hedged comparison unconfirmed"),
@@ -197,7 +252,7 @@ function ProductRows({ products, simple = false }: { products: IndexProduct[]; s
         {!simple && (fund.expenseRatio != null || fund.size != null || fund.trackingDifference != null) && <small>
           {[
             fund.expenseRatio != null ? `TER ${formatPercent(fund.expenseRatio, locale, 2)}` : null,
-            fund.size != null && fund.sizeCurrency ? [fund.sizeBasis === "share-class" ? t("份额资产", "Share-class assets") : t("基金资产", "Fund assets"),
+            fund.size != null && fund.sizeCurrency ? [fund.sizeBasis === "share-class" ? t("份额类别资产", "Share-class assets") : t("基金资产", "Fund assets"),
               formatCurrency(fund.size, locale, fund.sizeCurrency, 0)].join(" ") : null,
             fund.trackingDifference != null ? [t("年化跟踪差", "Annualised tracking difference"), formatDeltaPercent(fund.trackingDifference, locale, 2)].join(" ") : null,
           ].filter(Boolean).join(" · ")}
@@ -213,7 +268,7 @@ function TrackingProducts({ products }: { products: IndexProduct[] }) {
   const groups: { key: IndexProduct["group"]; label: string }[] = [
     { key: "held", label: t("我持有", "I hold") },
     { key: "same-benchmark", label: t("同基准", "Same benchmark") },
-    { key: "same-family", label: t("同族不同口径", "Same family, different basis") },
+    { key: "same-family", label: t("同系列，口径不同", "Same family, different basis") },
     { key: "similar", label: t("相似敞口", "Similar exposure") },
     { key: "related", label: t("相关但结构不同", "Related, different structure") },
   ];
@@ -266,12 +321,12 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
         ]} />
         {rows.length > 0 && <Heatmap rows={raw} />}
         <EvidenceTable label={t("成分权重", "Constituent weights")} rows={rows} columns={[
-          { label: t("证券", "Security"), value: (row) => <Link className="mx-text-link" href={`/research?ticker=${encodeURIComponent(row.ticker)}`}>
+          { label: t("名称", "Name"), value: (row) => <Link className="mx-text-link" href={`/research?ticker=${encodeURIComponent(row.ticker)}`}>
             {row.ticker}{row.ticker !== row.name ? " · " + row.name : ""}
           </Link> },
           { label: t("权重", "Weight"), numeric: true, value: (row) => formatPercent(row.weight, locale, 2) },
           { label: t("涨跌", "Move"), numeric: true, value: (row) => formatDeltaPercent(row.move, locale, 2) },
-          { label: t("行业 / 地区", "Sector / country"), value: (row) => [row.industry, row.country].filter(Boolean).join(" · ") || "—" },
+          { label: t("板块 · 国家/地区", "Sector · Country"), value: (row) => [row.industry, row.country].filter(Boolean).join(" · ") || "—" },
         ]} />
       </>}
     </Panel>

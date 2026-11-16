@@ -211,15 +211,15 @@ export function CompanyOverview({
         >
           <div className="mx-metric-grid">
             <Metric
-              label={t("直接持有", "Direct holdings")}
+              label={t("直接持有", "Direct")}
               value={currency(impact.directValueGbp)}
             />
             <Metric
-              label={t("基金内持有", "Through funds")}
+              label={t("基金内持有", "Via funds")}
               value={currency(impact.indirectValueGbp)}
             />
             <Metric
-              label={t("合计组合占比", "Portfolio weight")}
+              label={t("组合占比", "Portfolio weight")}
               value={percent(impact.allocationPct)}
             />
             <Metric

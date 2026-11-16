@@ -302,8 +302,8 @@ function Exposure({
       <Panel>
         <Empty
           title={t(
-            "底层资产还在等待数据",
-            "Look-through data is not available",
+            "底层持仓还在等待数据",
+            "Underlying holdings are not available yet",
           )}
           description={t(
             "完成完整更新后，ETF 成分和分类覆盖将显示在这里。",
@@ -356,8 +356,8 @@ function Exposure({
   const classificationLow = data.gicsCoveragePct < COVERAGE_FLOOR;
   const dimensions = [
     { value: "companies" as const, label: t("公司", "Companies") },
-    { value: "countries" as const, label: t("国家", "Countries") },
-    { value: "sectors" as const, label: t("行业", "Industries") },
+    { value: "countries" as const, label: t("国家/地区", "Countries") },
+    { value: "sectors" as const, label: t("板块", "Sectors") },
     { value: "gics" as const, label: t("GICS 子行业", "GICS sub-industries") },
     { value: "sources" as const, label: t("来源与覆盖", "Sources & coverage") },
   ];
@@ -365,7 +365,7 @@ function Exposure({
     <>
       <div className="mx-exposure-basis">
         <span title={top.map(({ name }) => name).join(" · ")}>{t("前三大公司", "Top three companies")} <strong>{percent(concentration)}</strong></span>
-        <span>{t("未穿透及非证券", "Unresolved & non-security")} <strong>{percent(unresolved)}</strong></span>
+        <span>{t("未穿透与其他资产", "Unresolved & other assets")} <strong>{percent(unresolved)}</strong></span>
         <span className="mx-exposure-denominator">{t("占已投资资产", "of invested assets")}</span>
         {classificationLow && (
           <Tag tone="warn">
@@ -397,7 +397,7 @@ function Exposure({
                     setSearch(e.currentTarget.value);
                     setPage(1);
                   }}
-                  aria-label={t("搜索底层资产", "Search underlying assets")}
+                  aria-label={t("搜索底层持仓", "Search underlying holdings")}
                   placeholder={t(
                     "公司、代码、ISIN 或行业…",
                     "Company, ticker, ISIN or industry…",
@@ -421,14 +421,14 @@ function Exposure({
                     searchable
                   />
                   <Select
-                    aria-label={t("行业筛选", "Filter sector")}
+                    aria-label={t("板块筛选", "Filter sector")}
                     value={sector}
                     onChange={(v) => {
                       setSector(v ?? "all");
                       setPage(1);
                     }}
                     data={[
-                      { value: "all", label: t("全部行业", "All sectors") },
+                      { value: "all", label: t("全部板块", "All sectors") },
                       ...sectors,
                     ]}
                     searchable
@@ -503,7 +503,7 @@ function Exposure({
             {phone && pages > 1 && (
               <div className="mx-exposure-paging mx-exposure-paging-top" ref={listTop}>
                 <ExposurePager
-                  label={t("底层资产分页（列表上方）", "Underlying asset pages, above the list")}
+                  label={t("底层持仓分页（列表上方）", "Underlying holding pages, above the list")}
                   total={pages}
                   value={currentPage}
                   onChange={setPage}
@@ -543,13 +543,13 @@ function Exposure({
                 className="mx-table-wrap mx-desktop-holdings"
                 tabIndex={0}
                 role="region"
-                aria-label={t("底层资产", "Underlying securities")}
+                aria-label={t("底层持仓", "Underlying holdings")}
               >
                 <table className="mx-table">
                   <thead>
                     <tr>
-                      <th>{t("底层资产", "Underlying security")}</th>
-                      <th>{t("国家", "Country")}</th>
+                      <th>{t("名称", "Name")}</th>
+                      <th>{t("国家/地区", "Country")}</th>
                       <th className="mx-align-right">
                         {t("直接持有", "Direct")}
                       </th>
@@ -601,8 +601,8 @@ function Exposure({
             ) : (
               <Empty
                 title={t(
-                  "没有匹配的底层资产",
-                  "No matching underlying assets",
+                  "没有匹配的底层持仓",
+                  "No matching underlying holdings",
                 )}
               />
             )}
@@ -612,8 +612,8 @@ function Exposure({
                   <ExposurePager
                     label={
                       phone
-                        ? t("底层资产分页（列表下方）", "Underlying asset pages, below the list")
-                        : t("底层资产分页", "Underlying asset pages")
+                        ? t("底层持仓分页（列表下方）", "Underlying holding pages, below the list")
+                        : t("底层持仓分页", "Underlying holding pages")
                     }
                     total={pages}
                     value={currentPage}
@@ -679,13 +679,13 @@ function Exposure({
                 <Facts
                   rows={[
                     [
-                      t("数据日期", "As of"),
+                      t("截至", "As of"),
                       str(source.asOf ?? source.holdingsAsOf) || "—",
                     ],
                     [
                       t("状态", "Status"),
                       (numeric(source.unweightedHoldingsCount) ?? 0) > 0
-                        ? t("部分记录未提供权重", "Some positions have no reported weight")
+                        ? t("部分记录未提供权重", "Some holdings have no reported weight")
                         : source.status === "verified"
                           ? t("已核验", "Verified")
                           : t("暂不可用", "Unavailable"),
@@ -773,23 +773,23 @@ function Exposure({
             <Facts
               rows={[
                 [
-                  t("直接持有", "Direct value"),
+                  t("直接持有", "Direct"),
                   currency(selected.directValueGbp),
                 ],
                 [
-                  t("基金内持有", "Indirect value"),
+                  t("基金内持有", "Via funds"),
                   currency(selected.indirectValueGbp),
                 ],
                 [
-                  t("组合占比", "Portfolio share"),
+                  t("组合占比", "Portfolio weight"),
                   percent(selected.allocationPct),
                 ],
-                [t("国家", "Country"), countryName(selected.country, locale)],
+                [t("国家/地区", "Country"), countryName(selected.country, locale)],
                 [
-                  t("行业", "Industry"),
+                  t("子行业", "Sub-industry"),
                   selected.gics?.subIndustryName
                     ? industryName(selected.gics.subIndustryName, locale)
-                    : t("尚未分类", "Unclassified"),
+                    : t("未分类", "Unclassified"),
                 ],
                 ["ISIN", selected.isin ?? "—"],
               ]}
@@ -818,7 +818,7 @@ function Exposure({
                 component={Link}
                 href={"/research?ticker=" + encodeURIComponent(selected.ticker)}
               >
-                {t("进入证券研究", "Open security research")}
+                {t("查看研究", "View research")}
               </Button>
             )}
           </Stack>

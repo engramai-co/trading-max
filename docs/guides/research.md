@@ -1,15 +1,18 @@
-# Research a security
+# Research stocks, funds and indices
 
 [Documentation](../README.md) · [Data conventions](data-and-metrics.md)
 
 Research works independently of your portfolio refresh. Start from a holding
-or choose **Add security** in the research list. Search by ticker or company
-name; fuzzy matching proposes up to three candidates. Confirm the ticker and
-exchange before adding one. Similar names can refer to different listings.
+or choose **Search** (the magnifier) on the research page. Enter a ticker or
+name and press Return; fuzzy matching proposes up to three listings, and
+matching indices appear as you type. Open a result, confirm the ticker and
+exchange, then choose **Add to research list**. Similar names can refer to
+different listings.
 
 The list's pin keeps the list beside the workspace on a wide screen. It pins
-the list layout, not the selected company. Comparisons and watchlist management
-are available alongside the research list.
+the list layout, not the selected company. **Compare** opens a company
+comparison, and the ··· menu changes a category or removes an entry from the
+research list. Holdings always stay in the list.
 
 ## Choose the question first
 
@@ -23,13 +26,15 @@ are available alongside the research list.
 | Options | Inspect available captured chains and derived structure |
 | Journal | Keep notes, model versions, and filing evidence together |
 
-Availability varies by security and provider. A fund, a bank, and an operating
+Availability varies by listing and provider. A fund, a bank, and an operating
 company will not have the same datasets or applicable models.
 
 ## Research an index or a fund
 
 Indices are a research type of their own. Open one from **Markets** or search
-for it in Research; both lead to the same index. Its views cover the overview,
+for it in Research; both lead to the same index. **Add to research list** keeps
+it in the research list beside stocks and funds; indices are kept in this
+browser. Its views cover the overview,
 price and history, constituents with breadth and contribution, and the funds
 that track it. Funds are grouped by how closely they follow the index: the same
 benchmark first, then the same family, then similar exposure. Your own exposure

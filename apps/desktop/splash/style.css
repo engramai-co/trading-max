@@ -72,23 +72,6 @@ picture>source {
   letter-spacing:-.6px;
   margin:15px 0
 }
-.ownership {
-  display:flex;
-  gap:10px;
-  margin-top:auto;
-  padding-top:65px
-}
-.ownership>svg {
-  width:19px;
-  height:19px;
-  color:var(--muted);
-  flex-shrink:0;
-  margin-top:2px
-}
-.ownership strong {
-  font-weight:550;
-  font-size:12px
-}
 #version {
   font-variant-numeric:tabular-nums
 }
@@ -530,7 +513,6 @@ body.picker .choice {
     border-bottom:1px solid var(--line);
     padding:16px 24px
   }
-  .sidebar .ownership,
   .sidebar .sidebar-copy {
     display:none
   }

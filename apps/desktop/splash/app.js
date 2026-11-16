@@ -16,7 +16,7 @@ function renderViewCopy() {
     welcome: t("工作区", "Workspaces"),
     remote: t("连接你的服务。", "Connect your service."),
     create: t("创建本地工作区。", "Create a local workspace."),
-    open: t("继续你的本地记录。", "Continue your local records."),
+    open: t("打开已有工作区。", "Open an existing workspace."),
   }[view]);
   if (view !== "create" && view !== "open") return;
   const creating = view === "create";
@@ -26,7 +26,6 @@ function renderViewCopy() {
     : createdWorkspace ? t("工作区已创建。可以直接打开，继续连接账户。", "Workspace created. Open it to connect your accounts.")
     : t("选择由桌面 App 创建的工作区。App 会先检查格式。", "Choose a folder created by the desktop app. The app checks it before opening."));
   text("local-submit", creating ? t("创建并连接账户 →", "Create and connect an account →") : t("打开工作区 →", "Open workspace →"));
-  text("workspace-description", t("工作区格式兼容。打开后会检查账户连接和首次同步状态。", "This workspace is compatible. Open it to check account connections and first sync."));
 }
 function applyLanguage(choice) {
   const changed = language.apply(choice);
@@ -36,7 +35,7 @@ function applyLanguage(choice) {
   renderViewCopy();
   if (!$("feedback").hidden && feedbackCopy) text("feedback", feedbackCopy());
   if (view === "remote" && !savedProfile?.url && $("name").value === defaultServiceName) {
-    $("name").value = defaultServiceName = t("我的工作台", "My workspace");
+    $("name").value = defaultServiceName = t("我的服务", "My service");
   }
   if (current) renderStatus(current);
 }
@@ -69,7 +68,7 @@ function showView(next, focus = true) {
 function profile() { return { schema: 1, mode: "remote", name: $("name").value, url: $("url").value, auto_connect: $("auto").checked }; }
 function applyProfile(value) {
   savedProfile = value;
-  defaultServiceName = t("我的工作台", "My workspace");
+  defaultServiceName = t("我的服务", "My service");
   $("name").value = value.url ? value.name : defaultServiceName;
   $("url").value = value.url;
   $("auto").checked = value.auto_connect;
@@ -101,7 +100,7 @@ function age(probe) {
   const seconds = probe.artifact_age_seconds + Math.max(0, (Date.now() - probe.checked_at_ms) / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(seconds / 3600);
-  return t("资料最近发布：", "Last published: ") + (seconds < 60
+  return t("数据最近发布：", "Last published: ") + (seconds < 60
     ? t("不到 1 分钟前", "less than 1 minute ago")
     : seconds < 3600 ? t(minutes + " 分钟前", minutes + " min ago") : t(hours + " 小时前", hours + " hr ago"));
 }
@@ -134,7 +133,7 @@ function renderStatus(state) {
   $("status").hidden = (state.stage === "idle" && !state.detail) || (picker && connected && !warning);
   $("status").className = "status " + (error || warning ? "warn" : connected ? "good" : "working");
   text("message", t(state.message, connectionMessage(state)));
-  text("detail", localError ? t("重新打开会继续使用这份工作区。已保存的资料和连接不会被清空。", "Reopen to keep using this workspace and its saved data and connections.") : state.detail || (warning ? t("主机可访问，后台更新状态需要检查。可在数据状态页查看。", "The service is reachable. See Data status to check background updates.") : ""));
+  text("detail", localError ? t("重新打开会继续使用这个工作区。已保存的数据和连接不会被清空。", "Reopen to keep using this workspace and its saved data and connections.") : state.detail || (warning ? t("主机可访问，后台更新状态需要检查。可在数据状态页查看。", "The service is reachable. See Data status to check background updates.") : ""));
   text("freshness", age(state.probe));
   $("diagnostics").hidden = !localError || !state.detail;
   text("diagnostic-detail", localError ? state.detail : "");
@@ -149,7 +148,7 @@ function renderStatus(state) {
   text("retry-countdown", seconds ? t(`${seconds} 秒后自动重试。`, `Retrying in ${seconds}s.`) : t("正在重新检查连接…", "Checking the connection again…"));
   // A remote service collects on its own; only local and demo modes carry a caveat.
   $("runtime-context").hidden = !state.mode || picker || state.mode === "remote";
-  text("collection-hint", state.mode === "local" ? t("本地记录仅在 App 运行时更新。退出 App 或 Mac 休眠会暂停采集；重新打开后继续，不会补造缺失记录。", "Local updates pause when the app quits or your Mac sleeps. They resume when you reopen the app, without filling the gap.") : t("当前是独立的模拟资料，不会连接真实账户。", "This demo uses synthetic data and does not connect to a broker."));
+  text("collection-hint", state.mode === "local" ? t("本地记录仅在 App 运行时更新。退出 App 或 Mac 休眠会暂停采集；重新打开后继续，不会补造缺失记录。", "Local updates pause when the app quits or your Mac sleeps. They resume when you reopen the app, without filling the gap.") : t("当前是独立的演示数据，不会连接真实账户。", "This demo uses synthetic data and does not connect to a broker."));
   $("reveal-workspace").hidden = !state.workspace;
 }
 async function refresh() {
@@ -221,7 +220,7 @@ async function refresh() {
       }
     }
     if (!initialized || view !== "remote") applyProfile(state.profile);
-    text("resume", savedServiceActive(state) ? t("回到工作台", "Back to workspace")
+    text("resume", savedServiceActive(state) ? t("回到工作区", "Back to workspace")
       : remoteFirst ? t("继续工作区", "Continue workspace") : t("打开", "Open"));
     if (!initialized) {
       text("version", state.app_version ? "v" + state.app_version : "");

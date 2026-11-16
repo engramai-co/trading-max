@@ -1,5 +1,6 @@
 //! Service-owned auxiliary windows. These have no native capabilities and only
 //! navigate within the selected service; normal links request presentation only.
+use crate::preferences::tr;
 use crate::{fit_webview, open_external, reveal_window, workspace_url, Desktop};
 use std::sync::Arc;
 use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder};
@@ -17,11 +18,13 @@ pub fn presentation_url(mut url: Url) -> Url {
     url
 }
 
-fn panel(path: &str) -> Option<(&'static str, &'static str)> {
+fn panel(path: &str) -> Option<(&'static str, String)> {
     match path {
-        "/desktop/settings" | "/settings" => Some((LABELS[0], "工作区设置")),
-        "/desktop/activity" | "/health" => Some((LABELS[1], "同步与活动")),
-        "/desktop/imports" => Some((LABELS[2], "导入记录")),
+        "/desktop/settings" | "/settings" => {
+            Some((LABELS[0], tr("工作区设置", "Workspace settings")))
+        }
+        "/desktop/activity" | "/health" => Some((LABELS[1], tr("数据状态", "Data status"))),
+        "/desktop/imports" => Some((LABELS[2], tr("导入记录", "Import records"))),
         _ => None,
     }
 }
@@ -56,12 +59,12 @@ pub fn close(app: &tauri::AppHandle) {
 pub fn open(app: &tauri::AppHandle, desktop: &Arc<Desktop>, url: Url) -> Result<(), String> {
     let snapshot = desktop.snapshot();
     if !snapshot.workspace_available() || !workspace_url(&url, snapshot.active_url.as_deref()) {
-        return Err("请先连接工作区。".into());
+        return Err(tr("请先连接工作区。", "Connect to a workspace first."));
     }
     let Some((label, title)) = panel(url.path()) else {
         let window = app
             .get_webview_window("workspace")
-            .ok_or("工作区尚未打开。")?;
+            .ok_or_else(|| tr("工作区尚未打开。", "The workspace is not open yet."))?;
         window.navigate(url).map_err(|e| e.to_string())?;
         return reveal_window(&window).map_err(|e| e.to_string());
     };
@@ -77,7 +80,8 @@ pub fn open(app: &tauri::AppHandle, desktop: &Arc<Desktop>, url: Url) -> Result<
     let links = desktop.clone();
     let handle = app.clone();
     let generation = snapshot.generation;
-    let owner = snapshot.active_name.as_deref().unwrap_or("工作区");
+    let fallback = tr("工作区", "Workspace");
+    let owner = snapshot.active_name.as_deref().unwrap_or(&fallback);
     let window = WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
         .title(format!("{title} · {owner}"))
         .inner_size(960.0, 780.0)

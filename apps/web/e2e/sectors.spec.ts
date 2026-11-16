@@ -898,7 +898,7 @@ test.describe("market index layer", () => {
     await page.goto("/sectors");
     const view = page.getByRole("group", { name: /全球视图|Global view/ });
     const regions = view.getByRole("button", { name: /地区|Regions/ });
-    const sectors = view.getByRole("button", { name: /行业|Sectors/ });
+    const sectors = view.getByRole("button", { name: /板块|Sectors/ });
     await expect(regions).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("group", { name: /全球市场地图|World market map/ })).toBeVisible();
     await sectors.focus();
@@ -962,16 +962,16 @@ test.describe("market index layer", () => {
     await page.goto(new URL("/desktop/sectors", demo).href);
     await expect(page.getByRole("heading", { name: /演示不包含全球行情|Global quotes aren’t included in the demo/ })).toBeVisible();
     await expect(page.locator(".mx-global-rows")).toHaveCount(0);
-    await page.getByRole("group", { name: /全球视图|Global view/ }).getByRole("button", { name: /行业|Sectors/ }).click();
+    await page.getByRole("group", { name: /全球视图|Global view/ }).getByRole("button", { name: /板块|Sectors/ }).click();
     await expect(page).toHaveURL(/\/desktop\/sectors\?view=sectors$/);
-    await expect(page.getByRole("heading", { name: /演示不包含全球行业行情|Global sector quotes aren’t included in the demo/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /演示不包含全球板块行情|Global sector quotes aren’t included in the demo/ })).toBeVisible();
   });
 
   test("research can open an index by its provider ticker", async ({ page }) => {
     await mockIndices(page);
     await page.goto("/research");
-    await page.getByRole("button", { name: /添加证券|Add security/ }).first().click();
-    await page.getByRole("textbox", { name: /搜索证券|Search securities/ }).fill("^GSPC");
+    await page.locator(".mx-page-actions").getByRole("button", { name: /^(搜索|Search)$/ }).click();
+    await page.getByRole("dialog").getByRole("textbox", { name: /^(搜索|Search)$/ }).fill("^GSPC");
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
     await expect(page).toHaveURL(/research\?type=index&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();

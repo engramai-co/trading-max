@@ -57,6 +57,23 @@
   gap: 8px;
   margin-left: auto;
 }
+/* An empty research list starts from search alone. */
+.mx-research-start {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+.mx-menu-note {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-finder-results {
+  margin-top: 20px;
+}
+.mx-finder-empty {
+  margin: 20px 0 4px;
+  color: var(--mx-muted);
+}
 @media (pointer: coarse) {
   .mx-research-page .mx-page-actions {
     --mx-tool: 44px;

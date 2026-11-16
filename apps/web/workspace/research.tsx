@@ -21,7 +21,7 @@ import {
   CaretDown,
   CaretLeft,
   CaretRight,
-  Plus,
+  MagnifyingGlass,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -318,7 +318,7 @@ function SecurityResearchWorkspace() {
         setPinned(!pinned);
         setUniverseOpen(pinned);
       }}
-      onAdd={() => setFinder(true)}
+      onSearch={() => setFinder(true)}
     />
   );
   const universe = (
@@ -358,11 +358,11 @@ function SecurityResearchWorkspace() {
   return (
     <Page
       className="mx-research-page"
-      title={t("证券研究", "Security research")}
+      title={t("研究", "Research")}
       titleHidden
       actions={
         <>
-          {/* With a security open, its name in the header is the switcher. */}
+          {/* With a stock or fund open, its name in the header is the switcher. */}
           {!selected && (
             <Button
               className="mx-universe-toggle"
@@ -376,10 +376,10 @@ function SecurityResearchWorkspace() {
           )}
           {selected && (
             <>
-              <Tooltip label={<>{t("上一只证券", "Previous security")} <kbd>K</kbd></>}>
+              <Tooltip label={<>{t("上一个", "Previous")} <kbd>K</kbd></>}>
                 <ActionIcon
                   variant="default"
-                  aria-label={t("上一只证券", "Previous security")}
+                  aria-label={t("上一个", "Previous")}
                   aria-keyshortcuts="K"
                   disabled={!previous}
                   onClick={() => previous && selectTicker(previous.ticker)}
@@ -387,10 +387,10 @@ function SecurityResearchWorkspace() {
                   <CaretLeft size={18} />
                 </ActionIcon>
               </Tooltip>
-              <Tooltip label={<>{t("下一只证券", "Next security")} <kbd>J</kbd></>}>
+              <Tooltip label={<>{t("下一个", "Next")} <kbd>J</kbd></>}>
                 <ActionIcon
                   variant="default"
-                  aria-label={t("下一只证券", "Next security")}
+                  aria-label={t("下一个", "Next")}
                   aria-keyshortcuts="J"
                   disabled={!next}
                   onClick={() => next && selectTicker(next.ticker)}
@@ -401,13 +401,13 @@ function SecurityResearchWorkspace() {
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
-          <Tooltip label={t("添加证券", "Add security")}>
+          <Tooltip label={t("搜索", "Search")}>
             <ActionIcon
               variant="default"
-              aria-label={t("添加证券", "Add security")}
+              aria-label={t("搜索", "Search")}
               onClick={() => setFinder(true)}
             >
-              <Plus size={17} />
+              <MagnifyingGlass size={17} />
             </ActionIcon>
           </Tooltip>
           {selected && (
@@ -428,7 +428,7 @@ function SecurityResearchWorkspace() {
       }
     >
       {(shell.isPending || Boolean(selected && waitingForResearch)) &&
-        <LoadingStatus label={t("正在读取证券研究…", "Loading security research…")} />}
+        <LoadingStatus label={t("正在读取研究…", "Loading research…")} />}
       {!shell.data ? (
         <>
           {ticker && <section className="mx-panel"><h2>{ticker}</h2></section>}
@@ -451,7 +451,7 @@ function SecurityResearchWorkspace() {
           )}
           <div className="mx-research-content">
             {candidates.length ? (
-              <Panel title={t("选择要查看的上市证券", "Choose a listing")}>
+              <Panel title={t("选择上市地", "Choose a listing")}>
                 <Stack>
                   {candidates.map((item) => (
                     <Button
@@ -471,34 +471,49 @@ function SecurityResearchWorkspace() {
               </Panel>
             ) : !selected && security.isFetching ? (
               <Pending shape="research" quiet />
+            ) : !selected && security.isError ? (
+              <Panel>
+                <Empty
+                  title={t("暂时无法查找“", "Could not look up “") + ticker + "”"}
+                  action={
+                    <Group justify="center">
+                      <Button onClick={() => void security.refetch()}>{t("重试", "Retry")}</Button>
+                      <Button
+                        variant="default"
+                        leftSection={<MagnifyingGlass size={16} />}
+                        onClick={() => {
+                          setFinderQuery(ticker);
+                          setFinder(true);
+                        }}
+                      >
+                        {t("搜索", "Search")}
+                      </Button>
+                    </Group>
+                  }
+                />
+              </Panel>
+            ) : !selected && !ticker ? (
+              <Panel>
+                <div className="mx-research-start">
+                  <Button leftSection={<MagnifyingGlass size={16} />} onClick={() => setFinder(true)}>
+                    {t("搜索", "Search")}
+                  </Button>
+                </div>
+              </Panel>
             ) : !selected ? (
               <Panel>
                 <Empty
-                  title={
-                    ticker
-                      ? ticker + t(" 还不在研究清单里", " is not in your research list")
-                      : t(
-                          "从一家你感兴趣的公司开始",
-                          "Start with a company you are curious about",
-                        )
-                  }
-                  description={
-                    ticker
-                      ? undefined
-                      : t(
-                          "搜索证券代码或公司名，逐步建立自己的研究范围。",
-                          "Find a ticker or company and build a research universe of your own.",
-                        )
-                  }
+                  title={t("没有找到“", "No results for “") + ticker + "”"}
                   action={
                     <Button
+                      leftSection={<MagnifyingGlass size={16} />}
                       onClick={() => {
                         // Open the finder already searching for this ticker.
-                        if (ticker) setFinderQuery(ticker);
+                        setFinderQuery(ticker);
                         setFinder(true);
                       }}
                     >
-                      {t("查找证券", "Find a security")}
+                      {t("搜索", "Search")}
                     </Button>
                   }
                 />
@@ -534,7 +549,7 @@ function SecurityResearchWorkspace() {
                   onSwitch={openUniverse}
                 />
                 <Tabs
-                  label={t("证券研究视角", "Security research perspective")}
+                  label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
                   onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
                   options={(readOnly
@@ -545,10 +560,9 @@ function SecurityResearchWorkspace() {
                   ).map((value) => ({
                     value,
                     label: isFund && value === "fundamentals" ? t("持仓与重叠", "Holdings & overlap")
-                      : isFund && value === "technical" ? t("价格与技术面", "Price & technicals")
-                      : isFund && value === "ledger" ? t("日志", "Journal") : titles[value],
+                      : titles[value],
                     short: isFund && value === "fundamentals" ? t("持仓", "Holdings")
-                      : isFund && value === "ledger" ? t("日志", "Journal") : shortTitles[value],
+                      : shortTitles[value],
                   }))}
                 />
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
@@ -746,29 +760,20 @@ function SecurityResearchWorkspace() {
       <Modal
         opened={removeConfirm}
         onClose={() => setRemoveConfirm(false)}
-        title={t("移除研究标的", "Remove security")}
+        title={t("从研究清单移除 ", "Remove ") + ticker + t("？", " from the research list?")}
       >
-        <Stack gap="lg">
-          <p className="mx-prose">
-            {ticker} ·{" "}
-            {t(
-              "将从研究清单中移除。券商持仓不受影响，你随时可以重新添加。",
-              "This security will leave your research list. Broker positions are unaffected and you can add it again.",
-            )}
-          </p>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setRemoveConfirm(false)}>
-              {t("保留", "Keep security")}
-            </Button>
-            <Button
-              color="red"
-              loading={operation.isPending}
-              onClick={() => operation.mutate({ action: "remove" })}
-            >
-              {t("移除", "Remove")}
-            </Button>
-          </Group>
-        </Stack>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={() => setRemoveConfirm(false)}>
+            {t("取消", "Cancel")}
+          </Button>
+          <Button
+            color="red"
+            loading={operation.isPending}
+            onClick={() => operation.mutate({ action: "remove" })}
+          >
+            {t("移除", "Remove")}
+          </Button>
+        </Group>
       </Modal>
     </Page>
   );
