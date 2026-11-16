@@ -30,6 +30,8 @@ also uses built-in public providers when the user requests or refreshes data:
   and requested time windows for US market prices and account value
   reconstruction; its market-data requests include no orders, account
   quantities or balances;
+- optionally enabled EODHD receives its API key and index symbols for daily
+  index history;
 - public filing and issuer endpoints receive document requests, including
   SEC EDGAR and supported issuer or filing mirrors;
 - server-proxied company-logo services receive a ticker or domain request;
