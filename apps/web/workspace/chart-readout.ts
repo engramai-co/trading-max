@@ -27,12 +27,15 @@ export type Reading = {
 };
 /** A 6px dot drawn on a series at the selected position. */
 export type ReadingMark = { value: number; colour: string; xAxisIndex?: number; yAxisIndex?: number };
+/** Where a reading was asked for: the grid under the pointer or touch, absent for the keyboard. */
+export type ReadingContext = { grid?: number };
 
 /** Coordinates in the chart's first x axis, in ascending order. The value
  * reader uses these same coordinates; a drawn connector is never a point. */
 export type ChartReadout = {
   positions: readonly number[];
-  read: (position: number) => Reading | null;
+  /** A chart with several panes may lead with the pane being read. */
+  read: (position: number, context?: ReadingContext) => Reading | null;
   latest: string;
   /** Return no reading for a known missing interval, even near its ends. */
   gap?: (position: number) => boolean;

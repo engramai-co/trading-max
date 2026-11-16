@@ -96,7 +96,7 @@ function after(positions: readonly number[], target: number) {
   return lo;
 }
 
-type Hit = { position: number; x: number } | { gap: readonly [number, number]; x: number };
+type Hit = ({ position: number } | { gap: readonly [number, number] }) & { x: number; grid?: number };
 
 export function Plot({
   label,
@@ -165,6 +165,8 @@ export function Plot({
   // Escape hides a hover reading until the pointer leaves the plot.
   const suppressed = useRef(false);
   const touchStart = useRef<{ x: number; y: number; scrub: boolean } | null>(null);
+  // The pane under the pointer or touch; keyboard readings have none.
+  const [pane, setPane] = useState<number | undefined>(undefined);
   const colours = useChartColours();
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
@@ -261,7 +263,7 @@ export function Plot({
   const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
     ? picked : null;
   const gap = active == null ? gapSpan : null;
-  const current = readout && active != null ? readout.read(active) : null;
+  const current = readout && active != null ? readout.read(active, { grid: pane }) : null;
   const gapReading: Reading | null = readout && gap ? {
     time: [t("无记录", "No data"), [readout.read(gap[0])?.time, readout.read(gap[1])?.time].filter(Boolean).join("–")]
       .filter(Boolean).join(" · "),
@@ -325,17 +327,18 @@ export function Plot({
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     const axes = Array.isArray(settings.xAxis) ? settings.xAxis.length : 1;
-    if (!instance || !(readout.gridIndexes ?? Array.from({ length: axes }, (_, i) => i)).some((gridIndex) =>
-      instance.containPixel({ gridIndex }, [x, y]))) return null;
+    const grid = instance ? (readout.gridIndexes ?? Array.from({ length: axes }, (_, i) => i)).find((gridIndex) =>
+      instance.containPixel({ gridIndex }, [x, y])) : undefined;
+    if (!instance || grid == null) return null;
     const target = instance.convertFromPixel({ xAxisIndex: 0 }, x);
     if (typeof target !== "number" || !Number.isFinite(target)) return null;
     const positions = readout.positions;
     if (readout.gap?.(target)) {
       const next = after(positions, target);
-      return next > 0 && next < positions.length ? { gap: [positions[next - 1], positions[next]], x } : null;
+      return next > 0 && next < positions.length ? { gap: [positions[next - 1], positions[next]], x, grid } : null;
     }
     const position = positions[closestChartPosition(positions, target)];
-    return position == null ? null : { position, x };
+    return position == null ? null : { position, x, grid };
   };
   const choose = (point: number | null, remember = false) => {
     setPicked(point);
@@ -349,8 +352,8 @@ export function Plot({
     drawCursor.current();
   };
   // Hover never speaks; keyboard and touch selections update the live region.
-  const announce = (position: number | null) => {
-    const value = position == null ? null : readout?.read(position);
+  const announce = (position: number | null, grid?: number) => {
+    const value = position == null ? null : readout?.read(position, { grid });
     if (value) setAnnounced(readingText(value, locale));
   };
   const dismiss = () => {
@@ -432,6 +435,7 @@ export function Plot({
     }
     const hit = pickAt(event);
     if (!hit) return;
+    setPane(hit.grid);
     if ("gap" in hit) chooseGap(hit.gap, hit.x);
     else choose(hit.position, true);
     setPinned(true);
@@ -540,8 +544,11 @@ export function Plot({
           cancelAnimationFrame(frame.current);
           frame.current = requestAnimationFrame(() => {
             if (!hit) choose(null);
-            else if ("gap" in hit) chooseGap(hit.gap, hit.x);
-            else if (hit.position !== active) choose(hit.position);
+            else {
+              setPane(hit.grid);
+              if ("gap" in hit) chooseGap(hit.gap, hit.x);
+              else if (hit.position !== active) choose(hit.position);
+            }
           });
         }}
         onPointerLeave={() => {
@@ -560,7 +567,7 @@ export function Plot({
           touchStart.current = null;
           if (start?.scrub) {
             gestures.end(event);
-            announce(active);
+            announce(active, pane);
             return;
           }
           if (gestures.end(event)) return;
@@ -572,6 +579,7 @@ export function Plot({
             return;
           if (readout) {
             const hit = pickAt(event);
+            if (hit) setPane(hit.grid);
             if (!hit || ("position" in hit && hit.position === active && pinned)) dismiss();
             else if ("gap" in hit) {
               chooseGap(hit.gap, hit.x);
@@ -579,7 +587,7 @@ export function Plot({
             } else {
               choose(hit.position, true);
               setPinned(true);
-              if (event.pointerType === "touch") announce(hit.position);
+              if (event.pointerType === "touch") announce(hit.position, hit.grid);
             }
             return;
           }
@@ -612,6 +620,7 @@ export function Plot({
           }
           if (readout) {
             const values = readout.positions;
+            setPane(undefined);
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
               if (pinned) dismiss();
