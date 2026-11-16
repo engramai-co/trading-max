@@ -11,6 +11,7 @@ import {
   interestByStrike,
   interestRows,
   interestSeries,
+  MAX_EXPIRIES,
   payoffReading,
   payoffSeries,
   sideStroke,
@@ -81,6 +82,14 @@ describe("option charts read through the reading card", () => {
     expect(new Set(series.map((line) => line.color + "|" + JSON.stringify(line.lineStyle?.type))).size).toBe(series.length);
     // One zero line for the chart.
     expect(series.filter((line) => line.markLine).length).toBe(1);
+  });
+
+  it("allows only as many expirations as there are distinct strokes", () => {
+    expect(MAX_EXPIRIES).toBe(5);
+    for (const colours of [chartColours, darkChartColours]) {
+      const strokes = Array.from({ length: MAX_EXPIRIES }, (_, index) => JSON.stringify(expiryStroke(colours, index)));
+      expect(new Set(strokes).size).toBe(MAX_EXPIRIES);
+    }
   });
 
   it("reads one expiration without a label and names the spot as the axis does", () => {

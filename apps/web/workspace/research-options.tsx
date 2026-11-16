@@ -3,7 +3,9 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   Button,
+  CheckIcon,
   Checkbox,
+  Combobox,
   Drawer,
   Group,
   MultiSelect,
@@ -87,6 +89,8 @@ export function expiryStroke(colours: ChartColours, index: number) {
   const line = EXPIRY_LINES[Math.min(index, EXPIRY_LINES.length - 1)];
   return { colour: colours[line.colour], dashed: line.dash === "dashed", dotted: line.dash === "dotted", width: line.width };
 }
+/** One stroke per selected expiration, so no two lines on a chart share one. */
+export const MAX_EXPIRIES = EXPIRY_LINES.length;
 
 /** Open interest summed by strike, calls then puts. */
 export function interestByStrike(contracts: ReadonlyArray<Pick<Contract, "strike" | "side" | "openInterest">>) {
@@ -314,7 +318,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const dates = historical ? available : current;
   const requested = (params.get("expiries") ?? "")
     .split(",")
-    .filter((v) => dates.includes(v));
+    .filter((v) => dates.includes(v))
+    .slice(0, MAX_EXPIRIES);
   const selected = requested.length ? requested : dates.slice(0, 1);
   const mode = params.get("optionView") ?? "chain";
   const scoped = options.contracts.filter((c) => selected.includes(c.expiry));
@@ -365,6 +370,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
       : "—",
   };
   const when = (v?: string | null) => (v ? formatDateTime(v, locale, timeZone) : "—");
+  const full = selected.length >= MAX_EXPIRIES;
+  const fullReason = locale === "zh" ? `已选满 ${MAX_EXPIRIES} 个到期日` : `limit of ${MAX_EXPIRIES} expirations reached`;
   const listedExpiries = options.availableExpiries?.length ?? 0;
   const partialExpiries = listedExpiries > 0 && available.length < listedExpiries;
   const models = object(options.modelInputs),
@@ -409,8 +416,23 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   {option.label}
                 </Pill>
               )}
+              // Once five are chosen the rest are disabled, and their names say why. Chosen ones keep the check.
+              renderOption={({ option, checked }) => (
+                <>
+                  {checked && <CheckIcon className={Combobox.classes.optionsDropdownCheckIcon} />}
+                  {option.disabled ? <>
+                    <span aria-hidden="true">{option.label}</span>
+                    <span className="sr-only">{option.label + t("，", ", ") + fullReason}</span>
+                  </> : <span>{option.label}</span>}
+                </>
+              )}
               aria-label={t("选择已采集到期日", "Select captured expirations")}
-              data={dates}
+              data={dates.map((date) => ({
+                value: date,
+                label: formatCalendarDate(date, locale),
+                disabled: full && !selected.includes(date),
+              }))}
+              maxValues={MAX_EXPIRIES}
               value={selected}
               onChange={(v) => {
                 if (v.length) update({ expiries: v.join(",") });
@@ -421,7 +443,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
           <span className={partialExpiries ? "mx-warning-text" : "mx-muted"}>
             {t("已采集", "Captured")} {available.length}
             {listedExpiries ? ` / ${listedExpiries}` : ""}{" "}
-            {t("个到期日", "expirations")}
+            {(listedExpiries || available.length) === 1 ? t("个到期日", "expiration") : t("个到期日", "expirations")}
           </span>
         </div>
         {!dates.length ? (
@@ -486,7 +508,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                 {selected.length > 1 && (
                   <Select
                     label={t("详细到期日", "Detail expiration")}
-                    data={selected}
+                    data={selected.map((date) => ({ value: date, label: formatCalendarDate(date, locale) }))}
                     value={active}
                     onChange={(v) => {
                       if (v)
@@ -561,7 +583,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                           </th>
                         ))}
                         <th scope="col" className="mx-strike">
-                          {active}
+                          {formatCalendarDate(active, locale)}
                         </th>
                         {activeCols.map((k) => (
                           <th scope="col" key={k}>
@@ -674,7 +696,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   rows={options.expiries
                     .filter((e) => selected.includes(e.expiry))
                     .map((e) => [
-                      e.expiry,
+                      formatCalendarDate(e.expiry, locale),
                       number(e.callOpenInterest, 0),
                       number(e.putOpenInterest, 0),
                       number(e.putCallOiRatio, 2),
@@ -691,7 +713,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     note={`${cc} / 1% ${t("标的价格变化", "underlying move")}`}
                   />
                   <Metric
-                    label={t("可建模合约", "Modeled contracts")}
+                    label={t("可建模合约", "Modelled contracts")}
                     value={`${gexContracts.length} / ${scoped.length}`}
                   />
                 </div>
@@ -904,7 +926,7 @@ function Volatility({
   return (
     <div style={{ marginTop: 24 }}>
       <OptionPlot
-        label={`${active} ${t("IV 微笑", "IV smile")}`}
+        label={`${formatCalendarDate(active, locale)} ${t("IV 微笑", "IV smile")}`}
         readout={smileReadout}
         option={(c) => ({
           legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
@@ -970,7 +992,7 @@ function Volatility({
           "Put IV",
         ]}
         rows={term.map((r) => [
-          r.expiry,
+          formatCalendarDate(r.expiry, locale),
           number(r.strike),
           percent(r.call),
           percent(r.put),
@@ -1074,7 +1096,7 @@ function Payoff({
           searchable
           data={eligible.map((c) => ({
             value: c.contractSymbol!,
-            label: `${c.side.toUpperCase()} ${c.strike} · ${c.expiry}`,
+            label: `${c.side.toUpperCase()} ${c.strike} · ${formatCalendarDate(c.expiry, locale)}`,
           }))}
           value={selected}
           onChange={setSelected}
