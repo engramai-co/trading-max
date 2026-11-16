@@ -976,6 +976,8 @@ test.describe("market index layer", () => {
   test("research can open an index by its provider ticker", async ({ page }) => {
     await mockIndices(page);
     await page.goto("/research");
+    // The toolbar is server-rendered; a press before hydration opens nothing. The header is client-only.
+    await expect(page.locator(".mx-research-page .mx-security-header")).toBeVisible();
     await page.locator(".mx-page-actions").getByRole("button", { name: /^(搜索|Search)$/ }).click();
     await page.getByRole("dialog").getByRole("textbox", { name: /^(搜索|Search)$/ }).fill("^GSPC");
     await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();

@@ -93,7 +93,9 @@ async function exercise(page: Page, baseURL: string, name: string) {
   // Coverage depth is internal: the page shows what it has, not an L-grade.
   await expect(page.getByText("L2", { exact: true })).toHaveCount(0);
   await expect(page.getByText("我的合计敞口")).toBeVisible();
-  expect(page.url()).not.toContain(String(privateValue));
+  // The holding's value never reaches the address; the port is the server's, not the page's.
+  const address = new URL(page.url());
+  expect(address.pathname + address.search).not.toContain(String(privateValue));
   // An index joins the research list the way a stock or fund does, and is listed there.
   await page.getByRole("button", { name: "加入研究清单", exact: true }).click();
   await expect(page.getByRole("button", { name: "加入研究清单", exact: true })).toHaveCount(0);
