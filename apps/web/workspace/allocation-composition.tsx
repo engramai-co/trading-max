@@ -2,8 +2,8 @@
 
 import { VisuallyHidden } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
-import { useId, useMemo, useState } from "react";
-import type { EChartsOption } from "echarts";
+import { useId, useMemo, useRef, useState } from "react";
+import type { ECharts, EChartsOption } from "echarts";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useAllocationChartColours, useChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
@@ -31,6 +31,10 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
   const description = useId();
   const detailId = useId();
   const [selected, setSelected] = useState(0);
+  // The slice or row under the pointer or keyboard focus; the centre shows it until the pointer leaves.
+  const [preview, setPreview] = useState<number | null>(null);
+  const chart = useRef<ECharts | null>(null);
+  const bound = useRef<WeakSet<ECharts>>(new WeakSet());
   const slices = useMemo(() => {
     const visible = rows.slice(0, 12);
     const rest = rows.slice(12);
@@ -46,7 +50,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
       } : {}),
     }] : visible;
     return remainder ? [...grouped, {
-      name: t("未穿透及非证券资产", "Unresolved & non-security assets"),
+      name: t("未穿透与其他资产", "Unresolved & other assets"),
       ...remainder,
     }] : grouped;
   }, [rows, t, companies, remainder]);
@@ -54,42 +58,53 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
     ? colours.axis : palette[index];
   const activeIndex = Math.min(selected, Math.max(0, slices.length - 1));
   const active = slices[activeIndex];
+  const shown = slices[preview ?? activeIndex] ?? active;
   const option = useMemo<EChartsOption>(() => ({
     backgroundColor: "transparent",
     animation: !reduced,
     animationDuration: 250,
     animationDurationUpdate: 0,
-    tooltip: {
-      trigger: "item", renderMode: "richText", confine: true,
-      backgroundColor: colours.tooltip, borderColor: colours.tooltipBorder,
-      textStyle: { color: colours.tooltipText, fontSize: 12 },
-      formatter: (params) => {
-        const point = Array.isArray(params) ? params[0] : params;
-        const row = slices[point.dataIndex];
-        return row ? `${row.name}\n${currency(row.value, "GBP", 2)} · ${percent(row.weight)}` : "";
-      },
-    },
+    // The centre answers for the slice under the pointer, so the ring has no tooltip.
+    tooltip: { show: false },
     series: [{
       type: "pie", radius: ["58%", "80%"], center: ["50%", "50%"],
       label: { show: false }, labelLine: { show: false },
       stillShowZeroSum: false,
-      emphasis: { scale: false },
+      padAngle: 0.8,
+      emphasis: { scale: false, focus: "self" },
+      blur: { itemStyle: { opacity: 0.35 } },
       data: slices.map((row, index) => ({
         name: row.name, value: Math.max(0, row.weight ?? 0),
         itemStyle: {
           color: remainder && index === slices.length - 1 ? colours.axis : palette[index],
-          opacity: index === activeIndex ? 1 : 0.65,
-          borderWidth: index === activeIndex ? 3 : 1,
-          borderColor: colours.text,
+          opacity: index === activeIndex ? 1 : 0.6,
+          borderWidth: 0,
           borderRadius: 2,
         },
       })),
     }],
   }), [activeIndex, colours, palette, reduced, slices, remainder]);
-  const { ref: canvas } = useECharts(option, "core", undefined, undefined, (event) => {
+  const { ref: canvas } = useECharts(option, "core", chart, undefined, (event) => {
     if (event.componentType === "series" && event.seriesType === "pie")
       setSelected(event.dataIndex);
   });
+  // Bound on first approach, so a chart rebuilt after a resize or theme change is bound too.
+  const bind = () => {
+    const instance = chart.current;
+    if (!instance || bound.current.has(instance)) return;
+    bound.current.add(instance);
+    instance.on("mouseover", (event) => {
+      if (event.componentType === "series" && event.seriesType === "pie") setPreview(event.dataIndex);
+    });
+    instance.on("mouseout", () => setPreview(null));
+    instance.on("globalout", () => setPreview(null));
+  };
+  // A row under the pointer or keyboard focus lights its slice and softens the rest.
+  const highlight = (index: number | null) => {
+    setPreview(index);
+    chart.current?.dispatchAction({ type: "downplay", seriesIndex: 0 });
+    if (index != null) chart.current?.dispatchAction({ type: "highlight", seriesIndex: 0, dataIndex: index });
+  };
 
   if (!active || !slices.some((row) => (row.weight ?? 0) > 0))
     return <Empty title={t("暂无配置数据", "No allocation data")} />;
@@ -106,6 +121,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
           aria-describedby={description}
           aria-controls={detailId}
           tabIndex={0}
+          onPointerEnter={bind}
           onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
@@ -114,9 +130,9 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
           }}
         />
         <div className="mx-allocation-center" aria-hidden="true">
-          <span>{active.name}</span>
-          <strong>{percent(active.weight)}</strong>
-          <small>{t("配置占比", "Allocation weight")}</small>
+          <span>{shown.name}</span>
+          <strong>{percent(shown.weight)}</strong>
+          <small>{currency(shown.value, "GBP", 0)}</small>
         </div>
         {companies ? <VisuallyHidden id={description}>
           {t("点击扇区或公司查看详情，也可用左右方向键切换。", "Select a slice or company for details. Arrow keys also switch companies.")}
@@ -148,7 +164,9 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
         <div role="group" aria-label={t("选择配置分类", "Choose allocation category")} className="mx-allocation-choices">
           {slices.map((row, index) => (
             <button key={index} type="button" aria-pressed={index === activeIndex}
-              aria-controls={detailId} onClick={() => setSelected(index)}>
+              aria-controls={detailId} onClick={() => setSelected(index)}
+              onPointerEnter={() => highlight(index)} onPointerLeave={() => highlight(null)}
+              onFocus={() => highlight(index)} onBlur={() => highlight(null)}>
               <i aria-hidden="true" style={{ backgroundColor: colour(index) }} />
               <span>{row.name}</span><strong>{percent(row.weight)}</strong>
             </button>
