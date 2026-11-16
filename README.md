@@ -63,7 +63,7 @@
 
 1. Download the DMG from the [latest release](https://github.com/engramai-co/trading-max/releases/latest).
    It runs on Apple Silicon and is Developer ID signed and Apple-notarized.
-2. Open it and drag **Trading Max Preview** to Applications.
+2. Open it and drag **Trading Max** to Applications.
 3. Start a local workspace, connect to your own Trading Max service over HTTPS,
    or open the demo with synthetic data.
 4. Add your read-only Trading 212 API keys in **Settings**, run the first sync

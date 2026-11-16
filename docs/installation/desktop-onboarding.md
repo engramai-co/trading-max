@@ -1,6 +1,6 @@
 # Desktop onboarding
 
-Status: **signed Apple Silicon desktop preview**, bundled application **1.51.0**.
+Status: **signed Apple Silicon desktop App**, bundled application **1.51.0**.
 Obtain the DMG and matching manifest from the
 [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.51.0).
 The installer uses Developer ID signing and Apple notarization. See the
@@ -33,7 +33,7 @@ Mac's startup preference, Current workspace identifies the active local/remote
 source and links to its existing settings/data-status pages, and About & updates
 checks the App version. Changing a startup preference does not reconnect or
 reconfigure the active service. Closing these auxiliary windows leaves the main
-workspace running; closing the main window still quits the preview.
+workspace running; closing the main window still quits the App.
 
 ## Create or open a local workspace
 

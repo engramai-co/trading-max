@@ -222,7 +222,8 @@ class Release:
             raise ValueError("Source version differs from the candidate")
 
     def build(self) -> Path:
-        app = ROOT / "apps/desktop/src-tauri/target/release/bundle/macos/Trading Max Preview.app"
+        product = read_json(ROOT / "apps/desktop/src-tauri/tauri.conf.json")["productName"]
+        app = ROOT / "apps/desktop/src-tauri/target/release/bundle/macos" / f"{product}.app"
         if self.state.get("signed"):
             return app
         if not self.state.get("built"):

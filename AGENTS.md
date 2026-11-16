@@ -7,7 +7,7 @@ The current onboarding direction is the native desktop entry described in
 source/agent workflow is [archived](docs/archive/onboarding/README.md); do not
 activate its skill or treat it as the default onboarding experience.
 
-The desktop preview supports existing HTTPS services, explicitly selected
+The desktop App supports existing HTTPS services, explicitly selected
 local workspaces, and an isolated synthetic demo. New workspaces start empty;
 first-sync acceptance remains incomplete until the user checks real broker totals.
 Only verified Developer ID signed and notarized release assets qualify as public
