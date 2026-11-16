@@ -1039,7 +1039,8 @@ test.describe("market index layer", () => {
     const breadth = page.getByRole("heading", { name: /成分篮子宽度历史|Constituent basket breadth/ });
     await expect(breadth).toBeVisible();
     await expect(page.getByText(/站上 200 日线|Above 200-day average/).first()).toBeVisible();
-    await expect(page.getByText("488/503")).toBeVisible();
+    // The chart's spoken reading repeats the count, so read it from the summary.
+    await expect(page.locator(".mx-index-depth-metrics").getByText("488/503")).toBeVisible();
     await expect(page.getByText(/18\.37 (点|pts)/)).toBeVisible();
     await expect(page.getByText("58%")).toBeVisible();
     await expect(page.getByRole("heading", { name: /跟踪 ETF 估值|Tracking ETF valuation/ })).toBeVisible();

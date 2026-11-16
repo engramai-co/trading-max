@@ -3,8 +3,10 @@
 import type { components } from "@/lib/api-schema";
 import dynamic from "next/dynamic";
 import { useLocale } from "@/components/locale-provider";
+import { useChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { Notice, useCopy } from "./foundation";
+import { bridgeReadout, minus } from "./readout-bridge";
 import { RiskChart } from "./research-index-chart";
 
 type DailyTracking = components["schemas"]["DailyTracking"];
@@ -52,17 +54,24 @@ export function DailyTrackingSeries({ data, hedgeUnconfirmed }: {
 
 function RawSeries({ dates, values, title }: { dates: string[]; values: (number | null)[]; title: string }) {
   const { locale } = useLocale();
+  const colours = useChartColours();
+  const value = (i: number) => minus(formatNumber(values[i], locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  // One line per chart, so the reading is its date and level; the title carries the currency.
+  const readout = bridgeReadout({
+    positions: dates.map((_, i) => i),
+    read: (i) => i in dates ? { time: formatCalendarDate(dates[i], locale), primary: { value: value(i) } } : null,
+    marks: (i) => values[i] == null ? [] : [{ value: values[i]!, colour: colours.brand }],
+    latest: dates.length ? value(dates.length - 1) : "—",
+  });
   return <section className="mx-index-research-risk-chart" aria-label={title}>
     <h3>{title}</h3>
-    <Plot label={title} height={170}
-      readPoint={(i) => [formatCalendarDate(dates[i], locale), formatNumber(values[i], locale, { maximumFractionDigits: 2 })].join(" · ")}
+    <Plot label={title} height={170} readout={readout}
       option={(colours) => ({
         animation: false,
         grid: { top: 15, left: 61, right: 14, bottom: 28 },
         xAxis: { type: "category", data: dates, axisLabel: { formatter: (day: string) => day.slice(0, 4) } },
         yAxis: { type: "value", scale: true, splitNumber: 4 },
-        tooltip: { trigger: "axis" },
-        series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: colours.brand } }],
+        series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: colours.brand }, itemStyle: { color: colours.brand } }],
       })} />
   </section>;
 }

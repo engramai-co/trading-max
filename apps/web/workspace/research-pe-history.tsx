@@ -2,13 +2,15 @@
 
 import { useLocale, type Locale } from "@/components/locale-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import type { ChartColours } from "@/ui/charts/palette";
-import { formatDate, formatCalendarDate } from "@/ui/formatters";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
+import { formatCalendarDate } from "@/ui/formatters";
 import { compact, number } from "@/workspace/data";
 import type { EChartsOption } from "echarts";
 import { useCallback, useMemo, useState } from "react";
+import type { Reading, ReadingItem } from "./chart-readout";
 import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
+import { bridgeReadout, epsFigure, fixed } from "./readout-bridge";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
@@ -22,50 +24,38 @@ type Point = {
 };
 type Translator = ReturnType<typeof useCopy>;
 
-function trailingReading(
-  point: Trailing["points"][number], history: Trailing, t: Translator,
-  date: (iso: string) => string,
-) {
-  const eps = point.earningsIndex === null ? undefined : history.earnings[point.earningsIndex];
-  const basis = eps?.method === "annual"
-    ? t("财年披露", "Filed full year")
-    : eps?.method === "derivedFourthQuarter"
-      ? t("含推算的第四季度", "Includes inferred Q4")
-      : t("连续四个季度", "Four consecutive quarters");
-  return [
-    `${date(point.date)} · ${t("滚动 P/E", "Trailing P/E")} ${point.pe == null
-      ? eps && eps.eps <= 0 ? t("不适用", "Not meaningful") : "—"
-      : number(point.pe, 2) + "×"}`,
-    `${t("收盘价", "Close")} ${point.close === null ? "—" : number(point.close, 2) + " USD"} · Yahoo`,
-    `EPS (TTM) ${eps ? number(eps.eps, 4) + " USD" : "—"} · SEC Companyfacts`,
-    ...(eps ? [
-      `${t("报告期截至", "Period ended")} ${date(eps.periodEnd)}`,
-      `${t("生效", "Effective")} ${date(eps.effectiveDate)}`,
-      basis,
-    ] : []),
-  ];
-}
-
-function forwardReading(point: Forward["points"][number], history: Forward, t: Translator, locale: Locale) {
-  const instant = (value: string) => formatDate(value, locale, {
-    dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
-  }) + " UTC";
-  const vendor = point.source === "yahoo-forward-pe";
-  return [
-    `${formatCalendarDate(point.date, locale)} · ${vendor ? t("远期 P/E", "Forward P/E") : "NTM P/E"} ${point.pe == null
-      ? point.eps !== null && point.eps <= 0 ? t("不适用", "Not meaningful") : "—"
-      : number(point.pe, 2) + "×"}`,
-    `${t("价格", "Price")} ${point.price === null ? "—" : number(point.price, 2) + " " + history.currency}`,
-    `${vendor ? "Yahoo forwardEps" : "EPS (NTM)"} ${point.eps === null ? "—" : number(point.eps, 4) + (vendor ? "" : " " + history.currency)}`,
-    `${t("生效（存档）", "Effective (archive)")} ${instant(point.observedAt)}`,
-    ...(point.priceAsOf ? [`${t("报价时间", "Quoted")} ${instant(point.priceAsOf)}`] : []),
-    `${t("来源", "Source")}: ${vendor
-      ? t("Yahoo forwardPE（备用）", "Yahoo forwardPE (fallback)")
-      : point.source === "yahoo-consensus"
-        ? t("Yahoo FY1 / FY2 一致预期", "Yahoo FY1 / FY2 consensus")
-        : t("Yahoo（预期不足）", "Yahoo (incomplete estimates)")}`,
-    ...(point.recovered ? [t("来自历史发布记录", "Recovered publication")] : []),
-  ];
+/** One date on the P/E line: the multiple leads, then where it sits in the band and its two inputs.
+ * Sources and effective dates are in the panel help; a point flags only a basis unlike its neighbours. */
+function peReading(
+  point: Point, trailing: Trailing | null | undefined, forward: Forward | null | undefined,
+  t: Translator, locale: Locale, multiple: (value: number) => string, rank: ReadingItem[],
+): Reading | null {
+  const time = formatCalendarDate(point.date, locale);
+  const value = (eps: number | null | undefined) => point.pe != null ? multiple(point.pe)
+    : eps != null && eps <= 0 ? t("不适用", "Not meaningful") : "—";
+  if (point.trailing && trailing) {
+    const eps = point.trailing.earningsIndex === null ? undefined : trailing.earnings[point.trailing.earningsIndex];
+    return {
+      time,
+      flag: eps?.method === "derivedFourthQuarter" ? t("推算 Q4", "Inferred Q4") : undefined,
+      primary: { value: value(eps?.eps) },
+      groups: [[...rank,
+        { label: t("收盘价", "Close"), value: fixed(point.trailing.close) },
+        { label: "EPS (TTM)", value: epsFigure(eps?.eps) }]],
+    };
+  }
+  if (point.forward && forward) {
+    const vendor = point.forward.source === "yahoo-forward-pe";
+    return {
+      time,
+      flag: vendor ? t("备用口径", "Fallback") : undefined,
+      primary: { value: value(point.forward.eps) },
+      groups: [[...rank,
+        { label: t("价格", "Price"), value: fixed(point.forward.price) },
+        { label: vendor ? t("远期 EPS", "Forward EPS") : "EPS (NTM)", value: epsFigure(point.forward.eps) }]],
+    };
+  }
+  return null;
 }
 
 const dayMs = 86_400_000;
@@ -73,6 +63,7 @@ const dayMs = 86_400_000;
 export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | null; forward?: Forward | null }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const [chosen, choose] = useState<Basis>();
   const [mode, setMode] = useState<"quartiles" | "deviation">("quartiles");
   const basis = chosen ?? (trailing?.points.length || !forward ? "trailing" : "forward");
@@ -90,13 +81,34 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
     `${Math.abs(value) >= 1_000 ? compact(value, locale) : number(value, decimals)}×`, [locale]);
   const latestValue = latest?.pe != null ? displayMultiple(latest.pe, 2) : null;
   const date = useCallback((iso: string) => formatCalendarDate(iso, locale), [locale]);
-  const readPoint = useCallback((index: number) => {
-    const point = points[index];
-    if (!point) return "";
-    if (point.trailing && trailing) return trailingReading(point.trailing, trailing, t, date).join("\n");
-    if (point.forward && forward) return forwardReading(point.forward, forward, t, locale).join("\n");
-    return "";
-  }, [points, trailing, forward, t, date, locale]);
+  // The band's sample: valid readings, and for NTM only those on the latest reading's basis.
+  const inSample = useCallback((point: Point) =>
+    point.pe != null && (isTrailing || point.segment === latest?.segment), [isTrailing, latest?.segment]);
+  const sample = useMemo(() => distribution
+    ? points.flatMap((point) => inSample(point) ? [point.pe as number] : []).sort((a, b) => a - b)
+    : [], [distribution, points, inSample]);
+  const readout = useMemo(() => {
+    const times = points.map((point) => Date.parse(point.date));
+    const at = new Map(times.map((time, index) => [time, index]));
+    const read = (position: number) => {
+      const point = points[at.get(position) ?? -1];
+      if (!point) return null;
+      // Pxx is the share of the sample at or below this reading, as for the latest value.
+      const rank: ReadingItem[] = sample.length && inSample(point)
+        ? [{ label: t("历史分位", "Percentile"), value: "P" + Math.round(100 * sample.filter((v) => v <= point.pe!).length / sample.length) }]
+        : [];
+      return peReading(point, trailing, forward, t, locale, (value) => displayMultiple(value, 2), rank);
+    };
+    return bridgeReadout({
+      positions: times,
+      read,
+      marks: (position) => {
+        const pe = points[at.get(position) ?? -1]?.pe;
+        return pe == null ? [] : [{ value: pe, colour: colours.text }];
+      },
+      latest: latestValue ?? "—",
+    });
+  }, [points, sample, inSample, trailing, forward, t, locale, displayMultiple, colours.text, latestValue]);
 
   const plot = useMemo(() => {
     const readings = points.map((p) => [Date.parse(p.date), p.pe] as const);
@@ -163,7 +175,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
       },
       series: [
         {
-          // Navigation and tooltips use only actual dates; the visual path
+          // Navigation and readings use only actual dates; the visual path
           // has extra null separators at filing changes and archive gaps.
           name: title,
           type: "line",
@@ -189,28 +201,21 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           lineStyle: { color: c.text, width: 1.7 },
         },
       ],
-      tooltip: {
-        formatter: (input) => {
-          const point = Array.isArray(input) ? input.find((entry) => entry.seriesIndex === 0) : input;
-          return point ? readPoint(point.dataIndex) : "";
-        },
-      },
     };
-  }, [displayMultiple, latest, latestValue, plot, points.length, rank, readPoint, title]);
+  }, [displayMultiple, latest, latestValue, plot, points.length, rank, title]);
 
   const nonPositive = isTrailing
     ? latest?.trailing?.earningsIndex != null && (trailing?.earnings[latest.trailing.earningsIndex]?.eps ?? Infinity) <= 0
     : latest?.forward?.eps != null && latest.forward.eps <= 0;
   const supported = isTrailing ? trailing != null : true;
-  const emptyReason = !supported ? t("此标的暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable for this security")
+  const emptyReason = !supported ? t("暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable")
     : !points.length ? t("历史存档尚无记录", "History archive is empty")
     : nonPositive ? t("EPS 不为正，无法计算 P/E", "P/E is undefined for nonpositive EPS")
     : t("有效样本不足", "Not enough valid observations");
-  const samples = distribution?.samples ?? plot.observed.length;
   const validDates = points
     .filter((point) => point.pe != null && (isTrailing || !distribution || point.segment === latest?.segment))
     .map((point) => point.date);
-  const info = validDates.length ? `${date(validDates[0])} – ${date(validDates.at(-1)!)} · ${number(samples, 0)} ${t("个有效读数", "valid readings")}` : undefined;
+  const span = validDates.length ? `${date(validDates[0])} – ${date(validDates.at(-1)!)}` : undefined;
 
   return (
     <Panel
@@ -240,20 +245,29 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
       }
       help={<>
         <p>{isTrailing ? t(
-          "以 Yahoo 每日收盘价（调整拆股，不调整股息）除以同一拆股口径的 SEC 摊薄 EPS。每次 EPS 变更分段，从 SEC 接收文件后的首个收盘生效。财年末优先用已披露全年 EPS；其他日期用最近四个完整季度，缺少第四季度时以全年减前三季推算。EPS 不为正时留空。",
-          "Yahoo daily close (split adjusted, excluding dividends) divided by SEC diluted EPS on the same share basis. Each new EPS vintage starts a segment at the first close after EDGAR acceptance. At year end use filed full-year EPS; otherwise use the latest four complete quarters, inferring an unreported Q4 from full-year EPS minus Q1–Q3. Nonpositive EPS leaves a gap.",
+          "每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。",
+          "Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap.",
         ) : t(
-          "NTM 是未来 12 个月。按存档日到本财年末的剩余天数占财年长度的比例，对 Yahoo 本财年和下一财年的一致预期 EPS 加权，再用同一存档里的价格相除。口径不足时用存档中的 Yahoo forwardPE，预测期限可能不同；加权 EPS 不为正时留空。每个交易所当地日期取最后一条存档，从已有记录起画。",
-          "NTM means next twelve months. Weight Yahoo current- and next-fiscal-year consensus EPS by the fraction of the fiscal year remaining on the archive date, then divide the archived price by that EPS. If the fiscal inputs cannot be aligned, use archived Yahoo forwardPE, whose horizon can differ. Nonpositive weighted EPS leaves a gap. Each exchange-local date uses its last stored observation, starting with the archive.",
+          "NTM 是未来 12 个月。按存档日到本财年末的剩余天数占财年长度的比例，对本财年和下一财年的一致预期 EPS 加权，再用同一存档里的价格相除；加权 EPS 不为正时留空。财年口径对不上时改用备用的远期 P/E，预测期限可能不同，读数标「备用口径」。",
+          "NTM means next twelve months. Current- and next-fiscal-year consensus EPS are weighted by the fraction of the fiscal year remaining on the archive date, and the archived price is divided by that EPS; nonpositive weighted EPS leaves a gap. When the fiscal inputs cannot be aligned, a fallback forward P/E is used, whose horizon can differ; its readings say Fallback.",
         )}</p>
         <p>{isTrailing ? t(
-          "阴影为 P25–P75 或均值 ±1σ，虚线为中位数或均值。Pxx 表示小于或等于最新读数的样本占比，至少需 60 个有效收盘读数。",
-          "The band shows P25–P75 or mean ±1σ; the dashed line is the median or mean. Pxx is the share at or below the latest reading and requires 60 valid closes.",
+          "阴影为 P25–P75 或均值 ±1σ，虚线为中位数或均值。Pxx 表示小于或等于该读数的样本占比，至少需 60 个有效收盘读数。",
+          "The band shows P25–P75 or mean ±1σ; the dashed line is the median or mean. Pxx is the share of the sample at or below a reading and requires 60 valid closes.",
         ) : t(
           "阴影为 P25–P75 或均值 ±1σ，虚线为中位数或均值。分布和 Pxx 只与最新值同口径的存档比较，至少需 30 个有效日期。相隔超过 7 天的观测不连线。",
-          "The band shows P25–P75 or mean ±1σ; the dashed line is the median or mean. The band and percentile compare the latest reading with at least 30 valid archive dates on the same basis. Observations more than seven days apart are not joined.",
+          "The band shows P25–P75 or mean ±1σ; the dashed line is the median or mean. The band and percentile use at least 30 valid archive dates on the latest reading's basis. Observations more than seven days apart are not joined.",
         )}</p>
-        {info && <p>{info}</p>}
+      </>}
+      helpBasis={<>
+        {isTrailing ? t(
+          "Yahoo 每日收盘价（调整拆股，不调整分红）；SEC Companyfacts 摊薄 EPS，从 EDGAR 接收文件后的首个收盘生效。每个交易日更新。",
+          "Yahoo daily close (split adjusted, excluding dividends); SEC Companyfacts diluted EPS, effective from the first close after EDGAR acceptance. Updated each trading day.",
+        ) : t(
+          "Yahoo 本财年和下一财年一致预期 EPS 与价格的存档，备用口径为存档中的 Yahoo forwardPE。每个交易所当地日期取最后一条存档，从已有记录起画。",
+          "Archived Yahoo current- and next-fiscal-year consensus EPS and price; the fallback is archived Yahoo forwardPE. Each exchange-local date uses its last stored observation, starting with the archive.",
+        )}
+        {span && <>{" "}{t("样本：", "Sample: ")}{span}{t("。", ".")}</>}
       </>}
     >
       {!plot.observed.length ? (
@@ -272,9 +286,9 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
             key={basis}
             research
             height={265}
-            label={`${isTrailing ? t("滚动 P/E 历史", "Trailing P/E history") : t("NTM P/E 历史", "NTM P/E history")}. ${readPoint(points.length - 1)}${rank == null ? "" : ` · ${t("历史分位", "Historical percentile")} ${number(rank * 100, 0) + "%"}`}`}
+            label={`${isTrailing ? t("滚动 P/E 历史", "Trailing P/E history") : t("NTM P/E 历史", "NTM P/E history")}${rank == null ? "" : ` · ${t("历史分位", "Historical percentile")} P${number(rank * 100, 0)}`}`}
             option={option}
-            readPoint={readPoint}
+            readout={readout}
           />
         </>
       )}

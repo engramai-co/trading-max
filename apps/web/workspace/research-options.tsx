@@ -16,8 +16,10 @@ import { useLocalStorage } from "@mantine/hooks";
 import type { EChartsOption } from "echarts";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { formatDateTime } from "@/ui/formatters";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
+import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { Plot } from "./charts";
+import type { ChartReadout, ReadingItem } from "./chart-readout";
 import { compact, compactTick, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { quoteValue } from "./financial-values";
@@ -31,6 +33,7 @@ import {
   useCopy,
 } from "./foundation";
 import { nearMoneyStrikes } from "./research-math";
+import { bridgeReadout } from "./readout-bridge";
 import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
 
@@ -535,7 +538,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                       "Spot scenarios for selected expirations",
                     )}
                     option={{
-                      legend: { top: 0, type: "scroll", data: selected },
+                      legend: { top: 0, type: "scroll", data: selected.map((expiry) => formatCalendarDate(expiry, locale)) },
                       grid: { left: 80, right: 24, top: 44, bottom: 48 },
                       xAxis: { type: "value", name: cc, scale: true },
                       yAxis: {
@@ -546,7 +549,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                       series: options.expiries
                         .filter((e) => selected.includes(e.expiry))
                         .map((e) => ({
-                          name: e.expiry,
+                          name: formatCalendarDate(e.expiry, locale),
                           type: "line",
                           showSymbol: false,
                           connectNulls: false,
@@ -692,6 +695,8 @@ function Volatility({
   liquid: boolean;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
+  const colours = useChartColours();
   const valid = contracts.filter(usableIv);
   const term = options.expiries
     .filter((e) => dates.includes(e.expiry))
@@ -715,11 +720,41 @@ function Volatility({
         put: atm.find((c) => c.side === "put")?.impliedVolatility ?? null,
       };
     });
+  // Calls and puts keep one colour each across the line, its dot, the legend and the reading's key.
+  const sides = ["call", "put"] as const;
+  const sideName = (side: (typeof sides)[number]) => side === "call" ? t("看涨", "Calls") : t("看跌", "Puts");
+  const sideColour = (side: (typeof sides)[number], c: ChartColours = colours) => side === "call" ? c.brand : c.accent;
+  const sideRows = (values: Array<number | null | undefined>): ReadingItem[] => sides.flatMap((side, i) =>
+    values[i] == null ? [] : [{ label: sideName(side), value: percent(values[i], false, 2), key: { colour: sideColour(side) } }]);
+  const sideMarks = (values: Array<number | null | undefined>) => sides.flatMap((side, i) =>
+    values[i] == null ? [] : [{ value: values[i]!, colour: sideColour(side) }]);
+  const smile = sides.map((side) => new Map(valid
+    .filter((c) => c.side === side)
+    .sort((a, b) => a.strike - b.strike)
+    .map((c) => [c.strike / options.spot, c.impliedVolatility] as const)));
+  const moneyness = [...new Set(smile.flatMap((line) => [...line.keys()]))].sort((a, b) => a - b);
+  const atSpot = moneyness.reduce<number | null>((best, x) => best == null || Math.abs(x - 1) < Math.abs(best - 1) ? x : best, null);
+  const smileReadout: ChartReadout = {
+    positions: moneyness,
+    read: (x) => {
+      const rows = sideRows(smile.map((line) => line.get(x)));
+      return rows.length ? { time: `${t("行权价 / 现价", "Strike / spot")} ${percent(x)}`, groups: [rows] } : null;
+    },
+    marks: (x) => sideMarks(smile.map((line) => line.get(x))),
+    latest: atSpot == null ? "—" : sideRows(smile.map((line) => line.get(atSpot))).map((row) => row.label + " " + row.value).join(" · "),
+  };
+  const termReadout: ChartReadout = {
+    positions: term.map((_, i) => i),
+    read: (i) => term[i] ? { time: formatCalendarDate(term[i].expiry, locale), groups: [sideRows([term[i].call, term[i].put])] } : null,
+    marks: (i) => term[i] ? sideMarks([term[i].call, term[i].put]) : [],
+    latest: term.length ? sideRows([term.at(-1)!.call, term.at(-1)!.put]).map((row) => row.label + " " + row.value).join(" · ") : "—",
+  };
   return (
     <div style={{ marginTop: 24 }}>
       <OptionPlot
         label={`${active} ${t("IV 微笑", "IV smile")}`}
-        option={{
+        readout={smileReadout}
+        option={(c) => ({
           legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
           grid: { left: 64, right: 24, top: 44, bottom: 54 },
           xAxis: {
@@ -733,27 +768,17 @@ function Volatility({
             name: "IV",
             axisLabel: { formatter: (v: number) => percent(v) },
           },
-          tooltip: {
-            formatter: (input) => {
-              const entries = Array.isArray(input) ? input : [input];
-              return entries.map((entry) => {
-                const [moneyness, iv] = entry.value as number[];
-                return `${entry.seriesName} · ${t("行权价 / 现价", "Strike / spot")} ${percent(moneyness)}\nIV ${percent(iv, false, 2)}`;
-              }).join("\n");
-            },
-          },
-          series: ["call", "put"].map((side) => ({
-            name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
+          series: sides.map((side, i) => ({
+            name: sideName(side),
             type: "line",
             smooth: false,
             connectNulls: false,
             symbolSize: 5,
-            data: valid
-              .filter((c) => c.side === side)
-              .sort((a, b) => a.strike - b.strike)
-              .map((c) => [c.strike / options.spot, c.impliedVolatility]),
+            itemStyle: { color: sideColour(side, c) },
+            lineStyle: { color: sideColour(side, c) },
+            data: [...smile[i]].map(([x, iv]) => [x, iv]),
           })),
-        }}
+        })}
       />
       <h3>{t("近价 IV 期限结构", "ATM IV term structure")}</h3>
       {term.length > 1 && (
@@ -763,24 +788,26 @@ function Volatility({
             "已选到期日近价波动率",
             "ATM volatility at selected expirations",
           )}
-          option={{
+          readout={termReadout}
+          option={(c) => ({
             legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
             grid: { left: 60, right: 20, top: 44, bottom: 44 },
-            xAxis: { type: "category", data: term.map((r) => r.expiry) },
+            xAxis: { type: "category", data: term.map((r) => formatCalendarDate(r.expiry, locale)) },
             yAxis: {
               type: "value",
               name: "IV",
               axisLabel: { formatter: (v: number) => percent(v) },
             },
-            tooltip: { valueFormatter: (value) => percent(value, false, 2) },
-            series: ["call", "put"].map((side) => ({
-              name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
+            series: sides.map((side) => ({
+              name: sideName(side),
               type: "line",
               smooth: false,
               connectNulls: false,
+              itemStyle: { color: sideColour(side, c) },
+              lineStyle: { color: sideColour(side, c) },
               data: term.map((r) => (side === "call" ? r.call : r.put)),
             })),
-          }}
+          })}
         />
       )}
       <Readings
@@ -1008,12 +1035,15 @@ function OptionPlot({
   option,
   label,
   height,
+  readout,
 }: {
-  option: EChartsOption;
+  option: EChartsOption | ((colours: ChartColours) => EChartsOption);
   label: string;
   height?: number;
+  readout?: ChartReadout;
 }) {
-  return <Plot research label={label} height={height} option={() => option} />;
+  return <Plot research label={label} height={height} readout={readout && bridgeReadout(readout)}
+    option={typeof option === "function" ? option : () => option} />;
 }
 function Readings({ columns, rows }: { columns: string[]; rows: string[][] }) {
   const t = useCopy();

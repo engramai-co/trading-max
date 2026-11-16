@@ -7,7 +7,10 @@ import { Button, Drawer, Group, Select } from "@mantine/core";
 import { useState } from "react";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
+import { useChartColours } from "@/ui/charts/palette";
+import type { ReadingKey } from "./chart-readout";
 import { Empty, Metric, Panel, Segments, useCopy } from "./foundation";
+import { bridgeReadout, minus, readingTone } from "./readout-bridge";
 import { FinancialStatements } from "./research-company";
 import {
   BusinessSegments,
@@ -23,7 +26,7 @@ import {
 } from "./research-facts";
 import { useRouteState } from "./route-state";
 import { Sparkbars } from "./sparks";
-import { chartName, chartNumber } from "./research-chart-format";
+import { chartNumber } from "./research-chart-format";
 
 export function FinancialWorkbench({
   data,
@@ -35,6 +38,7 @@ export function FinancialWorkbench({
   const t = useCopy();
   const { locale } = useLocale();
   const { params, update } = useRouteState("push");
+  const colours = useChartColours();
   const [detail, setDetail] = useState<Observation | null>(null);
   const facts = data.financialFacts;
   if (!facts?.periods?.length)
@@ -125,6 +129,66 @@ export function FinancialWorkbench({
   const activeDetail =
     detail ??
     (params.get("fact") ? (selected(params.get("fact")!) ?? null) : null);
+  // Readings name the period as the axis does; the panel carries the currency once.
+  const lineChart = ratio || chart === "shares";
+  const historyColours = [colours.brand, colours.secondary, colours.accent];
+  const historyKey = (line: number): ReadingKey => ({ colour: historyColours[line], kind: lineChart ? "line" : "bar" });
+  const historyValue = (value: number | null | undefined) => value == null ? "—"
+    : ratio ? minus(percent(value, false, 2)) : chart === "shares" ? compact(value, locale) : minus(chartNumber(value, locale));
+  const historyReadout = bridgeReadout({
+    positions: periods.map((_, index) => index),
+    read: (index) => {
+      const at = periods[index];
+      if (!at) return null;
+      const [lead, ...rest] = chartMetrics.map((key, line) => ({ label: label(key), value: historyValue(get(at.id, key)?.value), key: historyKey(line) }));
+      return { time: at.label, primary: lead, groups: [rest] };
+    },
+    // Lines get a dot where they are read; a bar is already marked by the cursor band.
+    marks: lineChart ? (index) => chartMetrics.flatMap((key, line) => {
+      const value = periods[index] ? get(periods[index].id, key)?.value : null;
+      return value == null ? [] : [{ value, colour: historyColours[line] }];
+    }) : undefined,
+    latest: periods.length ? historyValue(get(periods.at(-1)!.id, chartMetrics[0])?.value) : "—",
+  });
+  // Each step's own amount is on its bar; the reading adds its share of revenue.
+  const revenueTotal = bridge[0]?.to;
+  const bridgeReading = bridgeReadout({
+    positions: bridge.map((_, index) => index),
+    read: (index) => {
+      const step = bridge[index];
+      if (!step) return null;
+      const amount = step.to - step.from;
+      return {
+        time: label(step.metric),
+        primary: { value: minus(chartNumber(amount, locale)), tone: step.total ? undefined : readingTone(amount) },
+        groups: step.metric !== "revenue" && revenueTotal ? [[{ label: t("占营收", "Of revenue"), value: percent(Math.abs(amount) / revenueTotal, false, 1) }]] : undefined,
+      };
+    },
+    latest: revenueTotal != null ? minus(chartNumber(bridge.at(-1)!.to, locale)) : "—",
+  });
+  const detailReadout = activeDetail ? bridgeReadout({
+    positions: periods.map((_, index) => index),
+    read: (index) => {
+      const at = periods[index];
+      if (!at) return null;
+      const ratioUnit = activeDetail.unit === "ratio";
+      const value = get(at.id, activeDetail.metric)?.value ?? null;
+      const before = index > 0 ? get(periods[index - 1].id, activeDetail.metric)?.value ?? null : null;
+      const shown = (figure: number) => ratioUnit ? minus(percent(figure, false, 2)) : minus(chartNumber(figure, locale));
+      const change = value == null || before == null ? null : ratioUnit ? (value - before) * 100 : before !== 0 ? value / Math.abs(before) - 1 : null;
+      const changeText = change == null ? null : ratioUnit ? minus((change > 0 ? "+" : "") + change.toFixed(2)) + " pp" : minus(percent(change, true, 1));
+      return {
+        time: at.label,
+        primary: { value: value == null ? "—" : shown(value) },
+        groups: changeText ? [[{ label: t("较上期", "vs previous"), value: changeText, tone: readingTone(change) }]] : undefined,
+      };
+    },
+    marks: (index) => {
+      const value = periods[index] ? get(periods[index].id, activeDetail.metric)?.value : null;
+      return value == null ? [] : [{ value, colour: colours.brand }];
+    },
+    latest: periods.length ? historyValue(get(periods.at(-1)!.id, activeDetail.metric)?.value) : "—",
+  }) : undefined;
   return (
     <>
       <div className="mx-research-context-toolbar">
@@ -133,7 +197,7 @@ export function FinancialWorkbench({
           value={mode}
           onChange={(v) => update({ financialMode: v })}
           options={[
-            { value: "performance", label: t("经营分析", "Performance") },
+            { value: "performance", label: t("经营分析", "Operating analysis") },
             { value: "income", label: t("利润表", "Income") },
             { value: "balance", label: t("资产负债表", "Balance sheet") },
             { value: "cash", label: t("现金流量表", "Cash flow") },
@@ -148,7 +212,7 @@ export function FinancialWorkbench({
         {mode !== "ownership" && (
           <Group gap="xs">
             <Segments
-              label={t("财务期间", "Financial frequency")}
+              label={t("报告频率", "Reporting frequency")}
               value={frequency}
               onChange={(v) => update({ frequency: v, period: null })}
               options={[
@@ -265,7 +329,7 @@ export function FinancialWorkbench({
                       { value: "margins", label: t("利润率", "Margins") },
                       {
                         value: "cashflow",
-                        label: t("现金流", "Cash generation"),
+                        label: t("现金流", "Cash flow"),
                       },
                       {
                         value: "balance",
@@ -309,6 +373,7 @@ export function FinancialWorkbench({
                 <Plot
                   label={t("经营历史", "Operating history")}
                   height={320}
+                  readout={historyReadout}
                   option={(c) => ({
                     grid: {
                       left: 70,
@@ -335,24 +400,6 @@ export function FinancialWorkbench({
                         lineStyle: { color: c.grid, type: "dashed" },
                       },
                     },
-                    tooltip: {
-                      formatter: (input) => {
-                        const entries = Array.isArray(input) ? input : [input];
-                        return [
-                          String(entries[0]?.name ?? "") +
-                            " · " +
-                            (ratio
-                              ? "%"
-                              : chart === "shares"
-                                ? t("股", "shares")
-                                : (facts.currency ?? "")),
-                          ...entries.map(
-                            (e) =>
-                              `${chartName(String(e.seriesName))}   ${ratio ? percent(e.value, false, 2) : chartNumber(e.value, locale)}`,
-                          ),
-                        ].join("\n");
-                      },
-                    },
                     series: chartMetrics.map((key, i) => ({
                       type: ratio || chart === "shares" ? "line" : "bar",
                       name: label(key),
@@ -362,6 +409,7 @@ export function FinancialWorkbench({
                       symbolSize: 6,
                       barMaxWidth: 34,
                       itemStyle: { color: [c.brand, c.secondary, c.accent][i] },
+                      lineStyle: { color: [c.brand, c.secondary, c.accent][i] },
                       endLabel:
                         ratio || chart === "shares"
                           ? {
@@ -437,12 +485,13 @@ export function FinancialWorkbench({
                 </details>
               </Panel>
               {bridge.length > 0 && (
-                // The summary above carries the currency once; each bar's tooltip repeats it beside the amount.
+                // The summary above carries the currency once; each step's reading adds its share of revenue.
                 <Panel title={t("从营收到净利润", "Revenue to net income")}>
                   <Plot
                     research
                     label={t("利润桥接", "Income bridge")}
                     height={305}
+                    readout={bridgeReading}
                     option={(c) => ({
                       xAxis: {
                         type: "category",
@@ -463,16 +512,6 @@ export function FinancialWorkbench({
                         },
                         splitLine: {
                           lineStyle: { color: c.grid, type: "dashed" },
-                        },
-                      },
-                      tooltip: {
-                        trigger: "axis",
-                        formatter: (params) => {
-                          const p = (
-                            Array.isArray(params) ? params : [params]
-                          )[0];
-                          const item = bridge[p.dataIndex];
-                          return `${label(item.metric)} · ${facts.currency ?? ""}\n${chartNumber(item.to - item.from, locale)}`;
                         },
                       },
                       series: [
@@ -642,6 +681,7 @@ export function FinancialWorkbench({
             <Plot
               label={label(activeDetail.metric)}
               height={220}
+              readout={detailReadout}
               option={(c) => ({
                 xAxis: {
                   type: "category",
@@ -657,9 +697,6 @@ export function FinancialWorkbench({
                       activeDetail.unit === "ratio" ? percent(n) : compactTick(n, locale),
                   },
                 },
-                tooltip: {
-                  valueFormatter: (value) => activeDetail.unit === "ratio" ? percent(value, false, 2) : chartNumber(value, locale),
-                },
                 series: [
                   {
                     type: "line",
@@ -668,6 +705,7 @@ export function FinancialWorkbench({
                       (p) => get(p.id, activeDetail.metric)?.value ?? null,
                     ),
                     lineStyle: { color: c.brand },
+                    itemStyle: { color: c.brand },
                     symbolSize: 6,
                   },
                 ],
