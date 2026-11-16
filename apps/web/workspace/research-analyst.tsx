@@ -106,7 +106,7 @@ function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: R
         <Metric
           label={t("分析师共识", "Analyst consensus")}
           value={label ? t(label[0], label[1]) : "—"}
-          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} analysts`) : undefined}
+          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} ${verdict.analysts === 1 ? "analyst" : "analysts"}`) : undefined}
         />
         <Metric
           label={t("中位目标价", "Median target")}
@@ -460,6 +460,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
 
 function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const colours = useChartColours();
   const [firm, setFirm] = useState(""),
     [action, setAction] = useState("all");
@@ -482,27 +483,34 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
     t("卖出", "Sell"),
     t("强烈卖出", "Strong sell"),
   ];
-  const period = (v: unknown) =>
-    str(v) === "0m"
-      ? t("当前", "Current")
-      : /^-\d+m$/.test(str(v))
-        ? Math.abs(parseInt(str(v))) + t(" 个月前", " months ago")
-        : str(v);
+  const period = (v: unknown) => {
+    if (str(v) === "0m") return t("当前", "Current");
+    if (!/^-\d+m$/.test(str(v))) return str(v);
+    const months = Math.abs(parseInt(str(v)));
+    return months + (months === 1 ? t(" 个月前", " month ago") : t(" 个月前", " months ago"));
+  };
   // Each rating keeps its bar's colour on the legend and on the reading's key.
   const ratingColour = (c: ChartColours, i: number) => [c.positive, c.secondary, c.warning, c.accent, c.negative][i];
-  // A period lists its non-zero counts in the legend's order; the rating counts table keeps every one.
-  const ratingRows = (index: number): ReadingItem[] => {
-    const row = recommendations[index];
-    return row ? ratingKeys.flatMap((key, i) => {
-      const count = numeric(row[key]);
-      return count ? [{ label: labels[i], value: number(count, 0), key: { colour: ratingColour(colours, i), kind: "bar" as const } }] : [];
-    }) : [];
-  };
+  const counts = (index: number) => ratingKeys.map((key) => numeric(recommendations[index]?.[key]) ?? 0);
+  const ratingRow = (i: number, count: number): ReadingItem =>
+    ({ label: labels[i], value: number(count, 0), key: { colour: ratingColour(colours, i), kind: "bar" as const } });
+  // All five ratings in the legend's order, zeros included: what the live region, copy and summary say.
+  const ratingRows = (index: number) => counts(index).map((count, i) => ratingRow(i, count));
+  // The card fits buy, hold and sell in three rows, so the sell side is never folded away;
+  // each side names its strong rating after the count.
   const readRatings = (index: number): Reading | null => {
     const row = recommendations[index];
     if (!row) return null;
-    const rows = ratingRows(index);
-    return { time: period(row.period), ...(rows.length ? { groups: [rows] } : {}) };
+    const [strongBuy, buy, hold, sell, strongSell] = counts(index);
+    return {
+      time: period(row.period),
+      groups: [[
+        { ...ratingRow(1, strongBuy + buy), detail: locale === "zh" ? `其中强烈买入 ${number(strongBuy, 0)}` : `incl. ${number(strongBuy, 0)} strong buy` },
+        ratingRow(2, hold),
+        { ...ratingRow(3, sell + strongSell), detail: locale === "zh" ? `其中强烈卖出 ${number(strongSell, 0)}` : `incl. ${number(strongSell, 0)} strong sell` },
+      ]],
+      spoken: [ratingRows(index)],
+    };
   };
   return (
     <>
@@ -603,7 +611,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
           label={t("机构行动记录", "Analyst action records")}
           rows={rows}
           columns={[
-            { label: t("日期", "Date"), value: (r) => r.date },
+            { label: t("日期", "Date"), value: (r) => formatCalendarDate(r.date, locale) },
             { label: t("机构", "Firm"), value: (r) => r.firm },
             {
               label: t("评级变化", "Rating change"),
@@ -621,7 +629,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
           ]}
         />
         <span role="status" className="mx-result-count">
-          {rows.length} {t("条记录", "records")}
+          {rows.length} {rows.length === 1 ? t("条记录", "record") : t("条记录", "records")}
         </span>
       </Panel>
     </>
