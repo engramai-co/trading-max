@@ -595,6 +595,8 @@ export function Plot({
             dismiss();
             return;
           }
+          // A chart without a tooltip (labelled bars) has nothing to pin.
+          if (!Array.isArray(settings.tooltip) && settings.tooltip?.show === false) return;
           const bounds = event.currentTarget.getBoundingClientRect();
           control.current?.setOption({ tooltip: { alwaysShowContent: true } });
           control.current?.dispatchAction({
