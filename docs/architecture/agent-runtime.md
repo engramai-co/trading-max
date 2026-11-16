@@ -48,6 +48,13 @@ fallback to another provider.
 - History is held on the server. The client sends only its new turn; a
   regenerate or edit keeps the replaced turn as a branch. A run that fails or is
   stopped is not saved. Closing the browser request cancels the run.
+- The web app sends what the page shows (page, account scope, range, ticker and
+  research view) beside the AI SDK fields. Each value is checked against an
+  allowlist and only then reaches the model as context.
+- One conversation runs one turn at a time, and at most two turns run at once;
+  a busy request gets `assistant_busy` before any model call.
+- Each finished run logs its status, duration, model and token and tool counts;
+  never the question, the answer or tool data.
 - Failures reach the client as stable codes, never upstream error text.
 
 ## HTTP surface
@@ -55,6 +62,7 @@ fallback to another provider.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
+| GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
 | GET | `/v1/assistant/conversations` | Recent conversations with titles. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
 | DELETE | `/v1/assistant/conversations/{id}` | Delete a conversation and its messages. |
@@ -62,6 +70,10 @@ fallback to another provider.
 
 The web app proxies these under `/api/backend/assistant/`; the chat route passes
 the stream through without buffering or compression.
+
+The assistant connection test in Settings makes one small exchange in which the
+model must call a tool. Models that only return text fail it with
+`assistant_tools_unsupported`, rather than failing later on every question.
 
 ## Period calculations
 
@@ -78,3 +90,56 @@ to what the question needs. Conversations stay in the workspace database;
 deleting one removes its messages there, though backups taken earlier keep
 their copy. Pydantic AI instrumentation stays off and no vendor tracing is used.
 
+## Evaluation
+
+[The evaluation runner](../../tools/evaluate_assistant.py) exercises the same
+assistant, toolset, and usage limits over a temporary synthetic snapshot. It
+does not use your portfolio or conversation history. The 20 cases cover all
+ten tools, English and Chinese, fixed earlier turns, missing and partial
+data, requests for personal trades, stored prompt injection, and account scope
+restrictions.
+
+Run the offline regression suite with scripted models:
+
+```bash
+uv run pytest services/api/tests/test_assistant_evals.py
+```
+
+To measure a real model, explicitly choose both provider and model. Configure
+the provider's credentials in Settings first. The runner reads the same OS
+credential item as the app; it does not take keys on the command line or
+read them from the environment. For `openai-codex`, set
+`TRADING_MAX_DATA_ROOT` to the configured workspace outside the repository so
+token refresh uses the app's shared lock. For Ollama or LM Studio, a key is
+optional and `--base-url` may specify a loopback endpoint.
+
+```bash
+uv run python tools/evaluate_assistant.py --provider openai --model gpt-5.6-luna \
+  --reasoning low --cases invest-overview,benchmark-voo,stored-injection \
+  --json /tmp/trading-max-eval.json
+```
+
+Omit `--cases` to run all cases. Add `--llm-judge` to send the synthetic
+conversation and answer to the same provider for an extra qualitative check.
+Default scoring is deterministic and makes no judge calls.
+
+The report lists passing checks for each case and passing cases for each
+evaluator, with time to first visible text, total turn time, provider token
+counts, model requests, and tool calls. Turn metrics exclude judge time and
+usage. The command exits nonzero if any check fails.
+Reports contain scores and timings rather than prompts, answers, tool
+payloads, credentials, or raw errors. `--json` takes a new path outside the
+repository.
+
+The checks require the expected calls, grounded and cited figures, the
+question's language, no personal trade or position-size instruction, and no
+run or tool errors or unknown token usage. Case-specific checks also require
+key facts and disclosure of missing data, and check scope and injection
+cases for leakage. Money and percentages with explicit units, including
+units in table headers, must match a numeric tool field of the same unit and sign to within
+half the last displayed digit (e.g. `£207,823.66` from `207823.657`,
+`−12.19%` from `−0.12187`). Percentage fractions are converted to
+percentage points before comparison. Figures need a matching `[ev_…]` in
+their sentence or table row, and every evidence ID must come from this turn.
+The deterministic language and advice checks are pattern based; they are
+regression signals rather than a substitute for reviewing borderline answers.

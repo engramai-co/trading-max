@@ -145,6 +145,20 @@ def create_app(
             raise AssistantUnavailable(exc.code, 409) from None
         return BoundModel(model, run_settings(connection.reasoning))
 
+    async def assistant_ready() -> dict[str, object]:
+        try:
+            connection = await asyncio.to_thread(
+                resolve_assistant_connection, settings, preferences, credentials
+            )
+        except ProviderRuntimeError as exc:
+            return {"ready": False, "code": exc.code, "provider": None, "model": None}
+        return {
+            "ready": True,
+            "code": None,
+            "provider": connection.provider,
+            "model": connection.model,
+        }
+
     assistant_database = SqliteDatabase(
         settings.data_root / "trading_max.db", migrations_dir=MIGRATIONS
     )
@@ -153,6 +167,7 @@ def create_app(
         store=SqliteConversationStore(assistant_database),
         bind_model=bind_assistant_model,
         deps_for_run=AssistantDepsFactory(store=store).for_run,
+        check_ready=assistant_ready,
     )
     web_entity_resolver = OpenCodeWebSearchResolver(provider_factory)
     security_search = SecuritySearchService(

@@ -91,13 +91,39 @@ def run_settings(reasoning: str | None) -> ModelSettings:
     return settings
 
 
-def run_context(*, now: datetime, timezone: ZoneInfo, page: str | None) -> str:
-    """Per-run context: the user's clock and, when known, the page they are on."""
+def run_context(
+    *,
+    now: datetime,
+    timezone: ZoneInfo,
+    page: str | None = None,
+    scope: str | None = None,
+    period: str | None = None,
+    ticker: str | None = None,
+    lens: str | None = None,
+) -> str:
+    """Per-run context: the user's clock and what the page they are on shows.
+
+    Every value was validated against an allowlist before it reaches the prompt.
+    """
 
     local = now.astimezone(timezone)
     lines = [f"The user's local time is {local:%Y-%m-%d %H:%M} ({timezone.key})."]
-    if page:
-        lines.append(f"The user is looking at the {page} page.")
+    shown = [
+        text
+        for text in (
+            f"the {scope} account scope" if scope else None,
+            f"the {period} range" if period else None,
+            f"security {ticker}" if ticker else None,
+            f"its {lens} research view" if lens else None,
+        )
+        if text
+    ]
+    if page or shown:
+        where = f"the {page} page" if page else "a page"
+        detail = f", showing {', '.join(shown)}" if shown else ""
+        lines.append(f"The user is looking at {where}{detail}.")
+    if shown:
+        lines.append("Use what the page shows when the question does not say otherwise.")
     return "\n".join(lines)
 
 

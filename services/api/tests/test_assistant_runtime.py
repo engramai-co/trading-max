@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -346,3 +347,144 @@ def test_closing_the_connection_cancels_the_run(tmp_path):
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+
+
+def test_page_context_reaches_the_run_and_bad_context_is_refused(tmp_path):
+    stream, seen = answer_after_tool("lookup_total")
+    app, _ = make_app(tmp_path, stream)
+    client = TestClient(app)
+    body = user_turn("chat7", "u1", "How is it doing?")
+    body["context"] = {
+        "page": "research",
+        "scope": "isa",
+        "range": "3M",
+        "ticker": "nvda",
+        "lens": "valuation",
+        "timezone": "America/New_York",
+    }
+    assert client.post("/v1/assistant/chat", json=body).status_code == 200
+    instructions = seen[0][0].instructions or ""
+    assert "America/New_York" in instructions
+    assert "the research page" in instructions
+    assert "the isa account scope" in instructions and "the 3M range" in instructions
+    assert "security NVDA" in instructions and "valuation research view" in instructions
+
+    for bad in ({"scope": "everything"}, {"page": "overview", "sql": "1"}, {"ticker": "../x"}):
+        refused = client.post(
+            "/v1/assistant/chat", json={**user_turn("chat8", "u1", "hi"), "context": bad}
+        )
+        assert refused.status_code == 422
+        assert refused.json() == {"detail": {"code": "assistant_context_invalid"}}
+    assert len(seen) == 2  # one tool call and one answer, from the first request only
+
+
+def test_one_run_per_conversation_and_a_global_cap(tmp_path):
+    stream, seen = answer_after_tool("lookup_total")
+    app, service = make_app(tmp_path, stream)
+    client = TestClient(app)
+    service._active["chat9"] = time.monotonic()  # noqa: SLF001 - a run in progress
+    busy = client.post("/v1/assistant/chat", json=user_turn("chat9", "u1", "hi"))
+    assert (busy.status_code, busy.json()) == (409, {"detail": {"code": "assistant_busy"}})
+    service._active["other"] = time.monotonic()  # noqa: SLF001
+    capped = client.post("/v1/assistant/chat", json=user_turn("chat10", "u1", "hi"))
+    assert capped.status_code == 429
+    assert seen == []
+    # A slot abandoned before streaming began expires after the run timeout.
+    service._active["chat9"] = service._active["other"] = 0.0  # noqa: SLF001
+    assert client.post("/v1/assistant/chat", json=user_turn("chat9", "u1", "hi")).status_code == 200
+    assert service._active == {}  # noqa: SLF001 - released when the stream ended
+
+
+def test_a_looping_model_stops_at_the_run_limit(tmp_path, caplog):
+    async def loop(messages, info: AgentInfo):
+        yield {
+            0: DeltaToolCall(name="lookup_total", json_args="{}", tool_call_id=f"c{len(messages)}")
+        }
+
+    app, _ = make_app(tmp_path, loop)
+    with caplog.at_level("WARNING", logger="trading_max.assistant"):
+        response = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat11", "u1", "x"))
+    errors = [chunk for chunk in events(response.text) if chunk["type"] == "error"]
+    assert [chunk["errorText"] for chunk in errors] == ["assistant_limit_reached"]
+
+
+def test_invalid_tool_arguments_are_retried(tmp_path):
+    attempts: list[str] = []
+
+    async def stream(messages, info: AgentInfo):
+        last = messages[-1]
+        returns = (
+            [p for p in last.parts if isinstance(p, ToolReturnPart)]
+            if isinstance(last, ModelRequest)
+            else []
+        )
+        if any(part.content == "saved:hi" for part in returns):
+            yield "Saved."
+            return
+        args = '{"wrong": 1}' if not attempts else '{"text": "hi"}'
+        attempts.append(args)
+        yield {
+            0: DeltaToolCall(name="lookup_note", json_args=args, tool_call_id=f"n{len(attempts)}")
+        }
+
+    def lookup_note(ctx: RunContext[SyntheticDeps], text: str) -> str:
+        """Read-only synthetic tool with a required argument."""
+        return f"saved:{text}"
+
+    async def bound() -> BoundModel:
+        return BoundModel(FunctionModel(stream_function=stream), run_settings(None))
+
+    app, service = make_app(tmp_path, stream, bind=bound)
+    service.agent = build_assistant_agent([FunctionToolset([Tool(lookup_note)])])
+    response = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat12", "u1", "x"))
+    text = "".join(c.get("delta", "") for c in events(response.text) if c["type"] == "text-delta")
+    assert attempts == ['{"wrong": 1}', '{"text": "hi"}']
+    assert text == "Saved."
+
+
+def test_a_run_that_outlasts_its_timeout_is_aborted_and_not_saved(tmp_path, monkeypatch, caplog):
+    from services.api.trading_max_api.agent import service as service_module
+
+    async def slow(messages, info: AgentInfo):
+        yield "starting "
+        await anyio.sleep(5)
+        yield "never"
+
+    monkeypatch.setattr(service_module, "RUN_TIMEOUT_SECONDS", 0.3)
+    app, service = make_app(tmp_path, slow)
+    with caplog.at_level("INFO", logger="trading_max.assistant"):
+        response = TestClient(app).post("/v1/assistant/chat", json=user_turn("chat13", "u1", "x"))
+    assert any(chunk["type"] == "abort" for chunk in events(response.text))
+    assert TestClient(app).get("/v1/assistant/conversations").json() == []
+    assert any(getattr(r, "status", None) == "timed_out" for r in caplog.records)
+    assert service._active == {}  # noqa: SLF001
+
+
+def test_completed_runs_log_usage_metadata_only(tmp_path, caplog):
+    stream, _ = answer_after_tool("lookup_total")
+    app, _ = make_app(tmp_path, stream)
+    with caplog.at_level("INFO", logger="trading_max.assistant"):
+        TestClient(app).post(
+            "/v1/assistant/chat", json=user_turn("chat14", "u1", "secret question")
+        )
+    record = next(r for r in caplog.records if r.getMessage() == "assistant run finished")
+    assert (record.status, record.requests, record.tool_calls) == ("completed", 2, 1)
+    assert "secret question" not in caplog.text
+
+
+def test_the_wired_app_reports_why_the_assistant_cannot_start(tmp_path):
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+    from services.api.trading_max_api.credentials import InMemoryCredentialStore
+
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        assert client.get("/v1/assistant/status").json() == {
+            "ready": False,
+            "code": "assistant_disabled",
+            "provider": None,
+            "model": None,
+        }
+        refused = client.post("/v1/assistant/chat", json=user_turn("chat15", "u1", "hi"))
+        assert refused.status_code == 403
+        assert client.get("/v1/assistant/conversations").json() == []

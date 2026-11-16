@@ -19,6 +19,7 @@ Repository = "https://github.com/engramai-co/trading-max"
 
 [dependency-groups]
 dev = [
+    "pydantic-evals==2.68.0",
     "pytest>=9.1,<10",
     "ruff>=0.16,<1",
 ]

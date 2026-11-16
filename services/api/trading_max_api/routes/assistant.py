@@ -26,6 +26,13 @@ class AssistantConversationMessages(ApiModel):
     messages: list[dict[str, Any]]
 
 
+class AssistantStatus(ApiModel):
+    ready: bool
+    code: str | None = None
+    provider: str | None = None
+    model: str | None = None
+
+
 def _service(request: Request) -> AssistantService:
     service = getattr(request.app.state, "assistant", None)
     if service is None:
@@ -41,6 +48,11 @@ def _service(request: Request) -> AssistantService:
 )
 async def assistant_chat(request: Request) -> Response:
     return await _service(request).chat(request)
+
+
+@router.get("/v1/assistant/status", response_model=AssistantStatus)
+async def assistant_status(request: Request) -> AssistantStatus:
+    return AssistantStatus.model_validate(await _service(request).status())
 
 
 @router.get("/v1/assistant/conversations", response_model=list[AssistantConversation])

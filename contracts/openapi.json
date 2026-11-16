@@ -2290,6 +2290,52 @@
         "title": "AssistantSettingsResponse",
         "type": "object"
       },
+      "AssistantStatus": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ready"
+        ],
+        "title": "AssistantStatus",
+        "type": "object"
+      },
       "AssumptionReference": {
         "additionalProperties": false,
         "properties": {
@@ -24321,6 +24367,27 @@
           }
         },
         "summary": "Assistant Conversation",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/v1/assistant/status": {
+      "get": {
+        "operationId": "assistant_status_v1_assistant_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Assistant Status",
         "tags": [
           "assistant"
         ]

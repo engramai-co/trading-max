@@ -60,7 +60,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install and test Pi model transport
+      - name: Install and test ChatGPT device login
         run: |
           npm run oauth:install
           npm run test:llm

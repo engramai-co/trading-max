@@ -23,6 +23,7 @@ from trading_max.ingestion.brokers.trading212 import (
     Trading212Error,
 )
 
+from ..agent.probe import check_assistant_connection
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION, AssistantSettingsError
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
@@ -837,7 +838,7 @@ async def test_assistant_provider(
                 spec,
                 app_service(request, "credential_store"),
             )
-        await llm.check_connection(
+        await check_assistant_connection(
             llm.ModelConnection(
                 provider=spec.provider,
                 model=candidate.model,

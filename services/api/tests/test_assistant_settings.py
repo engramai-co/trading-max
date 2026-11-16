@@ -327,6 +327,10 @@ def assistant_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             raise ProviderError(provider=connection.provider, code="provider_auth_failed")
 
     monkeypatch.setattr("trading_max.llm.check_connection", connect)
+    # The assistant test also requires a tool call; it has its own probe.
+    monkeypatch.setattr(
+        "services.api.trading_max_api.routes.settings.check_assistant_connection", connect
+    )
     app = create_app(
         Settings(data_root=tmp_path, api_token="synthetic-token"),
         credential_store=credentials,

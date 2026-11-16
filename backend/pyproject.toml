@@ -36,6 +36,9 @@ trading-max = "trading_max.cli:main"
 packages = ["src/trading_max"]
 artifacts = ["src/trading_max/reference/data/*.json"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "trading_max/migrations"
+
 [tool.hatch.build]
 # Keep the device-login scripts and lock; dependent Node packages are installed separately.
 exclude = ["**/node_modules/**", "**/_pi/test/**", "**/_pi/complete.mjs"]
@@ -43,6 +46,7 @@ exclude = ["**/node_modules/**", "**/_pi/test/**", "**/_pi/complete.mjs"]
 [tool.hatch.build.targets.sdist]
 artifacts = ["src/trading_max/reference/data/*.json"]
 include = [
+    "/migrations/*.sql",
     "/src/trading_max",
     "/pyproject.toml",
 ]

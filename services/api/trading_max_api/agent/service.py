@@ -10,35 +10,43 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import anyio
 from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from pydantic_ai.models import Model
+from pydantic_ai.run import AgentRunResult
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter, VercelAIEventStream
 from pydantic_ai.ui.vercel_ai.response_types import BaseChunk, ErrorChunk
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
+from .deps import AccountScope
 from .runtime import USAGE_LIMITS, error_code, run_context
 from .store import SqliteConversationStore
+from .tools import Lens, PageRange, Ticker
 
 LOGGER = logging.getLogger("trading_max.assistant")
 SDK_VERSION = 6
 RUN_TIMEOUT_SECONDS = 300.0
 CONVERSATION_SCOPE = "workspace"
 CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-PAGE_HINTS = frozenset(
-    {"overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"}
-)
+PageHint = Literal[
+    "overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"
+]
 DEFAULT_TIMEZONE = "Europe/London"
 LIST_LIMIT = 100
+# Runs are billed by the provider: never two at once in one conversation, and few overall.
+MAX_ACTIVE_RUNS = 2
 
 
 class AssistantUnavailable(RuntimeError):
@@ -58,6 +66,19 @@ class BoundModel:
 
 class DepsForRun(Protocol):
     def __call__(self, page_hint: str | None, timezone: str | None) -> Any: ...
+
+
+class ChatContext(BaseModel):
+    """What the page shows, sent by the web app beside the Vercel AI SDK fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: PageHint | None = None
+    scope: AccountScope | None = None
+    range: PageRange | None = None
+    ticker: Ticker | None = None
+    lens: Lens | None = None
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class _SanitizedEventStream(VercelAIEventStream):
@@ -82,10 +103,6 @@ class _Adapter(VercelAIAdapter):
         )
 
 
-def _page(value: str | None) -> str | None:
-    return value if value in PAGE_HINTS else None
-
-
 def _timezone(value: str | None) -> ZoneInfo:
     if value and len(value) <= 64:
         try:
@@ -100,18 +117,58 @@ def _check_conversation_id(conversation_id: str) -> None:
         raise HTTPException(status_code=404, detail={"code": "conversation_not_found"})
 
 
-async def _closing(stream: AsyncIterable[Any], model: Model) -> AsyncIterator[Any]:
+def _context(body: dict[str, Any], request: Request) -> ChatContext:
+    raw = body.get("context")
+    if raw is None:
+        # Query parameters remain for clients that cannot add body fields.
+        raw = {
+            key: value
+            for key, value in (
+                ("page", request.query_params.get("page")),
+                ("timezone", request.query_params.get("tz")),
+            )
+            if value
+        }
+    try:
+        return ChatContext.model_validate(raw)
+    except ValidationError:
+        raise HTTPException(status_code=422, detail={"code": "assistant_context_invalid"}) from None
+
+
+async def _closing(
+    stream: AsyncIterable[Any], model: Model, release: Callable[[], None]
+) -> AsyncIterator[Any]:
     """Close the run's stream and the model's HTTP client however the response ends."""
 
     try:
         async for chunk in stream:
             yield chunk
     finally:
-        with anyio.CancelScope(shield=True):
-            aclose = getattr(stream, "aclose", None)
-            if aclose is not None:
-                await aclose()
-            await model.__aexit__(None, None, None)
+        try:
+            with anyio.CancelScope(shield=True):
+                aclose = getattr(stream, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+                await model.__aexit__(None, None, None)
+        finally:
+            release()
+
+
+def _log_run(status: str, started: float, model: Model, result: AgentRunResult | None = None):
+    usage = result.usage if result is not None else None
+    LOGGER.info(
+        "assistant run finished",
+        extra={
+            "status": status,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "provider": model.system,
+            "model": model.model_name,
+            "requests": usage.requests if usage else None,
+            "tool_calls": usage.tool_calls if usage else None,
+            "input_tokens": usage.input_tokens if usage else None,
+            "output_tokens": usage.output_tokens if usage else None,
+        },
+    )
 
 
 @dataclass
@@ -123,20 +180,60 @@ class AssistantService:
     bind_model: Callable[[], Awaitable[BoundModel]]
     deps_for_run: DepsForRun
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+    check_ready: Callable[[], Awaitable[dict[str, Any]]] | None = None
+    # conversation id -> start time; an entry outlives its run only if a response
+    # was abandoned before streaming began, so expire it after the run timeout.
+    _active: dict[str, float] = field(default_factory=dict, init=False, repr=False)
+
+    def _release(self, conversation_id: str) -> None:
+        self._active.pop(conversation_id, None)
+
+    async def status(self) -> dict[str, Any]:
+        """Whether a turn could start now, without calling the model."""
+
+        if self.check_ready is None:
+            return {"ready": True, "code": None, "provider": None, "model": None}
+        return await self.check_ready()
 
     async def chat(self, request: Request) -> Response:
-        body = await request.json() if await request.body() else None
+        try:
+            body = await request.json() if await request.body() else None
+        except ValueError:
+            body = None
         conversation_id = body.get("id") if isinstance(body, dict) else None
         if not isinstance(conversation_id, str) or not CONVERSATION_ID.fullmatch(conversation_id):
             raise HTTPException(status_code=422, detail={"code": "conversation_id_invalid"})
+        context = _context(body, request)
+        horizon = time.monotonic() - RUN_TIMEOUT_SECONDS - 30
+        for stale in [key for key, started in self._active.items() if started < horizon]:
+            self._release(stale)
+        if conversation_id in self._active:
+            raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
+        if len(self._active) >= MAX_ACTIVE_RUNS:
+            raise HTTPException(status_code=429, detail={"code": "assistant_busy"})
+        self._active[conversation_id] = time.monotonic()
+        try:
+            return await self._run(request, conversation_id, context)
+        except BaseException:
+            self._release(conversation_id)
+            raise
+
+    async def _run(self, request: Request, conversation_id: str, context: ChatContext) -> Response:
         try:
             bound = await self.bind_model()
         except AssistantUnavailable as exc:
             raise HTTPException(status_code=exc.status_code, detail={"code": exc.code}) from None
-        page = _page(request.query_params.get("page"))
-        zone = _timezone(request.query_params.get("tz"))
-        deps = self.deps_for_run(page, zone.key)
+        zone = _timezone(context.timezone)
+        deps = self.deps_for_run(context.page, zone.key)
         model = bound.model
+        started = time.monotonic()
+
+        def completed(result: AgentRunResult) -> None:
+            _log_run("completed", started, model, result)
+
+        def cancelled(exc: RunCancelled) -> None:
+            _log_run("timed_out" if isinstance(exc, RunTimedOut) else "cancelled", started, model)
+
         # Entering the model makes it own its HTTP client until the stream ends.
         await model.__aenter__()
         try:
@@ -147,22 +244,37 @@ class AssistantService:
                 model=model,
                 model_settings=bound.settings,
                 deps=deps,
-                instructions=run_context(now=self.clock(), timezone=zone, page=page),
+                instructions=run_context(
+                    now=self.clock(),
+                    timezone=zone,
+                    page=context.page,
+                    scope=context.scope,
+                    period=context.range,
+                    ticker=context.ticker,
+                    lens=context.lens,
+                ),
                 usage_limits=USAGE_LIMITS,
                 timeout=RUN_TIMEOUT_SECONDS,
                 conversation_store=self.store,
                 conversation_scope=CONVERSATION_SCOPE,
                 allowed_file_url_schemes=frozenset(),
                 allow_uploaded_files=False,
+                on_complete=completed,
+                on_cancel=cancelled,
             )
         except BaseException:
             with anyio.CancelScope(shield=True):
                 await model.__aexit__(None, None, None)
             raise
         if isinstance(response, StreamingResponse):
-            response.body_iterator = _closing(response.body_iterator, model)
+            response.body_iterator = _closing(
+                response.body_iterator,
+                model,
+                lambda: self._release(conversation_id),
+            )
         else:
             await model.__aexit__(None, None, None)
+            self._release(conversation_id)
         return response
 
     async def conversations(self) -> list[dict[str, Any]]:
@@ -195,4 +307,4 @@ class AssistantService:
         await self.store.delete(conversation_id, scope=CONVERSATION_SCOPE)
 
 
-__all__ = ["AssistantService", "AssistantUnavailable", "BoundModel", "DepsForRun"]
+__all__ = ["AssistantService", "AssistantUnavailable", "BoundModel", "ChatContext", "DepsForRun"]
