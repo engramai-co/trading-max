@@ -79,6 +79,10 @@
   top: calc(100% + 4px);
   bottom: auto;
 }
+.mx-chart-strip[data-docked-inside] {
+  top: var(--mx-strip-offset);
+  bottom: auto;
+}
 .mx-chart-strip[data-docked] {
   position: fixed;
   top: var(--mx-strip-top);
@@ -490,7 +494,10 @@
   border-top: 2px solid var(--key);
 }
 .mx-reading-key[data-dashed] {
-  border-top-style: dashed;
+  /* A 12px dashed border shows a single dash; draw two so it reads as the dashed line it keys. */
+  height: 2px;
+  border-top: 0;
+  background: repeating-linear-gradient(90deg, var(--key) 0 4px, transparent 4px 6px);
 }
 .mx-reading-key[data-dotted] {
   border-top-style: dotted;

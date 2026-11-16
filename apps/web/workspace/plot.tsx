@@ -142,6 +142,8 @@ export function Plot({
   // Escape hides a hover reading until the pointer leaves the plot.
   const suppressed = useRef(false);
   const touchStart = useRef<{ x: number; y: number; scrub: boolean } | null>(null);
+  // Where the finger last touched, so a docked strip can keep clear of the point being read.
+  const touchY = useRef<number | null>(null);
   // The pane under the pointer or touch; keyboard readings have none.
   const [pane, setPane] = useState<number | undefined>(undefined);
   const colours = useChartColours();
@@ -375,12 +377,13 @@ export function Plot({
   // The strip sits above the plot and the chart's own controls, so fullscreen and More stay
   // reachable. When that space has scrolled under the top bar, it docks below the bar instead
   // of disappearing. In the fullscreen dialog, whose controls sit above the plot, it reads below.
+  // Placement reads the latest reading on every render, like the cursor; listeners attach once.
+  const placeStrip = useRef<() => void>(() => undefined);
   useLayoutEffect(() => {
-    const element = strip.current;
-    if (!stripShown || !element) return;
-    const place = () => {
+    placeStrip.current = () => {
+      const element = strip.current;
       const box = plotBox.current?.getBoundingClientRect();
-      if (!box) return;
+      if (!stripShown || !element || !box) return;
       element.toggleAttribute("data-below", expanded);
       if (expanded) {
         element.removeAttribute("data-docked");
@@ -389,21 +392,52 @@ export function Plot({
       const actions = host.current?.querySelector<HTMLElement>(":scope > .mx-chart-actions");
       const lift = actions?.offsetHeight ? Math.max(0, box.top - actions.getBoundingClientRect().top) : 0;
       element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
-      const bar = document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
+      // Inside a dialog (the research full chart), dock below the dialog's header, not the page's top bar.
+      const dialog = element.closest<HTMLElement>("[role=dialog]");
+      const header = dialog?.querySelector<HTMLElement>(".mantine-Modal-header");
+      const bar = dialog
+        ? header ? header.getBoundingClientRect().bottom : dialog.getBoundingClientRect().top
+        : document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
       const docked = box.top - lift - element.offsetHeight - 4 < bar && box.bottom > bar + element.offsetHeight;
-      element.toggleAttribute("data-docked", docked);
-      element.style.setProperty("--mx-strip-top", `${Math.round(bar + 4)}px`);
+      // A dialog's content can be transformed and scrolls on its own, so there the strip docks by
+      // offset from the plot rather than to the viewport.
+      element.toggleAttribute("data-docked", docked && !dialog);
+      element.toggleAttribute("data-docked-inside", docked && !!dialog);
+      element.style.setProperty("--mx-strip-offset", `${Math.round(bar + 4 - box.top)}px`);
+      // Docked strips sit under the top bar, or above the phone's tab bar when the dot being read,
+      // the one nearest the finger, is up there.
+      const dock = document.querySelector(".mx-mobile-dock")?.getBoundingClientRect();
+      const floor = dock?.height ? dock.top : window.innerHeight;
+      const finger = touchY.current;
+      const instance = control.current;
+      const canvas = ref.current?.getBoundingClientRect();
+      const dots = finger == null || active == null || !instance || !canvas ? [] : marks.flatMap((mark) => {
+        const point = instance.convertToPixel({ xAxisIndex: mark.xAxisIndex ?? 0, yAxisIndex: mark.yAxisIndex ?? 0 }, [active, mark.value]);
+        return Array.isArray(point) && Number.isFinite(point[1]) ? [canvas.top + point[1]] : [];
+      });
+      const focus = finger == null ? null : dots.reduce((best, y) => Math.abs(y - finger) < Math.abs(best - finger) ? y : best, dots[0] ?? finger);
+      const low = focus != null && focus < bar + element.offsetHeight + 24;
+      element.style.setProperty("--mx-strip-top", `${Math.round(low ? floor - element.offsetHeight - 4 : bar + 4)}px`);
       element.style.setProperty("--mx-strip-left", `${Math.round(box.left)}px`);
       element.style.setProperty("--mx-strip-width", `${Math.round(box.width)}px`);
     };
-    place();
-    window.addEventListener("scroll", place, { passive: true });
+    placeStrip.current();
+  });
+  useLayoutEffect(() => {
+    const element = strip.current;
+    if (!stripShown || !element) return;
+    const place = () => placeStrip.current();
+    const resized = new ResizeObserver(() => place());
+    resized.observe(element);
+    // Capture scrolls of any container, such as a dialog's body, not only the page.
+    window.addEventListener("scroll", place, { passive: true, capture: true });
     window.addEventListener("resize", place);
     return () => {
-      window.removeEventListener("scroll", place);
+      resized.disconnect();
+      window.removeEventListener("scroll", place, { capture: true });
       window.removeEventListener("resize", place);
     };
-  }, [stripShown, expanded]);
+  }, [stripShown]);
   // A horizontal touch drag reads continuously; vertical movement stays with the page.
   const scrub = (event: PointerEvent<HTMLDivElement>) => {
     const start = touchStart.current;
@@ -421,6 +455,7 @@ export function Plot({
       start.scrub = true;
       if (!event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId);
     }
+    touchY.current = event.clientY;
     const hit = pickAt(event);
     if (!hit) return;
     setPane(hit.grid);
@@ -547,6 +582,7 @@ export function Plot({
         onPointerCancel={(event) => { gestures.end(event); touchStart.current = null; }}
         onPointerDown={(event) => {
           gestures.down(event);
+          touchY.current = event.pointerType === "touch" ? event.clientY : null;
           if (event.pointerType === "touch" || readout)
             touchStart.current = { x: event.clientX, y: event.clientY, scrub: false };
         }}
