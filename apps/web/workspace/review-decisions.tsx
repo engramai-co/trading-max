@@ -6,10 +6,12 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useEffect,
   useEffectEvent,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -528,24 +530,24 @@ export function groupDecisionsByDate(rows: TradeDecision[]) {
 function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[]; horizon: Horizon; days: number; focus?: TradeDecision }) {
   const t = useCopy();
   const { locale } = useLocale();
+  // The chart's option only changes with its data: a new option resets ECharts, which would
+  // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
   const listId = useId();
-  const groups = groupDecisionsByDate(rows);
+  const groups = useMemo(() => groupDecisionsByDate(rows), [rows]);
   const focusKey = focus ? decisionParam(focus) : undefined;
   const [picked, setPicked] = useState<{ date: string | null; focusKey?: string }>();
   const selected = picked && picked.focusKey === focusKey ? picked.date : focus?.date ?? null;
   const pick = (date: string) => setPicked({ date: selected === date ? null : date, focusKey });
   const active = groups.find(([date]) => date === selected);
-  const largest = Math.max(1, ...rows.map((row) => row.amountGbp));
-  const groupRows = (group: TradeDecision[]) => group.map((row) => decisionEffect(row, horizon))
-    .filter((value): value is number => value != null);
+  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp)), [rows]);
   // The cluster marker is plotted at the average of observed decisions; the
   // expanded list carries every actual outcome and every unobserved decision.
-  const groupValue = (group: TradeDecision[]) => {
-    const values = groupRows(group);
+  const groupValue = useCallback((group: TradeDecision[]) => {
+    const values = group.map((row) => decisionEffect(row, horizon)).filter((value): value is number => value != null);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-  };
-  const point = (row: TradeDecision, colours: Record<string, string>) => {
+  }, [horizon]);
+  const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
     const effect = decisionEffect(row, horizon);
     const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
     const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
@@ -558,8 +560,8 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
         : { color: colour, opacity: ring ? 1 : 0.85, ...ring },
       row,
     };
-  };
-  const option = (colours: Record<string, string>) => ({
+  }, [horizon, largest, selected]);
+  const option = useCallback((colours: Record<string, string>) => ({
     grid: { top: 40, right: 26, bottom: 30, left: 64 },
     tooltip: {
       ...READING_TOOLTIP,
@@ -604,7 +606,7 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       },
     ],
     legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-  });
+  }), [days, groupValue, groups, horizon, locale, point, selected, t]);
   const clusters = groups.filter(([, group]) => group.length > 1);
   // Every marker in date order, as the keyboard steps through them: singles by side, then same-day markers.
   const marks = (["buy", "sell"] as const).flatMap((side, seriesIndex) =>

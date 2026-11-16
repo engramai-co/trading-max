@@ -19,7 +19,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { cloneElement, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { cloneElement, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
@@ -31,7 +31,8 @@ import { scheduleLoadingStatus, updateFailureLabel } from "./loading-state";
 
 export function useCopy() {
   const { locale } = useLocale();
-  return (zh: string, en: string) => (locale === "zh" ? zh : en);
+  // Stable for a locale, so memoised chart options do not rebuild on every render.
+  return useCallback((zh: string, en: string) => (locale === "zh" ? zh : en), [locale]);
 }
 // One sliding indicator for tabs and segments. The first placement is instant.
 // A later move animates transform only: the indicator takes its new size at
