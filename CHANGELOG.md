@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-11-16
+
+### Added
+- An assistant API, off by default and without an interface yet, answers read-only questions about the current snapshot and cites the evidence behind each figure. Settings can store its model route, reasoning effort and consent, and connect OpenRouter, Ollama or LM Studio for it. Its connection test requires a working tool call.
+
+### Changed
+- Research model requests run through Pydantic AI's provider SDKs in Python. Prompts, limits, JSON handling and error codes are unchanged, earlier research is reused, and ChatGPT sign-in still uses its device code.
+- The Index & tracking view explains when a fund has no comparable daily NAV and index history. HEMC keeps its one-year factsheet reading, and EQGB keeps separate GBP NAV and USD index views.
+- The English company description in Research is marked as English for screen readers and line breaking.
+
+### Fixed
+- The backend wheel and source archive include the database migrations, so a package-only setup creates every table.
+
 ## [1.49.2] - 2026-11-15
 
 ### Changed
