@@ -123,8 +123,11 @@ export function HistoryChart({
         }),
         ...lines.map((line) => `${line.name}: ${formatValue(line.values[row])}`),
         ...new Set(lines.flatMap((line) => line.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? [])),
-        notes?.[row],
       ].filter(Boolean).join("\n");
+    },
+    note: (position) => {
+      const row = observations.get(position);
+      return row == null ? undefined : notes?.[row];
     },
   };
   return (

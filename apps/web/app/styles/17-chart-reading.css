@@ -33,6 +33,59 @@
   pointer-events: none;
   border-inline-start: 1px dashed var(--mx-muted);
 }
+.mx-chart-popup {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  visibility: hidden;
+  pointer-events: none;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(320px, calc(100% - 8px));
+  padding: 12px 14px;
+  border: 1px solid var(--mx-tooltip-border);
+  border-radius: 12px;
+  background: var(--mx-tooltip-bg);
+  box-shadow: 0 4px 16px var(--mx-tooltip-shadow);
+  color: var(--mx-tooltip-ink);
+  font-size: 12px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.mx-chart-popup-heading {
+  margin-bottom: 8px;
+  color: var(--mx-tooltip-muted);
+}
+.mx-chart-popup-rows {
+  display: grid;
+  gap: 6px;
+}
+.mx-chart-popup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+}
+.mx-chart-popup-row > span:first-child {
+  color: var(--mx-tooltip-muted);
+  overflow-wrap: anywhere;
+}
+.mx-chart-popup-row > span:last-child {
+  font-weight: 600;
+  text-align: end;
+  white-space: nowrap;
+}
+.mx-chart-popup-line {
+  overflow-wrap: anywhere;
+}
+.mx-chart-popup-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--mx-tooltip-border);
+  color: var(--mx-tooltip-muted);
+}
 
 .mx-price-tools {
   container: mx-price-tools / inline-size;

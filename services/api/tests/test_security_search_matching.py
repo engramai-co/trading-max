@@ -4,6 +4,7 @@ from services.api.trading_max_api.security_search_matching import (
     match_score,
     merge_candidates,
     quote_candidates,
+    same_issuer,
 )
 
 
@@ -20,6 +21,34 @@ def test_similarity_is_not_company_identity():
 def test_common_legal_and_share_class_suffixes_do_not_affect_name_comparison():
     assert company_key("Example Inc-CL A") == company_key("Example Incorporated")
     assert company_key("Example Inc.                 R") == "example"
+
+
+def test_listing_name_names_issuer_through_listing_forms_contractions_and_width_cuts():
+    # Synthetic OpenFIGI-style names. A depositary receipt cut to the width limit
+    # drops trailing words or ends with a cut word.
+    assert same_issuer(
+        "NORTHSTAR MICROCHIP-SP ADR", "Northstar Microchip Manufacturing Company Limited"
+    )
+    assert same_issuer("NORTHSTAR ENTERTAINM-SP ADR", "Northstar Entertainment Group")
+    assert same_issuer(
+        "INTL NORTHSTAR MACHINES CORP", "International Northstar Machines Corporation"
+    )
+    assert same_issuer("NEWBRAND HOLDING NV-NY REG SHS", "Newbrand Holding N.V.")
+    assert same_issuer("CAFE NORTHSTAR SA-SPON ADR", "Café Northstar S.A.")
+    assert same_issuer("NORTHSTAR & NEWBRAND CO/THE", "The Northstar and Newbrand Company")
+    assert same_issuer("NORTHSTAR HOLDINGS LTD/CAYMAN ISL-A", "Northstar Holdings Ltd.")
+
+
+def test_listing_name_does_not_turn_a_related_or_similar_issuer_into_identity():
+    # A legal form shows the listing name was not cut, so missing words differ.
+    assert not same_issuer("NORTHSTAR BANCO SA-SPON ADR", "Northstar Banco (Chile) S.A.")
+    # A short name had room for the next word.
+    assert not same_issuer("NORTHSTAR CAPITAL", "Northstar Capital Lending Fund")
+    assert not same_issuer("NORTHSTAR CO/THE", "Northstar Consolidated, Inc.")
+    # A shared generic word is not enough, and listings never add words.
+    assert not same_issuer("NEW HOLDINGS INC-ADR", "Newbrand Holdings Inc.")
+    assert not same_issuer("NORTHSTAR NEWBRAND PARTNERS PLC", "Northstar Inc.")
+    assert not same_issuer("DIFFERENT COMPANY INC", "Newbrand Inc")
 
 
 def test_fuzzy_search_keeps_three_candidates_and_exact_ticker_first():
