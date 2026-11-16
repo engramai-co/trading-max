@@ -255,9 +255,11 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/holdings");
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
     await expect(peek).toContainText("今日");
-    await expect(peek).toContainText("+4.17%");
-    await expect(peek.locator(".mx-peek-basis")).toContainText("Synthetic market feed");
-    await expect(peek.locator(".mx-peek-basis time")).toHaveAttribute("datetime", sessionBars.at(-1)!.date);
+    // A held fund shows the broker's price and move, as its row does; the path is the market's session.
+    await expect(peek).toContainText("+1.00%");
+    await expect(peek).not.toContainText("+4.17%");
+    // The source belongs to the panel's help, not the card.
+    await expect(peek.locator(".mx-peek-basis")).toHaveCount(0);
     await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
     expect(requests.some((path) => path.endsWith("/prices"))).toBe(true);
   });
