@@ -4,18 +4,54 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
+import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
+import type { ReadingKey } from "./chart-readout";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
+import { bridgeReadout, minus, readingTone } from "./readout-bridge";
 import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
 
 /** Fewer observations than this make a month's average unreliable. */
 const THIN_SAMPLE = 5;
 
+/**
+ * The latest selected year leads in cobalt; earlier years use ink and grey, solid then dashed.
+ * A benchmark path takes its year's colour, dotted. Legend, hover dot and reading key share it.
+ */
+const YEAR_LINES = [
+  { colour: "brand", dashed: false, width: 2.1 },
+  { colour: "text", dashed: false, width: 1.3 },
+  { colour: "axis", dashed: false, width: 1.3 },
+  { colour: "text", dashed: true, width: 1.3 },
+  { colour: "axis", dashed: true, width: 1.3 },
+] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dashed: boolean; width: number }>;
+export function seasonStroke(colours: ChartColours, year: number, benchmark = false) {
+  const line = YEAR_LINES[Math.min(year, YEAR_LINES.length - 1)];
+  return {
+    colour: colours[line.colour],
+    width: benchmark ? 1.2 : line.width,
+    type: benchmark ? [2, 3] : line.dashed ? [6, 4] : ("solid" as const),
+  };
+}
+/** A year's change on a calendar day: its own close, or the close before a weekend or holiday. */
+export function changeOnDay(points: Array<[number, number | null]>, day: number) {
+  let found: number | null = null;
+  for (const [at, value] of points) {
+    if (at > day) break;
+    if (value != null && day - at <= 4) found = value;
+  }
+  return found;
+}
+
 export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; revision?: string | null }) {
   const t = useCopy();
+  const { locale } = useLocale();
+  const colours = useChartColours();
   const { params, update } = useRouteState("push");
   const [measure, setMeasure] = useState("meanReturn"),
     [month, setMonth] = useState(1);
@@ -128,13 +164,54 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
     (Date.parse("2000-" + day + "T00:00:00Z") -
       Date.parse("2000-01-01T00:00:00Z")) /
     86400000;
+  // The selected years in their chosen order (latest first), then any benchmark paths.
+  const pathLines = [
+    ...paths.filter((year) => yearPaths[year] != null).map((year, index) => ({ name: year, year: index, benchmark: false, points: objects(yearPaths[year]) })),
+    ...Object.entries(benchmarkPaths).map(([year, points]) => ({
+      name: year + " · " + benchmarkSymbol, year: Math.max(0, paths.indexOf(year)), benchmark: true, points,
+    })),
+  ].map((line) => ({
+    ...line,
+    series: line.points.map((p): [number, number | null] => [dayNumber(str(p.day)), numeric(p.return)])
+      .sort((a, b) => a[0] - b[0]),
+  }));
+  const key = (index: number): ReadingKey => {
+    const line = pathLines[index];
+    const stroke = seasonStroke(colours, line.year, line.benchmark);
+    return { colour: stroke.colour, dashed: stroke.type !== "solid" || undefined };
+  };
+  const dayLabel = (day: number) => formatDate(new Date(Date.UTC(2000, 0, 1 + day)), locale, { month: "short", day: "numeric", timeZone: "UTC" });
+  // Every year reads at the same calendar day, so the reading opens wherever the pointer or keys rest.
+  const seasonReadout = bridgeReadout({
+    positions: [...new Set(pathLines.flatMap((line) => line.series.map(([day]) => day)))].sort((a, b) => a - b),
+    read: (day) => {
+      const values = pathLines.map((line) => changeOnDay(line.series, day));
+      if (!pathLines.length || values.every((value) => value == null)) return null;
+      const shown = (value: number | null) => value == null ? "—" : minus(percent(value, true, 2));
+      return {
+        time: dayLabel(day),
+        primary: { label: pathLines[0].name, key: key(0), value: shown(values[0]), tone: readingTone(values[0]) },
+        groups: [pathLines.slice(1).flatMap((line, offset) => values[offset + 1] == null ? []
+          : [{ label: line.name, value: shown(values[offset + 1]), key: key(offset + 1) }])],
+      };
+    },
+    latest: pathLines[0] ? minus(percent(pathLines[0].series.findLast(([, value]) => value != null)?.[1], true, 2)) : "—",
+    marks: (day) => pathLines.flatMap((line, index) => {
+      const value = changeOnDay(line.series, day);
+      return value == null ? [] : [{ value, colour: key(index).colour }];
+    }),
+  });
   return (
     <>
       <Panel
         title={t("月度季节性", "Monthly seasonality")}
         help={t(
-          "仅以完整交易月份计算历史统计；当月未结束和缺少月末收盘的月份不入样本。数值来自拆股及分红调整后价格。选择年份会同时重算均值、中位数和上涨比例。",
-          "Only completed exchange months enter historical statistics. Unfinished months and missing month-end closes are excluded. Returns use split and dividend adjusted prices. Selecting years recalculates every statistic.",
+          "每格是该月的涨跌。选择年份会同时重算均值、中位数和上涨比例。",
+          "Each cell is that month's return. Selecting years recalculates the mean, median and share of rising months.",
+        )}
+        helpBasis={t(
+          "拆股及分红调整后的价格。只计完整交易月份，当月未结束和缺少月末收盘的月份不入样本。",
+          "Split and dividend adjusted prices. Only completed exchange months count; unfinished months and missing month-end closes are excluded.",
         )}
         action={
           matrix.length ? (
@@ -147,7 +224,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                 { value: "10", label: t("10 年", "10 years") },
                 { value: "20", label: t("20 年", "20 years") },
                 { value: "all", label: t("全部", "All") },
-                { value: "custom", label: t("自选", "Custom") },
+                { value: "custom", label: t("自定义", "Custom") },
               ]}
             />
           ) : undefined
@@ -352,6 +429,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
               "Observed price paths across years",
             )}
             height={320}
+            readout={seasonReadout}
             option={(c) => ({
               grid: { left: 64, right: 20, top: 20, bottom: 55 },
               legend: {
@@ -378,35 +456,23 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                 type: "value",
                 axisLabel: {
                   color: c.axis,
-                  formatter: (n: number) => percent(n),
+                  formatter: (n: number) => minus(percent(n)),
                 },
                 splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
               },
-              tooltip: {
-                trigger: "item",
-                formatter: (item) => {
-                  const p = Array.isArray(item) ? item[0] : item;
-                  const row = objects(chartPaths[String(p.seriesName)])[
-                    p.dataIndex
-                  ];
-                  return str(row?.date) + "\n" + percent(row?.return, true, 2);
-                },
-              },
-              series: Object.entries(chartPaths).map(([year, values], i) => ({
-                type: "line",
-                name: year,
-                data: values.map((p) => [
-                  dayNumber(str(p.day)),
-                  numeric(p.return),
-                ]),
-                showSymbol: false,
-                connectNulls: false,
-                lineStyle: {
-                  width: i === 0 ? 2.1 : 1.2,
-                  opacity: i === 0 ? 1 : 0.65,
-                  type: year.includes(" · ") ? "dashed" : "solid",
-                },
-              })),
+              series: pathLines.map((line) => {
+                const stroke = seasonStroke(c, line.year, line.benchmark);
+                return {
+                  type: "line" as const,
+                  name: line.name,
+                  data: line.series,
+                  showSymbol: false,
+                  connectNulls: false,
+                  color: stroke.colour,
+                  itemStyle: { color: stroke.colour },
+                  lineStyle: { width: stroke.width, color: stroke.colour, type: stroke.type },
+                };
+              }),
             })}
           />
           <details className="mx-chart-data" onToggle={(event) => setRecordsOpen(event.currentTarget.open)}>
@@ -424,9 +490,9 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                     values.map((p) => (
                       <tr key={year + str(p.date)}>
                         <th>
-                          {year} · {str(p.date)}
+                          {formatCalendarDate(str(p.date), locale, 0)}{year.includes(" · ") ? " · " + year.split(" · ")[1] : ""}
                         </th>
-                        <td>{percent(p.return, true, 2)}</td>
+                        <td>{minus(percent(p.return, true, 2))}</td>
                       </tr>
                     )),
                   )}
