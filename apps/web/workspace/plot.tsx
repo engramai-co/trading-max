@@ -340,6 +340,8 @@ export function Plot({
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
     setReading("");
+    // The live region returns to the latest reading.
+    setAnnounced(null);
   };
   const dismissRef = useRef(dismiss);
   useLayoutEffect(() => { dismissRef.current = dismiss; });
@@ -370,16 +372,25 @@ export function Plot({
     dismissRef.current();
   }, [pathname]);
   const stripShown = Boolean(readout && touchLayout && shown);
-  // The strip sits above the plot. When that space has scrolled under the top bar,
-  // it docks below the bar instead of disappearing.
+  // The strip sits above the plot and the chart's own controls, so fullscreen and More stay
+  // reachable. When that space has scrolled under the top bar, it docks below the bar instead
+  // of disappearing. In the fullscreen dialog, whose controls sit above the plot, it reads below.
   useLayoutEffect(() => {
     const element = strip.current;
     if (!stripShown || !element) return;
     const place = () => {
       const box = plotBox.current?.getBoundingClientRect();
       if (!box) return;
+      element.toggleAttribute("data-below", expanded);
+      if (expanded) {
+        element.removeAttribute("data-docked");
+        return;
+      }
+      const actions = host.current?.querySelector<HTMLElement>(":scope > .mx-chart-actions");
+      const lift = actions?.offsetHeight ? Math.max(0, box.top - actions.getBoundingClientRect().top) : 0;
+      element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
       const bar = document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
-      const docked = box.top - element.offsetHeight - 4 < bar && box.bottom > bar + element.offsetHeight;
+      const docked = box.top - lift - element.offsetHeight - 4 < bar && box.bottom > bar + element.offsetHeight;
       element.toggleAttribute("data-docked", docked);
       element.style.setProperty("--mx-strip-top", `${Math.round(bar + 4)}px`);
       element.style.setProperty("--mx-strip-left", `${Math.round(box.left)}px`);
@@ -392,7 +403,7 @@ export function Plot({
       window.removeEventListener("scroll", place);
       window.removeEventListener("resize", place);
     };
-  }, [stripShown]);
+  }, [stripShown, expanded]);
   // A horizontal touch drag reads continuously; vertical movement stays with the page.
   const scrub = (event: PointerEvent<HTMLDivElement>) => {
     const start = touchStart.current;
@@ -686,7 +697,8 @@ export function Plot({
     </div>
     </div>
   );
-  return fullscreen ? <FocusTrap active={expanded}>{content}</FocusTrap> : content;
+  // FocusTrap replaces its child's ref, so the host ref goes through innerRef; outside taps need it.
+  return fullscreen ? <FocusTrap active={expanded} innerRef={host}>{content}</FocusTrap> : content;
 }
 
 function chartReading(

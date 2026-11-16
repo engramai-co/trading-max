@@ -66,13 +66,18 @@
 .mx-chart-popup > .mx-reading {
   max-width: min(280px, 100%);
 }
-/* Phones: the reading strip covers the panel heading above the plot, never the plot itself. */
+/* Phones: the reading strip covers the panel heading above the plot and its controls, never the
+   plot itself. In the fullscreen dialog it reads in the free band below the plot. */
 .mx-chart-strip {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 4px + var(--mx-strip-lift, 0px));
   left: 0;
   z-index: var(--mx-overlay-z);
+}
+.mx-chart-strip[data-below] {
+  top: calc(100% + 4px);
+  bottom: auto;
 }
 .mx-chart-strip[data-docked] {
   position: fixed;
