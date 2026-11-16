@@ -5,6 +5,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBoardResponse, SectorMarketStatus } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { Help, Tag, useCopy } from "./foundation";
+import { DataBasis } from "./reading-card";
 import type { MarketPhase } from "./sectors-data";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 
@@ -30,12 +31,23 @@ export function usePhaseNames(): Record<MarketPhase, string> {
   };
 }
 
-/** Where a board's constituents and prices come from, and how sectors are measured. */
+/** How sectors are measured, then where the board's constituents and prices come from, in the closing data basis. */
 export function SectorSources({ source }: { source: SectorBoard["source"] }) {
   const t = useCopy();
   const { locale } = useLocale();
   const demonstration = useDemonstration();
-  if (demonstration) return <p>{t("成分股、权重和涨跌均为演示数据。", "Constituents, weights and price moves are synthetic.")}</p>;
+  const method = (
+    <p>
+      {t(
+        "板块涨跌按成分股权重加权；涨跌 ±0.05% 以内算持平；排名比较近 5 个交易日的板块涨跌，有报价的成分股不到板块权重一半时不排名（主题另需至少 3 只有报价）。你的持仓是穿透后落在这些成分股上的金额，百分比是它占穿透后已投资总额的比例。",
+        "Sector moves are weighted by index weight; moves within ±0.05% count as flat; ranks compare sector moves over the last five sessions, and a sector with less than half its weight priced is not ranked (a theme also needs three priced members). Your exposure is the look-through value in these constituents; its percentage is a share of your total look-through invested value.",
+      )}
+    </p>
+  );
+  if (demonstration) return <>
+    {method}
+    <DataBasis>{t("成分股、权重和涨跌均为演示数据。", "Constituents, weights and price moves are synthetic.")}</DataBasis>
+  </>;
   const published = formatCalendarDate(source.asOf, locale);
   const prices = source.prices.replace(
     "IEX real-time / SIP", t("IEX 实时 / SIP", "IEX real-time / SIP"),
@@ -43,11 +55,7 @@ export function SectorSources({ source }: { source: SectorBoard["source"] }) {
   const basket = source.fundTicker === "IJPN" ? "IJPN" : source.fund;
   return (
     <>
-      <p>
-        {locale === "zh"
-          ? `成分股与权重来自 ${basket}（${source.universe}）${published} 公布的持仓；行情来自 ${prices}，以截至时间为准。`
-          : `Constituents and weights: ${basket} (${source.universe}) holdings published ${published}. Prices: ${prices}, as of the time shown.`}
-      </p>
+      {method}
       {source.fundTicker === "SMEA" && <p>{t(
         "地图面积和持仓按完整成分篮子计算；涨跌、家数和排名使用欧洲上市股样本，目标覆盖篮子至少 95% 的权重，以各股的交易币种计算。",
         "Map area and exposure use the full basket. Moves, breadth and ranks use the largest European listings, with a target of at least 95% of basket weight, in each listing’s own currency.",
@@ -56,12 +64,11 @@ export function SectorSources({ source }: { source: SectorBoard["source"] }) {
         ? `面积和穿透敞口使用完整篮子；行情优先覆盖权重最高的成分股，目标为篮子权重的 ${Math.round(source.quoteWeightTarget * 100)}%。`
         : `Area and look-through exposure use the full basket. Quotes prioritise the largest constituents, targeting ${Math.round(source.quoteWeightTarget * 100)}% of basket weight.`}
       </p>}
-      <p>
-        {t(
-          "板块涨跌按成分股权重加权；涨跌 ±0.05% 以内算持平；排名比较近 5 个交易日的板块涨跌，有报价的成分股不到板块权重一半时不排名（主题另需至少 3 只有报价）。你的持仓是穿透后落在这些成分股上的金额，百分比是它占穿透后已投资总额的比例。",
-          "Sector moves are weighted by index weight; moves within ±0.05% count as flat; ranks compare sector moves over the last five sessions, and a sector with less than half its weight priced is not ranked (a theme also needs three priced members). Your exposure is the look-through value in these constituents; its percentage is a share of your total look-through invested value.",
-        )}
-      </p>
+      <DataBasis>
+        {locale === "zh"
+          ? `成分股与权重来自 ${basket}（${source.universe}）${published}公布的持仓；行情来自 ${prices}，以截至时间为准。`
+          : `Constituents and weights: ${basket} (${source.universe}) holdings published ${published}. Prices: ${prices}, as of the time shown.`}
+      </DataBasis>
     </>
   );
 }
