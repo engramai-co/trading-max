@@ -51,7 +51,7 @@
   weights.
 
 <p align="center">
-  <img src="docs/assets/markets-sectors.png" alt="Markets, Global sectors: MSCI index cards, a sector map sized by weight and the Information Technology detail with its intraday path and your exposure" width="49%">
+  <img src="docs/assets/markets-sectors.png" alt="Markets, US sectors: US index cards, the S&P 500 sector map sized by index weight and the Information Technology detail with its intraday path, breadth and your exposure" width="49%">
   <img src="docs/assets/holdings-exposure.png" alt="Look-through by company as a composition ring, with AMD's value held directly and via funds" width="49%">
 </p>
 <p align="center">
