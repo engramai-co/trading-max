@@ -428,29 +428,67 @@
   border-bottom: 0;
   border-radius: 14px 14px 0 0;
 }
+/* The inspection card: the shared overlay shell, placed beside the market (placeInspection). */
 .mx-global-inspection {
-  --mx-inspect-width: min(190px, 100% - 16px);
   position: absolute;
   z-index: 3;
+  /* A tapped card scrolls clear of the phone dock when the map runs under it. */
+  scroll-margin: 12px 12px calc(var(--mx-mobile-dock-height, 0px) + env(safe-area-inset-bottom) + 12px);
   display: grid;
-  gap: 3px;
-  width: var(--mx-inspect-width);
-  left: clamp(8px, var(--mx-inspect-x) - var(--mx-inspect-width) / 2, 100% - var(--mx-inspect-width) - 8px);
-  top: var(--mx-inspect-y);
-  transform: translateY(-100%);
-  padding: 8px 10px 5px;
-  border: 1px solid var(--mx-border);
-  border-radius: 8px;
-  background: var(--mx-surface);
+  gap: 4px;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(240px, calc(100% - 16px));
+  padding: 10px 12px 4px;
+  border: var(--mx-overlay-edge);
+  border-radius: var(--mx-overlay-radius);
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
   color: var(--mx-ink);
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
 }
-.mx-global-inspection[data-below] {
-  transform: none;
-}
-.mx-global-inspection > span {
+.mx-global-inspect-head {
   color: var(--mx-muted);
+  font-weight: 500;
+}
+.mx-global-inspect-move {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.mx-global-inspect-move[data-tone="up"] {
+  color: var(--mx-up);
+}
+.mx-global-inspect-move[data-tone="down"] {
+  color: var(--mx-down);
+}
+.mx-global-inspect-move [data-status] {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-global-inspect-rows {
+  margin: 0;
+}
+.mx-global-inspect-rows > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+}
+.mx-global-inspect-rows dt {
+  color: var(--mx-muted);
+}
+.mx-global-inspect-rows dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: end;
+  white-space: nowrap;
 }
 .mx-global-inspection > a {
   display: inline-flex;
@@ -509,6 +547,15 @@ html[data-mantine-color-scheme="dark"] .mx-global-region {
   fill: transparent;
   stroke: transparent;
   vector-effect: non-scaling-stroke;
+}
+/* Phones: a wider invisible target around islands too small for a finger (TOUCH_OUTLINE). */
+.mx-global-touch {
+  display: none;
+  fill: none;
+  stroke: transparent;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
 }
 .mx-global-region:focus-visible .mx-global-hit,
 .mx-global-region[data-market="jp"][data-linked] .mx-global-hit {
@@ -778,6 +825,9 @@ a.mx-global-row:focus-visible {
     min-height: 44px;
   }
   .mx-global-label-phone {
+    display: block;
+  }
+  .mx-global-touch {
     display: block;
   }
   .mx-global-label-desktop {
