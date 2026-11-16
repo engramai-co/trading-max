@@ -1,9 +1,10 @@
 "use client";
 
-import { HoverCard } from "@mantine/core";
+import { Popover } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { useDashboardLens } from "@/lib/dashboard-lenses";
 import { inRange } from "@/lib/portfolio/nav";
 import type { ResearchPriceSeries } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
@@ -12,7 +13,7 @@ import { api, currency, percent, tone } from "@/workspace/data";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { quoteValue } from "./financial-values";
-import { Facts, useCopy } from "./foundation";
+import { Facts, useCopy, useEscapeLayer } from "./foundation";
 import { researchPriceQuery } from "./research-queries";
 import { Sparkline } from "./sparks";
 
@@ -26,18 +27,9 @@ function hasClose(point: Bar): point is { date: string; close: number } {
   return point.close != null && Number.isFinite(point.close);
 }
 
-function QuoteBasis({ label, date, source, exchangeTimezone }: {
-  label: string; date?: string | null; source?: string | null; exchangeTimezone?: string | null;
-}) {
-  const t = useCopy();
-  const { locale, timeZone } = useLocale();
-  const exchangeLocal = !!date && date.length > 10 && !/(?:Z|[+-]\d\d:\d\d)$/.test(date);
-  return <p className="mx-peek-basis">{[label, source].filter(Boolean).join(" · ")} · {date
-    ? <time dateTime={date}>{date.length === 10 ? formatCalendarDate(date, locale) : exchangeLocal
-        ? formatCalendarDate(date.slice(0, 10), locale) + " " + date.slice(11, 16) + " " + (exchangeTimezone || t("交易所时间", "exchange time"))
-        : formatDateTime(date, locale, timeZone)}</time>
-    : t("时间未提供", "time unavailable")}</p>;
-}
+/** Hover or keyboard focus opens a card after 400 ms; leaving closes it after 100 ms. */
+export const PEEK_OPEN_DELAY = 400;
+export const PEEK_CLOSE_DELAY = 100;
 
 /**
  * The latest session's closes, led by the close before it, from intraday bars dated in exchange time. The
@@ -60,7 +52,7 @@ export function latestSession(points: Bar[]) {
 }
 
 /**
- * A pointer-only preview of a security's recent price path and the reader's position.
+ * A preview of a security's recent price path and the reader's holding, for pointer and keyboard.
  * Touch keeps the plain tap target; prices are requested only once the card opens.
  */
 export function SecurityPeek({
@@ -78,47 +70,116 @@ export function SecurityPeek({
 }) {
   const pointer = useFinePointer();
   if (!pointer || !ticker || ticker === "—") return <>{children}</>;
-  // The card only previews what the link already leads to, so the target keeps
-  // its own semantics: no popup roles on a plain wrapper.
+  return <Peek ticker={ticker} position={position} session={session} range={range}>{children}</Peek>;
+}
+
+function Peek({ ticker, position, session, range, children }: {
+  ticker: string; position?: PeekPosition; session?: PeekSession; range: PeekRange; children: ReactNode;
+}) {
+  const [opened, setOpened] = useState(false);
+  const target = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancel = () => {
+    if (timer.current != null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const schedule = (open: boolean) => {
+    cancel();
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setOpened(open);
+    }, open ? PEEK_OPEN_DELAY : PEEK_CLOSE_DELAY);
+  };
+  useEffect(() => cancel, []);
+  // The card previews what the row's own link or button already leads to, so it
+  // opens on that element's keyboard focus and closes when focus moves on.
+  useEffect(() => {
+    const host = target.current?.closest<HTMLElement>("a[href], button, [tabindex]");
+    if (!host) return;
+    const focus = () => { if (host.matches(":focus-visible")) schedule(true); };
+    const blur = () => schedule(false);
+    host.addEventListener("focus", focus);
+    host.addEventListener("blur", blur);
+    return () => {
+      host.removeEventListener("focus", focus);
+      host.removeEventListener("blur", blur);
+    };
+    // schedule only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEscapeLayer(opened, () => {
+    cancel();
+    setOpened(false);
+  });
+  // Below the name keeps the row's own figures visible; it flips above near the window's end.
   return (
-    <HoverCard openDelay={400} closeDelay={80} position="right-start" offset={14} shadow="md" withinPortal withRoles={false}>
-      <HoverCard.Target>
-        <div className="mx-peek-target">{children}</div>
-      </HoverCard.Target>
+    <Popover opened={opened} position="bottom-start" offset={6} withinPortal withRoles={false} trapFocus={false}
+      returnFocus={false} hideDetached={false} middlewares={{ flip: true, shift: { padding: 8 } }}
+      transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }} zIndex="var(--mx-overlay-z-popover)">
+      <Popover.Target>
+        <div ref={target} className="mx-peek-target"
+          onPointerEnter={(event) => { if (event.pointerType !== "touch") schedule(true); }}
+          onPointerLeave={() => schedule(false)}>
+          {children}
+        </div>
+      </Popover.Target>
       {/* The card renders in a portal but still bubbles through its trigger's link in React: a click on it stays here. */}
-      <HoverCard.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}>
+      <Popover.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}
+        onPointerEnter={cancel} onPointerLeave={() => schedule(false)}>
         {session ? <SessionPeek ticker={ticker} position={position} session={session} /> :
           range === "1D" ? <DayPeek ticker={ticker} position={position} /> : <PeekBody ticker={ticker} position={position} />}
-      </HoverCard.Dropdown>
-    </HoverCard>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
 function positionFact(position: PeekPosition | undefined, label: string): Array<[string, ReactNode]> {
   if (position?.valueGbp == null || position.valueGbp <= 0) return [];
-  return [[position.label ?? label, currency(position.valueGbp) + (position.weightPct != null ? " · " + percent(position.weightPct) : "")]];
+  // The row already carries the weight; the card adds the holding's value.
+  return [[position.label ?? label, currency(position.valueGbp)]];
+}
+
+/** Code and price; a 6px warning dot marks a price whose source or time differs from the row's. */
+function PeekHead({ ticker, price, note }: { ticker: string; price: string; note?: string | null }) {
+  return (
+    <div className="mx-peek-head">
+      <span>{ticker}</span>
+      <strong aria-label={note ? price + "，" + note : undefined}>
+        {note && <i className="mx-peek-flag" aria-hidden="true" />}
+        {price}
+      </strong>
+    </div>
+  );
 }
 
 function SessionPeek({ ticker, session, position }: { ticker: string; session: PeekSession; position?: PeekPosition }) {
   const t = useCopy();
   return (
     <>
-      <div className="mx-peek-head">
-        <span>{ticker}</span>
-        <strong title={t("券商持仓快照", "Broker position snapshot") + (session.asOf ? " · " + session.asOf : "")}>
-          {quoteValue(session.price, session.currency, "")}
-        </strong>
-      </div>
-      <QuoteBasis label={t("券商快照", "Broker snapshot")} date={session.asOf} />
+      <PeekHead ticker={ticker} price={quoteValue(session.price, session.currency, "")} />
       <Facts rows={[
-        [session.label, session.closed ? <ClosedMarket /> : <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}
-          title={t("券商日内持仓变动，以当日首次观测为基准", "Broker position move since the session’s first observation")}>
+        [session.label, session.closed ? <ClosedMarket /> : <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}>
           {percent(session.share, true, 2)}
         </span>],
-        ...positionFact(position, t("持仓", "Position")),
+        ...positionFact(position, t("持仓", "Holding")),
       ]} />
     </>
   );
+}
+
+/** The broker's own price and move for a directly held security: the same figures as the holdings rows. */
+function useHeldQuote(ticker: string) {
+  const lens = useDashboardLens("holdings-positions");
+  const held = lens.data?.holdings?.find((holding) => holding.ticker === ticker || holding.researchTicker === ticker);
+  if (!held) return null;
+  return {
+    price: held.currentPrice,
+    currency: held.priceCurrency,
+    move: held.dayChangePct ?? null,
+    moveDay: held.dayChangeClosedOn ?? held.dayChangeDate ?? null,
+    closed: Boolean(held.dayChangeClosedOn),
+    asOf: lens.data?.accounts?.find((account) => account.code === held.account)?.asOf ?? null,
+  };
 }
 
 /**
@@ -127,8 +188,9 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
  */
 function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition }) {
   const t = useCopy();
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const { today, now } = useCurrentDay();
+  const held = useHeldQuote(ticker);
   const query = useQuery({
     queryKey: ["workspace-prices", ticker, "15m", "peek"],
     queryFn: ({ signal }) => api<ResearchPriceSeries>(
@@ -138,28 +200,25 @@ function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition
   });
   const { day, closes, change, bars } = latestSession(query.data?.points ?? []);
   const last = closes.at(-1);
-  const lastDate = query.data?.points.findLast(hasClose)?.date;
-  const label = !day || day === today ? t("今日", "Today") : formatCalendarDate(day, locale, now);
+  // A held security shows the broker's price and move, as its row does; the path is the market's session.
+  const moveDay = held ? held.moveDay : day;
+  const move = held ? held.move : change;
+  const label = !moveDay || moveDay.slice(0, 10) === today ? t("今日", "Today") : formatCalendarDate(moveDay.slice(0, 10), locale, now);
+  const price = held ? quoteValue(held.price, held.currency, "") : last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—";
+  const note = held && day && held.moveDay && day !== held.moveDay.slice(0, 10)
+    ? t("券商快照", "Broker snapshot") + (held.asOf ? " " + formatDateTime(held.asOf, locale, timeZone, now) : "")
+      + t("；走势为行情 ", "; the path is market data from ") + formatCalendarDate(day, locale, now)
+    : null;
   return (
     <>
-      <div className="mx-peek-head">
-        <span>{ticker}</span>
-        <strong>{last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"}</strong>
-      </div>
-      {last != null && <QuoteBasis label={query.data?.actualInterval === "1d"
-        ? t("收盘价", "Close") : t("行情", "Market quote")} date={lastDate}
-        source={query.data?.source ?? t("来源未提供", "Source unavailable")} exchangeTimezone={query.data?.timezone} />}
-      {query.isPending ? (
-        <div className="mx-peek-skeleton" />
-      ) : bars > 1 ? (
-        <Sparkline values={closes} className={"mx-" + tone(change)} />
-      ) : change == null ? (
-        <p className="mx-peek-empty">{t("暂无当日走势", "No intraday prices")}</p>
-      ) : null}
+      <PeekHead ticker={ticker} price={price} note={note} />
+      {/* The path takes the tone of the move shown beside it, so the two never disagree in colour. */}
+      {query.isPending ? <div className="mx-peek-skeleton" /> : bars > 1 && <Sparkline values={closes} className={"mx-" + tone(move)} />}
       <Facts
         rows={[
-          ...(change != null ? [[label, <span key="change" className={"mx-" + tone(change)}>{percent(change, true, 2)}</span>] as [string, ReactNode]] : []),
-          ...positionFact(position, t("持仓", "Position")),
+          ...(held?.closed ? [[label, <ClosedMarket key="closed" />] as [string, ReactNode]]
+            : move != null ? [[label, <span key="change" className={"mx-" + tone(move)}>{percent(move, true, 2)}</span>] as [string, ReactNode]] : []),
+          ...positionFact(position, t("持仓", "Holding")),
         ]}
       />
     </>
@@ -171,29 +230,17 @@ function PeekBody({ ticker, position }: { ticker: string; position?: PeekPositio
   const query = useQuery(researchPriceQuery(ticker, undefined, "1d", "3M"));
   const points = inRange(query.data?.points ?? [], "3M").filter(hasClose);
   const closes = points.map(({ close }) => close);
-  const lastDate = points.at(-1)?.date;
   const first = closes[0];
   const last = closes.at(-1);
   const change = first && last != null ? last / first - 1 : null;
   return (
     <>
-      <div className="mx-peek-head">
-        <span>{ticker}</span>
-        <strong>{last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"}</strong>
-      </div>
-      {last != null && <QuoteBasis label={t("收盘价", "Close")} date={lastDate}
-        source={query.data?.source ?? t("来源未提供", "Source unavailable")} exchangeTimezone={query.data?.timezone} />}
-      {query.isPending ? (
-        <div className="mx-peek-skeleton" />
-      ) : closes.length > 1 ? (
-        <Sparkline values={closes} className={"mx-" + tone(change)} />
-      ) : (
-        <p className="mx-peek-empty">{t("暂无价格走势", "No recent prices")}</p>
-      )}
+      <PeekHead ticker={ticker} price={last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"} />
+      {query.isPending ? <div className="mx-peek-skeleton" /> : closes.length > 1 && <Sparkline values={closes} className={"mx-" + tone(change)} />}
       <Facts
         rows={[
           ...(change != null ? [["3M", <span key="change" className={"mx-" + tone(change)}>{percent(change, true, 1)}</span>] as [string, ReactNode]] : []),
-          ...positionFact(position, t("持仓", "Position")),
+          ...positionFact(position, t("持仓", "Holding")),
         ]}
       />
     </>

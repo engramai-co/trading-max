@@ -6,7 +6,7 @@ import { useLocale, type Locale } from "@/components/locale-provider";
 import type { SectorGroup, SectorGroupingKind } from "@/lib/types";
 import { formatDeltaPercent } from "@/ui/formatters";
 import { industryName } from "./exposure-names";
-import { useCopy } from "./foundation";
+import { Tip, useCopy } from "./foundation";
 import { displaySymbol, heat, heatMix, issuerName, neighbour, squarify, type Direction, type Tile } from "./sectors-data";
 
 /** Space between sectors, the sector name strip (one or two lines), and the inset of a sector's tiles. */
@@ -146,7 +146,12 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
     flat ? null : locale === "zh" ? `上涨 ${breadth.up} 只，下跌 ${breadth.down} 只` : `${breadth.up} up, ${breadth.down} down`,
     group.streak < 2 ? null : locale === "zh" ? `连续 ${group.streak} 日前三` : `top three for ${group.streak} sessions`,
   ].filter(Boolean).join(t("，", ", "));
+  // Blocks too small for the strip still answer on hover and focus with all three layers.
+  const complete = !flat && roomy && (showChip || !chip);
   return (
+    // The block's own description (its breadth and streak) stays linked; the tooltip adds no second one.
+    <Tip disabled={complete} withinPortal
+      label={<span className="mx-tooltip-stack"><span>{name}</span><span>{[change, details].filter(Boolean).join(" · ")}</span></span>}>
     <button
       type="button"
       className="mx-sector-block"
@@ -157,8 +162,6 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
       data-narrow={narrow ? "" : undefined}
       aria-pressed={selected}
       aria-describedby={details ? detailsId : undefined}
-      // Blocks too small for the strip still answer on hover with all three layers.
-      title={!flat && roomy && (showChip || !chip) ? undefined : [name, change, details].filter(Boolean).join(t("，", ", "))}
       tabIndex={selected ? 0 : -1}
       style={{ left, top, width, height, ...fill(group.change, scheme), ...wash(group.change) }}
       onClick={(event) => {
@@ -198,22 +201,26 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, flat }:
             const y = Math.round(cell.y);
             const w = Math.max(0, Math.round(cell.x + cell.w) - x - 1);
             const h = Math.max(0, Math.round(cell.y + cell.h) - y - 1);
+            // A tile too small for its own name and move shows them on hover; a labelled tile needs no tooltip.
+            const labelled = w >= 58 && h >= 42;
             return (
+              <Tip key={cell.key} disabled={labelled} withinPortal
+                label={<span className="mx-tooltip-stack"><span>{cellName}</span><span>{formatDeltaPercent(cellChange, locale, 2)}</span></span>}>
               <span
-                key={cell.key}
                 className="mx-sector-tile"
                 data-subgroup={subgroup ? subgroup.key : undefined}
                 data-tone={changeTone(cellChange)}
-                title={cellName + " " + formatDeltaPercent(cellChange, locale, 2)}
                 style={{ left: x, top: y, width: w, height: h, ...fill(cellChange, scheme) }}
               >
                 {w >= 58 && h >= 24 && <span className="mx-sector-tile-name">{cellName}</span>}
                 {w >= 58 && h >= 42 && <span className="mx-sector-tile-change">{formatDeltaPercent(cellChange, locale, 2)}</span>}
               </span>
+              </Tip>
             );
           })}
         </span>
       )}
     </button>
+    </Tip>
   );
 }

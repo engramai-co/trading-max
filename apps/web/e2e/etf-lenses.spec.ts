@@ -256,9 +256,11 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/holdings");
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
     await expect(peek).toContainText("今日");
-    await expect(peek).toContainText("+4.17%");
-    await expect(peek.locator(".mx-peek-basis")).toContainText("Synthetic market feed");
-    await expect(peek.locator(".mx-peek-basis time")).toHaveAttribute("datetime", sessionBars.at(-1)!.date);
+    // A held fund shows the broker's price and move, as its row does; the path is the market's session.
+    await expect(peek).toContainText("+1.00%");
+    await expect(peek).not.toContainText("+4.17%");
+    // The source belongs to the panel's help, not the card.
+    await expect(peek.locator(".mx-peek-basis")).toHaveCount(0);
     await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
     expect(requests.some((path) => path.endsWith("/prices"))).toBe(true);
   });
@@ -344,7 +346,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(lenses.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
     await expect(page.locator(".mx-tech-score-compact .mx-tech-number strong")).toHaveText("28");
-    await page.getByRole("button", { name: "技术状态", exact: true }).click();
+    await page.getByRole("button", { name: "技术评分", exact: true }).click();
     await expect(page.locator("#technical-diagnosis")).toBeFocused();
     await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();
     await lenses.getByRole("tab", { name: "概览" }).click();

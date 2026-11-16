@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Menu, Tooltip, useComputedColorScheme } from "@mantine/core";
+import { Button, Menu, useComputedColorScheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ import { formatCalendarDate, formatDate, formatDateTime, formatDeltaPercent } fr
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api, percent, tone } from "@/workspace/data";
-import { Empty, Panel, Pending, Tag, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Panel, Pending, Tag, Tip, UpdateFailure, useCopy } from "./foundation";
 import { globalMarketReading, useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
@@ -307,7 +307,7 @@ function SectorPanel({ market, title, picker }: { market: SectorMarketCode; titl
           title={t("还没有板块数据", "No sector data yet")}
           description={data?.monitor?.enabled === false
             ? <span className="mx-sector-empty-copy">
-                <CenteredCopy>{t("开启「证券研究与每日对账」", "Enable Research & daily reconciliation")}</CenteredCopy>
+                <CenteredCopy>{t("开启「研究与每日对账」", "Enable Research & daily reconciliation")}</CenteredCopy>
                 <wbr />
                 <CenteredCopy>{t("即可在交易时段刷新板块。", " to refresh sectors during market hours.")}</CenteredCopy>
               </span>
@@ -365,12 +365,16 @@ function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
       title={picker}
       helpLabel={title}
       help={<p>{weighted ? t(
-        "面积是各市场在 MSCI 全球指数中的占比，按 iShares MSCI ACWI 的持仓计算；颜色是该市场主要股指的当日涨跌，越深涨跌越大。点开一块查看该市场。",
-        "Area is each market’s share of MSCI ACWI, from iShares MSCI ACWI holdings; colour is the day’s move in its main index, deeper for a bigger move. Open a block for that market.",
+        "面积是各市场在 MSCI 全球指数中的占比；颜色是该市场主要股指的当日涨跌，越深涨跌越大。点开一块查看该市场。",
+        "Area is each market’s share of MSCI ACWI; colour is the day’s move in its main index, deeper for a bigger move. Open a block for that market.",
       ) : t(
         "每块是该市场主要股指的当日涨跌，颜色越深，涨跌越大。点开一块查看该市场。",
         "Each block is the day’s move in that market’s main index; deeper colour means a bigger move. Open a block for that market.",
       )}</p>}
+      helpBasis={weighted ? t(
+        "占比按 iShares MSCI ACWI 的持仓计算；涨跌取各市场主要股指的当日行情。",
+        "Shares come from iShares MSCI ACWI holdings; moves are each market’s main index today.",
+      ) : undefined}
       action={<span className="mx-freshness-group">
         {answer && mapped && <AcwiTotal move={answer.acwiMove} />}
         {answer && <GlobalStamp answer={answer} />}
@@ -461,9 +465,12 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
           order: order.indexOf(market),
         } as CSSProperties;
         return (
-          <Link key={market} href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
+          // China's block shows a short name, so its full name and move also show on hover and focus.
+          <Tip key={market} disabled={market !== "cn"} withinPortal describes={false}
+            label={<TipLines name={globalMarketReading(market, full, locale)} figures={[change]} />}>
+          <Link href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
             data-tone={idle ? undefined : changeTone(move)} data-idle={idle ? "" : undefined}
-            aria-label={reading} title={market === "cn" ? reading : undefined}>
+            aria-label={reading}>
             <span className="mx-overview-sector-name">{locale === "zh" ? full : place.short}</span>
             {/* A narrow card rounds to one decimal; the accessible name keeps both. */}
             <span className="mx-overview-sector-change">
@@ -473,6 +480,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
               </>}
             </span>
           </Link>
+          </Tip>
         );
       })}
       <Link href="/sectors" className="mx-overview-world-total" aria-label={t("MSCI 全球 ", "MSCI ACWI ") + total}>
@@ -557,8 +565,9 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
           ? `${reading}，占比 ${percent(share, false, 1)}`
           : `${reading}, ${percent(share, false, 1)} of ACWI`;
         const style = { left, top, width, height, "--mx-heat-mix": heatMix(idle ? null : item!.move, scheme) } as CSSProperties;
+        // The tooltip repeats the accessible name in two lines, so it does not also describe the link.
         return (
-          <Tooltip key={key} label={spoken} events={{ hover: true, focus: true, touch: false }} openDelay={120} withinPortal>
+          <Tip key={key} label={<TipLines name={globalMarketReading(key, name, locale)} figures={[change, percent(share, false, 1)]} />} withinPortal describes={false}>
             <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key} className="mx-overview-sector"
               data-tone={idle ? undefined : changeTone(item!.move)} data-idle={idle ? "" : undefined}
               data-compact={shown.compact ? "" : undefined} data-tight={shown.tight ? "" : undefined}
@@ -566,11 +575,16 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
               {shown.showName && <span className="mx-overview-sector-name" data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>}
               {key !== "other" && shown.showChange && <span className="mx-overview-sector-change">{shown.change}</span>}
             </Link>
-          </Tooltip>
+          </Tip>
         );
       })}
     </div>
   );
+}
+
+/** A two-line tooltip: the full name, then the move and weight. */
+function TipLines({ name, figures }: { name: string; figures: Array<string | null | undefined> }) {
+  return <span className="mx-tooltip-stack"><span>{name}</span><span>{figures.filter(Boolean).join(" · ")}</span></span>;
 }
 
 /**
@@ -671,12 +685,12 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
         // A block that leaves part of its label out shows all of it on hover and on keyboard focus. The tooltip stays
         // mounted, only disabled, so a refresh that changes what fits keeps the link and its focus.
         return (
-          <Tooltip key={group.key} label={spoken(group)} events={{ hover: true, focus: true, touch: false }} openDelay={120}
-            withinPortal disabled={shown.complete}>
+          <Tip key={group.key} withinPortal disabled={shown.complete} describes={false}
+            label={<TipLines name={groupName(group, "gics", locale)} figures={[formatDeltaPercent(group.change, locale, 2), percent(group.weight, false, 1)]} />}>
             <Link href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)} {...attributes} aria-label={spoken(group)}>
               {content}
             </Link>
-          </Tooltip>
+          </Tip>
         );
       })}
     </div>

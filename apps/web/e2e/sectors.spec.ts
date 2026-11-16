@@ -604,8 +604,11 @@ test.describe("market index layer", () => {
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
     if (!mobile) {
       await expect(china).toHaveAccessibleName(/2.3%/);
-      await china.hover();
-      await expect(page.getByRole("tooltip")).toContainText(/沪深 300|CSI 300/);
+      // The map can finish measuring after the pointer arrives and move another block under it; hover again then.
+      await expect(async () => {
+        await china.hover();
+        await expect(page.getByRole("tooltip")).toContainText(/沪深 300|CSI 300/, { timeout: 1500 });
+      }).toPass({ timeout: 10_000 });
     }
     const folder = process.env.TM_CN_VISUAL_DIR;
     if (folder) await card.screenshot({ path: path.join(folder, `overview-world-${mobile ? 390 : 1440}-${colorScheme}.png`) });
@@ -733,10 +736,13 @@ test.describe("market index layer", () => {
     await page.getByRole("button", { name: "GBP", exact: true }).click();
     // The chart help names the displayed series; it keeps USD until the GBP history arrives.
     const basis = page.locator(".mx-index-history").getByRole("button", { name: /指数数据与口径|Index data and basis/ });
-    const seriesLine = page.locator(".mx-help-popover .mx-help-body p").first();
+    // Phones read help in a bottom sheet, wider windows in a popover.
+    const seriesLine = page.locator(":is(.mx-help-popover, .mx-help-sheet) .mx-help-body p").first();
     await basis.click();
     await expect(seriesLine).toHaveText(/· USD$/);
     await page.keyboard.press("Escape");
+    await expect(seriesLine).toBeHidden();
+    await expect(basis).toBeFocused();
     await expect(page.locator(".mx-index-history")).toContainText(/显示上一次走势|showing previous chart/);
     await expect(chart).toBeVisible();
     await expect(page).toHaveURL(/compare=nasdaq-100.*currency=GBP/);
@@ -787,7 +793,7 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/market=ch&index=smi/);
     await expect(page.getByRole("heading", { name: /瑞士市场指数|SMI/ })).toBeVisible();
     // One research entry per Markets view: the selected index's title row, not a link under every card.
-    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toHaveAccessibleName(/指数研究|Index research/);
+    await expect(page.locator('.mx-index-detail a[href="/research?type=index&index=smi"]')).toHaveAccessibleName(/查看研究|View research/);
     await expect(page.locator('a[href^="/research?type=index"]')).toHaveCount(1);
     expect(requests).toBe(0);
   });
@@ -1036,7 +1042,8 @@ test.describe("market index layer", () => {
     const breadth = page.getByRole("heading", { name: /成分篮子宽度历史|Constituent basket breadth/ });
     await expect(breadth).toBeVisible();
     await expect(page.getByText(/站上 200 日线|Above 200-day average/).first()).toBeVisible();
-    await expect(page.getByText("488/503")).toBeVisible();
+    // The chart's spoken reading repeats the count, so read it from the summary.
+    await expect(page.locator(".mx-index-depth-metrics").getByText("488/503")).toBeVisible();
     await expect(page.getByText(/18\.37 (点|pts)/)).toBeVisible();
     await expect(page.getByText("58%")).toBeVisible();
     await expect(page.getByRole("heading", { name: /跟踪 ETF 估值|Tracking ETF valuation/ })).toBeVisible();

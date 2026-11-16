@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { formatCalendarDate } from "@/ui/formatters";
+import { readingHtml, readingText } from "./chart-readout";
 import {
+  clusterReading,
   contextFit,
   decisionAction,
   decisionContext,
   decisionKeys,
   decisionParam,
-  decisionTooltip,
+  decisionReading,
   effectTone,
   eventLabel,
   favourableCount,
@@ -322,12 +325,65 @@ describe("a decision without an outcome yet", () => {
     const young = { ...row("sell", "MU", null, 12), observedDays: 5, horizonComplete: false };
     const late = { ...row("buy", "LATE", null, 30), observedDays: 21, horizonComplete: false };
     for (const [decision, expected] of [[young, "5 / 20 个交易日"], [late, "等待数据"]] as const) {
-      const outcome = decisionTooltip(decision, "horizon", 20, zh, "zh").split("\n")[2];
+      const outcome = decisionReading(decision, "horizon", 20, zh, "zh").primary?.value;
       expect(outcome).toBe(expected);
       expect(outcome).toBe(pendingOutcome(decision, "horizon", 20, zh, "zh"));
     }
-    expect(decisionTooltip(late, "horizon", 20, en, "en")).not.toContain("21 of 20");
-    expect(decisionTooltip(late, "date", 20, en, "en").split("\n")[2]).toBe("Then +3.0% · +£30");
+    expect(readingText(decisionReading(late, "horizon", 20, en, "en"), "en")).not.toContain("21 of 20");
+    expect(decisionReading(late, "date", 20, en, "en").primary).toEqual({ label: "Then", value: "+£30", detail: "+3.0%", tone: "up" });
+  });
+});
+
+describe("a timeline point's reading", () => {
+  const zh = (chinese: string) => chinese;
+  const en = (_zh: string, english: string) => english;
+  const events = [
+    { date: "2026-07-30", kind: "earnings" as const, surprisePct: -4.2 },
+    { date: "2026-08-04", kind: "downgrade" as const, firm: "B. Riley", toGrade: "Neutral" },
+    { date: "2026-08-09", kind: "filing" as const, form: "8-K" },
+  ];
+  const amd = {
+    ...row("buy", "AMD", -799, -799), date: "2026-07-13", amountGbp: 6238,
+    returnHorizon: -0.128, returnToDate: -0.128, events,
+  };
+
+  it("titles a decision by day, ticker, side and amount and leads with its outcome in loss colour", () => {
+    const reading = decisionReading(amd, "horizon", 20, zh, "zh");
+    expect(reading.time).toBe(formatCalendarDate("2026-07-13", "zh") + " · AMD 买入 £6,238");
+    expect(reading.primary).toEqual({ label: "之后", value: "−£799", detail: "−12.8%", tone: "down" });
+    expect(decisionReading(amd, "horizon", 20, en, "en").time).toBe(formatCalendarDate("2026-07-13", "en") + " · Bought AMD £6,238");
+  });
+
+  it("lists at most two events and counts the rest", () => {
+    const reading = decisionReading(amd, "horizon", 20, zh, "zh");
+    expect(reading.groups?.[0].map((item) => item.value)).toEqual(["财报不及预期 −4.2%", "B. Riley 下调至中性"]);
+    expect(reading.more).toBe(1);
+    expect(decisionReading({ ...amd, events: [] }, "horizon", 20, zh, "zh").groups).toBeUndefined();
+  });
+
+  it("leaves a result that rounds to £0 in ink", () => {
+    const flat = { ...row("sell", "FLAT", 0.4, 0.4), observedDays: 25, horizonComplete: true };
+    expect(decisionReading(flat, "horizon", 20, en, "en").primary?.tone).toBeUndefined();
+  });
+
+  it("reads a same-day marker as its count, the two largest decisions and how many more", () => {
+    const group = [
+      { ...row("buy", "SMALL", 10, 10), amountGbp: 1000 },
+      { ...row("sell", "BIG", -20, -20), amountGbp: 5000 },
+      { ...row("buy", "MID", 30, 30), amountGbp: 3000 },
+      { ...row("sell", "WAIT", null, 5), amountGbp: 200, observedDays: 3, horizonComplete: false },
+    ];
+    const reading = clusterReading("2026-06-01", group, "horizon", 20, zh, "zh");
+    expect(reading.time).toBe(formatCalendarDate("2026-06-01", "zh") + " · 4 笔决定");
+    expect(reading.groups?.[0]).toEqual([{ label: "BIG 卖出", value: "−£20" }, { label: "MID 买入", value: "+£30" }]);
+    expect(reading.more).toBe(2);
+    expect(clusterReading("2026-06-01", group, "horizon", 20, en, "en").groups?.[0][0].label).toBe("Sold BIG");
+  });
+
+  it("escapes provider text in the tooltip card", () => {
+    const html = readingHtml(decisionReading({ ...amd, events: [{ date: "2026-07-20", kind: "news" as const, title: "<img src=x onerror=alert(1)>" }] }, "horizon", 20, en, "en"), "en");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
   });
 });
 

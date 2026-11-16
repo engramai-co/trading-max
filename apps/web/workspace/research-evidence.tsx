@@ -1,24 +1,35 @@
 "use client";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
+import { formatCalendarDate, formatDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
+import type { ChartReadout, ReadingItem } from "./chart-readout";
 import { compact, compactTick, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Facts, Metric, Panel, Segments, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
-import { chartName, chartNumber } from "./research-chart-format";
+import { chartNumber } from "./research-chart-format";
 import { dividendSummary } from "./research-dividends";
 import { EvidenceTable } from "./evidence-table";
 import { filingTitle } from "./research-filings";
-import { categoricalChartColours } from "@/ui/charts/palette";
+import { useAllocationChartColours, useChartColours } from "@/ui/charts/palette";
+import { epsFigure, minus } from "./reading-figures";
+
+/** A fiscal period end as the axis names it: month and year, never an ISO date. */
+function periodLabel(end: string, locale: "zh" | "en") {
+  return /^\d{4}-\d{2}/.test(end)
+    ? formatDate(end.slice(0, 10) + "T00:00:00Z", locale, { year: "numeric", month: "short", timeZone: "UTC" })
+    : end;
+}
 
 export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
   const { locale } = useLocale();
+  // Segments are categories, so they take the allocation palette: no cobalt, gain green or loss red.
+  const palette = useAllocationChartColours();
   const { params, update } = useRouteState("push");
   const trend = params.get("segmentView") === "trend";
   const shares = params.get("segmentScale") === "share";
@@ -88,6 +99,43 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
   );
   const selected = rows.filter((s) => s.periodEnd === end);
   const reconciled = end != null && periodReconciles(end);
+  const memberColour = (member: string) => palette[members.indexOf(member) % palette.length];
+  // The plotted figure: an amount, a share of the reported total, or an index from the common start.
+  const plotted = (p: string, member: string) =>
+    periodReconciles(p)
+      ? indexed
+        ? anchorPeriod && p >= anchorPeriod && numeric(values(p, member)?.value) != null
+          ? (Number(values(p, member)?.value) / Number(values(anchorPeriod, member)?.value)) * 100
+          : null
+        : numeric(values(p, member)?.[shares ? "share" : "value"])
+      : null;
+  const figure = (value: number) =>
+    indexed ? number(value, 1) : shares ? percent(value, false, 2) : minus(chartNumber(value, locale));
+  const segmentReadout: ChartReadout = {
+    positions: periods.map((_, i) => i),
+    read: (i) => {
+      const p = periods[i];
+      if (!p || !periodReconciles(p)) return null;
+      const total = numeric(rows.find((s) => s.periodEnd === p)?.reportedTotal);
+      // Largest first; the card folds the rest into "N more".
+      const items = visibleMembers
+        .flatMap((member) => { const value = plotted(p, member); return value == null ? [] : [{ member, value }]; })
+        .sort((a, b) => b.value - a.value)
+        .map(({ member, value }): ReadingItem => ({
+          label: label(member), value: figure(value), key: { colour: memberColour(member), kind: trend ? "line" : "bar" },
+        }));
+      return {
+        time: periodLabel(p, locale),
+        primary: !trend && !shares && total != null ? { label: t("合计", "Total"), value: minus(chartNumber(total, locale)) } : undefined,
+        groups: [items],
+      };
+    },
+    marks: trend ? (i) => visibleMembers.flatMap((member) => {
+      const value = periods[i] ? plotted(periods[i], member) : null;
+      return value == null ? [] : [{ value, colour: memberColour(member) }];
+    }) : undefined,
+    latest: end ? periodLabel(end, locale) : "—",
+  };
   const prior = rows.filter(
     (s) =>
       numeric(s.fiscalYear) === (numeric(selected[0]?.fiscalYear) ?? 0) - 1 &&
@@ -97,11 +145,11 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
     a.includes("ProductOrService")
       ? t("产品与服务", "Products & services")
       : a.toLowerCase().includes("geograph")
-        ? t("地域", "Geography")
+        ? t("国家/地区", "Country")
         : t("经营分部", "Operating segments");
   if (!source.length)
     return (
-      <Panel title={t("业务与地域", "Business & geography")}>
+      <Panel title={t("业务与国家/地区", "Business & country")}>
         <Empty
           title={t(
             "该公司的分部披露尚不可用",
@@ -112,7 +160,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
     );
   if (!end || !axes.length)
     return (
-      <Panel title={t("业务与地域", "Business & geography")}>
+      <Panel title={t("业务与国家/地区", "Business & country")}>
         <Empty
           title={t(
             "该财期暂无分部披露",
@@ -158,7 +206,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
           ]}
         />
         <span>
-          {end} · {str(selected[0]?.currency)}
+          {periodLabel(end, locale)} · {str(selected[0]?.currency)}
         </span>
         <Segments
           label={t("分部显示方式", "Segment display")}
@@ -207,12 +255,13 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
         <Plot
           label={groupLabel(axis ?? "")}
           height={325}
+          readout={segmentReadout}
           option={(c) => ({
             legend: { bottom: 0, type: "scroll", textStyle: { color: c.text } },
             grid: { top: 30, left: 65, right: 20, bottom: 75 },
             xAxis: {
               type: "category",
-              data: periods,
+              data: periods.map((p) => periodLabel(p, locale)),
               axisLabel: { color: c.axis },
             },
             yAxis: {
@@ -225,24 +274,6 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               },
               splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
-            tooltip: {
-              formatter: (input) => {
-                const entries = Array.isArray(input) ? input : [input];
-                return [
-                  String(entries[0]?.name ?? "") +
-                    " · " +
-                    (indexed
-                      ? t("期初 = 100", "Start = 100")
-                      : shares
-                        ? "%"
-                        : str(selected[0]?.currency)),
-                  ...entries.map(
-                    (e) =>
-                      `${chartName(String(e.seriesName))}   ${shares ? percent(e.value, false, 2) : chartNumber(e.value, locale)}`,
-                  ),
-                ].join("\n");
-              },
-            },
             series: visibleMembers.map((member) => ({
               type: trend ? "line" : "bar",
               stack: trend ? undefined : "revenue",
@@ -250,32 +281,10 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               connectNulls: false,
               smooth: false,
               showSymbol: periods.length < 10,
-              itemStyle: {
-                color: [
-                  c.brand,
-                  c.accent,
-                  c.secondary,
-                  c.negative,
-                  c.positive,
-                  categoricalChartColours[3],
-                  c.axis,
-                  c.warning,
-                ][members.indexOf(member) % 8],
-              },
+              itemStyle: { color: memberColour(member) },
+              lineStyle: trend ? { color: memberColour(member) } : undefined,
               barMaxWidth: 85,
-              data: periods.map((p) =>
-                periodReconciles(p)
-                  ? indexed
-                    ? anchorPeriod &&
-                      p >= anchorPeriod &&
-                      numeric(values(p, member)?.value) != null
-                      ? (Number(values(p, member)?.value) /
-                          Number(values(anchorPeriod, member)?.value)) *
-                        100
-                      : null
-                    : numeric(values(p, member)?.[shares ? "share" : "value"])
-                  : null,
-              ),
+              data: periods.map((p) => plotted(p, member)),
             })),
           })}
         />
@@ -332,9 +341,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
                     </button>
                   </th>
                   <td>
-                    <span title={number(current, 0) + " " + str(s.currency)}>
-                      {compact(current, locale)}
-                    </span>
+                    {compact(current, locale)}
                   </td>
                   <td>{reconciled ? percent(s.share) : "—"}</td>
                   <td>
@@ -372,7 +379,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               value: (r) => number(r.value, 0),
               numeric: true,
             },
-            { label: t("货币", "Currency"), value: (r) => str(r.currency) },
+            { label: t("币种", "Currency"), value: (r) => str(r.currency) },
             { label: t("披露日期", "Filed"), value: (r) => str(r.publishedAt) },
             {
               label: t("来源", "Source"),
@@ -467,6 +474,7 @@ export function CompanyOwnership({ data }: { data: ResearchLensSnapshot }) {
 export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const rows = objects(object(data.researchEvidence).dividends).sort((a, b) =>
     str(b.date).localeCompare(str(a.date)),
   );
@@ -485,17 +493,29 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
   );
   if (!summary) return null;
   const series = mode === "ttm" ? summary.trailing : summary.annual;
+  // Complete years read as the year; trailing totals as the month they end, like the axis.
+  const when = (date: string) => mode === "ttm" ? periodLabel(date, locale) : date;
+  const dividendReadout: ChartReadout = {
+    positions: series.map((_, i) => i),
+    read: (i) => series[i] ? { time: when(series[i].date), primary: { value: epsFigure(series[i].value) } } : null,
+    marks: (i) => series[i]?.value == null ? [] : [{ value: series[i].value!, colour: colours.brand }],
+    latest: series.length ? epsFigure(series.at(-1)!.value) : "—",
+  };
   return (
     <Panel
       title={t("每股分红", "Dividends per share")}
       action={
         <span className="mx-unit">
-          {code} · {summary.asOf}
+          {code} · {formatCalendarDate(summary.asOf, locale)}
         </span>
       }
       help={t(
-        "按除息日汇总行情源提供的每股分红，不重复应用拆股因子。年度趋势只比较完整年度；今年累计单独与去年同日比较。TTM 为向前十二个月。历史起点不明时，不把首个部分年度当成完整年度。",
-        "Sums provider-adjusted dividends by ex-date, without applying split factors twice. Annual trends contain complete years; YTD compares the same dates. TTM covers the preceding twelve months. A truncated first year is excluded.",
+        "年度趋势只比较完整年度；今年累计单独与去年同日比较。TTM 为此前十二个月。历史起点不明时，不把首个部分年度当成完整年度。",
+        "Annual trends contain complete years; YTD compares the same dates. TTM covers the preceding twelve months. A truncated first year is excluded.",
+      )}
+      helpBasis={t(
+        "行情源提供的每股分红，按除息日汇总，不重复应用拆股因子。",
+        "Provider-adjusted dividends per share, summed by ex-date without applying split factors twice.",
       )}
     >
       <div className="mx-dividend-summary mx-metric-grid">
@@ -527,6 +547,7 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
               : t("完整年度每股分红", "Complete-year dividends per share")
           }
           height={245}
+          readout={dividendReadout}
           option={(c) => ({
             xAxis: {
               type: "category",
@@ -534,8 +555,7 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
               boundaryGap: false,
               axisLabel: {
                 color: c.axis,
-                formatter: (date: string) =>
-                  mode === "ttm" ? date.slice(0, 7) : date,
+                formatter: (date: string) => when(date),
               },
             },
             yAxis: {
@@ -544,7 +564,6 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
               axisLabel: { color: c.axis },
               splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
-            tooltip: { valueFormatter: (v) => number(v, 2) },
             series: [
               {
                 type: "line",

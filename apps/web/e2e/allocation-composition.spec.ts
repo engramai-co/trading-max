@@ -141,7 +141,7 @@ test.describe("company composition", () => {
     await expect(details).toContainText("29.0%");
     // A grouped slice must not add thousands of duplicate company rows to the DOM.
     await expect(details.locator("li")).toHaveCount(0);
-    await choices.getByRole("button", { name: "Unresolved & non-security assets", exact: false }).click();
+    await choices.getByRole("button", { name: "Unresolved & other assets", exact: false }).click();
     await expect(details).toContainText("£1,000.00");
     await expect(details).toContainText("10.0%");
     await expect(details).not.toContainText("Direct");

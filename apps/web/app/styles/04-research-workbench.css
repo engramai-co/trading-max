@@ -222,7 +222,8 @@
   font-size: clamp(15px, 1.7vw, 23px);
   white-space: nowrap;
 }
-.mx-scenario-cards button:hover {
+.mx-scenario-cards button:hover,
+.mx-scenario-cards button[data-hover] {
   background: var(--mx-soft);
 }
 .mx-scenario-cards button[aria-pressed="true"] {

@@ -361,7 +361,12 @@
 }
 .mx-peek {
   width: 240px;
-  padding: 14px 16px 6px;
+  padding: 10px 12px 4px;
+  border: var(--mx-overlay-edge);
+  border-radius: var(--mx-overlay-radius);
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
+  color: var(--mx-ink);
 }
 .mx-peek-head {
   display: flex;
@@ -372,27 +377,33 @@
   color: var(--mx-muted);
 }
 .mx-peek-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--mx-ink);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+/* The price's source or time differs from the row's; the price's accessible name says how. */
+.mx-peek-flag {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mx-warning);
+}
 .mx-peek .mx-sparkline,
 .mx-peek-skeleton {
-  margin: 10px 0 4px;
+  margin: 8px 0 2px;
 }
 .mx-peek-skeleton {
   height: 44px;
   border-radius: 6px;
   background: var(--mx-soft);
 }
-.mx-peek-empty {
-  margin: 10px 0;
-  font-size: 12px;
-  color: var(--mx-muted);
-}
 .mx-peek .mx-facts > div {
-  padding: 8px 0;
+  padding: 6px 0;
 }
 /* Look-through pages: the pager takes the row's free width, so narrow rows switch to « ‹ 2 / 44 › ». */
 .mx-exposure-paging > nav {

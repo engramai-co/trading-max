@@ -35,7 +35,12 @@ vi.mock("@mantine/core", async (importOriginal) => {
   const mantine = await importOriginal<typeof import("@mantine/core")>();
   // Mount the hover content inline for this server render. Playwright checks the live portal.
   const part = ({ children }: { children: ReactNode }) => el("div", null, children);
-  return { ...mantine, HoverCard: Object.assign(part, { Target: part, Dropdown: part }) };
+  // The security peek is a Popover it opens itself after a delay.
+  return {
+    ...mantine,
+    HoverCard: Object.assign(part, { Target: part, Dropdown: part }),
+    Popover: Object.assign(part, { Target: part, Dropdown: part }),
+  };
 });
 
 function render(child: ReactNode) {

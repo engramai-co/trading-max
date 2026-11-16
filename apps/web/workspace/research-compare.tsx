@@ -1,23 +1,98 @@
 "use client";
-import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
+import { useLocale, type Locale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { Button, Modal, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
+import type { EChartsOption } from "echarts";
 import { Plot } from "./charts";
 import { number, object, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
+import type { ChartReadout, Reading, ReadingItem, ReadingKey } from "./chart-readout";
 import { Empty, Panel, Pending, Segments, useCopy } from "./foundation";
 import { factIndex, metricNames } from "./research-facts";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
+import { minus } from "./reading-figures";
+import { comparisonFigures, readingTone, signedPercent } from "./reading-format";
 import { useRouteState } from "./route-state";
+
+/**
+ * Up to four lines: the researched company in cobalt and solid, the others in ink and grey, dashed
+ * or dotted, as comparison lines are everywhere else.
+ * The legend swatch, the hover dot and the reading key all take the line's own stroke from here.
+ */
+const COMPARE_LINES = [
+  { colour: "brand", dash: "solid", width: 2 },
+  { colour: "text", dash: "dashed", width: 1.6 },
+  { colour: "axis", dash: "dotted", width: 1.6 },
+  { colour: "axis", dash: "dashed", width: 1.6 },
+] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dash: "solid" | "dashed" | "dotted"; width: number }>;
+
+export function compareStroke(colours: ChartColours, index: number) {
+  const line = COMPARE_LINES[Math.min(index, COMPARE_LINES.length - 1)];
+  return { colour: colours[line.colour], dashed: line.dash === "dashed", dotted: line.dash === "dotted", width: line.width };
+}
+
+/** Returns from a common start, one line per company, dates as the reader writes them. */
+export function compareReturnsOption(colours: ChartColours, tickers: string[], dates: string[],
+  returns: Array<Array<number | null>>, locale: Locale): EChartsOption {
+  return {
+    legend: { top: 0, data: tickers, textStyle: { color: colours.text } },
+    grid: { top: 50, left: 65, right: 20, bottom: 45 },
+    xAxis: {
+      type: "category",
+      data: dates,
+      axisLabel: { hideOverlap: true, formatter: (value: string) => formatCalendarDate(value, locale) },
+    },
+    yAxis: { type: "value", axisLabel: { formatter: (value: number) => minus(percent(value)) } },
+    series: tickers.map((symbol, index) => {
+      const stroke = compareStroke(colours, index);
+      return {
+        name: symbol,
+        type: "line" as const,
+        showSymbol: false,
+        connectNulls: false,
+        color: stroke.colour,
+        itemStyle: { color: stroke.colour },
+        lineStyle: { width: stroke.width, color: stroke.colour, type: stroke.dashed ? [6, 4] : stroke.dotted ? "dotted" as const : "solid" as const },
+        data: returns[index],
+      };
+    }),
+  };
+}
+
+/**
+ * One date's returns, read as every comparison is: the researched company leads, the others follow
+ * by return keyed to their strokes, and two companies add the gap in percentage points.
+ */
+export function compareReading(tickers: string[], dates: string[], returns: Array<Array<number | null>>,
+  colours: ChartColours, index: number, locale: Locale): Reading | null {
+  if (!dates[index]) return null;
+  const key = (line: number): ReadingKey => {
+    const stroke = compareStroke(colours, line);
+    return { colour: stroke.colour, ...(stroke.dashed ? { dashed: true } : {}), ...(stroke.dotted ? { dotted: true } : {}) };
+  };
+  const value = (line: number) => returns[line]?.[index] ?? null;
+  const item = (line: number): ReadingItem => ({
+    label: tickers[line], key: key(line), value: signedPercent(value(line)), tone: readingTone(value(line), 4),
+  });
+  const others = tickers.slice(1).map((_, offset) => offset + 1)
+    .sort((a, b) => (value(b) ?? -Infinity) - (value(a) ?? -Infinity));
+  return {
+    time: formatCalendarDate(dates[index], locale),
+    ...comparisonFigures([0, ...others].map((line) => ({ item: item(line), change: value(line) })), locale === "zh" ? "相差" : "Difference"),
+  };
+}
+
 export function ResearchComparison({
   ticker,
   instruments,
 }: {
   ticker: string;
-  instruments: { ticker: string; name: string; lastRunId?: string | null }[];
+  instruments: { ticker: string; name: string; lastRunId?: string | null; isFund?: boolean | null }[];
 }) {
   const { locale } = useLocale();
+  const colours = useChartColours();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const opened = params.get("compare") === "on",
@@ -91,6 +166,19 @@ export function ResearchComparison({
     );
     dates = dates.filter((d) => d >= from.toISOString().slice(0, 10));
   }
+  const returnSeries = maps.map((map) => dates.map((date) => {
+    const start = map.get(dates[0]), close = map.get(date);
+    return start != null && close != null && start !== 0 ? close / start - 1 : null;
+  }));
+  const returnsReadout: ChartReadout = {
+    positions: dates.map((_, index) => index),
+    read: (position) => compareReading(tickers, dates, returnSeries, colours, position, locale),
+    latest: minus(percent(returnSeries[0]?.at(-1), true, 2)),
+    marks: (position) => tickers.flatMap((_, line) => {
+      const value = returnSeries[line]?.[position];
+      return value == null ? [] : [{ value, colour: compareStroke(colours, line).colour }];
+    }),
+  };
   const metrics = [
     "revenueGrowth",
     "netMargin",
@@ -147,20 +235,16 @@ export function ResearchComparison({
   return (
     <>
       <Button
-        aria-label={t("比较证券", "Compare securities")}
         variant="default"
         size="sm"
         onClick={() => update({ compare: "on" })}
       >
-        <span className="mx-action-long">
-          {t("比较证券", "Compare securities")}
-        </span>
-        <span className="mx-action-short">{t("比较", "Compare")}</span>
+        {t("比较", "Compare")}
       </Button>
       <Modal
         opened={opened}
         onClose={() => update({ compare: null })}
-        title={t("证券对比", "Security comparison")}
+        title={t("公司对比", "Compare companies")}
         size="min(1200px, 96vw)"
       >
         <div className="mx-toolbar">
@@ -176,9 +260,9 @@ export function ResearchComparison({
                 {option.label}
               </Pill>
             )}
-            label={t("最多四只证券", "Up to four securities")}
+            label={t("最多 4 家公司", "Up to 4 companies")}
             searchable
-            data={instruments.map((i) => ({
+            data={instruments.filter((i) => !i.isFund).map((i) => ({
               value: i.ticker,
               label: `${i.ticker} · ${i.name}`,
             }))}
@@ -250,7 +334,7 @@ export function ResearchComparison({
         {cols.length > 1 &&
           cols.some((col) => typeof readValue(col, multiple) === "number") && (
             <Panel
-              title={t("所选证券估值", "Selected securities · valuation")}
+              title={t("估值倍数", "Valuation multiples")}
               action={
                 <Segments
                   label={t("比较倍数", "Valuation multiple")}
@@ -281,10 +365,8 @@ export function ResearchComparison({
                     name: "×",
                     axisLabel: { formatter: (v: number) => number(v, 1) + "×" },
                   },
-                  tooltip: {
-                    valueFormatter: (v) =>
-                      typeof v === "number" ? number(v, 2) + "×" : "—",
-                  },
+                  // Each point already carries its multiple as a label.
+                  tooltip: { show: false },
                   series: [
                     {
                       type: "scatter",
@@ -326,8 +408,8 @@ export function ResearchComparison({
           ) : !common || dates.length < 2 ? (
             <Empty
               title={t(
-                "请选择有同币种共同历史的证券",
-                "Select securities with common history in the same currency",
+                "所选公司没有同币种的共同历史",
+                "No shared history in one currency",
               )}
             />
           ) : (
@@ -335,42 +417,11 @@ export function ResearchComparison({
               <Plot
                 research
                 label={t("共同起点回报", "Returns from a common start")}
-                option={(c) => ({
-                  legend: {
-                    top: 0,
-                    data: tickers,
-                    textStyle: { color: c.text },
-                  },
-                  grid: { top: 50, left: 65, right: 20, bottom: 45 },
-                  xAxis: {
-                    type: "category",
-                    data: dates,
-                    axisLabel: { hideOverlap: true },
-                  },
-                  yAxis: {
-                    type: "value",
-                    axisLabel: { formatter: (v: number) => percent(v) },
-                  },
-                  tooltip: { valueFormatter: (value) => percent(value, true, 2) },
-                  series: tickers.map((symbol, i) => ({
-                    name: symbol,
-                    type: "line",
-                    showSymbol: false,
-                    connectNulls: false,
-                    data: dates.map(
-                      (d) => maps[i].get(d)! / maps[i].get(dates[0])! - 1,
-                    ),
-                    lineStyle: {
-                      width: 1.6,
-                      color: [c.brand, c.secondary, c.accent, c.negative][i],
-                    },
-                  })),
-                })}
+                readout={returnsReadout}
+                option={(c) => compareReturnsOption(c, tickers, dates, returnSeries, locale)}
               />
               <div className="mx-chart-footer">
-                <span>
-                  {dates[0]} → {dates.at(-1)}
-                </span>
+                <span>{formatDateSpan(dates[0], dates.at(-1), locale)}</span>
                 <span>{prices[0].data?.currency}</span>
               </div>
               <FactsEnd
