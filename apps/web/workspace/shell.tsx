@@ -396,13 +396,9 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   );
   const searchTrigger = (className: string, position: "bottom-end" | "right") => (
     <Tooltip
-      label={<span className="mx-nav-search-hint">{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</span>}
+      label={<>{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</>}
       position={position}
       offset={position === "right" ? 12 : 8}
-      openDelay={250}
-      classNames={{ tooltip: "mx-nav-tooltip" }}
-      transitionProps={{ duration: 0 }}
-      events={{ hover: true, focus: true, touch: false }}
       interactive
     >
       <ActionIcon
