@@ -46,7 +46,7 @@ function changeClass(value: number | null, digits: number) {
 }
 
 function factText(fact: AttentionFact, zh: boolean) {
-  if (fact.kind === "score") return zh ? `技术 ${fact.value}/100` : `Technical ${fact.value}/100`;
+  if (fact.kind === "score") return zh ? `技术评分 ${fact.value}/100` : `Technical score ${fact.value}/100`;
   if (fact.kind === "rsi") {
     const stretched = fact.value >= THRESHOLD.rsiHigh ? (zh ? "超买" : "overbought") : zh ? "超卖" : "oversold";
     return `RSI ${fact.value} ${stretched}`;
@@ -160,12 +160,12 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       className="mx-overview-holdings"
       title={t("持仓", "Holdings")}
       help={locale === "zh"
-        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。黄色跟踪差数字表示已过期或日期未验证。`
+        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术评分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。黄色跟踪差数字表示已过期或日期未验证。`
         : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. An amber tracking figure indicates stale data or unverified dates.`}
       action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
     >
       {ledger.count === 0 ? (
-        <Empty title={t("还没有持仓", "No positions yet")} />
+        <Empty title={t("还没有持仓", "No holdings yet")} />
       ) : (
         <div className="mx-ledger">
           <Donut ledger={ledger} palette={palette} focus={focus} setFocus={setFocus} restLabel={restLabel}

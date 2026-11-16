@@ -9,7 +9,7 @@ mod surfaces;
 mod updates;
 
 use connection::{Mode, Probe, Profile};
-use preferences::AppLanguage;
+use preferences::{tr, AppLanguage};
 use runtime::{Runtime, Workspace};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -95,11 +95,16 @@ impl Session {
         }
         .into();
         self.message = if retained {
-            "连接中断，当前页面已保留。"
+            tr(
+                "连接中断，当前页面已保留。",
+                "Connection lost. The current page is still open.",
+            )
         } else {
-            "暂时无法连接这份资料。"
-        }
-        .into();
+            tr(
+                "暂时无法连接这个工作区。",
+                "Could not connect to the workspace.",
+            )
+        };
         self.detail = error.message;
         self.probe = None; // A previous healthy check is not current availability.
         self.retry_at_ms = after.map(|delay| connection::now_ms() + delay.as_millis() as u64);
@@ -114,7 +119,7 @@ impl Session {
         let enter = self.active_url.is_none();
         if self.workspace_available() {
             self.stage = "ready".into();
-            self.message = format!("已连接{}", self.active_name.as_deref().unwrap_or("资料库"));
+            self.message = format!("已连接{}", self.active_name.as_deref().unwrap_or("工作区"));
         }
         self.probe = Some(probe);
         self.detail.clear();
@@ -173,7 +178,7 @@ impl Desktop {
         session.message = match &session.desired {
             Some(p) if p.mode == Mode::Remote => format!("正在连接{}…", p.name),
             Some(p) if p.mode == Mode::Local => format!("正在打开{}…", p.name),
-            Some(_) => "正在打开本机演示…".into(),
+            Some(_) => "正在打开演示…".into(),
             None => "选择你的数据来源。".into(),
         };
         session.detail.clear();
@@ -205,7 +210,10 @@ fn local_command(window: &WebviewWindow) -> Result<(), String> {
     {
         Ok(())
     } else {
-        Err("原生设置仅供 App 本机界面使用。".into())
+        Err(tr(
+            "原生设置只在 App 自己的窗口里可用。",
+            "Native settings are only available in the app’s own windows.",
+        ))
     }
 }
 fn open_external(url: &tauri::Url) {
@@ -375,7 +383,7 @@ fn enter(
             Err(error) => failed(&app, &desktop, generation, error.to_string()),
             Ok(window) => {
                 connection_notice(&app, &desktop, generation);
-                let _ = window.set_title(&format!("Trading Max · {name}"));
+                let _ = window.set_title(&format!("{name} · Trading Max"));
                 if dismiss_settings {
                     for label in ["settings", "workspaces"] {
                         if let Some(settings) = app.get_webview_window(label) {
@@ -448,12 +456,12 @@ fn create_workspace_window(
                         session.stage = "ready".into();
                         session.message = format!(
                             "已连接{}",
-                            session.active_name.as_deref().unwrap_or("资料库")
+                            session.active_name.as_deref().unwrap_or("工作区")
                         );
                     }
                 });
                 if let Some(name) = snapshot.active_name {
-                    let _ = window.set_title(&format!("Trading Max · {name}"));
+                    let _ = window.set_title(&format!("{name} · Trading Max"));
                 }
             }
         })
@@ -490,11 +498,16 @@ fn failed(app: &tauri::AppHandle, desktop: &Arc<Desktop>, generation: u64, detai
             .as_ref()
             .is_some_and(|p| p.mode != Mode::Remote)
         {
-            "本机服务需要重新启动。"
+            tr(
+                "本地服务需要重新启动。",
+                "The local service needs to restart.",
+            )
         } else {
-            "暂时无法连接这份资料。"
-        }
-        .into();
+            tr(
+                "暂时无法连接这个工作区。",
+                "Could not connect to the workspace.",
+            )
+        };
         session.detail = detail;
         session.retry_at_ms = None;
         session.active_url = None;
@@ -615,7 +628,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                             if profile.mode == Mode::Local {
                                 profile.name.clone()
                             } else {
-                                "本机演示 · 模拟数据".into()
+                                tr("演示", "Demo")
                             },
                         );
                         loading_since = Instant::now();
@@ -676,7 +689,7 @@ fn drive(app: tauri::AppHandle, desktop: Arc<Desktop>) {
                     &app,
                     &desktop,
                     generation,
-                    "服务已响应，但页面加载超时。可以重试，或在浏览器中打开。".into(),
+                    tr("服务已响应，但页面加载超时。可以重试，或在浏览器中打开。", "The service responded, but the page timed out. Retry or open it in your browser."),
                 );
                 if profile.mode == Mode::Remote {
                     if let Some(delay) = recovery.failed(true) {
@@ -763,12 +776,12 @@ async fn choose_workspace_folder(
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title(language.text("选择本机文件夹", "Choose a local folder"))
+            .set_title(language.text("选择本地文件夹", "Choose a local folder"))
             .blocking_pick_folder()
             .map(|file| {
                 file.into_path().map_err(|_| {
                     language
-                        .text("请选择本机文件夹。", "Choose a local folder.")
+                        .text("请选择本地文件夹。", "Choose a local folder.")
                         .to_string()
                 })
             })
@@ -966,14 +979,27 @@ fn show_workspace_folder(
         .snapshot()
         .desired
         .and_then(|profile| profile.workspace)
-        .ok_or("当前没有选中的本地工作区。")?;
+        .ok_or_else(|| {
+            tr(
+                "当前没有选中的本地工作区。",
+                "No local workspace is selected.",
+            )
+        })?;
     if !workspace.path.is_absolute() || !workspace.path.is_dir() {
-        return Err("工作区文件夹暂时不可用，请重新选择位置。".into());
+        return Err(tr(
+            "工作区文件夹暂时不可用，请重新选择位置。",
+            "The workspace folder is unavailable. Choose its location again.",
+        ));
     }
     Command::new("/usr/bin/open")
         .arg(&workspace.path)
         .spawn()
-        .map_err(|_| "未能打开工作区文件夹。")?;
+        .map_err(|_| {
+            tr(
+                "未能打开工作区文件夹。",
+                "Could not open the workspace folder.",
+            )
+        })?;
     Ok(())
 }
 
@@ -982,7 +1008,7 @@ async fn check_updates(window: WebviewWindow) -> Result<updates::UpdateCheck, St
     local_command(&window)?;
     tauri::async_runtime::spawn_blocking(updates::check)
         .await
-        .map_err(|_| "版本检查没有完成。".to_string())?
+        .map_err(|_| tr("版本检查没有完成。", "The version check did not finish.").to_string())?
 }
 
 #[tauri::command]
@@ -990,12 +1016,24 @@ async fn open_desktop_download(window: WebviewWindow, version: String) -> Result
     local_command(&window)?;
     let url = tauri::async_runtime::spawn_blocking(move || updates::download_url(&version))
         .await
-        .map_err(|_| "安装包检查没有完成。".to_string())??;
+        .map_err(|_| {
+            tr(
+                "安装包检查没有完成。",
+                "The installer check did not finish.",
+            )
+            .to_string()
+        })??;
     local_command(&window)?;
     Command::new("/usr/bin/open")
         .arg(url.as_str())
         .spawn()
-        .map_err(|_| "无法打开浏览器，请稍后重试。".to_string())?;
+        .map_err(|_| {
+            tr(
+                "无法打开浏览器，请稍后重试。",
+                "Could not open the browser. Try again later.",
+            )
+            .to_string()
+        })?;
     Ok(())
 }
 
@@ -1008,17 +1046,23 @@ async fn install_desktop_update(
     local_command(&window)?;
     let feed = tauri::async_runtime::spawn_blocking(move || updates::update_feed(&version))
         .await
-        .map_err(|_| "更新检查没有完成。".to_string())??;
+        .map_err(|_| tr("更新检查没有完成。", "The update check did not finish.").to_string())??;
     let (send, receive) = std::sync::mpsc::sync_channel(1);
     app.run_on_main_thread(move || {
         let result = local_command(&window).and_then(|_| sparkle::start(feed));
         let _ = send.send(result);
     })
-    .map_err(|_| "无法打开原生更新窗口。".to_string())?;
+    .map_err(|_| {
+        tr(
+            "无法打开原生更新窗口。",
+            "Could not open the update window.",
+        )
+        .to_string()
+    })?;
     tauri::async_runtime::spawn_blocking(move || receive.recv())
         .await
-        .map_err(|_| "更新窗口已关闭。".to_string())?
-        .map_err(|_| "更新窗口已关闭。".to_string())?
+        .map_err(|_| tr("更新窗口已关闭。", "The update window closed.").to_string())?
+        .map_err(|_| tr("更新窗口已关闭。", "The update window closed.").to_string())?
 }
 
 #[tauri::command]
@@ -1032,24 +1076,32 @@ fn show_recovery_folder(
         .desired
         .filter(|p| p.mode == Mode::Local)
         .and_then(|p| p.workspace)
-        .ok_or("请先选择本地工作区；远程服务的恢复由服务端管理。")?;
+        .ok_or_else(|| {
+            tr(
+                "请先选择本地工作区；远程服务的恢复由服务端管理。",
+                "Choose a local workspace first. A remote service manages its own recovery.",
+            )
+        })?;
     if workspace.id.len() != 36
         || !workspace
             .id
             .bytes()
             .all(|b| b.is_ascii_hexdigit() || b == b'-')
     {
-        return Err("工作区标识无法识别。".into());
+        return Err(tr(
+            "工作区标识无法识别。",
+            "The workspace identifier is not recognised.",
+        ));
     }
     let parent = desktop.root.join("workspace-recovery");
     let folder = parent.join(workspace.id);
     if parent.is_symlink() || folder.is_symlink() || !folder.is_dir() {
-        return Err("这份资料还没有本机升级恢复记录，或恢复目录暂时不可用。".into());
+        return Err(tr("这个工作区还没有本地升级恢复记录，或恢复目录暂时不可用。", "This workspace has no local upgrade recovery record, or the recovery folder is unavailable."));
     }
     Command::new("/usr/bin/open")
         .arg(folder)
         .spawn()
-        .map_err(|_| "无法打开恢复目录。".to_string())?;
+        .map_err(|_| tr("无法打开恢复目录。", "Could not open the recovery folder.").to_string())?;
     Ok(())
 }
 
@@ -1059,7 +1111,13 @@ fn open_issue_tracker(window: WebviewWindow) -> Result<(), String> {
     Command::new("/usr/bin/open")
         .arg("https://github.com/engramai-co/trading-max/issues")
         .spawn()
-        .map_err(|_| "无法打开问题反馈页面。".to_string())?;
+        .map_err(|_| {
+            tr(
+                "无法打开问题反馈页面。",
+                "Could not open the issue tracker.",
+            )
+            .to_string()
+        })?;
     Ok(())
 }
 
@@ -1097,11 +1155,14 @@ async fn test_connection(window: WebviewWindow, profile: Profile) -> Result<Prob
     local_command(&window)?;
     let profile = profile.validated()?;
     if profile.mode != Mode::Remote {
-        return Err("本机演示无需测试远程连接。".into());
+        return Err(tr(
+            "演示无需测试远程连接。",
+            "The demo does not need a connection test.",
+        ));
     }
     tauri::async_runtime::spawn_blocking(move || connection::probe(&profile))
         .await
-        .map_err(|_| "连接测试没有完成。".to_string())?
+        .map_err(|_| tr("连接测试没有完成。", "The connection test did not finish.").to_string())?
         .map_err(|error| error.message)
 }
 #[tauri::command]
@@ -1163,10 +1224,18 @@ enum WorkspacePage {
 }
 
 fn workspace_destination(address: &str, page: &WorkspacePage) -> Result<tauri::Url, String> {
-    let mut url = tauri::Url::parse(address).map_err(|_| "工作区地址不可用。")?;
+    let mut url = tauri::Url::parse(address).map_err(|_| {
+        tr(
+            "工作区地址不可用。",
+            "The workspace address is unavailable.",
+        )
+    })?;
     if !workspace_url(&url, Some(address)) || !url.username().is_empty() || url.password().is_some()
     {
-        return Err("工作区地址不可用。".into());
+        return Err(tr(
+            "工作区地址不可用。",
+            "The workspace address is unavailable.",
+        ));
     }
     match page {
         WorkspacePage::Current => {}
@@ -1201,13 +1270,19 @@ fn open_service_page(
 ) -> Result<(), String> {
     let snapshot = desktop.snapshot();
     if !snapshot.workspace_available() {
-        return Err("请先连接工作区。断线时仍可使用 App 设置。".into());
+        return Err(tr(
+            "请先连接工作区。断线时仍可使用 App 设置。",
+            "Connect to a workspace first. App settings stay available while disconnected.",
+        ));
     }
-    let address = snapshot.active_url.as_deref().ok_or("请先连接工作区。")?;
+    let address = snapshot
+        .active_url
+        .as_deref()
+        .ok_or_else(|| tr("请先连接工作区。", "Connect to a workspace first."))?;
     if matches!(page, WorkspacePage::Current) {
         let workspace = app
             .get_webview_window("workspace")
-            .ok_or("工作区尚未打开。")?;
+            .ok_or_else(|| tr("工作区尚未打开。", "The workspace is not open yet."))?;
         return reveal_window(&workspace).map_err(|e| e.to_string());
     }
     let mut target = workspace_destination(address, &page)?;
@@ -1220,9 +1295,13 @@ fn open_service_page(
 }
 
 fn update_auto_connect(root: &std::path::Path, enabled: bool) -> Result<Profile, String> {
-    let mut saved = connection::read_profile(root)?.ok_or("请先保存一个服务连接。")?;
+    let mut saved = connection::read_profile(root)?
+        .ok_or_else(|| tr("请先保存一个服务连接。", "Save a service connection first."))?;
     if saved.mode != Mode::Remote {
-        return Err("启动偏好仅适用于已保存的服务连接。".into());
+        return Err(tr(
+            "启动偏好仅适用于已保存的服务连接。",
+            "The startup preference applies only to a saved service connection.",
+        ));
     }
     saved.auto_connect = enabled;
     let saved = saved.validated()?;
@@ -1259,6 +1338,7 @@ fn set_app_language(
                 .to_string()
         })?;
         session.app_language = language;
+        language.set_current();
     }
     for label in ["main", "settings", "workspaces"] {
         if let Some(surface) = app.get_webview_window(label) {
@@ -1273,6 +1353,7 @@ fn set_app_language(
         }
     }
     connection_notice(&app, &desktop, desktop.snapshot().generation);
+    let _ = install_menu(&app, language);
     Ok(language)
 }
 
@@ -1297,11 +1378,22 @@ fn open_in_browser(
     desktop: tauri::State<'_, Arc<Desktop>>,
 ) -> Result<(), String> {
     local_command(&window)?;
-    open_external(&browser_url(&desktop.snapshot()).ok_or("当前没有可打开的网页。")?);
+    open_external(
+        &browser_url(&desktop.snapshot())
+            .ok_or_else(|| tr("当前没有可打开的网页。", "There is no page to open."))?,
+    );
     Ok(())
 }
-fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
-    let settings = MenuItem::with_id(app, "settings", "设置…", true, Some("CmdOrCtrl+,"))?;
+/// The menu bar in the App's language; a language change installs it again.
+fn install_menu(app: &tauri::AppHandle, language: AppLanguage) -> tauri::Result<()> {
+    let t = |zh, en| language.text(zh, en);
+    let settings = MenuItem::with_id(
+        app,
+        "settings",
+        t("设置…", "Settings…"),
+        true,
+        Some("CmdOrCtrl+,"),
+    )?;
     let application = SubmenuBuilder::new(app, "Trading Max")
         .about(None)
         .separator()
@@ -1316,42 +1408,48 @@ fn install_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
     let workspaces = MenuItem::with_id(
         app,
         "workspaces",
-        "切换工作区…",
+        t("切换工作区…", "Switch workspace…"),
         true,
         Some("CmdOrCtrl+Shift+O"),
     )?;
-    let file = SubmenuBuilder::new(app, "文件")
+    let file = SubmenuBuilder::new(app, t("文件", "File"))
         .item(&workspaces)
-        .text("imports", "导入记录…")
+        .text("imports", t("导入记录…", "Import records…"))
         .separator()
-        .close_window_with_text("关闭窗口")
+        .close_window_with_text(t("关闭窗口", "Close window"))
         .build()?;
-    let reconnect = MenuItem::with_id(app, "reconnect", "重新连接", true, Some("CmdOrCtrl+R"))?;
-    let connection = SubmenuBuilder::new(app, "连接")
+    let reconnect = MenuItem::with_id(
+        app,
+        "reconnect",
+        t("重新连接", "Reconnect"),
+        true,
+        Some("CmdOrCtrl+R"),
+    )?;
+    let connection = SubmenuBuilder::new(app, t("连接", "Connection"))
         .item(&reconnect)
-        .text("browser", "在浏览器打开")
+        .text("browser", t("在浏览器打开", "Open in browser"))
         .separator()
-        .text("disconnect", "断开当前连接")
+        .text("disconnect", t("断开当前连接", "Disconnect"))
         .build()?;
     let activity = MenuItem::with_id(
         app,
         "activity",
-        "同步与活动…",
+        t("数据状态…", "Data status…"),
         true,
         Some("CmdOrCtrl+Shift+J"),
     )?;
     let service_settings = MenuItem::with_id(
         app,
         "service-settings",
-        "工作区设置…",
+        t("工作区设置…", "Workspace settings…"),
         true,
         Some("CmdOrCtrl+Alt+,"),
     )?;
-    let view = SubmenuBuilder::new(app, "工作区")
+    let view = SubmenuBuilder::new(app, t("工作区", "Workspace"))
         .item(&activity)
         .item(&service_settings)
         .build()?;
-    let edit = SubmenuBuilder::new(app, "编辑")
+    let edit = SubmenuBuilder::new(app, t("编辑", "Edit"))
         .undo()
         .redo()
         .separator()
@@ -1447,12 +1545,14 @@ fn main() {
         .setup(|app| {
             let root = app.path().app_data_dir()?;
             runtime::prepare_root(&root).map_err(std::io::Error::other)?;
+            // Read the language first: defaults and errors below are worded in it.
+            let app_language = AppLanguage::read(&root);
+            app_language.set_current();
             let (profile, config_error) = match connection::read_profile(&root) {
                 Ok(Some(profile)) => (profile, None),
                 Ok(None) => (Profile::default(), None),
                 Err(error) => (Profile::default(), Some(error)),
             };
-            let app_language = AppLanguage::read(&root);
             let reopen = sparkle::take_reopen(&root);
             let autostart = if config_error.is_none() {
                 reopen.or_else(|| {
@@ -1492,7 +1592,7 @@ fn main() {
             });
             app.manage(desktop.clone());
             sparkle::initialize(app.handle().clone());
-            install_menu(app.handle())?;
+            install_menu(app.handle(), app_language)?;
             // The native entry never navigates to HTTP. It remains a working
             // recovery surface even if the portfolio WebView loses its service.
             let window =

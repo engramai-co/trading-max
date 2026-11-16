@@ -56,7 +56,7 @@ function applyLanguage(choice) {
   const changed = language.apply(choice);
   $("app-language").value = language.value;
   if (!changed) return;
-  document.title = t("Trading Max · 设置", "Trading Max · Settings");
+  document.title = t("设置 · Trading Max", "Settings · Trading Max");
   text("page-title", activePage.textContent.trim());
   if (!$("feedback").hidden && feedbackCopy) text("feedback", feedbackCopy());
   renderRelease();
@@ -158,7 +158,7 @@ $("download-desktop").addEventListener("click", async () => {
   $("download-desktop").disabled = true; $("check-updates").disabled = true;
   try {
     await invoke("open_desktop_download", { version: release.desktop.version });
-    feedback(() => t("已在浏览器打开官方安装包下载。下载完成后，请退出 App，再在 Finder 中替换应用。资料与连接保留。", "The official installer opened in your browser. When the download finishes, quit the app and replace it in Finder. Data and connections are kept."));
+    feedback(() => t("已在浏览器打开官方安装包下载。下载完成后，请退出 App，再在 Finder 中替换应用。数据与连接保留。", "The official installer opened in your browser. When the download finishes, quit the app and replace it in Finder. Data and connections are kept."));
   } catch (error) {
     downloadUnavailable = true; $("download-desktop").hidden = true;
     feedback(String(error), true);

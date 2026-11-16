@@ -163,7 +163,7 @@ export function ReviewWorkspace() {
                       </Group>
                       {code === "C" && cfd && (
                         <p className="mx-form-help">
-                          {t("导入历史 · 已实现现金权益代理", "Imported history · realized cash equity proxy")}
+                          {t("导入历史 · 已实现现金权益代理", "Imported history · realised cash equity proxy")}
                         </p>
                       )}
                       <div className="mx-number">
@@ -178,7 +178,7 @@ export function ReviewWorkspace() {
                           code === "C"
                             ? [
                                 [
-                                  t("已实现净盈亏", "Net realized P&L"),
+                                  t("已实现净盈亏", "Net realised P&L"),
                                   currency(
                                     cfd?.netRealisedPnlGbp ??
                                       cfd?.realizedPnlGbp,
@@ -287,7 +287,7 @@ function ReviewPrerequisites({ cfd, onImports }: { cfd: boolean; onImports: () =
         : t("成交历史：在设置中连接账户，授予只读交易历史权限。", "Fills: connect the account in Settings with read-only history access.")}</li>
       <li>{cfd
         ? t("入金、出金与转账：导出同一区间的资金流水 CSV。导入后更新 CFD 复盘。", "Deposits, withdrawals and transfers: export the cash history CSV for the same dates. Update CFD review after importing.")
-        : t("入金、出金与估值历史：运行一次账户与流水更新。", "Cash flows and valuation history: run an Accounts & history update.")}</li>
+        : t("入金、出金与估值历史：运行一次账户与流水更新。", "Deposits, withdrawals and valuation history: run an Accounts & history update.")}</li>
     </ul>
     {cfd ? <button type="button" className="mx-index-retry" onClick={onImports}>{t("导入 CFD 历史", "Import CFD history")}</button>
       : <Link className="mx-text-link" href="/settings?tab=accounts">{t("设置账户连接", "Set up account connections")}</Link>}
@@ -321,7 +321,7 @@ function AccountJournal({
     { value: "outcome", label: t("投资结果", "Outcomes") },
     { value: "attribution", label: t("盈亏归因", "Attribution") },
     { value: "quality", label: t("交易质量", "Trade quality") },
-    { value: "behavior", label: t("行为分析", "Behavior") },
+    { value: "behavior", label: t("行为分析", "Behaviour") },
     { value: "strategy", label: t("策略风险", "Strategy risk") },
     { value: "phases", label: t("阶段与事件", "Phases & events") },
     { value: "risk", label: t("期末风险", "Ending risk") },
@@ -368,7 +368,7 @@ function AccountJournal({
   const pnl = money.net_pnl_gbp ?? money.netRealisedPnlGbp;
   const account = data.selectedAccount;
   const unavailable = Object.keys(review).length === 0;
-  const caveat = t("已实现现金权益", "Realized cash equity");
+  const caveat = t("已实现现金权益", "Realised cash equity");
   return (
     <>
       {!unavailable ? <Bento className="mx-review-bento">
@@ -382,8 +382,8 @@ function AccountJournal({
                   {t("期末价值", "Ending value")}
                   <Help label={caveat} tag={<Tag>{caveat}</Tag>}>
                     {t(
-                      "导入的 CFD 历史只能还原已实现的现金权益：不含当前未平仓市值，也不等于券商净值。",
-                      "Imported CFD history only rebuilds realized cash equity: it excludes open positions and is not broker NAV.",
+                      "导入的 CFD 历史只能还原已实现的现金权益：不含当前未平仓市值，也不等于券商账户价值。",
+                      "Imported CFD history only rebuilds realised cash equity: it excludes open positions and is not the broker account value.",
                     )}
                   </Help>
                 </>
@@ -405,14 +405,14 @@ function AccountJournal({
             tone={tone(pnl)}
           />
           <Metric
-            label={t("最大盈亏回撤", "Maximum P&L drawdown")}
+            label={t("最大盈亏回撤", "Max P&L drawdown")}
             value={currency(
               money.max_pnl_drawdown_gbp ?? money.maxRealisedPnlDrawdownGbp,
             )}
             tone="down"
           />
           <Metric
-            label={t("净资金流入", "Net cash contributed")}
+            label={t("净入金", "Net deposits")}
             value={currency(
               money.net_external_flows_gbp ?? money.accountCashFlowGbp,
             )}
@@ -473,7 +473,7 @@ function AccountJournal({
               title={t("盈亏的时间线", "The P&L timeline")}
               help={t(
                 "展示真实资金结果，不把入金误算成收益。",
-                "A record of financial outcomes, with contributions kept separate from returns.",
+                "A record of financial outcomes, with deposits kept separate from returns.",
               )}
             >
               <HistoryChart
@@ -581,7 +581,7 @@ function ReviewHighlights({
   const missing = t("记录不足", "Insufficient records");
   const cards = [
     {
-      title: t("已实现盈利贡献", "Leading realized gain"),
+      title: t("已实现盈利贡献", "Leading realised gain"),
       label:
         summary.contributor?.label ??
         (summary.hasInstruments
@@ -593,7 +593,7 @@ function ReviewHighlights({
       available: summary.hasInstruments,
     },
     {
-      title: t("已实现亏损拖累", "Leading realized loss"),
+      title: t("已实现亏损拖累", "Leading realised loss"),
       label:
         summary.detractor?.label ??
         (summary.hasInstruments
@@ -605,7 +605,7 @@ function ReviewHighlights({
       available: summary.hasInstruments,
     },
     {
-      title: cfd ? t("已实现盈亏变动最大阶段", "Largest realized P&L phase") : t("盈亏变动最大阶段", "Largest P&L phase"),
+      title: cfd ? t("已实现盈亏变动最大阶段", "Largest realised P&L phase") : t("盈亏变动最大阶段", "Largest P&L phase"),
       label: summary.phase
         ? formatDateSpan(summary.phase.start, summary.phase.end, locale)
         : missing,

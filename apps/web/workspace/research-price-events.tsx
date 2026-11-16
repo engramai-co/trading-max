@@ -51,7 +51,7 @@ export function PriceEventTrack({ days, openEarnings }: {
   const [selected, setSelected] = useState<string>();
   const day = days.find((event) => event.date === selected);
   const eventLabel = (kind: Event["kind"]) => kind === "split" ? t("拆股", "Split")
-    : kind === "dividend" ? t("股息", "Dividend") : t("财报", "Earnings");
+    : kind === "dividend" ? t("分红", "Dividend") : t("财报", "Earnings");
   if (!days.length) return null;
   return (
     <section className="mx-price-events" aria-label={t("事件时间轴", "Event timeline")}>
@@ -73,7 +73,7 @@ export function PriceEventTrack({ days, openEarnings }: {
             <li key={i}>
               <span>{fill.side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} · {fill.account.toUpperCase()}</span>
               <time dateTime={fill.at}>{formatDate(fill.at, locale, { dateStyle: "medium", timeStyle: "short", timeZone })}</time>
-              <span>{number(fill.quantity, 4)} {t("股", "shares")}</span>
+              <span>{number(fill.quantity, 4)} {number(fill.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}</span>
               <strong>{fill.amount == null || !fill.currency ? "—" : `${formatNumber(fill.amount, locale, { maximumFractionDigits: 4 })} ${fill.currency}`}</strong>
             </li>
           )) : day.marker && <li>

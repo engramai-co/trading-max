@@ -74,7 +74,7 @@ test.describe("allocation composition", () => {
     await expect(details).toContainText("3.3%");
     await expect(details).toContainText("Region 11");
     await expect(details).toContainText("Region 12");
-    await page.getByRole("tab", { name: "Industries", exact: true }).click();
+    await page.getByRole("tab", { name: "Sectors", exact: true }).click();
     await expect(details).toContainText("Technology");
     await expect(details).not.toContainText("United States");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -141,7 +141,7 @@ test.describe("company composition", () => {
     await expect(details).toContainText("29.0%");
     // A grouped slice must not add thousands of duplicate company rows to the DOM.
     await expect(details.locator("li")).toHaveCount(0);
-    await choices.getByRole("button", { name: "Unresolved & non-security assets", exact: false }).click();
+    await choices.getByRole("button", { name: "Unresolved & other assets", exact: false }).click();
     await expect(details).toContainText("£1,000.00");
     await expect(details).toContainText("10.0%");
     await expect(details).not.toContainText("Direct");
@@ -174,9 +174,9 @@ test.describe("company composition", () => {
   test("keeps the complete paginated company table and leaves portfolio weights unchanged when filtering", async ({ page, isMobile }) => {
     await openCompanies(page, longTail);
     const details = page.getByRole("region", { name: "Selected category details" });
-    const search = page.getByRole("textbox", { name: "Search underlying assets", exact: true });
+    const search = page.getByRole("textbox", { name: "Search underlying holdings", exact: true });
     // Phones page above and below the list, and each pager names its place.
-    const pages = page.getByLabel(isMobile ? "Underlying asset pages, below the list" : "Underlying asset pages", { exact: true });
+    const pages = page.getByLabel(isMobile ? "Underlying holding pages, below the list" : "Underlying holding pages", { exact: true });
     await expect(pages).toBeVisible();
     await expect(page.getByRole("button", { name: /Synthetic Company 140\b/ })).toHaveCount(0);
     // Showing all lifts paging over the same rows; paging returns on request.

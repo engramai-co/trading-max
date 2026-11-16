@@ -55,7 +55,7 @@ export function trackingDisplay(
   const name = t("一年跟踪差", "1-year tracking difference");
   const basis = t("份额净值总回报减去发行商披露的指数总回报", "Share-class NAV total return minus issuer-published benchmark total return");
   const period = tracking?.periodEnd ? t("截至 ", "As of ") + when(tracking.periodEnd) : t("期末未提供", "Period end unavailable");
-  const status = tracking?.state === "stale" ? t("已过期", "Stale") : undefined;
+  const status = tracking?.state === "stale" ? t("未更新", "Stale") : undefined;
   const hedge = (value: string | null | undefined) => value === "unhedged"
     ? t("未对冲", "Unhedged") : value ?? t("对冲未确认", "Hedging unconfirmed");
   const details = tracking ? [
@@ -82,8 +82,8 @@ export function overlapDisplay(reading: Pick<ETFReading, "overlap" | "issuer" | 
     display, status, fundCoverage, restCoverage,
     description: [
       t("组合重叠", "Portfolio overlap") + " " + display,
-      t("按相同证券逐项取较小权重再相加；其余为 Invest 与 ISA 的直接和穿透持仓，排除同一份额类别、现金和 CFD。",
-        "Sum of the smaller weights for identical securities. The rest includes direct and look-through Invest and ISA positions, excluding the same share class, cash, and CFDs."),
+      t("按相同持仓逐项取较小权重再相加；其余为 Invest 与 ISA 的直接和穿透持仓，排除同一份额类别、现金和 CFD。",
+        "Sum of the smaller weights for identical holdings. The rest includes direct and look-through Invest and ISA holdings, excluding the same share class, cash, and CFDs."),
       overlap && [
         t("覆盖率 · 基金 / 其余组合", "Coverage · fund / rest") + `: ${fundCoverage} / ${restCoverage}`,
         t("持仓日期 · 基金 / 其余基金", "Holdings dates · fund / other funds") + `: ${fundDate} / ${otherDates}`,

@@ -2,11 +2,11 @@
 
 import { useMediaQuery } from "@mantine/hooks";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
-import { Empty, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
+import { Empty, Help, Pending, QueryError, Tag, useCopy, useEscapeLayer } from "./foundation";
 import { CHINA_MAP_INDEX, globalHeatStyle, globalMarketReading, useGlobalContribution, type GlobalMapMarket } from "./global-markets-data";
 import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
 import Link from "./link";
@@ -28,7 +28,8 @@ const MAP: Record<MapMarket, Label> = {
   eu: { name: ["欧洲", "Europe"], label: [439, 57], phone: [450, 78] },
   ch: { name: ["瑞士", "Switzerland"], label: [451, 115], point: [415, 75], phone: [459, 171] },
   jp: { name: ["日本", "Japan"], label: [718, 68], point: [671, 101], phone: [723, 35] },
-  cn: { name: ["中国", "China"], label: [600, 112], phone: [600, 93] },
+  // China's phone label sits west of the coast, so its target stops short of Korea and Japan.
+  cn: { name: ["中国", "China"], label: [600, 112], phone: [585, 93] },
   kr: { name: ["韩国", "Korea"], label: [727, 109], point: [650, 101], phone: [723, 127] },
   hk: { name: ["香港", "Hong Kong"], label: [719, 156], point: [637, 138], phone: [723, 218] },
   tw: { name: ["台湾", "Taiwan"], label: [720, 202], point: [654, 139], phone: [723, 307] },
@@ -61,7 +62,38 @@ const EM_MARKETS = new Set<Market>(["cn", "kr", "tw", "in"]);
 
 type MapAnchor = HTMLAnchorElement | SVGAElement;
 
-type Inspection = { market: MapMarket; x: number; y: number; below: boolean };
+/** Islands too small to tap on a phone get a wider, invisible target around their outline. */
+const TOUCH_OUTLINE: Partial<Record<MapMarket, number>> = { jp: 16, kr: 12 };
+
+type Box = { left: number; top: number; right: number; bottom: number };
+type Inspection = { market: MapMarket; anchor: Box };
+
+/**
+ * Where the inspection card sits: above, below, right or left of the market, inside the
+ * map, covering the fewest other market labels. Ties keep that order.
+ */
+export function placeInspection(anchor: Box, size: { width: number; height: number }, bounds: { width: number; height: number }, labels: Box[]) {
+  const gap = 8, pad = 8;
+  const { width, height } = size;
+  const clampX = (x: number) => Math.max(pad, Math.min(x, bounds.width - width - pad));
+  const clampY = (y: number) => Math.max(pad, Math.min(y, bounds.height - height - pad));
+  const centreX = (anchor.left + anchor.right) / 2, centreY = (anchor.top + anchor.bottom) / 2;
+  const candidates = [
+    { x: clampX(centreX - width / 2), y: anchor.top - gap - height },
+    { x: clampX(centreX - width / 2), y: anchor.bottom + gap },
+    { x: anchor.right + gap, y: clampY(centreY - height / 2) },
+    { x: anchor.left - gap - width, y: clampY(centreY - height / 2) },
+  ];
+  const inside = (c: { x: number; y: number }) => c.x >= pad - 0.5 && c.y >= pad - 0.5
+    && c.x + width <= bounds.width - pad + 0.5 && c.y + height <= bounds.height - pad + 0.5;
+  const overlap = (c: { x: number; y: number }, box: Box) =>
+    Math.max(0, Math.min(c.x + width, box.right) - Math.max(c.x, box.left)) * Math.max(0, Math.min(c.y + height, box.bottom) - Math.max(c.y, box.top));
+  // Covering the market itself is worse than covering a neighbour's label.
+  const cost = (c: { x: number; y: number }) => labels.reduce((sum, box) => sum + overlap(c, box), 0) + overlap(c, anchor) * 4;
+  const fitting = candidates.filter(inside);
+  const best = fitting.reduce<{ x: number; y: number } | null>((chosen, c) => !chosen || cost(c) < cost(chosen) ? c : chosen, null);
+  return best ?? { x: clampX(centreX - width / 2), y: clampY(anchor.bottom + gap) };
+}
 
 function tone(value: number) {
   return value < 0 ? "down" : value > 0 ? "up" : "flat";
@@ -75,6 +107,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
   const [inspection, setInspection] = useState<Inspection | null>(null);
+  const [placement, setPlacement] = useState<{ x: number; y: number } | null>(null);
   const mapHost = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const detailLink = useRef<HTMLAnchorElement>(null);
@@ -131,19 +164,46 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   };
   const inspect = (market: MapMarket, node: MapAnchor, pin = false) => {
     const host = mapHost.current?.getBoundingClientRect();
-    const hits = Array.from(node.querySelectorAll<SVGRectElement>(".mx-global-hit"));
-    const hit = hits.map((item) => item.getBoundingClientRect()).find((box) => box.width > 0);
-    if (!host || !hit) return;
+    // The card keeps clear of the market's visible label and pin.
+    const parts = Array.from(node.querySelectorAll<SVGGraphicsElement>(".mx-global-hit, .mx-global-pin"))
+      .map((item) => item.getBoundingClientRect()).filter((box) => box.width > 0);
+    if (!host || !parts.length) return;
     cancelDismiss();
     pinned.current = pin;
     trigger.current = node;
-    const below = hit.top < 135 || hit.top - host.top < 130;
     setInspection({
-      market, below,
-      x: hit.left + hit.width / 2 - host.left,
-      y: (below ? hit.bottom : hit.top) - host.top,
+      market,
+      anchor: {
+        left: Math.min(...parts.map((box) => box.left)) - host.left,
+        top: Math.min(...parts.map((box) => box.top)) - host.top,
+        right: Math.max(...parts.map((box) => box.right)) - host.left,
+        bottom: Math.max(...parts.map((box) => box.bottom)) - host.top,
+      },
     });
   };
+  useEscapeLayer(inspection != null, () => {
+    // Focus inside the card goes back to the market that opened it.
+    if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
+    close();
+  });
+  useLayoutEffect(() => {
+    const card = popover.current, host = mapHost.current;
+    if (!inspection || !card || !host) {
+      setPlacement(null);
+      return;
+    }
+    const bounds = host.getBoundingClientRect();
+    const labels = Array.from(host.querySelectorAll<SVGTextElement>(".mx-global-region text"))
+      .filter((text) => text.closest(".mx-global-region")?.getAttribute("data-market") !== inspection.market)
+      .map((text) => text.getBoundingClientRect()).filter((box) => box.width > 0)
+      .map((box) => ({ left: box.left - bounds.left, top: box.top - bounds.top, right: box.right - bounds.left, bottom: box.bottom - bounds.top }));
+    setPlacement(placeInspection(inspection.anchor, { width: card.offsetWidth, height: card.offsetHeight },
+      { width: bounds.width, height: bounds.height }, labels));
+  }, [inspection]);
+  useEffect(() => {
+    // A card opened by a tap or click stays in view, above the phone dock.
+    if (placement && pinned.current) popover.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [placement]);
   const deferDismiss = () => {
     cancelDismiss();
     if (!pinned.current) closeTimer.current = setTimeout(close, 240);
@@ -183,23 +243,18 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       <header className="mx-global-lead">
         <div className="mx-global-heading">
           <h2 id="mx-global-title">{title}</h2>
-          <Help label={title} tag={<Tag>{t("估算", "Estimate")}</Tag>}>
-            <p>{t("权重来自 iShares MSCI ACWI UCITS ETF（SSAC）持仓，按所在地汇总。", "Weights come from iShares MSCI ACWI UCITS ETF (SSAC) holdings, grouped by location.")}
-              {answer?.weightsAsOf && <> {t("持仓截至 ", "Holdings as of ")}{formatCalendarDate(answer.weightsAsOf, locale)}.</>}
-            </p>
-            <p>{t("已单列的发达市场：权重 × 主要指数的本币涨跌。新兴市场：合计权重 × MSCI EM 的美元涨跌。以 MSCI 全球的最近一次收盘划分交易日。新一轮尚未开盘的市场贡献为零。", "For each listed developed market: weight × local-currency move in its main index. For emerging markets: combined weight × the USD move in MSCI EM. The latest MSCI ACWI close separates global sessions. Markets yet to open in the current session contribute zero.")}</p>
+          <Help label={title} tag={<Tag tone="warn">{t("估算", "Estimate")}</Tag>}
+            basis={<>{t("权重来自 iShares MSCI ACWI UCITS ETF（SSAC）持仓，按所在地汇总", "Weights come from iShares MSCI ACWI UCITS ETF (SSAC) holdings, grouped by location")}
+              {answer?.weightsAsOf && <>{t("，持仓截至 ", ", as of ")}{formatCalendarDate(answer.weightsAsOf, locale)}</>}
+              {t("。以 MSCI 全球的最近一次收盘划分交易日。", ". The latest MSCI ACWI close separates global sessions.")}</>}>
+            <p>{t("已单列的发达市场：权重 × 主要指数的本币涨跌。新兴市场：合计权重 × MSCI EM 的美元涨跌。尚未开盘的市场贡献为零。", "For each listed developed market: weight × local-currency move in its main index. For emerging markets: combined weight × the USD move in MSCI EM. Markets yet to open contribute zero.")}</p>
             <p>{t("汇率与其他 = MSCI 全球涨跌减去已列贡献，包含汇率、未覆盖市场和估算误差。", "Currency and other is the MSCI ACWI move less the listed contributions. It includes currency effects, markets outside the estimate and approximation error.")}</p>
           </Help>
         </div>
         {total != null && <div className="mx-global-move" data-tone={tone(total)}>{change(total)}</div>}
         <p className="mx-global-colour-key">{t("地图颜色：各市场指数的本币涨跌", "Map colours: local index moves")}</p>
       </header>
-      <div ref={mapHost} className="mx-global-map" data-testid="global-map" onKeyDown={(event) => {
-        if (event.key !== "Escape" || !inspection) return;
-        event.preventDefault();
-        if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
-        close();
-      }}>
+      <div ref={mapHost} className="mx-global-map" data-testid="global-map">
         <svg viewBox={wide ? WIDE_WORLD_VIEWBOX : WORLD_VIEWBOX} preserveAspectRatio="xMidYMid meet" role="group" aria-label={t("全球市场地图", "World market map")}>
           <path className="mx-global-land" d={WORLD_LAND} fillRule="evenodd" />
           {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, point }]) => {
@@ -236,6 +291,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
                 }
               }}>
               {market !== "hk" && <path className="mx-global-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
+              {market !== "hk" && TOUCH_OUTLINE[market] && <path className="mx-global-touch" d={MARKET_PATHS[market]} style={{ strokeWidth: TOUCH_OUTLINE[market] }} />}
               {point && <circle className="mx-global-pin" cx={point[0]} cy={point[1]} r={market === "hk" ? 4.5 : 3.4} />}
               <MapLabel name={name(market)} position={label} point={point} />
               <MapLabel name={name(market)} position={phone} point={point ?? label} phone />
@@ -244,8 +300,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         </svg>
         {inspection && <div
           ref={popover} id="mx-global-inspection" className="mx-global-inspection"
-          data-below={inspection.below || undefined}
-          style={{ "--mx-inspect-x": `${inspection.x}px`, "--mx-inspect-y": `${inspection.y}px` } as CSSProperties}
+          style={placement ? { left: placement.x, top: placement.y } : { visibility: "hidden" }}
           onPointerEnter={cancelDismiss} onPointerLeave={() => {
             if (!popover.current?.contains(document.activeElement)) deferDismiss();
           }}
@@ -254,12 +309,17 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
               (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.matches(".mx-global-region"))) return;
             close();
           }}>
-          <strong>{name(inspection.market)}</strong>
-          <span>{t(...INDEX_NAMES[MAP_INDEX[inspection.market]])} · {inspectedStatus ?? change(inspectedMove?.move)}
-            {inspectedStatus && inspectedMove?.move != null && !inspectedMove?.notOpen && ` · ${change(inspectedMove?.move)}`}
-          </span>
-          <span>{inspectedContribution == null
-            ? contributionText(inspection.market) : t("贡献 ", "Contribution ") + pp(inspectedContribution)}</span>
+          <div className="mx-global-inspect-head">{name(inspection.market)} · {t(...INDEX_NAMES[MAP_INDEX[inspection.market]])}</div>
+          {/* Not open hides the move, flat keeps it in ink, no quote shows none. */}
+          <div className="mx-global-inspect-move"
+            data-tone={inspectedMove?.move != null && !inspectedMove.notOpen && !inspectedStatus ? tone(inspectedMove.move) : undefined}>
+            {inspectedMove?.move == null || inspectedMove.notOpen ? <span data-status="">{inspectedStatus}</span>
+              : <>{change(inspectedMove.move)}{inspectedStatus && <span data-status="">{inspectedStatus}</span>}</>}
+          </div>
+          <dl className="mx-global-inspect-rows">
+            <div><dt>{t("贡献", "Contribution")}</dt>
+              <dd>{inspectedContribution == null ? contributionText(inspection.market) : pp(inspectedContribution)}</dd></div>
+          </dl>
           <Link ref={detailLink} href={url(inspection.market)} prefetch={false}
             onClick={(event) => open(event, inspection.market)} onKeyDown={(event) => {
               if (event.key !== "Tab") return;

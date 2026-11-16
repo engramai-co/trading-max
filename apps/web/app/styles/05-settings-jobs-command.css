@@ -183,6 +183,19 @@
   color: var(--mx-muted);
   font-size: 12px;
 }
+/* A search dialog opens on its field: closing sits on the field's row, with no header above it. */
+.mx-search-body {
+  padding-top: var(--mb-padding, var(--mantine-spacing-md));
+}
+.mx-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mx-search-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
 .mx-disclosure {
   border: 1px solid var(--mx-border);
   border-radius: 7px;

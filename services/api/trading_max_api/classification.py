@@ -91,7 +91,7 @@ def category_for_classification(
 def unclassified_category(*, order: int = 999) -> WatchlistCategory:
     return WatchlistCategory(
         id=UNCLASSIFIED_CATEGORY_ID,
-        label_zh="待确认分类",
+        label_zh="未分类",
         label_en="Unclassified",
         description_zh="等待公司业务资料足够后映射到 GICS Sub-Industry",
         description_en="Awaiting sufficient company metadata for GICS mapping",

@@ -160,7 +160,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
             onClick={() => void startAnalysisRun({ lens, ticker })}
           >
             {active
-              ? t("正在分析", "Analyzing")
+              ? t("正在分析", "Analysing")
               : t("生成最新分析", "Generate analysis")}
           </Button>
         </Stack>

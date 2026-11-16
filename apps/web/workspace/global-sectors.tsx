@@ -41,15 +41,15 @@ export function GlobalViewSwitch({ value, onChange, query }: {
   const { locale } = useLocale();
   const answer = query.data;
   const help = answer && value === "sectors";
-  const warning = query.isError ? t("行业报价更新失败", "Sector quotes couldn’t refresh")
+  const warning = query.isError ? t("板块报价更新失败", "Sector quotes couldn’t refresh")
     : answer?.weightsStale ? t("权重待更新", "Weights stale") : null;
   return <div className="mx-global-view-switch"><Segments label={t("全球视图", "Global view")} value={value}
     onChange={onChange} options={[
       { value: "regions", label: t("地区", "Regions") },
-      { value: "sectors", label: t("行业", "Sectors") },
+      { value: "sectors", label: t("板块", "Sectors") },
     ]} />
     {help && <Help label={t("全球板块地图", "Global sector map")} tag={warning ? <Tag tone="warn">{warning}</Tag> : undefined}>
-      <p>{t("涨跌来自 MSCI World 的美元价格指数。面积按 iShares SWDA 持仓汇总的行业权重绘制。贡献以行业权重乘以涨跌幅估算。",
+      <p>{t("涨跌来自 MSCI World 的美元价格指数。面积按 iShares SWDA 持仓汇总的板块权重绘制。贡献以板块权重乘以涨跌幅估算。",
         "Moves use MSCI World USD price indices. Tile area follows sector weights from iShares SWDA holdings. Estimated contribution is the sector weight multiplied by its move.")}</p>
       {answer.weightsAsOf && <p>{t("权重截至 ", "Weights as of ") + formatCalendarDate(answer.weightsAsOf, locale)}</p>}
     </Help>}
@@ -103,13 +103,13 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
   const answer = query.data;
   const adapted = useMemo(() => answer ? adaptWorldSectors(answer) : null, [answer]);
   if (demo) return <section className="mx-panel">
-    <Empty headingLevel={2} title={t("演示不包含全球行业行情", "Global sector quotes aren’t included in the demo")} />
+    <Empty headingLevel={2} title={t("演示不包含全球板块行情", "Global sector quotes aren’t included in the demo")} />
   </section>;
   if (query.isPending) return <Pending />;
   if (!answer || !adapted) return <QueryError retry={query.refetch} />;
   const { board, groups, strongest } = adapted;
   if (!groups.length) return <section className="mx-panel">
-    <Empty headingLevel={2} title={t("暂无全球行业权重", "Global sector weights are unavailable")} />
+    <Empty headingLevel={2} title={t("暂无全球板块权重", "Global sector weights are unavailable")} />
   </section>;
   const explicit = groups.find(({ key }) => key === sector);
   const group = explicit ?? groups.find(({ key }) => key === strongest);

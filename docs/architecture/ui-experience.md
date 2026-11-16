@@ -13,16 +13,16 @@ typed snapshots, and provider boundaries support the interface independently.
 
 | Workspace | Questions and interactions |
 | --- | --- |
-| Overview | Account value, cash, unrealized P&L, period history, today's US sectors, holdings with allocation and research readings |
-| Holdings | Account filters, search and sort, position details; companies, countries, industries and ETF source coverage |
-| Performance | Money and contributions, rebased portfolio and benchmark returns, monthly TWR, drawdown and risk statistics |
+| Overview | Account value, cash, unrealised P&L, period history, today's US sectors, holdings with allocation and research readings |
+| Holdings | Account filters, search and sort, holding details; companies, countries, sectors and ETF source coverage |
+| Performance | Money and net deposits, rebased portfolio and benchmark returns, monthly TWR, drawdown and risk statistics |
 | Markets | Global and regional indices, index history and comparisons, and sector moves where a sector board is available |
-| Review | Account selection, money reconciliation, realized attribution, trade quality, phases and ending risk |
-| Research | A searchable list and seven views: overview, financials/business, price/technicals, estimates/events, valuation, options and journal |
+| Review | Account selection, money reconciliation, realised attribution, trade quality, phases and ending risk |
+| Research | Stocks, funds and indices in one research list; seven views for a company, fund views for a fund and index views for an index |
 | Data status | Readiness, worker and snapshot status, queued updates, task history and stage details |
-| Connections | Broker credentials, optional model providers and per-lens assignments, CFD imports, schedules and personal preferences |
+| Settings | Broker credentials, optional model providers and per-lens assignments, CFD imports, schedules and personal preferences |
 
-Security research includes a price/volume chart with candle and line modes,
+Research includes a price/volume chart with candle and line modes,
 moving averages and actual account trade markers. Financial statements separate
 annual and quarterly periods and preserve per-share units. Valuation separates
 reported values from forecasts, with scenario comparison, sensitivity analysis and

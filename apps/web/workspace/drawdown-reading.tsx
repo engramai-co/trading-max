@@ -22,8 +22,10 @@ export function DrawdownReading({ episode, dates, basis }: {
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const displayDate = (value: string) => value.includes("T")
-    ? formatDateTime(value, locale, timeZone) : formatCalendarDate(value, locale);
+  // Daily series (date-only or midnight UTC stamps) read as calendar days, never "00:00".
+  const daily = dates.every((value) => !value.includes("T") || /T00:00(?::00(?:\.0+)?)?(?:Z|\+00:00)$/.test(value));
+  const displayDate = (value: string) => daily
+    ? formatCalendarDate(value.slice(0, 10), locale) : formatDateTime(value, locale, timeZone);
   const marks = drawdownMarks(episode, dates, t);
   const days = episode?.recovery != null
     ? Math.ceil((Date.parse(dates[episode.recovery]) - Date.parse(dates[episode.peak])) / 86_400_000) : null;
@@ -32,7 +34,7 @@ export function DrawdownReading({ episode, dates, basis }: {
     {episode && <dl>
       {marks.map((mark) => <div key={mark.name}><dt>{mark.name}</dt><dd><time dateTime={mark.date}>{displayDate(mark.date)}</time></dd></div>)}
       <div><dt>{t("回撤", "Drawdown")}</dt><dd className="mx-down">{percent(episode.depth, false, 2)}</dd></div>
-      {days != null ? <div><dt>{t("持续时间", "Duration")}</dt><dd>{days} {t("天", "days")}</dd></div>
+      {days != null ? <div><dt>{t("持续时间", "Duration")}</dt><dd>{days} {days === 1 ? t("天", "day") : t("天", "days")}</dd></div>
         : <div><dt>{t("状态", "Status")}</dt><dd>{episode.state === "interrupted"
           ? t("记录缺失，无法确认恢复", "Recovery unverified across a gap")
           : t("尚未恢复", "Not yet recovered")}</dd></div>}

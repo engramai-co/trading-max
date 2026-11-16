@@ -8,6 +8,7 @@ import type { HealthDetails } from "@/lib/types";
 import { api } from "./data";
 import { auxiliaryPage } from "./desktop-routing";
 import { activityState } from "./desktop-status";
+import { documentTitle, useDocumentTitle } from "./document-title";
 import { useCopy } from "./foundation";
 import { NavigationHint } from "./navigation-group";
 import Link from "./link";
@@ -21,18 +22,18 @@ export function DesktopStatus({ localWorkspace = false, demonstration = false }:
   const t = useCopy();
   const query = useActivity(!demonstration);
   const state = activityState(query.data ?? null, localWorkspace);
-  const label = demonstration ? t("同步与活动", "Sync & activity") : query.isError ? t("同步状态不可用", "Sync status unavailable") : query.isPending ? t("正在检查同步状态", "Checking sync status")
+  const label = demonstration ? t("数据状态", "Data status") : query.isError ? t("同步状态不可用", "Sync status unavailable") : query.isPending ? t("正在检查同步状态", "Checking sync status")
     : state.tone === "degraded" || state.tone === "unavailable" ? t("同步需要检查", "Sync needs attention")
     : state.tone === "setup" ? t("等待首次同步", "Awaiting first sync")
-    : state.running ? t("正在同步", "Syncing") : t("同步与活动", "Sync & activity");
+    : state.running ? t("正在同步", "Syncing") : t("数据状态", "Data status");
   const warning = !demonstration && (query.isError || state.tone === "degraded" || state.tone === "unavailable");
-  return <nav className="mx-desktop-tools" aria-label={t("工作台管理", "Workspace management")}>
+  return <nav className="mx-desktop-tools" aria-label={t("工作区管理", "Workspace management")}>
     <NavigationHint label={label}>
       <Link href="/health" aria-label={label} className={"mx-desktop-status" + (warning ? " mx-desktop-warning" : "")}>
         {demonstration ? <Info size={24} aria-hidden="true" /> : warning ? <WarningCircle size={24} aria-hidden="true" /> : state.tone === "setup" ? <Info size={24} aria-hidden="true" /> : state.running ? <Pulse size={24} aria-hidden="true" /> : <CloudCheck size={24} aria-hidden="true" />}
       </Link>
     </NavigationHint>
-    <NavigationHint label={t("导入", "Import")}><Link href="/imports" aria-label={t("导入", "Import")}><UploadSimple size={24} aria-hidden="true" /></Link></NavigationHint>
+    <NavigationHint label={t("导入记录", "Import records")}><Link href="/imports" aria-label={t("导入记录", "Import records")}><UploadSimple size={24} aria-hidden="true" /></Link></NavigationHint>
     <NavigationHint label={t("工作区设置", "Workspace settings")}><Link href="/settings" aria-label={t("工作区设置", "Workspace settings")}><GearSix size={24} aria-hidden="true" /></Link></NavigationHint>
   </nav>;
 }
@@ -43,11 +44,13 @@ export function DesktopSurface({ children, localWorkspace, demonstration }: { ch
   const profile = useWorkspaceProfile();
   const surface = auxiliaryPage(pathname);
   const name = profile.data?.displayName || t("当前工作区", "Current workspace");
+  useDocumentTitle(documentTitle(surface === "activity" ? t("数据状态", "Data status")
+    : surface === "imports" ? t("导入记录", "Import records") : t("工作区设置", "Workspace settings")));
   return <div className={"mx-desktop-surface mx-desktop-" + surface}>
     <a className="mx-skip" href="#main-content">{t("跳到正文", "Skip to content")}</a>
     <header className="mx-desktop-source">
-      <div><strong>{name}</strong><span>{demonstration ? t("演示数据 · 只读", "Demo data · Read-only") : localWorkspace ? t("本机工作区", "Local workspace") : t("当前服务", "Selected service")}</span></div>
-      <Link href="/" className="mx-text-link">{t("回到工作台", "Back to workspace")}<ArrowRight size={16} /></Link>
+      <div><strong>{name}</strong><span>{demonstration ? t("演示数据 · 只读", "Demo data · Read-only") : localWorkspace ? t("本地工作区", "Local workspace") : t("当前服务", "Current service")}</span></div>
+      <Link href="/" className="mx-text-link">{t("回到工作区", "Back to workspace")}<ArrowRight size={16} /></Link>
     </header>
     <main id="main-content" tabIndex={-1}>{children}</main>
   </div>;

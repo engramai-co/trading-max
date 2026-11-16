@@ -39,14 +39,14 @@ export type LedgerRow = {
 export type LedgerGroup = { kind: "stocks" | "funds"; rows: LedgerRow[] };
 
 export function readingColumns(kind: LedgerGroup["kind"], t: Copy, day: string) {
-  const technical = t("技术", "Technical");
+  const technical = t("技术评分", "Technical score");
   return [
     { key: "day", label: day, short: day },
-    { key: "pnl", label: t("浮动盈亏", "Unrealized"), short: t("浮动盈亏", "P&L") },
+    { key: "pnl", label: t("浮动盈亏", "Unrealised P&L"), short: t("浮动盈亏", "Unrealised") },
     { key: "score", label: technical, short: technical },
     kind === "funds"
-      ? { key: "tracking" as const, label: t("跟踪差", "Tracking diff."), short: t("跟踪差", "Tracking") }
-      : { key: "upside" as const, label: t("模型空间", "Model upside"), short: t("模型空间", "Upside") },
+      ? { key: "tracking" as const, label: t("跟踪差", "Tracking diff."), short: t("跟踪差", "Tracking diff.") }
+      : { key: "upside" as const, label: t("模型空间", "Model upside"), short: t("模型空间", "Model upside") },
   ] as const;
 }
 

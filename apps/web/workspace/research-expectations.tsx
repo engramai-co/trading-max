@@ -4,10 +4,12 @@ import { researchPriceQuery } from "./research-queries";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
+import { formatCalendarDate, formatDate, formatDateTime } from "@/ui/formatters";
 import { ratingSummary, recommendationChange, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
-import { candleSeries, candleValues, priceBarReading } from "./research-price-candles";
+import { candleSeries, candleValues, priceReading } from "./research-price-candles";
+import { fixed, volume } from "./reading-format";
+import { DataBasis } from "./reading-card";
 import { currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { inRange } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
@@ -121,6 +123,12 @@ export function AnalystExpectations({
     ? inRange(prices.data?.points ?? [], "1Y")
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
+  const days = points.map((point) => point.date.slice(0, 10));
+  // The price axis names months on their first trading day; the first label and each January carry the year.
+  const monthLabel = (day: string, index: number) => index === 0
+    ? formatDate(day, locale, { year: "numeric", month: "short", timeZone: "UTC" })
+    : day.slice(5, 7) === "01" ? day.slice(0, 4)
+      : formatDate(day, locale, { month: "short", timeZone: "UTC" });
   const candles = candleValues(points);
   const hasCandles = candles.some((bar) => bar[0] != null);
   const targetAsOf = str(analyst.asOf);
@@ -129,7 +137,7 @@ export function AnalystExpectations({
     .sort((a, b) => a.date.localeCompare(b.date));
   const targetDates = [...new Set(history.map((row) => row.date))];
   const byDate = new Map(targetDates.map((date) => [date, history.filter((row) => row.date === date)]));
-  const priceLabels = { open: t("开盘", "Open"), high: t("最高", "High"), low: t("最低", "Low"), close: t("收盘", "Close") };
+  const priceLabels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   // A broker price carries its own time; a market spot carries its session date.
   const spotDate = price?.source === "broker" && price.asOf
     ? price.asOf.slice(0, 10)
@@ -192,10 +200,10 @@ export function AnalystExpectations({
             </strong>
             <span>
               {summary.complete
-                ? summary.knownTotal + t(" 项评级", " ratings")
+                ? summary.knownTotal + (summary.knownTotal === 1 ? t(" 项评级", " rating") : t(" 项评级", " ratings"))
                 : t("评级覆盖不完整", "Incomplete coverage")}
               {historicalPeriod != null &&
-                " · " + historicalPeriod + t(" 个月前", " months ago")}
+                " · " + historicalPeriod + (historicalPeriod === 1 ? t(" 个月前", " month ago") : t(" 个月前", " months ago"))}
             </span>
           </div>
           <ConsensusGauge
@@ -243,9 +251,13 @@ export function AnalystExpectations({
                 <p>
                   {t(
                     "中位数是排序后的中间值；均值是平均值，较易受极端目标影响。涨跌幅按目标价 ÷ 现价 − 1 计算。目标价与模型估值是独立参考。",
-                    "The median is the middle target; the mean is the average and is more sensitive to extremes. Changes use target ÷ spot − 1. Analyst targets are independent of model valuations.",
+                    "The median is the middle target; the mean is the average and is more sensitive to extremes. Changes use target ÷ current price − 1. Analyst targets are independent of model valuations.",
                   )}
                 </p>
+                <DataBasis>{t(
+                  "价格为拆股及分红调整后的日线，币种见标题右侧；目标价是分析师目标的快照，日期见图上方。读数里的涨跌相对前一交易日收盘。",
+                  "Daily split- and dividend-adjusted prices in the currency beside the title; targets are a snapshot of analyst targets, dated above the chart. A reading's change is from the previous close.",
+                )}</DataBasis>
               </Help>
             </div>
             <Tag>{code}</Tag>
@@ -263,7 +275,7 @@ export function AnalystExpectations({
               }
             >
               <b>{percent(median.change, true)}</b>{" "}
-              {t("相对现价", "versus spot")}
+              {t("相对现价", "vs current price")}
             </span>
           </div>
           <div className="mx-target-chart-heading">
@@ -293,9 +305,15 @@ export function AnalystExpectations({
               readout={points.length ? {
                 gridIndexes: [0],
                 positions: points.flatMap((_, index) => !hasCandles || candles[index][0] != null ? [index] : []),
-                latest: currency(points.at(-1)!.close, code, 2),
-                point: (index) => priceBarReading(points[index], formatCalendarDate(points[index].date, locale), code,
-                  priceLabels, (amount) => number(amount, 2), hasCandles).join("\n"),
+                latest: fixed(points.at(-1)!.close),
+                read: (index) => priceReading({
+                  bar: points[index],
+                  previous: index > 0 ? points[index - 1].close : null,
+                  time: formatCalendarDate(points[index].date, locale),
+                  candle: hasCandles,
+                  volume: points[index].volume == null ? undefined : volume(points[index].volume, locale),
+                  labels: priceLabels,
+                }),
                 gap: (index) => hasCandles && candles[Math.round(index)]?.[0] == null,
               } : undefined}
               option={(c) => ({
@@ -306,15 +324,15 @@ export function AnalystExpectations({
                 xAxis: [
                   {
                     type: "category",
-                    data: points.map((p) => p.date.slice(0, 10)),
+                    data: days,
                     boundaryGap: hasCandles,
                     axisLabel: {
                       color: c.axis,
                       fontSize: 11,
                       showMinLabel: true,
-                      showMaxLabel: true,
                       hideOverlap: true,
-                      formatter: (v: string) => v.slice(2, 7),
+                      interval: (index: number, day: string) => index === 0 || day.slice(0, 7) !== days[index - 1]?.slice(0, 7),
+                      formatter: monthLabel,
                     },
                     axisTick: { show: false },
                     axisLine: { lineStyle: { color: c.border } },
@@ -397,13 +415,6 @@ export function AnalystExpectations({
                         formatter:
                           targetLabels[row.key] + "\n" + number(row.value, 2),
                       },
-                      tooltip: {
-                        trigger: "item" as const,
-                        formatter:
-                          targetLabels[row.key] +
-                          ": " +
-                          currency(row.value, code, 2),
-                      },
                       labelLayout: { hideOverlap: true },
                     })),
                 ],
@@ -412,7 +423,7 @@ export function AnalystExpectations({
           </div>
           <div className="mx-target-dateline">
             <span>
-              {t("现价", "Spot")}{" "}
+              {t("现价", "Current price")}{" "}
               <strong>{currency(targets.spot, code, 2)}</strong>
             </span>
             <span>
@@ -457,7 +468,7 @@ export function AnalystExpectations({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row">{t("相对现价", "vs spot")}</th>
+                  <th scope="row">{t("相对现价", "vs current price")}</th>
                   {targets.rows.map((row) => (
                     <td
                       key={row.key}
@@ -479,9 +490,10 @@ export function AnalystExpectations({
             <Plot research height={195} label={t("机构历史目标价", "Historical firm targets")} readout={{
               positions: targetDates.map((_, index) => index),
               latest: t("机构记录", "Firm records"),
-              point: (index) => {
+              // One row per firm; past three, the card counts the rest.
+              read: (index) => {
                 const date = targetDates[index];
-                return [formatCalendarDate(date, locale), ...byDate.get(date)!.map((row) => `${row.firm}: ${currency(row.target, code, 2)}`)].join("\n");
+                return { time: formatCalendarDate(date, locale), groups: [byDate.get(date)!.map((row) => ({ label: row.firm, value: fixed(row.target) }))] };
               },
             }} option={(c) => ({
               grid: { top: 14, right: 16, bottom: 27, left: 45 },

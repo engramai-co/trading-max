@@ -24,7 +24,7 @@ test("desktop settings retain a draft through a publication outage and recovery"
   });
 
   await page.goto("/desktop/settings");
-  await page.getByRole("button", { name: "Connect", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect account", exact: true }).first().click();
   const dialog = page.getByRole("dialog");
   const draft = dialog.getByLabel(/^API Key ID/);
   await draft.fill("synthetic-test-id");
@@ -129,7 +129,7 @@ test.describe("web build changes", () => {
     await expect.poll(() => checks).toBe(1);
     await page.evaluate(() => { document.body.dataset.oldDocument = "yes"; });
     const holdings = page.getByRole("navigation", { name: isMobile ? "Quick navigation" : "Primary navigation" })
-      .getByRole("link", { name: isMobile ? "Assets" : "Holdings", exact: true });
+      .getByRole("link", { name: "Holdings", exact: true });
     await holdings.click();
     await expect(page).toHaveURL(/\/holdings$/);
     await expect(page.locator("body")).toHaveAttribute("data-old-document", "yes");
@@ -149,7 +149,7 @@ test.describe("web build changes", () => {
       await saved;
     }
 
-    await page.getByRole("button", { name: "Search pages or securities", exact: true }).click();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
     const input = page.getByRole("combobox", { name: /Search/ });
     await input.fill("TWR");
     await expect(page.getByRole("option").first()).toHaveAttribute("aria-selected", "true");

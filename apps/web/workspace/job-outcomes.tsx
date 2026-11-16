@@ -10,10 +10,10 @@ type Cause = JobOutcomes["causes"] extends Array<infer Item> | undefined ? Item 
 /** Groups stage error codes into the part of the service a reader can act on. */
 export function causeArea(code: string | null | undefined, t: (zh: string, en: string) => string) {
   const area = (code ?? "").split(".")[0];
-  if (code === "job.interrupted") return t("任务中断", "Interrupted");
+  if (code === "job.interrupted") return t("已中断", "Interrupted");
   if (area === "broker") return t("券商同步", "Broker sync");
   if (area === "account") return t("账户计算", "Account calculations");
-  if (area === "portfolio") return t("持仓穿透", "Look-through");
+  if (area === "portfolio") return t("穿透", "Look-through");
   if (area === "research" || area === "market" || area === "reference") return t("研究数据", "Research data");
   if (area === "snapshot" || area === "stage") return t("快照发布", "Snapshot publishing");
   return code || t("未知原因", "Unknown cause");
@@ -23,7 +23,7 @@ export function causeArea(code: string | null | undefined, t: (zh: string, en: s
 export function causeKind(kind: string | null | undefined, t: (zh: string, en: string) => string) {
   if (kind === "network") return t("连接失败", "Connection failed");
   if (kind === "rate_limit") return t("券商限流", "Rate limited");
-  if (kind === "reconciliation") return t("持仓与汇总不一致", "Positions differ from summary");
+  if (kind === "reconciliation") return t("持仓与汇总不一致", "Holdings differ from summary");
   return null;
 }
 
@@ -64,7 +64,8 @@ export function JobOutcomeSummary({
   if (!failures)
     return (
       <p className="mx-job-outcomes mx-muted">
-        {locale === "zh" ? `近 7 天 ${count(finished)} 次更新全部成功` : `All ${count(finished)} updates in the last 7 days succeeded`}
+        {locale === "zh" ? `近 7 天 ${count(finished)} 次更新全部成功`
+          : `${finished === 1 ? "1 update" : "All " + count(finished) + " updates"} in the last 7 days succeeded`}
       </p>
     );
   return (
@@ -72,7 +73,7 @@ export function JobOutcomeSummary({
       <p>
         {locale === "zh"
           ? `近 7 天 ${count(finished)} 次更新，${count(failures)} 次失败（${(rate * 100).toFixed(1)}%）`
-          : `${count(failures)} of ${count(finished)} updates failed in the last 7 days (${(rate * 100).toFixed(1)}%)`}
+          : `${count(failures)} of ${count(finished)} ${finished === 1 ? "update" : "updates"} failed in the last 7 days (${(rate * 100).toFixed(1)}%)`}
       </p>
       <ul>
         {(outcomes.causes ?? []).slice(0, 4).map((cause: Cause) => {

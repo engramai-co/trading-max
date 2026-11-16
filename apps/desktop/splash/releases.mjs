@@ -11,8 +11,8 @@ export function releasePresentation(result, language) {
     download: false, inApp: false, label: downloadLabel, details: "",
   };
   const comparison = desktop.relation === "newer" ? t("有新版本可下载。", "A new version is available.")
-    : desktop.relation === "same" ? t("本机已是这个版本，可以重新下载安装包。", "This version is installed. You can download the installer again.")
-    : t("本机版本较新，无需降级。", "A newer version is installed.");
+    : desktop.relation === "same" ? t("这台 Mac 已是这个版本，可以重新下载安装包。", "This version is installed. You can download the installer again.")
+    : t("这台 Mac 上的版本较新，无需降级。", "A newer version is installed.");
   return {
     message: t(`桌面版 v${desktop.version}，${comparison} 仓库稳定版为 v${result.version}。`,
       `Desktop v${desktop.version}. ${comparison} Repository release v${result.version}.`),

@@ -143,6 +143,7 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
     } });
     if (path === "/health") return route.fulfill({ json: { service: "trading_max-api", status: "ok", latestRunId: runId } });
     if (path === "/profile") return route.fulfill({ json: { accountLabels: {} } });
+    if (path === "/securities/search") return route.fulfill({ json: { query: url.searchParams.get("q"), source: "watchlist", results: [] } });
     return route.fulfill({ json: {} });
   });
   return requests;
@@ -255,9 +256,11 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/holdings");
     await page.locator("button:visible").filter({ hasText: "EQQQ" }).first().locator(".mx-peek-target").hover();
     await expect(peek).toContainText("今日");
-    await expect(peek).toContainText("+4.17%");
-    await expect(peek.locator(".mx-peek-basis")).toContainText("Synthetic market feed");
-    await expect(peek.locator(".mx-peek-basis time")).toHaveAttribute("datetime", sessionBars.at(-1)!.date);
+    // A held fund shows the broker's price and move, as its row does; the path is the market's session.
+    await expect(peek).toContainText("+1.00%");
+    await expect(peek).not.toContainText("+4.17%");
+    // The source belongs to the panel's help, not the card.
+    await expect(peek.locator(".mx-peek-basis")).toHaveCount(0);
     await expect(peek.locator("svg.mx-sparkline")).toBeVisible();
     expect(requests.some((path) => path.endsWith("/prices"))).toBe(true);
   });
@@ -269,7 +272,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer.locator(".mx-position-summary")).toContainText("券商快照报价");
     await expect(drawer.locator(".mx-position-summary")).toContainText("买入总成本");
-    await expect(drawer.locator(".mx-position-summary")).toContainText("组合权重");
+    await expect(drawer.locator(".mx-position-summary")).toContainText("组合占比");
     await expect(drawer).toContainText(reading.indexName);
     await expect(drawer).toContainText("0.30%");
     await drawer.locator("summary").filter({ hasText: "基金底层持仓" }).click();
@@ -288,12 +291,13 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   test("an unresearched held fund stays pending, while an unknown ticker can be added", async ({ page }) => {
     await synthetic(page, undefined, summary, false, true);
     await page.goto("/research?ticker=EQQQ.L");
-    await expect(page.getByRole("tablist", { name: "证券研究视角" }).getByRole("tab")).toHaveCount(7);
+    await expect(page.getByRole("tablist", { name: "研究视角" }).getByRole("tab")).toHaveCount(7);
     await expect(page.getByText("基金研究正在更新。", { exact: true })).toBeVisible();
     await expect(page.getByText(isin, { exact: true })).toBeVisible();
-    await expect(page.getByText("EQQQ.L 还不在研究清单里")).toHaveCount(0);
+    await expect(page.getByText("没有找到“EQQQ.L”")).toHaveCount(0);
     await page.goto("/research?ticker=UNKNOWN");
-    await expect(page.getByText("UNKNOWN 还不在研究清单里")).toBeVisible();
+    await expect(page.getByText("没有找到“UNKNOWN”")).toBeVisible();
+    await expect(page.locator(".mx-research-content").getByRole("button", { name: "搜索" })).toBeVisible();
   });
 
   test("options separates the dated archive and unavailable current chain", async ({ page }) => {
@@ -337,12 +341,12 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   test("research keeps seven fund lenses and links the overview score to its diagnosis", async ({ page }, info) => {
     await synthetic(page);
     await page.goto("/research?ticker=EQQQ.L&view=analyst");
-    const lenses = page.getByRole("tablist", { name: "证券研究视角" });
+    const lenses = page.getByRole("tablist", { name: "研究视角" });
     await expect(lenses.getByRole("tab")).toHaveCount(7);
     await expect(lenses.getByRole("tab", { name: "概览" })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
     await expect(page.locator(".mx-tech-score-compact .mx-tech-number strong")).toHaveText("28");
-    await page.getByRole("button", { name: "技术状态", exact: true }).click();
+    await page.getByRole("button", { name: "技术评分", exact: true }).click();
     await expect(page.locator("#technical-diagnosis")).toBeFocused();
     await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();
     await lenses.getByRole("tab", { name: "概览" }).click();
@@ -363,7 +367,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await lenses.getByRole("tab", { name: "持仓与重叠" }).click();
     await expect(page.getByRole("region", { name: "前十大持仓" })).toBeVisible();
     await page.locator("summary").filter({ hasText: "重叠明细" }).click();
-    await expect(page.getByRole("region", { name: "相同证券的直接及穿透权重" })).toContainText("IE00BYVTMW98");
+    await expect(page.getByRole("region", { name: "共同持仓的直接及穿透权重" })).toContainText("IE00BYVTMW98");
     await shot(page, info.project.name, "holdings", "dark");
     await lenses.getByRole("tab", { name: "同类" }).click();
     await expect(page.getByRole("region", { name: "同类 ETF 对比" })).toContainText("Synthetic peer ETF");
@@ -371,12 +375,12 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(page.getByText("第 0 分位")).toBeVisible();
     await expect(page.getByRole("button", { name: "同类说明" })).toBeVisible();
     await shot(page, info.project.name, "peers", "dark");
-    await lenses.getByRole("tab", { name: "日志" }).click();
+    await lenses.getByRole("tab", { name: "研究记录" }).click();
     await expect(page.getByRole("region", { name: "交易记录" })).toContainText("Invest");
     await expect(page.getByRole("region", { name: "发行商披露" })).toContainText("11月11日");
     await expect(page.getByRole("region", { name: "发行商披露" })).toContainText(benchmarkChange.previousValue);
     await shot(page, info.project.name, "journal", "dark");
-    await lenses.getByRole("tab", { name: "价格与技术面" }).click();
+    await lenses.getByRole("tab", { name: "价格与技术" }).click();
     await expect(page.locator(".mx-tech-main canvas").first()).toBeVisible();
     await expect(page.locator(".mx-tech-score .mx-tech-number strong")).toHaveText("28");
     await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();

@@ -104,7 +104,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const scopes = [
     { value: "all", label: t("账户、流水与研究", "Accounts, history & research") },
     { value: "accounts", label: t("账户与流水", "Accounts & history") },
-    { value: "research", label: t("证券研究", "Research") },
+    { value: "research", label: t("研究", "Research") },
     { value: "live", label: t("最新账户状态", "Latest account state") },
     { value: "intraday", label: t("日内走势", "Intraday history") },
     { value: "performance", label: t("收益与风险", "Performance") },
@@ -116,7 +116,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       : staleHours != null
       ? locale === "zh" ? `服务在线，但已 ${staleAge}没有完成更新` : `Service online · no completed update for ${staleAge}`
       : snapshot === "setup"
-      ? t("等待首次同步", "Ready for your first sync")
+      ? t("等待首次同步", "Awaiting first sync")
       : tone === "ready"
       ? t("数据服务运行正常", "Your data service is ready")
       : tone === "running"
@@ -128,7 +128,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     staleHours != null
       ? t("各页面显示的是上一次成功更新的数据。开始更新，或检查自动更新是否已关闭。", "Pages show the last successful update. Start an update, or check whether scheduled updates are off.")
       : snapshot === "setup"
-      ? t("本机服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
+      ? t("本地服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
       : tone === "ready"
       ? null
       : tone === "running"
@@ -152,16 +152,16 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             [t("账户、流水与研究", "Accounts, history & research"), data.refresh?.nightly],
             [t("日内采样", "Intraday sampling"), data.refresh?.intraday],
             [t("账户状态", "Account state"), data.refresh?.live],
-            [t("绩效计算", "Performance"), data.refresh?.performance],
-            [t("证券研究", "Research"), data.refresh?.research],
-            [t("板块行情", "Sectors"), data.refresh?.sectors],
+            [t("收益与风险", "Performance"), data.refresh?.performance],
+            [t("研究", "Research"), data.refresh?.research],
+            [t("板块行情", "Sector quotes"), data.refresh?.sectors],
           ] as const
         ).map(([label, schedule]) => [
           label,
           !schedule ? (
             "—"
           ) : !schedule.enabled ? (
-            <span key={label} className="mx-muted">{t("已关闭", "Disabled")}</span>
+            <span key={label} className="mx-muted">{t("未启用", "Disabled")}</span>
           ) : schedule.nextRunAt ? (
             formatDateTime(schedule.nextRunAt, locale, timeZone)
           ) : (
@@ -174,7 +174,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         <ul className="mx-review-prerequisites">
           <li>{t("账户状态与日内采样：在活动时段刷新余额、持仓并保存日内观测点。", "Account state and intraday sampling: refresh balances and positions and record intraday readings during the active window.")}</li>
           <li>{t("绩效：使用已核对的账户历史计算收益、回撤和风险。", "Performance: calculate returns, drawdowns and risk from reconciled account history.")}</li>
-          <li>{t("研究、板块与每日对账：更新证券资料，在交易时段采集板块行情，并每日核对账户流水。", "Research, sectors and daily reconciliation: update research, collect sector quotes during market hours and reconcile cash flows daily.")}</li>
+          <li>{t("研究、板块与每日对账：更新研究资料，在交易时段采集板块行情，并每日核对账户流水。", "Research, sectors and daily reconciliation: update research, collect sector quotes during market hours and reconcile account transactions daily.")}</li>
         </ul>
       </details>
       <details className="mx-chart-data">
@@ -204,7 +204,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   : t("未启用", "Disabled"),
             ],
             [
-              t("现金流水覆盖", "Cash-flow coverage"),
+              t("出入金记录覆盖", "Deposit and withdrawal coverage"),
               flowVerificationText(data.refresh?.live ?? data.refresh?.intraday, locale),
             ],
             [
@@ -215,8 +215,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         />
         <p>
           {t(
-            "统计当前快照中保留的估值点，不是历史更新任务数；流水覆盖不等于时间加权收益已验证。",
-            "Counts retained valuations in the current snapshot, not past update jobs. Cash-flow coverage does not certify time-weighted returns.",
+            "统计当前快照中保留的估值点，不是历史更新任务数；出入金覆盖不等于时间加权收益已验证。",
+            "Counts retained valuations in the current snapshot, not past update jobs. Deposit and withdrawal coverage does not certify time-weighted returns.",
           )}
         </p>
       </details>
@@ -224,7 +224,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   );
   return (
     <Page
-      title={desktop ? t("同步与活动", "Sync & activity") : t("数据状态", "Data status")}
+      title={t("数据状态", "Data status")}
       description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
       className={desktop ? "mx-health-page mx-activity-page" : "mx-health-page"}
       actions={
@@ -286,7 +286,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   ? t("就绪", "Ready")
                   : tone === "running"
                     ? t("更新中", "Updating")
-                    : t("待检查", "Needs attention")}
+                    : t("需要关注", "Needs attention")}
               </Tag>
             )}
           </section>
@@ -301,7 +301,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             >
               <Stack gap="md">
                 {tone === "setup" ? <>
-                  <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的资金流。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
+                  <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的转账。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
                   <Group><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></Group>
                 </> : <>
                 <Select
@@ -421,7 +421,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 value={number(queued, 0)}
               />
               <Metric
-                label={t("正在执行", "Running")}
+                label={t("执行中", "Running")}
                 value={number(running, 0)}
               />
             </div>}
@@ -537,7 +537,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   durationBetween(job.startedAt, job.finishedAt, locale),
                 ],
                 [
-                  t("生成快照", "Published snapshot"),
+                  t("已发布快照", "Published snapshot"),
                   shortRunId(job.snapshotRunId),
                 ],
               ]}
@@ -628,27 +628,27 @@ function stageText(
     "broker.sync": t("读取券商账户与流水", "Read broker accounts and history"),
     "accounts.snapshot": t(
       "核对账户余额与持仓",
-      "Reconcile balances and positions",
+      "Reconcile balances and holdings",
     ),
     "reference.security_master": t(
-      "识别证券与市场分类",
-      "Identify securities and market classifications",
+      "识别代码与市场分类",
+      "Identify tickers and market classifications",
     ),
     "portfolio.lookthrough": t(
-      "展开基金底层资产",
-      "Resolve underlying fund exposure",
+      "展开基金底层持仓",
+      "Resolve fund look-through",
     ),
     "accounts.diluted_cost": t(
       "计算持仓摊薄成本",
-      "Calculate diluted position cost",
+      "Calculate diluted holding cost",
     ),
-    "accounts.policy": t("分析账户配置", "Analyze account allocation"),
+    "accounts.policy": t("分析账户配置", "Analyse account allocation"),
     "accounts.capital_recovery": t(
       "核对现金回收",
       "Reconcile recovered capital",
     ),
     "accounts.intraday_nav": t("更新日内账户估值", "Update intraday account valuations"),
-    "accounts.nav": t("更新账户净值历史", "Update account value history"),
+    "accounts.nav": t("更新账户价值历史", "Update account value history"),
     "accounts.cfd": t("整理 CFD 账本与复盘", "Build the CFD ledger and review"),
     "accounts.performance": t(
       "计算账户收益与风险",
@@ -659,7 +659,7 @@ function stageText(
       "Build historical account reviews",
     ),
     "market.snapshot": t("读取市场行情", "Read market prices"),
-    "research.taxonomy": t("整理研究分类", "Organize research classifications"),
+    "research.taxonomy": t("整理研究分类", "Organise research classifications"),
     "research.technical": t("更新技术研究", "Update technical research"),
     "research.options": t("更新期权研究", "Update options research"),
     "research.adr": t("更新 ADR 研究", "Update ADR research"),

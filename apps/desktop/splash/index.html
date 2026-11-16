@@ -3,23 +3,22 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Trading Max · 工作区与连接</title><link rel="stylesheet" href="style.css">
+  <title>工作区与连接 · Trading Max</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar">
     <header class="brand"><picture><source srcset="icon-dark.svg" media="(prefers-color-scheme: dark)"><img src="icon.svg" alt="" width="33" height="33"></picture><span>Trading <strong>Max</strong></span></header>
-    <div class="ownership"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z"/><path d="m8 12 3 3 5-6"/></svg><strong data-en="Your data stays yours">你的数据，由你保管</strong></div>
   </aside>
   <main>
     <div class="topline"><button id="back" type="button" class="text-button" hidden><span data-en="← Back">← 返回</span></button></div>
-    <section class="intro"><h1 id="heading" tabindex="-1">打开你的投资工作台。</h1></section>
+    <section class="intro"><h1 id="heading" tabindex="-1">工作区</h1></section>
     <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
     <div id="progress" class="progress" hidden><span></span></div>
     <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
     <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button"><span data-en="Open in browser">在浏览器打开</span></button><button id="stop-retry" class="text-button" type="button"><span data-en="Cancel connection">取消连接</span></button></div>
     <details id="diagnostics" class="diagnostics" hidden><summary><span data-en="View diagnostics">查看诊断详情</span></summary><p id="diagnostic-detail"></p></details>
-    <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden><span data-en="Open data folder ↗">打开资料文件夹 ↗</span></button></div>
+    <div id="runtime-context" class="runtime-context" hidden><p id="collection-hint"></p><button id="reveal-workspace" type="button" class="text-button" hidden><span data-en="Open data folder ↗">打开数据文件夹 ↗</span></button></div>
     <div id="content">
       <section id="welcome" aria-label="选择工作区" data-en-aria-label="Choose a workspace">
         <section id="recent" class="recent" hidden aria-label="已保存的服务" data-en-aria-label="Saved service">
@@ -43,13 +42,13 @@
         <div class="actions"><button id="test" type="button" class="secondary"><span data-en="Test connection">测试连接</span></button><span class="spacer"></span><button id="save" type="button" class="text-button"><span data-en="Save only">仅保存</span></button><button id="connect" type="submit"><span data-en="Save and open ">保存并打开 </span><span aria-hidden="true">→</span></button></div>
       </form>
       <form id="local-form" hidden aria-label="本地工作区" data-en-aria-label="Local workspace">
-        <div class="form-context"><span class="dot"></span><span><span data-en="Data goes in the folder you choose. Credentials go in this Mac’s Keychain.">资料保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></span></div>
-        <label class="field" id="workspace-name-field" for="workspace-name"><span data-en="Workspace name">工作区名称</span><input id="workspace-name" maxlength="60" value="我的投资记录" data-en-value="My investments" autocomplete="off" required></label>
+        <div class="form-context"><span class="dot"></span><span><span data-en="Data goes in the folder you choose. Credentials go in this Mac’s Keychain.">数据保存在你选择的文件夹，凭据存入这台 Mac 的钥匙串。</span></span></div>
+        <label class="field" id="workspace-name-field" for="workspace-name"><span data-en="Workspace name">工作区名称</span><input id="workspace-name" maxlength="60" value="我的工作区" data-en-value="My workspace" autocomplete="off" required></label>
         <label class="field" for="workspace-path" id="workspace-location-label">保存位置</label>
         <div class="folder-field"><input id="workspace-path" placeholder="选择文件夹，或粘贴完整路径" data-en-placeholder="Choose a folder or paste its full path" autocomplete="off" spellcheck="false" maxlength="4096" required><button id="pick-folder" class="secondary" type="button"><span data-en="Choose folder…">选择文件夹…</span></button></div>
         <p id="workspace-hint" class="hint"></p>
-        <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong><p id="workspace-description"></p></div>
-        <p class="hint"><span data-en="Updates pause when you quit the app or your Mac sleeps.">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</span></p>
+        <div id="workspace-summary" class="preview-note" hidden><strong id="workspace-title"></strong></div>
+        <p class="hint"><span data-en="Accounts update while the app is open. Updates pause when you quit the app or your Mac sleeps. No background service is installed.">App 打开时可更新账户；退出 App 或 Mac 休眠后，更新会暂停。不会安装后台服务。</span></p>
         <div class="actions"><button id="local-submit" type="submit">创建并连接账户 →</button></div>
       </form>
     </div>

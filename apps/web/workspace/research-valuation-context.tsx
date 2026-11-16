@@ -1,14 +1,17 @@
 "use client";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { formatCalendarDate, formatDate, formatDateSpan } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useState, type ReactNode } from "react";
 import { Plot } from "./charts";
+import type { ChartReadout, Reading } from "./chart-readout";
 import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { minus } from "./reading-figures";
 import { factIndex } from "./research-facts";
 import type { ResearchPrice } from "./research-price-basis";
 
@@ -113,6 +116,7 @@ export function FilingMultiples({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const [requested, setRequested] = useState("ps");
   const evidence = object(data.researchEvidence);
   const sales = objects(evidence.releaseSalesMultiples);
@@ -156,6 +160,36 @@ export function FilingMultiples({
       ? [{ value: [(stamp + previous) / 2, null], rowIndex: -1 }, point]
       : [point];
   });
+  // A reading names the filing date, leads with the multiple and adds its input;
+  // the table below keeps the exact dates and the currency.
+  const read = (r: Record<string, unknown>): Reading => {
+    const filed = formatCalendarDate(str(r.publishedAt) || str(r.priceDate), locale);
+    const multiple = numeric(r[mode]);
+    return {
+      time: t("{date}披露", "Filed {date}").replace("{date}", filed),
+      primary: { value: r.state === "notMeaningful" ? "N/M" : multiple == null ? "—" : number(multiple, 2) + "×" },
+      groups: [[mode === "ps"
+        ? { label: t("TTM 营收", "TTM revenue"), value: compact(r.revenue, locale) }
+        : { label: t("年度 EPS", "Annual EPS"), value: minus(number(r.eps, 2)) }]],
+    };
+  };
+  const plotted = rows.flatMap((r, index) => {
+    const stamp = Date.parse(str(r.priceDate));
+    return mode === "ps" ? (Number.isFinite(stamp) ? [{ position: stamp, row: r }] : []) : [{ position: index, row: r }];
+  }).sort((a, b) => a.position - b.position);
+  const at = new Map(plotted.map((point) => [point.position, point.row]));
+  const readout: ChartReadout = {
+    positions: plotted.map((point) => point.position),
+    read: (position) => {
+      const r = at.get(position);
+      return r ? read(r) : null;
+    },
+    marks: (position) => {
+      const value = numeric(at.get(position)?.[mode]);
+      return value == null ? [] : [{ value, colour: colours.brand }];
+    },
+    latest: plotted.length ? read(plotted.at(-1)!.row).primary?.value ?? "—" : "—",
+  };
   return (
     <Panel
       title={t("披露时的估值", "Valuation at disclosure")}
@@ -231,6 +265,7 @@ export function FilingMultiples({
                 ? t("披露节点的 TTM P/S", "TTM P/S at filing dates")
                 : t("披露节点的年度 P/E", "Annual P/E at filing dates")
             }
+            readout={readout}
             option={(c) => ({
               xAxis:
                 mode === "ps"
@@ -239,14 +274,14 @@ export function FilingMultiples({
                       axisLabel: {
                         color: c.axis,
                         hideOverlap: true,
-                        formatter: "{yyyy}-{MM}",
+                        formatter: (value: number) => formatDate(value, locale, { year: "numeric", month: "short", timeZone: "UTC" }),
                       },
                       axisLine: { show: false },
                       axisTick: { show: false },
                     }
                   : {
                       type: "category",
-                      data: rows.map((r) => str(r.priceDate)),
+                      data: rows.map((r) => formatCalendarDate(str(r.priceDate), locale)),
                       axisLabel: { color: c.axis, hideOverlap: true },
                       axisLine: { show: false },
                       axisTick: { show: false },
@@ -266,28 +301,16 @@ export function FilingMultiples({
                     mode === "ps" ? points : rows.map((r) => numeric(r[mode])),
                   connectNulls: false,
                   itemStyle: { color: c.brand },
+                  lineStyle: { color: c.brand },
                 },
               ],
-              tooltip: {
-                formatter: (input) => {
-                  const point = Array.isArray(input) ? input[0] : input;
-                  const index =
-                    mode === "ps"
-                      ? numeric(object(point?.data).rowIndex)
-                      : point?.dataIndex;
-                  const r = index == null ? undefined : rows[index];
-                  return r
-                    ? `${str(r.priceDate)}\n${ratio}  ${number(r[mode], 2)}×\n${mode === "ps" ? `${t("营收", "Revenue")} ${compact(r.revenue, locale)}` : `EPS ${number(r.eps, 2)}`} ${code}`
-                    : "";
-                },
-              },
             })}
           />
           <EvidenceTable
             label={t("历史估值证据", "Historical valuation evidence")}
             rows={rows}
             columns={[
-              { label: t("披露日", "Filed"), value: (r) => str(r.publishedAt) },
+              { label: t("披露日期", "Filed"), value: (r) => str(r.publishedAt) },
               {
                 label: t("收盘日", "Price date"),
                 value: (r) => str(r.priceDate),
@@ -325,14 +348,14 @@ export function FilingMultiples({
                 numeric: true,
               },
               {
-                label: t("原文", "Filing"),
+                label: t("原始披露", "Original filing"),
                 value: (r) =>
                   safeUrl(str(r.url)) ? (
                     <a
                       href={safeUrl(str(r.url))}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={`${t("披露原文", "Filing")} · ${str(r.publishedAt)}`}
+                      aria-label={`${t("原始披露", "Original filing")} · ${str(r.publishedAt)}`}
                     >
                       {t("查看", "Open")} ↗
                     </a>
@@ -360,9 +383,9 @@ export function FilingMultiples({
                                   href={safeUrl(str(o.url))}
                                   target="_blank"
                                   rel="noreferrer"
-                                  aria-label={`${t("原始披露", "Filing")} · ${str(o.periodStart)} → ${str(o.periodEnd)}`}
+                                  aria-label={`${t("原始披露", "Original filing")} · ${str(o.periodStart)} → ${str(o.periodEnd)}`}
                                 >
-                                  ↗ {t("原始披露", "Filing")}
+                                  ↗ {t("原始披露", "Original filing")}
                                 </a>
                               )}
                             </p>

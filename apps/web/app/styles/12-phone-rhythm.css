@@ -99,7 +99,7 @@
     font-weight: 600;
   }
   .mx-page :is(strong, b, .mx-attention strong, .mx-option-chain .mx-strike, .mx-decision-watching,
-    .mx-chart-tooltip__primary dd > span, .mx-document-feed a, .mx-job-name > strong, .mx-inline-control[aria-pressed="true"],
+    .mx-document-feed a, .mx-job-name > strong, .mx-inline-control[aria-pressed="true"],
     .mx-highlight-subject, .mx-rating-distribution strong, .mx-target-summary b, .mx-target-values .mx-target-primary,
     .mx-disclosure > summary, .mx-detail-value, .mx-price-levels strong) {
     font-weight: 600;
@@ -431,7 +431,6 @@
   .mx-instrument strong,
   .mx-timeline-entry h3,
   .mx-security-price strong,
-  .mx-chart-tooltip__primary dd > span,
   .mx-command-result mark {
     font-weight: 600;
   }

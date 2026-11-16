@@ -5,6 +5,7 @@ import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDisplayInterval, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { timelineOption } from "./timeline-option";
+import { timelineGaps, timelineReadout, timelineRows } from "./timeline-reading";
 
 const dates = Array.from({ length: 9 }, (_, i) => new Date(Date.UTC(2026, 8, 17, 9, i * 10)).toISOString());
 const rows = dates.map((date, i) => ({ date, intraday: true, valuationSource: "broker", total: 100 + i, totalNetContributionsGbp: 90 }) as NavPoint);
@@ -104,20 +105,24 @@ describe("observable gaps and one accounting cutoff", () => {
   });
   it("keeps gap connectors out of hover readings and suppresses disconnected circles", () => {
     const colours = { brand: "blue", accent: "orange", negative: "red" } as ChartColours;
-    const option = timelineOption(dates, [{ label: "Value", lines: [{ name: "NAV", values: rows.map((p) => p.total) }] }], colours, String, { categories: dates, rowIndexes: [0, 1, null, null, 4, 5, 6, 7, 8] });
+    const layers = [{ label: "Value", lines: [{ name: "NAV", values: rows.map((p) => p.total) }] }];
+    const calendar = { categories: dates, rowIndexes: [0, 1, null, null, 4, 5, 6, 7, 8] };
+    const option = timelineOption(dates, layers, colours, String, calendar);
     const series = option.series as Array<{ id?: string; silent?: boolean; symbol?: string; showSymbol?: boolean; areaStyle?: unknown; tooltip?: unknown; lineStyle?: { type?: string } }>;
     expect(series[0]).toMatchObject({ symbol: "none", showSymbol: false });
     const gap = series.find((line) => line.silent);
     expect(gap).toMatchObject({ symbol: "none", tooltip: { show: false }, lineStyle: { type: "dotted" } });
     expect(gap?.areaStyle).toBeUndefined();
-    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
-    expect(tooltip.formatter([{ seriesId: gap?.id, value: [4, 104] }])).toBe("");
+    // Readings come from observations: the connector's ends read, the interval it crosses does not.
+    expect([...timelineRows(dates, layers, calendar).keys()]).toEqual([0, 1, 4, 5, 6, 7, 8]);
+    expect(timelineGaps(option.series)).toEqual([[1, 4]]);
   });
   it("breaks the area at missing observations without inventing values or extending past either endpoint", () => {
     const values = [null, 0, null, null, -4, 5, null, 7, null];
     const original = [...values];
-    const option = timelineOption(dates, [{ label: "P&L", zeroBaseline: true, lines: [{ name: "Net P&L", values, area: true }] }], {} as ChartColours, String,
-      { categories: dates, rowIndexes: dates.map((_, i) => i) });
+    const layers = [{ label: "P&L", zeroBaseline: true, lines: [{ name: "Net P&L", values, area: true }] }];
+    const calendar = { categories: dates, rowIndexes: dates.map((_, i) => i) };
+    const option = timelineOption(dates, layers, {} as ChartColours, String, calendar);
     const series = option.series as Array<{ id?: string; connectNulls?: boolean; data: Array<{ value: [number, number | null] }>; areaStyle?: unknown; lineStyle?: unknown }>;
     const observed = series[0];
     const fill = series.find((line) => line.id?.startsWith("history-area:"))!;
@@ -129,8 +134,9 @@ describe("observable gaps and one accounting cutoff", () => {
     expect(fill.data.at(-1)?.value).toEqual([8, null]);
     expect(fill.data.filter((point) => point.value[1] != null).map((point) => point.value)).toEqual([[1, 0], [4, -4], [5, 5], [7, 7]]);
     expect(values).toEqual(original);
-    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
-    expect(tooltip.formatter([{ seriesId: fill.id, value: [4, -4] }])).toBe("");
-    expect(tooltip.formatter([{ seriesId: fill.id, value: [4, -4] }, { seriesId: "measured", value: [4, -4] }])).toContain("-£4.00");
+    // Only observed rows read; the fill never supplies a reading of its own.
+    const readable = timelineRows(dates, layers, calendar);
+    expect([...readable.keys()]).toEqual([1, 4, 5, 7]);
+    expect(timelineReadout({ rows: readable, layers, colours: {} as ChartColours, time: String }).read(4)?.primary?.value).toBe("\u2212£4.00");
   });
 });

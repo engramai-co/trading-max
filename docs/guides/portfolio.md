@@ -4,29 +4,29 @@
 
 ## Begin with account scope
 
-Overview combines investing accounts and shows value, unrealized P&L, daily
-return, period net P&L, today's US sectors, and every holding with its weight,
+Overview combines investing accounts and shows account value, unrealised P&L,
+today's return, period net P&L, today's US sectors, and every holding with its weight,
 latest move and research readings. Use the account selector to inspect an
 individual account; account review has the per-account figures. Invest and
-Stocks ISA remain distinct records even when the same security appears in both.
+Stocks ISA remain distinct records even when the same holding appears in both.
 
-Historical CFD records, where imported, are a separate realized-cash proxy.
+Historical CFD records, where imported, are a separate realised-cash proxy.
 They are not reconstructed CFD positions and do not enter investing strategy
 risk statistics.
 
-## Positions and exposure answer different questions
+## Direct holdings and look-through answer different questions
 
-In **Holdings & exposure → Your positions**, filter or sort the securities your
-broker reports. Open a position for its account detail and research link.
+In **Holdings → Direct holdings**, filter or sort the holdings your broker
+reports. Open a holding for its account detail and research link.
 
-Switch to **Look-through exposure** to inspect the underlying companies and
+Switch to **Look-through** to inspect the underlying companies and
 allocations inside supported funds alongside direct holdings. This can reveal
 that several apparently different funds hold the same companies. An unresolved
 portion remains unresolved; a missing fund dataset is not a zero exposure.
 The [ETF coverage guide](etf-coverage.md) lists the supported issuer paths and
-explains the dates and completeness statuses shown under **Sources**.
+explains the dates and completeness statuses shown under **Sources & coverage**.
 
-In country, industry and GICS rankings, names wrap in full. Each bar's full
+In country, sector and GICS sub-industry rankings, names wrap in full. Each bar's full
 background represents 100% of the allocation; the blue fill and percentage
 use the same scale. Switch to **Composition** and select a ring slice or a
 category name to keep its GBP value and weight visible. Small slices also have
@@ -41,23 +41,23 @@ four headline measures use one basis across short and long ranges:
 | Measure | Meaning |
 |---|---|
 | Ending value | The last account value in the selected interval |
-| Net contributions | External deposits minus withdrawals during that interval |
-| Period net P&L | Ending value minus opening value minus net contributions |
-| Maximum P&L drawdown | Largest fall from the running peak of period P&L |
+| Net deposits | External deposits minus withdrawals during that interval |
+| Period net P&L | Ending value minus opening value minus net deposits |
+| Max P&L drawdown | Largest fall from the running peak of period net P&L |
 
 For example, an account that starts at £10,000, receives £1,000, and ends at
-£11,500 has £500 of period P&L. Its £1,500 value increase includes the deposit.
+£11,500 has £500 of period net P&L. Its £1,500 value increase includes the deposit.
 This example explains the arithmetic; it is not a live account record.
 
-The currency/% control changes the unit. **From opening %** uses the positive
+The GBP/% control changes the unit. **% of opening value** uses the positive
 opening account value as its denominator; it is not time-weighted return.
-When cash-flow evidence is incomplete, the app can still show value history
+When deposit and withdrawal evidence is incomplete, the app can still show value history
 but cannot certify the missing P&L. Open the title's help or exact records when
 you need the basis behind a point.
 
 The overview shows period net P&L from zero, using the same accounting cutoff
 as this detailed performance view. The detailed page also shows account value,
-cumulative net contributions, and P&L drawdown.
+cumulative net deposits, and P&L drawdown.
 
 | Range | Display interval |
 |---|---|
@@ -81,12 +81,13 @@ readings. Hover or expand exact records to inspect each value's source.
 ## Compare return and risk
 
 **Return comparison** uses the reconciled daily performance path to compare
-cash-flow-adjusted returns and supported benchmarks. Check that the account,
+returns adjusted for deposits and withdrawals with supported benchmarks. Check that the account,
 range, and currency are the ones you intend to compare.
 
 **Risk profile** adds drawdown and risk readings. Ratios need enough valid
 observations; an unavailable Sharpe or Sortino is not zero risk. Money P&L,
-unrealized position P&L, and a cash-flow-adjusted return are distinct measures.
+unrealised P&L on holdings, and a return adjusted for deposits and withdrawals
+are distinct measures.
 
 ## Watch today's sectors
 
@@ -98,7 +99,7 @@ follows the session's move. Each sector shows how many members are up and down a
 while it keeps ranking in the top three, for how many sessions. Select a sector
 for its intraday path, leader, ranks over the last five sessions and your
 look-through exposure, then open an industry group to reach its companies.
-**My themes** regroups the US securities on your research watchlist by your
+**My themes** regroups the US listings in your research list by your
 research themes.
 The overview carries the US sectors beside its period chart; each block opens
 that sector here.
@@ -111,9 +112,9 @@ last board and says so beside its time.
 
 ## Review and refresh
 
-Review shows available account and realized-trade evidence. Realized attribution
+Review shows available account and realised-trade evidence. Realised attribution
 requires matched opening and closing records. Historical imports may have less
-coverage than current positions.
+coverage than current holdings.
 Buy and sell decisions use completed closes and may be restated when the data
 provider corrects its history; see [decision review](data-and-metrics.md#decision-review).
 

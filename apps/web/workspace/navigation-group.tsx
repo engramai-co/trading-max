@@ -5,9 +5,9 @@ import type { Icon } from "@phosphor-icons/react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement, type ReactNode } from "react";
 
 export function NavigationHint({ label, children, enabled = true }: { label: ReactNode; children: ReactElement; enabled?: boolean }) {
+  // The theme's tooltip shell, shown at once: a fade would lag as the pointer runs along the rail.
   return <Tooltip label={label} disabled={!enabled} position="right" offset={12}
-    classNames={{ tooltip: "mx-nav-tooltip" }} transitionProps={{ duration: 0 }}
-    events={{ hover: true, focus: true, touch: false }} interactive>
+    transitionProps={{ duration: 0 }} interactive>
     {children}
   </Tooltip>;
 }

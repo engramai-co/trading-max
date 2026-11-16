@@ -208,25 +208,6 @@ p {
 .mx-sidebar .mx-brand > span {
   display: none;
 }
-.mx-nav-tooltip {
-  background: var(--mx-surface);
-  color: var(--mx-ink);
-  border: 1px solid var(--mx-border);
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.4;
-  padding: 9px 12px;
-}
-.mx-nav-search-hint {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.mx-nav-search-hint kbd {
-  color: var(--mx-muted);
-  font: inherit;
-  font-size: 12px;
-}
 .mx-nav-link {
   display: flex;
   align-items: center;

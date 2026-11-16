@@ -79,14 +79,14 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
   const components: Record<string, string> = {
     gross_trade_result: t("换汇费前交易收益", "Trading result before FX fees"),
     transaction_fees: t("换汇费用", "FX fees"),
-    net_realised_result: t("净收益", "Net result"),
+    net_realised_result: t("净盈亏", "Net P&L"),
   };
   const label = (r: Json) => components[str(r.label)] ?? reviewLabel(str(r.label ?? r.key), t);
   const value = (r: Json) =>
     numeric(r.netResultGbp ?? r.netRealisedPnl ?? field(r, "contribution_gbp"));
   const labels: Record<string, string> = {
-    instrument: t("证券", "Security"),
-    country: t("国家", "Country"),
+    instrument: t("代码", "Ticker"),
+    country: t("国家/地区", "Country"),
     industry: t("行业", "Industry"),
     direction: t("方向", "Direction"),
     duration: t("持有周期", "Holding period"),
@@ -98,7 +98,7 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
   };
   return (
     <Panel
-      title={t("已实现盈亏归因 · GBP", "Realized P&L attribution · GBP")}
+      title={t("已实现盈亏归因 · GBP", "Realised P&L attribution · GBP")}
       action={
         <Select
           aria-label={t("归因维度", "Attribution dimension")}
@@ -110,7 +110,7 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
       }
     >
       <Bars
-        label={t("已实现盈亏贡献", "Realized P&L contribution")}
+        label={t("已实现盈亏贡献", "Realised P&L contribution")}
         labels={rows.slice(0, 14).map(label)}
         values={rows.slice(0, 14).map(value)}
       />
@@ -151,7 +151,7 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
               ]
             : []),
           {
-            label: t("净结果", "Net result"),
+            label: t("净盈亏", "Net P&L"),
             value: (r) => currency(value(r), "GBP", 2),
             numeric: true,
           },
@@ -276,7 +276,9 @@ export function TradeQuality({
               [
                 t("中位持有周期", "Median holding duration"),
                 number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) +
-                  (cfd ? t(" 小时", " hours") : t(" 天", " days")),
+                  (number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) === "1"
+                    ? cfd ? t(" 小时", " hour") : t(" 天", " day")
+                    : cfd ? t(" 小时", " hours") : t(" 天", " days")),
               ],
             ]}
           />
@@ -310,7 +312,7 @@ export function TradeQuality({
                     "percent",
                   ],
                   [
-                    "剔除最佳后",
+                    "去除最佳交易后",
                     "Without best trade",
                     "net_without_best_trade",
                     "money",
@@ -318,8 +320,8 @@ export function TradeQuality({
                 ]
               : [
                   [
-                    "已实现净结果",
-                    "Net realized result",
+                    "已实现净盈亏",
+                    "Net realised P&L",
                     "net_result_gbp",
                     "money",
                   ],
@@ -365,7 +367,7 @@ export function TradeQuality({
                   <span className={"mx-row-value mx-" + tone(r.netResultGbp)}>
                     {currency(r.netResultGbp, "GBP", 2)}
                     <small>
-                      {number(r.durationDays, 0)} {t("天", "days")}
+                      {number(r.durationDays, 0)} {number(r.durationDays, 0) === "1" ? t("天", "day") : t("天", "days")}
                       {cfd && str(r.direction) ? " · " + str(r.direction) : ""}
                       {numeric(r.feesGbp) ? " · " + t("费用 ", "Fees ") + currency(r.feesGbp, "GBP", 2) : ""}
                     </small>
@@ -404,7 +406,7 @@ export function TradeQuality({
                 numeric: true,
               },
               {
-                label: t("剩余净收益", "Remaining result"),
+                label: t("剩余净盈亏", "Remaining net P&L"),
                 value: (r) => currency(r.remainingNetResultGbp, "GBP", 2),
                 numeric: true,
               },
@@ -440,9 +442,9 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
     flat_phase: t("平稳阶段", "A steady period"),
   };
   const events: Record<string, string> = {
-    largest_absolute_realised_change: t("单笔已实现盈亏变化最大", "Largest realized P&L change"),
-    largest_account_cash_flow: t("单笔账户资金流最大", "Largest account cash flow"),
-    realised_drawdown_trough: t("已实现盈亏回撤最低点", "Realized P&L drawdown trough"),
+    largest_absolute_realised_change: t("单笔已实现盈亏变化最大", "Largest realised P&L change"),
+    largest_account_cash_flow: t("单笔出入金最大", "Largest deposit or withdrawal"),
+    realised_drawdown_trough: t("已实现盈亏回撤最低点", "Realised P&L drawdown trough"),
     phase_start: t("阶段开始 · 当日盈亏", "Phase begins · daily P&L"),
     phase_end: t("阶段结束 · 当日盈亏", "Phase ends · daily P&L"),
     largest_absolute_pnl_day: t(
@@ -451,8 +453,8 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
     ),
     drawdown_trough: t("累计盈亏回撤最低点", "Cumulative P&L drawdown trough"),
     largest_external_flow: t(
-      "单笔外部资金流最大",
-      "Largest external cash flow",
+      "单笔外部出入金最大",
+      "Largest external deposit or withdrawal",
     ),
   };
   return (
@@ -500,7 +502,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
                   )}
                 />
                 <Metric
-                  label={t("净入金", "Net contributions")}
+                  label={t("净入金", "Net deposits")}
                   value={currency(
                     row.netExternalFlowsGbp ?? row.accountCashFlowGbp,
                   )}
@@ -570,8 +572,8 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
         <Empty
           title={t("还没有完整的阶段记录", "No complete phase history yet")}
           description={t(
-            "足够的账户历史可用于划分阶段并关联资金事件。",
-            "A longer account history allows phases and cash-flow events to be identified.",
+            "足够的账户历史可用于划分阶段并关联出入金。",
+            "A longer account history allows phases, deposits and withdrawals to be identified.",
           )}
         />
       )}
@@ -612,7 +614,7 @@ export function EndingRisk({
       <Panel title={t("复盘终点，仍然持有什么", "What remained at the end")}>
         <div className="mx-metric-grid">
           <Metric
-            label={t("持仓数量", "Positions")}
+            label={t("持仓数量", "Holdings")}
             value={number(data.position_count ?? holdings.length, 0)}
           />
           <Metric
@@ -620,11 +622,11 @@ export function EndingRisk({
             value={percent(data.cash_weight)}
           />
           <Metric
-            label={t("投资市值", "Invested value")}
+            label={t("已投资市值", "Invested value")}
             value={currency(data.invested_value_gbp)}
           />
           <Metric
-            label={t("未实现盈亏", "Unrealized P&L")}
+            label={t("浮动盈亏", "Unrealised P&L")}
             value={currency(data.unrealized_pnl_gbp)}
           />
         </div>

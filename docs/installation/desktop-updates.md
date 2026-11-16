@@ -105,7 +105,7 @@ together; old log files close when logging is reconfigured; and the PDF reader
 used for fund documents includes security fixes.
 Version 1.29.0 brings the workspace's changes since 1.28.0 to the App: today's
 US sectors beside the period P&L on the overview; one holdings panel that pairs
-a donut with weight, the latest move, unrealized P&L, technical score and model
+a donut with weight, the latest move, unrealised P&L, technical score and model
 upside; an attention list limited to data problems; YTD on the research price
 chart; and sector boards that settle after a late start.
 Version 1.28.0 brings the workspace's changes since 1.18.4 to the App: the
@@ -162,7 +162,7 @@ readiness/worker status and the owner's balance confirmation.
 
 ## Obtain and install an update
 
-1. Click **Check version** in App Settings. The explicit request goes only to the
+1. Click **Check for updates** in App Settings. The explicit request goes only to the
    canonical `engramai-co/trading-max` GitHub release endpoints, without account,
    workspace, credential or saved-server information. There is no background poll.
 2. A desktop download appears only when an official stable release contains the
@@ -171,7 +171,7 @@ readiness/worker status and the owner's balance confirmation.
    macOS and agreement with GitHub's DMG size/digest. It rechecks the exact release
    when Download is clicked. Source-only releases, incomplete uploads, mismatched
    metadata and older-than-installed packages do not offer a download.
-3. On 1.12.0 or newer, **Update in App** appears when the newer release also has
+3. On 1.12.0 or newer, **Update in the app** appears when the newer release also has
    a signed appcast. Sparkle shows the available update, verifies the download and
    asks to install/restart. Keep the App open while downloading; cancelling or an
    interrupted download leaves the installed version available. There are no
@@ -221,7 +221,7 @@ offered an older package. Failed checks do not disable portfolio use. The offlin
 - **Remote mode:** upgrading the client never upgrades, migrates or restarts the
   remote service. Connectivity recovery and server recovery are separate operations.
 
-For the selected local workspace, **Help & recovery → Show recovery files in Finder**
+For the selected local workspace, **Help & recovery → Show recovery data in Finder**
 opens its existing recovery directory. It does not create, restore or delete data.
 The directory is under the App's Application Support folder at
 `workspace-recovery/<workspace UUID>`; `transaction.json` records the latest

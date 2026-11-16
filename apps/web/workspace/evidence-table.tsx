@@ -46,7 +46,7 @@ export function EvidenceTable<T>({
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
   if (!rows.length)
-    return <Empty title={t("暂无对应记录", "No matching records")} />;
+    return <Empty title={t("没有符合条件的记录", "No matching records")} />;
   return (
     <>
       <div
@@ -58,7 +58,7 @@ export function EvidenceTable<T>({
         <table className="mx-table">
           {/* A single page shows its rows; the count only helps when paging. */}
           <caption className={"mx-table-caption" + (showCount && rows.length > pageSize ? "" : " sr-only")}>
-            {label} · {totalRows ?? rows.length} {t("条记录", "records")}
+            {label} · {totalRows ?? rows.length} {(totalRows ?? rows.length) === 1 ? t("条记录", "record") : t("条记录", "records")}
           </caption>
           <thead>
             <tr>

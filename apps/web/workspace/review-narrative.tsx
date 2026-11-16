@@ -3,7 +3,7 @@
 import { Button, Group, Popover } from "@mantine/core";
 import { ArrowClockwise, Sparkle } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
   analysisRunKey,
@@ -14,7 +14,7 @@ import {
   subscribeToAnalysisRuns,
 } from "@/lib/analysis-runs";
 import type { AccountCode, AnalysisArtifact } from "@/lib/types";
-import { Freshness, Notice, Panel, useCopy } from "./foundation";
+import { Freshness, Notice, Panel, useCopy, useEscapeLayer } from "./foundation";
 
 type Copy = (zh: string, en: string) => string;
 
@@ -64,6 +64,12 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
   const run = useSyncExternalStore(subscribeToAnalysisRuns, () => getAnalysisRunState(key), getServerAnalysisRunState);
   const active = run.status === "queued" || run.status === "running";
   const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const confirmTitle = useId();
+  useEscapeLayer(confirming, () => {
+    setConfirming(false);
+    trigger.current?.focus({ preventScroll: true });
+  });
   const query = useQuery({
     queryKey: ["decision-narrative", account],
     retry: 0,
@@ -94,26 +100,32 @@ export function DecisionNarrative({ account, dataAsOf }: { account: AccountCode;
       middlewares={{ flip: true, shift: { padding: 16 } }}
       trapFocus
       returnFocus
-      transitionProps={{ duration: 0 }}
+      transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }}
       // Shown from its first frame, so the focus trap can move focus to Keep.
       hideDetached={false}
-      shadow="md"
+      zIndex="var(--mx-overlay-z-popover)"
     >
       <Popover.Target>
         <Button
+          ref={trigger}
           variant="default"
           size="xs"
           loading={active}
           leftSection={<ArrowClockwise size={14} />}
+          aria-haspopup="dialog"
+          aria-expanded={confirming}
           onClick={() => setConfirming((open) => !open)}
         >
           {t("重新生成", "Regenerate")}
         </Button>
       </Popover.Target>
-      <Popover.Dropdown className="mx-help-popover">
-        <p className="mx-body-copy">
-          {t("重新生成会替换当前的 AI 复盘，约需半分钟。", "A new review replaces this one and takes about half a minute.")}
-        </p>
+      <Popover.Dropdown className="mx-help-popover" aria-labelledby={confirmTitle}>
+        <div className="mx-help-heading">
+          <strong id={confirmTitle}>{t("替换当前复盘？", "Replace this review?")}</strong>
+        </div>
+        <div className="mx-help-body">
+          <p>{t("新的 AI 复盘约需半分钟生成，完成后替换当前内容。", "A new AI review takes about half a minute and then replaces this one.")}</p>
+        </div>
         <Group justify="flex-end" gap="xs" mt="md">
           <Button variant="default" size="xs" data-autofocus onClick={() => setConfirming(false)}>
             {t("保留", "Keep")}

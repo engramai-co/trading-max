@@ -28,7 +28,8 @@ test.describe("chart evidence and fullscreen", () => {
     await open.click();
     const full = page.getByRole("dialog");
     await expect(full).toBeVisible();
-    await expect(full.locator("[data-chart-reading=selected]")).toContainText("519 USD");
+    await expect(full.locator("[data-chart-reading=selected]")).toContainText("519.00");
+    await expect(full.locator("[data-chart-reading=selected]")).not.toContainText("USD");
 
     await full.getByRole("button", { name: "Zoom in", exact: true }).click();
     await full.getByText("More", { exact: true }).click();
@@ -72,7 +73,7 @@ test.describe("chart evidence and fullscreen", () => {
     await expect(reading).toContainText(/−28|-28/);
   });
 
-  test("quarterly EPS uses dates, same-quarter estimates and a signed surprise", async ({ page }) => {
+  test("quarterly EPS uses dates, same-quarter estimates and a signed surprise", async ({ page, isMobile }) => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch();
       const json = await response.json();
@@ -86,17 +87,25 @@ test.describe("chart evidence and fullscreen", () => {
     });
     await page.goto("/research?ticker=AAPL&view=analyst");
     const chart = page.getByRole("group", { name: "Reported and estimated quarterly EPS" });
-    const reading = chart.locator("..").locator("..").locator("[data-chart-reading]");
+    // The live region sits beside the plot frame, inside the chart's host.
+    const reading = chart.locator("xpath=../../..").locator("[data-chart-reading]");
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
-    await expect(reading).toContainText("Difference +0.25 USD");
+    // Reported leads; the surprise is signed with the typographic minus and no currency.
+    await expect(reading).toContainText("Reported 2.25");
+    await expect(reading).toContainText("Surprise +0.25");
     await chart.press("Home");
-    await expect(reading).toContainText("Difference -0.75 USD");
-    const popup = chart.locator("..").locator(".mx-chart-popup");
+    await expect(reading).toContainText("Surprise \u22120.75");
+    // Desktop shows the card at the top of the plot; phones read in the strip above it.
+    const popup = isMobile ? page.locator(".mx-chart-strip") : chart.locator("..").locator(".mx-chart-popup");
     await expect(popup).toBeVisible();
-    await expect(popup).toContainText("Difference -0.75 USD");
+    await expect(popup).toContainText("Surprise\u22120.75");
+    await expect(popup).not.toContainText("USD");
     const [card, plot] = [(await popup.boundingBox())!, (await chart.boundingBox())!];
-    expect(card.y).toBeGreaterThanOrEqual(plot.y - 1);
-    expect(card.y + card.height).toBeLessThanOrEqual(plot.y + plot.height + 1);
+    if (isMobile) expect(card.y + card.height).toBeLessThanOrEqual(plot.y + 1);
+    else {
+      expect(card.y).toBeGreaterThanOrEqual(plot.y - 1);
+      expect(card.y + card.height).toBeLessThanOrEqual(plot.y + plot.height + 1);
+    }
     await chart.press("Escape");
     await expect(popup).toBeHidden();
   });

@@ -71,7 +71,7 @@ export function AutomationPreferences() {
         {
           key: "researchEnabled",
           enabled: s.researchEnabled,
-          title: t("证券研究与每日对账", "Research & daily reconciliation"),
+          title: t("研究与每日对账", "Research & daily reconciliation"),
         },
       ]
     : [];
@@ -386,7 +386,7 @@ export function PersonalPreferences({
   useBuildNavigationGuard(!saved && (name !== profile.displayName || zone !== timeZonePreference ||
     locale !== profile.locale || JSON.stringify(labels) !== JSON.stringify(profile.accountLabels)));
   return (
-    <Panel title={t("让工作台更适合你", "A workspace that feels like yours")}>
+    <Panel title={t("个人偏好", "Preferences")}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -24,13 +24,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
+import { readingTone, signedPercent, signedPounds } from "./reading-format";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
 import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
-  Facts,
   Freshness,
   Metric,
   Notice,
@@ -149,8 +149,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const cash = scope === "total" ? data?.totalCashGbp : selected?.cashGbp;
   const value =
     scope === "total" ? data?.totalValueGbp : selected?.totalValueGbp;
-  const previousDay =
-    scope === "total" ? data?.latestModelDayReturn : selected?.dailyReturn;
   // Data problems speak here; a holding's readings are marked in its own row below.
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
@@ -158,7 +156,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       <div className="mx-panel mx-overview-portfolio">
         <section
           className="mx-summary"
-          aria-label={t("组合资产", "Portfolio assets")}
+          aria-label={t("账户价值", "Account value")}
         >
           <div className="mx-summary-top">
             <Select
@@ -176,14 +174,14 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
             <span className="mx-freshness-group">
-              {initialWaiting ? <WaitingAsOf label={t("正在读取资产记录…", "Loading portfolio assets…")} />
+              {initialWaiting ? <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
                 : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
               {summaryFailure && <UpdateFailure {...summaryFailure} />}
             </span>
           </div>
           {initialWaiting ? <Pending shape="summary" quiet /> : !data && query.isError ? (
             <div className="mx-overview-summary-failure">
-              <InlineRetry label={t("资产记录暂不可用", "Portfolio assets unavailable")} retry={query.refetch} />
+              <InlineRetry label={t("账户价值暂不可用", "Account value unavailable")} retry={query.refetch} />
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
             </div>
           ) : <>
@@ -197,15 +195,15 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           <div className="mx-overview-totals">
             <Metric
               large
-              label={t("总资产", "Portfolio value")}
+              label={t("账户价值", "Account value")}
               value={currency(value, "GBP", 2)}
             />
             <div className="mx-overview-statistics">
               <Metric
-                label={t("浮动盈亏", "Unrealized P&L")}
+                label={t("浮动盈亏", "Unrealised P&L")}
                 value={currency(pnl, "GBP", 2)}
                 tone={tone(pnl)}
-                help={t("当前持仓相对买入成本", "Open positions versus cost")}
+                help={t("当前持仓相对买入成本", "Holdings versus cost")}
               />
               <Metric
                 label={t("现金", "Cash balance")}
@@ -241,7 +239,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           onRange={(value) => update({ range: value })}
           dayAttribution={data?.dayAttribution}
           windowAttribution={data?.windowAttribution}
-          previousDay={previousDay}
         />
         <OverviewSectors />
       </div>
@@ -261,7 +258,7 @@ function Attention({ items }: { items: AttentionItem[] }) {
   const age = (hours: number) => {
     const days = Math.floor(hours / 24);
     if (days >= 2) return zh ? `账户数据 ${days} 天未更新` : `No account update for ${days} days`;
-    return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} hours`;
+    return zh ? `账户数据 ${hours} 小时未更新` : `No account update for ${hours} ${hours === 1 ? "hour" : "hours"}`;
   };
   return (
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
@@ -274,7 +271,7 @@ function Attention({ items }: { items: AttentionItem[] }) {
             <span>{item.minutes >= 60
               ? Math.floor(item.minutes / 60) + t(" 小时", "h")
               : item.minutes > 0 ? item.minutes + t(" 分钟", "m")
-                : item.failures + t(" 次", " attempts")}</span>
+                : item.failures + (item.failures === 1 ? t(" 次", " attempt") : t(" 次", " attempts"))}</span>
           </Link>
         ) : (
           <Link key="stale" href="/health" data-tone="warning">
@@ -356,7 +353,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
 }
 function OverviewHistory({
   range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange,
-  dayAttribution, windowAttribution, previousDay,
+  dayAttribution, windowAttribution,
 }: {
   range: Range;
   selection: Parameters<typeof usePortfolioHistory>[0];
@@ -371,7 +368,6 @@ function OverviewHistory({
   /** Today's moves by position, listed under the 1D figure. */
   dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
-  previousDay?: number | null;
 }) {
   const t = useCopy();
   const { range, scope } = selection;
@@ -394,16 +390,8 @@ function OverviewHistory({
   return (
     <Panel
       className="mx-overview-history"
-      title={t("区间净盈亏", "Period P&L")}
-      help={<>
-        <HistoryHelp />
-        {range === "1D" && <Facts rows={[[
-          t("上一交易日收益", "Previous trading day"),
-          <span key="previous" className={previousDay == null ? undefined : "mx-" + tone(previousDay)}>
-            {percent(previousDay, true, 2)}
-          </span>,
-        ]]} />}
-      </>}
+      title={t("区间净盈亏", "Period net P&L")}
+      help={<HistoryHelp />}
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
@@ -453,12 +441,13 @@ function OverviewHistory({
             pendingCashFlows={history.pendingCashFlows}
             showHistoryEvidence={false}
             height={264}
-            tooltip={{
-              range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
-              unit: "GBP",
-              primary: [{ label: t("区间净盈亏", "Period P&L"), values: money.pnls, signed: true }],
-              secondary: [],
-            }}
+            reading={(row) => ({
+              primary: {
+                value: signedPounds(money.pnls[row]),
+                tone: readingTone(money.pnls[row]),
+                ...(money.pnlPercents[row] != null ? { detail: signedPercent(money.pnlPercents[row]) + t(" 相对期初", " vs opening") } : {}),
+              },
+            })}
           />
         </div>
       )}

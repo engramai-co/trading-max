@@ -169,7 +169,7 @@ test.describe("a link to one decision", () => {
     const recent = page.getByRole("link", { name: /SYND\.AS/ });
     await expect(recent).toHaveAttribute("href", sale);
     // A T day says what its excess did, as on the account's review.
-    await expect(page.getByRole("link", { name: /SYNG/ })).toContainText("做 T 后净买入 £90");
+    await expect(page.getByRole("link", { name: /SYNG/ })).toContainText("日内往返后净买入 £90");
     await recent.click();
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ })).toBeFocused();
   });
@@ -254,7 +254,7 @@ test.describe("a link to one decision", () => {
     await expect(observing).toContainText("观察中");
     await expect(observing).not.toContainText("£0");
     await page.goto("/account-analysis?account=A&reviewView=decisions&decision=2026-10-01.buy.SYNG");
-    await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Gamma/ })).toContainText("做 T 后净买入 £90");
+    await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Gamma/ })).toContainText("日内往返后净买入 £90");
   });
 
   test("keeps the angle in the address for refresh and Back", async ({ page }) => {

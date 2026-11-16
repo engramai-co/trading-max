@@ -2,7 +2,7 @@
  * Guards the bilingual contract.
  *
  * Chinese copy is allowed in the following shapes:
- *   - the message catalogue itself,
+ *   - `t("中文", "English")` pairs of string literals,
  *   - `<Localized zh=... en=...>` blocks for rich text,
  *   - the Chinese branch of a bilingual `zh ? ... : ...` or `locale === "zh" ? ... : ...` ternary,
  *   - bilingual string-pair arrays (`["中文", "English"]` or extended rows).

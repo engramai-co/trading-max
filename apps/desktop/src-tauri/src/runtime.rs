@@ -1,4 +1,4 @@
-use crate::preferences::AppLanguage;
+use crate::preferences::{english, tr, AppLanguage};
 use serde::{Deserialize, Serialize};
 use std::os::unix::process::CommandExt;
 use std::{
@@ -49,7 +49,7 @@ impl Status {
     fn starting() -> Self {
         Self {
             stage: "starting".into(),
-            message: "正在启动本机服务…".into(),
+            message: "正在启动本地服务…".into(),
             detail: String::new(),
             web_url: None,
             supervisor_pid: 0,
@@ -78,7 +78,10 @@ pub fn prepare_root(root: &Path) -> Result<(), String> {
     let marker = root.join("DESKTOP_PREVIEW_ONLY");
     if marker.exists() {
         if fs::read_to_string(&marker).map_err(|e| e.to_string())? != MARKER {
-            return Err("演示资料标记不匹配；未修改原有目录。".into());
+            return Err(tr(
+                "演示数据标记不匹配；未修改原有目录。",
+                "The demo data marker does not match. The existing folder was not changed.",
+            ));
         }
     } else {
         if fs::read_dir(root)
@@ -86,7 +89,10 @@ pub fn prepare_root(root: &Path) -> Result<(), String> {
             .next()
             .is_some()
         {
-            return Err("资料目录中已有未识别的文件；未覆盖任何内容。".into());
+            return Err(tr(
+                "数据目录中已有未识别的文件；未覆盖任何内容。",
+                "The data folder contains unrecognised files. Nothing was overwritten.",
+            ));
         }
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -137,20 +143,32 @@ impl Runtime {
             .arg("--recovery-root")
             .arg(self.root.join("workspace-recovery"))
             .env_clear()
-            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+            .env("TRADING_MAX_APP_LANGUAGE", language.text("zh-CN", "en"));
         if let Some(name) = name {
             command.arg("--name").arg(name);
         }
-        let result = command.output().map_err(|_| "无法检查工作区。")?;
-        let value: serde_json::Value = serde_json::from_slice(&result.stdout)
-            .map_err(|_| "工作区检查未完成，原有资料未修改。")?;
+        let result = command
+            .output()
+            .map_err(|_| tr("无法检查工作区。", "Could not check the workspace."))?;
+        let value: serde_json::Value = serde_json::from_slice(&result.stdout).map_err(|_| {
+            tr(
+                "工作区检查未完成，原有数据未修改。",
+                "The workspace check did not finish. Existing data was not changed.",
+            )
+        })?;
         if !result.status.success() {
             return Err(value["error"]
                 .as_str()
-                .unwrap_or("无法打开工作区。")
-                .to_string());
+                .map(str::to_string)
+                .unwrap_or_else(|| tr("无法打开工作区。", "Could not open the workspace.")));
         }
-        serde_json::from_value(value).map_err(|_| "工作区标记无法识别。".into())
+        serde_json::from_value(value).map_err(|_| {
+            tr(
+                "工作区标记无法识别。",
+                "The workspace marker is not recognised.",
+            )
+        })
     }
     pub fn start(
         &self,
@@ -197,6 +215,7 @@ impl Runtime {
             .env_clear()
             .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
             .env("LANG", "en_US.UTF-8")
+            .env("TRADING_MAX_APP_LANGUAGE", language.text("zh-CN", "en"))
             .env("PYTHONDONTWRITEBYTECODE", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
@@ -213,9 +232,13 @@ impl Runtime {
                 .arg("--recovery-root")
                 .arg(self.root.join("workspace-recovery"));
         }
-        let child = cmd
-            .spawn()
-            .map_err(|e| format!("无法启动已打包的 Python：{e}"))?;
+        let child = cmd.spawn().map_err(|e| {
+            if english() {
+                format!("Could not start the bundled Python: {e}")
+            } else {
+                format!("无法启动已打包的 Python：{e}")
+            }
+        })?;
         *self.child.lock().unwrap() = Some(OwnedRuntime {
             child,
             root: root.clone(),
@@ -240,11 +263,21 @@ impl Runtime {
                 let mut last = self.last.lock().unwrap();
                 if last.stage != "error" {
                     *last = Status::error(
-                        "本机服务已经停止，可以重新尝试。",
+                        &tr(
+                            "本地服务已经停止，可以重新尝试。",
+                            "The local service stopped. You can try again.",
+                        ),
                         if code.code() == Some(73) {
-                            "工作区已被另一个进程打开，请先关闭那个工作区。".into()
+                            tr(
+                                "工作区已被另一个进程打开，请先关闭那个工作区。",
+                                "The workspace is open in another process. Close it there first.",
+                            )
                         } else {
-                            format!("服务退出：{code}。可检查本机工作区的 logs 文件夹。")
+                            if english() {
+                                format!("The service exited: {code}. Check the logs folder in the local workspace.")
+                            } else {
+                                format!("服务退出：{code}。可检查本地工作区的 logs 文件夹。")
+                            }
                         },
                     );
                 }

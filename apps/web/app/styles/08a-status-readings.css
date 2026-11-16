@@ -25,12 +25,6 @@
   color: var(--mx-muted);
   font-variant-numeric: tabular-nums;
 }
-.mx-peek-basis {
-  margin: 4px 0 0;
-  color: var(--mx-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
 
 .mx-review-prerequisites {
   margin: 0 0 12px;

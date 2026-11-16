@@ -236,7 +236,7 @@ function ModelEditor({
   });
   const scenarioNames: Record<string, string> = {
     bear: t("保守", "Bear"),
-    base: t("基准", "Base"),
+    base: t("中性", "Base"),
     bull: t("乐观", "Bull"),
   };
   const fields: {
@@ -294,7 +294,7 @@ function ModelEditor({
     initial.defaultSource === "saved-model"
       ? t("上次保存的模型", "Last saved model")
       : initial.defaultSource === "sector-template"
-        ? t("行业情景模板", "Sector scenario template")
+        ? t("板块情景模板", "Sector scenario template")
         : initial.defaultSource === "configured-scenarios"
           ? t("已配置的假设", "Configured assumptions")
           : t("模型初始假设", "Initial assumptions");
@@ -328,7 +328,7 @@ function ModelEditor({
               value={compact(result.basis.revenue, locale)}
             />
             <Metric
-              label={t("现金流率", "Cash-flow margin")}
+              label={t("自由现金流率", "FCF margin")}
               value={percent(result.basis.startMargin, false, 2)}
             />
           </div>
@@ -383,7 +383,7 @@ function ModelEditor({
                   {t("调整假设", "Adjust assumptions")}
                 </Button>
                 <Segments
-                  label={t("模型周期", "Model horizon")}
+                  label={t("预测年限", "Horizon")}
                   value={String(horizon)}
                   onChange={(v) => update({ horizon: v })}
                   options={[
@@ -461,7 +461,7 @@ function ModelEditor({
               className="mx-table-scroll"
               tabIndex={0}
               role="region"
-              aria-label={t("情景对照", "Scenario comparison")}
+              aria-label={t("情景对比", "Scenario comparison")}
             >
               <table className="mx-financial-table">
                 <thead>
@@ -501,7 +501,7 @@ function ModelEditor({
           <Panel
             title={t("价格隐含的增长", "Growth implied by price")}
             help={t(
-              "固定基准情景的现金流率、股数、终值倍数和折现率，仅求解让模型价值等于现价的前五年增长率。",
+              "固定中性情景的现金流率、股数、终值倍数和折现率，仅求解让模型价值等于现价的前五年增长率。",
               "Only initial growth changes; the other base assumptions stay fixed while solving for the current price.",
             )}
           >
@@ -752,7 +752,7 @@ function ModelEditor({
       >
         <Facts
           rows={[
-            [t("模型周期", "Horizon"), `${horizon}Y`],
+            [t("预测年限", "Horizon"), `${horizon}Y`],
             [
               scenarioNames[selected],
               currency(current.value, result.basis.currency, 2),

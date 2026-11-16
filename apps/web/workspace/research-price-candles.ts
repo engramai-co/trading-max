@@ -1,6 +1,8 @@
 import type { SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ResearchPriceSeries } from "@/lib/types";
+import type { Reading, ReadingItem } from "./chart-readout";
+import { fixed, readingTone, signedNumber, signedPercent } from "./reading-format";
 
 export type PriceBar = ResearchPriceSeries["points"][number];
 
@@ -23,23 +25,65 @@ export function candleSeries(name: string, data: ReturnType<typeof candleValues>
   };
 }
 
-export function priceBarReading(
-  point: PriceBar,
-  date: string,
-  currency: string,
-  labels: { open: string; high: string; low: string; close: string },
-  format: (value: number | null) => string,
-  candle: boolean,
-) {
-  return [
-    date + " · " + currency,
-    ...(candle ? [
-      `${labels.open} ${format(point.open)}`,
-      `${labels.high} ${format(point.high)}`,
-      `${labels.low} ${format(point.low)}`,
-    ] : []),
-    `${labels.close} ${format(point.close)}`,
+/** Each bar's reference close: the bar before on daily charts, the previous session's last bar intraday. */
+export function previousCloses(points: readonly PriceBar[], intraday: boolean, session: (date: string) => string) {
+  let day = "", last: number | null = null, reference: number | null = null;
+  return points.map((point, index) => {
+    if (!intraday) return index > 0 ? points[index - 1].close ?? null : null;
+    const current = session(point.date);
+    if (current !== day) {
+      reference = last;
+      day = current;
+    }
+    if (Number.isFinite(point.close)) last = point.close;
+    return reference;
+  });
+}
+
+/** The move from the reference close, "+3.53 · +1.05%", with its tone. */
+export function priceChange(close: number | null | undefined, previous: number | null | undefined, digits = 2) {
+  if (close == null || previous == null || !Number.isFinite(close) || !Number.isFinite(previous) || previous === 0) return null;
+  const move = close - previous;
+  return { value: signedNumber(move, digits) + " · " + signedPercent(move / previous), tone: readingTone(move, digits) };
+}
+
+/**
+ * A price bar as a reading: the close leads in ink, followed by its move from the reference
+ * close in gain or loss colour; open, high, low and volume form a 2×2 grid. Without a whole
+ * candle the close leads alone and the move takes a row. The panel names the currency once.
+ */
+export function priceReading({ bar, previous, time, candle, volume, labels, digits = 2, indicators = [] }: {
+  bar: PriceBar;
+  previous?: number | null;
+  time: string;
+  candle: boolean;
+  /** Volume in the volume axis's units. */
+  volume?: string;
+  labels: { change: string; volume: string };
+  digits?: number;
+  /** Indicator cells after the prices, in the order they should survive the card's limit. */
+  indicators?: ReadingItem[];
+}): Reading {
+  const price = (value: number | null | undefined) => fixed(value, digits);
+  const change = priceChange(bar.close, previous, digits);
+  const groups = indicators.length ? [indicators] : [];
+  if (candle && bar.open != null && bar.high != null && bar.low != null) {
+    return {
+      time,
+      ohlc: {
+        close: price(bar.close),
+        ...(change ? { change: change.value, ...(change.tone ? { tone: change.tone } : {}) } : {}),
+        open: price(bar.open), high: price(bar.high), low: price(bar.low),
+        ...(volume ? { volume } : {}),
+      },
+      ...(groups.length ? { groups } : {}),
+    };
+  }
+  const moves: ReadingItem[] = [
+    ...(change ? [{ label: labels.change, value: change.value, ...(change.tone ? { tone: change.tone } : {}) }] : []),
+    ...(volume ? [{ label: labels.volume, value: volume }] : []),
   ];
+  return { time, primary: { value: price(bar.close) }, ...(moves.length || groups.length ? { groups: [moves, ...groups].filter((group) => group.length) } : {}) };
 }
 
 /** A missing sample inside one regular session is different from an overnight,

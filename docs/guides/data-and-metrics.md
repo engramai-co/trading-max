@@ -21,7 +21,7 @@ See [provider notices](../../THIRD_PARTY_NOTICES.md) and
 
 In **Settings → Accounts & data → Market data**, connect a free Alpaca Paper
 account with its API Key ID and Secret, test the connection, then choose
-**Save and Enable**. Enabling, disabling or removing the connection changes
+**Save and enable**. Enabling, disabling or removing the connection changes
 the provider for new quote requests without a restart.
 
 The Markets views use Alpaca for eligible US-listed stocks and ETFs when
@@ -44,7 +44,7 @@ Alpaca market-data host are used.
 
 During the overnight session,
 prices older than ten minutes are rejected even when YF has an older hourly
-bar: a failed feed or a quiet security must not become a fabricated valuation.
+bar: a failed feed or a quiet listing must not become a fabricated valuation.
 Broker observations are retained exactly, including when reconstruction is
 missing. Full replays publish per-symbol/feed coverage and failures under
 `account/nav/market_data.json`; source bars live in a separate external cache.
@@ -59,7 +59,7 @@ permissions and [historical overnight access rules](https://docs.alpaca.markets/
 
 ## Units and periods
 
-- Currency labels identify the displayed currency. A GBP portfolio value and
+- Currency labels identify the displayed currency. A GBP account value and
   a USD company quote are not directly interchangeable.
 - `k`, `m`, and `bn` mean thousand, million, and billion. Exact detail tables
   retain precision. A 5% rate is displayed as 5%, not the internal ratio 0.05.
@@ -70,10 +70,10 @@ permissions and [historical overnight access rules](https://docs.alpaca.markets/
 
 ## Account value is not investment return
 
-Money P&L subtracts net external contributions from the change in value.
+Money P&L subtracts net external deposits from the change in value.
 The percentage version divides by opening account value. Time-weighted return
 instead compounds flow-adjusted period returns from reconciled daily history.
-These measures can differ, especially when contributions are large.
+These measures can differ, especially when deposits or withdrawals are large.
 
 Intraday account values combine broker observations with ledger-based
 reconstruction. History is evaluated every ten minutes, but older market
@@ -102,14 +102,14 @@ removes estimates that no longer pass these checks, preserving broker records.
 These rules do not supply overnight prices absent from the market-data provider,
 and bar resolution must not be interpreted as the age of the latest price.
 
-Missing cash-flow evidence makes affected P&L unavailable. Unknown is not zero.
+Missing deposit and withdrawal evidence makes affected P&L unavailable. Unknown is not zero.
 See [NAV history](../architecture/unified-nav-history.md) and
 [performance calculations](../architecture/performance-metrics.md).
 
 ## Ledger settlement currency
 
 Campaign policy, diluted cost, capital recovery, and trade attribution convert
-each cash amount in its recorded settlement currency. A security's quote
+each cash amount in its recorded settlement currency. A holding's quote
 currency and the account's headline currency do not determine that currency.
 Totals, fees and broker results retain their original values; GBP analytics
 carry separate conversion evidence. Pence convert at 100 GBX per GBP.
@@ -131,7 +131,7 @@ or reliable FX makes only dependent monetary metrics unavailable; current
 broker valuations, quantities and independently valid account metrics remain
 visible. Unknown amounts are never replaced with zero.
 
-Imported CFD cash flows, realised results and the cash-equity proxy follow the
+Imported CFD deposits, withdrawals and transfers, realised results and the cash-equity proxy follow the
 same GBP conversion rule. A missing conversion cannot silently remove CFD
 from the household total or reuse an older known amount. Raw imports remain
 unchanged. If an import omits the net result and the fees needed to derive it,
@@ -150,20 +150,20 @@ Foreign CFD conversions use a GBP precision of 0.00000001 with half-even
 rounding. Allocation puts any rounding remainder into the final share, keeping
 each converted event total unchanged.
 
-## Cash-flow verification diagnostics
+## Deposit and withdrawal verification diagnostics
 
 Data status counts retained valuation points in the current immutable snapshot
-that lack verified cash-flow coverage at each account's observation time.
+that lack verified deposit and withdrawal coverage at each account's observation time.
 The count is unrelated to the number of successful refresh jobs or chart gaps.
 Both schedules report the same snapshot coverage. An unavailable count means
 there is no readable snapshot or valuation history. `no_snapshot` identifies
 an installation without a published snapshot; zero with no retained points
 means a successfully read, empty history.
-Cash-flow coverage alone does not certify intraday time-weighted returns.
+Deposit and withdrawal coverage alone does not certify intraday time-weighted returns.
 
 ## Decision review
 
-Decision review scores each buy and sell (one security, one side, one trading
+Decision review scores each buy and sell (one ticker, one side, one trading
 day) in GBP against not trading, on split-adjusted closes plus the dividends
 that followed. Only a listing's completed regular sessions count, read from its
 exchange calendar: today's bar becomes a close once the session has ended, and
@@ -180,7 +180,7 @@ its own day's exchange rate, and a missing rate the last final rate before it.
 If the provider later fills in or corrects that history, the affected effects
 are restated. The S&P 500 comparison follows the New York calendar the same way.
 
-## Interpret missing, historical, and modeled values
+## Interpret missing, historical, and modelled values
 
 A missing reading may mean the provider does not cover it, the history is too
 short, or the method is not applicable. Open help, source records, or Data status for

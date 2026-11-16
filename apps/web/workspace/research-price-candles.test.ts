@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
-import { candleValues, priceGapConnectors, priceSlots, type PriceBar } from "./research-price-candles";
+import { readingText } from "./chart-readout";
+import { candleValues, previousCloses, priceGapConnectors, priceReading, priceSlots, type PriceBar } from "./research-price-candles";
 
 function bar(date: string, close = 100): PriceBar {
   return { date, open: close - 2, close, high: close + 1, low: close - 3,
@@ -8,6 +9,30 @@ function bar(date: string, close = 100): PriceBar {
 }
 
 describe("price bars and period display", () => {
+  it("reads a candle as the close and its move, then open, high, low and volume", () => {
+    const bar = { date: "2026-10-08", open: 336.82, high: 341.57, low: 335.9, close: 340.42, volume: 34_400_000, sma20: null, sma50: null, sma200: null };
+    const labels = { change: "Change", volume: "Volume" };
+    const reading = priceReading({ bar, previous: 336.89, time: "8 Oct", candle: true, volume: "34.4m", labels });
+    expect(reading).toEqual({
+      time: "8 Oct",
+      ohlc: { close: "340.42", change: "+3.53 · +1.05%", tone: "up", open: "336.82", high: "341.57", low: "335.90", volume: "34.4m" },
+    });
+    // No currency or interval beside the figures: the panel names them once.
+    expect(readingText(reading, "en")).toBe("8 Oct\nClose 340.42 +3.53 · +1.05%\nOpen 336.82\nHigh 341.57\nLow 335.90\nVolume 34.4m");
+    expect(priceReading({ bar, previous: 341.5, time: "8 Oct", candle: false, labels })).toEqual({
+      time: "8 Oct",
+      primary: { value: "340.42" },
+      groups: [[{ label: "Change", value: "\u22121.08 · \u22120.32%", tone: "down" }]],
+    });
+    expect(priceReading({ bar, time: "8 Oct", candle: true, labels }).ohlc?.change).toBeUndefined();
+  });
+
+  it("measures intraday moves from the previous session's last bar and daily moves from the bar before", () => {
+    const points = ["2026-11-09T20:55Z", "2026-11-10T14:30Z", "2026-11-10T14:35Z"].map((date, i) => bar(date, 100 + i));
+    expect(previousCloses(points, true, (date) => date.slice(0, 10))).toEqual([null, 100, 100]);
+    expect(previousCloses(points, false, (date) => date.slice(0, 10))).toEqual([null, 100, 101]);
+  });
+
   it("takes a missing OHLC leg out of just that candle", () => {
     const points = [bar("2026-11-02"), { ...bar("2026-11-03"), high: null }, bar("2026-11-04", 105)];
     expect(candleValues(points)).toEqual([[98, 100, 97, 101], [null, null, null, null], [103, 105, 102, 106]]);

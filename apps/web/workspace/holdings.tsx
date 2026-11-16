@@ -55,10 +55,10 @@ export function HoldingsWorkspace() {
         value={view}
         onChange={(v) => update({ view: v === "positions" ? null : v })}
         options={[
-          { value: "positions", label: t("直接持仓", "Your positions") },
+          { value: "positions", label: t("直接持仓", "Direct holdings") },
           {
             value: "lookthrough",
-            label: t("穿透底层资产", "Look-through exposure"),
+            label: t("穿透", "Look-through"),
           },
         ]}
       />
@@ -187,12 +187,12 @@ function Positions() {
                 value={currency(invested, "GBP", 2)}
               />
               <Metric
-                label={t("浮动盈亏", "Unrealized P&L")}
+                label={t("浮动盈亏", "Unrealised P&L")}
                 value={currency(pnl, "GBP", 2)}
                 tone={tone(pnl)}
               />
               <Metric
-                label={t("盈利持仓", "Profitable positions")}
+                label={t("盈利持仓", "Profitable holdings")}
                 value={`${scoped.filter((h) => h.pnlGbp > 0).length} / ${scoped.length}`}
               />
             </div>}
@@ -201,8 +201,8 @@ function Positions() {
             <div className="mx-toolbar">
               <TextInput
                 className="mx-search-input"
-                aria-label={t("筛选持仓", "Filter positions")}
-                placeholder={t("筛选持仓…", "Filter positions…")}
+                aria-label={t("筛选持仓", "Filter holdings")}
+                placeholder={t("筛选持仓…", "Filter holdings…")}
                 leftSection={<MagnifyingGlass size={17} />}
                 value={search}
                 onChange={(e) => {
@@ -259,7 +259,7 @@ function Positions() {
                   <table className="mx-table">
                     <thead>
                       <tr>
-                        <th>{sortButton(t("资产", "Security"), "ticker")}</th>
+                        <th>{sortButton(t("名称", "Name"), "ticker")}</th>
                         {detailed && (
                           <>
                             <th className="mx-align-right">
@@ -268,13 +268,13 @@ function Positions() {
                                 <Help label={t("买入成本", "Purchase cost")}>
                                   {t(
                                     "下方是每股摊薄成本：计入已实现交易与回收资金，可能不同于券商买入均价。",
-                                    "The figure below is the diluted cost per share. It includes realized trades and recovered capital, so it may differ from the broker's average purchase price.",
+                                    "The figure below is the diluted cost per share. It includes realised trades and recovered capital, so it may differ from the broker's average purchase price.",
                                   )}
                                 </Help>
                               </span>
                             </th>
                             <th className="mx-align-right">
-                              {t("当前价格", "Current price")}
+                              {t("现价", "Current price")}
                             </th>
                             <th className="mx-align-right">
                               {t("汇率影响", "FX impact")}
@@ -291,11 +291,11 @@ function Positions() {
                           </th>
                         )}
                         <th className="mx-align-right">
-                          {sortButton(t("浮动盈亏", "Unrealized P&L"), "pnl")}
+                          {sortButton(t("浮动盈亏", "Unrealised P&L"), "pnl")}
                         </th>
                         <th className="mx-align-right">
                           {sortButton(
-                            t("总组合占比", "Portfolio weight"),
+                            t("占比", "Weight"),
                             "allocation",
                           )}
                         </th>
@@ -309,7 +309,7 @@ function Positions() {
                               className="mx-table-button"
                               onClick={() => selectHolding(h)}
                             >
-                              <span className="sr-only">{t("查看持仓 ", "View position ")}</span>
+                              <span className="sr-only">{t("查看持仓 ", "View holding ")}</span>
                               <SecurityPeek ticker={h.ticker} range="1D" position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
                                 <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
                               </SecurityPeek>
@@ -344,7 +344,7 @@ function Positions() {
                               {currency(h.currentValueGbp, "GBP", 2)}
                             </strong>
                             <small>
-                              {number(h.quantity, 4)} {t("股", "shares")}
+                              {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
                             </small>
                           </td>
                           {hasDay && (
@@ -437,13 +437,13 @@ function Positions() {
                       <footer>
                         <span>
                           {accountName(profile, h.account)} ·{" "}
-                          {number(h.quantity, 4)} {t("股", "shares")}
+                          {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
                         </span>
                         <span className="mx-weight">
                           <span className="mx-mini-bar" aria-hidden="true">
                             <i style={{ width: `${largestAllocation > 0 ? (h.allocationPct / largestAllocation) * 100 : 0}%`, backgroundColor: barColour }} />
                           </span>
-                          <span className="sr-only">{t("组合权重", "Weight")} </span>
+                          <span className="sr-only">{t("占比", "Weight")} </span>
                           {percent(h.allocationPct)}
                         </span>
                       </footer>
@@ -477,8 +477,8 @@ function Positions() {
               <Empty
                 title={
                   search
-                    ? t("没有匹配的持仓", "No matching positions")
-                    : t("这个账户还没有持仓", "No positions in this account")
+                    ? t("没有匹配的持仓", "No matching holdings")
+                    : t("这个账户还没有持仓", "No holdings in this account")
                 }
                 description={t(
                   "试试另一个名称，或切换账户范围。",
@@ -490,7 +490,7 @@ function Positions() {
                       variant="default"
                       onClick={() => update({ q: null })}
                     >
-                      {t("清除筛选", "Clear filter")}
+                      {t("清除筛选", "Clear filters")}
                     </Button>
                   )
                 }
@@ -500,8 +500,8 @@ function Positions() {
       <Drawer
         opened={selected !== null && selected.scope === account}
         onClose={() => setSelected(null)}
-        title={t("持仓明细", "Position detail")}
-        closeButtonProps={{ "aria-label": t("关闭持仓明细", "Close position detail") }}
+        title={t("持仓明细", "Holding detail")}
+        closeButtonProps={{ "aria-label": t("关闭持仓明细", "Close holding detail") }}
         classNames={{ content: "mx-position-drawer" }}
       >
         {selected && (

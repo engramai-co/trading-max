@@ -90,12 +90,22 @@ async function exercise(page: Page, baseURL: string, name: string) {
   await page.getByRole("link", { name: index.nameZh }).click();
   await expect(page).toHaveURL(/type=index&index=synthetic-index$/);
   await expect(page.getByRole("heading", { name: index.nameZh })).toBeVisible();
-  await expect(page.getByText("L2", { exact: true })).toBeVisible();
+  // Coverage depth is internal: the page shows what it has, not an L-grade.
+  await expect(page.getByText("L2", { exact: true })).toHaveCount(0);
   await expect(page.getByText("我的合计敞口")).toBeVisible();
-  expect(page.url()).not.toContain(String(privateValue));
-  await page.getByRole("button", { name: "收藏指数", exact: true }).click();
-  await expect(page.getByRole("button", { name: "取消收藏指数" })).toHaveAttribute("aria-pressed", "true");
-  const tabs = page.getByRole("tablist", { name: "指数研究视角" });
+  // The holding's value never reaches the address; the port is the server's, not the page's.
+  const address = new URL(page.url());
+  expect(address.pathname + address.search).not.toContain(String(privateValue));
+  // An index joins the research list the way a stock or fund does, and is listed there.
+  await page.getByRole("button", { name: "加入研究清单", exact: true }).click();
+  await expect(page.getByRole("button", { name: "加入研究清单", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: index.nameZh + "，打开研究清单" }).click();
+  await expect(page.getByRole("dialog").getByRole("link", { name: new RegExp(index.nameZh) })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "更多操作" }).click();
+  await expect(page.getByRole("menuitem", { name: "从研究清单移除" })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  const tabs = page.getByRole("tablist", { name: "研究视角" });
   await tabs.getByRole("tab", { name: "跟踪产品" }).click();
   await expect(page.getByRole("region", { name: "我持有" })).toContainText("SYNF.L");
   await expect(page.getByRole("region", { name: "相似敞口" })).toContainText("SYN2");

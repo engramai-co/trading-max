@@ -7,8 +7,6 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { catalogues, type MessageCatalogue } from "@/lib/i18n/messages";
-
 export type Locale = "zh" | "en";
 export type DisplayTimeZonePreference = "browser" | string;
 
@@ -167,16 +165,6 @@ export function useLocale() {
     throw new Error("useLocale must be used inside LocaleProvider");
   }
   return value;
-}
-
-/**
- * Access the bilingual message catalogue for the active locale. Prefer this
- * over inline `zh`/`en` pairs for plain strings so translations stay reviewable
- * in one place and a missing key fails at build time.
- */
-export function useMessages(): MessageCatalogue {
-  const { locale } = useLocale();
-  return catalogues[locale];
 }
 
 export function Localized({

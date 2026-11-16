@@ -78,7 +78,7 @@ test.describe("portfolio workspace", () => {
   }) => {
     await page.goto("/settings");
     await page
-      .getByRole("button", { name: /连接账户|Connect$/, exact: false })
+      .getByRole("button", { name: /连接账户|Connect account$/, exact: false })
       .first()
       .click();
     const dialog = page.getByRole("dialog");
@@ -105,7 +105,7 @@ test.describe("portfolio workspace", () => {
       route.fulfill({ status: 503, body: "{}" }),
     );
     await page.goto("/");
-    const assets = page.getByRole("region", { name: /组合资产|Portfolio assets/ });
+    const assets = page.getByRole("region", { name: /账户价值|Account value/ });
     const retry = assets.getByRole("button", { name: /重试|Retry/ });
     await expect(assets.getByRole("combobox")).toBeVisible();
     await expect(retry).toBeVisible();
@@ -142,11 +142,12 @@ test.describe("portfolio workspace", () => {
   }) => {
     await page.goto("/");
     await page
-      .getByRole("button", { name: /搜索页面或证券|Search pages or securities/ })
+      .locator(".mx-topbar")
+      .getByRole("button", { name: /^(搜索|Search)$/ })
       .click();
     await page
       .getByRole("combobox", {
-        name: /搜索页面或证券|Search pages or securities/,
+        name: /^(搜索|Search)$/,
       })
       .fill("research");
     await page.keyboard.press("Enter");

@@ -13,6 +13,10 @@ import {
   recommendationChange,
 } from "./analyst-data";
 import { Plot } from "./charts";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
+import { readingText, type Reading, type ReadingItem } from "./chart-readout";
+import { fixed, readingTone, signedNumber, signedPercent, telling } from "./reading-format";
+import { DataBasis } from "./reading-card";
 import { currency, number, object, objects, percent, safeUrl, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
@@ -24,7 +28,6 @@ import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
 import type { ResearchPrice } from "./research-price-basis";
 import { useRouteState } from "./route-state";
-import { chartName, chartNumber } from "./research-chart-format";
 
 export function AnalystView({
   data,
@@ -101,9 +104,9 @@ function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: R
     <Panel className="mx-analyst-verdict">
       <div className="mx-metric-grid">
         <Metric
-          label={t("分析师共识", "Consensus")}
+          label={t("分析师共识", "Analyst consensus")}
           value={label ? t(label[0], label[1]) : "—"}
-          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} analysts`) : undefined}
+          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} ${verdict.analysts === 1 ? "analyst" : "analysts"}`) : undefined}
         />
         <Metric
           label={t("中位目标价", "Median target")}
@@ -119,7 +122,7 @@ function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: R
             : undefined}
         />
         <Metric
-          label={t("下次财报", "Next report")}
+          label={t("下次财报", "Next earnings")}
           value={nextReport ? formatCalendarDate(nextReport, locale) : "—"}
           note={verdict.lastSurprise != null
             ? (verdict.lastSurprise >= 0 ? t("上季超预期 ", "Last quarter beat by ") : t("上季低于预期 ", "Last quarter missed by "))
@@ -175,23 +178,43 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
     .sort((a, b) => a.date.localeCompare(b.date));
   const difference = (r: typeof rows[number]) => r.actual == null || r.estimate == null ? null : r.actual - r.estimate;
   const signed = (v: number | null) => v == null ? "—" : `${v > 0 ? "+" : ""}${number(v, 4)}`;
-  const fmt = (v: number | null) => v == null ? "—" : `${number(v, 4)} ${code}`;
-  const detailRows = (r: typeof rows[number]) => [
-    formatCalendarDate(r.date, locale) + (r.future ? t(" · 预期", " · est.") : ""),
-    `${t("实际 EPS", "Reported EPS")} ${fmt(r.actual)}`,
-    `${t("预期 EPS", "Estimated EPS")} ${fmt(r.estimate)}`,
-    `${t("差额", "Difference")} ${signed(difference(r))}${difference(r) == null ? "" : ` ${code}`}`,
-    ...(r.surprise == null ? [] : [`${t("惊喜幅度", "Surprise")} ${percent(r.surprise, true)}`]),
-  ];
+  // Three decimals only where a quarter's reported and estimated EPS differ in the third place.
+  const digits = (r: typeof rows[number]) => telling([r.actual, r.estimate]);
+  /** Reported EPS leads; the estimate and the toned surprise follow. The panel names the currency. */
+  const readEps = (r: typeof rows[number]): Reading => {
+    const places = digits(r);
+    const gap = difference(r);
+    const estimate = { label: t("预期", "Estimate"), value: fixed(r.estimate, places) };
+    return {
+      time: quarterLabel(r.date, false, locale, ""),
+      ...(r.actual == null ? { primary: estimate } : {
+        primary: { label: t("已公布", "Reported"), value: fixed(r.actual, places) },
+        groups: [[
+          ...(r.estimate == null ? [] : [estimate]),
+          ...(gap == null ? [] : [{
+            label: t("超预期", "Surprise"),
+            value: signedNumber(gap, places) + (r.surprise == null ? "" : " · " + signedPercent(r.surprise)),
+            tone: readingTone(gap, places),
+          }]),
+        ]],
+      }),
+    };
+  };
   if (!rows.length) return null;
   return (
     <Panel
       title={t("季度每股收益", "Quarterly EPS")}
       action={<span>{code}</span>}
-      help={t(
-        "实际与预期均保留分析师数据源的 EPS 口径，可能经过调整，不与报表中的 GAAP EPS 混合。空心点代表预期；未来没有实际值。",
-        "Both reported and estimated EPS retain the analyst provider’s basis, which may be adjusted. They are not mixed with statement GAAP EPS. Hollow points are estimates; future periods have no reported value.",
-      )}
+      help={<>
+        <p>{t(
+          "空心点代表预期；未来没有已公布值。超预期 = 已公布 − 预期，百分比相对预期。",
+          "Hollow points are estimates; future periods have no reported value. Surprise is reported less estimated EPS, and its percentage is relative to the estimate.",
+        )}</p>
+        <DataBasis>{t(
+          "已公布与预期均保留分析师数据源的 EPS 口径，可能经过调整，不与报表中的 GAAP EPS 混合；币种见标题右侧。",
+          "Reported and estimated EPS keep the analyst provider’s basis, which may be adjusted, and are not mixed with statement GAAP EPS. The currency is beside the title.",
+        )}</DataBasis>
+      </>}
     >
       {rows.length > 1 ? <Plot
         research
@@ -199,8 +222,11 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
         label={t("季度 EPS 实际与预期", "Reported and estimated quarterly EPS")}
         readout={{
           positions: rows.map((_, i) => i),
-          latest: fmt(rows.findLast((r) => r.actual != null)?.actual ?? rows.at(-1)!.estimate),
-          point: (index) => detailRows(rows[index]).join("\n"),
+          latest: (() => {
+            const last = rows.findLast((r) => r.actual != null) ?? rows.at(-1)!;
+            return fixed(last.actual ?? last.estimate, digits(last));
+          })(),
+          read: (index) => readEps(rows[index]),
         }}
         option={(c) => ({
           legend: { bottom: 0, textStyle: { color: c.text } },
@@ -219,7 +245,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           series: [
             {
               type: "scatter",
-              name: t("实际", "Reported"),
+              name: t("已公布", "Reported"),
               data: rows.map((r) => r.actual),
               symbolSize: 10,
               itemStyle: { color: c.brand },
@@ -235,7 +261,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
           ],
         })}
       /> : <div className="mx-chart-readout"><div className="mx-chart-readout-values">
-        {detailRows(rows[0]).map((line, i) => <span key={i}>{line}</span>)}
+        {readingText(readEps(rows[0]), locale).split("\n").map((line, i) => <span key={i}>{line}</span>)}
       </div></div>}
       <details className="mx-chart-data">
         <summary>{t("季度读数", "Quarterly readings")}</summary>
@@ -248,7 +274,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
               value: (r) => formatCalendarDate(r.date, locale) + (r.future ? t(" · 预期", " · est.") : ""),
             },
             {
-              label: t("实际", "Reported"),
+              label: t("已公布", "Reported"),
               value: (r) => number(r.actual, 2),
               numeric: true,
             },
@@ -311,6 +337,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
 
 function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
   const { locale } = useLocale();
+  const colours = useChartColours();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const a = object(data.analyst),
@@ -334,6 +361,21 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
     t("当前", "Current"),
   ];
   const r = revisions.find((r) => key(r) === key(selected));
+  const values = days.map((d) => numeric(selected[d]));
+  // Revisions are small: show the third decimal whenever it tells two readings apart.
+  const places = telling(values);
+  const readRevision = (index: number): Reading => {
+    const previous = values.slice(0, index).findLast((value) => value != null);
+    const change = values[index] == null || previous == null ? null : values[index]! - previous;
+    return {
+      time: labels[index],
+      primary: { value: fixed(values[index], places) },
+      ...(change == null || !readingTone(change, places) ? {} : {
+        groups: [[{ label: t("较上一读数", "Since previous"), value: signedNumber(change, places), tone: readingTone(change, places) }]],
+      }),
+    };
+  };
+  const positions = values.flatMap((value, index) => value == null ? [] : [index]);
   return (
     <Panel
       title={t("盈利预期修订", "EPS estimate revisions")}
@@ -356,6 +398,12 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
           "同一财期的 EPS 预期修订",
           "EPS estimate revisions for one fiscal period",
         )}
+        readout={positions.length ? {
+          positions,
+          latest: fixed(values[positions.at(-1)!], places),
+          read: readRevision,
+          marks: (index) => values[index] == null ? [] : [{ value: values[index]!, colour: colours.brand }],
+        } : undefined}
         option={(c) => ({
           xAxis: {
             type: "category",
@@ -373,24 +421,14 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
           series: [
             {
               type: "line",
-              data: days.map((d) => numeric(selected[d])),
+              name: t("EPS 预期", "EPS estimate"),
+              data: values,
               connectNulls: false,
               symbolSize: 6,
               lineStyle: { color: c.brand, width: 2 },
+              itemStyle: { color: c.brand },
             },
           ],
-          tooltip: {
-            formatter: (input) => {
-              const entries = Array.isArray(input) ? input : [input];
-              return [
-                String(entries[0]?.name ?? "") + " · " + code,
-                ...entries.map(
-                  (e) =>
-                    `${chartName(String(e.seriesName))}   ${chartNumber(e.value, locale)}`,
-                ),
-              ].join("\n");
-            },
-          },
         })}
       />
       <details className="mx-chart-data">
@@ -422,6 +460,8 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
 
 function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
+  const { locale } = useLocale();
+  const colours = useChartColours();
   const [firm, setFirm] = useState(""),
     [action, setAction] = useState("all");
   const a = object(data.analyst),
@@ -443,12 +483,35 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
     t("卖出", "Sell"),
     t("强烈卖出", "Strong sell"),
   ];
-  const period = (v: unknown) =>
-    str(v) === "0m"
-      ? t("当前", "Current")
-      : /^-\d+m$/.test(str(v))
-        ? Math.abs(parseInt(str(v))) + t(" 个月前", " months ago")
-        : str(v);
+  const period = (v: unknown) => {
+    if (str(v) === "0m") return t("当前", "Current");
+    if (!/^-\d+m$/.test(str(v))) return str(v);
+    const months = Math.abs(parseInt(str(v)));
+    return months + (months === 1 ? t(" 个月前", " month ago") : t(" 个月前", " months ago"));
+  };
+  // Each rating keeps its bar's colour on the legend and on the reading's key.
+  const ratingColour = (c: ChartColours, i: number) => [c.positive, c.secondary, c.warning, c.accent, c.negative][i];
+  const counts = (index: number) => ratingKeys.map((key) => numeric(recommendations[index]?.[key]) ?? 0);
+  const ratingRow = (i: number, count: number): ReadingItem =>
+    ({ label: labels[i], value: number(count, 0), key: { colour: ratingColour(colours, i), kind: "bar" as const } });
+  // All five ratings in the legend's order, zeros included: what the live region, copy and summary say.
+  const ratingRows = (index: number) => counts(index).map((count, i) => ratingRow(i, count));
+  // The card fits buy, hold and sell in three rows, so the sell side is never folded away;
+  // each side names its strong rating after the count.
+  const readRatings = (index: number): Reading | null => {
+    const row = recommendations[index];
+    if (!row) return null;
+    const [strongBuy, buy, hold, sell, strongSell] = counts(index);
+    return {
+      time: period(row.period),
+      groups: [[
+        { ...ratingRow(1, strongBuy + buy), detail: locale === "zh" ? `其中强烈买入 ${number(strongBuy, 0)}` : `incl. ${number(strongBuy, 0)} strong buy` },
+        ratingRow(2, hold),
+        { ...ratingRow(3, sell + strongSell), detail: locale === "zh" ? `其中强烈卖出 ${number(strongSell, 0)}` : `incl. ${number(strongSell, 0)} strong sell` },
+      ]],
+      spoken: [ratingRows(index)],
+    };
+  };
   return (
     <>
       {recommendations.length > 0 && (
@@ -459,6 +522,11 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
               "各类评级的分析师数量",
               "Analyst counts by rating category",
             )}
+            readout={{
+              positions: recommendations.map((_, i) => i),
+              read: readRatings,
+              latest: ratingRows(recommendations.length - 1).map((row) => row.label + " " + row.value).join(" · ") || "—",
+            }}
             option={(c) => ({
               legend: {
                 bottom: 0,
@@ -482,15 +550,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
                 name: labels[i],
                 stack: "ratings",
                 barMaxWidth: 44,
-                itemStyle: {
-                  color: [
-                    c.positive,
-                    c.secondary,
-                    c.warning,
-                    c.accent,
-                    c.negative,
-                  ][i],
-                },
+                itemStyle: { color: ratingColour(c, i) },
                 data: recommendations.map((r) => numeric(r[key])),
               })),
             })}
@@ -501,7 +561,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
               label={t("评级数量明细", "Rating count details")}
               rows={recommendations}
               columns={[
-                { label: t("时间", "Period"), value: (r) => period(r.period) },
+                { label: t("期间", "Period"), value: (r) => period(r.period) },
                 ...ratingKeys.map((key, i) => ({
                   label: labels[i],
                   value: (r: Record<string, unknown>) => number(r[key], 0),
@@ -551,7 +611,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
           label={t("机构行动记录", "Analyst action records")}
           rows={rows}
           columns={[
-            { label: t("日期", "Date"), value: (r) => r.date },
+            { label: t("日期", "Date"), value: (r) => formatCalendarDate(r.date, locale) },
             { label: t("机构", "Firm"), value: (r) => r.firm },
             {
               label: t("评级变化", "Rating change"),
@@ -569,7 +629,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
           ]}
         />
         <span role="status" className="mx-result-count">
-          {rows.length} {t("条记录", "records")}
+          {rows.length} {rows.length === 1 ? t("条记录", "record") : t("条记录", "records")}
         </span>
       </Panel>
     </>
@@ -596,7 +656,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
         <Empty
           title={
             next
-              ? t("下次财报 ", "Next report ") + formatCalendarDate(next, locale)
+              ? t("下次财报 ", "Next earnings ") + formatCalendarDate(next, locale)
               : t("暂无可用财报日历", "Earnings calendar unavailable")
           }
         />

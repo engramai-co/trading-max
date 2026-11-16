@@ -68,7 +68,7 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
   return (
     <Panel
       title={t("行情数据", "Market data")}
-      help={t("Alpaca 提供美股行情，并补充账户净值重建所需的历史数据。", "Alpaca provides US market prices and supplements account value reconstruction.")}
+      help={t("Alpaca 提供美股行情，并补充账户价值重建所需的历史数据。", "Alpaca provides US market prices and supplements account value reconstruction.")}
     >
       {/* YF is the base in every state; the row names it until Alpaca keys exist, then switches Alpaca on or off. */}
       <div className="mx-setting-row">

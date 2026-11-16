@@ -48,19 +48,6 @@ export function SectorsWorkspace() {
   const t = useCopy();
   const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
-  useEffect(() => {
-    const title = locale === "zh" ? "市场 · Trading Max" : "Markets · Trading Max";
-    const setTitle = () => {
-      if (/^(?:\/desktop)?\/sectors\/?$/.test(location.pathname) && document.title !== title) {
-        document.title = title;
-      }
-    };
-    // The route's server metadata can stream in after the locale is restored.
-    const observer = new MutationObserver(setTitle);
-    observer.observe(document.head, { childList: true, characterData: true, subtree: true });
-    setTitle();
-    return () => observer.disconnect();
-  }, [locale]);
   const { params, update } = useRouteState();
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const now = useMinute();
@@ -188,7 +175,7 @@ export function SectorsWorkspace() {
       // The market rides along, so on a fallback board the switch returns to the board it shows.
       onChange={(value) => update({ market, grouping: value === "gics" ? null : value, sector: null })}
       options={[
-        { value: "gics" as const, label: t("行业", "Sectors") },
+        { value: "gics" as const, label: t("板块", "Sectors") },
         { value: "themes" as const, label: t("我的主题", "My themes") },
       ]}
     />

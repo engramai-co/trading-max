@@ -229,7 +229,7 @@ test.describe("valuation refresh", () => {
     expect(state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(0.2);
 
     // Another security never shows this one's preview while its own loads.
-    await page.getByRole("button", { name: "Next security" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page).toHaveURL(/ticker=OTHR/);
     await expect(page.locator(".mx-security-header h2")).toContainText("OTHR");
     await expect(spot).toHaveCount(0);
@@ -269,7 +269,7 @@ test.describe("valuation refresh", () => {
     const section = page.locator(".mx-pe-history");
     const chart = section.getByRole("group", { name: /^Trailing P\/E history/ });
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
-    await expect(chart).toHaveAccessibleName(/28\.4×.*Historical percentile/);
+    await expect(chart).toHaveAccessibleName(/^Trailing P\/E history · Historical percentile P\d+$/);
     await expect(section.getByRole("button", { name: "P25–P75" })).toHaveAttribute("aria-pressed", "true");
 
     await peScreenshot(page, "trailing-gap", testInfo.project.name);
@@ -277,20 +277,29 @@ test.describe("valuation refresh", () => {
     await chart.focus();
     await chart.press("Home");
     for (let i = 0; i < 132; i++) await chart.press("ArrowRight");
-    const reading = section.getByRole("status");
+    // The chart speaks its reading in the live region beside it.
+    const reading = section.locator(".mx-chart-readout-values");
+    await expect(reading).toHaveAttribute("data-chart-reading", "selected");
     await expect(reading).toContainText("Not meaningful");
-    await expect(reading).toContainText("EPS (TTM) -0.25 USD");
+    await expect(reading).toContainText("EPS (TTM) −0.25");
+    // A gap has no percentile; sources and units stay out of the reading.
+    await expect(reading).not.toContainText("Percentile");
+    await expect(reading).not.toContainText("USD");
+    // On phones the reading strip sits over the panel's controls; close it before switching the band.
+    await chart.press("Escape");
     const deviation = section.getByRole("button", { name: "Mean ±1σ" });
     await deviation.click();
     await expect(deviation).toHaveAttribute("aria-pressed", "true");
     await chart.focus();
     await chart.press("End");
-    await expect(reading).toContainText("Close 142 USD · Yahoo");
-    await expect(reading).toContainText("EPS (TTM) 5 USD · SEC Companyfacts");
-    await expect(reading).toContainText("Includes inferred Q4");
-    await expect(reading).toContainText("Effective");
+    await expect(reading).toContainText("28.4×");
+    await expect(reading).toContainText(/Percentile P\d+/);
+    await expect(reading).toContainText("Close 142.00");
+    await expect(reading).toContainText("EPS (TTM) 5.00");
+    await expect(reading).toContainText("Inferred Q4");
+    await expect(reading).not.toContainText("Yahoo");
     await chart.press("Escape");
-    await expect(reading).toHaveText("");
+    await expect(reading).toHaveAttribute("data-chart-reading", "latest");
     await expect(page.getByText("Historical valuation reference", { exact: true })).toBeVisible();
   });
 
@@ -304,7 +313,7 @@ test.describe("valuation refresh", () => {
     await expect(chart).not.toHaveAccessibleName(/percentile/);
     await expect(page.getByRole("button", { name: "P25–P75" })).toHaveCount(0);
     state.releaseOther();
-    await page.getByRole("button", { name: "Next security" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page).toHaveURL(/ticker=OTHR/);
     await expect(page.locator(".mx-scenario-spot")).toContainText("55.00");
     await expect(chart).toHaveCount(0);
@@ -329,21 +338,21 @@ test.describe("valuation refresh", () => {
     await expect(ntm).toHaveAttribute("aria-pressed", "true");
     const chart = section.getByRole("group", { name: /^NTM P\/E history/ });
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
-    await expect(chart).toHaveAccessibleName(/Historical percentile \d+%/);
+    await expect(chart).toHaveAccessibleName(/Historical percentile P\d+/);
     await expect(section.getByRole("button", { name: "P25–P75" })).toHaveAttribute("aria-pressed", "true");
     await peScreenshot(page, "ntm-ranked", testInfo.project.name);
     await section.getByRole("button", { name: "Mean ±1σ" }).click();
     await expect(section.getByRole("button", { name: "Mean ±1σ" })).toHaveAttribute("aria-pressed", "true");
     await chart.focus();
     await chart.press("Home");
-    const reading = section.getByRole("status");
-    await expect(reading).toContainText("Yahoo forwardPE (fallback)");
-    await expect(reading).toContainText("Recovered publication");
+    const reading = section.locator(".mx-chart-readout-values");
+    await expect(reading).toContainText("Fallback");
+    await expect(reading).toContainText("Forward EPS");
     await chart.press("End");
     await expect(reading).toContainText("EPS (NTM)");
-    await expect(reading).toContainText("Effective (archive)");
-    await expect(reading).toContainText("Quoted");
-    await expect(reading).toContainText("Yahoo FY1 / FY2 consensus");
+    await expect(reading).toContainText(/Percentile P\d+/);
+    await expect(reading).not.toContainText("Fallback");
+    await expect(reading).not.toContainText("Yahoo");
     expect(extra).toBe(0);
     const controls = (await modes.boundingBox())!;
     const bounds = (await section.boundingBox())!;
@@ -365,7 +374,7 @@ test.describe("valuation refresh", () => {
     await expect(section.getByText("有效样本不足，暂无分位带")).toBeVisible();
     await peScreenshot(page, "ntm-short", testInfo.project.name);
     await section.getByRole("button", { name: isMobile ? "TTM" : "滚动 P/E" }).click();
-    await expect(section.getByText("此标的暂不支持滚动 P/E 历史")).toBeVisible();
+    await expect(section.getByText("暂不支持滚动 P/E 历史")).toBeVisible();
   });
 
 });

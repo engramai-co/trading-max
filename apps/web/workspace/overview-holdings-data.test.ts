@@ -153,15 +153,15 @@ it("only marks a combined row closed if all of its positions were closed", () =>
   ]);
 });
 
-it("keeps Technical in the same column for stocks and funds on desktop and phones", () => {
+it("keeps the technical score in the same column for stocks and funds on desktop and phones", () => {
   const zh = (value: string) => value;
   const en = (_: string, value: string) => value;
-  expect(readingColumns("stocks", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术", "模型空间"]);
-  expect(readingColumns("funds", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术", "跟踪差"]);
+  expect(readingColumns("stocks", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术评分", "模型空间"]);
+  expect(readingColumns("funds", zh, "今日").map(({ label }) => label)).toEqual(["今日", "浮动盈亏", "技术评分", "跟踪差"]);
   expect(readingColumns("stocks", en, "Today").map(({ label, short }) => [label, short])).toEqual([
-    ["Today", "Today"], ["Unrealized", "P&L"], ["Technical", "Technical"], ["Model upside", "Upside"],
+    ["Today", "Today"], ["Unrealised P&L", "Unrealised"], ["Technical score", "Technical score"], ["Model upside", "Model upside"],
   ]);
   expect(readingColumns("funds", en, "Today").map(({ label, short }) => [label, short])).toEqual([
-    ["Today", "Today"], ["Unrealized", "P&L"], ["Technical", "Technical"], ["Tracking diff.", "Tracking"],
+    ["Today", "Today"], ["Unrealised P&L", "Unrealised"], ["Technical score", "Technical score"], ["Tracking diff.", "Tracking diff."],
   ]);
 });

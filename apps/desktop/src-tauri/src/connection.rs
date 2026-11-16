@@ -1,3 +1,4 @@
+use crate::preferences::{english, tr};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -47,7 +48,12 @@ fn client_with_timeouts(
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("Trading-Max-Desktop/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|_| "无法初始化安全连接。".into())
+        .map_err(|_| {
+            tr(
+                "无法初始化安全连接。",
+                "Could not set up a secure connection.",
+            )
+        })
 }
 
 fn client() -> Result<&'static reqwest::blocking::Client, ProbeError> {
@@ -62,7 +68,10 @@ fn client() -> Result<&'static reqwest::blocking::Client, ProbeError> {
 
 fn request_error(error: reqwest::Error) -> ProbeError {
     if error.is_timeout() {
-        return ProbeError::transient("连接超时，请检查网络或服务是否在线。");
+        return ProbeError::transient(tr(
+            "连接超时，请检查网络或服务是否在线。",
+            "The connection timed out. Check your network and that the service is online.",
+        ));
     }
     let mut source = error.source();
     let mut network_io = false;
@@ -89,9 +98,12 @@ fn request_error(error: reqwest::Error) -> ProbeError {
         || network_io
         || (!error.is_connect() && (error.is_request() || error.is_body()))
     {
-        ProbeError::transient("连接中断，请检查网络或服务是否在线。")
+        ProbeError::transient(tr(
+            "连接中断，请检查网络或服务是否在线。",
+            "The connection dropped. Check your network and that the service is online.",
+        ))
     } else {
-        ProbeError::permanent("无法建立安全连接。请检查服务地址和证书，再手动重试。")
+        ProbeError::permanent(tr("无法建立安全连接。请检查服务地址和证书，再手动重试。", "Could not make a secure connection. Check the service address and certificate, then retry."))
     }
 }
 
@@ -120,7 +132,7 @@ impl Default for Profile {
         Self {
             schema: 1,
             mode: Mode::Remote,
-            name: "我的工作台".into(),
+            name: tr("我的服务", "My service"),
             url: String::new(),
             auto_connect: true,
             workspace: None,
@@ -131,9 +143,17 @@ impl Default for Profile {
 pub fn remote_url(input: &str) -> Result<Url, String> {
     let input = input.trim();
     if input.len() > 2048 || input.chars().any(char::is_control) {
-        return Err("服务地址过长或包含无效字符。".into());
+        return Err(tr(
+            "服务地址过长或包含无效字符。",
+            "The service address is too long or contains invalid characters.",
+        ));
     }
-    let url = Url::parse(input).map_err(|_| "请输入完整的 HTTPS 服务地址。")?;
+    let url = Url::parse(input).map_err(|_| {
+        tr(
+            "请输入完整的 HTTPS 服务地址。",
+            "Enter the full HTTPS service address.",
+        )
+    })?;
     if url.scheme() != "https"
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -142,7 +162,10 @@ pub fn remote_url(input: &str) -> Result<Url, String> {
         || url.fragment().is_some()
         || url.path() != "/"
     {
-        return Err("请填写 HTTPS 根地址，不要包含密码、页面路径或查询参数。".into());
+        return Err(tr(
+            "请填写 HTTPS 根地址，不要包含密码、页面路径或查询参数。",
+            "Enter the HTTPS root address without a password, page path or query.",
+        ));
     }
     Ok(url)
 }
@@ -150,14 +173,20 @@ pub fn remote_url(input: &str) -> Result<Url, String> {
 impl Profile {
     pub fn validated(mut self) -> Result<Self, String> {
         if self.schema != 1 {
-            return Err("此连接设置来自不兼容的 App 版本。".into());
+            return Err(tr(
+                "此连接设置来自不兼容的 App 版本。",
+                "These connection settings come from an incompatible app version.",
+            ));
         }
         self.name = self.name.trim().to_string();
         if self.name.is_empty()
             || self.name.chars().count() > 60
             || self.name.chars().any(char::is_control)
         {
-            return Err("请填写 1–60 字的连接名称。".into());
+            return Err(tr(
+                "请填写 1–60 字的连接名称。",
+                "Enter a connection name of 1–60 characters.",
+            ));
         }
         // Validate even the dormant remote address so secrets cannot be stored in it.
         if !self.url.trim().is_empty() || self.mode == Mode::Remote {
@@ -169,7 +198,10 @@ impl Profile {
                 .as_ref()
                 .is_none_or(|w| !w.path.is_absolute())
         {
-            return Err("请选择有效的本地工作区。".into());
+            return Err(tr(
+                "请选择有效的本地工作区。",
+                "Choose a valid local workspace.",
+            ));
         }
         Ok(self)
     }
@@ -182,38 +214,75 @@ pub fn read_profile(root: &Path) -> Result<Option<Profile>, String> {
     }
     let mut bytes = Vec::new();
     fs::File::open(path)
-        .map_err(|_| "无法读取 App 连接设置。")?
+        .map_err(|_| {
+            tr(
+                "无法读取 App 连接设置。",
+                "Could not read the app’s connection settings.",
+            )
+        })?
         .take(8193)
         .read_to_end(&mut bytes)
-        .map_err(|_| "无法读取 App 连接设置。")?;
+        .map_err(|_| {
+            tr(
+                "无法读取 App 连接设置。",
+                "Could not read the app’s connection settings.",
+            )
+        })?;
     if bytes.len() > 8192 {
-        return Err("App 连接设置过大，请在设置中重新保存。".into());
+        return Err(tr(
+            "App 连接设置过大，请在设置中重新保存。",
+            "The app’s connection settings are too large. Save them again in Settings.",
+        ));
     }
-    let profile: Profile =
-        serde_json::from_slice(&bytes).map_err(|_| "App 连接设置损坏，请在设置中重新保存。")?;
+    let profile: Profile = serde_json::from_slice(&bytes).map_err(|_| {
+        tr(
+            "App 连接设置损坏，请在设置中重新保存。",
+            "The app’s connection settings are damaged. Save them again in Settings.",
+        )
+    })?;
     Ok(Some(profile.validated()?))
 }
 
 pub fn write_private_json(root: &Path, name: &str, value: &impl Serialize) -> Result<(), String> {
-    fs::create_dir_all(root).map_err(|_| "无法创建 App 设置目录。")?;
-    fs::set_permissions(root, fs::Permissions::from_mode(0o700))
-        .map_err(|_| "无法保护 App 设置目录。")?;
+    fs::create_dir_all(root).map_err(|_| {
+        tr(
+            "无法创建 App 设置目录。",
+            "Could not create the app’s settings folder.",
+        )
+    })?;
+    fs::set_permissions(root, fs::Permissions::from_mode(0o700)).map_err(|_| {
+        tr(
+            "无法保护 App 设置目录。",
+            "Could not protect the app’s settings folder.",
+        )
+    })?;
     let temporary = root.join(format!(".{name}.tmp"));
     // Names are internal constants, never supplied by a remote page.
-    let bytes = serde_json::to_vec_pretty(value).map_err(|_| "无法编码 App 设置。")?;
+    let bytes = serde_json::to_vec_pretty(value).map_err(|_| {
+        tr(
+            "无法编码 App 设置。",
+            "Could not encode the app’s settings.",
+        )
+    })?;
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(0o600)
         .open(&temporary)
-        .map_err(|_| "无法写入 App 设置。")?;
+        .map_err(|_| tr("无法写入 App 设置。", "Could not write the app’s settings."))?;
     file.set_permissions(fs::Permissions::from_mode(0o600))
-        .map_err(|_| "无法保护 App 设置。")?;
+        .map_err(|_| {
+            tr(
+                "无法保护 App 设置。",
+                "Could not protect the app’s settings.",
+            )
+        })?;
     file.write_all(&bytes)
         .and_then(|_| file.sync_all())
-        .map_err(|_| "无法保存 App 设置。")?;
-    fs::rename(temporary, root.join(name)).map_err(|_| "无法保存 App 设置。")?;
+        .map_err(|_| tr("无法保存 App 设置。", "Could not save the app’s settings."))?;
+    fs::rename(temporary, root.join(name))
+        .map_err(|_| tr("无法保存 App 设置。", "Could not save the app’s settings."))?;
     Ok(())
 }
 
@@ -233,12 +302,19 @@ pub fn now_ms() -> u64 {
 }
 
 fn parse_health(bytes: &[u8]) -> Result<Probe, String> {
-    let value: serde_json::Value = serde_json::from_slice(bytes)
-        .map_err(|_| "地址可访问，但没有返回有效的 Trading Max 状态。")?;
+    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|_| {
+        tr(
+            "地址可访问，但没有返回有效的 Trading Max 状态。",
+            "The address responds but returned no valid Trading Max status.",
+        )
+    })?;
     if value["service"] != "trading_max-api"
         || !matches!(value["status"].as_str(), Some("ok" | "degraded"))
     {
-        return Err("这个地址没有连接到可识别的 Trading Max 服务。".into());
+        return Err(tr(
+            "这个地址没有连接到可识别的 Trading Max 服务。",
+            "This address does not reach a Trading Max service.",
+        ));
     }
     Ok(Probe {
         checked_at_ms: now_ms(),
@@ -258,23 +334,41 @@ fn probe_endpoint(client: &reqwest::blocking::Client, endpoint: Url) -> Result<P
         .map_err(request_error)?;
     if !response.status().is_success() {
         return Err(match response.status().as_u16() {
-            301..=399 => {
-                ProbeError::permanent("服务重定向到了其他地址。请填写最终的 HTTPS 根地址。")
-            }
-            401 | 403 => ProbeError::permanent("当前设备没有访问权限，请检查服务的访问设置。"),
-            status @ (408 | 425 | 429 | 500..=599) => {
-                ProbeError::transient(format!("服务返回 HTTP {status}，请稍后重试。"))
-            }
-            status => ProbeError::permanent(format!("服务返回 HTTP {status}，请检查服务地址。")),
+            301..=399 => ProbeError::permanent(tr(
+                "服务重定向到了其他地址。请填写最终的 HTTPS 根地址。",
+                "The service redirected to another address. Enter the final HTTPS root address.",
+            )),
+            401 | 403 => ProbeError::permanent(tr(
+                "当前设备没有访问权限，请检查服务的访问设置。",
+                "This device has no access. Check the service’s access settings.",
+            )),
+            status @ (408 | 425 | 429 | 500..=599) => ProbeError::transient(if english() {
+                format!("The service returned HTTP {status}. Try again later.")
+            } else {
+                format!("服务返回 HTTP {status}，请稍后重试。")
+            }),
+            status => ProbeError::permanent(if english() {
+                format!("The service returned HTTP {status}. Check the service address.")
+            } else {
+                format!("服务返回 HTTP {status}，请检查服务地址。")
+            }),
         });
     }
     let mut bytes = Vec::new();
     response
         .take(MAX_BODY + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| ProbeError::transient("连接中断，未能读完服务状态。"))?;
+        .map_err(|_| {
+            ProbeError::transient(tr(
+                "连接中断，未能读完服务状态。",
+                "The connection dropped before the service status was read.",
+            ))
+        })?;
     if bytes.len() as u64 > MAX_BODY {
-        return Err(ProbeError::permanent("服务状态响应异常，请检查地址。"));
+        return Err(ProbeError::permanent(tr(
+            "服务状态响应异常，请检查地址。",
+            "The service status response was invalid. Check the address.",
+        )));
     }
     parse_health(&bytes).map_err(ProbeError::permanent)
 }
@@ -283,8 +377,9 @@ pub fn probe(profile: &Profile) -> Result<Probe, ProbeError> {
     let root = remote_url(&profile.url).map_err(ProbeError::permanent)?;
     probe_endpoint(
         client()?,
-        root.join("api/backend/health")
-            .map_err(|_| ProbeError::permanent("服务地址无效。"))?,
+        root.join("api/backend/health").map_err(|_| {
+            ProbeError::permanent(tr("服务地址无效。", "The service address is invalid."))
+        })?,
     )
 }
 

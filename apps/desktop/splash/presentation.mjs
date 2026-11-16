@@ -18,7 +18,7 @@ export function workspacePresentation(state, language = state.app_language) {
       : demo ? t("独立演示", "Standalone demo") : t("尚未连接", "No connection"),
     name: demo && language === "en" ? "Demo data" :
       state.active_name || state.source_name || (local ? state.workspace?.name : null) ||
-      (remote ? t("已选择的服务", "Selected service") : demo ? "演示资料" : t("尚未打开工作区", "No workspace open")),
+      (remote ? t("当前服务", "Current service") : demo ? "演示数据" : t("尚未打开工作区", "No workspace open")),
     address,
     ready,
     available: ready || retained,
@@ -29,15 +29,15 @@ export function workspacePresentation(state, language = state.app_language) {
       ? t("当前页面已保留，数据可能未更新。连接恢复后继续使用。", "The current page is still open. Data may be out of date while the connection recovers.")
       : state.detail || t("请检查连接后手动重试。当前页面已保留，数据可能未更新。", "Check your connection and retry. The current page is still open, but data may be out of date."))
       : ready ? (state.probe && (!state.probe.healthy || state.probe.worker_healthy === false)
-        ? t("连接可用，但后台更新状态需要检查。请打开「同步与活动」查看详情。", "Connected. Check Sync & activity for problems with background updates.")
-        : t("连接可用。采集任务与资料完整性请查看「同步与活动」。", "Connected. Check Sync & activity for collection jobs and data coverage."))
+        ? t("连接可用，但后台更新状态需要检查。请打开「数据状态」查看详情。", "Connected. Check Data status for problems with background updates.")
+        : t("连接可用。采集任务与数据完整性请查看「数据状态」。", "Connected. Check Data status for collection jobs and data coverage."))
       : state.stage === "error"
-        ? t("可以切换工作区，或从「连接」菜单重试。已保存的资料不会被清空。", "Switch workspaces or retry from the Connection menu. Saved data is kept.")
+        ? t("可以切换工作区，或从「连接」菜单重试。已保存的数据不会被清空。", "Switch workspaces or retry from the Connection menu. Saved data is kept.")
         : t("选择工作区后，可在这里查看它的数据与连接设置。", "Open a workspace to see its data and connection settings here."),
     settingsLabel: remote ? t("服务端设置", "Service settings") : t("工作区设置", "Workspace settings"),
     ownership: remote ? t("数据与密钥保存在服务端。退出这个 App，不影响远程主机继续采集。", "The service stores data and keys and keeps collecting when you quit the app.")
-      : local ? t("资料保存在这个文件夹，密钥存入本机钥匙串。退出 App 或 Mac 休眠后，本地采集暂停。", "This folder stores the data. The Mac’s Keychain stores credentials. Local collection pauses when the app quits or the Mac sleeps.")
-      : demo ? t("这里使用独立的模拟资料，不会连接真实账户。", "The demo uses synthetic data and does not connect to real accounts.")
+      : local ? t("数据保存在这个文件夹，密钥存入这台 Mac 的钥匙串。退出 App 或 Mac 休眠后，本地采集暂停。", "This folder stores the data. The Mac’s Keychain stores credentials. Local collection pauses when the app quits or the Mac sleeps.")
+      : demo ? t("这里使用独立的演示数据，不会连接真实账户。", "The demo uses synthetic data and does not connect to real accounts.")
       : t("App 设置不需要连接服务，也不会启动采集。", "App settings work offline and do not start collection."),
     canRevealFolder: local && Boolean(state.workspace?.path),
   };
@@ -62,7 +62,7 @@ export function recentWorkspacePresentation(workspace, state, language, preferre
   return {
     action: !workspace.available ? "locate" : active ? "return" : "open",
     label: !workspace.available ? translate(language, "选择位置", "Choose location")
-      : active ? translate(language, "回到工作台", "Back to workspace")
+      : active ? translate(language, "回到工作区", "Back to workspace")
       : preferred ? translate(language, "继续工作区", "Continue workspace")
       : translate(language, "打开", "Open"),
     canForget: !active,

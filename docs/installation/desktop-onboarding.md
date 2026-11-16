@@ -14,7 +14,7 @@ Trading Max's desktop entry has three destinations:
 | Open an existing workspace | Inspect a desktop workspace, check compatibility and open it. Older source-deployment roots are not adopted. |
 | Connect to an existing service | Working HTTPS connection, remembered preferences and recovery. |
 
-The separate **local demo** uses synthetic data. It must remain clearly labeled
+The separate **local demo** uses synthetic data. It must remain clearly labelled
 and never substitute for an unavailable real account or service.
 
 ## Use an existing service
@@ -80,7 +80,7 @@ a successful refresh, healthy worker and explicit balance confirmation.
 
 Keep investment reports in the main window. **Workspace → Workspace settings**
 (Cmd-Option-comma) opens the current service's existing account/model forms and
-update preferences. **Workspace → Sync and activity** (Cmd-Shift-J) shows task
+update preferences. **Workspace → Data status** (Cmd-Shift-J) shows task
 outcomes and recovery details; **File → Import records** opens the CFD CSV flow.
 The compact sidebar links reach the same windows. Closing these windows leaves
 the main workspace open. App preferences remain separate at Cmd-comma.
@@ -105,12 +105,12 @@ Local workspaces check both process exit and HTTP responsiveness. Four consecuti
 failed liveness checks, 15 seconds apart, stop only the owned runtime and offer
 **Reopen workspace**. Retry uses the same folder; saved records and Keychain
 connections are not reset. Account/data readiness is separate: an empty workspace
-with a healthy worker shows **Ready for your first sync**, while failed jobs,
+with a healthy worker shows **Awaiting first sync**, while failed jobs,
 unhealthy workers and unexpected snapshot errors still need attention. An interrupted
 refresh must be checked in Data status and retried; no missing record is fabricated.
 
 Native Settings explains where collection runs and offers **Open data folder** for
-the selected local workspace. **Version & updates** makes an explicit, read-only
+the selected local workspace. **About & updates** makes an explicit, read-only
 request to the canonical repository's releases endpoint, sending no account
 or workspace details. A repository version is not a signed desktop update. An
 official desktop DMG is offered only with matching verified release metadata;
@@ -139,7 +139,7 @@ Release acceptance covers Developer ID signing/notarization, the actual DMG,
 first launch, upgrades, recovery and window lifecycle. For 1.11.0 the release
 owner selected same-Mac acceptance with isolated App preferences and workspaces,
 plus packaged-runtime tests with a system-only PATH. No freshly installed macOS
-test is claimed. Real-account enrollment still requires the account owner's
+test is claimed. Real-account enrolment still requires the account owner's
 balance confirmation; a successful installer test does not complete that step.
 
 ## First-sync recovery
@@ -152,14 +152,14 @@ CSV or authentication failures stop without automatic job retries; transient
 network failures retain bounded retries. Settings distinguishes invalid keys,
 missing permissions, rate limits and provider outages.
 
-Before the first snapshot exists, Home offers the same first-sync progress and
-recovery actions as account settings. Keep the App open during synchronization.
+Before the first snapshot exists, Overview offers the same first-sync progress and
+recovery actions as account settings. Keep the App open during synchronisation.
 A successful task, ready JSON status and a healthy worker are technical checks;
 the owner must still compare the real account totals before completing setup.
 
 ## Upgrade recovery
 
-Before a newer App opens an initialized local workspace, it creates a
+Before a newer App opens an initialised local workspace, it creates a
 verified recovery snapshot under the App data directory's `workspace-recovery`
 folder. These compressed copies share unchanged content; a same-version reopen
 does not make another backup. The folder is outside the workspace, so an upgrade

@@ -1,5 +1,5 @@
 //! The trusted native entry can open Sparkle; remote WebViews cannot reach this bridge.
-use crate::{connection, updates::UpdateFeed, Desktop};
+use crate::{connection, preferences::tr, updates::UpdateFeed, Desktop};
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 use std::{sync::atomic::Ordering, sync::Arc, sync::OnceLock};
@@ -37,9 +37,12 @@ pub fn start(feed: UpdateFeed) -> Result<(), String> {
                 size: u64,
             ) -> *const std::ffi::c_char;
         }
-        let url = CString::new(feed.url).map_err(|_| "更新地址无效。")?;
-        let version = CString::new(feed.version).map_err(|_| "更新版本无效。")?;
-        let archive = CString::new(feed.archive).map_err(|_| "安装包地址无效。")?;
+        let url = CString::new(feed.url)
+            .map_err(|_| tr("更新地址无效。", "The update address is invalid."))?;
+        let version = CString::new(feed.version)
+            .map_err(|_| tr("更新版本无效。", "The update version is invalid."))?;
+        let archive = CString::new(feed.archive)
+            .map_err(|_| tr("安装包地址无效。", "The installer address is invalid."))?;
         // All strings live through the synchronous call; the bridge copies them.
         let error = unsafe {
             trading_max_start_update(url.as_ptr(), version.as_ptr(), archive.as_ptr(), feed.size)
@@ -54,7 +57,11 @@ pub fn start(feed: UpdateFeed) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = feed;
-        Err("App 内更新目前仅适用于 macOS。".into())
+        Err(tr(
+            "App 内更新目前仅适用于 macOS。",
+            "In-app updates are only available on macOS.",
+        )
+        .into())
     }
 }
 

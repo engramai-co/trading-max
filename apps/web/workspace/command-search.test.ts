@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace, type SearchPage, type SearchResult } from "./command-search";
+import {
+  highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
+  type SearchIndex, type SearchPage, type SearchResult,
+} from "./command-search";
 
 const pages: SearchPage[] = [
   { href: "/", label: "组合总览", aliases: pageAliases["/"] },
-  { href: "/research", label: "证券研究", aliases: pageAliases["/research"] },
+  { href: "/research", label: "研究", aliases: pageAliases["/research"] },
   { href: "/holdings", label: "持仓与穿透", aliases: pageAliases["/holdings"] },
   { href: "/analytics", label: "收益与风险", aliases: pageAliases["/analytics"] },
 ];
@@ -13,6 +16,10 @@ const instruments = [
   { ticker: "SEMI.AS", name: "Semiconductor ETF" },
 ];
 const search = (query: string, currentTicker?: string, locale: "zh" | "en" = "zh") => searchWorkspace({ query, currentTicker, pages, instruments, recent: [], locale });
+const indices: SearchIndex[] = [
+  { id: "sp-500", label: "标普 500", detail: "^GSPC", aliases: "S&P 500 标普 500 ^GSPC spx", listed: true },
+  { id: "nasdaq-100", label: "纳斯达克 100", detail: "^NDX", aliases: "Nasdaq-100 纳斯达克 100 ^NDX", listed: false },
+];
 
 describe("workspace command search", () => {
   it.each([
@@ -58,9 +65,26 @@ describe("workspace command search", () => {
   it("keeps static pages available without the directory", () => {
     expect(searchWorkspace({ query: "twr", pages, instruments: [], recent: [], locale: "zh" })[0]?.href).toBe("/analytics?view=returns");
   });
+  it("finds indices: listed ones in the research list, the rest under indices", () => {
+    const find = (query: string) => searchWorkspace({ query, pages, instruments, indices, recent: [], locale: "zh" });
+    expect(find("spx")).toContainEqual({ href: "/research?type=index&index=sp-500", label: "标普 500", detail: "^GSPC", group: "research" });
+    expect(find("纳斯达克")).toContainEqual({ href: "/research?type=index&index=nasdaq-100", label: "纳斯达克 100", detail: "^NDX", group: "indices" });
+    // The empty palette previews the list, indices included; unlisted indices wait for a query.
+    const preview = find("");
+    expect(preview.some((item) => item.href === "/research?type=index&index=sp-500")).toBe(true);
+    expect(preview.some((item) => item.group === "indices")).toBe(false);
+    // Lens shortcuts stay with stocks and funds.
+    expect(find("标普 技术面").some((item) => item.href.includes("type=index"))).toBe(false);
+  });
+  it("groups the research list in one run, stocks and funds before indices", () => {
+    const groups = searchWorkspace({ query: "", pages, instruments, indices, recent: [], locale: "zh" }).map((item) => item.group);
+    const first = groups.indexOf("research");
+    const last = groups.lastIndexOf("research");
+    expect(groups.slice(first, last + 1).every((group) => group === "research")).toBe(true);
+  });
   it("deduplicates recent pages and bounds history", () => {
     let recent: SearchResult[] = Array.from({ length: 8 }, (_, index) => ({ href: "/research?ticker=T" + index, label: "T" + index, group: "recent" as const }));
-    recent = rememberVisit(recent, { href: "/research", label: "证券研究", group: "recent" });
+    recent = rememberVisit(recent, { href: "/research", label: "研究", group: "recent" });
     expect(recent).toHaveLength(6);
     expect(rememberVisit(recent, recent[0])).toHaveLength(6);
     const results = searchWorkspace({ query: "", pages, instruments, recent, locale: "zh" });
@@ -73,6 +97,14 @@ describe("workspace command search", () => {
     expect(recentVisit("/research", new URLSearchParams("ticker=../private"), pages, "zh")).toBeNull();
     expect(recentVisit("/research", new URLSearchParams(), pages, "zh")).toBeNull();
     expect(recentVisit("/unknown", new URLSearchParams(), pages, "zh")).toBeNull();
+  });
+  it("remembers index pages by their name and view", () => {
+    const name = (id: string) => (id === "sp-500" ? "标普 500" : undefined);
+    expect(recentVisit("/research", new URLSearchParams("type=index&index=sp-500&view=constituents"), pages, "zh", name))
+      .toEqual({ href: "/research?type=index&index=sp-500&view=constituents", label: "标普 500 · 成分与权重", group: "recent" });
+    expect(recentVisit("/research", new URLSearchParams("type=index&index=sp-500"), pages, "en", name)?.label).toBe("标普 500 · Overview");
+    expect(recentVisit("/research", new URLSearchParams("type=index&index=../secret"), pages, "zh", name)).toBeNull();
+    expect(recentVisit("/research", new URLSearchParams("type=index"), pages, "zh", name)).toBeNull();
   });
   it("highlights literal text safely, including regex symbols and markup", () => {
     expect(highlightParts("SEMI.AS", "SEMI.AS")).toEqual([{ text: "SEMI.AS", match: true }]);

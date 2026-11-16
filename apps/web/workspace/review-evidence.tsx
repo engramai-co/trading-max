@@ -27,7 +27,7 @@ function detailRows(data: Json, fields: Field[], t: (zh: string, en: string) => 
             : format === "average"
               ? number(value, 1)
               : format === "days"
-                ? (value == null ? "—" : number(value, 0) + t(" 天", " days"))
+                ? (value == null ? "—" : number(value, 0) + (number(value, 0) === "1" ? t(" 天", " day") : t(" 天", " days")))
                 : format === "number"
                   ? number(value)
                   : reviewLabel(str(value), t) || "—",
@@ -66,21 +66,22 @@ const CFD_BEHAVIOR_FIELDS: Field[] = [
   ["收益 / 名义本金", "Return / notional", "net_realised_to_notional_ratio", "percent"],
   ["融资费用 / 名义本金", "Financing / notional", "financing_cost_to_notional_ratio", "percent"],
   ["缺失本金的交易", "Trades missing notional", "missing_notional_trade_count", "number"],
-  ["最佳交易贡献", "Best trade concentration", "best_trade_concentration", "percent"],
-  ["前三笔贡献", "Top three concentration", "top_three_trade_concentration", "percent"],
+  ["最佳交易占比", "Best trade concentration", "best_trade_concentration", "percent"],
+  ["前三笔占比", "Top three concentration", "top_three_trade_concentration", "percent"],
   ["去除最佳交易后", "Without best trade", "net_without_best_trade", "money"],
 ];
 const BEHAVIOR_FIELDS: Field[] = [
   ["交易总金额", "Gross traded notional", "gross_traded_notional_gbp", "money"],
   ["买单数", "Buy orders", "buy_orders", "count"],
   ["卖单数", "Sell orders", "sell_orders", "count"],
-  ["交易时平均持仓数", "Average active positions", "average_active_positions_at_trade_events", "average"],
-  ["交易时最多持仓数", "Peak active positions", "peak_active_positions_at_trade_events", "count"],
-  ["回撤期间买入", "Purchases during drawdowns", "drawdown_buy_notional_gbp", "money"],
+  ["交易时平均持仓数", "Average holdings at trades", "average_active_positions_at_trade_events", "average"],
+  ["交易时最多持仓数", "Peak holdings at trades", "peak_active_positions_at_trade_events", "count"],
+  ["回撤期间买入金额", "Purchases during drawdowns", "drawdown_buy_notional_gbp", "money"],
 ];
 export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
   const t = useCopy();
-  const days = (value: unknown) => (value == null ? "—" : number(value, 0) + t(" 天", " days"));
+  const days = (value: unknown) => (value == null ? "—"
+    : number(value, 0) + (number(value, 0) === "1" ? t(" 天", " day") : t(" 天", " days")));
   // Observations read like the facts above them: label left, value right, the evidence under the value.
   const observations = objects(data.observations).flatMap((row): Array<[ReactNode, ReactNode]> => {
     // The purchase total already appears above; do not repeat the same fact.
@@ -101,10 +102,10 @@ export function BehaviorEvidence({ data, cfd }: { data: Json; cfd: boolean }) {
   });
   return (
     <Panel
-      title={t("交易行为与收益依赖", "Trading behavior and concentration")}
+      title={t("交易行为与收益依赖", "Trading behaviour and concentration")}
       help={t(
         "只描述记录中可观察的行为，不推断动机。",
-        "Observable behavior only; these records do not reveal motives.",
+        "Observable behaviour only; these records do not reveal motives.",
       )}
     >
       <Availability data={data} />
@@ -122,7 +123,7 @@ export function StrategyEvidence({ data }: { data: Json }) {
   return (
     <Panel
       title={t("策略收益与风险", "Strategy returns and risk")}
-      help={t("使用全部可用历史的 TWR，剔除出入金影响。", "Uses TWR over the full available history, excluding cash-flow effects.")}
+      help={t("使用全部可用历史的 TWR，剔除出入金影响。", "Uses TWR over the full available history, excluding the effect of deposits and withdrawals.")}
     >
       <Availability data={data} />
       <DetailFacts
@@ -134,22 +135,22 @@ export function StrategyEvidence({ data }: { data: Json }) {
             "twr_total_return",
             "percent",
           ],
-          ["年化收益", "Annualized return", "annualized_return", "percent"],
+          ["年化收益", "Annualised return", "annualized_return", "percent"],
           [
-            "年化波动",
-            "Annualized volatility",
+            "年化波动率",
+            "Annualised volatility",
             "annualized_volatility",
             "percent",
           ],
           ["当前回撤", "Current drawdown", "current_drawdown", "percent"],
-          ["最大回撤", "Maximum drawdown", "max_drawdown", "percent"],
+          ["最大回撤", "Max drawdown", "max_drawdown", "percent"],
           ["Sharpe", "Sharpe", "sharpe_sonia", "number"],
           ["Sortino", "Sortino", "sortino_sonia", "number"],
           ["Calmar", "Calmar", "calmar_ratio", "number"],
           ["信息比率", "Information ratio", "information_ratio", "number"],
-          ["比较基准", "Benchmark", "benchmark_ticker", "text"],
+          ["基准", "Benchmark", "benchmark_ticker", "text"],
           ["有效期间数", "Valid periods", "periods", "number"],
-          ["净值数据质量", "NAV quality", "nav_quality", "text"],
+          ["账户价值数据质量", "Account value data quality", "nav_quality", "text"],
         ]}
       />
       <SystemNotes values={Object.values(object(object(data.metrics).metric_unavailable_reasons)).map(String)} />
@@ -165,7 +166,7 @@ export function CfdCashEvidence({ review }: { review: Json }) {
     <>
       <div className="mx-grid">
         <Panel
-          title={t("账户与家庭现金流", "Account and household cash flows")}
+          title={t("账户与家庭出入金", "Account and household deposits and withdrawals")}
         >
           <DetailFacts
             data={cash}
@@ -174,10 +175,10 @@ export function CfdCashEvidence({ review }: { review: Json }) {
               ["出金", "Withdrawals", "withdrawals", "money"],
               ["内部转移", "Internal transfers", "internal_transfers", "money"],
               ["调整", "Adjustments", "adjustments", "money"],
-              ["账户资金流", "Account cash flow", "account_cash_flow", "money"],
+              ["账户出入金", "Account deposits and withdrawals", "account_cash_flow", "money"],
               [
-                "家庭外部资金流",
-                "Household external flow",
+                "家庭外部出入金",
+                "Household external deposits and withdrawals",
                 "household_external_flow",
                 "money",
               ],
@@ -186,12 +187,12 @@ export function CfdCashEvidence({ review }: { review: Json }) {
           <Notice>
             {t(
               "账户间转移改变单账户资金，不一定改变家庭外部投入。",
-              "Transfers between accounts change account cash flow, but not necessarily household external contributions.",
+              "Transfers between accounts change each account’s deposits and withdrawals, but not necessarily the household’s.",
             )}
           </Notice>
         </Panel>
         <Panel
-          title={t("从毛收益到实际结果", "From gross returns to net result")}
+          title={t("从毛收益到净盈亏", "From gross returns to net P&L")}
         >
           <DetailFacts
             data={pnl}
@@ -202,8 +203,8 @@ export function CfdCashEvidence({ review }: { review: Json }) {
                 "closed_gross_result",
                 "money",
               ],
-              ["外汇费用", "FX fees", "fx_fees", "money"],
-              ["扣除外汇费用后", "After FX", "closed_after_fx", "money"],
+              ["换汇费用", "FX fees", "fx_fees", "money"],
+              ["扣除换汇费用后", "After FX fees", "closed_after_fx", "money"],
               ["隔夜利息", "Overnight interest", "overnight_interest", "money"],
               [
                 "分红调整",
@@ -212,8 +213,8 @@ export function CfdCashEvidence({ review }: { review: Json }) {
                 "money",
               ],
               [
-                "已实现净结果",
-                "Net realized result",
+                "已实现净盈亏",
+                "Net realised P&L",
                 "net_realised_pnl",
                 "money",
               ],
@@ -224,8 +225,8 @@ export function CfdCashEvidence({ review }: { review: Json }) {
                 "percent",
               ],
               [
-                "融资拖累 / 净收益",
-                "Financing drag / net",
+                "融资拖累 / 净盈亏",
+                "Financing drag / net P&L",
                 "financing_drag_to_net_ratio",
                 "percent",
               ],
@@ -234,11 +235,11 @@ export function CfdCashEvidence({ review }: { review: Json }) {
         </Panel>
       </div>
       <Panel
-        title={t("已实现现金权益记录", "Realized cash equity history")}
-        help={t("现金权益不含未平仓浮动盈亏。", "Cash equity excludes unrealized P&L on open positions.")}
+        title={t("已实现现金权益记录", "Realised cash equity history")}
+        help={t("现金权益不含未平仓浮动盈亏。", "Cash equity excludes unrealised P&L on open positions.")}
       >
         <HistoryChart
-          label={t("CFD 已实现权益代理", "CFD realized equity proxy")}
+          label={t("CFD 已实现权益代理", "CFD realised equity proxy")}
           dates={series.map((r) => str(r.occurredAt))}
           lines={[
             {
@@ -246,7 +247,7 @@ export function CfdCashEvidence({ review }: { review: Json }) {
               values: series.map((r) => numeric(r.realisedCashEquityProxy)),
             },
             {
-              name: t("累计已实现损益", "Cumulative realized P&L"),
+              name: t("累计已实现盈亏", "Cumulative realised P&L"),
               values: series.map((r) => numeric(r.cumulativeRealisedPnl)),
               colour: "accent",
             },
@@ -259,17 +260,17 @@ export function CfdCashEvidence({ review }: { review: Json }) {
             { label: t("时间", "Time"), value: (r) => str(r.occurredAt) },
             { label: t("类型", "Type"), value: (r) => reviewLabel(str(r.recordType), t) },
             {
-              label: t("资金流变化", "Cash-flow change"),
+              label: t("净入金变化", "Net deposit change"),
               value: (r) => currency(r.accountCashFlowChange, "GBP", 2),
               numeric: true,
             },
             {
-              label: t("损益变化", "P&L change"),
+              label: t("已实现盈亏变化", "Realised P&L change"),
               value: (r) => currency(r.realisedPnlChange, "GBP", 2),
               numeric: true,
             },
             {
-              label: t("累计资金流", "Cumulative cash flow"),
+              label: t("累计净入金", "Cumulative net deposits"),
               value: (r) => currency(r.cumulativeAccountCashFlow, "GBP", 2),
               numeric: true,
             },
@@ -300,8 +301,8 @@ export function EndingEvidence({ data }: { data: Json }) {
       <Panel
         title={t("期末集中度", "Concentration at the review endpoint")}
         help={t(
-          "HHI 是持仓权重平方和；越接近 1 越集中。有效持仓数为其倒数。分母为期末已投资市值。",
-          "HHI is the sum of squared position weights; closer to 1 means greater concentration. Effective positions is its reciprocal. Weights use invested value at the review endpoint.",
+          "HHI 是各持仓占比的平方和；越接近 1 越集中。有效持仓数为其倒数。分母为期末已投资市值。",
+          "HHI is the sum of squared holding weights; closer to 1 means greater concentration. Effective holdings is its reciprocal. Weights use invested value at the review endpoint.",
         )}
       >
         <Availability data={data} />
@@ -311,14 +312,14 @@ export function EndingEvidence({ data }: { data: Json }) {
             ["HHI 集中度", "HHI concentration", "hhi", "number"],
             [
               "有效持仓数",
-              "Effective positions",
+              "Effective holdings",
               "effective_positions",
               "number",
             ],
-            ["最大持仓占比", "Largest position", "largest_weight", "percent"],
+            ["最大持仓占比", "Largest holding", "largest_weight", "percent"],
             [
               "前三持仓占比",
-              "Top three positions",
+              "Top three holdings",
               "top_three_weight",
               "percent",
             ],
@@ -330,7 +331,7 @@ export function EndingEvidence({ data }: { data: Json }) {
           label={t("期末持仓", "Ending holdings")}
           rows={objects(data.holdings)}
           columns={[
-            { label: t("证券", "Security"), value: (r) => str(r.ticker) },
+            { label: t("名称", "Name"), value: (r) => str(r.ticker) },
             {
               label: t("数量", "Quantity"),
               value: (r) => number(r.quantity),
@@ -347,12 +348,12 @@ export function EndingEvidence({ data }: { data: Json }) {
               numeric: true,
             },
             {
-              label: t("未实现盈亏", "Unrealized P&L"),
+              label: t("浮动盈亏", "Unrealised P&L"),
               value: (r) => currency(field(r, "unrealized_pnl_gbp")),
               numeric: true,
             },
             {
-              label: t("持仓权重", "Invested weight"),
+              label: t("已投资占比", "Invested weight"),
               value: (r) => percent(r.weight),
               numeric: true,
             },
@@ -367,7 +368,7 @@ export function EndingEvidence({ data }: { data: Json }) {
             value={dimension}
             onChange={(v) => setDimension(v ?? "country")}
             data={[
-              { value: "country", label: t("国家", "Country") },
+              { value: "country", label: t("国家/地区", "Country") },
               { value: "industry", label: t("行业", "Industry") },
               { value: "currency", label: t("币种", "Currency") },
               { value: "direction", label: t("方向", "Direction") },

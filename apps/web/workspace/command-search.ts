@@ -5,8 +5,10 @@ export type SearchResult = {
   href: string;
   label: string;
   detail?: string;
-  group: "recent" | "pages" | "research";
+  group: "recent" | "pages" | "research" | "indices";
 };
+/** An index from the catalogue; those in the research list sit with its stocks and funds. */
+export type SearchIndex = { id: string; label: string; detail?: string; aliases: string; listed: boolean };
 type Instrument = Pick<ResearchShell["instruments"][number], "ticker" | "name">;
 type Locale = "zh" | "en";
 const normalise = (value: string) => value.normalize("NFKC").trim().toLowerCase();
@@ -17,12 +19,13 @@ const matches = (value: string, query: string) => {
 
 export const pageAliases: Record<string, string> = Object.fromEntries(Object.entries({
   "/": ["组合", "总览", "overview", "portfolio", "home"],
-  "/holdings": ["持仓", "配置", "holdings", "positions", "allocation"],
+  "/holdings": ["持仓", "穿透", "配置", "holdings", "positions", "allocation", "look-through"],
   "/analytics": ["收益", "绩效", "performance", "analytics", "returns"],
   "/sectors": ["市场", "板块", "行业", "行情", "主题", "markets", "sectors", "industries", "themes"],
-  "/research": ["证券", "研究", "research", "securities"],
+  // "ETF" stays with ETF look-through; funds are found here by name.
+  "/research": ["研究", "研究清单", "股票", "个股", "基金", "指数", "证券", "research", "research list", "watchlist", "stocks", "funds", "index", "indices"],
   "/review": ["投资", "复盘", "交易", "review", "history", "trades"],
-  "/health": ["数据", "状态", "同步", "health", "sync", "activity"],
+  "/health": ["数据", "状态", "同步", "活动", "health", "data status", "sync", "activity"],
   "/settings": ["设置", "连接", "settings", "connections", "integrations"],
 }).map(([href, aliases]) => [href, aliases.join(" ")]));
 
@@ -34,6 +37,13 @@ const lenses = [
   { view: "valuation", zh: "估值模型", en: "Valuation", aliases: ["valuation", "dcf", "估值模型", "估值"] },
   { view: "options", zh: "期权结构", en: "Options", aliases: ["options", "option chain", "期权链", "期权"] },
   { view: "ledger", zh: "研究记录", en: "Journal", aliases: ["journal", "ledger", "研究记录"] },
+] as const;
+
+const indexViews = [
+  { view: "overview", zh: "概览", en: "Overview" },
+  { view: "price", zh: "价格与走势", en: "Price & trend" },
+  { view: "constituents", zh: "成分与权重", en: "Constituents & weights" },
+  { view: "tracking", zh: "跟踪产品", en: "Tracking products" },
 ] as const;
 
 function lensQuery(query: string) {
@@ -56,10 +66,15 @@ function researchHref(ticker: string, view = "overview") {
   return "/research?" + params.toString();
 }
 
-export function searchWorkspace({ query, pages, instruments, recent, currentTicker, locale }: {
+function indexResearchHref(id: string, view = "overview") {
+  return "/research?type=index&index=" + id + (view !== "overview" ? "&view=" + view : "");
+}
+
+export function searchWorkspace({ query, pages, instruments, indices = [], recent, currentTicker, locale }: {
   query: string;
   pages: SearchPage[];
   instruments: readonly Instrument[];
+  indices?: readonly SearchIndex[];
   recent: readonly SearchResult[];
   currentTicker?: string | null;
   locale: Locale;
@@ -87,11 +102,24 @@ export function searchWorkspace({ query, pages, instruments, recent, currentTick
       detail: item.name,
       group: "research",
     }));
+  // Lens shortcuts such as "ARM 技术面" apply to stocks and funds only.
+  const matchingIndices = target ? [] : indices
+    .filter((item) => !match || matches(item.label + " " + (item.detail ?? "") + " " + item.aliases, match));
+  const indexResult = (item: SearchIndex): SearchResult => ({
+    href: indexResearchHref(item.id),
+    label: item.label,
+    detail: item.detail,
+    group: item.listed ? "research" : "indices",
+  });
+  const listedIndices = matchingIndices.filter((item) => item.listed).map(indexResult);
+  const otherIndices = match ? matchingIndices.filter((item) => !item.listed).slice(0, 5).map(indexResult) : [];
+  // Without a query the list previews its first eight entries, stocks and funds first.
+  const research = [...foundInstruments, ...listedIndices].slice(0, match ? undefined : 8);
   const foundRecent = match ? [] : recent;
   const seen = new Set<string>();
   const exactTicker = instruments.some((item) => normalise(item.ticker) === match);
-  const found = exactTicker ? [...foundInstruments, ...foundPages] : [...foundPages, ...foundInstruments];
-  return [...foundRecent, ...found].filter((item) => {
+  const found = exactTicker ? [...research, ...foundPages] : [...foundPages, ...research];
+  return [...foundRecent, ...found, ...otherIndices].filter((item) => {
     if (seen.has(item.href)) return false;
     seen.add(item.href);
     return true;
@@ -105,13 +133,25 @@ export function needsSecurity(query: string, currentTicker?: string | null) {
 
 // Allowlisted navigation only: no search text, balances, tokens, or arbitrary
 // query parameters are retained. Recent visits live in the mounted shell only.
-export function recentVisit(pathname: string, params: URLSearchParams, pages: SearchPage[], locale: Locale): SearchResult | null {
+export function recentVisit(
+  pathname: string,
+  params: URLSearchParams,
+  pages: SearchPage[],
+  locale: Locale,
+  indexName?: (id: string) => string | undefined,
+): SearchResult | null {
   const page = pages.find((item) => item.href === pathname);
   if (!page) return null;
   let href = pathname;
   let label = page.label;
   const view = params.get("view");
-  if (pathname === "/research") {
+  if (pathname === "/research" && params.get("type") === "index") {
+    const id = params.get("index");
+    if (!id || !/^[a-z0-9-]{1,60}$/.test(id)) return null;
+    const lens = indexViews.find((item) => item.view === view) ?? indexViews[0];
+    href = indexResearchHref(id, lens.view);
+    label = (indexName?.(id) ?? id) + " · " + lens[locale];
+  } else if (pathname === "/research") {
     const ticker = params.get("ticker");
     if (!ticker || !/^[\w.^=-]{1,40}$/.test(ticker)) return null;
     const lens = lenses.find((item) => item.view === view) ?? lenses[0];

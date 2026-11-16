@@ -9,7 +9,7 @@
 
 <p align="center">
   A private, read-only investment workspace for Trading 212.<br>
-  See what changed, look beneath every fund, follow today's sectors and keep research beside your positions.
+  See what changed, look beneath every fund, follow today's sectors and keep research beside your holdings.
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/workspace-overview.png" alt="Trading Max overview: portfolio value, period P&L, today's US sectors and the holdings panel" width="100%">
+  <img src="docs/assets/workspace-overview.png" alt="Trading Max overview: account value, period net P&L, today's US sectors and the holdings panel" width="100%">
 </p>
 
 ## What you get
@@ -41,17 +41,17 @@
 - **Look-through.** Your direct shares combined with the constituents ETF issuers
   publish: the companies, sectors and countries you actually own, and where they
   overlap.
-- **Research beside your positions.** Up to seven views per security, from the
+- **Research beside your holdings.** Up to seven views per stock or fund, from the
   business and its financials to price, estimates, valuation scenarios, options
   and your journal. Your buys, sells and trims sit on the charts.
 - **Decision review.** Past trades set against what happened next.
 
 <p align="center">
   <img src="docs/assets/sectors-overview.png" alt="US sector map with the Industrials detail: intraday path, breadth, leader and your exposure" width="49%">
-  <img src="docs/assets/holdings-exposure.png" alt="Look-through exposure by company, split into direct holdings and holdings via funds" width="49%">
+  <img src="docs/assets/holdings-exposure.png" alt="Look-through by company, split into direct holdings and holdings via funds" width="49%">
 </p>
 <p align="center">
-  <img src="docs/assets/research-overview.png" alt="Company research: three-month price history, technical state and operating facts" width="49%">
+  <img src="docs/assets/research-overview.png" alt="Company research: three-month price history, technical score and operating facts" width="49%">
   <img src="docs/assets/research-valuation.png" alt="Valuation scenarios compared with the current price, with editable assumptions" width="49%">
 </p>
 

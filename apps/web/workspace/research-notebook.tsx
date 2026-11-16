@@ -447,7 +447,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                   ))}
                 </tr>
                 <tr>
-                  <th>{t("保存时现价", "Spot at save")}</th>
+                  <th>{t("保存时现价", "Price at save")}</th>
                   {columns.map((m) => (
                     <td key={m.id}>
                       {currency(
@@ -487,7 +487,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       {
                         [
                           t("保守估值", "Bear value"),
-                          t("基准估值", "Base value"),
+                          t("中性估值", "Base value"),
                           t("乐观估值", "Bull value"),
                         ][i]
                       }
@@ -523,7 +523,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                           t("终值倍数", "Exit multiple"),
                         ][i]
                       }{" "}
-                      · {t("基准", "Base")}
+                      · {t("中性", "Base")}
                     </th>
                     {columns.map((m) => (
                       <td key={m.id}>
@@ -588,7 +588,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
               onChange={setScenario}
               options={[
                 { value: "bear", label: t("保守", "Bear") },
-                { value: "base", label: t("基准", "Base") },
+                { value: "base", label: t("中性", "Base") },
                 { value: "bull", label: t("乐观", "Bull") },
               ]}
             />
@@ -620,7 +620,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
               ]}
             />
             <p>
-              {t("每股估值", "Value per share")}:{" "}
+              {t("每股价值", "Value per share")}:{" "}
               {currency(
                 detail.preview.scenarios[scenario].value,
                 detail.preview.basis.currency,

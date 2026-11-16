@@ -6,10 +6,12 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useEffect,
   useEffectEvent,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -19,10 +21,14 @@ import type { AccountCode, DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
+import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Help, Instrument, Metric, Panel, Segments, useCopy } from "./foundation";
+import { Empty, Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
+import { READING_TOOLTIP } from "./reading-tooltip";
+import { minus } from "./reading-figures";
+import { readingTone } from "./reading-format";
 import { DecisionNarrative } from "./review-narrative";
 import { SecurityPeek } from "./security-peek";
 
@@ -197,13 +203,13 @@ export function verdictWord(side: "buy" | "sell", effect: number, t: Copy) {
  * outcomes, not verdicts, and not price moves: a flat close that paid a dividend is a gain.
  */
 export function favourableCount(side: "buy" | "sell", favourable: number, evaluated: number, locale: "zh" | "en") {
-  if (side === "buy") return locale === "zh" ? `赚 ${favourable} / ${evaluated} 次` : `Gained after ${favourable} of ${evaluated} buys`;
-  return locale === "zh" ? `少亏 ${favourable} / ${evaluated} 次` : `Avoided losses after ${favourable} of ${evaluated} sells`;
+  if (side === "buy") return locale === "zh" ? `赚 ${favourable} / ${evaluated} 次` : `Gained after ${favourable} of ${evaluated} ${evaluated === 1 ? "buy" : "buys"}`;
+  return locale === "zh" ? `少亏 ${favourable} / ${evaluated} 次` : `Avoided losses after ${favourable} of ${evaluated} ${evaluated === 1 ? "sell" : "sells"}`;
 }
 
 /** What a decision did, for a list that mixes sides: a T day names the side of the shares beyond its round trip. */
 export function decisionAction(row: Pick<TradeDecision, "kind" | "side">, t: Copy) {
-  if (row.kind === "T") return row.side === "buy" ? t("做 T 后净买入 ", "Net bought after a T ") : t("做 T 后净卖出 ", "Net sold after a T ");
+  if (row.kind === "T") return row.side === "buy" ? t("日内往返后净买入 ", "Net bought after a round trip ") : t("日内往返后净卖出 ", "Net sold after a round trip ");
   return row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ");
 }
 
@@ -287,6 +293,10 @@ function DecisionEntry({
   // and any focus on them stay.
   const place = measured.items === items ? measured : { items, shown: context.length };
   const [opened, setOpened] = useState(false);
+  useEscapeLayer(opened, () => {
+    setOpened(false);
+    button.current?.focus({ preventScroll: true });
+  });
   useLayoutEffect(() => {
     const row = entry.current;
     const element = line.current;
@@ -352,11 +362,11 @@ function DecisionEntry({
           middlewares={{ flip: true, shift: { padding: 16 } }}
           trapFocus
           returnFocus
-          transitionProps={{ duration: 0 }}
+          transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }}
           // Mantine hides a dropdown while its first position checks for a detached target,
           // the moment its focus trap moves focus in; shown from the start, focus lands inside.
           hideDetached={false}
-          shadow="md"
+          zIndex="var(--mx-overlay-z-popover)"
         >
           <Popover.Target>
             <button
@@ -364,12 +374,10 @@ function DecisionEntry({
               type="button"
               className="mx-decision-more"
               data-idle={hidden ? undefined : ""}
+              aria-haspopup="dialog"
+              aria-expanded={opened}
               style={{ left: place.left, top: place.top }}
               onClick={() => setOpened((value) => !value)}
-              onKeyDown={(event) => {
-                // Escape closes it from the button too, not only from inside the list.
-                if (event.key === "Escape" && opened) setOpened(false);
-              }}
             >
               +{hidden || context.length}
               <span className="sr-only">{t(" 项", " more")}</span>
@@ -427,7 +435,7 @@ function DecisionRow({ row, horizon, days = 20, sided = false }: { row: TradeDec
   const context = decisionContext(row, horizon, t, locale);
   const state = pendingOutcome(row, horizon, days, t, locale);
   // A list titled by its side names only a T; a decision on its own says what it did.
-  const action = sided ? decisionAction(row, t) : row.kind === "T" ? t("T 净额 ", "T net ") : "";
+  const action = sided ? decisionAction(row, t) : row.kind === "T" ? t("日内往返后净额 ", "Net after a round trip ") : "";
   return (
     <DecisionEntry
       href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}
@@ -462,16 +470,51 @@ function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon
   );
 }
 
-/** A timeline point's tooltip: the day and security, what the decision did, and its outcome or what it waits for. */
-export function decisionTooltip(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en") {
+/** How a decision names itself in a reading: "AMD 买入" in Chinese, "Bought AMD" in English. */
+function decisionName(row: TradeDecision, t: Copy, locale: "zh" | "en") {
+  const action = decisionAction(row, t).trim();
+  return locale === "zh" ? row.ticker + " " + action : action + " " + row.ticker;
+}
+
+/**
+ * A timeline point's reading: the day, ticker, side and amount on top; the outcome as the one
+ * figure, in gain or loss colour, or what it still waits for; then at most two dated events.
+ */
+export function decisionReading(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en"): Reading {
   const effect = decisionEffect(row, horizon);
   const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
-  return [
-    formatCalendarDate(row.date, locale) + " · " + row.ticker,
-    decisionAction(row, t) + currency(row.amountGbp),
-    effect != null ? t("之后 ", "Then ") + percent(change, true, 1) + " · " + signedMoney(effect) : pendingOutcome(row, horizon, days, t, locale),
-    ...(row.events ?? []).map((event) => formatCalendarDate(event.date, locale) + " " + eventLabel(event, t)),
-  ].join("\n");
+  const events = row.events ?? [];
+  return {
+    time: formatCalendarDate(row.date, locale) + " · " + decisionName(row, t, locale) + " " + currency(row.amountGbp),
+    primary: effect != null
+      ? {
+          label: t("之后", "Then"),
+          value: minus(signedMoney(effect)),
+          detail: change == null ? undefined : minus(percent(change, true, 1)),
+          tone: readingTone(effect, 0),
+        }
+      : { value: pendingOutcome(row, horizon, days, t, locale) ?? "—" },
+    groups: events.length
+      ? [events.slice(0, 2).map((event) => ({ label: formatCalendarDate(event.date, locale), value: minus(eventLabel(event, t)) }))]
+      : undefined,
+    more: events.length > 2 ? events.length - 2 : undefined,
+  };
+}
+
+/** A same-day marker's reading: how many decisions, the two largest by amount, and how many more. */
+export function clusterReading(date: string, group: TradeDecision[], horizon: Horizon, days: number, t: Copy, locale: "zh" | "en"): Reading {
+  const largest = [...group].sort((a, b) => b.amountGbp - a.amountGbp).slice(0, 2);
+  return {
+    time: formatCalendarDate(date, locale) + " · " + group.length + " " + (group.length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")),
+    groups: [largest.map((row) => {
+      const effect = decisionEffect(row, horizon);
+      return {
+        label: decisionName(row, t, locale),
+        value: effect != null ? minus(signedMoney(effect)) : pendingOutcome(row, horizon, days, t, locale) ?? "—",
+      };
+    })],
+    more: group.length > 2 ? group.length - 2 : undefined,
+  };
 }
 
 /** Every decision by date and effect; the one the page opened on is larger, ringed and drawn on top. */
@@ -488,24 +531,24 @@ export function groupDecisionsByDate(rows: TradeDecision[]) {
 function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[]; horizon: Horizon; days: number; focus?: TradeDecision }) {
   const t = useCopy();
   const { locale } = useLocale();
+  // The chart's option only changes with its data: a new option resets ECharts, which would
+  // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
   const listId = useId();
-  const groups = groupDecisionsByDate(rows);
+  const groups = useMemo(() => groupDecisionsByDate(rows), [rows]);
   const focusKey = focus ? decisionParam(focus) : undefined;
   const [picked, setPicked] = useState<{ date: string | null; focusKey?: string }>();
   const selected = picked && picked.focusKey === focusKey ? picked.date : focus?.date ?? null;
   const pick = (date: string) => setPicked({ date: selected === date ? null : date, focusKey });
   const active = groups.find(([date]) => date === selected);
-  const largest = Math.max(1, ...rows.map((row) => row.amountGbp));
-  const groupRows = (group: TradeDecision[]) => group.map((row) => decisionEffect(row, horizon))
-    .filter((value): value is number => value != null);
+  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp)), [rows]);
   // The cluster marker is plotted at the average of observed decisions; the
   // expanded list carries every actual outcome and every unobserved decision.
-  const groupValue = (group: TradeDecision[]) => {
-    const values = groupRows(group);
+  const groupValue = useCallback((group: TradeDecision[]) => {
+    const values = group.map((row) => decisionEffect(row, horizon)).filter((value): value is number => value != null);
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-  };
-  const point = (row: TradeDecision, colours: Record<string, string>) => {
+  }, [horizon]);
+  const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
     const effect = decisionEffect(row, horizon);
     const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
     const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
@@ -518,22 +561,23 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
         : { color: colour, opacity: ring ? 1 : 0.85, ...ring },
       row,
     };
-  };
-  const option = (colours: Record<string, string>) => ({
+  }, [horizon, largest, selected]);
+  const option = useCallback((colours: Record<string, string>) => ({
     grid: { top: 40, right: 26, bottom: 30, left: 64 },
     tooltip: {
+      ...READING_TOOLTIP,
       trigger: "item" as const,
       formatter: (input: unknown) => {
         const { row, date, group } = (input as { data: { row?: TradeDecision; date?: string; group?: TradeDecision[] } }).data;
-        if (row) return decisionTooltip(row, horizon, days, t, locale);
+        if (row) return readingHtml(decisionReading(row, horizon, days, t, locale), locale);
         if (!group || !date) return "";
-        return `${formatCalendarDate(date, locale)} · ${group.length} ${t("笔决定", "decisions")}`;
+        return readingHtml(clusterReading(date, group, horizon, days, t, locale), locale);
       },
     },
     xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
     yAxis: {
       type: "value" as const,
-      axisLabel: { formatter: (value: number) => signedMoney(value) },
+      axisLabel: { formatter: (value: number) => minus(signedMoney(value)) },
       splitLine: { lineStyle: { color: colours.grid, type: "dashed" as const } },
     },
     series: [
@@ -563,10 +607,59 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       },
     ],
     legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-  });
+  }), [days, groupValue, groups, horizon, locale, point, selected, t]);
   const clusters = groups.filter(([, group]) => group.length > 1);
+  // Every marker in date order, as the keyboard steps through them: singles by side, then same-day markers.
+  const marks = (["buy", "sell"] as const).flatMap((side, seriesIndex) =>
+    groups.filter(([, group]) => group.length === 1 && group[0].side === side)
+      .map(([date], dataIndex) => ({ date, seriesIndex, dataIndex })))
+    .concat(clusters.map(([date], dataIndex) => ({ date, seriesIndex: 2, dataIndex })))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const [tip, setTip] = useState(false);
+  const [step, setStep] = useState<number | null>(null);
+  const bound = useRef<WeakSet<ECharts>>(new WeakSet());
+  // The tooltip opens for the pointer, a tap or the arrow keys; Escape closes it wherever focus is.
+  const bind = () => {
+    const instance = chart.current;
+    if (!instance || bound.current.has(instance)) return;
+    bound.current.add(instance);
+    instance.on("showTip", () => setTip(true));
+    instance.on("hideTip", () => setTip(false));
+  };
+  useEscapeLayer(tip, () => {
+    chart.current?.dispatchAction({ type: "hideTip" });
+    setTip(false);
+    setStep(null);
+  });
+  const spoken = step == null || !marks[step] ? "" : (() => {
+    const group = groups.find(([date]) => date === marks[step].date)?.[1] ?? [];
+    return readingText(group.length > 1
+      ? clusterReading(marks[step].date, group, horizon, days, t, locale)
+      : decisionReading(group[0], horizon, days, t, locale), locale);
+  })();
   return <>
-    <div onClick={(event) => {
+    <div onPointerEnter={bind} onKeyDownCapture={(event) => {
+      // The chart's own keys step through its first series only; these reach every marker.
+      if (!["ArrowLeft", "ArrowRight", "Home", "End", "Enter", " "].includes(event.key) || !marks.length) return;
+      if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "group") return;
+      event.preventDefault();
+      event.stopPropagation();
+      bind();
+      if (event.key === "Enter" || event.key === " ") {
+        if (step != null && marks[step]) pick(marks[step].date);
+        return;
+      }
+      const next = event.key === "Home" ? 0 : event.key === "End" ? marks.length - 1
+        : step == null ? (event.key === "ArrowLeft" ? marks.length - 1 : 0)
+          : Math.max(0, Math.min(marks.length - 1, step + (event.key === "ArrowRight" ? 1 : -1)));
+      setStep(next);
+      chart.current?.dispatchAction({ type: "showTip", seriesIndex: marks[next].seriesIndex, dataIndex: marks[next].dataIndex });
+      setTip(true);
+    }} onBlur={(event) => {
+      if (step == null || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+      chart.current?.dispatchAction({ type: "hideTip" });
+      setStep(null);
+    }} onClick={(event) => {
       const instance = chart.current;
       const bounds = instance?.getDom().getBoundingClientRect();
       if (!instance || !bounds || !(event.target instanceof Node) || !instance.getDom().contains(event.target)) return;
@@ -580,6 +673,7 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       if (match) pick(match.date);
     }}>
       <Plot research controller={chart} label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />
+      <span className="sr-only" aria-live="polite" aria-atomic="true">{spoken}</span>
     </div>
     {clusters.length > 0 && <p className="mx-muted">{t("同日多笔决定按已观测结果的平均值标记，可展开逐笔查看。", "Same-day markers use the average observed result. Open a date to read each decision.")}</p>}
     {clusters.length > 0 && <div className="mx-decision-clusters" role="group" aria-label={t("同日决定", "Same-day decisions")}>
@@ -590,7 +684,7 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
     </div>}
     <div id={listId} hidden={!active}>
       {active && <section aria-label={t("所选日期的决定", "Decisions on the selected date")} className="mx-decision-day">
-        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {t("笔决定", "decisions")}</h3>
+        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {active[1].length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")}</h3>
         {decisionKeys(active[1]).map((key, i) => <DecisionRow key={key} row={active[1][i]} horizon={horizon} days={days} sided />)}
       </section>}
     </div>
@@ -620,7 +714,7 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
   const columns = [
     { label: t("日期", "Date"), value: (row: RoundTrip) => formatCalendarDate(row.date, locale) },
     {
-      label: t("证券", "Security"),
+      label: t("名称", "Name"),
       value: (row: RoundTrip) => (
         <Link href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}>{row.ticker}</Link>
       ),
@@ -634,21 +728,21 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
   return (
     <Panel
       className="mx-decision-table"
-      title={t("日内做 T", "Same-day round trips")}
+      title={t("日内往返", "Same-day round trips")}
       help={t(
-        "同一天买入又卖出同一证券时，配对的股数算一次往返：结果是（卖出均价 − 买入均价）× 股数，已扣除费用。当日价差上限是同样股数在当天最高价与最低价之间能赚到的最多金额，用来对照，不是事先可以做到的策略。多买或多卖的部分仍作为买卖决定计算。",
-        "When one security is bought and sold on the same day, the matched shares are a round trip: (average sell − average buy) × shares, after costs. The day's range is the most the same shares could have taken between that day's high and low; it is a yardstick, not a strategy available in advance. Shares bought or sold beyond the round trip still count as buy or sell decisions.",
+        "同一天买入又卖出同一代码时，配对的股数算一次往返：结果是（卖出均价 − 买入均价）× 股数，已扣除费用。当日价差上限是同样股数在当天最高价与最低价之间能赚到的最多金额，用来对照，不是事先可以做到的策略。多买或多卖的部分仍作为买卖决定计算。",
+        "When the same ticker is bought and sold on the same day, the matched shares are a round trip: (average sell − average buy) × shares, after costs. The day's range is the most the same shares could have taken between that day's high and low; it is a yardstick, not a strategy available in advance. Shares bought or sold beyond the round trip still count as buy or sell decisions.",
       )}
     >
       <div className="mx-metric-grid mx-metric-grid-three">
         <Metric label={t("当日价差上限", "Day's range on those shares")} value={verdict.range == null ? "—" : currency(verdict.range)} />
         <Metric label={t("抓住的价差", "Share of the range taken")} value={verdict.captured == null ? "—" : percent(verdict.captured, false, 0)} />
       </div>
-      <EvidenceTable label={t("结果最大的日内做 T", "Largest round trips")} rows={largest} columns={columns} />
+      <EvidenceTable label={t("结果最大的日内往返", "Largest round trips")} rows={largest} columns={columns} />
       {rows.length > largest.length && (
         <details className="mx-chart-data">
           <summary>{locale === "zh" ? `全部 ${rows.length} 次` : `All ${rows.length} round trips`}</summary>
-          <EvidenceTable label={t("日内做 T 记录", "Same-day round trips")} rows={rows} pageSize={20} showCount={false} columns={columns} />
+          <EvidenceTable label={t("日内往返记录", "Same-day round trips")} rows={rows} pageSize={20} showCount={false} columns={columns} />
         </details>
       )}
     </Panel>
@@ -664,7 +758,7 @@ function BestCloses({ rows }: { rows: ClosedTrade[] }) {
   const largest = rows.slice(0, 5);
   const columns = [
     {
-      label: t("证券", "Security"),
+      label: t("名称", "Name"),
       value: (row: ClosedTrade) => (
         <Link href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}>
           {row.ticker}
@@ -812,23 +906,20 @@ export function DecisionReview({
             <h2 ref={heading} className="sr-only" tabIndex={-1}>
               {title}
             </h2>
-            <Help label={title}>
+            <Help label={title} basis={t(
+              "只用已收盘的价格和当日的最终汇率；数据源缺失的价格或汇率最多等待三个交易日，之后沿用此前的值。数据源日后补齐或更正历史时，效果会随之重算。",
+              "Only completed closes and each day's final exchange rate are used; a missing price or rate waits up to three trading days for the data provider, then takes the last value before it. If the provider later fills in or corrects its history, effects are restated.",
+            )}>
               <p>
                 {t(
-                  "每个交易日的同一证券、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算。同一天又买又卖时，配对的股数算作日内做 T，单独计算，只有多买或多卖的部分算作决定。",
-                  "One security, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
+                  "每个交易日的同一代码、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算。同一天又买又卖时，配对的股数算作日内往返，单独计算，只有多买或多卖的部分算作决定。",
+                  "One ticker, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
                 )}
               </p>
               <p>
                 {t(
                   "对照的是不做这笔交易：买入之后上涨或派息记为赚，下跌记为亏；卖出之后上涨或派息记为少赚，下跌记为少亏。",
-                  "Each decision is compared with not trading: a buy gains when the security then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "只用已收盘的价格和当日的最终汇率；数据源缺失的价格或汇率最多等待三个交易日，之后沿用此前的值。数据源日后补齐或更正历史时，效果会随之重算。",
-                  "Only completed closes and each day's final exchange rate are used; a missing price or rate waits up to three trading days for the data provider, then takes the last value before it. If the provider later fills in or corrects its history, effects are restated.",
+                  "Each decision is compared with not trading: a buy gains when the price then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls.",
                 )}
               </p>
             </Help>
@@ -868,7 +959,7 @@ export function DecisionReview({
           {verdict("buy", buys)}
           {trips.count > 0 && (
             <Metric
-              label={t("日内做 T", "Round trips") + (Math.round(trips.result) ? " · " + (trips.result > 0 ? t("赚", "gained") : t("亏", "lost")) : "")}
+              label={t("日内往返", "Round trips") + (Math.round(trips.result) ? " · " + (trips.result > 0 ? t("赚", "gained") : t("亏", "lost")) : "")}
               value={currency(Math.abs(trips.result))}
               tone={Math.round(trips.result) ? (trips.result < 0 ? "down" : "up") : undefined}
               note={locale === "zh" ? `${trips.favourable} / ${trips.count} 次盈利` : `${trips.favourable} of ${trips.count} gained`}
@@ -879,8 +970,8 @@ export function DecisionReview({
         {unpriced.length > 0 && (
           <p className="mx-muted mx-decision-coverage">
             {locale === "zh"
-              ? `${unpriced.length} 只证券没有可核对的行情，未计入：${unpriced.join("、")}`
-              : `${unpriced.length} securities have no reconcilable prices and are excluded: ${unpriced.join(", ")}`}
+              ? `${unpriced.length} 项持仓没有可核对的行情，未计入：${unpriced.join("、")}`
+              : `${unpriced.length} ${unpriced.length === 1 ? "holding has" : "holdings have"} no reconcilable prices and ${unpriced.length === 1 ? "is" : "are"} excluded: ${unpriced.join(", ")}`}
           </p>
         )}
       </Panel>
