@@ -4,7 +4,7 @@ import { researchPriceQuery } from "./research-queries";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
+import { formatCalendarDate, formatDate, formatDateTime } from "@/ui/formatters";
 import { ratingSummary, recommendationChange, targetSnapshot } from "./analyst-data";
 import { Plot } from "./charts";
 import { candleSeries, candleValues, priceReading } from "./research-price-candles";
@@ -123,6 +123,12 @@ export function AnalystExpectations({
     ? inRange(prices.data?.points ?? [], "1Y")
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
+  const days = points.map((point) => point.date.slice(0, 10));
+  // The price axis names months on their first trading day; the first label and each January carry the year.
+  const monthLabel = (day: string, index: number) => index === 0
+    ? formatDate(day, locale, { year: "numeric", month: "short", timeZone: "UTC" })
+    : day.slice(5, 7) === "01" ? day.slice(0, 4)
+      : formatDate(day, locale, { month: "short", timeZone: "UTC" });
   const candles = candleValues(points);
   const hasCandles = candles.some((bar) => bar[0] != null);
   const targetAsOf = str(analyst.asOf);
@@ -318,15 +324,15 @@ export function AnalystExpectations({
                 xAxis: [
                   {
                     type: "category",
-                    data: points.map((p) => p.date.slice(0, 10)),
+                    data: days,
                     boundaryGap: hasCandles,
                     axisLabel: {
                       color: c.axis,
                       fontSize: 11,
                       showMinLabel: true,
-                      showMaxLabel: true,
                       hideOverlap: true,
-                      formatter: (v: string) => v.slice(2, 7),
+                      interval: (index: number, day: string) => index === 0 || day.slice(0, 7) !== days[index - 1]?.slice(0, 7),
+                      formatter: monthLabel,
                     },
                     axisTick: { show: false },
                     axisLine: { lineStyle: { color: c.border } },
