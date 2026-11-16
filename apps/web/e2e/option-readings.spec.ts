@@ -18,6 +18,15 @@ const chain = {
   contracts,
 };
 const ISO = /\d{4}-\d{2}-\d{2}/;
+// Seven captured expirations, two more than a chart can draw apart.
+const seven = ["2026-11-20", "2026-11-27", "2026-12-04", "2026-12-11", "2026-12-18", "2027-01-15", "2027-02-19"];
+const sevenChains = {
+  ...chain,
+  availability: { state: "current", currentExpiries: seven }, availableExpiries: seven,
+  expiries: seven.map((expiry, e) => ({ ...chain.expiries[0], expiry,
+    gammaProfile: chain.expiries[0].gammaProfile.map((point) => ({ ...point, netGex: point.netGex + e * 50_000 })) })),
+  contracts: seven.flatMap((expiry) => contracts.filter((c) => c.expiry === expiries[0]).map((c) => ({ ...c, expiry }))),
+};
 
 /** The spoken reading beside the plot, and the card (desktop) or strip (phone) that shows it. */
 function reading(page: Page, chart: Locator, isMobile: boolean) {
@@ -100,7 +109,7 @@ test.describe("option and rating charts read through the reading card", () => {
     await expect(shown).toBeHidden();
   });
 
-  test("the rating distribution lists a period's ratings and folds the rest", async ({ page, isMobile }) => {
+  test("the rating card keeps buy, hold and sell in view and the reading speaks all five", async ({ page, isMobile }) => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch();
       const json = await response.json();
@@ -115,13 +124,67 @@ test.describe("option and rating charts read through the reading card", () => {
     const { spoken, shown } = reading(page, chart, isMobile);
     await chart.press("End");
     await expect(spoken).toContainText("Current");
-    await expect(spoken).toContainText("Strong buy 6");
-    await expect(spoken).toContainText("Strong sell 2");
-    // A rating no analyst holds is left out.
-    await expect(spoken).not.toContainText(/\bSell 0/);
+    // The live region keeps every rating, zeros included.
+    for (const row of ["Strong buy 6", "Buy 19", "Hold 14", "Sell 0", "Strong sell 2"]) await expect(spoken).toContainText(row);
     await expect(shown).toBeVisible();
-    await expect(shown.locator(".mx-reading-more")).toHaveText(isMobile ? "2 more" : "1 more");
+    // Each side carries its strong rating, so three rows fit the card and the phone strip alike.
+    await expect(shown.locator(".mx-reading-row")).toHaveText([/^Buy\s*25\s*incl\. 6 strong buy$/, /^Hold\s*14$/, /^Sell\s*2\s*incl\. 2 strong sell$/]);
+    await expect(shown.locator(".mx-reading-more")).toHaveCount(0);
+    await chart.press("Home");
+    await expect(spoken).toContainText("1 month ago");
+    await expect(spoken).not.toContainText("1 months");
     await chart.press("Escape");
     await expect(shown).toBeHidden();
+  });
+
+  test("the expiration picker stops at five and says why the rest are unavailable", async ({ page, isMobile }) => {
+    await page.route("**/api/backend/research/AAPL/lens/options?**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), options: sevenChains } });
+    });
+    // A link asking for six keeps the first five.
+    await page.goto("/research?ticker=AAPL&view=options&optionView=gamma&expiries=" + seven.slice(0, 6).join(","));
+    const field = page.getByRole("combobox", { name: "Select captured expirations" });
+    const picked = page.locator(".mantine-MultiSelect-root").filter({ has: field }).locator(".mantine-Pill-label");
+    await expect(picked).toHaveText([/^20 Nov( 2026)?$/, /^27 Nov( 2026)?$/, /^4 Dec( 2026)?$/, /^11 Dec( 2026)?$/, /^18 Dec( 2026)?$/]);
+    // The keyboard opens the list; the pills cover most of the field.
+    await field.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("option")).toHaveCount(7);
+    const unavailable = page.getByRole("option", { disabled: true });
+    await expect(unavailable).toHaveCount(2);
+    await expect(unavailable.first()).toHaveAccessibleName(/^15 Jan 2027, limit of 5 expirations reached$/);
+    await expect(page.getByRole("option", { name: /^20 Nov( 2026)?$/ })).toBeEnabled();
+    await page.keyboard.press("Escape");
+    // Five lines, five strokes: every key the reading shows is drawn differently.
+    const chart = page.getByRole("group", { name: "Spot scenarios for selected expirations" });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    const { spoken, shown } = reading(page, chart, isMobile);
+    await chart.press("Home");
+    for (const date of ["20 Nov", "27 Nov", "4 Dec", "11 Dec", "18 Dec"]) await expect(spoken).toContainText(date);
+    await expect(spoken).not.toContainText("15 Jan");
+    const keys = await shown.locator(".mx-reading-key").evaluateAll((items) =>
+      items.map((key) => [key.getAttribute("style"), key.hasAttribute("data-dashed"), key.hasAttribute("data-dotted")].join("|")));
+    expect(keys.length).toBeGreaterThan(2);
+    expect(new Set(keys).size).toBe(keys.length);
+    await chart.press("Escape");
+  });
+
+  test("expirations read as dates in pickers, tables and chart names", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=options&expiries=" + expiries.join(","));
+    const content = page.locator(".mx-research-content");
+    const views = page.getByRole("group", { name: "Options analysis" });
+    // The chain names its expiration above the strike column.
+    await expect(content.getByRole("columnheader", { name: /^20 Nov( 2026)?$/ })).toBeVisible();
+    await expect(content).not.toContainText(ISO);
+    await views.getByRole("button", { name: "Implied volatility" }).click();
+    await expect(page.getByRole("group", { name: /^20 Nov( 2026)? IV smile$/ })).toBeVisible();
+    await expect(content).not.toContainText(ISO);
+    await views.getByRole("button", { name: "Open interest" }).click();
+    await expect(page.getByRole("region", { name: "Exact records" })).toContainText("18 Dec");
+    await expect(content).not.toContainText(ISO);
+    await views.getByRole("button", { name: "Expiry payoff" }).click();
+    await page.getByRole("combobox", { name: "Contract", exact: true }).click();
+    await expect(page.getByRole("option").first()).toHaveAccessibleName(/^(CALL|PUT) \d+ · 20 Nov( 2026)?$/);
   });
 });
