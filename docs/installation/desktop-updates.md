@@ -1,12 +1,12 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.49.1 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.51.0 provides an Apple Silicon macOS preview as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.49.1).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.51.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.49.1
+## Verified scope for 1.51.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
@@ -15,29 +15,43 @@ Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a privat
 older-version fixture built from the 1.31.0 source with its updater unchanged.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.49.1 DMG and reached **Ready to Install**;
+downloaded the exact final 1.51.0 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
-connection and disabled auto-open preference were unchanged. All 20,427
+connection and disabled auto-open preference were unchanged. All 27,398
 installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
-with Cmd-Q stopped its owned services. After a relaunch, the workspaces window
-opened in Simplified Chinese and listed the saved connection.
+with Cmd-Q stopped its owned services, including those of a local workspace.
+After a relaunch, the workspaces window opened in the chosen App language and
+listed the saved connection and the recent local workspace.
 
-Version 1.49.1 changes the native App shell, so acceptance also covered it.
-**About & updates** shows the installed and available App versions side by side.
-A local workspace on a disk that has been ejected stays in the recent list with
-**Choose location**; reattaching the disk makes it openable again without
-restarting the App. Automated tests cover the connection-loss notice in the
-window's title band; this acceptance did not interrupt a live remote service.
+Version 1.51.0 changes how the native App shell follows its language, so
+acceptance also covered it. Changing the App language rebuilds the menus and
+retitles open windows without a restart; the folder picker and a local
+workspace's service status follow the same language, and each workspace window
+is titled with its name. The bundled backend carries the Pydantic AI model
+layer and the ChatGPT sign-in package: in a synthetic local workspace, ChatGPT
+sign-in obtained a one-time code from OpenAI and was then cancelled. No sign-in
+was completed.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
-the accepted local bytes. An installed 1.47.4 App discovered and downloaded the
-public 1.49.1 update through App Settings, reached **Ready to Install** and
+the accepted local bytes. An installed 1.49.1 App discovered and downloaded the
+public 1.51.0 update through App Settings, reached **Ready to Install** and
 installed it through **Install and Relaunch**. Its connection preferences were
 unchanged, the installed bundle matched the accepted package exactly, and it
 reconnected to its saved HTTPS service.
 
+Version 1.51.0 brings the workspace's changes since 1.49.1 to the App. Every
+chart reading is one card: the time, one leading figure and up to three rows
+keyed to their lines, with candles led by the close and its change. Hover
+cards, tooltips and help share one style, open from the keyboard and close with
+Escape; on phones a reading appears as a strip and help as a bottom sheet.
+Research covers stocks, ETFs and indices behind a single search field, indices
+join the research list and ⌘K finds them. Searching a company by its Chinese
+name finds its US listing. Markets index cards open the index chart, and fund
+logos match each fund's issuer. Research model requests run through Pydantic
+AI, and ChatGPT sign-in still uses a one-time code. Names are consistent
+across the workspace and the App in British English.
 Version 1.49.1 brings the workspace's changes since 1.47.4 to the App. Indices
 open in Research with their history, constituents, breadth and contribution,
 the funds that track them and your matching exposure; up to three matching
