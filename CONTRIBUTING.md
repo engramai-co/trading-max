@@ -194,9 +194,9 @@ public source bundle, and publishes the GitHub Release. Do not create release
 tags by hand during the normal contribution flow.
 
 
-## Desktop preview changes
+## Desktop App changes
 
-The desktop shell is an Apple Silicon macOS preview. Public DMGs additionally
+The desktop shell is an Apple Silicon macOS App. Public DMGs additionally
 pass the [distribution gate](docs/installation/desktop-updates.md#maintainer-distribution-gate);
 ordinary local builds do not inherit a published package's signature or acceptance.
 [Its build guide](apps/desktop/README.md) owns packaging, native tests and

@@ -1,6 +1,6 @@
-# Trading Max desktop preview
+# Trading Max desktop App
 
-An Apple Silicon macOS desktop preview for product **1.28.0**.
+The Trading Max App for Apple Silicon Macs.
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -83,10 +83,10 @@ remain available independently of the remote webpage.
   dependencies, SQL migrations, and the existing API/application code.
 - In local demo mode, synthetic account, history and research fixtures. They are **not real
   broker balances or market prices**. Search and price-chart adapters are local
-  synthetic implementations for the preview's BE instrument.
+  synthetic implementations for the demo's BE instrument.
 - A native startup screen, retry after a service failure, single instance behavior
   and an owned-process supervisor. Closing the window or pressing Cmd-Q quits this
-  preview and its services. Keeping a hidden collector running is a later step.
+  App and its services. Keeping a hidden collector running is a later step.
 
 No developer tools are needed on the destination Mac. Both services bind only to
 `127.0.0.1` on available ports; normal browser/production ports are not taken over.
@@ -101,10 +101,10 @@ Real account state lives exclusively in the user-selected workspace folder. Its
 Keychain uses `com.engram.trading-max.workspace.<uuid>`. A separate confirmation
 receipt records the checked snapshot and connection revisions, not secrets.
 The App does not import or modify an existing source-deployment root.
-The directory must have the preview's identity marker; an unknown existing
+The directory must have the App's identity marker; an unknown existing
 directory is rejected. Synthetic state is seeded once per App version from the
 bundled build-date fixtures and survives reopening that version.
-Deleting the app leaves this independent preview data in place.
+Deleting the App leaves this data in place.
 
 In local demo mode, the supervisor clears inherited configuration and secrets, uses a separate
 credential namespace, supplies an empty credential store, disables schedules and
@@ -113,7 +113,7 @@ Bundled stock prices and search use synthetic adapters. Python socket connection
 to external hosts are rejected as an additional guard, not as an OS-level network
 sandbox (native libraries and the webview are separate network clients).
 
-`logs/launcher.log`, `logs/api-process.log` and `logs/web-process.log` in the preview
+`logs/launcher.log`, `logs/api-process.log` and `logs/web-process.log` in the App's data
 directory contain startup diagnostics. Process logs are replaced on each launch.
 `runtime-status.json` records readiness and owned process IDs; it contains no API
 token. Next's generated standalone entry uses its bounded in-memory cache and
@@ -143,7 +143,7 @@ npm run build --prefix apps/desktop
 `--python-home` must be a **relocatable standalone CPython distribution**, not a
 venv or a Homebrew interpreter linked against libraries on the build machine.
 Payloads and build output are ignored by Git. The bundle is written to
-`src-tauri/target/release/bundle/macos/Trading Max Preview.app` under this directory.
+`src-tauri/target/release/bundle/macos/Trading Max.app` under this directory.
 Record the runtime provenance and hashes with the final artifact; the package's
 `runtime/build-info.json` records the base application revision and Node checksum.
 Python dependencies use hash-verified wheels for Apple Silicon macOS 13.0,

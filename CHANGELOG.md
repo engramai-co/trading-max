@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-11-16
+
+### Changed
+- The desktop App is called Trading Max in the menu bar, its About and update windows, and a new download installs Trading Max.app. An App that updates itself keeps its current file name until you rename it in Finder; its data, saved connections and Keychain items stay as they are.
+- The App's status messages and guides no longer call it a preview; a stopped workspace service reads "The local service stopped".
+
 ## [1.51.0] - 2026-11-16
 
 ### Changed

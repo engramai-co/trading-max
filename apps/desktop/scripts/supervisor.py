@@ -59,7 +59,7 @@ def prepare_identity(root: Path) -> None:
             raise RuntimeError("Unmarked state directory: existing files were not changed")
         marker.write_text(MARKER, encoding="utf-8")
     if marker.read_text(encoding="utf-8") != MARKER:
-        raise RuntimeError("Preview data identity does not match")
+        raise RuntimeError("Demo data identity does not match")
 
 
 def prepare_state(root: Path) -> None:
@@ -155,7 +155,7 @@ def await_url(url: str, children: list[subprocess.Popen], *, readiness: bool = F
             pass
         STOP.wait(0.15)
     if STOP.is_set():
-        raise InterruptedError("Preview was closed")
+        raise InterruptedError("The local service was stopped")
     raise TimeoutError("Service readiness timed out; see logs")
 
 
@@ -395,13 +395,13 @@ def supervise(args) -> int:
                 heartbeat.check()
                 next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
         terminate_owned(children)
-        status(root, "stopped", _text("预览已关闭。", "The preview closed."))
+        status(root, "stopped", _text("本地服务已停止。", "The local service stopped."))
         return 0
     except InterruptedError:
         terminate_owned(children)
         if upgrade and not committed:
             upgrade.rollback()
-        status(root, "stopped", _text("预览已关闭。", "The preview closed."))
+        status(root, "stopped", _text("本地服务已停止。", "The local service stopped."))
         return 0
     except Exception as error:
         terminate_owned(children)
@@ -444,7 +444,7 @@ def api(args) -> int:
         if event == "socket.connect":
             address = values[1]
             if isinstance(address, tuple) and address[0] not in {"127.0.0.1", "::1", "localhost"}:
-                raise OSError("External data connections are disabled in desktop preview")
+                raise OSError("External data connections are disabled in the demo")
 
     is_demo = not os.environ.get("TRADING_MAX_DESKTOP_WORKSPACE_ID")
     if is_demo:
@@ -462,10 +462,10 @@ def api(args) -> int:
             return None
 
         def put(self, reference, secret):
-            raise CredentialStoreError("Real connections are disabled in desktop preview")
+            raise CredentialStoreError("Real connections are disabled in the demo")
 
         def delete(self, reference):
-            raise CredentialStoreError("Real connections are disabled in desktop preview")
+            raise CredentialStoreError("Real connections are disabled in the demo")
 
     settings = Settings.from_env()
     app = create_app(settings, credential_store=PreviewCredentials() if is_demo else None)

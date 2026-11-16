@@ -1,6 +1,6 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.51.0 provides an Apple Silicon macOS preview as a Developer ID
+Trading Max 1.51.0 provides an Apple Silicon macOS App as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
 the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.51.0).
 A GitHub source archive alone is not a desktop installer. The App's
@@ -324,7 +324,7 @@ the scripts refuse to replace an existing output or modify the input App.
 
 ```sh
 uv run --frozen python apps/desktop/scripts/package_macos.py prepare \
-  --app '/absolute/build/Trading Max Preview.app' \
+  --app '/absolute/build/Trading Max.app' \
   --output /absolute/output/release-candidate \
   --identity DEVELOPER_ID_CERTIFICATE_SHA1
 ```
@@ -378,9 +378,9 @@ start a fresh output directory. Do not bypass notarization or Gatekeeper.
 After the App submission is accepted:
 
 ```sh
-xcrun stapler staple '/absolute/output/release-candidate/Trading Max Preview.app'
+xcrun stapler staple '/absolute/output/release-candidate/Trading Max.app'
 uv run --frozen python apps/desktop/scripts/package_macos.py dmg \
-  --app '/absolute/output/release-candidate/Trading Max Preview.app' \
+  --app '/absolute/output/release-candidate/Trading Max.app' \
   --output /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
   --identity DEVELOPER_ID_CERTIFICATE_SHA1
 xcrun notarytool submit /absolute/output/release-candidate/trading-max-vX.Y.Z-macos-arm64.dmg \
