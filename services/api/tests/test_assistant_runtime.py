@@ -19,6 +19,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.models.wrapper import WrapperModel
 from trading_max.infrastructure import SqliteDatabase
 
+from services.api.trading_max_api.agent import service as service_module
 from services.api.trading_max_api.agent.runtime import build_assistant_agent, run_settings
 from services.api.trading_max_api.agent.service import (
     AssistantService,
@@ -390,7 +391,9 @@ def test_one_run_per_conversation_and_a_global_cap(tmp_path):
     assert capped.status_code == 429
     assert seen == []
     # A slot abandoned before streaming began expires after the run timeout.
-    service._active["chat9"] = service._active["other"] = 0.0  # noqa: SLF001
+    # Relative to now: a freshly booted CI runner has a small monotonic clock.
+    abandoned = time.monotonic() - service_module.RUN_TIMEOUT_SECONDS - 60
+    service._active["chat9"] = service._active["other"] = abandoned  # noqa: SLF001
     assert client.post("/v1/assistant/chat", json=user_turn("chat9", "u1", "hi")).status_code == 200
     assert service._active == {}  # noqa: SLF001 - released when the stream ended
 
@@ -443,7 +446,6 @@ def test_invalid_tool_arguments_are_retried(tmp_path):
 
 
 def test_a_run_that_outlasts_its_timeout_is_aborted_and_not_saved(tmp_path, monkeypatch, caplog):
-    from services.api.trading_max_api.agent import service as service_module
 
     async def slow(messages, info: AgentInfo):
         yield "starting "

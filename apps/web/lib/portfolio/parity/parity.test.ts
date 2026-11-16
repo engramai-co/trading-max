@@ -13,7 +13,8 @@ function stringify(value: unknown) {
   });
 }
 
-test("Python portfolio math fixtures match the TypeScript source", () => {
+// Generating all 230 cases takes several seconds on shared CI runners.
+test("Python portfolio math fixtures match the TypeScript source", { timeout: 60_000 }, () => {
   const cases = parityCases();
   // One case per line keeps Git diffs local to the affected scenarios. Timeline
   // geometry is losslessly compacted before serialization.
