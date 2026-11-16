@@ -337,3 +337,144 @@
     min-height: 44px;
   }
 }
+
+/* Reading card (ReadingCard and readingHtml): the time, one leading figure, at most a few rows.
+   Text keeps 4.5:1 on the overlay ground in both themes: ink, muted, gain, loss and warning. */
+.mx-reading {
+  display: grid;
+  gap: 4px;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 168px;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border: var(--mx-overlay-edge);
+  border-radius: var(--mx-overlay-radius);
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
+  color: var(--mx-ink);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: start;
+  white-space: normal;
+}
+.mx-reading-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--mx-muted);
+  font-weight: 500;
+}
+.mx-reading-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--mx-warning);
+  white-space: nowrap;
+}
+.mx-reading-flag::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.mx-reading-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+}
+.mx-reading-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-inline-end: auto;
+  color: var(--mx-muted);
+}
+.mx-reading-primary > .mx-reading-value {
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mx-reading-detail {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mx-reading [data-tone="up"] {
+  color: var(--mx-up);
+}
+.mx-reading [data-tone="down"] {
+  color: var(--mx-down);
+}
+.mx-reading-group,
+.mx-reading-ohlc {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+.mx-reading-group + .mx-reading-group {
+  margin-top: 4px;
+}
+.mx-reading-ohlc,
+.mx-reading-group[data-columns="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+.mx-reading-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+}
+.mx-reading-row > dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--mx-muted);
+}
+.mx-reading-row > dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: end;
+  white-space: nowrap;
+}
+.mx-reading-row > dd > .mx-reading-detail {
+  margin-inline-start: 6px;
+}
+.mx-reading-key {
+  flex: none;
+  width: 12px;
+  height: 0;
+  border-top: 2px solid var(--key);
+}
+.mx-reading-key[data-dashed] {
+  border-top-style: dashed;
+}
+.mx-reading-key[data-kind="bar"] {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--key);
+}
+.mx-reading-more {
+  color: var(--mx-muted);
+}
+/* Phones: the strip sits above the plot, leaving room for its 44px close button. */
+.mx-reading[data-variant="strip"] {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  padding-inline-end: 56px;
+}
+.mx-reading[data-variant="strip"] .mx-reading-primary > .mx-reading-value {
+  font-size: 20px;
+}
+

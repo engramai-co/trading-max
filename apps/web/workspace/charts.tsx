@@ -12,7 +12,7 @@ import { Empty, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
-import { type ChartReadout } from "./chart-readout";
+import { type LegacyChartReadout } from "./chart-readout";
 import { chartNumber } from "./research-chart-format";
 
 import { Plot } from "./plot";
@@ -104,7 +104,7 @@ export function HistoryChart({
   const latest = positions.at(-1)!;
   const formatValue = (value: number | null) => value == null ? "—"
     : percentage ? percent(value, true, 2) : currencyTick ? `${number(value, 2)} GBP` : number(value, 2);
-  const readout: ChartReadout = {
+  const readout: LegacyChartReadout = {
     positions,
     latest: formatValue(lines[0].values[observations.get(latest)!]),
     records: fullscreen ? (position) => {

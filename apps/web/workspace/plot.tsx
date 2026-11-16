@@ -8,7 +8,7 @@ import { useECharts } from "@/ui/charts/use-echarts";
 import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
-import { closestChartPosition, readingRows, type ChartReadout } from "./chart-readout";
+import { closestChartPosition, readingRows, type LegacyChartReadout } from "./chart-readout";
 import { chartNumber } from "./research-chart-format";
 import { exportChartCsv, exportChartPng } from "./chart-export";
 import { changeZoom, chartZoom, useChartGestures, zoomRange } from "./chart-zoom";
@@ -77,7 +77,7 @@ export function Plot({
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
-  readout?: ChartReadout;
+  readout?: LegacyChartReadout;
   overlay?: ReactNode;
   fullscreen?: boolean;
   customGestures?: boolean;
