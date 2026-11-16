@@ -383,8 +383,9 @@ difference subtracts the two CAGRs across the common dates; tracking error
 uses the sample standard deviation of adjacent daily return differences
 times the square root of 252. Neither calculation bridges an observation
 whose return level is missing. EQGB keeps its GBP hedged NAV and USD Nasdaq
-net index levels without a comparison. No aligned daily workbook has been
-verified for HEMC or SMGB.
+net index levels without a comparison. HEMC and SMGB have no enabled daily
+comparison: the [source review](../guides/etf-coverage.md#daily-tracking)
+did not find a matched pair with terms that permit this use.
 
 The monitor archives dated official and issuer portfolio valuation snapshots
 separately under `<data-root>/state/indices/valuation-v1/`. An issuer workbook

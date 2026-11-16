@@ -181,6 +181,22 @@ tracking error remains available where reported; the desk does not estimate
 daily tracking error from a price-only index, another ETF, or mismatched NAV.
 The portfolio overview's compact ETF publication is unchanged.
 
+### Daily tracking
+
+Sources checked on 2026-11-16. The comparison uses the share class's NAV
+currency and the matching net total return benchmark. Both HEMC and SMGB trade
+in GBP in London, but their share-class NAV and benchmark are unhedged USD.
+
+| Share class | Daily source decision |
+|---|---|
+| HEMC (IE000KCS7J59) | The [HSBC fund page](https://www.assetmanagement.hsbc.co.uk/en/intermediary/funds/ie000kcs7j59) and its [RNS notices](https://www.londonstockexchange.com/en/news/article/HEMA/net-asset-value-s/cf37-45-86-50-6a-423290) disclose NAV; the notices are separate daily announcements. No usable issuer history file was verified. [HSBC UK terms](https://www.assetmanagement.hsbc.co.uk/en/individual-investor/terms-and-conditions) require prior written permission for automated extraction, and [LSE licensing](https://www.londonstockexchange.com/en/markets-products/market-data/market-data-licensing) covers RNS derived data and application use. The [MSCI Emerging Markets Index](https://www.msci.com/indexes/index/891800/msci-emerging-markets-index) has a USD Net variant (NDUEEGF), but the [MSCI Index Data terms](https://www.msci.com/indexes?index-market=emerging-markets) restrict copying and derived work. The existing one-year factsheet reading remains available. |
+| SMGB (IE00BMC38736) | The [VanEck NAV history workbook](https://www.vaneck.com/uk/en/investments/semiconductor-etf/downloads/fundhistoprices/) is offered for the USD share class (UCTSMH). [VanEck UK terms](https://www.vaneck.com/uk/en/terms-and-conditions) allow personal storage. Its [MVSMCTR benchmark export link](https://www.vaneck.com/uk/en/investments/semiconductor-etf/downloads/indexhistoprices/) did not yield a usable file. [MarketVector's index page](https://www.marketvector.com/indexes/sector/marketvector-us-listed-semiconductor-10-capped-screened) requires login for history; [its terms](https://www.marketvector.com/terms-of-service) restrict historical databases and derived charts. No matching pair was enabled. |
+| EQGB (IE00BYVTMW98) | The [Invesco factsheet](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) reports GBP hedged NAV against the USD Nasdaq-100 Notional Net Total Return Index. The two raw series can be viewed separately from an existing import. Nasdaq's [GBP hedged net return index](https://indexes.nasdaq.com/docs/methodology_NasdaqHedge.pdf) (XNDXNNRGBPMH) is a candidate, but neither a match to the share class's hedge method nor an authorized daily history was verified. |
+
+IDX-R7 tracks permission for daily NAV and benchmark collection and tracking
+calculations, as well as the search for an EQGB benchmark with the same hedge
+method.
+
 ## US-listed ETF references
 
 Verified against issuer disclosures on 2026-11-13. References are selected by
