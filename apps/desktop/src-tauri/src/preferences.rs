@@ -75,11 +75,11 @@ impl AppLanguage {
 
     pub fn window_title(self, label: &str) -> &'static str {
         match label {
-            "settings" => self.text("Trading Max · 设置", "Trading Max · Settings"),
-            "workspaces" => self.text("Trading Max · 工作区", "Trading Max · Workspaces"),
+            "settings" => self.text("设置 · Trading Max", "Settings · Trading Max"),
+            "workspaces" => self.text("工作区 · Trading Max", "Workspaces · Trading Max"),
             _ => self.text(
-                "Trading Max · 工作区与连接",
-                "Trading Max · Workspaces and connections",
+                "工作区与连接 · Trading Max",
+                "Workspaces and connections · Trading Max",
             ),
         }
     }

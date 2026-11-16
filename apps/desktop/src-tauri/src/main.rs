@@ -383,7 +383,7 @@ fn enter(
             Err(error) => failed(&app, &desktop, generation, error.to_string()),
             Ok(window) => {
                 connection_notice(&app, &desktop, generation);
-                let _ = window.set_title(&format!("Trading Max · {name}"));
+                let _ = window.set_title(&format!("{name} · Trading Max"));
                 if dismiss_settings {
                     for label in ["settings", "workspaces"] {
                         if let Some(settings) = app.get_webview_window(label) {
@@ -461,7 +461,7 @@ fn create_workspace_window(
                     }
                 });
                 if let Some(name) = snapshot.active_name {
-                    let _ = window.set_title(&format!("Trading Max · {name}"));
+                    let _ = window.set_title(&format!("{name} · Trading Max"));
                 }
             }
         })

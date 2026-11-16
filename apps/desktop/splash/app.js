@@ -30,8 +30,8 @@ function renderViewCopy() {
 function applyLanguage(choice) {
   const changed = language.apply(choice);
   if (!changed && initialized) return;
-  document.title = picker ? t("Trading Max · 工作区", "Trading Max · Workspaces")
-    : t("Trading Max · 工作区与连接", "Trading Max · Workspaces and connections");
+  document.title = picker ? t("工作区 · Trading Max", "Workspaces · Trading Max")
+    : t("工作区与连接 · Trading Max", "Workspaces and connections · Trading Max");
   renderViewCopy();
   if (!$("feedback").hidden && feedbackCopy) text("feedback", feedbackCopy());
   if (view === "remote" && !savedProfile?.url && $("name").value === defaultServiceName) {

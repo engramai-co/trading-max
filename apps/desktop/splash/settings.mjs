@@ -56,7 +56,7 @@ function applyLanguage(choice) {
   const changed = language.apply(choice);
   $("app-language").value = language.value;
   if (!changed) return;
-  document.title = t("Trading Max · 设置", "Trading Max · Settings");
+  document.title = t("设置 · Trading Max", "Settings · Trading Max");
   text("page-title", activePage.textContent.trim());
   if (!$("feedback").hidden && feedbackCopy) text("feedback", feedbackCopy());
   renderRelease();
