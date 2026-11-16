@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.50.2] - 2026-11-16
+
+### Fixed
+- The technical diagnosis in Research spans the chart column again instead of shrinking to a narrow strip beside empty space.
+
 ## [1.50.1] - 2026-11-16
 
 ### Fixed
