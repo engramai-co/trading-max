@@ -7,9 +7,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { formatCalendarDate, formatDateSpan, formatExchangeTime } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
-import { candleSeries, candleValues, priceBarReading, priceGapConnectors, priceSlots } from "./research-price-candles";
+import type { Reading, ReadingItem, ReadingMark } from "./chart-readout";
+import { comparisonFigures, fixed, readingTone, signedPercent, telling, volume } from "./reading-format";
+import { DataBasis } from "./reading-card";
+import { candleSeries, candleValues, previousCloses, priceGapConnectors, priceReading, priceSlots } from "./research-price-candles";
 import { PriceEventTrack, priceEventDays } from "./research-price-events";
 import { compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
@@ -52,6 +56,7 @@ export function PriceHistory({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const { params, update } = useRouteState("push");
   const ranges = priceRanges;
   const full = params.get("chart") === "full";
@@ -167,8 +172,76 @@ export function PriceHistory({
   const earnings = objects(object(eventQuery.data?.analyst ?? context?.analyst).earningsEvents).filter((e) => visibleDays.has(str(e.date).slice(0, 10)));
   const days = priceEventDays(markers, corporate, earnings);
   const showEvents = eventTrack ?? (full || markers.length > 0);
-  const labels = { open: t("开盘", "Open"), high: t("最高", "High"), low: t("最低", "Low"), close: t("收盘", "Close") };
-  const formatValue = (v: number | null) => normalized ? percent(v, true, 2) : number(v, 2);
+  const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
+  const shownAverages = averages ? (["sma20", "sma50", "sma200"] as const).filter((key) => averagePeriods.includes(key.slice(3))) : [];
+  // Each average keeps its stroke: ink solid, grey dashed, ink dotted.
+  const averageStroke = (i: number) => ({
+    colour: [colours.text, colours.axis, colours.text][i],
+    ...(i === 1 ? { dashed: true } : i === 2 ? { dotted: true } : {}),
+  });
+  const references = previousCloses(points, isIntraday, (date) => marketDay.format(new Date(date)));
+  const multipleSessions = new Set(points.map((p) => marketDay.format(new Date(p.date)))).size > 1;
+  const readingTime = (date: string) => isIntraday
+    ? formatExchangeTime(date, priceData?.timezone, locale, multipleSessions)
+    : formatCalendarDate(date, locale);
+  // Pane under the pointer: its indicators come first so the card's four cells keep them.
+  const panesShown = ["price", "volume", ...(rsi ? ["rsi"] : []), ...(macd ? ["macd"] : [])];
+  const indicatorCells = (bar: (typeof points)[number], pane: string | undefined): ReadingItem[] => {
+    const macdDigits = telling([bar.macd, bar.macdSignal]);
+    const cells = [
+      ...(normalized ? [] : shownAverages.map((key, i) => ({
+        pane: "price", label: "SMA " + key.slice(3), value: fixed(bar[key]), key: averageStroke(i),
+      }))),
+      ...(rsi ? [{ pane: "rsi", label: "RSI 14", value: fixed(bar.rsi14), key: { colour: colours.secondary } }] : []),
+      ...(macd ? [
+        { pane: "macd", label: "MACD", value: fixed(bar.macd, macdDigits), key: { colour: colours.text } },
+        { pane: "macd", label: t("信号", "Signal"), value: fixed(bar.macdSignal, macdDigits), key: { colour: colours.axis, dashed: true } },
+      ] : []),
+    ];
+    const ordered = [...cells.filter((cell) => cell.pane === pane), ...cells.filter((cell) => cell.pane !== pane)];
+    return ordered.map(({ label, value, key }) => ({ label, value, key }));
+  };
+  const readPrice = (index: number, grid?: number): Reading => {
+    const bar = slots[index].bar!;
+    const pane = grid == null ? undefined : panesShown[grid];
+    const indicators = indicatorCells(bar, pane);
+    const time = readingTime(bar.date);
+    if (!normalized) {
+      return priceReading({
+        bar, previous: references[slots[index].index], time, candle, labels, indicators,
+        volume: bar.volume == null ? undefined : volume(bar.volume, locale),
+      });
+    }
+    const other = benchmarkPoints.get(bar.date)?.close;
+    const ownChange = value(bar.close);
+    const figures = comparisonFigures([
+      { item: { label: ticker, key: { colour: colours.brand }, value: signedPercent(ownChange), tone: readingTone((ownChange ?? 0) * 100) }, change: ownChange },
+      ...(comparable && benchmarkAnchor ? [{
+        item: { label: comparison, key: { colour: colours.text, dashed: true }, value: signedPercent(other == null ? null : other / benchmarkAnchor - 1),
+          tone: readingTone(other == null ? 0 : (other / benchmarkAnchor - 1) * 100) },
+        change: other == null ? null : other / benchmarkAnchor - 1,
+      }] : []),
+    ], t("相差", "Difference"));
+    // A single normalised line needs no label; a comparison keys both lines.
+    const primary = comparable ? figures.primary : figures.primary && { value: figures.primary.value, tone: figures.primary.tone };
+    return { time, primary, groups: [...(figures.groups ?? []), ...(indicators.length ? [indicators] : [])] };
+  };
+  const readMarks = (index: number): ReadingMark[] => {
+    const bar = slots[index].bar;
+    if (!bar) return [];
+    const other = benchmarkPoints.get(bar.date)?.close;
+    const at = (pane: string) => panesShown.indexOf(pane);
+    return [
+      ...(candle ? [] : [{ value: plottedCloses[index], colour: colours.brand }]),
+      ...(comparable && benchmarkAnchor && other != null ? [{ value: other / benchmarkAnchor - 1, colour: colours.text }] : []),
+      ...shownAverages.map((key, i) => ({ value: value(bar[key]), colour: averageStroke(i).colour })),
+      ...(rsi ? [{ value: bar.rsi14, colour: colours.secondary, xAxisIndex: at("rsi"), yAxisIndex: at("rsi") }] : []),
+      ...(macd ? [
+        { value: bar.macd, colour: colours.text, xAxisIndex: at("macd"), yAxisIndex: at("macd") },
+        { value: bar.macdSignal, colour: colours.axis, xAxisIndex: at("macd"), yAxisIndex: at("macd") },
+      ] : []),
+    ].flatMap((mark) => mark.value == null || !Number.isFinite(mark.value) ? [] : [{ ...mark, value: mark.value }]);
+  };
   const zoom = (factor: number) => {
     const saved = savedZoom();
     const span = Math.min(100, Math.max(5, (saved.end - saved.start) * factor));
@@ -306,7 +379,7 @@ export function PriceHistory({
           {incompletePriceRange(dates, displayedRange) && (
             <p role="status">
               {t(
-                "该证券的记录未覆盖整个所选范围",
+                "记录未覆盖整个所选范围",
                 "History does not cover the full selected range",
               )}{" "}
               · {formatDate(points[0].date)} → {formatDate(points.at(-1)!.date)}
@@ -341,7 +414,7 @@ export function PriceHistory({
             onSelectionChange={setSelection}
             readout={{
               positions: plottedCloses.flatMap((v, index) => v == null ? [] : [index]),
-              latest: `${formatValue(value(points.at(-1)!.close))}${normalized ? "" : ` ${priceData.currency}`}`,
+              latest: normalized ? signedPercent(value(points.at(-1)!.close)) : fixed(points.at(-1)!.close),
               gap: (index) => plottedCloses[Math.round(index)] == null,
               records: (index) => {
                 const bar = slots[index].bar!;
@@ -360,22 +433,8 @@ export function PriceHistory({
                   series: String(series), value: number,
                 }]);
               },
-              point: (index) => {
-                const p = slots[index].bar!;
-                const other = benchmarkPoints.get(p.date)?.close;
-                return [
-                  ...priceBarReading({ ...p, close: value(p.close)! }, formatDate(p.date), normalized ? "%" : priceData.currency, labels, formatValue, candle),
-                  ...(comparable && other != null && benchmarkAnchor ? [
-                    `${comparison} ${formatValue(other / benchmarkAnchor - 1)}`,
-                    `${t("差值", "Difference")} ${number((p.close / anchor.close - other / benchmarkAnchor) * 100, 2)} pp`,
-                  ] : []),
-                  `${t("成交量", "Volume")} ${number(p.volume, 0)}`,
-                  ...(averages ? (["sma20", "sma50", "sma200"] as const).filter((k) => averagePeriods.includes(k.slice(3)))
-                    .map((k) => `${k.toUpperCase()} ${formatValue(value(p[k]))}`) : []),
-                  ...(rsi ? [`RSI 14 ${number(p.rsi14, 2)}`] : []),
-                  ...(macd ? [`MACD ${number(p.macd, 3)}`, `${t("信号", "Signal")} ${number(p.macdSignal, 3)}`] : []),
-                ].join("\n");
-              },
+              read: (index, context) => readPrice(index, context?.grid),
+              marks: readMarks,
             }}
             controller={chart}
             onZoom={(instance) => {
@@ -522,7 +581,7 @@ export function PriceHistory({
                   ),
                   {
                     type: "bar",
-                    name: t("MACD 差值", "MACD histogram"),
+                    name: t("MACD 柱值", "MACD histogram"),
                     xAxisIndex: index,
                     yAxisIndex: index,
                     data: slots.map(({ bar }) => ({
@@ -718,12 +777,18 @@ export function PriceHistory({
     <>
       <Panel
         className={compactChart ? "mx-tech-chart" : undefined}
-        title={t("价格走势", "Price chart")}
+        title={[t("价格走势", "Price history"), priceData?.currency].filter(Boolean).join(" · ")}
         action={<Button ref={fullButton} variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
-        help={t(
-          "行情为拆股及分红调整后价格。均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。比较按同币种和共同起点归一化。",
-          "Prices are split and dividend adjusted. Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. Comparisons share currency and starting time.",
-        )}
+        help={<>
+          <p>{t(
+            "均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。读数里的涨跌相对前一根 K 线的收盘价，盘中相对前一交易日的最后一根。",
+            "Indicators use the selected bar interval: Wilder RSI 14, MACD 12/26/9. Trades and company events have a separate track; a close is not an execution price. A reading's change is from the previous bar's close, or intraday from the previous session's last bar.",
+          )}</p>
+          <DataBasis>{t(
+            "拆股及分红调整后的价格，币种见标题；盘中 K 线按交易所当地时间。比较按同币种、同粒度和共同起点归一化；点线表示缺失的行情。",
+            "Split- and dividend-adjusted prices in the currency shown in the title; intraday bars use the exchange's local time. Comparisons share currency, interval and starting time; dotted lines mark missing bars.",
+          )}</DataBasis>
+        </>}
       >
         <div
           ref={inlineChart}

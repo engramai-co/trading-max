@@ -17,7 +17,7 @@ export function stateName(data: TechnicalScoreSummary, t: (zh: string, en: strin
     ["强势趋势", "Strong trend"],
     ["偏强", "Positive"],
     ["中性/分歧", "Neutral / mixed"],
-    ["中性", "Neutral / mixed"],
+    ["中性", "Neutral"],
     ["偏弱", "Weak"],
     ["弱势/趋势破坏", "Weak / broken trend"],
   ];

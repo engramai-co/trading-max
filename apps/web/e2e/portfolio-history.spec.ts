@@ -36,7 +36,7 @@ async function observations(disclosure: Locator) {
   const table = disclosure.getByRole("table");
   await expect(table).toBeVisible();
   const headings = await table.getByRole("columnheader").allTextContents();
-  const columns = ["Date", "Account value", "Period P&L"].map((label) => headings.indexOf(label));
+  const columns = ["Date", "Account value", "Period net P&L"].map((label) => headings.indexOf(label));
   expect(columns.every((index) => index !== -1)).toBe(true);
   return table.locator("tbody tr").evaluateAll((rows, indexes) => rows.map((row) =>
     indexes.map((index) => row.children[index].textContent)), columns);
@@ -90,16 +90,16 @@ test.describe("overview to performance", () => {
       const overview = page.locator(".mx-overview-history");
       await expect(overview.locator("[data-tm-chart-ready=true]")).toBeVisible();
       await selectedRange(overview.locator(".mx-dashboard-ranges"), rangeLabel, isMobile);
-      await expect(overview.getByRole("heading", { name: "Period P&L", exact: true })).toBeVisible();
-      await expect(overview).not.toContainText("Cumulative net contributions");
+      await expect(overview.getByRole("heading", { name: "Period net P&L", exact: true })).toBeVisible();
+      await expect(overview).not.toContainText("Cumulative net deposits");
       await expect(overview).not.toContainText("Some periods have no observations");
       await expect(periodMove(page, isMobile).locator(isMobile ? ".mx-overview-lead-figure" : ".mx-period-figure"))
         .toContainText("£10.00");
-      await expect(overview.locator(".mx-freshness")).toContainText("Cash flows pending");
+      await expect(overview.locator(".mx-freshness")).toContainText("Deposits and withdrawals pending");
       await expect(overview.locator(".mx-chart-data, .mx-source-legend, .mx-tag-help")).toHaveCount(0);
       if (range === "1D") {
         await overview.locator(".mx-info").click();
-        await expect(page.getByText(/Dashed lines show estimates reconstructed/)).toBeVisible();
+        await expect(page.getByText(/reconstructed from trades, holdings and prices as estimates, drawn dashed/)).toBeVisible();
         await page.keyboard.press("Escape");
       }
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();

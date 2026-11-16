@@ -49,7 +49,7 @@ test.describe("dashboard readings", () => {
       return route.fulfill({ json: supportingData(path, firstRun) });
     });
     await page.goto("/analytics?view=returns&range=1M");
-    const benchmark = page.getByRole("combobox", { name: "Comparison benchmark" });
+    const benchmark = page.getByRole("combobox", { name: "Benchmark" });
     await expect(benchmark).toHaveValue("S&P 500 · VOO");
     await expect(page.getByRole("group", { name: "Performance range" })).toBeVisible();
     await expect(page.getByRole("status").filter({ hasText: "Loading 1M records…" })).toBeVisible();

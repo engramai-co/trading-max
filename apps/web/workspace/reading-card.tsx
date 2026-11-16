@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, type CSSProperties, type ReactElement } from "react";
+import { createElement, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { readingTree, type Reading, type ReadingLocale, type ReadingNode, type ReadingVariant } from "./chart-readout";
 
@@ -25,5 +25,14 @@ export function ReadingView({ reading, variant = "card", locale }: { reading: Re
 export function ReadingCard({ reading, variant = "card" }: { reading: Reading; variant?: ReadingVariant }) {
   const { locale } = useLocale();
   return <ReadingView reading={reading} variant={variant} locale={locale} />;
+}
+
+/**
+ * The last paragraph of a chart panel's help: where its figures come from, their basis and
+ * cadence. Readings never repeat it; the exact records keep each point's own source.
+ */
+export function DataBasis({ children }: { children: ReactNode }) {
+  const { locale } = useLocale();
+  return <p className="mx-help-basis"><strong>{locale === "zh" ? "数据口径" : "Data basis"}</strong>{" "}{children}</p>;
 }
 

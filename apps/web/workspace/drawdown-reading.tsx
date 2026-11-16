@@ -22,8 +22,10 @@ export function DrawdownReading({ episode, dates, basis }: {
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const displayDate = (value: string) => value.includes("T")
-    ? formatDateTime(value, locale, timeZone) : formatCalendarDate(value, locale);
+  // Daily series (date-only or midnight UTC stamps) read as calendar days, never "00:00".
+  const daily = dates.every((value) => !value.includes("T") || /T00:00(?::00(?:\.0+)?)?(?:Z|\+00:00)$/.test(value));
+  const displayDate = (value: string) => daily
+    ? formatCalendarDate(value.slice(0, 10), locale) : formatDateTime(value, locale, timeZone);
   const marks = drawdownMarks(episode, dates, t);
   const days = episode?.recovery != null
     ? Math.ceil((Date.parse(dates[episode.recovery]) - Date.parse(dates[episode.peak])) / 86_400_000) : null;

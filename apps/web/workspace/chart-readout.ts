@@ -2,7 +2,7 @@ import type { ChartRecord } from "./chart-export";
 
 export type ReadingTone = "up" | "down";
 /** The series' own stroke, so a row matches its line without the legend. */
-export type ReadingKey = { colour: string; dashed?: boolean; kind?: "line" | "bar" | "area" };
+export type ReadingKey = { colour: string; dashed?: boolean; dotted?: boolean; kind?: "line" | "bar" | "area" };
 export type ReadingItem = {
   label: string;
   value: string;
@@ -27,12 +27,15 @@ export type Reading = {
 };
 /** A 6px dot drawn on a series at the selected position. */
 export type ReadingMark = { value: number; colour: string; xAxisIndex?: number; yAxisIndex?: number };
+/** Where a reading was asked for: the grid under the pointer or touch, absent for the keyboard. */
+export type ReadingContext = { grid?: number };
 
 /** Coordinates in the chart's first x axis, in ascending order. The value
  * reader uses these same coordinates; a drawn connector is never a point. */
 export type ChartReadout = {
   positions: readonly number[];
-  read: (position: number) => Reading | null;
+  /** A chart with several panes may lead with the pane being read. */
+  read: (position: number, context?: ReadingContext) => Reading | null;
   latest: string;
   /** Return no reading for a known missing interval, even near its ends. */
   gap?: (position: number) => boolean;
@@ -40,12 +43,6 @@ export type ChartReadout = {
   gridIndexes?: readonly number[];
   records?: (position: number) => ChartRecord[];
   marks?: (position: number) => ReadingMark[];
-};
-
-/** @deprecated The string reading before 1.51.0, kept only until every chart returns a Reading. */
-export type LegacyChartReadout = Omit<ChartReadout, "read" | "marks"> & {
-  point: (position: number) => string;
-  note?: (position: number) => string | undefined;
 };
 
 export type ReadingLocale = "zh" | "en";
@@ -83,6 +80,7 @@ function key(swatch: ReadingKey | undefined) {
   if (!swatch) return undefined;
   const attrs: ReadingNode["attrs"] = [["class", "mx-reading-key"]];
   if (swatch.dashed) attrs.push(["data-dashed", ""]);
+  if (swatch.dotted) attrs.push(["data-dotted", ""]);
   if (swatch.kind && swatch.kind !== "line") attrs.push(["data-kind", swatch.kind]);
   if (COLOUR.test(swatch.colour.trim())) attrs.push(["style", "--key:" + swatch.colour.trim()]);
   attrs.push(["aria-hidden", "true"]);
@@ -170,22 +168,6 @@ export function readingText(reading: Reading, locale: ReadingLocale = documentLo
     ...(reading.more ? [copy.more(reading.more)] : []),
     ...(reading.flag ? [reading.flag] : []),
   ].filter(Boolean).join("\n");
-}
-
-export type ReadingRow = { label: string; value: string } | { text: string };
-
-/** @deprecated Parses the legacy string reading; removed with LegacyChartReadout. */
-export function readingRows(reading: string): { heading: string; rows: ReadingRow[] } {
-  const lines = reading.split("\n").filter(Boolean);
-  if (lines.length < 2) return { heading: "", rows: lines.map((text) => ({ text })) };
-  const [heading, ...rest] = lines;
-  return {
-    heading,
-    rows: rest.map((line) => {
-      const at = line.indexOf(": ");
-      return at > 0 ? { label: line.slice(0, at), value: line.slice(at + 2) } : { text: line };
-    }),
-  };
 }
 
 export function closestChartPosition(positions: readonly number[], target: number) {

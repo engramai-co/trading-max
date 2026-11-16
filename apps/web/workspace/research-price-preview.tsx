@@ -4,12 +4,14 @@ import Link from "./link";
 import { useMediaQuery } from "@mantine/hooks";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
 import { inRange } from "@/lib/portfolio/nav";
 import { number } from "@/workspace/data";
 import type { TechnicalScoreSummary } from "@/lib/types";
 import type { useOverviewPrices } from "./research";
 import { Plot } from "./charts";
-import { candleSeries, candleValues, priceBarReading, priceGapConnectors } from "./research-price-candles";
+import { candleSeries, candleValues, priceGapConnectors, priceReading } from "./research-price-candles";
+import { fixed, volume } from "./reading-format";
 import { TechnicalScoreCard } from "./research-technical";
 import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
 
@@ -22,6 +24,7 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 767px)");
   const height = phone ? 235 : 280;
   const points = inRange(query.data?.points ?? [], "3M").filter((p) => Number.isFinite(p.close));
@@ -30,16 +33,15 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
   const bars = candleValues(points);
   const candles = bars.some((bar) => bar[0] != null);
   const gaps = candles ? priceGapConnectors(bars.map((bar) => bar[1])) : [];
-  const labels = { open: t("开盘", "Open"), high: t("最高", "High"), low: t("最低", "Low"), close: t("收盘", "Close") };
-  const format = (v: number | null) => number(v, 2);
+  const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   return (
     <Panel
-      title={`${t("价格走势", "Price history")} · 3M`}
+      title={[t("价格走势", "Price history"), "3M", code].filter(Boolean).join(" · ")}
       className="mx-price-diagnosis-preview"
       action={<>
         {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
         <Link className="mx-text-link" href={`/research?${new URLSearchParams({ ticker, view: "technical", priceRange: "3M", priceStyle: "candles" })}`}>
-          {t("技术面", "Technicals")}
+          {t("价格与技术", "Price & technicals")}
         </Link>
       </>}
     >
@@ -61,8 +63,16 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
                 readout={{
                   positions: points.flatMap((_, index) => !candles || bars[index][0] != null ? [index] : []),
                   gap: (index) => candles && bars[Math.round(index)]?.[0] == null,
-                  latest: `${format(latest.close)} ${code}`,
-                  point: (index) => priceBarReading(points[index], formatCalendarDate(points[index].date, locale), code, labels, format, candles).join("\n"),
+                  latest: fixed(latest.close),
+                  read: (index) => priceReading({
+                    bar: points[index],
+                    previous: index > 0 ? points[index - 1].close : null,
+                    time: formatCalendarDate(points[index].date, locale),
+                    candle: candles,
+                    volume: points[index].volume == null ? undefined : volume(points[index].volume, locale),
+                    labels,
+                  }),
+                  ...(candles ? {} : { marks: (index: number) => [{ value: points[index].close, colour: colours.brand }] }),
                 }}
                 option={(c) => ({
                   grid: { top: 12, right: 52, bottom: 28, left: 4 },

@@ -1,14 +1,17 @@
 "use client";
 
 import { FocusTrap } from "@mantine/core";
-import { ArrowsOut, ArrowsIn } from "@phosphor-icons/react";
+import { useMediaQuery } from "@mantine/hooks";
+import { ArrowsOut, ArrowsIn, X } from "@phosphor-icons/react";
+import { usePathname } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
 import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
-import { closestChartPosition, readingRows, type LegacyChartReadout } from "./chart-readout";
+import { closestChartPosition, readingText, type ChartReadout, type Reading } from "./chart-readout";
+import { ReadingCard } from "./reading-card";
 import { chartNumber } from "./research-chart-format";
 import { exportChartCsv, exportChartPng } from "./chart-export";
 import { changeZoom, chartZoom, useChartGestures, zoomRange } from "./chart-zoom";
@@ -55,6 +58,22 @@ function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
   return Array.isArray(axes) ? axes.map(theme) : axes ? theme(axes) : undefined;
 }
 
+/** Phones, and coarse pointers without hover, read a chart through a strip above the plot. */
+const TOUCH_LAYOUT = "(max-width: 767px), (hover: none) and (pointer: coarse)";
+
+/** The first index whose position is at or after the target. */
+function after(positions: readonly number[], target: number) {
+  let lo = 0, hi = positions.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (positions[mid] < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+type Hit = ({ position: number } | { gap: readonly [number, number] }) & { x: number; grid?: number };
+
 export function Plot({
   label,
   option,
@@ -77,7 +96,7 @@ export function Plot({
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
-  readout?: LegacyChartReadout;
+  readout?: ChartReadout;
   overlay?: ReactNode;
   fullscreen?: boolean;
   customGestures?: boolean;
@@ -86,10 +105,16 @@ export function Plot({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const pathname = usePathname();
+  // Callers build a new readout each render; the chart's options only depend on whether there is one.
+  const hasReadout = Boolean(readout);
+  const touchLayout = useMediaQuery(TOUCH_LAYOUT) === true;
   const description = useId();
   const [reading, setReading] = useState("");
   const [pinned, setPinned] = useState(false);
   const [picked, setPicked] = useState<number | null>(initialSelection);
+  const [gapSpan, setGapSpan] = useState<readonly [number, number] | null>(null);
+  const [announced, setAnnounced] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
@@ -104,21 +129,24 @@ export function Plot({
     setExpanded(false);
     requestAnimationFrame(() => fullscreenTrigger.current?.focus());
   };
+  const host = useRef<HTMLDivElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
-  // Pointer height inside the plot; keyboard readings sit at the top instead.
-  const pointerY = useRef<number | null>(null);
+  const marksLayer = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const plotBox = useRef<HTMLDivElement>(null);
+  // Pointer position inside a missing interval, where the cursor follows the pointer.
+  const pointerX = useRef<number | null>(null);
   const frame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  // Escape hides a hover reading until the pointer leaves the plot.
+  const suppressed = useRef(false);
+  const touchStart = useRef<{ x: number; y: number; scrub: boolean } | null>(null);
+  // Where the finger last touched, so a docked strip can keep clear of the point being read.
+  const touchY = useRef<number | null>(null);
+  // The pane under the pointer or touch; keyboard readings have none.
+  const [pane, setPane] = useState<number | undefined>(undefined);
   const colours = useChartColours();
-  const popupColours = useMemo(() => ({
-    "--mx-tooltip-bg": colours.tooltip,
-    "--mx-tooltip-ink": colours.tooltipText,
-    "--mx-tooltip-muted": colours.tooltipMuted,
-    "--mx-tooltip-border": colours.tooltipBorder,
-    "--mx-tooltip-shadow": colours.tooltipShadow,
-  }) as CSSProperties, [colours]);
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
     return {
@@ -136,8 +164,8 @@ export function Plot({
         type: "inside", disabled: true, xAxisIndex: Array.isArray(custom.xAxis) ? custom.xAxis.map((_, i) => i) : 0,
         filterMode: "none",
       }] : undefined),
-      ...(readout ? { axisPointer: undefined } : {}),
-      xAxis: themeAxes(readout
+      ...(hasReadout ? { axisPointer: undefined } : {}),
+      xAxis: themeAxes(hasReadout
         ? Array.isArray(custom.xAxis) ? custom.xAxis.map((axis) => ({ ...axis, axisPointer: { show: false } }))
           : custom.xAxis ? { ...custom.xAxis, axisPointer: { show: false } } : undefined
         : custom.xAxis, colours, true),
@@ -174,11 +202,11 @@ export function Plot({
         ...(custom.tooltip && !Array.isArray(custom.tooltip)
           ? custom.tooltip
           : {}),
-        ...(readout ? { show: false, triggerOn: "none" } : {}),
+        ...(hasReadout ? { show: false, triggerOn: "none" } : {}),
       },
 
     };
-  }, [colours, option, research, locale, readout, fullscreen]);
+  }, [colours, option, research, locale, hasReadout, fullscreen]);
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;
@@ -188,12 +216,13 @@ export function Plot({
     control,
     (instance) => {
       setPicked(null);
+      setGapSpan(null);
       onSelectionChange?.(null);
       setPinned(false);
       onZoom?.(instance);
     },
     undefined,
-    pinned || picked != null || Boolean(reading),
+    pinned || picked != null || gapSpan != null || Boolean(reading),
   );
   const gestures = useChartGestures(() => control.current, expanded || customGestures);
   useEffect(() => {
@@ -212,38 +241,57 @@ export function Plot({
   }, [control, ref, expanded, customGestures]);
   const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
     ? picked : null;
+  const gap = active == null ? gapSpan : null;
+  const current = readout && active != null ? readout.read(active, { grid: pane }) : null;
+  const gapReading: Reading | null = readout && gap ? {
+    time: [t("无记录", "No data"), [readout.read(gap[0])?.time, readout.read(gap[1])?.time].filter(Boolean).join("–")]
+      .filter(Boolean).join(" · "),
+  } : null;
+  const shown = current ?? gapReading;
+  const latestReading = readout && readout.positions.length ? readout.read(readout.positions.at(-1)!) : null;
+  const latestText = latestReading ? readingText(latestReading, locale) : "";
+  const currentText = current ? readingText(current, locale) : latestText;
+  const marks = readout?.marks && active != null ? readout.marks(active) : [];
   const drawCursor = useRef<() => void>(() => {});
   useLayoutEffect(() => {
     drawCursor.current = () => {
       const el = cursor.current;
       const bounds = ref.current;
       if (!el || !bounds) return;
-      const x = active == null ? NaN : control.current?.convertToPixel({ xAxisIndex: 0 }, active);
-      const shown = typeof x === "number" && x >= 0 && x <= bounds.clientWidth;
-      el.style.visibility = shown ? "visible" : "hidden";
-      if (typeof x === "number") el.style.transform = `translateX(${x}px)`;
+      const instance = control.current;
+      const pixel = active != null ? instance?.convertToPixel({ xAxisIndex: 0 }, active) : gap != null ? pointerX.current : null;
+      const x = typeof pixel === "number" ? pixel : NaN;
+      const width = bounds.clientWidth;
+      const shownAt = typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= width;
+      el.style.visibility = shownAt ? "visible" : "hidden";
+      if (shownAt) el.style.transform = `translateX(${x}px)`;
+      const dots = marksLayer.current ? Array.from(marksLayer.current.children) as HTMLElement[] : [];
+      dots.forEach((dot, index) => {
+        const mark = marks[index];
+        const point = shownAt && mark && active != null
+          ? instance?.convertToPixel({ xAxisIndex: mark.xAxisIndex ?? 0, yAxisIndex: mark.yAxisIndex ?? 0 }, [active, mark.value])
+          : undefined;
+        const placed = Array.isArray(point) && point.every(Number.isFinite) && point[1] >= 0 && point[1] <= bounds.clientHeight;
+        dot.style.visibility = placed ? "visible" : "hidden";
+        if (placed) dot.style.transform = `translate(${point[0]}px, ${point[1]}px)`;
+      });
       const card = popup.current;
       if (!card) return;
-      if (!shown || !card.childElementCount) {
+      if (!shownAt || !card.childElementCount) {
         card.style.visibility = "hidden";
         return;
       }
-      // Beside the cursor, flipping left near the edge; above the pointer
-      // unless that leaves the plot. Always clamped inside the plot.
-      const width = bounds.clientWidth, height = bounds.clientHeight;
-      const w = card.offsetWidth, h = card.offsetHeight, gap = 12;
-      let left = x + gap;
-      if (left + w > width - 4) left = x - gap - w;
+      // The card's top sits 8px into the plot; it follows the cursor sideways,
+      // flips left near the right edge and always stays inside the plot.
+      const w = card.offsetWidth, spacing = 12;
+      let left = x + spacing;
+      if (left + w > width - 4) left = x - spacing - w;
       left = Math.max(4, Math.min(left, width - w - 4));
-      const y = pointerY.current;
-      let top = y == null ? 8 : y - h - gap;
-      if (y != null && top < 4) top = y + gap;
-      top = Math.max(4, Math.min(top, height - h - 4));
-      card.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+      card.style.transform = `translate(${Math.round(left)}px, 8px)`;
       card.style.visibility = "visible";
     };
     drawCursor.current();
-  }, [active, control, ref, status]);
+  });
   useLayoutEffect(() => {
     const bounds = ref.current;
     if (!bounds) return;
@@ -252,35 +300,169 @@ export function Plot({
     return () => observer.disconnect();
   }, [ref]);
 
-  const pickAt = (event: PointerEvent<HTMLDivElement>) => {
+  const pickAt = (event: PointerEvent<HTMLDivElement>): Hit | null => {
     if (!readout) return null;
     const instance = control.current;
     const bounds = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     const axes = Array.isArray(settings.xAxis) ? settings.xAxis.length : 1;
-    if (!instance || !(readout.gridIndexes ?? Array.from({ length: axes }, (_, i) => i)).some((gridIndex) =>
-      instance.containPixel({ gridIndex }, [x, y]))) return null;
+    const grid = instance ? (readout.gridIndexes ?? Array.from({ length: axes }, (_, i) => i)).find((gridIndex) =>
+      instance.containPixel({ gridIndex }, [x, y])) : undefined;
+    if (!instance || grid == null) return null;
     const target = instance.convertFromPixel({ xAxisIndex: 0 }, x);
-    if (typeof target !== "number" || !Number.isFinite(target) || readout.gap?.(target)) return null;
-    return readout.positions[closestChartPosition(readout.positions, target)] ?? null;
+    if (typeof target !== "number" || !Number.isFinite(target)) return null;
+    const positions = readout.positions;
+    if (readout.gap?.(target)) {
+      const next = after(positions, target);
+      return next > 0 && next < positions.length ? { gap: [positions[next - 1], positions[next]], x, grid } : null;
+    }
+    const position = positions[closestChartPosition(positions, target)];
+    return position == null ? null : { position, x, grid };
   };
   const choose = (point: number | null, remember = false) => {
     setPicked(point);
+    setGapSpan(null);
     if (remember) onSelectionChange?.(point);
+  };
+  const chooseGap = (span: readonly [number, number], x: number) => {
+    pointerX.current = x;
+    setPicked(null);
+    setGapSpan((previous) => previous?.[0] === span[0] && previous[1] === span[1] ? previous : span);
+    drawCursor.current();
+  };
+  // Hover never speaks; keyboard and touch selections update the live region.
+  const announce = (position: number | null, grid?: number) => {
+    const value = position == null ? null : readout?.read(position, { grid });
+    if (value) setAnnounced(readingText(value, locale));
   };
   const dismiss = () => {
     choose(null, true);
-    pointerY.current = null;
+    pointerX.current = null;
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
     setReading("");
+    // The live region returns to the latest reading.
+    setAnnounced(null);
   };
-  const readingAt = (position: number) => readout
-    ? [readout.point(position), readout.note?.(position)].filter(Boolean).join("\n") : "";
-  const currentReading = readout && readout.positions.length ? readingAt(active ?? readout.positions.at(-1)!) : "";
-  const popupReading = readout && active != null ? readingRows(readout.point(active)) : null;
-  const popupNote = readout && active != null ? readout.note?.(active) : undefined;
+  const dismissRef = useRef(dismiss);
+  useLayoutEffect(() => { dismissRef.current = dismiss; });
+  const open = active != null || gap != null || pinned || Boolean(reading);
+  // Escape closes any reading, however it opened; a pinned reading also closes from outside the chart.
+  useEffect(() => {
+    if (!open) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      if (!pinned) suppressed.current = true;
+      dismissRef.current();
+    };
+    const outside = (event: globalThis.PointerEvent) => {
+      if (pinned && !host.current?.contains(event.target as Node)) dismissRef.current();
+    };
+    document.addEventListener("keydown", key, true);
+    document.addEventListener("pointerdown", outside, true);
+    return () => {
+      document.removeEventListener("keydown", key, true);
+      document.removeEventListener("pointerdown", outside, true);
+    };
+  }, [open, pinned]);
+  const route = useRef(pathname);
+  useEffect(() => {
+    if (route.current === pathname) return;
+    route.current = pathname;
+    dismissRef.current();
+  }, [pathname]);
+  const stripShown = Boolean(readout && touchLayout && shown);
+  // The strip sits above the plot and the chart's own controls, so fullscreen and More stay
+  // reachable. When that space has scrolled under the top bar, it docks below the bar instead
+  // of disappearing. In the fullscreen dialog, whose controls sit above the plot, it reads below.
+  // Placement reads the latest reading on every render, like the cursor; listeners attach once.
+  const placeStrip = useRef<() => void>(() => undefined);
+  useLayoutEffect(() => {
+    placeStrip.current = () => {
+      const element = strip.current;
+      const box = plotBox.current?.getBoundingClientRect();
+      if (!stripShown || !element || !box) return;
+      element.toggleAttribute("data-below", expanded);
+      if (expanded) {
+        element.removeAttribute("data-docked");
+        return;
+      }
+      const actions = host.current?.querySelector<HTMLElement>(":scope > .mx-chart-actions");
+      const lift = actions?.offsetHeight ? Math.max(0, box.top - actions.getBoundingClientRect().top) : 0;
+      element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
+      // Inside a dialog (the research full chart), dock below the dialog's header, not the page's top bar.
+      const dialog = element.closest<HTMLElement>("[role=dialog]");
+      const header = dialog?.querySelector<HTMLElement>(".mantine-Modal-header");
+      const bar = dialog
+        ? header ? header.getBoundingClientRect().bottom : dialog.getBoundingClientRect().top
+        : document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
+      const docked = box.top - lift - element.offsetHeight - 4 < bar && box.bottom > bar + element.offsetHeight;
+      // A dialog's content can be transformed and scrolls on its own, so there the strip docks by
+      // offset from the plot rather than to the viewport.
+      element.toggleAttribute("data-docked", docked && !dialog);
+      element.toggleAttribute("data-docked-inside", docked && !!dialog);
+      element.style.setProperty("--mx-strip-offset", `${Math.round(bar + 4 - box.top)}px`);
+      // Docked strips sit under the top bar, or above the phone's tab bar when the dot being read,
+      // the one nearest the finger, is up there.
+      const dock = document.querySelector(".mx-mobile-dock")?.getBoundingClientRect();
+      const floor = dock?.height ? dock.top : window.innerHeight;
+      const finger = touchY.current;
+      const instance = control.current;
+      const canvas = ref.current?.getBoundingClientRect();
+      const dots = finger == null || active == null || !instance || !canvas ? [] : marks.flatMap((mark) => {
+        const point = instance.convertToPixel({ xAxisIndex: mark.xAxisIndex ?? 0, yAxisIndex: mark.yAxisIndex ?? 0 }, [active, mark.value]);
+        return Array.isArray(point) && Number.isFinite(point[1]) ? [canvas.top + point[1]] : [];
+      });
+      const focus = finger == null ? null : dots.reduce((best, y) => Math.abs(y - finger) < Math.abs(best - finger) ? y : best, dots[0] ?? finger);
+      const low = focus != null && focus < bar + element.offsetHeight + 24;
+      element.style.setProperty("--mx-strip-top", `${Math.round(low ? floor - element.offsetHeight - 4 : bar + 4)}px`);
+      element.style.setProperty("--mx-strip-left", `${Math.round(box.left)}px`);
+      element.style.setProperty("--mx-strip-width", `${Math.round(box.width)}px`);
+    };
+    placeStrip.current();
+  });
+  useLayoutEffect(() => {
+    const element = strip.current;
+    if (!stripShown || !element) return;
+    const place = () => placeStrip.current();
+    const resized = new ResizeObserver(() => place());
+    resized.observe(element);
+    // Capture scrolls of any container, such as a dialog's body, not only the page.
+    window.addEventListener("scroll", place, { passive: true, capture: true });
+    window.addEventListener("resize", place);
+    return () => {
+      resized.disconnect();
+      window.removeEventListener("scroll", place, { capture: true });
+      window.removeEventListener("resize", place);
+    };
+  }, [stripShown]);
+  // A horizontal touch drag reads continuously; vertical movement stays with the page.
+  const scrub = (event: PointerEvent<HTMLDivElement>) => {
+    const start = touchStart.current;
+    if (!start) {
+      gestures.move(event);
+      return;
+    }
+    if (!start.scrub) {
+      const dx = event.clientX - start.x, dy = event.clientY - start.y;
+      // A zoomable chart pans with a horizontal drag until a reading is open.
+      if (Math.abs(dx) < 6 || Math.abs(dx) <= Math.abs(dy) || ((expanded || customGestures) && !pinned)) {
+        gestures.move(event);
+        return;
+      }
+      start.scrub = true;
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    touchY.current = event.clientY;
+    const hit = pickAt(event);
+    if (!hit) return;
+    setPane(hit.grid);
+    if ("gap" in hit) chooseGap(hit.gap, hit.x);
+    else choose(hit.position, true);
+    setPinned(true);
+  };
   const zoomBy = (factor: number) => changeZoom(control.current, zoomRange(chartZoom(control.current), factor));
   const visibleRecords = () => {
     if (!readout?.records) return [];
@@ -304,7 +486,7 @@ export function Plot({
   };
   const hasTools = fullscreen || (!!readout?.records);
   const content = (
-    <div className={hasTools ? "mx-chart-host" : undefined} data-expanded={expanded || undefined}
+    <div ref={host} className={hasTools ? "mx-chart-host" : undefined} data-expanded={expanded || undefined}
       role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? label : undefined}
       onKeyDown={(event) => {
         if (expanded && event.key === "Escape" && !event.defaultPrevented) {
@@ -323,11 +505,11 @@ export function Plot({
         <summary>{t("更多", "More")}</summary>
         <div className="mx-chart-menu">
           <button type="button" onClick={() => void action(async () => {
-            const plain = currentReading.replaceAll("\n", " · ");
+            const plain = currentText.replaceAll("\n", " · ");
             if (typeof ClipboardItem === "function" && ClipboardItem.supports?.("text/tab-separated-values")) {
               await navigator.clipboard.write([new ClipboardItem({
                 "text/plain": new Blob([plain], { type: "text/plain" }),
-                "text/tab-separated-values": new Blob([currentReading.replaceAll("\n", "\t")], { type: "text/tab-separated-values" }),
+                "text/tab-separated-values": new Blob([currentText.replaceAll("\n", "\t")], { type: "text/tab-separated-values" }),
               })]);
             } else await navigator.clipboard.writeText(plain);
           }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</button>
@@ -335,7 +517,7 @@ export function Plot({
           <button type="button" onClick={() => void action(async () => {
             if (control.current && ref.current) {
               const css = getComputedStyle(ref.current);
-              await exportChartPng(control.current, label, currentReading,
+              await exportChartPng(control.current, label, currentText,
                 css.getPropertyValue("--mx-surface").trim(), css.getPropertyValue("--mx-ink").trim());
             }
           })}>{t("导出 PNG", "Export PNG")}</button>
@@ -349,7 +531,7 @@ export function Plot({
           requestAnimationFrame(() => closeTrigger.current?.focus());
         }}><ArrowsOut aria-hidden="true" size={17} /></button>)}
     </div>}
-    {/* The reading is spoken here and shown as a popup at the cursor. */}
+    {/* The reading is spoken here; it shows as a card beside the cursor, or a strip above the plot on phones. */}
     {readout && <div className="sr-only">
       <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
         {(readout.observationCount ?? readout.positions.length) < 3 && <span data-chart-sparse="true">
@@ -357,8 +539,15 @@ export function Plot({
         </span>}
       </div>
       <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"} aria-live="polite" aria-atomic="true">
-        {currentReading.split("\n").filter(Boolean).map((line, i) => <span key={i}>{line}</span>)}
+        {(announced ?? latestText).split("\n").filter(Boolean).map((line, i) => <span key={i}>{line}</span>)}
       </div>
+    </div>}
+    <div className="mx-plot-frame" ref={plotBox}>
+    {stripShown && shown && <div className="mx-chart-strip" ref={strip}>
+      <div aria-hidden="true"><ReadingCard reading={shown} variant="strip" /></div>
+      <button type="button" className="mx-chart-strip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>
+        <X size={18} aria-hidden="true" />
+      </button>
     </div>}
     <div className="mx-plot" style={{ height: expanded ? `max(${height}px, calc(100dvh - 180px))` : height }}>
       {overlay}
@@ -369,29 +558,42 @@ export function Plot({
         aria-describedby={description}
         tabIndex={0}
         onPointerMove={(event) => {
-          if (gestures.move(event) || !readout || pinned || event.pointerType === "touch" || event.buttons) return;
-          const position = pickAt(event);
-          pointerY.current = event.clientY - event.currentTarget.getBoundingClientRect().top;
+          if (readout && event.pointerType === "touch") {
+            scrub(event);
+            return;
+          }
+          if (gestures.move(event) || !readout || pinned || event.buttons || suppressed.current) return;
+          const hit = pickAt(event);
           cancelAnimationFrame(frame.current);
           frame.current = requestAnimationFrame(() => {
-            // Same point: only follow the pointer's height.
-            if (position != null && position === active) drawCursor.current();
-            else choose(position);
+            if (!hit) choose(null);
+            else {
+              setPane(hit.grid);
+              if ("gap" in hit) chooseGap(hit.gap, hit.x);
+              else if (hit.position !== active) choose(hit.position);
+            }
           });
         }}
         onPointerLeave={() => {
           cancelAnimationFrame(frame.current);
+          suppressed.current = false;
           if (readout && !pinned) choose(null);
         }}
         onPointerCancel={(event) => { gestures.end(event); touchStart.current = null; }}
         onPointerDown={(event) => {
           gestures.down(event);
+          touchY.current = event.pointerType === "touch" ? event.clientY : null;
           if (event.pointerType === "touch" || readout)
-            touchStart.current = { x: event.clientX, y: event.clientY };
+            touchStart.current = { x: event.clientX, y: event.clientY, scrub: false };
         }}
         onPointerUp={(event) => {
           const start = touchStart.current;
           touchStart.current = null;
+          if (start?.scrub) {
+            gestures.end(event);
+            announce(active, pane);
+            return;
+          }
           if (gestures.end(event)) return;
           if (
             (event.pointerType !== "touch" && !readout) ||
@@ -400,12 +602,16 @@ export function Plot({
           )
             return;
           if (readout) {
-            const position = pickAt(event);
-            if (position === active && pinned || position == null) dismiss();
-            else {
-              pointerY.current = event.clientY - event.currentTarget.getBoundingClientRect().top;
-              choose(position, true);
+            const hit = pickAt(event);
+            if (hit) setPane(hit.grid);
+            if (!hit || ("position" in hit && hit.position === active && pinned)) dismiss();
+            else if ("gap" in hit) {
+              chooseGap(hit.gap, hit.x);
               setPinned(true);
+            } else {
+              choose(hit.position, true);
+              setPinned(true);
+              if (event.pointerType === "touch") announce(hit.position, hit.grid);
             }
             return;
           }
@@ -413,6 +619,8 @@ export function Plot({
             dismiss();
             return;
           }
+          // A chart without a tooltip (labelled bars) has nothing to pin.
+          if (!Array.isArray(settings.tooltip) && settings.tooltip?.show === false) return;
           const bounds = event.currentTarget.getBoundingClientRect();
           control.current?.setOption({ tooltip: { alwaysShowContent: true } });
           control.current?.dispatchAction({
@@ -429,7 +637,7 @@ export function Plot({
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
-            if (pinned || reading || active != null) {
+            if (pinned || reading || active != null || gap != null) {
               event.preventDefault();
               event.stopPropagation();
             }
@@ -438,11 +646,16 @@ export function Plot({
           }
           if (readout) {
             const values = readout.positions;
-            pointerY.current = null;
+            setPane(undefined);
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
               if (pinned) dismiss();
-              else if (values.length) { choose(active ?? values.at(-1)!, true); setPinned(true); }
+              else if (values.length) {
+                const position = active ?? values.at(-1)!;
+                choose(position, true);
+                setPinned(true);
+                announce(position);
+              }
               return;
             }
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !values.length) return;
@@ -451,6 +664,7 @@ export function Plot({
             const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
               : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
             choose(values[next], true);
+            announce(values[next]);
             return;
           }
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
@@ -483,19 +697,14 @@ export function Plot({
           setReading(readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t));
         }}
         ref={ref}
-        style={{ height: "100%", width: "100%", touchAction: expanded || customGestures ? "pan-y" : undefined }}
+        style={{ height: "100%", width: "100%", touchAction: readout || expanded || customGestures ? "pan-y" : undefined }}
       />
       {readout && <div className="mx-chart-cursor" ref={cursor} aria-hidden="true" />}
-      {readout && <div className="mx-chart-popup" ref={popup} aria-hidden="true" style={popupColours}>
-        {popupReading && (popupReading.heading || popupReading.rows.length > 0) && <>
-          {popupReading.heading && <div className="mx-chart-popup-heading">{popupReading.heading}</div>}
-          {popupReading.rows.length > 0 && <div className="mx-chart-popup-rows">
-            {popupReading.rows.map((row, i) => "label" in row
-              ? <div key={i} className="mx-chart-popup-row"><span>{row.label}</span><span>{row.value}</span></div>
-              : <div key={i} className="mx-chart-popup-line">{row.text}</div>)}
-          </div>}
-          {popupNote && <div className="mx-chart-popup-note">{popupNote}</div>}
-        </>}
+      {readout?.marks && <div className="mx-chart-marks" ref={marksLayer} aria-hidden="true">
+        {marks.map((mark, index) => <span key={index} className="mx-chart-mark" style={{ "--mark": mark.colour } as CSSProperties} />)}
+      </div>}
+      {readout && !touchLayout && <div className="mx-chart-popup" ref={popup} aria-hidden="true">
+        {shown && <ReadingCard reading={shown} />}
       </div>}
       {status !== "ready" && <div className="mx-plot-loading">
         {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
@@ -503,8 +712,8 @@ export function Plot({
       </div>}
       <span id={description} className="sr-only">
         {t(
-          "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点固定读数，再次轻点关闭。",
-          "Use arrow keys for adjacent readings, Home and End for the first and last point, and Escape to dismiss. Tap to pin a reading, then tap again to dismiss.",
+          "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点或横向拖动查看读数，再次轻点关闭。",
+          "Use arrow keys for adjacent readings, Home and End for the first and last point, and Escape to dismiss. Tap or drag sideways to read, then tap again to dismiss.",
         )}
       </span>
       <span
@@ -515,15 +724,17 @@ export function Plot({
       >
         {reading}
       </span>
-      {pinned && (
-        <button type="button" className="mx-chart-dismiss" onClick={dismiss}>
-          {t("关闭读数", "Dismiss reading")}
+      {pinned && !readout && (
+        <button type="button" className="mx-chart-tip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>
+          <X size={18} aria-hidden="true" />
         </button>
       )}
     </div>
     </div>
+    </div>
   );
-  return fullscreen ? <FocusTrap active={expanded}>{content}</FocusTrap> : content;
+  // FocusTrap replaces its child's ref, so the host ref goes through innerRef; outside taps need it.
+  return fullscreen ? <FocusTrap active={expanded} innerRef={host}>{content}</FocusTrap> : content;
 }
 
 function chartReading(
@@ -625,3 +836,4 @@ function chartReading(
     })
     .join("; ");
 }
+

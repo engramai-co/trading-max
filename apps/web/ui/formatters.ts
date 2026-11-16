@@ -50,7 +50,7 @@ export function formatDateTime(
     formatDate(input, "en", { ...options, timeZone: zone });
   const time = formatDate(date, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone });
   const dayOptions: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
-  if (key(date, dayOptions) === key(now, dayOptions)) return (locale === "zh" ? "今天 " : "Today ") + time;
+  if (key(date, dayOptions) === key(now, dayOptions)) return (locale === "zh" ? "今日 " : "Today ") + time;
   const sameYear = key(date, { year: "numeric" }) === key(now, { year: "numeric" });
   return formatDate(date, locale, {
     ...(sameYear ? {} : { year: "numeric" }),
@@ -78,6 +78,75 @@ export function formatCalendarDate(
     day: "numeric",
     timeZone: "UTC",
   });
+}
+
+export type ReadingGranularity = "clock" | "intraday" | "day";
+
+/** A chart reading's time, never an ISO string: "14:30" within one day, "11月10日 14:30" / "10 Nov, 14:30"
+ * across days, and the date alone for three months and longer, with the year only outside the current one. */
+export function formatReadingTime(
+  value: string | number | Date,
+  locale: Locale,
+  timeZone: string,
+  granularity: ReadingGranularity,
+  now: Date | number = Date.now(),
+) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return formatCalendarDate(value, locale, now);
+  const zone = isValidTimeZone(timeZone) ? timeZone : DEFAULT_DISPLAY_TIME_ZONE;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return "—";
+  const clock = formatDate(date, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone });
+  if (granularity === "clock") return clock;
+  const sameYear = formatDate(date, "en", { year: "numeric", timeZone: zone }) === formatDate(now, "en", { year: "numeric", timeZone: zone });
+  const day = formatDate(date, locale, { ...(sameYear ? {} : { year: "numeric" }), month: "short", day: "numeric", timeZone: zone });
+  return granularity === "day" ? day : locale === "zh" ? day + " " + clock : day + ", " + clock;
+}
+
+const EXCHANGE_CITIES: Record<string, readonly [string, string]> = {
+  "America/New_York": ["纽约", "New York"],
+  "America/Chicago": ["芝加哥", "Chicago"],
+  "America/Toronto": ["多伦多", "Toronto"],
+  "Europe/London": ["伦敦", "London"],
+  "Europe/Amsterdam": ["阿姆斯特丹", "Amsterdam"],
+  "Europe/Paris": ["巴黎", "Paris"],
+  "Europe/Berlin": ["法兰克福", "Frankfurt"],
+  "Europe/Zurich": ["苏黎世", "Zurich"],
+  "Asia/Hong_Kong": ["香港", "Hong Kong"],
+  "Asia/Shanghai": ["上海", "Shanghai"],
+  "Asia/Tokyo": ["东京", "Tokyo"],
+  "Asia/Seoul": ["首尔", "Seoul"],
+  "Asia/Taipei": ["台北", "Taipei"],
+  "Asia/Singapore": ["新加坡", "Singapore"],
+  "Asia/Kolkata": ["孟买", "Mumbai"],
+  "Australia/Sydney": ["悉尼", "Sydney"],
+};
+
+/** An intraday bar on its exchange's own clock: "纽约 09:30", or "11月10日 纽约 09:30" / "10 Nov, New York 09:30" across days. */
+export function formatExchangeTime(
+  value: string,
+  exchangeTimeZone: string | null | undefined,
+  locale: Locale,
+  withDay: boolean,
+  now: Date | number = Date.now(),
+) {
+  const zone = exchangeTimeZone && isValidTimeZone(exchangeTimeZone) ? exchangeTimeZone : null;
+  const known = zone ? EXCHANGE_CITIES[zone] : undefined;
+  const city = known ? known[locale === "zh" ? 0 : 1] : zone ? zone.split("/").at(-1)!.replaceAll("_", " ") : "";
+  const local = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(value.trim());
+  const offset = /(?:Z|[+-]\d\d:?\d\d)$/.test(value.trim());
+  let day: string, clock: string;
+  if (local && !offset) {
+    day = formatCalendarDate(local[1], locale, now);
+    clock = local[2];
+  } else {
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return "—";
+    const timeZone = zone ?? DEFAULT_DISPLAY_TIME_ZONE;
+    day = formatReadingTime(date, locale, timeZone, "day", now);
+    clock = formatDate(date, locale, { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  }
+  const place = [city, clock].filter(Boolean).join(" ");
+  return withDay ? day + (locale === "zh" ? " " : ", ") + place : place;
 }
 
 /** Formats a start–end calendar span such as "8月3日 – 10月30日" or "2025年8月29日 – 2026年11月1日". */
