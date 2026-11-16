@@ -46,7 +46,8 @@ import { useBuildNavigation } from "@/ui/publication-provider";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
 import { documentTitle, useDocumentTitle } from "./document-title";
-import { useIndexCatalog, useListedIndices } from "./market-indices-data";
+import { useIndexCatalog } from "./market-indices-data";
+import { useListedIndices } from "./listed-indices";
 import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
 import {
   highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,

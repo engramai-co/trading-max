@@ -4,6 +4,20 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-11-16
+
+### Changed
+- Every chart reading is one card: the time, one leading figure in gain or loss colour, at most three supporting rows keyed to their lines, and candles led by the close and its change from the previous close. Source, cadence and extended-hours notes moved to each panel's help and exact records, so readings no longer repeat them.
+- On desktop the card follows the cursor along the top of the chart, with a dot on each line. On phones the reading appears as a strip while you tap or drag, and help opens as a bottom sheet. Escape closes any reading, and screen readers hear the figures without the source.
+- Hover cards, tooltips, help and map inspection cards share one style and timing; every one closes with Escape and opens from the keyboard.
+- Research is called Research everywhere and covers stocks, ETFs and indices. Search opens from a magnifier with a single field, indices join the research list, and ⌘K finds them.
+- Names are consistent across the app and the desktop App, including account value, period net P&L, unrealised P&L, net deposits, weight, technical score, sector and industry, Data status and Settings, in British English. The phone dock reads Home, Holdings, Returns, Markets, Research and Review, and page titles read "{Page} · Trading Max".
+- The desktop App's menus, messages and welcome screens follow the App language.
+
+### Fixed
+- Company comparison lines, legend and reading dots use the same colours, research charts no longer show ISO timestamps or unnamed series, EPS revisions keep the third decimal when it differs, and the seasonality path can be read on any date.
+- Tapping Japan on the phone world map opens Japan, and hover cards show the same broker price as their row.
+
 ## [1.50.2] - 2026-11-16
 
 ### Fixed

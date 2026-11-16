@@ -7,8 +7,9 @@ import { useState } from "react";
 import { Instrument, useCopy } from "./foundation";
 import Link from "./link";
 import {
-  indexDirectory, researchIndexHref, matchIndices, useIndexCatalog, useListedIndices, type IndexIdentity,
+  indexDirectory, researchIndexHref, matchIndices, useIndexCatalog, type IndexIdentity,
 } from "./market-indices-data";
+import { useListedIndices } from "./listed-indices";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
 

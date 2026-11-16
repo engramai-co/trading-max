@@ -1,4 +1,3 @@
-import { useLocalStorage } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/lib/api-schema";
 import { readApi } from "@/workspace/data";
@@ -39,20 +38,6 @@ const starter = ["nasdaq-100", "sp-500", "msci-world-ex-usa", "msci-usa-momentum
   "marketvector-semiconductor-screened", "msci-semiconductors-screened", "msci-world", "msci-acwi", "ftse-100", "nikkei-225"];
 
 export const savedIndexKey = "trading_max-research-indexes";
-
-/**
- * Indices in the research list. Stocks and funds live in the service's list;
- * indices stay in this browser's storage under the key they have always used.
- */
-export function useListedIndices() {
-  const [ids, setIds] = useLocalStorage<string[]>({ key: savedIndexKey, defaultValue: [] });
-  return {
-    ids,
-    has: (id: string) => ids.includes(id),
-    add: (id: string) => setIds((items) => (items.includes(id) ? items : [...items, id])),
-    remove: (id: string) => setIds((items) => items.filter((item) => item !== id)),
-  };
-}
 
 export function indexDirectory(indices: IndexIdentity[] | undefined, saved: readonly string[] = []) {
   return [...(indices ?? [])].sort((a, b) => {

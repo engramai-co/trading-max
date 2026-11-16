@@ -14,9 +14,10 @@ import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, useCopy } from "./foundation";
 import Link from "./link";
 import {
-  indexHref, researchIndexHref, useIndexCatalog, useListedIndices,
+  indexHref, researchIndexHref, useIndexCatalog,
   type IndexComposition, type IndexConstituent, type IndexIdentity, type IndexProduct, type IndexResearch,
 } from "./market-indices-data";
+import { useListedIndices } from "./listed-indices";
 import { ResearchIndexChart } from "./research-index-chart";
 import { SecurityFinder } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
