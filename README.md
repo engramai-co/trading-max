@@ -8,8 +8,8 @@
 <h3 align="center">Your portfolio, explained.</h3>
 
 <p align="center">
-  A private, read-only investment workspace for Trading 212.<br>
-  See what changed, look beneath every fund, follow today's sectors and keep research beside your holdings.
+  A private, read-only investment workspace for Trading 212, in English or Chinese.<br>
+  See what changed, look beneath every fund, follow markets around the world and keep research beside your holdings.
 </p>
 
 <p align="center">
@@ -27,32 +27,36 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/workspace-overview.png" alt="Trading Max overview: account value, period net P&L, today's US sectors and the holdings panel" width="100%">
+  <img src="docs/assets/workspace-overview.png" alt="Trading Max overview: account value, a year of period net P&L, today's US sector map and the holdings panel" width="100%">
 </p>
 
 ## What you get
 
-- **Results, not deposits.** Investment results stay separate from money moving
-  in and out, for Invest and Stocks ISA together or one account at a time.
-- **Markets and indices.** Global and regional indices, each with a research
-  page for its history, constituents, breadth and the funds that track it, plus
-  sector maps sized by index weight and coloured by the session's move, with
-  your own exposure beside each sector.
+- **Results, not deposits.** Net P&L and returns stay separate from money moving
+  in and out, for Invest and Stocks ISA together or one account at a time, with
+  drawdowns and a benchmark beside them.
+- **Markets worldwide.** Global and regional indices, a world map of today's
+  moves with each market's contribution to MSCI ACWI, and sector maps for major
+  markets with breadth and your own exposure in each sector.
 - **Look-through.** Your direct shares combined with the constituents ETF issuers
   publish: the companies, sectors and countries you actually own, and where they
   overlap.
-- **Research beside your holdings.** Up to seven views per stock or fund, from the
-  business and its financials to price, estimates, valuation scenarios, options
-  and your journal. Your buys, sells and trims sit on the charts.
-- **Decision review.** Past trades set against what happened next.
+- **Research beside your holdings.** Stocks, funds and indices share one
+  research list: financials, price and technicals, estimates, valuation
+  scenarios, options and your journal. Funds add holdings overlap, tracking
+  difference and US peer ETFs; indices add constituents, breadth and the funds
+  that track them. Your trades sit on the charts.
+- **Investment review.** Your recent buys and sells set against what happened
+  next, plus large moves without a trade, cash that stayed high and drifting
+  weights.
 
 <p align="center">
-  <img src="docs/assets/sectors-overview.png" alt="US sector map with the Industrials detail: intraday path, breadth, leader and your exposure" width="49%">
-  <img src="docs/assets/holdings-exposure.png" alt="Look-through by company, split into direct holdings and holdings via funds" width="49%">
+  <img src="docs/assets/markets-sectors.png" alt="Markets, Global sectors: MSCI index cards, a sector map sized by weight and the Information Technology detail with its intraday path and your exposure" width="49%">
+  <img src="docs/assets/holdings-exposure.png" alt="Look-through by company as a composition ring, with AMD's value held directly and via funds" width="49%">
 </p>
 <p align="center">
-  <img src="docs/assets/research-overview.png" alt="Company research: three-month price history, technical score and operating facts" width="49%">
-  <img src="docs/assets/research-valuation.png" alt="Valuation scenarios compared with the current price, with editable assumptions" width="49%">
+  <img src="docs/assets/research-technicals.png" alt="AMD price and technicals: a year of daily candles with your buys marked beneath, and its technical score" width="49%">
+  <img src="docs/assets/research-valuation.png" alt="Bloom Energy valuation: bear, base and bull scenarios against the current price, with editable assumptions" width="49%">
 </p>
 
 <p align="center"><sub>Screenshots use a hypothetical portfolio. Market and company data come from real providers and show dated examples, not live quotes.</sub></p>
@@ -66,8 +70,8 @@
 2. Open it and drag **Trading Max** to Applications.
 3. Start a local workspace, connect to your own Trading Max service over HTTPS,
    or open the demo with synthetic data.
-4. Add your read-only Trading 212 API keys in **Settings**, run the first sync
-   and check the totals against Trading 212.
+4. In **Workspace settings**, add your read-only Trading 212 API keys, run the
+   first sync and check the totals against Trading 212.
 
 Updates install from **App Settings → About & updates**. See the
 [desktop guide](docs/installation/desktop-onboarding.md).
@@ -98,16 +102,17 @@ covers background services, updates and backups.
   failed data is disclosed, never papered over.
 - **AI optional.** Analytics and research work without a model key.
 
-Trading 212 supplies account data; Yahoo-compatible market data and disclosure
-filings supply research. See [Privacy](PRIVACY.md) and
-[data conventions](docs/guides/data-and-metrics.md).
+Trading 212 supplies account data. Yahoo-compatible market data, SEC filings
+and ETF issuers supply research; Alpaca and EODHD can add more market data.
+See [Privacy](PRIVACY.md) and [data conventions](docs/guides/data-and-metrics.md).
 
 ## Learn more
 
 | I want to… | Start here |
 |---|---|
 | Understand my portfolio | [Portfolio guide](docs/guides/portfolio.md) |
-| Research a company or build a valuation | [Research guide](docs/guides/research.md) |
+| Research a stock, fund or index | [Research guide](docs/guides/research.md) |
+| See which funds are looked through | [ETF coverage](docs/guides/etf-coverage.md) |
 | Install, update or recover the App | [Desktop guide](docs/installation/desktop-updates.md) |
 | Understand the architecture or API | [Documentation index](docs/README.md) |
 | Get help or contribute | [Support](SUPPORT.md) · [Contributing](CONTRIBUTING.md) |
@@ -117,6 +122,7 @@ filings supply research. See [Privacy](PRIVACY.md) and
 
 Trading Max is open source under the [Apache License 2.0](LICENSE). It is an
 independent project, not affiliated with or endorsed by Trading 212, Yahoo,
-Bloomberg/OpenFIGI, ETF issuers or model providers, and nothing here is
-investment advice. See [third-party notices](THIRD_PARTY_NOTICES.md) and
+Alpaca, EODHD, Bloomberg/OpenFIGI, index providers, ETF issuers or model
+providers, and nothing here is investment advice. See
+[third-party notices](THIRD_PARTY_NOTICES.md) and
 [trademarks](TRADEMARKS.md).
