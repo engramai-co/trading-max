@@ -80,6 +80,10 @@ test.describe("performance reading popup", () => {
       const card = (await popup.boundingBox())!;
       expect(card.x).toBeGreaterThanOrEqual(box.x);
       expect(card.x + card.width).toBeLessThanOrEqual(box.x + box.width + 1);
+      // The card's top stays at the top of the plot wherever the pointer is vertically.
+      await page.mouse.move(box.x + box.width * 0.5, box.y + 405);
+      await expect.poll(async () => Math.round((await popup.boundingBox())!.y)).toBe(Math.round(card.y));
+      expect(card.y).toBeLessThan(box.y + 60);
       await expect(page.locator(".mx-source-legend")).toHaveCount(0);
       for (let index = 0; index < 24; index++) {
         await page.mouse.move(box.x + 64 + (box.width - 76) * (index + 0.37) / 24, box.y + (index % 2 ? 405 : 175));
@@ -99,16 +103,16 @@ test.describe("performance reading popup", () => {
     const timeline = page.locator(".mx-money-timeline");
     const plot = timeline.locator("[data-tm-chart-ready=true]");
     const legend = timeline.locator(".mx-chart-legend");
-    const drawdown = timeline.getByRole("heading", { name: "Maximum P&L drawdown" });
+    const drawdown = timeline.getByRole("heading", { name: "Max P&L drawdown" });
     await expect(plot).toBeVisible();
     await expect(page.locator(".mx-money-summary")).toContainText("Period net P&L");
     await expect(legend).toContainText("Account value");
-    await expect(legend).toContainText("Cumulative net contributions");
+    await expect(legend).toContainText("Cumulative net deposits");
     expect((await legend.boundingBox())!.y).toBeGreaterThan((await plot.boundingBox())!.y + 220);
     expect((await legend.boundingBox())!.y).toBeLessThan((await drawdown.boundingBox())!.y);
     await page.getByRole("button", { name: "% of opening value", exact: true }).click();
     await expect(legend).toContainText("Value change");
-    await expect(legend).toContainText("Contribution change");
+    await expect(legend).toContainText("Net deposit change");
     expect((await legend.boundingBox())!.y).toBeLessThan((await drawdown.boundingBox())!.y);
     await page.getByText("View exact observations", { exact: true }).click();
     const records = page.locator(".mx-chart-data table");
@@ -116,27 +120,46 @@ test.describe("performance reading popup", () => {
     await expect(records.getByRole("columnheader", { name: "P&L drawdown", exact: true })).toBeVisible();
   });
 
-  test("pins a tap as a popup inside the narrow canvas", async ({ page, isMobile }) => {
+  test("pins a tap as a reading strip above the narrow plot", async ({ page, isMobile }) => {
     test.skip(!isMobile, "Touch interaction is verified on mobile.");
     await mockHistory(page);
     await page.goto("/analytics");
     const chart = page.locator("[data-tm-chart-ready=true]").first();
     await expect(chart).toBeVisible();
     await chart.scrollIntoViewIfNeeded();
+    // Bring the top of the tall money chart into view, below the panel heading.
+    await page.evaluate((top) => window.scrollBy(0, top - 260), (await chart.boundingBox())!.y);
     const box = (await chart.boundingBox())!;
-    await page.touchscreen.tap(box.x + box.width * 0.7, box.y + 175);
+    await page.touchscreen.tap(box.x + box.width * 0.7, box.y + 120);
     await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", "selected");
-    const popup = chart.locator("xpath=..").locator(".mx-chart-popup");
-    await expect(popup).toBeVisible();
-    const card = (await popup.boundingBox())!;
-    expect(card.x).toBeGreaterThanOrEqual(box.x);
-    expect(card.x + card.width).toBeLessThanOrEqual(box.x + box.width + 1);
-    expect(card.y).toBeGreaterThanOrEqual(box.y - 1);
-    expect(card.y + card.height).toBeLessThanOrEqual(box.y + box.height + 1);
-    expect(await popup.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    // Phones read above the plot; nothing floats over the lines.
+    await expect(chart.locator("xpath=..").locator(".mx-chart-popup")).toHaveCount(0);
+    const strip = page.locator(".mx-chart-strip");
+    await expect(strip).toBeVisible();
+    await expect(strip).toContainText("Period net P&L");
+    const bar = (await strip.boundingBox())!;
+    const plot = (await chart.boundingBox())!;
+    expect(bar.y + bar.height).toBeLessThanOrEqual(plot.y + 1);
+    expect(bar.x).toBeGreaterThanOrEqual(plot.x - 1);
+    expect(bar.x + bar.width).toBeLessThanOrEqual(plot.x + plot.width + 1);
+    expect(await strip.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-    await page.getByRole("button", { name: "Dismiss reading" }).click();
-    await expect(popup).toBeHidden();
+    const close = page.getByRole("button", { name: "Close reading" });
+    const target = (await close.boundingBox())!;
+    expect(Math.min(target.width, target.height)).toBeGreaterThanOrEqual(44);
+    await close.click();
+    await expect(strip).toBeHidden();
+    await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", "latest");
+    // Scrolled past the top of the tall chart, the strip docks under the top bar so it stays in view.
+    await page.evaluate(() => window.scrollBy(0, 320));
+    const lower = (await chart.boundingBox())!;
+    await page.touchscreen.tap(lower.x + lower.width * 0.5, Math.max(lower.y, 0) + 360);
+    await expect(strip).toHaveAttribute("data-docked", "");
+    const docked = (await strip.boundingBox())!;
+    expect(docked.y).toBeGreaterThanOrEqual(0);
+    expect(docked.y + docked.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    await page.keyboard.press("Escape");
+    await expect(strip).toBeHidden();
   });
 
   test("shows no reading inside an unrecorded interval and resumes after the gap", async ({ page, isMobile }) => {
@@ -156,6 +179,8 @@ test.describe("performance reading popup", () => {
     for (const [position, visible] of [[0.3, true], [0.55, false], [0.8, true]] as const) {
       await page.mouse.move(box.x + 64 + (box.width - 76) * position, box.y + 175);
       await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", visible ? "selected" : "latest");
+      // Inside the gap the card keeps only its title: no data, and the interval it spans.
+      if (!visible) await expect(chart.locator("xpath=..").locator(".mx-chart-popup")).toContainText("No data");
     }
   });
 });
