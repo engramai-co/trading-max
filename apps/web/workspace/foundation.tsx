@@ -3,10 +3,13 @@
 import {
   Button,
   CloseButton,
+  Drawer,
   Group,
   Popover,
   Tooltip,
+  type TooltipProps,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -16,7 +19,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "./link";
-import { useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { cloneElement, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
@@ -126,21 +129,129 @@ function useChangeCount(value: string | null) {
   }
   return seen.count;
 }
+// Open overlays, most recent last. One capture listener closes only the topmost
+// layer, wherever focus is: on its trigger before focus has moved in, inside it,
+// or on the page after a pointer opened it.
+const escapeLayers: Array<() => void> = [];
+let escapeListening = false;
+function closeTopLayer(event: KeyboardEvent) {
+  if (event.key !== "Escape" || event.isComposing || !escapeLayers.length) return;
+  // One press closes one layer; a dialog or chart behind it stays open.
+  event.stopPropagation();
+  escapeLayers.at(-1)!();
+}
+/** While opened, Escape closes this overlay first. dismiss returns focus to the overlay's trigger. */
+export function useEscapeLayer(opened: boolean, dismiss: () => void) {
+  const onDismiss = useEffectEvent(dismiss);
+  useEffect(() => {
+    if (!opened) return;
+    const layer = () => onDismiss();
+    escapeLayers.push(layer);
+    if (!escapeListening) {
+      document.addEventListener("keydown", closeTopLayer, true);
+      escapeListening = true;
+    }
+    return () => {
+      const index = escapeLayers.lastIndexOf(layer);
+      if (index >= 0) escapeLayers.splice(index, 1);
+    };
+  }, [opened]);
+}
+
+/**
+ * The shared tooltip. Styling, delays and motion come from the theme (mx-tooltip).
+ * Set describes={false} when the label repeats the target's accessible name, so
+ * a screen reader does not read the same words twice. Mantine merges the target's
+ * own props last, so an explicit undefined there drops the description link it adds;
+ * a target with its own aria-describedby keeps that one either way.
+ */
+export function Tip({ children, describes = true, ...props }: Omit<TooltipProps, "children"> & { children: ReactElement<Record<string, unknown>>; describes?: boolean }) {
+  return <Tooltip events={{ hover: true, focus: true, touch: false }} {...props}>
+    {describes ? children : cloneElement(children, { "aria-describedby": undefined })}
+  </Tooltip>;
+}
+
+/** Phones read help in a bottom sheet; wider windows in a popover beside the "?". */
+const HELP_SHEET = "(max-width: 767px)";
+
 export function Help({
   label,
   children,
   tag,
+  basis,
 }: {
   label: ReactNode;
+  /** At most three short paragraphs. No live figures: they belong to the panel. */
   children: ReactNode;
   /** A caveat tag beside a figure; it opens the explanation in place of the "?" button. */
   tag?: ReactNode;
+  /** Source, method, frequency and as-of: always the last section, under 数据口径 / Data basis. */
+  basis?: ReactNode;
 }) {
   const t = useCopy();
   const [opened, setOpened] = useState(false);
+  const sheet = useMediaQuery(HELP_SHEET) ?? false;
+  const trigger = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  useEscapeLayer(opened, () => {
+    setOpened(false);
+    trigger.current?.focus({ preventScroll: true });
+  });
   const explanation = typeof label === "string"
     ? label + t("说明", " explained")
     : t("查看说明", "Read explanation");
+  const button = (
+    <button
+      ref={trigger}
+      type="button"
+      className={tag ? "mx-tag-help" : "mx-info"}
+      data-mantine-stop-propagation={opened || undefined}
+      aria-label={tag ? undefined : explanation}
+      aria-haspopup="dialog"
+      aria-expanded={opened}
+      onClick={() => setOpened((value) => !value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          if (!event.repeat) setOpened((value) => !value);
+        }
+      }}
+    >
+      {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <Question size={16} aria-hidden="true" />}
+    </button>
+  );
+  const body = (
+    <div className="mx-help-body">
+      {children}
+      {basis && <section className="mx-help-basis">
+        <h3>{t("数据口径", "Data basis")}</h3>
+        <p>{basis}</p>
+      </section>}
+    </div>
+  );
+  if (sheet) return (
+    <>
+      {button}
+      <Drawer
+        opened={opened}
+        onClose={() => setOpened(false)}
+        position="bottom"
+        size="auto"
+        title={label}
+        zIndex="var(--mx-overlay-z-drawer)"
+        // A tap does not focus the "?" on every phone, so the sheet hands focus back to it once closed.
+        returnFocus={false}
+        onExitTransitionEnd={() => trigger.current?.focus({ preventScroll: true })}
+        closeButtonProps={{ "aria-label": t("关闭说明", "Close explanation") }}
+        classNames={{
+          inner: "mx-help-sheet-frame", overlay: "mx-help-sheet-frame", content: "mx-help-sheet",
+          header: "mx-help-sheet-header", title: "mx-help-sheet-title", close: "mx-help-sheet-close", body: "mx-help-sheet-body",
+        }}
+      >
+        {body}
+      </Drawer>
+    </>
+  );
   return (
     <Popover
       opened={opened}
@@ -155,31 +266,16 @@ export function Help({
       // detached, as on a first positioning pass or once the trigger scrolls away.
       // Focus then cannot enter (or drops to the page) and Escape stops closing it.
       hideDetached={false}
-      transitionProps={{ duration: 0 }}
-      shadow="md"
+      transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }}
+      zIndex="var(--mx-overlay-z-popover)"
     >
-      <Popover.Target>
-        <button
-          type="button"
-          className={tag ? "mx-tag-help" : "mx-info"}
-          data-mantine-stop-propagation={opened || undefined}
-          aria-label={tag ? undefined : explanation}
-          onClick={() => setOpened((value) => !value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              if (!event.repeat) setOpened((value) => !value);
-            }
-          }}
-        >
-          {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <Question size={16} aria-hidden="true" />}
-        </button>
-      </Popover.Target>
+      <Popover.Target>{button}</Popover.Target>
       <Popover.Dropdown className="mx-help-popover" data-mantine-stop-propagation="true"
+        aria-labelledby={titleId}
         onFocusCapture={(event) => event.target.setAttribute("data-mantine-stop-propagation", "true")}
       >
         <div className="mx-help-heading">
-          <strong>{label}</strong>
+          <strong id={titleId}>{label}</strong>
           <CloseButton
             data-autofocus
             size="sm"
@@ -188,7 +284,7 @@ export function Help({
             onClick={() => setOpened(false)}
           />
         </div>
-        <div className="mx-help-body">{children}</div>
+        {body}
       </Popover.Dropdown>
     </Popover>
   );
@@ -230,6 +326,7 @@ export function Panel({
   description,
   help,
   helpLabel,
+  helpBasis,
   action,
   children,
   className = "",
@@ -241,6 +338,8 @@ export function Panel({
   help?: ReactNode;
   /** The help's name when the title is a control rather than plain text. */
   helpLabel?: string;
+  /** The help's closing 数据口径 / Data basis section. */
+  helpBasis?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -256,7 +355,7 @@ export function Panel({
             {title && (
               <div className="mx-panel-title">
                 <h2>{title}</h2>
-                {help && <Help label={helpLabel ?? title}>{help}</Help>}
+                {help && <Help label={helpLabel ?? title} basis={helpBasis}>{help}</Help>}
               </div>
             )}
             {description && <p>{description}</p>}
@@ -280,6 +379,7 @@ export function Metric({
   large = false,
   help,
   helpLabel,
+  helpBasis,
 }: {
   label: ReactNode;
   value: ReactNode;
@@ -289,13 +389,15 @@ export function Metric({
   help?: ReactNode;
   /** Names the help when the label carries more than text, such as an estimate tag. */
   helpLabel?: string;
+  /** The help's closing 数据口径 / Data basis section. */
+  helpBasis?: ReactNode;
 }) {
   const changes = useChangeCount(typeof value === "string" || typeof value === "number" ? String(value) : null);
   return (
     <div className={"mx-metric" + (large ? " mx-metric-large" : "")}>
       <div className="mx-metric-label">
         {label}
-        {help && <Help label={helpLabel ?? label}>{help}</Help>}
+        {help && <Help label={helpLabel ?? label} basis={helpBasis}>{help}</Help>}
       </div>
       <div className={"mx-number" + (tone ? " mx-" + tone : "")}>
         <span key={changes} className="mx-number-value" data-changed={changes ? "" : undefined}>{value}</span>
@@ -394,7 +496,7 @@ function useReadErrorCopy() {
   const t = useCopy();
   const local = useContext(LocalWorkspaceContext);
   return local ? t(
-    "请检查本机工作区是否正在运行，再试一次。",
+    "请检查本地工作区是否正在运行，再试一次。",
     "Check that your local workspace is running, then try again.",
   ) : t(
     "请检查与工作区服务器的连接，再试一次。",
@@ -413,8 +515,11 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
   if (!updatedAt) return null;
   const label = updateFailureLabel(updatedAt, locale, timeZone);
   const action = label + " · " + t("重试", "Retry");
-  return <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
-    title={detail} aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</button>;
+  // The tooltip adds what to check, so it also describes the button.
+  return <Tip label={detail} withinPortal>
+    <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
+      aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</button>
+  </Tip>;
 }
 
 export function QueryError({
@@ -575,17 +680,13 @@ export function Segments<T extends string>({
         );
         // A stable wrapper keeps the buttons mounted once the platform is known.
         return position ? (
-          <Tooltip
+          <Tip
             key={option.value}
             disabled={!shortcut}
-            label={<span className="mx-nav-search-hint">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
-            openDelay={500}
-            classNames={{ tooltip: "mx-nav-tooltip" }}
-            transitionProps={{ duration: 0 }}
-            events={{ hover: true, focus: true, touch: false }}
+            label={<span className="mx-tooltip-keys">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
           >
             {button}
-          </Tooltip>
+          </Tip>
         ) : button;
       })}
       <span className="mx-indicator" aria-hidden="true" />

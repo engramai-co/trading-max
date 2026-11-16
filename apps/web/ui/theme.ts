@@ -94,12 +94,22 @@ export const tradingMaxTheme = createTheme({
       },
     },
     Tooltip: {
+      // Every tooltip shares the overlay shell (mx-tooltip in 02-page.css): no arrow,
+      // a 250 ms open and 100 ms close, and one 120 ms ease-out fade that reduced
+      // motion turns off (respectReducedMotion above). Keyboard focus opens it as
+      // hover does; touch never does, since a tap acts on its target.
       defaultProps: {
-        withArrow: true,
-        openDelay: 350,
+        withArrow: false,
+        openDelay: 250,
+        closeDelay: 100,
+        events: { hover: true, focus: true, touch: false },
         multiline: true,
         maw: 280,
+        offset: 8,
+        zIndex: "var(--mx-overlay-z-tip)",
+        transitionProps: { transition: "fade", duration: 120, timingFunction: "ease-out" },
       },
+      classNames: { tooltip: "mx-tooltip" },
     },
     Table: {
       defaultProps: {

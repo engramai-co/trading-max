@@ -733,10 +733,13 @@ test.describe("market index layer", () => {
     await page.getByRole("button", { name: "GBP", exact: true }).click();
     // The chart help names the displayed series; it keeps USD until the GBP history arrives.
     const basis = page.locator(".mx-index-history").getByRole("button", { name: /指数数据与口径|Index data and basis/ });
-    const seriesLine = page.locator(".mx-help-popover .mx-help-body p").first();
+    // Phones read help in a bottom sheet, wider windows in a popover.
+    const seriesLine = page.locator(":is(.mx-help-popover, .mx-help-sheet) .mx-help-body p").first();
     await basis.click();
     await expect(seriesLine).toHaveText(/· USD$/);
     await page.keyboard.press("Escape");
+    await expect(seriesLine).toBeHidden();
+    await expect(basis).toBeFocused();
     await expect(page.locator(".mx-index-history")).toContainText(/显示上一次走势|showing previous chart/);
     await expect(chart).toBeVisible();
     await expect(page).toHaveURL(/compare=nasdaq-100.*currency=GBP/);

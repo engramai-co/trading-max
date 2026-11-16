@@ -211,12 +211,15 @@ html[data-scrolled] .mx-topbar-title strong {
   gap: 3px;
   min-width: 0;
 }
+/* Overlay shells: help, tooltips and hover cards share 18-overlay.css. Depth is declared
+   once: a soft offset shadow in light, an edge on a raised ground in dark. */
 .mx-help-popover {
   max-width: calc(100vw - 32px);
-  padding: 16px;
-  border-color: var(--mx-border);
-  border-radius: 10px;
-  background: var(--mx-surface);
+  padding: 12px 16px 16px;
+  border: var(--mx-overlay-edge);
+  border-radius: var(--mx-overlay-radius);
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
   color: var(--mx-ink);
 }
 .mx-help-heading {
@@ -224,7 +227,7 @@ html[data-scrolled] .mx-topbar-title strong {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 9px;
+  margin-bottom: 6px;
   font-size: 13px;
 }
 .mx-help-heading strong {
@@ -238,6 +241,111 @@ html[data-scrolled] .mx-topbar-title strong {
 }
 .mx-help-body p + p {
   margin-top: 10px;
+}
+.mx-help-basis {
+  margin-top: 12px;
+}
+.mx-help-basis h3 {
+  margin: 0;
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.mx-help-basis p {
+  margin: 0;
+}
+/* Phones: help opens as a bottom sheet above the dock and the safe area. The sheet renders
+   in a portal outside .mx-app, so it falls back to the phone dock's own 68px. */
+.mx-help-sheet-frame {
+  bottom: calc(var(--mx-mobile-dock-height, 68px) + env(safe-area-inset-bottom));
+}
+.mx-help-sheet {
+  max-height: 60dvh;
+  display: flex;
+  flex-direction: column;
+  border: var(--mx-overlay-edge);
+  border-bottom: 0;
+  border-radius: var(--mx-overlay-radius) var(--mx-overlay-radius) 0 0;
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
+  color: var(--mx-ink);
+}
+.mx-help-sheet-header {
+  position: static;
+  min-height: 0;
+  padding: 6px 6px 0 16px;
+  background: transparent;
+}
+.mx-help-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.mx-help-sheet-close {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--mx-muted);
+}
+.mx-help-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 16px 16px;
+}
+.mx-help-sheet-body .mx-help-body {
+  max-height: none;
+  overflow: visible;
+  font-size: 13px;
+  line-height: 1.7;
+}
+/* Every Mantine tooltip (theme classNames): ink on the overlay ground, 8px corners, no arrow. */
+.mx-tooltip {
+  padding: 6px 10px;
+  border: var(--mx-overlay-edge);
+  border-radius: var(--mx-overlay-radius-tip);
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
+  color: var(--mx-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.mx-tooltip kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  margin-inline-start: 8px;
+  padding: 0 4px;
+  border: 1px solid var(--mx-border);
+  border-radius: 4px;
+  color: var(--mx-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+}
+.mx-tooltip-keys {
+  display: inline-flex;
+  align-items: center;
+}
+/* A two-line tooltip: the name, then its figures. */
+.mx-tooltip-stack {
+  display: grid;
+  gap: 1px;
+}
+.mx-tooltip-stack > span:first-child {
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-tooltip,
+  .mx-help-popover {
+    transition: none;
+  }
 }
 .mx-summary {
   padding: 28px;
