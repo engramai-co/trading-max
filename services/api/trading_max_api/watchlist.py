@@ -42,6 +42,7 @@ from .security_search_matching import (
     match_score,
     merge_candidates,
     quote_candidates,
+    same_issuer,
 )
 
 if TYPE_CHECKING:
@@ -91,6 +92,13 @@ class SecuritySearchError(RuntimeError):
 
 def _canonical_ticker(value: str) -> str:
     return value.strip().upper()
+
+
+def _may_match_listing_names(query: str) -> bool:
+    # OpenFIGI listing names are Latin script; a query such as 台积电 can only be
+    # resolved by the entity resolver, and a rate-limited name search must not
+    # fail the request before the resolver runs.
+    return any(char.isascii() and char.isalnum() for char in query)
 
 
 def _atomic_json(path: Path, payload: object) -> None:
@@ -986,8 +994,15 @@ class SecuritySearchService:
             ranked.extend(
                 (candidate.score, item)
                 for item in results
-                if (not candidate.ticker or item.ticker == candidate.ticker)
-                and company_key(item.name) == company_key(candidate.name)
+                if (
+                    # The ticker is the identity. Its OpenFIGI listing name is
+                    # abbreviated ("EXAMPLE SEMICONDUCTOR-SP ADR") and only has
+                    # to name the same issuer.
+                    item.ticker == candidate.ticker and same_issuer(item.name, candidate.name)
+                    if candidate.ticker
+                    # Without a ticker the name is the only identity evidence.
+                    else company_key(item.name) == company_key(candidate.name)
+                )
             )
         if failures and not ranked:
             # Rate limits/outages are retryable errors, not an empty match.
@@ -1100,7 +1115,7 @@ class SecuritySearchService:
         ranked = [(match_score(normalized, item.name, item.ticker), item) for item in local]
         try:
             ranked.extend(self._fuzzy_results(normalized))
-            if not ranked:
+            if not ranked and _may_match_listing_names(normalized):
                 # OpenFIGI name search is a fallback; its public rate limit is
                 # much lower than batching verified ticker mapping jobs.
                 ranked.extend(

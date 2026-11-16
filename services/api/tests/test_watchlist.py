@@ -673,6 +673,114 @@ def test_unverified_alias_is_not_presented_as_a_match(tmp_path, monkeypatch):
     assert search.search("oldbrand").results == []
 
 
+def _depositary_receipt_row(ticker: str, name: str) -> dict:
+    return {
+        **_candidate_row(ticker, name),
+        "securityType": "ADR",
+        "securityType2": "Depositary Receipt",
+    }
+
+
+def _recording_provider(requests: list, rows_for_ticker):
+    def provider(*args, **kwargs):
+        body = kwargs["json"]
+        if isinstance(body, list):
+            requests.append(("mapping", [job["idValue"] for job in body]))
+        else:
+            requests.append(("search", body["query"]))
+        return _provider_response(body, rows_for_ticker)
+
+    return provider
+
+
+def test_resolved_foreign_issuer_is_verified_through_its_depositary_receipt(tmp_path, monkeypatch):
+    requests: list = []
+    monkeypatch.setattr(
+        "services.api.trading_max_api.watchlist.httpx.post",
+        _recording_provider(
+            requests,
+            lambda ticker: (
+                [_depositary_receipt_row("NSM", "NORTHSTAR MICROCHIP-SP ADR")]
+                if ticker == "NSM"
+                else []
+            ),
+        ),
+    )
+    search = SecuritySearchService(
+        WatchlistStore(tmp_path),
+        entity_resolver=lambda _: WebEntityResolution(
+            company_name="Northstar Microchip Manufacturing Company Limited",
+            search_queries=("NSM", "1234.TW"),
+        ),
+    )
+
+    result = search.search("北星微芯")
+
+    assert [item.ticker for item in result.results] == ["NSM"]
+    assert result.results[0].security_type == "Depositary Receipt"
+    assert result.corrected_query == "Northstar Microchip Manufacturing Company Limited"
+    # OpenFIGI names are Latin script: no name search can match this query.
+    assert requests == [("mapping", ["NSM", "1234.TW"])]
+
+
+def test_resolved_ticker_for_another_issuer_is_still_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "services.api.trading_max_api.watchlist.httpx.post",
+        _recording_provider(
+            [], lambda ticker: [_depositary_receipt_row("NSM", "NORTHSTAR MICROCHIP-SP ADR")]
+        ),
+    )
+    search = SecuritySearchService(
+        WatchlistStore(tmp_path),
+        entity_resolver=lambda _: WebEntityResolution(
+            company_name="Newbrand Microchip Manufacturing Company Limited",
+            search_queries=("NSM",),
+        ),
+    )
+
+    result = search.search("新牌微芯")
+
+    assert result.results == []
+    assert result.corrected_query is None
+
+
+def test_depositary_receipt_ticker_search_verifies_without_name_search(tmp_path, monkeypatch):
+    search = SecuritySearchService(WatchlistStore(tmp_path))
+    search._index = (
+        time.monotonic(),
+        [("northstar microchip manufacturing co ltd", "NSM")],
+    )
+    monkeypatch.setattr(
+        search,
+        "_quote_search",
+        lambda _: [
+            {
+                "symbol": "NSM",
+                "longname": "Northstar Microchip Manufacturing Company Limited",
+                "quoteType": "EQUITY",
+                "exchange": "NYQ",
+            }
+        ],
+    )
+    requests: list = []
+    monkeypatch.setattr(
+        "services.api.trading_max_api.watchlist.httpx.post",
+        _recording_provider(
+            requests,
+            lambda ticker: (
+                [_depositary_receipt_row("NSM", "NORTHSTAR MICROCHIP-SP ADR")]
+                if ticker == "NSM"
+                else []
+            ),
+        ),
+    )
+
+    result = search.search("NSM")
+
+    assert [item.ticker for item in result.results] == ["NSM"]
+    assert requests == [("mapping", ["NSM"])]
+
+
 def test_search_cache_respects_limit_query_text_and_current_watchlist(tmp_path, monkeypatch):
     store = WatchlistStore(tmp_path)
     search = SecuritySearchService(store)

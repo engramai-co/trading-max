@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.50.1] - 2026-11-16
+
+### Fixed
+- Chart readings open as a popup beside the cursor again instead of a line fixed above each chart. Pointer, touch and keyboard selection work as before, and screen readers still announce each reading.
+- Company-name search verifies US depositary receipts and other listings whose provider name is abbreviated or carries its listing form, so a foreign company searched by its Chinese name finds its US ticker. A search written only in Chinese characters no longer waits on, or fails with, a name lookup that cannot match it.
+
 ## [1.50.0] - 2026-11-16
 
 ### Added

@@ -41,7 +41,7 @@ async function mockHistory(page: Page, intradayNav = observations) {
   });
 }
 
-test.describe("fixed performance readout", () => {
+test.describe("performance reading popup", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
 
   test.beforeEach(async ({ page }) => {
@@ -75,6 +75,11 @@ test.describe("fixed performance readout", () => {
         await page.mouse.move(box.x + box.width * 0.5, box.y + 175);
         await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", "selected");
       }).toPass();
+      const popup = chart.locator("xpath=..").locator(".mx-chart-popup");
+      await expect(popup).toBeVisible();
+      const card = (await popup.boundingBox())!;
+      expect(card.x).toBeGreaterThanOrEqual(box.x);
+      expect(card.x + card.width).toBeLessThanOrEqual(box.x + box.width + 1);
       await expect(page.locator(".mx-source-legend")).toHaveCount(0);
       for (let index = 0; index < 24; index++) {
         await page.mouse.move(box.x + 64 + (box.width - 76) * (index + 0.37) / 24, box.y + (index % 2 ? 405 : 175));
@@ -84,6 +89,7 @@ test.describe("fixed performance readout", () => {
     }
     await page.mouse.move(1, 1);
     await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", "latest");
+    await expect(chart.locator("xpath=..").locator(".mx-chart-popup")).toBeHidden();
   });
 
   test("places the value keys between P&L and drawdown in GBP and percent", async ({ page, isMobile }) => {
@@ -110,7 +116,7 @@ test.describe("fixed performance readout", () => {
     await expect(records.getByRole("columnheader", { name: "P&L drawdown", exact: true })).toBeVisible();
   });
 
-  test("pins a tap in the fixed readout outside the narrow canvas", async ({ page, isMobile }) => {
+  test("pins a tap as a popup inside the narrow canvas", async ({ page, isMobile }) => {
     test.skip(!isMobile, "Touch interaction is verified on mobile.");
     await mockHistory(page);
     await page.goto("/analytics");
@@ -119,14 +125,18 @@ test.describe("fixed performance readout", () => {
     await chart.scrollIntoViewIfNeeded();
     const box = (await chart.boundingBox())!;
     await page.touchscreen.tap(box.x + box.width * 0.7, box.y + 175);
-    const tooltip = page.locator("[data-chart-reading=selected]");
-    await expect(tooltip).toBeVisible();
-    const card = (await tooltip.boundingBox())!;
+    await expect(page.locator("[data-chart-reading]")).toHaveAttribute("data-chart-reading", "selected");
+    const popup = chart.locator("xpath=..").locator(".mx-chart-popup");
+    await expect(popup).toBeVisible();
+    const card = (await popup.boundingBox())!;
     expect(card.x).toBeGreaterThanOrEqual(box.x);
     expect(card.x + card.width).toBeLessThanOrEqual(box.x + box.width + 1);
-    expect(card.y + card.height).toBeLessThanOrEqual(box.y + 1);
-    expect(await tooltip.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(card.y).toBeGreaterThanOrEqual(box.y - 1);
+    expect(card.y + card.height).toBeLessThanOrEqual(box.y + box.height + 1);
+    expect(await popup.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.getByRole("button", { name: "Dismiss reading" }).click();
+    await expect(popup).toBeHidden();
   });
 
   test("shows no reading inside an unrecorded interval and resumes after the gap", async ({ page, isMobile }) => {

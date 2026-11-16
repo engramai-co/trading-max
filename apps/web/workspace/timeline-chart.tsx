@@ -170,8 +170,11 @@ export function TimelineChart({
           const row = rows.get(position);
           if (row == null) return "";
           const marks = layers.flatMap((layer) => layer.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []);
-          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row), ...new Set(marks),
-            ...(observations?.[row] ? [valuationNote(observations[row], t)] : [])].join("\n");
+          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row), ...new Set(marks)].join("\n");
+        },
+        note: (position) => {
+          const row = rows.get(position);
+          return row != null && observations?.[row] ? valuationNote(observations[row], t) : undefined;
         },
       }}
       height={plotHeight}

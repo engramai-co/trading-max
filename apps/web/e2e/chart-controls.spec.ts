@@ -91,7 +91,14 @@ test.describe("chart evidence and fullscreen", () => {
     await expect(reading).toContainText("Difference +0.25 USD");
     await chart.press("Home");
     await expect(reading).toContainText("Difference -0.75 USD");
-    expect((await reading.boundingBox())!.y + (await reading.boundingBox())!.height).toBeLessThanOrEqual((await chart.boundingBox())!.y + 1);
+    const popup = chart.locator("..").locator(".mx-chart-popup");
+    await expect(popup).toBeVisible();
+    await expect(popup).toContainText("Difference -0.75 USD");
+    const [card, plot] = [(await popup.boundingBox())!, (await chart.boundingBox())!];
+    expect(card.y).toBeGreaterThanOrEqual(plot.y - 1);
+    expect(card.y + card.height).toBeLessThanOrEqual(plot.y + plot.height + 1);
+    await chart.press("Escape");
+    await expect(popup).toBeHidden();
   });
 });
 

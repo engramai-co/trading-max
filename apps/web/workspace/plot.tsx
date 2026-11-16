@@ -6,9 +6,9 @@ import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
 import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
-import { closestChartPosition, type ChartReadout } from "./chart-readout";
+import { closestChartPosition, readingRows, type ChartReadout } from "./chart-readout";
 import { chartNumber } from "./research-chart-format";
 import { exportChartCsv, exportChartPng } from "./chart-export";
 import { changeZoom, chartZoom, useChartGestures, zoomRange } from "./chart-zoom";
@@ -105,10 +105,20 @@ export function Plot({
     requestAnimationFrame(() => fullscreenTrigger.current?.focus());
   };
   const cursor = useRef<HTMLDivElement>(null);
+  const popup = useRef<HTMLDivElement>(null);
+  // Pointer height inside the plot; keyboard readings sit at the top instead.
+  const pointerY = useRef<number | null>(null);
   const frame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const colours = useChartColours();
+  const popupColours = useMemo(() => ({
+    "--mx-tooltip-bg": colours.tooltip,
+    "--mx-tooltip-ink": colours.tooltipText,
+    "--mx-tooltip-muted": colours.tooltipMuted,
+    "--mx-tooltip-border": colours.tooltipBorder,
+    "--mx-tooltip-shadow": colours.tooltipShadow,
+  }) as CSSProperties, [colours]);
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
     return {
@@ -209,8 +219,28 @@ export function Plot({
       const bounds = ref.current;
       if (!el || !bounds) return;
       const x = active == null ? NaN : control.current?.convertToPixel({ xAxisIndex: 0 }, active);
-      el.style.visibility = typeof x === "number" && x >= 0 && x <= bounds.clientWidth ? "visible" : "hidden";
+      const shown = typeof x === "number" && x >= 0 && x <= bounds.clientWidth;
+      el.style.visibility = shown ? "visible" : "hidden";
       if (typeof x === "number") el.style.transform = `translateX(${x}px)`;
+      const card = popup.current;
+      if (!card) return;
+      if (!shown || !card.childElementCount) {
+        card.style.visibility = "hidden";
+        return;
+      }
+      // Beside the cursor, flipping left near the edge; above the pointer
+      // unless that leaves the plot. Always clamped inside the plot.
+      const width = bounds.clientWidth, height = bounds.clientHeight;
+      const w = card.offsetWidth, h = card.offsetHeight, gap = 12;
+      let left = x + gap;
+      if (left + w > width - 4) left = x - gap - w;
+      left = Math.max(4, Math.min(left, width - w - 4));
+      const y = pointerY.current;
+      let top = y == null ? 8 : y - h - gap;
+      if (y != null && top < 4) top = y + gap;
+      top = Math.max(4, Math.min(top, height - h - 4));
+      card.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+      card.style.visibility = "visible";
     };
     drawCursor.current();
   }, [active, control, ref, status]);
@@ -240,12 +270,17 @@ export function Plot({
   };
   const dismiss = () => {
     choose(null, true);
+    pointerY.current = null;
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
     setReading("");
   };
-  const currentReading = readout && readout.positions.length ? readout.point(active ?? readout.positions.at(-1)!) : "";
+  const readingAt = (position: number) => readout
+    ? [readout.point(position), readout.note?.(position)].filter(Boolean).join("\n") : "";
+  const currentReading = readout && readout.positions.length ? readingAt(active ?? readout.positions.at(-1)!) : "";
+  const popupReading = readout && active != null ? readingRows(readout.point(active)) : null;
+  const popupNote = readout && active != null ? readout.note?.(active) : undefined;
   const zoomBy = (factor: number) => changeZoom(control.current, zoomRange(chartZoom(control.current), factor));
   const visibleRecords = () => {
     if (!readout?.records) return [];
@@ -314,7 +349,8 @@ export function Plot({
           requestAnimationFrame(() => closeTrigger.current?.focus());
         }}><ArrowsOut aria-hidden="true" size={17} /></button>)}
     </div>}
-    {readout && <div className="mx-chart-readout">
+    {/* The reading is spoken here and shown as a popup at the cursor. */}
+    {readout && <div className="sr-only">
       <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
         {(readout.observationCount ?? readout.positions.length) < 3 && <span data-chart-sparse="true">
           {t("仅", "Only")} {readout.observationCount ?? readout.positions.length} {t("个观测", "observations")}
@@ -335,8 +371,13 @@ export function Plot({
         onPointerMove={(event) => {
           if (gestures.move(event) || !readout || pinned || event.pointerType === "touch" || event.buttons) return;
           const position = pickAt(event);
+          pointerY.current = event.clientY - event.currentTarget.getBoundingClientRect().top;
           cancelAnimationFrame(frame.current);
-          frame.current = requestAnimationFrame(() => choose(position));
+          frame.current = requestAnimationFrame(() => {
+            // Same point: only follow the pointer's height.
+            if (position != null && position === active) drawCursor.current();
+            else choose(position);
+          });
         }}
         onPointerLeave={() => {
           cancelAnimationFrame(frame.current);
@@ -361,7 +402,11 @@ export function Plot({
           if (readout) {
             const position = pickAt(event);
             if (position === active && pinned || position == null) dismiss();
-            else { choose(position, true); setPinned(true); }
+            else {
+              pointerY.current = event.clientY - event.currentTarget.getBoundingClientRect().top;
+              choose(position, true);
+              setPinned(true);
+            }
             return;
           }
           if (pinned) {
@@ -393,6 +438,7 @@ export function Plot({
           }
           if (readout) {
             const values = readout.positions;
+            pointerY.current = null;
             if (event.key === " " || event.key === "Enter") {
               event.preventDefault();
               if (pinned) dismiss();
@@ -440,6 +486,17 @@ export function Plot({
         style={{ height: "100%", width: "100%", touchAction: expanded || customGestures ? "pan-y" : undefined }}
       />
       {readout && <div className="mx-chart-cursor" ref={cursor} aria-hidden="true" />}
+      {readout && <div className="mx-chart-popup" ref={popup} aria-hidden="true" style={popupColours}>
+        {popupReading && (popupReading.heading || popupReading.rows.length > 0) && <>
+          {popupReading.heading && <div className="mx-chart-popup-heading">{popupReading.heading}</div>}
+          {popupReading.rows.length > 0 && <div className="mx-chart-popup-rows">
+            {popupReading.rows.map((row, i) => "label" in row
+              ? <div key={i} className="mx-chart-popup-row"><span>{row.label}</span><span>{row.value}</span></div>
+              : <div key={i} className="mx-chart-popup-line">{row.text}</div>)}
+          </div>}
+          {popupNote && <div className="mx-chart-popup-note">{popupNote}</div>}
+        </>}
+      </div>}
       {status !== "ready" && <div className="mx-plot-loading">
         {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
           : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}

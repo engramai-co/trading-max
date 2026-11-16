@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 from dataclasses import dataclass
 
 _LEGAL_SUFFIXES = {
@@ -22,6 +23,65 @@ _LEGAL_SUFFIXES = {
 _US_EXCHANGES = {"NMS", "NGM", "NCM", "NGS", "NYQ", "ASE", "PCX", "BTS", "PNK", "OQB", "OQX"}
 _TICKER = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,14}$")
 _FUND_NAME = re.compile(r"\b(etf|etp|fund|trust|leveraged|leverage shares)\b", re.I)
+_LEGAL_FORMS = {
+    "inc",
+    "incorporated",
+    "corp",
+    "corporation",
+    "co",
+    "company",
+    "ltd",
+    "limited",
+    "plc",
+    "sa",
+    "nv",
+    "ag",
+    "se",
+    "spa",
+    "ab",
+    "asa",
+    "oyj",
+    "kk",
+    "publ",
+}
+# OpenFIGI appends the listing form and share class to the issuer name:
+# "EXAMPLE SEMICONDUCTOR-SP ADR", "EXAMPLE HOLDING NV-NY REG SHS".
+_LISTING_FORMS = {
+    "adr",
+    "ads",
+    "gdr",
+    "sp",
+    "spn",
+    "spon",
+    "spons",
+    "sponsored",
+    "uns",
+    "unsp",
+    "unspon",
+    "unspons",
+    "unsponsored",
+    "ny",
+    "reg",
+    "registered",
+    "shs",
+    "shares",
+    "ord",
+    "ordinary",
+    "prf",
+    "pref",
+    "pfd",
+    "class",
+    "cl",
+}
+_ISSUER_NOISE = _LEGAL_FORMS | _LISTING_FORMS | {"the"}
+# A qualifier after the legal form: "EXAMPLE LTD/CAYMAN ISL", "EXAMPLE CO/THE",
+# "EXAMPLE CORP /NEW/". The slash in a legal form such as "A/S" is kept.
+_LEGAL_FORM_QUALIFIER = re.compile(
+    r"\b(?:inc|incorporated|corp|corporation|co|company|ltd|limited|plc)\b\.?\s*/.*$",
+    re.I,
+)
+# OpenFIGI listing names are cut to this many characters.
+_LISTING_NAME_WIDTH = 28
 
 
 def company_key(name: str) -> str:
@@ -29,6 +89,62 @@ def company_key(name: str) -> str:
     while words and (words[-1] in _LEGAL_SUFFIXES or len(words[-1]) == 1):
         words.pop()
     return " ".join(words)
+
+
+def issuer_words(name: str) -> list[str]:
+    """Name words without legal forms, listing forms, share classes or accents."""
+    folded = unicodedata.normalize("NFKD", _LEGAL_FORM_QUALIFIER.sub(" ", name))
+    folded = "".join(char for char in folded if not unicodedata.combining(char))
+    # "MCDONALD'S" and "MCDONALDS" are the same word.
+    folded = folded.replace("'", "").replace("\u2019", "")
+    words = [word for word in re.findall(r"[^\W_]+", folded.casefold()) if word != "and"]
+    if words and words[0] == "the":
+        del words[0]
+    while words and (words[-1] in _ISSUER_NOISE or len(words[-1]) == 1):
+        words.pop()
+    return words
+
+
+def _contracts(short: str, long: str) -> bool:
+    # INTL for INTERNATIONAL, FINL for FINANCIAL, COS for COMPANIES.
+    if len(short) < 3 or short[:2] != long[:2] or short[-1] != long[-1]:
+        return False
+    remaining = iter(long)
+    return all(char in remaining for char in short)
+
+
+def same_issuer(listing_name: str, issuer_name: str) -> bool:
+    """Whether an OpenFIGI listing name names the issuer.
+
+    Listing names carry the listing form and are cut to a fixed width:
+    "EXAMPLE SEMICONDUCTOR-SP ADR" for "Example Semiconductor Manufacturing
+    Company Limited". Listing words may contract issuer words (INTL). A name
+    cut to the width limit, which also loses its legal form, may end early or
+    with a cut word. The listing never adds words, and anything short of
+    equality needs two words of evidence: related issuers often share one.
+    """
+    listing, issuer = issuer_words(listing_name), issuer_words(issuer_name)
+    if listing and listing == issuer:
+        return True
+    if len(listing) < 2 or len(listing) > len(issuer):
+        return False
+    *leading, last = listing
+    if not all(
+        word == expected or _contracts(word, expected)
+        for word, expected in zip(leading, issuer, strict=False)
+    ):
+        return False
+    expected = issuer[len(leading)]
+    if last == expected or _contracts(last, expected):
+        omitted = " " + issuer[len(listing)] if len(issuer) > len(listing) else ""
+    elif len(last) >= 3 and expected.startswith(last):
+        omitted = expected[len(last) :]
+    else:
+        return False
+    return not omitted or (
+        not _LEGAL_FORMS.intersection(re.findall(r"[^\W_]+", listing_name.casefold()))
+        and len(listing_name.strip()) + len(omitted) > _LISTING_NAME_WIDTH
+    )
 
 
 def match_score(query: str, name: str, ticker: str = "") -> float:
