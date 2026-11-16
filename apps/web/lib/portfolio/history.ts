@@ -212,7 +212,7 @@ export type PortfolioHistory = Omit<ReturnType<typeof selectPortfolioHistory>, "
 export function valuationNote(point: NavPoint, t: (zh: string, en: string) => string) {
   if (!point.intraday) return t("日终估值", "End-of-day valuation");
   const minutes = Math.round((point.cadenceSeconds ?? 600) / 60);
-  return (point.valuationSource === "reconstructed" ? t("重建估算", "Reconstructed estimate") : t("券商记录", "Broker observation"))
+  return (point.valuationSource === "reconstructed" ? t("估算", "Estimate") : t("券商记录", "Broker observation"))
     + " · " + minutes + t(" 分钟估值", " min valuation")
     + (point.includesExtendedHours ? t(" · 含盘前盘后", " · extended hours") : "")
     + ((point.priceCadenceSeconds ?? 0) > 600 ? t(" · 小时行情", " · hourly market prices") : "");

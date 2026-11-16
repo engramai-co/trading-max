@@ -2,7 +2,7 @@ import type { NavPoint } from "@/lib/types";
 import type { ChartLine } from "./charts";
 import { navNumber, type Scope } from "@/lib/portfolio/nav";
 
-/** Account value and its cash-flow baseline, in pounds or relative to opening value. */
+/** Account value in ink and its net-deposit baseline as a grey dash, in pounds or relative to opening value. */
 export function portfolioValueLines(
   points: NavPoint[], scope: Scope, t: (zh: string, en: string) => string,
   percentage = false,
@@ -21,7 +21,7 @@ export function portfolioValueLines(
       area: true,
     },
     {
-      name: percentage ? t("净入金变化", "Contribution change") : t("累计净入金", "Cumulative net contributions"),
+      name: percentage ? t("净入金变化", "Net deposit change") : t("累计净入金", "Cumulative net deposits"),
       values: points.map((point) => {
         const flows = navNumber(point, scope, "NetContributionsGbp");
         return percentage
@@ -29,7 +29,7 @@ export function portfolioValueLines(
             ? (flows - openingFlows) / opening : null
           : flows;
       }),
-      colour: "accent",
+      colour: "axis",
       dashed: true,
       step: "end",
     },

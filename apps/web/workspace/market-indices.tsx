@@ -11,7 +11,11 @@ import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useLocale } from "@/components/locale-provider";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
-import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
+import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
+import type { ChartReadout, Reading } from "./chart-readout";
+import { comparisonFigures, fixed } from "./reading-format";
+import { DataBasis } from "./reading-card";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, TextLink, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
@@ -32,7 +36,7 @@ function useNames() {
   return {
     name: (index: IndexIdentity) => t(index.nameZh, index.name),
     basis: (index: IndexIdentity) => ({
-      "price": index.kind === "etf-price" ? t("ETF 价格", "ETF price") : t("价格指数", "Price index"),
+      "price": index.kind === "etf-price" ? t("ETF 价格", "ETF price") : t("价格指数", "Price return"),
       "total-return": t("全收益指数", "Total return index"),
       "net-return": t("净回报指数", "Net return index"),
       "implied-volatility": t("隐含波动率", "Implied volatility"),
@@ -266,6 +270,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   useChartRuntime();
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const colours = useChartColours();
   const { name, basis } = useNames();
   const title = useRef<HTMLHeadingElement>(null);
   const lastFocused = useRef<string | null>(null);
@@ -356,10 +361,6 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const axisDateOptions: Intl.DateTimeFormatOptions = period === "MAX" ? { year: "numeric", timeZone: "UTC" }
     : period === "1D" ? { hour: "2-digit", minute: "2-digit", timeZone }
       : { month: "short", day: "numeric", ...(period.endsWith("Y") ? { year: "2-digit" } : {}), timeZone: intraday ? timeZone : "UTC" };
-  const dateOptions: Intl.DateTimeFormatOptions = {
-    year: "numeric", month: "short", day: "numeric",
-    ...(intraday ? { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone } : { timeZone: "UTC" }),
-  };
   const chartName = name(index);
   const peerName = peer ? name(peer) : "";
   // Select a small number of x-axis labels before formatting any dates.
@@ -367,18 +368,20 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const count = Math.min(plotRows.length, phone ? 4 : 8);
   const ticks = [...new Set(Array.from({ length: count }, (_, i) => Math.round(i * (plotRows.length - 1) / Math.max(1, count - 1))))];
   const axisLabels = new Map(ticks.map((position) => [position, formatDate(plotRows[position].at, locale, axisDateOptions)]));
-  const indexUnit = matched.length ? t("点（起点 100）", "pts (base 100)")
-    : readingUnit ?? t("点", "pts");
-  const indexValue = (value: number) => `${formatNumber(value, locale, { maximumFractionDigits: 2 })} ${indexUnit}`;
-  const readPoint = (position: number) => {
+  // Levels stay in ink without a unit (the axis names it); a comparison rebased to 100 says so once,
+  // keys the index as the solid primary line and the peer as a grey dash, and ends with the difference.
+  const readPoint = (position: number): Reading | null => {
     const row = plotRows[position];
-    if (!row || (row.left == null && row.right == null)) return "";
-    const reading = (label: string, value: number) => `${label}: ${indexValue(value)}`;
-    return [
-      formatDate(new Date(row.at), locale, dateOptions),
-      ...(row.left == null ? [] : [reading(chartName, row.left)]),
-      ...(row.right == null ? [] : [reading(peerName, row.right)]),
-    ].join("\n");
+    if (!row || (row.left == null && row.right == null)) return null;
+    const time = formatReadingTime(row.at, locale, intraday ? timeZone : "UTC", period === "1D" ? "clock" : intraday ? "intraday" : "day");
+    if (!matched.length) return { time, primary: { value: fixed(row.left) } };
+    return {
+      time: time + " · " + t("起点 = 100", "Rebased to 100"),
+      ...comparisonFigures([
+        { item: { label: chartName, key: { colour: colours.brand }, value: fixed(row.left) }, change: row.left == null ? null : row.left / 100 - 1 },
+        { item: { label: peerName, key: { colour: colours.axis, dashed: true }, value: fixed(row.right) }, change: row.right == null ? null : row.right / 100 - 1 },
+      ], t("相差", "Difference")),
+    };
   };
   const chartLabel = matched.length
     ? locale === "zh" ? `${chartName} 与 ${peerName}，起点归 100` : `${chartName} and ${peerName}, rebased to 100`
@@ -388,10 +391,17 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     return positions;
   }, []);
   const latestIndexRow = plotRows.findLast((row) => row.left != null);
-  const indexReadout = {
+  const indexReadout: ChartReadout = {
     positions: primaryPositions,
-    latest: latestIndexRow?.left != null ? indexValue(latestIndexRow.left) : "—",
-    point: readPoint,
+    latest: latestIndexRow?.left != null ? fixed(latestIndexRow.left) : "—",
+    read: readPoint,
+    marks: (position: number) => {
+      const row = plotRows[position];
+      return [
+        ...(row?.left == null ? [] : [{ value: row.left, colour: colours.brand }]),
+        ...(row?.right == null || !matched.length ? [] : [{ value: row.right, colour: colours.axis }]),
+      ];
+    },
     records: (position: number) => {
       const row = plotRows[position];
       return ([["left", chartName, history], ["right", peerName, peerHistory]] as const).flatMap(([key, series, feed]) =>
@@ -420,7 +430,6 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <Help label={t("指数数据与口径", "Index data and basis")}>
               <p>{index.symbol ?? index.compiler} · {index.kind === "volatility" ? t("波动率点数", "Volatility points") : seriesCurrency}</p>
-              <p>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</p>
               {index.kind === "etf-price" && <p>{t("这里显示基金上市价格。它可能偏离所跟踪的指数。", "This is the listed fund price. It can differ from its benchmark.")}</p>}
               {!hasHistory && index.rights === "licensed-source-required" && <p>{t("暂无获授权的指数报价。", "An authorised source is required for index prices.")}</p>}
               {period === "1D" && <p>{t("显示最近交易日的 5 分钟线。", "5-minute bars for the latest trading session.")}</p>}
@@ -435,11 +444,12 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               {matched.length > 0 && (intraday || period === "MAX") && <p>{period === "MAX"
                 ? t("对比使用同一日历周内的读数，周线的结束日可能不同。", "Comparison uses readings from the same calendar week; bar end dates can differ.")
                 : t("对比使用同一时间段内的读数。", "Comparison uses readings within the same time slot.")}</p>}
+              <DataBasis>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</DataBasis>
           </Help>
           <div className="mx-index-title-action">
             <TextLink href={researchIndexHref(index)}>
               <ChartBar size={14} aria-hidden="true" />
-              {t("指数研究", "Index research")}
+              {t("查看研究", "View research")}
             </TextLink>
           </div>
         </div>
@@ -453,8 +463,8 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           {peers.length > 0 && <Select
             size="xs"
             className="mx-index-compare"
-            aria-label={t("比较指数", "Compare index")}
-            placeholder={t("比较指数", "Compare index")}
+            aria-label={t("比较指数", "Compare with index")}
+            placeholder={t("比较指数", "Compare with index")}
             data={peers.map((item) => ({ value: item.id, label: name(item) }))}
             value={peer?.id ?? null}
             onChange={(value) => update({ compare: value })}
@@ -471,7 +481,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           : !points.length && hasHistory && query.isPending
             ? <Pending label={t("正在加载走势", "Loading index history")} />
             : !points.length && !query.isError
-              ? <Empty title={t("此范围没有可用的走势", "No history for this range")}
+              ? <Empty title={t("此范围没有走势", "No history for this range")}
                   description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
               : null}
         {history?.coverageReason === "source-interval-mismatch" &&
@@ -515,7 +525,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         {matched.length > 0 && peer && <div className="mx-index-legend">
           <span>{chartName} <strong>{seriesReturn(commonEnd?.left)}</strong></span>
           <span>{name(peer)} <strong>{seriesReturn(commonEnd?.right)}</strong></span>
-          <span>{t("区间回报 · 起点归 100", "Period return · Rebased to 100")}</span>
+          <span>{t("区间收益 · 起点归 100", "Period return · Rebased to 100")}</span>
         </div>}
         {peer && !matched.length && !peerQuery.isPending && !peerQuery.isError && <p className="mx-index-note">{t("没有可比较的共同日期。请选择其他时间范围。", "No common observations to compare. Choose another range.")}</p>}
         <div className="mx-index-stamp">
@@ -579,7 +589,7 @@ function IndexContextPanels({ context, phone }: { context: IndexContext; phone: 
           <ContributionList title={t("负贡献", "Top detractors")} items={basket.laggards} />
         </div></>}
         <details className="mx-details"><summary>{basket.estimatedMove != null
-          ? t("行业权重与贡献", "Sector weights and contribution") : t("行业权重", "Sector weights")}</summary>
+          ? t("板块权重与贡献", "Sector weights and contribution") : t("板块权重", "Sector weights")}</summary>
           <ContributionList items={basket.sectors} showWeight showContribution={basket.estimatedMove != null} />
         </details>
         <details className="mx-details"><summary>{t("前十大成分", "Top ten constituents")}</summary>

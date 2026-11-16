@@ -24,13 +24,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
+import { readingTone, signedPercent, signedPounds } from "./reading-format";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
 import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
-  Facts,
   Freshness,
   Metric,
   Notice,
@@ -149,8 +149,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const cash = scope === "total" ? data?.totalCashGbp : selected?.cashGbp;
   const value =
     scope === "total" ? data?.totalValueGbp : selected?.totalValueGbp;
-  const previousDay =
-    scope === "total" ? data?.latestModelDayReturn : selected?.dailyReturn;
   // Data problems speak here; a holding's readings are marked in its own row below.
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
@@ -197,15 +195,15 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           <div className="mx-overview-totals">
             <Metric
               large
-              label={t("总资产", "Portfolio value")}
+              label={t("账户价值", "Account value")}
               value={currency(value, "GBP", 2)}
             />
             <div className="mx-overview-statistics">
               <Metric
-                label={t("浮动盈亏", "Unrealized P&L")}
+                label={t("浮动盈亏", "Unrealised P&L")}
                 value={currency(pnl, "GBP", 2)}
                 tone={tone(pnl)}
-                help={t("当前持仓相对买入成本", "Open positions versus cost")}
+                help={t("当前持仓相对买入成本", "Holdings versus cost")}
               />
               <Metric
                 label={t("现金", "Cash balance")}
@@ -241,7 +239,6 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           onRange={(value) => update({ range: value })}
           dayAttribution={data?.dayAttribution}
           windowAttribution={data?.windowAttribution}
-          previousDay={previousDay}
         />
         <OverviewSectors />
       </div>
@@ -356,7 +353,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
 }
 function OverviewHistory({
   range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange,
-  dayAttribution, windowAttribution, previousDay,
+  dayAttribution, windowAttribution,
 }: {
   range: Range;
   selection: Parameters<typeof usePortfolioHistory>[0];
@@ -371,7 +368,6 @@ function OverviewHistory({
   /** Today's moves by position, listed under the 1D figure. */
   dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
-  previousDay?: number | null;
 }) {
   const t = useCopy();
   const { range, scope } = selection;
@@ -394,16 +390,8 @@ function OverviewHistory({
   return (
     <Panel
       className="mx-overview-history"
-      title={t("区间净盈亏", "Period P&L")}
-      help={<>
-        <HistoryHelp />
-        {range === "1D" && <Facts rows={[[
-          t("上一交易日收益", "Previous trading day"),
-          <span key="previous" className={previousDay == null ? undefined : "mx-" + tone(previousDay)}>
-            {percent(previousDay, true, 2)}
-          </span>,
-        ]]} />}
-      </>}
+      title={t("区间净盈亏", "Period net P&L")}
+      help={<HistoryHelp />}
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
@@ -453,12 +441,13 @@ function OverviewHistory({
             pendingCashFlows={history.pendingCashFlows}
             showHistoryEvidence={false}
             height={264}
-            tooltip={{
-              range: range === "1W" ? "5D" : range === "ALL" ? t("全部", "All") : range,
-              unit: "GBP",
-              primary: [{ label: t("区间净盈亏", "Period P&L"), values: money.pnls, signed: true }],
-              secondary: [],
-            }}
+            reading={(row) => ({
+              primary: {
+                value: signedPounds(money.pnls[row]),
+                tone: readingTone(money.pnls[row]),
+                ...(money.pnlPercents[row] != null ? { detail: signedPercent(money.pnlPercents[row]) + t(" 相对期初", " vs opening") } : {}),
+              },
+            })}
           />
         </div>
       )}

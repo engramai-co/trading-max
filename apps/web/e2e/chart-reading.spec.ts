@@ -74,8 +74,10 @@ test.describe("primary chart reading", () => {
         const preview = overview.getByRole("group", { name: `${ticker} · Three-month candlestick chart` });
         await expect(preview).toHaveAttribute("data-tm-chart-ready", "true");
         await expect(overview.locator("[data-chart-reading]")).toContainText("Open");
-        await expect(overview.locator(".mx-chart-readout-latest")).toContainText("USD");
-        await expect(overview.getByRole("link", { name: "Technicals" })).toHaveAttribute("href", /priceRange=3M&priceStyle=candles/);
+        // The panel names the currency once; figures carry none.
+        await expect(overview).toContainText("Price history · 3M · USD");
+        await expect(overview.locator(".mx-chart-readout-latest")).not.toContainText("USD");
+        await expect(overview.getByRole("link", { name: "Price & technicals" })).toHaveAttribute("href", /priceRange=3M&priceStyle=candles/);
         if (folder && ticker === "AAPL") await overview.screenshot({ path: join(folder, `overview-${info.project.name}-${width}-${colorScheme}.png`) });
       }
       await page.goto("/research?ticker=AAPL&view=technical");
@@ -98,19 +100,25 @@ test.describe("primary chart reading", () => {
       const plot = (await chart.boundingBox())!;
       const x = plot.x + plot.width / 2;
       const y = plot.y + 65;
+      const latestText = await readout.innerText();
       if (isMobile) await page.touchscreen.tap(x, y);
       else await page.mouse.move(x, y);
       await expect(readout).toHaveAttribute("data-chart-reading", "selected");
       const pointerText = await readout.innerText();
+      // A touch selection is announced; a mouse hover is not.
+      if (isMobile) expect(pointerText).not.toBe(latestText);
+      else expect(pointerText).toBe(latestText);
       await chart.focus();
       await page.keyboard.press("ArrowLeft");
       await expect.poll(() => readout.innerText()).not.toBe(pointerText);
+      const previousText = await readout.innerText();
       await page.keyboard.press("ArrowRight");
-      await expect.poll(() => readout.innerText()).toBe(pointerText);
+      await expect.poll(() => readout.innerText()).not.toBe(previousText);
+      if (isMobile) await expect.poll(() => readout.innerText()).toBe(pointerText);
       await page.keyboard.press("Escape");
       await expect(readout).toHaveAttribute("data-chart-reading", "latest");
       await chartPanel.getByRole("checkbox", { name: "SMA" }).click();
-      await expect(readout).toContainText("SMA20");
+      await expect(readout).toContainText("SMA 20");
       await chartPanel.getByRole("button", { name: "Zoom in" }).click();
       await chartPanel.getByRole("button", { name: "Reset zoom" }).focus();
       await page.keyboard.press("Enter");
@@ -178,7 +186,8 @@ test.describe("primary chart reading", () => {
     const chart = history.locator("[data-tm-chart-ready]");
     await chart.focus();
     await page.keyboard.press("End");
-    await expect(history.locator("[data-chart-reading]")).toContainText("502 USD");
+    await expect(history.locator("[data-chart-reading]")).toContainText("502.00");
+    await expect(history.locator("[data-chart-reading]")).not.toContainText("USD");
     await history.getByRole("button", { name: "Index data and basis" }).click();
     await expect(page.getByText("5-minute bars for the latest trading session.")).toBeVisible();
   });

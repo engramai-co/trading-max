@@ -1,7 +1,8 @@
 "use client";
 
 import { useLocale } from "@/components/locale-provider";
-import { formatDate } from "@/ui/formatters";
+import { formatDate, formatReadingTime, type ReadingGranularity } from "@/ui/formatters";
+import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import type {
   SeriesOption,
 } from "echarts";
@@ -12,8 +13,8 @@ import { Empty, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
-import { type ChartReadout } from "./chart-readout";
-import { chartNumber } from "./research-chart-format";
+import type { ChartReadout, Reading, ReadingItem, ReadingKey } from "./chart-readout";
+import { fixed, readingTone, signedPercent, signedPounds } from "./reading-format";
 
 import { Plot } from "./plot";
 export { Plot } from "./plot";
@@ -28,6 +29,12 @@ export type ChartLine = {
   step?: "end";
   markers?: Array<{ date: string; name: string }>;
 };
+
+/** A history line's stroke; its reading row and cursor dot use the same colour. */
+export function historyLineColour(colours: ChartColours, line: Pick<ChartLine, "colour">, index: number) {
+  return colours[line.colour ?? (index === 0 ? "brand" : index === 1 ? "accent" : "secondary")];
+}
+
 export function HistoryChart({
   dates,
   lines,
@@ -55,6 +62,7 @@ export function HistoryChart({
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const colours = useChartColours();
   if (
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
@@ -101,12 +109,32 @@ export function HistoryChart({
     if (row != null && lines.some((line) => line.values[row] != null)) observations.set(timeline ? position : Date.parse(dates[row]), row);
   });
   const positions = [...observations.keys()];
-  const latest = positions.at(-1)!;
-  const formatValue = (value: number | null) => value == null ? "—"
-    : percentage ? percent(value, true, 2) : currencyTick ? `${number(value, 2)} GBP` : number(value, 2);
+  const granularity: ReadingGranularity = intraday ? (multipleDays ? "intraday" : "clock") : "day";
+  // Returns and drawdowns, and pound results, carry a sign and tone; other levels stay in ink.
+  const figure = (value: number | null): Pick<ReadingItem, "value" | "tone"> =>
+    percentage ? { value: signedPercent(value), tone: readingTone((value ?? 0) * 100) }
+      : currencyTick ? { value: signedPounds(value), tone: readingTone(value) }
+      : { value: fixed(value, 2) };
+  const key = (line: ChartLine, index: number): ReadingKey => ({
+    colour: historyLineColour(colours, line, index),
+    ...(line.dashed ? { dashed: true } : {}),
+    ...(line.type === "bar" ? { kind: "bar" as const } : {}),
+  });
+  const read = (position: number): Reading | null => {
+    const row = observations.get(position);
+    if (row == null) return null;
+    const marks = new Set(lines.flatMap((line) => line.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []));
+    const time = [formatReadingTime(dates[row], locale, intraday ? timeZone : "UTC", granularity), ...marks].join(" · ");
+    const [first, ...rest] = lines.map((line, index) => ({ line, index })).filter(({ line }) => line.values[row] != null);
+    if (!first) return { time };
+    const item = ({ line, index }: typeof first): ReadingItem => ({ label: line.name, key: key(line, index), ...figure(line.values[row]) });
+    // One line needs no label: the panel title already names it.
+    return { time, primary: lines.length === 1 ? figure(first.line.values[row]) : item(first), ...(rest.length ? { groups: [rest.map(item)] } : {}) };
+  };
+  const latest = read(positions.at(-1)!);
   const readout: ChartReadout = {
     positions,
-    latest: formatValue(lines[0].values[observations.get(latest)!]),
+    latest: [latest?.primary?.label, latest?.primary?.value].filter(Boolean).join(" "),
     records: fullscreen ? (position) => {
       const row = observations.get(position)!;
       return lines.flatMap((line) => line.values[row] == null ? [] : [{
@@ -114,20 +142,11 @@ export function HistoryChart({
         basis: percentage ? "fractional return" : "level", source: notes?.[row] ?? label, series: line.name, value: line.values[row]!,
       }]);
     } : undefined,
-    point: (position) => {
-      const row = observations.get(position)!;
-      return [
-        formatDate(dates[row], locale, {
-          year: "numeric", month: "short", day: "numeric",
-          ...(intraday ? { hour: "2-digit", minute: "2-digit", timeZoneName: "short", timeZone } : { timeZone: "UTC" }),
-        }),
-        ...lines.map((line) => `${line.name}: ${formatValue(line.values[row])}`),
-        ...new Set(lines.flatMap((line) => line.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? [])),
-      ].filter(Boolean).join("\n");
-    },
-    note: (position) => {
+    read,
+    marks: (position) => {
       const row = observations.get(position);
-      return row == null ? undefined : notes?.[row];
+      return row == null ? [] : lines.flatMap((line, index) => line.values[row] == null || line.type === "bar" ? []
+        : [{ value: line.values[row]!, colour: historyLineColour(colours, line, index) }]);
     },
   };
   return (
@@ -169,70 +188,8 @@ export function HistoryChart({
             },
             splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
-          tooltip: {
-            trigger: "axis",
-            renderMode: "richText",
-            confine: true,
-            formatter: (input) => {
-              const entries = Array.isArray(input) ? input : [input];
-              const rows = entries.filter(
-                (entry) =>
-                  !String(entry.seriesId ?? "").startsWith("history-gap:") && Array.isArray(entry.value) && entry.value.at(-1) != null,
-              );
-              if (!rows.length) return "";
-              const value = rows[0].value as [number, number];
-              const row = timeline?.rowIndexes[value[0]];
-              const timestamp = timeline
-                ? row == null
-                  ? null
-                  : dates[row]
-                : value[0];
-              if (timestamp == null) return "";
-              const date = formatDate(
-                timestamp,
-                locale,
-                intraday
-                  ? {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone,
-                      timeZoneName: "short",
-                    }
-                  : {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                      timeZone: "UTC",
-                    },
-              );
-              return [
-                date,
-                ...rows.map((entry) => {
-                  const amount = (entry.value as [number, number])[1];
-                  return `${entry.seriesName}: ${percentage ? percent(amount, true, 2) : chartNumber(amount)}`;
-                }),
-              ].join("\n");
-            },
-            valueFormatter: (input) => {
-              const value = Array.isArray(input) ? input.at(-1) : input;
-              return numeric(value) == null
-                ? "—"
-                : percentage
-                  ? percent(value, true, 2)
-                  : Number(value).toLocaleString("en-GB", {
-                      maximumFractionDigits: 2,
-                    });
-            },
-          },
           series: lines.flatMap((line, i) => {
-            const colour =
-              c[
-                line.colour ??
-                  (i === 0 ? "brand" : i === 1 ? "accent" : "secondary")
-              ];
+            const colour = historyLineColour(c, line, i);
             const data = historySeries(dates, line.values, intraday, timeline);
             const gaps = line.type === "bar" ? [] : historyGapSeries(data);
             const single = line.values.filter((value) => value != null).length === 1;
@@ -352,9 +309,8 @@ export function Bars({
       height={height ?? Math.max(190, labels.length * 38 + 36)}
       option={(c) => ({
         grid: { top: 10, bottom: 20, left: 112, right: 70 },
-        tooltip: {
-          valueFormatter: (value) => percentage ? percent(value, true, 2) : chartNumber(value),
-        },
+        // Each bar carries its own label; a tooltip would only repeat it.
+        tooltip: { show: false },
         xAxis: {
           type: "value",
           splitNumber: 3,

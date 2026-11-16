@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ChartColours } from "@/ui/charts/palette";
-import { timelineOption, type TimelineLayer } from "./timeline-option";
+import { includeDailyMarkers, timelineOption, type TimelineLayer } from "./timeline-option";
+import { timelineRows } from "./timeline-reading";
 import { moneyTimelineLayout } from "./money-timeline-layout";
 
 const colours = {
@@ -32,8 +33,7 @@ describe("shared performance timeline", () => {
     const dates = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(2026, 10, 13, 8, i * 10)).toISOString());
     const single = [{ label: "Net P&L", lines: [{ name: "P&L", values: [0, -3, -6, -9, -8, -8] }] }];
     const grid = (plotHeight?: number) => {
-      const option = timelineOption(dates, single, colours, String, undefined, [], String,
-        undefined, undefined, undefined, undefined, plotHeight);
+      const option = timelineOption(dates, single, colours, String, undefined, { plotHeight });
       return (option.grid as Array<{ top: number; height: number }>)[0];
     };
     // The overview's day chart is 240px tall: plot, then one line of times, all inside it.
@@ -42,19 +42,17 @@ describe("shared performance timeline", () => {
     expect(grid(314).height).toBe(210);
     expect(grid().height).toBe(210);
     // Dates across two years carry a second label line.
-    const twoYears = timelineOption(["2025-12-30", "2026-01-02"], single, colours, String, undefined, [], String,
-      undefined, undefined, undefined, undefined, 264);
+    const twoYears = timelineOption(["2025-12-30", "2026-01-02"], single, colours, String, undefined, { plotHeight: 264 });
     const span = (twoYears.grid as Array<{ top: number; height: number }>)[0];
     expect(span.top + span.height + 44).toBeLessThanOrEqual(264);
   });
-  it("plots outage estimates with dashed fluctuations and exposes their source in hover cards", () => {
+  it("plots outage estimates with dashed fluctuations and leaves reading to the card", () => {
     const dates = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(2026, 9, 14, 12, i * 10)).toISOString());
     const values = [100, 102, 95, 108, 103, 101];
     const calendar = { categories: dates, rowIndexes: [0, 1, 2, 3, null, 5] };
-    const provenance = dates.map((_, i) => ({ estimated: i > 0 && i < 4,
-      note: i > 0 && i < 4 ? "Reconstructed estimate · hourly market prices" : "Broker observation" }));
+    const estimated = dates.map((_, i) => i > 0 && i < 4);
     const option = timelineOption(dates, [{ label: "Value", lines: [{ name: "NAV", values, area: true }] }], colours,
-      String, calendar, [], String, undefined, undefined, provenance);
+      String, calendar, { estimated });
     const series = option.series as Array<{ id?: string; data: unknown[]; lineStyle: { type?: string } }>;
     const estimate = series.find((s) => s.id === "history-estimate:0:0")!;
     expect(estimate.lineStyle.type).toBe("dashed");
@@ -66,18 +64,16 @@ describe("shared performance timeline", () => {
       connectNulls: false,
       data: series[0].data,
     });
-    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
-    expect(tooltip.formatter([{ seriesId: estimate.id, value: [2, 95] }, { value: [2, 95] }])).toContain("Reconstructed estimate");
-    expect(tooltip.formatter([{ value: [0, 100] }])).toContain("Broker observation");
-    expect(tooltip.formatter([{ seriesId: "history-gap:0:0", value: [5, 101] }])).toBe("");
+    // Sources live in the help and the exact records; no native tooltip repeats them per point.
+    expect(option.tooltip).toBeUndefined();
   });
   it("does not draw gap or estimate strokes for missing and unsampled ten-minute slots within populated buckets", () => {
     const dates = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, 9, 14, 12, i * 10)).toISOString());
     const values = dates.map((_, i) => 100 + i);
     const calendar = { categories: dates, rowIndexes: dates.map((_, i) => i === 2 || i === 7 ? null : i), displayIntervalMinutes: 60 };
-    const provenance = dates.map((_, i) => ({ estimated: i === 3, note: "" }));
+    const estimated = dates.map((_, i) => i === 3);
     const option = timelineOption(dates, [{ label: "Value", lines: [{ name: "NAV", values, area: true }] }], colours,
-      String, calendar, [], String, undefined, undefined, provenance);
+      String, calendar, { estimated });
     expect(option.series.map((series) => series.id)).not.toContain("history-gap:0:0");
     expect(option.series.map((series) => series.id)).not.toContain("history-estimate:0:0");
     expect(option.series.find((series) => series.id === "history-area:0:0")).toMatchObject({
@@ -90,8 +86,8 @@ describe("shared performance timeline", () => {
     const calendar = { categories, rowIndexes: categories.map((_, i) => i), displayIntervalMinutes: 10 };
     const format = (time: number) => new Date(time).toISOString().slice(11, 16);
     const before = timelineOption(categories, layers, colours, format, calendar);
-    const after = timelineOption(categories, layers, colours, format, calendar, [], format, undefined,
-      { locale: "en", timeZone: "UTC", intraday: true, clock: true });
+    const after = timelineOption(categories, layers, colours, format, calendar,
+      { display: { locale: "en", timeZone: "UTC", intraday: true, clock: true } });
     expect(after.series).toEqual(before.series);
     expect(after.grid).toEqual(before.grid);
     expect(JSON.stringify(after.yAxis)).toBe(JSON.stringify(before.yAxis));
@@ -99,9 +95,6 @@ describe("shared performance timeline", () => {
     expect(axes.every((axis) => axis.min === 0 && axis.max === 61)).toBe(true);
     expect(axes.every((axis) => JSON.stringify(axis.axisLabel.customValues) === JSON.stringify(axes[0].axisLabel.customValues))).toBe(true);
     expect(axes[0].axisLabel.customValues.at(-1)).toBe(60);
-    const tooltip = after.tooltip as { formatter: (input: unknown) => string };
-    const beforeTooltip = before.tooltip as { formatter: (input: unknown) => string };
-    expect(tooltip.formatter([{ value: [61, 110] }])).toBe(beforeTooltip.formatter([{ value: [61, 110] }]));
   });
   it("spaces each responsive date density evenly across the full timeline", () => {
     const categories = Array.from({ length: 70 * 12 }, (_, i) =>
@@ -160,29 +153,15 @@ describe("shared performance timeline", () => {
       ),
     ).toBe(true);
   });
-  it("reads all layers for the hovered date, retaining missing values and separate units", () => {
-    const tooltip = options().tooltip as {
-      formatter: (input: unknown) => string;
-    };
-    const label = tooltip.formatter([{ value: [Date.parse(dates[1]), 110] }]);
-    expect(label).toContain("2025-01-02");
-    expect(label).toMatch(/<dt>NAV<\/dt>\s*<dd[^>]*><span>£110.00<\/span>/);
-    expect(label).toMatch(/<dt>Result<\/dt>\s*<dd[^>]*><span>—<\/span>/);
-    expect(label).toMatch(/<dt>Decline<\/dt>\s*<dd[^>]*><span>0.00%<\/span>/);
-    expect(
-      tooltip.formatter([{ value: [Date.parse(dates[2]) - 1, null] }]),
-    ).toBe("");
-  });
   it("anchors to a real observation after a synthetic gap marker at the same position", () => {
     const option = timelineOption(dates, layers, colours, String, {
       categories: dates,
       rowIndexes: [0, null, 2],
     });
-    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
     expect((option.xAxis as Array<unknown>)[0]).toMatchObject({ type: "value", min: 0, max: 2 });
-    expect(tooltip.formatter([{ value: [2, null] }, { value: [2, 120] }])).toContain("£120.00");
-    expect(tooltip.formatter([{ value: [1, 110] }])).toBe("");
-    expect(tooltip.formatter([{ value: [2, null] }])).toBe("");
+    // The gap marker has no reading; the observation after it does.
+    const rows = timelineRows(dates, layers, { categories: dates, rowIndexes: [0, null, 2] });
+    expect([...rows]).toEqual([[0, 0], [2, 2]]);
   });
   it("does not show an artificial 100% range for an all-zero drawdown series", () => {
     const axes = options().yAxis as Array<{ min?: number; max?: number }>;
@@ -193,8 +172,7 @@ describe("shared performance timeline", () => {
 describe("money timeline", () => {
   it.each([false, true])("leads with the tallest P&L pane before value and drawdown (phone=%s)", (phone) => {
     const moneyLayers = [{ ...layers[1], zeroBaseline: true }, layers[0], layers[2]];
-    const option = timelineOption(dates, moneyLayers, colours, String, undefined, [], String,
-      undefined, undefined, undefined, moneyTimelineLayout(phone));
+    const option = timelineOption(dates, moneyLayers, colours, String, undefined, { moneyLayout: moneyTimelineLayout(phone) });
     const grids = option.grid as Array<{ top: number; height: number }>;
     expect(grids[0].height).toBeGreaterThan(grids[1].height);
     expect(grids[0].height).toBeGreaterThan(grids[2].height);
@@ -222,8 +200,7 @@ describe("money timeline", () => {
       layers[0],
       { ...layers[2], percentage: false, lines: [{ name: "Drawdown", values: drawdown }] },
     ];
-    const option = timelineOption(dates, moneyLayers, colours, String, undefined, [], String,
-      undefined, undefined, undefined, moneyTimelineLayout(false));
+    const option = timelineOption(dates, moneyLayers, colours, String, undefined, { moneyLayout: moneyTimelineLayout(false) });
     const [pnl, value, decline] = option.yAxis as Array<{ min: number; max: number; interval: number }>;
     expect(pnl.min).toBeLessThanOrEqual(Math.min(0, ...values));
     expect(pnl.max).toBeGreaterThanOrEqual(Math.max(0, ...values));
@@ -245,8 +222,7 @@ describe("money timeline", () => {
       layers[0],
       { ...layers[2], markerDate: dates[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15] }] },
     ];
-    const option = timelineOption(dates, moneyLayers, colours, String, calendar, [], String,
-      undefined, undefined, undefined, moneyTimelineLayout(false));
+    const option = timelineOption(dates, moneyLayers, colours, String, calendar, { moneyLayout: moneyTimelineLayout(false) });
     const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
     expect(series[0].data.map((point) => point.value)).toContainEqual([1, 20]);
     expect(series[0].markPoint?.data).toEqual([{ name: "P&L", coord: [1, 20] }]);
@@ -261,13 +237,12 @@ describe("money timeline", () => {
       { ...layers[0], lines: [{ name: "NAV", values: [100, 135, 120, 115] }] },
       { ...layers[2], lines: [{ name: "Drawdown", values: [0, 0, -0.15, -0.20] }] },
     ];
-    const option = timelineOption(dated, moneyLayers, colours, String, calendar, [],
-      (time) => new Date(time).toISOString(), undefined, undefined, undefined, moneyTimelineLayout(false));
+    const option = timelineOption(dated, moneyLayers, colours, String, calendar, { moneyLayout: moneyTimelineLayout(false) });
     const series = option.series as Array<{ data: Array<{ value: number[] }>; markPoint?: { data: Array<{ coord: number[] }> } }>;
     expect(series[1].data.map((point) => point.value)).toContainEqual([1, 135]);
     expect(series[0].data.map((point) => point.value)).toEqual([[0, 0], [1, 35], [2, 20], [3, 15]]);
     expect(series[0].markPoint?.data[0].coord).toEqual([1, 35]);
-    const tooltip = option.tooltip as { formatter: (input: unknown) => string };
-    expect(tooltip.formatter([{ value: [1, 135] }])).toContain("2025-01-02T14:00:00.000Z");
+    // The reading at the extreme's position is the intraday observation, not the close.
+    expect(timelineRows(dated, moneyLayers, includeDailyMarkers(calendar, dated, moneyLayers)).get(1)).toBe(1);
   });
 });

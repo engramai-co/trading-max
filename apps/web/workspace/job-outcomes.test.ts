@@ -39,7 +39,7 @@ describe("job outcomes", () => {
       succeededAfter: 1234,
       lastSuccessAt: "2026-11-04T15:30:09Z",
     };
-    expect(recovery(cause, "zh", "Europe/London", now)).toBe("之后已成功 1,234 次 · 今天 15:30");
+    expect(recovery(cause, "zh", "Europe/London", now)).toBe("之后已成功 1,234 次 · 今日 15:30");
     expect(recovery(cause, "en", "Europe/London", now)).toBe("1,234 successful since · Today 15:30");
     // Still failing, or a service that does not report recoveries: nothing to say.
     expect(recovery({ ...cause, succeededAfter: 0, lastSuccessAt: null }, "zh", "Europe/London", now)).toBeNull();
