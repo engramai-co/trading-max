@@ -260,7 +260,10 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-help-sheet-frame {
   bottom: calc(var(--mx-mobile-dock-height, 68px) + env(safe-area-inset-bottom));
 }
-.mx-help-sheet {
+/* Mantine paints the drawer with the page ground; the sheet takes the overlay ground. */
+.mantine-Drawer-content.mx-help-sheet {
+  /* As tall as its content, up to 60% of the screen; Mantine would fill the frame. */
+  height: auto;
   max-height: 60dvh;
   display: flex;
   flex-direction: column;
