@@ -128,7 +128,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     staleHours != null
       ? t("各页面显示的是上一次成功更新的数据。开始更新，或检查自动更新是否已关闭。", "Pages show the last successful update. Start an update, or check whether scheduled updates are off.")
       : snapshot === "setup"
-      ? t("本机服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
+      ? t("本地服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
       : tone === "ready"
       ? null
       : tone === "running"
@@ -215,8 +215,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         />
         <p>
           {t(
-            "统计当前快照中保留的估值点，不是历史更新任务数；流水覆盖不等于时间加权收益已验证。",
-            "Counts retained valuations in the current snapshot, not past update jobs. Cash-flow coverage does not certify time-weighted returns.",
+            "统计当前快照中保留的估值点，不是历史更新任务数；出入金覆盖不等于时间加权收益已验证。",
+            "Counts retained valuations in the current snapshot, not past update jobs. Deposit and withdrawal coverage does not certify time-weighted returns.",
           )}
         </p>
       </details>

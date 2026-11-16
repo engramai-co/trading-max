@@ -315,7 +315,7 @@ export function PerformanceContent({
         <Notice>
           {t(
             "请选择 Invest、ISA 或全部投资账户来分析收益和风险。",
-            "Select Invest, ISA, or all investment accounts to analyze returns and risk.",
+            "Select Invest, ISA, or all investment accounts to analyse returns and risk.",
           )}
         </Notice>
       ) : view === "risk" ? (
@@ -433,7 +433,7 @@ export function PerformanceContent({
                 details={isIntraday ? [
                   { label: t("区间价值变化", "Value change"), values: valueChanges },
                   { label: t("相对期初", "From opening"), values: valueChangePercents, percentage: true },
-                  ...(modelComparisons.some((value) => value != null) ? [{ label: t("同时段重建值", "Modeled value in this interval"), values: modelComparisons }] : []),
+                  ...(modelComparisons.some((value) => value != null) ? [{ label: t("同时段估算", "Estimate for this interval"), values: modelComparisons }] : []),
                 ] : []}
                 label={
                   view === "money"

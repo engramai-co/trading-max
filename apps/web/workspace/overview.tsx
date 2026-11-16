@@ -156,7 +156,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       <div className="mx-panel mx-overview-portfolio">
         <section
           className="mx-summary"
-          aria-label={t("组合资产", "Portfolio assets")}
+          aria-label={t("账户价值", "Account value")}
         >
           <div className="mx-summary-top">
             <Select
@@ -174,14 +174,14 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
             <span className="mx-freshness-group">
-              {initialWaiting ? <WaitingAsOf label={t("正在读取资产记录…", "Loading portfolio assets…")} />
+              {initialWaiting ? <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
                 : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
               {summaryFailure && <UpdateFailure {...summaryFailure} />}
             </span>
           </div>
           {initialWaiting ? <Pending shape="summary" quiet /> : !data && query.isError ? (
             <div className="mx-overview-summary-failure">
-              <InlineRetry label={t("资产记录暂不可用", "Portfolio assets unavailable")} retry={query.refetch} />
+              <InlineRetry label={t("账户价值暂不可用", "Account value unavailable")} retry={query.refetch} />
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
             </div>
           ) : <>

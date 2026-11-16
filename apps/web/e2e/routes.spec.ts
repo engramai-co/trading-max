@@ -105,7 +105,7 @@ test.describe("portfolio workspace", () => {
       route.fulfill({ status: 503, body: "{}" }),
     );
     await page.goto("/");
-    const assets = page.getByRole("region", { name: /组合资产|Portfolio assets/ });
+    const assets = page.getByRole("region", { name: /账户价值|Account value/ });
     const retry = assets.getByRole("button", { name: /重试|Retry/ });
     await expect(assets.getByRole("combobox")).toBeVisible();
     await expect(retry).toBeVisible();

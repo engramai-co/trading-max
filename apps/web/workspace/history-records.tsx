@@ -42,7 +42,7 @@ export function HistoryRecords({ selection, label }: { selection: HistorySelecti
           { label: t("区间价值变化", "Value change"), numeric: true, value: ({ index }) => currency(data.money.valueChanges[index], "GBP", 2) },
           { label: t("价值相对期初", "Value change / opening"), numeric: true, value: ({ index }) => percent(data.money.valueChangePercents[index], false, 2) },
           ...(data.points.some((p) => p.investModelValueGbp != null || p.isaModelValueGbp != null) ? [{
-            label: t("同时段重建值", "Modeled value in this interval"), numeric: true,
+            label: t("同时段估算", "Estimate for this interval"), numeric: true,
             value: ({ point }: { point: HistoryPage["points"][number] }) => {
               const model = selection.scope === "invest" ? point.investModelValueGbp
                 : selection.scope === "isa" ? point.isaModelValueGbp

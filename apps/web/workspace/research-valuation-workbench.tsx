@@ -294,7 +294,7 @@ function ModelEditor({
     initial.defaultSource === "saved-model"
       ? t("上次保存的模型", "Last saved model")
       : initial.defaultSource === "sector-template"
-        ? t("行业情景模板", "Sector scenario template")
+        ? t("板块情景模板", "Sector scenario template")
         : initial.defaultSource === "configured-scenarios"
           ? t("已配置的假设", "Configured assumptions")
           : t("模型初始假设", "Initial assumptions");

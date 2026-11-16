@@ -209,7 +209,7 @@ export function favourableCount(side: "buy" | "sell", favourable: number, evalua
 
 /** What a decision did, for a list that mixes sides: a T day names the side of the shares beyond its round trip. */
 export function decisionAction(row: Pick<TradeDecision, "kind" | "side">, t: Copy) {
-  if (row.kind === "T") return row.side === "buy" ? t("做 T 后净买入 ", "Net bought after a T ") : t("做 T 后净卖出 ", "Net sold after a T ");
+  if (row.kind === "T") return row.side === "buy" ? t("日内往返后净买入 ", "Net bought after a round trip ") : t("日内往返后净卖出 ", "Net sold after a round trip ");
   return row.side === "buy" ? t("买入 ", "Bought ") : t("卖出 ", "Sold ");
 }
 
@@ -435,7 +435,7 @@ function DecisionRow({ row, horizon, days = 20, sided = false }: { row: TradeDec
   const context = decisionContext(row, horizon, t, locale);
   const state = pendingOutcome(row, horizon, days, t, locale);
   // A list titled by its side names only a T; a decision on its own says what it did.
-  const action = sided ? decisionAction(row, t) : row.kind === "T" ? t("T 净额 ", "T net ") : "";
+  const action = sided ? decisionAction(row, t) : row.kind === "T" ? t("日内往返后净额 ", "Net after a round trip ") : "";
   return (
     <DecisionEntry
       href={"/research?ticker=" + encodeURIComponent(row.ticker) + "&view=technical"}

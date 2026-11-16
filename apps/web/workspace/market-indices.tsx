@@ -37,8 +37,8 @@ function useNames() {
     name: (index: IndexIdentity) => t(index.nameZh, index.name),
     basis: (index: IndexIdentity) => ({
       "price": index.kind === "etf-price" ? t("ETF 价格", "ETF price") : t("价格指数", "Price return"),
-      "total-return": t("全收益指数", "Total return index"),
-      "net-return": t("净回报指数", "Net return index"),
+      "total-return": t("总回报", "Total return"),
+      "net-return": t("净回报", "Net return"),
       "implied-volatility": t("隐含波动率", "Implied volatility"),
     })[index.basis],
   };
@@ -376,7 +376,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     const time = formatReadingTime(row.at, locale, intraday ? timeZone : "UTC", period === "1D" ? "clock" : intraday ? "intraday" : "day");
     if (!matched.length) return { time, primary: { value: fixed(row.left) } };
     return {
-      time: time + " · " + t("起点 = 100", "Rebased to 100"),
+      time: time + " · " + t("起点归 100", "Rebased to 100"),
       ...comparisonFigures([
         { item: { label: chartName, key: { colour: colours.brand }, value: fixed(row.left) }, change: row.left == null ? null : row.left / 100 - 1 },
         { item: { label: peerName, key: { colour: colours.axis, dashed: true }, value: fixed(row.right) }, change: row.right == null ? null : row.right / 100 - 1 },

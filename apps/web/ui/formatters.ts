@@ -41,7 +41,7 @@ export function formatDateTime(
   now: Date | number = Date.now(),
 ) {
   // The display time zone is the reader's own setting, so it is not repeated
-  // on every timestamp. Today reads as "今天 22:00"; the year appears only
+  // on every timestamp. Today reads as "今日 22:00"; the year appears only
   // when it differs from the current one.
   const zone = isValidTimeZone(timeZone) ? timeZone : DEFAULT_DISPLAY_TIME_ZONE;
   const date = value instanceof Date ? value : new Date(value);

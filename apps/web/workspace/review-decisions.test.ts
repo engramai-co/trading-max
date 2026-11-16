@@ -394,8 +394,8 @@ describe("what a decision did, in a list of both sides", () => {
   it("names the side, and for a T day the side of the shares beyond its round trip", () => {
     expect(decisionAction({ kind: "B", side: "buy" }, zh)).toBe("买入 ");
     expect(decisionAction({ kind: "S", side: "sell" }, en)).toBe("Sold ");
-    expect(decisionAction({ kind: "T", side: "buy" }, zh)).toBe("做 T 后净买入 ");
-    expect(decisionAction({ kind: "T", side: "sell" }, en)).toBe("Net sold after a T ");
+    expect(decisionAction({ kind: "T", side: "buy" }, zh)).toBe("日内往返后净买入 ");
+    expect(decisionAction({ kind: "T", side: "sell" }, en)).toBe("Net sold after a round trip ");
   });
 });
 

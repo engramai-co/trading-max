@@ -287,7 +287,7 @@ function ReviewPrerequisites({ cfd, onImports }: { cfd: boolean; onImports: () =
         : t("成交历史：在设置中连接账户，授予只读交易历史权限。", "Fills: connect the account in Settings with read-only history access.")}</li>
       <li>{cfd
         ? t("入金、出金与转账：导出同一区间的资金流水 CSV。导入后更新 CFD 复盘。", "Deposits, withdrawals and transfers: export the cash history CSV for the same dates. Update CFD review after importing.")
-        : t("入金、出金与估值历史：运行一次账户与流水更新。", "Cash flows and valuation history: run an Accounts & history update.")}</li>
+        : t("入金、出金与估值历史：运行一次账户与流水更新。", "Deposits, withdrawals and valuation history: run an Accounts & history update.")}</li>
     </ul>
     {cfd ? <button type="button" className="mx-index-retry" onClick={onImports}>{t("导入 CFD 历史", "Import CFD history")}</button>
       : <Link className="mx-text-link" href="/settings?tab=accounts">{t("设置账户连接", "Set up account connections")}</Link>}

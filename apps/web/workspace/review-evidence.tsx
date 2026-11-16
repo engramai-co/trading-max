@@ -122,7 +122,7 @@ export function StrategyEvidence({ data }: { data: Json }) {
   return (
     <Panel
       title={t("策略收益与风险", "Strategy returns and risk")}
-      help={t("使用全部可用历史的 TWR，剔除出入金影响。", "Uses TWR over the full available history, excluding cash-flow effects.")}
+      help={t("使用全部可用历史的 TWR，剔除出入金影响。", "Uses TWR over the full available history, excluding the effect of deposits and withdrawals.")}
     >
       <Availability data={data} />
       <DetailFacts
@@ -264,7 +264,7 @@ export function CfdCashEvidence({ review }: { review: Json }) {
               numeric: true,
             },
             {
-              label: t("损益变化", "P&L change"),
+              label: t("已实现盈亏变化", "Realised P&L change"),
               value: (r) => currency(r.realisedPnlChange, "GBP", 2),
               numeric: true,
             },

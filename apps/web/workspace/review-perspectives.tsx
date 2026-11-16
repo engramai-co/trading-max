@@ -570,8 +570,8 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
         <Empty
           title={t("还没有完整的阶段记录", "No complete phase history yet")}
           description={t(
-            "足够的账户历史可用于划分阶段并关联资金事件。",
-            "A longer account history allows phases and cash-flow events to be identified.",
+            "足够的账户历史可用于划分阶段并关联出入金。",
+            "A longer account history allows phases, deposits and withdrawals to be identified.",
           )}
         />
       )}
