@@ -27,6 +27,11 @@ HEARTBEAT_SECONDS = 15
 HEARTBEAT_FAILURES = 4
 
 
+def _text(zh: str, en: str) -> str:
+    """Status the desktop App shows, in the language the App is set to."""
+    return en if os.environ.get("TRADING_MAX_APP_LANGUAGE") == "en" else zh
+
+
 def status(root: Path, stage: str, message: str, **details: object) -> None:
     value = {"stage": stage, "message": message, "supervisor_pid": os.getpid(), **details}
     path = root / "runtime-status.json"
@@ -178,19 +183,26 @@ def responsive(url: str, *, api: bool) -> bool:
 
 class Heartbeat:
     def __init__(self, api_url: str, web_url: str):
-        self.urls = {"资料服务": api_url, "页面服务": web_url}
+        self.urls = {"api": api_url, "web": web_url}
         self.failures = dict.fromkeys(self.urls, 0)
 
     def check(self) -> None:
         for name, url in self.urls.items():
             if STOP.is_set():
                 return
-            if responsive(url, api=name == "资料服务"):
+            if responsive(url, api=name == "api"):
                 self.failures[name] = 0
             else:
                 self.failures[name] += 1
             if self.failures[name] >= HEARTBEAT_FAILURES:
-                raise TimeoutError(f"{name}持续无响应。请重新打开工作区；已保存的资料会保留。")
+                raise TimeoutError(
+                    _text(
+                        f"{'数据服务' if name == 'api' else '页面服务'}持续无响应。"
+                        "请重新打开工作区；已保存的数据会保留。",
+                        f"The {'data' if name == 'api' else 'web'} service stopped responding. "
+                        "Reopen the workspace; saved data is kept.",
+                    )
+                )
 
 
 def watch_parent(parent_pid: int, stop_action) -> None:
@@ -205,7 +217,12 @@ def supervise(args) -> int:
     root = args.state_root.resolve()
     if args.workspace_id:
         if not args.recovery_root:
-            raise RuntimeError("本地工作区缺少独立的升级恢复目录。")
+            raise RuntimeError(
+                _text(
+                    "本地工作区缺少独立的升级恢复目录。",
+                    "The local workspace has no separate upgrade recovery folder.",
+                )
+            )
     else:
         prepare_identity(root)
     lock = (root / "runtime.lock").open("a")
@@ -230,7 +247,9 @@ def supervise(args) -> int:
         status(
             root,
             "starting",
-            "正在准备本机工作区…" if args.workspace_id else "正在准备本机演示资料…",
+            _text("正在准备本地工作区…", "Preparing the local workspace…")
+            if args.workspace_id
+            else _text("正在准备演示数据…", "Preparing demo data…"),
         )
         if args.workspace_id:
             from trading_max.desktop_upgrade import WorkspaceUpgrade
@@ -241,12 +260,20 @@ def supervise(args) -> int:
                 args.recovery_root,
                 args.workspace_id,
                 progress=lambda details: status(
-                    root, "starting", "正在验证升级前的恢复副本…", backup_phase=details["phase"]
+                    root,
+                    "starting",
+                    _text("正在验证升级前的恢复副本…", "Verifying the pre-upgrade recovery copy…"),
+                    backup_phase=details["phase"],
                 ),
             )
             prepared = upgrade.prepare()
             if inspect_workspace(root)["id"] != args.workspace_id:
-                raise RuntimeError("工作区标识已变化；未启动服务。")
+                raise RuntimeError(
+                    _text(
+                        "工作区标识已变化；未启动服务。",
+                        "The workspace identifier changed. The service was not started.",
+                    )
+                )
         api_port = reserve_port(args.api_port)
         web_port = reserve_port(args.web_port)
         while web_port == api_port:
@@ -274,7 +301,13 @@ def supervise(args) -> int:
                 pass_fds=(lock.fileno(),),
             )
         children.append(api)
-        status(root, "api_starting", "正在启动资料与计算服务…", api_port=api_port, api_pid=api.pid)
+        status(
+            root,
+            "api_starting",
+            _text("正在启动数据与计算服务…", "Starting the data and calculation services…"),
+            api_port=api_port,
+            api_pid=api.pid,
+        )
         # Empty real workspaces must reach Settings before they can become ready.
         await_url(
             f"http://127.0.0.1:{api_port}/health"
@@ -286,7 +319,10 @@ def supervise(args) -> int:
         status(
             root,
             "web_starting",
-            "本机服务已启动，正在打开投资工作台…",
+            _text(
+                "本地服务已启动，正在打开工作区…",
+                "The local service is running. Opening the workspace…",
+            ),
             api_port=api_port,
             api_pid=api.pid,
         )
@@ -319,7 +355,13 @@ def supervise(args) -> int:
                 if readiness.get("status") != "ready" or not readiness.get("worker", {}).get(
                     "healthy"
                 ):
-                    raise RuntimeError("新版未能正常读取已有资料；将恢复升级前的工作区。")
+                    raise RuntimeError(
+                        _text(
+                            "新版未能正常读取已有数据；将恢复升级前的工作区。",
+                            "The new version could not read the existing data. "
+                            "The pre-upgrade workspace will be restored.",
+                        )
+                    )
             if upgrade:
                 upgrade.commit()
                 committed = True
@@ -334,7 +376,12 @@ def supervise(args) -> int:
         status(
             root,
             "ready",
-            "本机服务已启动，请完成账户设置。" if args.workspace_id else "本机演示资料已就绪。",
+            _text(
+                "本地服务已启动，请完成账户设置。",
+                "The local service is running. Finish setting up your accounts.",
+            )
+            if args.workspace_id
+            else _text("演示数据已就绪。", "Demo data is ready."),
             **ready,
         )
         heartbeat = Heartbeat(f"http://127.0.0.1:{api_port}/health", web_url)
@@ -348,13 +395,13 @@ def supervise(args) -> int:
                 heartbeat.check()
                 next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
         terminate_owned(children)
-        status(root, "stopped", "预览已关闭。")
+        status(root, "stopped", _text("预览已关闭。", "The preview closed."))
         return 0
     except InterruptedError:
         terminate_owned(children)
         if upgrade and not committed:
             upgrade.rollback()
-        status(root, "stopped", "预览已关闭。")
+        status(root, "stopped", _text("预览已关闭。", "The preview closed."))
         return 0
     except Exception as error:
         terminate_owned(children)
@@ -362,13 +409,25 @@ def supervise(args) -> int:
         if upgrade and not committed:
             try:
                 if upgrade.rollback():
-                    recovery_message = "升级前的资料已恢复，失败时的资料也已保留。"
+                    recovery_message = _text(
+                        "升级前的数据已恢复，失败时的数据也已保留。",
+                        "The pre-upgrade data was restored, and the data from the failed attempt "
+                        "was kept.",
+                    )
             except Exception as recovery_error:
-                recovery_message = f"自动恢复尚未完成，请重开工作区继续恢复：{recovery_error}"
+                recovery_message = _text(
+                    f"自动恢复尚未完成，请重开工作区继续恢复：{recovery_error}",
+                    f"Automatic recovery did not finish. Reopen the workspace to continue: "
+                    f"{recovery_error}",
+                )
         status(
             root,
             "error",
-            recovery_message or "本机服务暂时无法启动，可以重新尝试。",
+            recovery_message
+            or _text(
+                "本地服务暂时无法启动，可以重新尝试。",
+                "The local service could not start. You can try again.",
+            ),
             detail=f"{type(error).__name__}: {error}",
         )
         return 1
@@ -420,7 +479,11 @@ def api(args) -> int:
             return JSONResponse(
                 status_code=403,
                 content={
-                    "detail": "演示工作区为只读。要连接账户，请创建或打开自己的工作区。",
+                    "detail": _text(
+                        "演示工作区为只读。要连接账户，请创建或打开自己的工作区。",
+                        "The demo workspace is read-only. Create or open your own workspace "
+                        "to connect accounts.",
+                    ),
                     "code": "desktop_preview_read_only",
                 },
             )

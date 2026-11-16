@@ -41,7 +41,7 @@ class SupervisorTests(unittest.TestCase):
         with patch.object(supervisor, "responsive", side_effect=lambda url, **_: url == "web"):
             for _ in range(supervisor.HEARTBEAT_FAILURES - 1):
                 heartbeat.check()
-            with self.assertRaisesRegex(TimeoutError, "资料服务持续无响应"):
+            with self.assertRaisesRegex(TimeoutError, "数据服务持续无响应"):
                 heartbeat.check()
 
     def test_inherited_credentials_and_state_are_discarded(self):

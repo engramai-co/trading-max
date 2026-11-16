@@ -1,4 +1,5 @@
 //! Official release checks. Only validated metadata can select an in-app update feed.
+use crate::preferences::tr;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{io::Read, time::Duration};
@@ -81,11 +82,19 @@ fn version(value: &str) -> Result<[u32; 3], String> {
                 || (part.len() > 1 && part.starts_with('0'))
         })
     {
-        return Err("版本信息无法识别，请稍后重试。".into());
+        return Err(tr(
+            "版本信息无法识别，请稍后重试。",
+            "The version information is not recognised. Try again later.",
+        ));
     }
     let mut result = [0; 3];
     for (index, part) in parts.iter().enumerate() {
-        result[index] = part.parse().map_err(|_| "版本信息无法识别，请稍后重试。")?;
+        result[index] = part.parse().map_err(|_| {
+            tr(
+                "版本信息无法识别，请稍后重试。",
+                "The version information is not recognised. Try again later.",
+            )
+        })?;
     }
     Ok(result)
 }
@@ -96,7 +105,7 @@ fn normalized(value: &str) -> Result<String, String> {
 pub fn notes_url(value: &str) -> Result<tauri::Url, String> {
     format!("{ORIGIN}/tag/v{}", normalized(value)?)
         .parse()
-        .map_err(|_| "无法打开版本说明。".into())
+        .map_err(|_| tr("无法打开版本说明。", "Could not open the release notes."))
 }
 fn asset_name(value: &str, extension: &str) -> String {
     format!("trading-max-v{value}-{TARGET}.{extension}")
@@ -117,7 +126,12 @@ fn digest(asset: &Asset) -> Result<&str, String> {
                 && d.bytes()
                     .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         })
-        .ok_or_else(|| "安装包的校验信息尚未就绪，请稍后重试。".into())
+        .ok_or_else(|| {
+            tr(
+                "安装包的校验信息尚未就绪，请稍后重试。",
+                "The installer’s checksums are not ready yet. Try again later.",
+            )
+        })
 }
 fn asset(release: &Release, value: &str, extension: &str) -> Result<Option<Asset>, String> {
     let matches: Vec<_> = release
@@ -129,7 +143,10 @@ fn asset(release: &Release, value: &str, extension: &str) -> Result<Option<Asset
         return Ok(None);
     }
     if matches.len() != 1 {
-        return Err("安装包发布信息重复，请稍后重试。".into());
+        return Err(tr(
+            "安装包发布信息重复，请稍后重试。",
+            "The installer’s release information is duplicated. Try again later.",
+        ));
     }
     let item = matches[0];
     let limit = if matches!(extension, "json" | "xml") {
@@ -142,7 +159,7 @@ fn asset(release: &Release, value: &str, extension: &str) -> Result<Option<Asset
         || item.size > limit
         || item.browser_download_url != asset_url(value, extension)
     {
-        return Err("安装包发布信息不完整或来源不匹配，未打开下载。".into());
+        return Err(tr("安装包发布信息不完整或来源不匹配，未打开下载。", "The installer’s release information is incomplete or from another source. The download was not opened."));
     }
     digest(item)?;
     Ok(Some(item.clone()))
@@ -169,9 +186,17 @@ fn validate_manifest(
     if bytes.len() as u64 != metadata.size
         || format!("{:x}", Sha256::digest(bytes)) != digest(metadata)?
     {
-        return Err("安装包发布说明校验失败，未打开下载。".into());
+        return Err(tr(
+            "安装包发布说明校验失败，未打开下载。",
+            "The installer’s release notes failed verification. The download was not opened.",
+        ));
     }
-    let m: Manifest = serde_json::from_slice(bytes).map_err(|_| "安装包发布说明无法读取。")?;
+    let m: Manifest = serde_json::from_slice(bytes).map_err(|_| {
+        tr(
+            "安装包发布说明无法读取。",
+            "Could not read the installer’s release notes.",
+        )
+    })?;
     if m.schema != 1
         || m.version != value
         || m.target != TARGET
@@ -184,7 +209,7 @@ fn validate_manifest(
         || m.asset.size != dmg.size
         || m.asset.sha256 != digest(dmg)?
     {
-        return Err("安装包版本、发布者或校验信息不匹配，未打开下载。".into());
+        return Err(tr("安装包版本、发布者或校验信息不匹配，未打开下载。", "The installer’s version, publisher or checksum does not match. The download was not opened."));
     }
     Ok(DesktopRelease {
         version: value.into(),
@@ -224,7 +249,7 @@ fn request(url: &str, limit: u64, redirects: bool) -> Result<Vec<u8>, String> {
         .redirect(policy)
         .user_agent(concat!("Trading-Max-Desktop/", env!("CARGO_PKG_VERSION")))
         .build()
-        .map_err(|_| "无法初始化版本检查。")?;
+        .map_err(|_| tr("无法初始化版本检查。", "Could not start the version check."))?;
     let response = client
         .get(url)
         .header(
@@ -236,22 +261,40 @@ fn request(url: &str, limit: u64, redirects: bool) -> Result<Vec<u8>, String> {
             },
         )
         .send()
-        .map_err(|_| "暂时无法连接版本服务。你可以继续使用 App，稍后再试。")?;
+        .map_err(|_| {
+            tr(
+                "暂时无法连接版本服务。你可以继续使用 App，稍后再试。",
+                "Could not reach the version service. You can keep using the app and try later.",
+            )
+        })?;
     if !response.status().is_success() {
         return Err(if matches!(response.status().as_u16(), 403 | 429) {
-            "版本服务暂时限流，请稍后重试。"
+            tr(
+                "版本服务暂时限流，请稍后重试。",
+                "The version service is rate-limited. Try again later.",
+            )
         } else {
-            "暂时未能检查版本。你可以继续使用 App，稍后再试。"
-        }
-        .into());
+            tr(
+                "暂时未能检查版本。你可以继续使用 App，稍后再试。",
+                "Could not check for a new version. You can keep using the app and try later.",
+            )
+        });
     }
     let mut bytes = Vec::new();
     response
         .take(limit + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| "版本检查未完成，请重试。")?;
+        .map_err(|_| {
+            tr(
+                "版本检查未完成，请重试。",
+                "The version check did not finish. Try again.",
+            )
+        })?;
     if bytes.len() as u64 > limit {
-        return Err("版本信息过大，请稍后重试。".into());
+        return Err(tr(
+            "版本信息过大，请稍后重试。",
+            "The version information is too large. Try again later.",
+        ));
     }
     Ok(bytes)
 }
@@ -265,12 +308,19 @@ fn checked_package(release: &Release, installed: &str) -> Result<Option<DesktopR
     Ok(Some(checked))
 }
 fn stable_releases(bytes: &[u8]) -> Result<Vec<Release>, String> {
-    let mut releases: Vec<Release> =
-        serde_json::from_slice(bytes).map_err(|_| "版本服务返回的信息不完整。")?;
+    let mut releases: Vec<Release> = serde_json::from_slice(bytes).map_err(|_| {
+        tr(
+            "版本服务返回的信息不完整。",
+            "The version service returned incomplete information.",
+        )
+    })?;
     releases.retain(|r| !r.draft && !r.prerelease && version(&r.tag_name).is_ok());
     releases.sort_by_key(|r| std::cmp::Reverse(version(&r.tag_name).unwrap()));
     if releases.is_empty() {
-        return Err("暂时没有可核对的稳定版本。".into());
+        return Err(tr(
+            "暂时没有可核对的稳定版本。",
+            "No stable version is available to verify yet.",
+        ));
     }
     Ok(releases)
 }
@@ -294,23 +344,39 @@ pub fn check() -> Result<UpdateCheck, String> {
 /// Recheck the exact release when clicked. Never accept a renderer-supplied URL/hash.
 pub fn download_url(value: &str) -> Result<tauri::Url, String> {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        return Err("当前安装包仅支持 Apple Silicon Mac。".into());
+        return Err(tr(
+            "当前安装包仅支持 Apple Silicon Mac。",
+            "The current installer supports Apple Silicon Macs only.",
+        ));
     }
     let value = normalized(value)?;
     if version(&value)? < version(env!("CARGO_PKG_VERSION"))? {
-        return Err("此版本早于本机 App，未打开降级下载。".into());
+        return Err(tr(
+            "此版本早于本机 App，未打开降级下载。",
+            "This version is older than the installed app. The downgrade was not opened.",
+        ));
     }
     let bytes = request(&format!("{API}/tags/v{value}"), MAX_BODY, false)?;
-    let release: Release =
-        serde_json::from_slice(&bytes).map_err(|_| "版本服务返回的信息不完整。")?;
+    let release: Release = serde_json::from_slice(&bytes).map_err(|_| {
+        tr(
+            "版本服务返回的信息不完整。",
+            "The version service returned incomplete information.",
+        )
+    })?;
     if release.tag_name != format!("v{value}")
         || checked_package(&release, env!("CARGO_PKG_VERSION"))?.is_none()
     {
-        return Err("这个版本还没有可下载的正式桌面安装包。".into());
+        return Err(tr(
+            "这个版本还没有可下载的正式桌面安装包。",
+            "This version has no official desktop installer to download yet.",
+        ));
     }
-    asset_url(&value, "dmg")
-        .parse()
-        .map_err(|_| "无法打开安装包下载。".into())
+    asset_url(&value, "dmg").parse().map_err(|_| {
+        tr(
+            "无法打开安装包下载。",
+            "Could not open the installer download.",
+        )
+    })
 }
 
 pub fn update_feed(value: &str) -> Result<UpdateFeed, String> {
@@ -318,13 +384,26 @@ pub fn update_feed(value: &str) -> Result<UpdateFeed, String> {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64"))
         || version(&value)? <= version(env!("CARGO_PKG_VERSION"))?
     {
-        return Err("App 内更新只支持更新的 Apple Silicon 版本。".into());
+        return Err(tr(
+            "App 内更新只支持更新的 Apple Silicon 版本。",
+            "In-app updates support newer Apple Silicon versions only.",
+        ));
     }
     let bytes = request(&format!("{API}/tags/v{value}"), MAX_BODY, false)?;
-    let release: Release = serde_json::from_slice(&bytes).map_err(|_| "更新发布信息无法读取。")?;
+    let release: Release = serde_json::from_slice(&bytes).map_err(|_| {
+        tr(
+            "更新发布信息无法读取。",
+            "Could not read the update’s release information.",
+        )
+    })?;
     let checked = checked_package(&release, env!("CARGO_PKG_VERSION"))?
         .filter(|p| p.in_app && p.version == value)
-        .ok_or("这个版本尚未提供可验证的 App 内更新，请使用官方安装包。")?;
+        .ok_or_else(|| {
+            tr(
+                "这个版本尚未提供可验证的 App 内更新，请使用官方安装包。",
+                "This version has no verifiable in-app update yet. Use the official installer.",
+            )
+        })?;
     Ok(UpdateFeed {
         url: asset_url(&value, "xml"),
         archive: asset_url(&value, "dmg"),
