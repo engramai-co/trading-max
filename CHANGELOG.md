@@ -8,6 +8,7 @@ All notable public Trading Max releases are recorded here.
 
 ### Security
 - Update Next.js and its ESLint configuration from 16.4.3 to 16.4.6 for GHSA-mfr8-8qww-v76h, an information-disclosure advisory in a cache path the workspace does not use. The desktop App bundles the same update.
+- Update the development-only typescript-eslint tooling to 8.73.0, which brings minimatch 11.0.9 for GHSA-g3hv-75wg-m249. The dependency audit now reports no advisories.
 
 ## [1.52.0] - 2026-11-16
 
