@@ -48,7 +48,6 @@ export async function GET(
   return proxyToBackend(
     `/v1/dashboard/lens/${view}${query}`,
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
     (response) => rememberDesktopSnapshotResponse(key, response),
   );
 }

@@ -30,6 +30,5 @@ export async function GET(
   return proxyToBackend(
     `/v1/research/${encodeURIComponent(ticker)}/prices?limit=${requested}&interval=${interval}${window ? `&window=${window}` : ""}`,
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
   );
 }

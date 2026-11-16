@@ -5,6 +5,6 @@ import { webBuildId } from "@/lib/web-build";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
-  return privateJsonResponse(request, { ...await loadHealthDetails(), buildId: webBuildId || undefined }, { status: 200 });
+export async function GET() {
+  return privateJsonResponse({ ...await loadHealthDetails(), buildId: webBuildId || undefined }, { status: 200 });
 }

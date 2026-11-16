@@ -6,7 +6,6 @@ export async function GET(request: Request, context: Context) {
   return proxyToBackend(
     `/v1/assistant/conversations/${encodeURIComponent(conversationId)}`,
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
   );
 }
 export async function DELETE(_request: Request, context: Context) {

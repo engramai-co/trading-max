@@ -8,7 +8,6 @@ export async function GET(request: Request) {
   return proxyToBackend(
     "/v1/research/shell",
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
     (response) => rememberDesktopSnapshotResponse(researchShellKey, response),
   );
 }

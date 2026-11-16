@@ -8,7 +8,6 @@ export async function GET(
   return proxyToBackend(
     `/v1/research/${encodeURIComponent(ticker)}/journal`,
     { signal: request.signal },
-    request.headers.get("accept-encoding"),
   );
 }
 export async function POST(

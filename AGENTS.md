@@ -122,10 +122,13 @@ break any existing feature.
   and random-looking values such as `synthetic-secret-7f3a` fail it.
 - Preserve the typed snapshot boundary and the independent research-lens API.
 - Remote WebView pages receive no native commands, filesystem or credential access.
+- Route handlers return plain bodies. Next.js 16.4.5 and later drops a
+  handler's own `Content-Encoding` and compresses the response once itself, so
+  a handler that also compresses reaches browsers encoded twice.
 - After a deployment or a web-framework upgrade, load a data page in a real
   browser or request it with `Accept-Encoding: br, gzip`. Plain HTTP checks
-  without that header can pass while browsers receive compressed bytes without
-  `Content-Encoding` and show a data error.
+  without that header can pass while browsers receive unreadable compressed
+  bytes and show a data error.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
 
 ## Web release pitfalls
