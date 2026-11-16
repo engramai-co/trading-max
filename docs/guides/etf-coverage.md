@@ -27,23 +27,23 @@ are not substituted for full portfolios.
 
 ## What the source status means
 
-Open **Holdings & exposure → Look-through → Sources** to see the issuer,
+Open **Holdings → Look-through → Sources & coverage** to see the issuer,
 portfolio date, reported constituent count and weight total.
 
 - **Verified:** identity, dates and the full reported list passed validation.
   This does not mean the holdings are real time or every company has a GICS
   classification.
-- **Some positions have no reported weight:** the issuer supplied a full file
+- **Some holdings have no reported weight:** the issuer supplied a full file
   but omitted weights on some rows. State Street can do this for cash and
   futures. Only numeric reported weights enter the allocation; no weights are
   invented for the remaining rows.
 - **Unavailable:** no usable source is present. The fund remains an unresolved
-  fund exposure, and the other funds and direct positions remain available.
+  fund exposure, and the other funds and direct holdings remain available.
 
 Signed weights, issuer rounding and separately dated industry data are retained.
 A small reconciliation tolerance accommodates rounding; an incomplete list is
 never rescaled to 100%. Cash, futures, options and swaps do not become company
-equity positions. Synthetic ETF substitute baskets are not presented as the
+equity holdings. Synthetic ETF substitute baskets are not presented as the
 fund's economic index exposure.
 
 ## Cache and recovery
@@ -56,7 +56,7 @@ silently inherit a different fund's holdings.
 
 All caches remain in the selected external state directory:
 
-- `raw/fund-holdings/v4/`: normalized constituent snapshots keyed by share-class ISIN, with retry timestamps;
+- `raw/fund-holdings/v4/`: normalised constituent snapshots keyed by share-class ISIN, with retry timestamps;
 - `reference/fund-catalogs/`: issuer product identities and download links.
 
 Upgrades can read the previous v3 or ticker-only cache but leave those
@@ -64,7 +64,7 @@ files untouched. Older releases therefore retain their compatible snapshots
 on rollback. The API keeps its existing source-status values; missing weights
 are reported through an additive count and warning.
 
-An operator-managed normalized snapshot is still supported. Include `fundIsin`
+An operator-managed normalised snapshot is still supported. Include `fundIsin`
 when the broker supplies an ISIN; a legacy ticker-only file cannot establish a
 different or otherwise unknown fund identity. The fund registry describes
 download routes and never decides whether a broker instrument is an ETF.
@@ -86,7 +86,7 @@ The one-year tracking difference is share-class NAV total return minus the
 documented benchmark total return for the same period, currency and hedging
 basis. Issuer tracking error is a separate observation. When the issuer's
 benchmark and share class have different bases, Trading Max reports them as
-incomparable. The research desk displays the original issuer period; values
+incomparable. Research displays the original issuer period; values
 over 120 days old are marked stale.
 
 | Share class | One-year tracking coverage |
@@ -95,25 +95,25 @@ over 120 days old are marked stale.
 | VanEck Semiconductor (SMGB, IE00BMC38736) | Missing. The [UK factsheet](https://www.vaneck.com/uk/en/library/fact-sheets/smh-fact-sheet.pdf) publishes month-end one-year USD NAV and net total return benchmark (MVSMCTR) figures. SMGB trades in GBP but is the same USD share class. The existing overview response has a performance block placeholder, and its holdings response contains no return pair. Fetching the performance block or factsheet would require an additional request, which is not enabled under the terms below. |
 | Invesco EQQQ Nasdaq-100 GBP Hdg Acc (EQGB, IE00BYVTMW98) | Incomparable. The [share-class API](https://dng-api.invesco.com/cache/v1/accounts/en_GB/shareclasses/IE00BYVTMW98?idType=isin) lists a single benchmark, the USD NASDAQ-100 Notional Net Total Return Index (NNDX / XNDXNNR). The [factsheet](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) compares it with GBP-hedged NAV. Neither response supplies a GBP-hedged benchmark return. |
 
-Overlap adds the smaller of the two weights for each exact security ID. The
-other side includes direct and look-through Invest and ISA positions after
+Overlap adds the smaller of the two weights for each exact constituent ID. The
+other side includes direct and look-through Invest and ISA holdings after
 excluding every listing of the fund's share class, cash and CFDs. Unidentified
 weights remain in their original denominators. Both coverage readings and all
 holdings dates are available with the number. Holdings dates must be within 45
 days to qualify for an overview warning.
 
 The overview reads only the compact publication, after the table loads. The
-position drawer and fund research use the same observations. The drawer reads
+holding drawer and fund research use the same observations. The drawer reads
 the account snapshot without making issuer requests.
 
-Held funds appear in the research desk automatically. Invest and ISA share a
+Held funds appear in the research list automatically. Invest and ISA share a
 research entry for the same listing. Listings keep their own price history;
 issuer holdings, tracking and overlap are shared by ISIN. A fully sold fund
-leaves the held list and stays in research only if it was saved to the watchlist.
+leaves the held list and stays in the research list only if you added it there.
 
 Research refreshes reuse the account publication for issuer evidence. The fund
 price and technical score use the same daily history, with no additional issuer
-calls. Recognized funds skip company earnings, analyst estimates and valuation.
+calls. Recognised funds skip company earnings, analyst estimates and valuation.
 The options dataset can include verified US ETF underlyings, as described below.
 
 ## Official source entry points
@@ -175,9 +175,9 @@ Additional data connections remain off pending usable rights and evidence:
 | [MSCI](https://developer.msci.com/apis/index-api), [FTSE Russell](https://www.lseg.com/en/ftse-russell/index-resources/indices-subscribe-data), [S&P DJI](https://www.spglobal.com/spdji/en/disclaimers/) and [Nasdaq](https://www.nasdaq.com/products/global-indexes/data) | No verified free feed for the necessary daily benchmark total-return variants with rights for this use. No new requests. |
 
 Daily NAV history, bid/ask and premium/discount stay unavailable without
-authorized sources. A closing market price is not compared with a NAV struck
+authorised sources. A closing market price is not compared with a NAV struck
 at an unverified time, and a session high/low is not a spread. Issuer-published
-tracking error remains available where reported; the desk does not estimate
+tracking error remains available where reported; Research does not estimate
 daily tracking error from a price-only index, another ETF, or mismatched NAV.
 The portfolio overview's compact ETF publication is unchanged.
 
@@ -191,7 +191,7 @@ in GBP in London, but their share-class NAV and benchmark are unhedged USD.
 |---|---|
 | HEMC (IE000KCS7J59) | The [HSBC fund page](https://www.assetmanagement.hsbc.co.uk/en/intermediary/funds/ie000kcs7j59) and its [RNS notices](https://www.londonstockexchange.com/en/news/article/HEMA/net-asset-value-s/cf37-45-86-50-6a-423290) disclose NAV; the notices are separate daily announcements. No usable issuer history file was verified. [HSBC UK terms](https://www.assetmanagement.hsbc.co.uk/en/individual-investor/terms-and-conditions) require prior written permission for automated extraction, and [LSE licensing](https://www.londonstockexchange.com/en/markets-products/market-data/market-data-licensing) covers RNS derived data and application use. The [MSCI Emerging Markets Index](https://www.msci.com/indexes/index/891800/msci-emerging-markets-index) has a USD Net variant (NDUEEGF), but the [MSCI Index Data terms](https://www.msci.com/indexes?index-market=emerging-markets) restrict copying and derived work. The existing one-year factsheet reading remains available. |
 | SMGB (IE00BMC38736) | The [VanEck NAV history workbook](https://www.vaneck.com/uk/en/investments/semiconductor-etf/downloads/fundhistoprices/) is offered for the USD share class (UCTSMH). [VanEck UK terms](https://www.vaneck.com/uk/en/terms-and-conditions) allow personal storage. Its [MVSMCTR benchmark export link](https://www.vaneck.com/uk/en/investments/semiconductor-etf/downloads/indexhistoprices/) did not yield a usable file. [MarketVector's index page](https://www.marketvector.com/indexes/sector/marketvector-us-listed-semiconductor-10-capped-screened) requires login for history; [its terms](https://www.marketvector.com/terms-of-service) restrict historical databases and derived charts. No matching pair was enabled. |
-| EQGB (IE00BYVTMW98) | The [Invesco factsheet](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) reports GBP hedged NAV against the USD Nasdaq-100 Notional Net Total Return Index. The two raw series can be viewed separately from an existing import. Nasdaq's [GBP hedged net return index](https://indexes.nasdaq.com/docs/methodology_NasdaqHedge.pdf) (XNDXNNRGBPMH) is a candidate, but neither a match to the share class's hedge method nor an authorized daily history was verified. |
+| EQGB (IE00BYVTMW98) | The [Invesco factsheet](https://www.invesco.com/content/dam/invesco/emea/en/product-documents/etf/share-class/factsheet/IE00BYVTMW98_factsheet_en.pdf) reports GBP hedged NAV against the USD Nasdaq-100 Notional Net Total Return Index. The two raw series can be viewed separately from an existing import. Nasdaq's [GBP hedged net return index](https://indexes.nasdaq.com/docs/methodology_NasdaqHedge.pdf) (XNDXNNRGBPMH) is a candidate, but neither a match to the share class's hedge method nor an authorised daily history was verified. |
 
 IDX-R7 tracks permission for daily NAV and benchmark collection and tracking
 calculations, as well as the search for an EQGB benchmark with the same hedge
@@ -222,7 +222,7 @@ forward. No issuer download or options request is triggered by opening a lens.
 
 For the seven reference tickers above, daily reconciliation adds at most one
 shared daily quote batch (20 symbols per request, with cache reuse) and seven
-option capture attempts. Each attempt uses the existing Yahoo security metadata
+option capture attempts. Each attempt uses the existing Yahoo listing metadata
 and expiry list, then up to four expiries within 120 days. The current
 yfinance metadata helper makes up to three logical reads (quote summary,
 quote and complementary statistics), so seven chains add at most 56 logical

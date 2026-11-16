@@ -65,7 +65,7 @@ Choose Annual, Quarterly, or TTM and a reporting period before comparing
 numbers. TTM is a trailing four-quarter measure, not an annual forecast.
 Income, balance-sheet, and cash-flow views keep different financial concepts
 separate. **All reported rows** and source details let you inspect the underlying
-records when the summarized view is not enough.
+records when the summarised view is not enough.
 
 In **Segments**, use **Size & mix** for total revenue and composition, and
 **Segment trends** to follow a business through time. Shares are shown only
@@ -117,7 +117,7 @@ an incomplete month is excluded and a short history can change the result.
 
 1. **Check the operating reference.** Review revenue, cash flow, shares,
    currency, and source period. If the model is unavailable, read its reason.
-2. **Compare the scenarios.** Conservative, base, and optimistic are sets of
+2. **Compare the scenarios.** Bear, base, and bull are sets of
    assumptions. Their gap to the current price is a model comparison, not a
    forecast of your investment return.
 3. **Choose five or ten years.** This changes the explicit forecast horizon,
