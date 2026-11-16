@@ -604,8 +604,11 @@ test.describe("market index layer", () => {
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
     if (!mobile) {
       await expect(china).toHaveAccessibleName(/2.3%/);
-      await china.hover();
-      await expect(page.getByRole("tooltip")).toContainText(/沪深 300|CSI 300/);
+      // The map can finish measuring after the pointer arrives and move another block under it; hover again then.
+      await expect(async () => {
+        await china.hover();
+        await expect(page.getByRole("tooltip")).toContainText(/沪深 300|CSI 300/, { timeout: 1500 });
+      }).toPass({ timeout: 10_000 });
     }
     const folder = process.env.TM_CN_VISUAL_DIR;
     if (folder) await card.screenshot({ path: path.join(folder, `overview-world-${mobile ? 390 : 1440}-${colorScheme}.png`) });
