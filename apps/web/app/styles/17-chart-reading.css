@@ -31,7 +31,28 @@
   inset: 12px auto 28px 0;
   visibility: hidden;
   pointer-events: none;
-  border-inline-start: 1px dashed var(--mx-muted);
+  /* Solid: a dashed stroke already means an estimate on these charts. */
+  border-inline-start: 1px solid var(--mx-muted);
+}
+.mx-plot-frame {
+  position: relative;
+  min-width: 0;
+}
+.mx-chart-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mx-chart-mark {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mark);
+  box-shadow: 0 0 0 2px var(--mx-surface);
+  visibility: hidden;
 }
 .mx-chart-popup {
   position: absolute;
@@ -40,51 +61,60 @@
   z-index: 4;
   visibility: hidden;
   pointer-events: none;
-  box-sizing: border-box;
-  width: max-content;
-  min-width: 168px;
-  max-width: min(320px, calc(100% - 8px));
-  padding: 12px 14px;
-  border: 1px solid var(--mx-tooltip-border);
-  border-radius: 12px;
-  background: var(--mx-tooltip-bg);
-  box-shadow: 0 4px 16px var(--mx-tooltip-shadow);
-  color: var(--mx-tooltip-ink);
-  font-size: 12px;
-  line-height: 1.45;
-  font-variant-numeric: tabular-nums;
+  max-width: calc(100% - 8px);
 }
-.mx-chart-popup-heading {
-  margin-bottom: 8px;
-  color: var(--mx-tooltip-muted);
+.mx-chart-popup > .mx-reading {
+  max-width: min(280px, 100%);
 }
-.mx-chart-popup-rows {
+/* Phones: the reading strip covers the panel heading above the plot, never the plot itself. */
+.mx-chart-strip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: var(--mx-overlay-z);
+}
+.mx-chart-strip[data-docked] {
+  position: fixed;
+  top: var(--mx-strip-top);
+  right: auto;
+  bottom: auto;
+  left: var(--mx-strip-left);
+  width: var(--mx-strip-width);
+}
+.mx-chart-strip-close,
+.mx-chart-tip-close {
+  position: absolute;
   display: grid;
-  gap: 6px;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mx-overlay-radius-tip);
+  background: transparent;
+  color: var(--mx-muted);
 }
-.mx-chart-popup-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 16px;
+.mx-chart-strip-close {
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
 }
-.mx-chart-popup-row > span:first-child {
-  color: var(--mx-tooltip-muted);
-  overflow-wrap: anywhere;
+.mx-chart-tip-close {
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  background: var(--mx-overlay-bg);
+  box-shadow: var(--mx-overlay-elevation);
+  border: var(--mx-overlay-edge);
 }
-.mx-chart-popup-row > span:last-child {
-  font-weight: 600;
-  text-align: end;
-  white-space: nowrap;
+.mx-chart-strip-close:hover,
+.mx-chart-tip-close:hover {
+  color: var(--mx-ink);
 }
-.mx-chart-popup-line {
-  overflow-wrap: anywhere;
-}
-.mx-chart-popup-note {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--mx-tooltip-border);
-  color: var(--mx-tooltip-muted);
+.mx-chart-strip-close:active,
+.mx-chart-tip-close:active {
+  background: var(--mx-soft);
 }
 
 .mx-price-tools {
