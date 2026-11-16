@@ -439,19 +439,19 @@ def signals(metrics: Mapping[str, Any]) -> list[str]:
     trend = metrics["trend_strength"]
     result: list[str] = []
     if price is not None and moving.get("sma200") is not None:
-        result.append("价在200日线上" if price > moving["sma200"] else "价在200日线下")
+        result.append("价在 200 日线上" if price > moving["sma200"] else "价在 200 日线下")
     if moving.get("sma50") is not None and moving.get("sma200") is not None:
         result.append(
-            "50日线高于200日线" if moving["sma50"] > moving["sma200"] else "50日线低于200日线"
+            "50 日线高于 200 日线" if moving["sma50"] > moving["sma200"] else "50 日线低于 200 日线"
         )
     cross = momentum["macd"]["cross"]
     if cross != "none":
         result.append(f"MACD {cross}")
     rsi_now = momentum["rsi14"]
     if rsi_now is not None and rsi_now <= 30:
-        result.append("RSI超卖")
+        result.append("RSI 超卖")
     elif rsi_now is not None and rsi_now >= 70:
-        result.append("RSI超买")
+        result.append("RSI 超买")
     bollinger = structure["bollinger"]
     if bollinger["pct_b"] is not None and bollinger["pct_b"] >= 1:
         result.append("收盘突破布林上轨")
@@ -466,17 +466,17 @@ def signals(metrics: Mapping[str, Any]) -> list[str]:
             result.append("上涨日量能占优")
     if trend["adx14"] is not None and trend["adx14"] >= 25:
         direction = "上升趋势" if trend["plus_di14"] > trend["minus_di14"] else "下降趋势"
-        result.append(f"ADX确认{direction}")
+        result.append(f"ADX 确认{direction}")
     if (
         structure["distance_to_support20"] is not None
         and abs(structure["distance_to_support20"]) <= 0.025
     ):
-        result.append("接近20日支撑")
+        result.append("接近 20 日支撑")
     if (
         structure["distance_to_resistance20"] is not None
         and abs(structure["distance_to_resistance20"]) <= 0.025
     ):
-        result.append("接近20日阻力")
+        result.append("接近 20 日阻力")
     return result
 
 
