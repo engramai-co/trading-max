@@ -144,9 +144,11 @@ export function CompanyOverview({
           </p>
           {Boolean(summary) &&
             (expandable ? (
-              // The excerpt itself opens and closes the full description.
+              // The excerpt itself opens and closes the full description. The source
+              // profile is English; lang lets screen readers and line breaking follow it.
               <p
                 className={expanded ? "mx-business-description" : "mx-business-excerpt"}
+                lang="en"
                 role="button"
                 tabIndex={0}
                 aria-expanded={expanded}
@@ -162,7 +164,9 @@ export function CompanyOverview({
                 {expanded ? summary : excerpt + " …"}
               </p>
             ) : (
-              <p className="mx-business-description">{summary}</p>
+              <p className="mx-business-description" lang="en">
+                {summary}
+              </p>
             ))}
         </Panel>
         <Panel

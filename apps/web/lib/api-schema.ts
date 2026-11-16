@@ -175,6 +175,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/assistant/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assistant Chat */
+        post: operations["assistant_chat_v1_assistant_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assistant/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assistant Conversations */
+        get: operations["assistant_conversations_v1_assistant_conversations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assistant/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assistant Conversation */
+        get: operations["assistant_conversation_v1_assistant_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Assistant Conversation */
+        delete: operations["delete_assistant_conversation_v1_assistant_conversations__conversation_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/assistant/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Assistant Status */
+        get: operations["assistant_status_v1_assistant_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboard": {
         parameters: {
             query?: never;
@@ -951,6 +1020,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Assistant Settings */
+        get: operations["get_assistant_settings_v1_settings_assistant_get"];
+        /** Save Assistant Settings */
+        put: operations["save_assistant_settings_v1_settings_assistant_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/settings/automation": {
         parameters: {
             query?: never;
@@ -1210,6 +1297,41 @@ export interface paths {
         post?: never;
         /** Delete Llm Provider */
         delete: operations["delete_llm_provider_v1_settings_llm_providers__provider__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/llm/providers/{provider}/assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Assistant Provider */
+        put: operations["save_assistant_provider_v1_settings_llm_providers__provider__assistant_put"];
+        post?: never;
+        /** Delete Assistant Provider */
+        delete: operations["delete_assistant_provider_v1_settings_llm_providers__provider__assistant_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/llm/providers/{provider}/assistant/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Assistant Provider */
+        post: operations["test_assistant_provider_v1_settings_llm_providers__provider__assistant_test_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2036,6 +2158,127 @@ export interface components {
             sourcePath: string;
             /** Warnings */
             warnings?: string[];
+        };
+        /** AssistantConversation */
+        AssistantConversation: {
+            /** Id */
+            id: string;
+            /** Title */
+            title?: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /** AssistantConversationMessages */
+        AssistantConversationMessages: {
+            /** Id */
+            id: string;
+            /** Messages */
+            messages: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AssistantIntegrationCandidate */
+        AssistantIntegrationCandidate: {
+            /** Apikey */
+            apiKey?: string | null;
+            /** Baseurl */
+            baseUrl?: string | null;
+            /** Model */
+            model: string;
+        };
+        /** AssistantIntegrationRequest */
+        AssistantIntegrationRequest: {
+            /** Apikey */
+            apiKey?: string | null;
+            /** Baseurl */
+            baseUrl?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Model */
+            model: string;
+            /** Validationtoken */
+            validationToken: string;
+        };
+        /** AssistantPreferencesUpdate */
+        AssistantPreferencesUpdate: {
+            /** Acceptedconsentrevision */
+            acceptedConsentRevision?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Expectedrevision */
+            expectedRevision?: number | null;
+            /** Reasoning */
+            reasoning?: ("minimal" | "low" | "medium" | "high" | "xhigh") | null;
+            /** Route */
+            route?: string | null;
+        };
+        /** AssistantProviderDescriptor */
+        AssistantProviderDescriptor: {
+            /**
+             * Authmethod
+             * @enum {string}
+             */
+            authMethod: "api_key" | "oauth" | "optional_api_key";
+            /** Baseurl */
+            baseUrl: string;
+            /** Defaultmodel */
+            defaultModel: string | null;
+            /** Freeformmodels */
+            freeformModels: boolean;
+            /** Label */
+            label: string;
+            /** Local */
+            local: boolean;
+            /** Models */
+            models: string[];
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "openai-codex" | "openai" | "anthropic" | "google" | "opencode" | "deepseek" | "openrouter" | "ollama" | "lmstudio";
+        };
+        /** AssistantSettingsResponse */
+        AssistantSettingsResponse: {
+            /** Acceptedat */
+            acceptedAt: string | null;
+            /** Acceptedconsentrevision */
+            acceptedConsentRevision: number | null;
+            /** Consentrevision */
+            consentRevision: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Integrations */
+            integrations: components["schemas"]["IntegrationSummary"][];
+            /** Providers */
+            providers: components["schemas"]["AssistantProviderDescriptor"][];
+            /** Reasoning */
+            reasoning: ("minimal" | "low" | "medium" | "high" | "xhigh") | null;
+            /** Revision */
+            revision: number;
+            /** Route */
+            route: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /** AssistantStatus */
+        AssistantStatus: {
+            /** Code */
+            code?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Ready */
+            ready: boolean;
         };
         /** AssumptionReference */
         AssumptionReference: {
@@ -4934,7 +5177,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "eodhd" | "anthropic" | "google";
+            provider: "trading212" | "deepseek" | "openai" | "openai-codex" | "opencode" | "alpaca" | "eodhd" | "anthropic" | "google" | "openrouter" | "ollama" | "lmstudio";
             /**
              * Revision
              * @default 1
@@ -9352,6 +9595,137 @@ export interface operations {
             };
         };
     };
+    assistant_chat_v1_assistant_chat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vercel AI SDK UI message stream (SSE). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_conversations_v1_assistant_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversation"][];
+                };
+            };
+        };
+    };
+    assistant_conversation_v1_assistant_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantConversationMessages"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_assistant_conversation_v1_assistant_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assistant_status_v1_assistant_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantStatus"];
+                };
+            };
+        };
+    };
     dashboard_v1_dashboard_get: {
         parameters: {
             query?: never;
@@ -10844,6 +11218,61 @@ export interface operations {
             };
         };
     };
+    get_assistant_settings_v1_settings_assistant_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSettingsResponse"];
+                };
+            };
+        };
+    };
+    save_assistant_settings_v1_settings_assistant_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantPreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_automation_settings_v1_settings_automation_get: {
         parameters: {
             query?: never;
@@ -11601,6 +12030,111 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_assistant_provider_v1_settings_llm_providers__provider__assistant_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantIntegrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_assistant_provider_v1_settings_llm_providers__provider__assistant_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_assistant_provider_v1_settings_llm_providers__provider__assistant_test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantIntegrationCandidate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationTestResult"];
+                };
             };
             /** @description Validation Error */
             422: {

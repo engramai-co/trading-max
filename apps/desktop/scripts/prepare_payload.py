@@ -139,7 +139,8 @@ def main():
             target,
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules", "test"),
         )
-    pi = payload / "code/backend/src/trading_max/synthesis/_pi"
+    # Model inference ships in the Python runtime. Node only handles device login.
+    device_login = payload / "code/backend/src/trading_max/synthesis/_pi"
     run(
         args.node.with_name("npm"),
         "ci",
@@ -147,7 +148,7 @@ def main():
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
-        cwd=pi,
+        cwd=device_login,
     )
     shutil.copy2(ROOT / "services/__init__.py", payload / "code/services/__init__.py")
     shutil.copy2(ROOT / "services/api/__init__.py", payload / "code/services/api/__init__.py")

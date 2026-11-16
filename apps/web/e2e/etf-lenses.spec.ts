@@ -54,6 +54,7 @@ const holdings = {
 const matches = [{ securityId: "ISIN:US0000000001", name: "Synthetic issuer A", fundWeight: 0.62, restDirectWeight: 0.18, restViaFund: { IE00BYVTMW98: 0.33 }, overlap: 0.51 }];
 const fund = {
   ticker: "EQQQ", isin, issuer: reading.issuer, fetchedAt: stamp, sourceUrl: evidence.sourceUrl, indexName: reading.indexName,
+  benchmarkRelationship: { isin, ticker: "EQQQ", benchmarkId: "synthetic-index-nr", relation: "exact", evidenceUrl: evidence.sourceUrl, evidenceDate: date },
   expenseRatio: reading.expenseRatio, incomeUse: "Distributing", hedging: "unhedged", shareCurrency: "USD", baseCurrency: "USD", domicile: "Ireland",
   profile: { evidence: reading.evidence, shareClassSize: reading.shareClassSize, rebalanceFrequency: "Quarterly", feeBasis: "OCF" },
   reading, matches, holdings, holdingsState: "available", returnCurrency: "USD",
@@ -356,7 +357,8 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await page.goto("/research?ticker=EQQQ.L&view=fundamentals&fundMode=tracking");
     await expect(lenses.getByRole("tab", { name: "指数与跟踪" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("region", { name: "年度净值与指数总回报" })).toBeVisible();
-    await expect(page.getByText("日度净值历史")).toBeVisible();
+    await expect(page.getByText("日度跟踪")).toBeVisible();
+    await expect(page.getByText("暂无可比的日度净值与指数历史")).toBeVisible();
     await shot(page, info.project.name, "tracking", "dark");
     await lenses.getByRole("tab", { name: "持仓与重叠" }).click();
     await expect(page.getByRole("region", { name: "前十大持仓" })).toBeVisible();

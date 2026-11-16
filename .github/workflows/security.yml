@@ -63,6 +63,6 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm run audit:dependencies
-      - name: Audit Pi transport dependencies
+      - name: Audit ChatGPT device login dependencies
         working-directory: backend/src/trading_max/synthesis/_pi
         run: npm audit --audit-level=high

@@ -18,9 +18,16 @@ def test_routes_are_explicit_and_provider_scoped() -> None:
 
 def test_route_parser_rejects_unknown_provider_and_model() -> None:
     with pytest.raises(LLMRouteError, match="unknown LLM provider"):
-        parse_route("openrouter/some-model")
+        parse_route("example/some-model")
     with pytest.raises(LLMRouteError, match="not approved"):
         parse_route("deepseek/unknown-model")
+
+
+def test_assistant_only_providers_stay_out_of_synthesis_workloads() -> None:
+    route = parse_route("openrouter/anthropic/claude-sonnet-5", workload="assistant")
+    assert (route.provider, route.model) == ("openrouter", "anthropic/claude-sonnet-5")
+    with pytest.raises(LLMRouteError, match="not approved for portfolio"):
+        parse_route("openrouter/anthropic/claude-sonnet-5", workload="portfolio")
 
 
 def test_direct_deepseek_keeps_legacy_routes_and_exposes_current_models() -> None:

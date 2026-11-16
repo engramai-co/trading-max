@@ -219,8 +219,11 @@ function FundTracking({ fund }: { fund: Fund }) {
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
         [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t, when)} />],
         [errorLabel, <SourceValue key="tracking-error" label={errorLabel} value={error} evidence={fund.profile?.evidence?.tracking_error} t={t} />],
-        [t("日度净值历史", "Daily NAV history"), fund.dailyTracking?.points.length
-          ? sourceLink(fund.dailyTracking.sourceUrl, t("发行商文件", "Issuer file")) : absent(t)],
+        [t("日度跟踪", "Daily tracking"), fund.dailyTracking?.points.length
+          ? sourceLink(fund.dailyTracking.sourceUrl, t("发行商文件", "Issuer file"))
+          : fund.benchmarkRelationship?.relation === "exact"
+            ? t("暂无可比的日度净值与指数历史", "No comparable daily NAV and index history")
+            : absent(t)],
         [t("溢折价", "Premium / discount"), fund.premiumDiscount?.points.length
           ? sourceLink(fund.premiumDiscount.sourceUrl, t("发行商资料", "Issuer data")) : absent(t)],
         [t("买卖价差", "Bid–ask spread"), absent(t)],

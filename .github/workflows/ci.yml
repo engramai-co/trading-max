@@ -53,9 +53,9 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install and test Pi model transport
+      - name: Install and test ChatGPT device login
         run: |
-          npm run llm:install
+          npm run oauth:install
           npm run test:llm
 
       - name: Install uv
@@ -231,7 +231,7 @@ jobs:
                   ]
               finally:
                   database.close()
-          assert versions[-1] == "0022_eodhd_market_data.sql", versions
+          assert versions[-1] == "0024_assistant_conversations.sql", versions
           PY
 
       - name: Exercise backup and restore safety contracts

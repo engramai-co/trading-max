@@ -10,13 +10,21 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
+def _default_migrations_dir() -> Path:
+    module = Path(__file__).resolve()
+    packaged = module.parents[1] / "migrations"
+    if packaged.is_dir():
+        return packaged
+    return module.parents[3] / "migrations"
+
+
 class SqliteDatabase:
     """One process-local SQLite connection configured for durable state."""
 
     def __init__(self, path: Path, migrations_dir: Path | None = None) -> None:
         self.path = path.expanduser().resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.migrations_dir = migrations_dir or (Path(__file__).resolve().parents[3] / "migrations")
+        self.migrations_dir = migrations_dir or _default_migrations_dir()
         self._lock = threading.RLock()
         self.connection = sqlite3.connect(
             self.path,

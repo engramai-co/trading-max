@@ -35,6 +35,7 @@ def candidates(release: Path, minimum_bytes: int = 1) -> Iterator[Path]:
         release / "apps/web/.next/standalone/node_modules",
         release / "apps/web/.next/standalone/.next/static",
         release / "apps/web/.next/standalone/public",
+        # Shared only for ChatGPT device-code login. Inference lives in Python.
         release / "backend/src/trading_max/synthesis/_pi/node_modules",
         release / ".git/objects/pack",
     ]

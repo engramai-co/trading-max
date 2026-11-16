@@ -3,19 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic_ai.providers.openai_codex import OpenAICodexCredentialSource
+from trading_max.llm import ModelConnection
 from trading_max.synthesis.providers import create_provider
 
+from .assistant_settings import (
+    ASSISTANT_CONSENT_REVISION,
+    AssistantSettingsError,
+    parse_assistant_route,
+    validate_assistant_integration,
+)
 from .config import Settings
 from .credentials import CredentialStore, CredentialStoreError
 from .llm_routing import (
     DEFAULT_ROUTE,
     PROVIDER_REGISTRY,
+    LLMProvider,
     LLMRoute,
     LLMRouteError,
+    ProviderSpec,
     parse_route,
 )
+from .models import AssistantReasoning
 from .oauth import OAuthCredentialVault
 from .settings import SettingsRepository
 
@@ -26,6 +38,105 @@ class ProviderRuntimeError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class AssistantConnection:
+    provider: LLMProvider
+    model: str
+    base_url: str
+    api_key: str | None = field(repr=False)
+    codex_credentials: OpenAICodexCredentialSource | None = field(repr=False)
+    reasoning: AssistantReasoning | None
+    route_id: str
+    provider_revision: int
+    preferences_revision: int
+    consent_revision: int
+
+    def to_model_connection(self) -> ModelConnection:
+        return ModelConnection(
+            provider=self.provider,
+            model=self.model,
+            base_url=self.base_url,
+            api_key=self.api_key,
+            codex_credentials=self.codex_credentials,
+        )
+
+
+def assistant_provider_credentials(
+    settings: Settings,
+    spec: ProviderSpec,
+    credentials: CredentialStore,
+) -> tuple[str | None, OpenAICodexCredentialSource | None]:
+    """Read an API key or obtain the credential source for a stored OAuth connection."""
+    try:
+        key = credentials.get(spec.credential_ref)
+    except CredentialStoreError:
+        raise ProviderRuntimeError(
+            "credential_store_unavailable",
+            "operating-system credential store is unavailable",
+        ) from None
+    if key is None or not key.strip():
+        raise ProviderRuntimeError(
+            "provider_not_configured",
+            "configure the assistant provider in Settings",
+        )
+    if spec.auth_method != "oauth":
+        return key, None
+    try:
+        return None, OAuthCredentialVault(settings.data_root, credentials).credential_source()
+    except CredentialStoreError:
+        raise ProviderRuntimeError(
+            "credential_store_unavailable",
+            "operating-system credential store is unavailable",
+        ) from None
+    except (OSError, KeyError, TypeError, ValueError):
+        raise ProviderRuntimeError(
+            "provider_auth_failed", "the assistant provider authorization failed"
+        ) from None
+
+
+def resolve_assistant_connection(
+    settings: Settings,
+    preferences: SettingsRepository,
+    credentials: CredentialStore,
+) -> AssistantConnection:
+    """Resolve the selected, consented assistant route using OS credentials.
+
+    Run in a worker thread: the credential manager is synchronous.
+    """
+    current = preferences.get_assistant_preferences()
+    if not current.enabled:
+        raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
+    if current.accepted_consent_revision != ASSISTANT_CONSENT_REVISION:
+        raise ProviderRuntimeError(
+            "assistant_consent_required", "accept the current assistant consent revision"
+        )
+    try:
+        route = parse_assistant_route(current.route)
+        integration, base_url = validate_assistant_integration(
+            route, preferences.get_integration(route.provider)
+        )
+    except AssistantSettingsError as exc:
+        raise ProviderRuntimeError(exc.code, str(exc)) from None
+    spec = PROVIDER_REGISTRY[route.provider]
+    key, codex_credentials = (
+        (None, None)
+        if spec.auth_method == "optional_api_key" and not integration.credential_fingerprint
+        else assistant_provider_credentials(settings, spec, credentials)
+    )
+    return AssistantConnection(
+        provider=route.provider,
+        model=route.model,
+        base_url=base_url,
+        api_key=key,
+        codex_credentials=codex_credentials,
+        reasoning=current.reasoning,
+        route_id=route.route_id,
+        provider_revision=integration.revision,
+        preferences_revision=current.revision,
+        consent_revision=ASSISTANT_CONSENT_REVISION,
+    )
 
 
 def _annotate_provider(
@@ -142,4 +253,11 @@ def make_provider_factory(
     return build
 
 
-__all__ = ["ProviderRuntimeError", "make_provider_factory"]
+__all__ = [
+    "ASSISTANT_CONSENT_REVISION",
+    "AssistantConnection",
+    "ProviderRuntimeError",
+    "assistant_provider_credentials",
+    "make_provider_factory",
+    "resolve_assistant_connection",
+]

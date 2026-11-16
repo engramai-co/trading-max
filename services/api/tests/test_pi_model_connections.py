@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from trading_max.infrastructure import SqliteDatabase
+from trading_max.llm import REMOTE_BASE_URLS
 
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.config import Settings
@@ -60,7 +61,7 @@ def test_provider_choice_is_tested_saved_and_used_for_all_default_workloads(
                 actual = factory(workload)
                 assert actual.name == provider
                 assert actual.model == spec.default_model
-                assert actual.adapter == "pi-ai"
+                assert actual.adapter == "pydantic-ai"
         finally:
             preferences.close()
 
@@ -94,3 +95,9 @@ def test_legacy_migration_keeps_metadata_and_is_idempotent(tmp_path: Path):
         assert reopened.get_route_policy() == policy
     finally:
         reopened.close()
+
+
+def test_settings_remote_registry_matches_model_credential_boundary():
+    assert dict(REMOTE_BASE_URLS) == {
+        name: provider_spec(name).base_url for name in REMOTE_BASE_URLS
+    }

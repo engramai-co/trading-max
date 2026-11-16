@@ -121,7 +121,7 @@ def preflight(app_root: Path) -> None:
 def build_web(app_root: Path) -> None:
     print("\n[3/6] Installing locked web dependencies and building")
     _run(["uv", "sync", "--all-packages", "--frozen"], cwd=app_root)
-    _run(["npm", "run", "llm:install"], cwd=app_root)
+    _run(["npm", "run", "oauth:install"], cwd=app_root)
     _run(
         ["npm", "--prefix", "apps/web", "ci", "--no-audit", "--no-fund"],
         cwd=app_root,

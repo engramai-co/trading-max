@@ -1,12 +1,12 @@
-"""Compatibility constructors; all model transport is provided by pi-ai."""
+"""Compatibility constructors; all model transport is provided by Pydantic AI."""
 
-from .pi import PiProvider, ProviderError
+from .model import ModelProvider, ProviderError
 
 __all__ = ["DeepSeekProvider", "OpenAIChatProvider", "OpenCodeProvider", "ProviderError"]
-OpenAIChatProvider = PiProvider
+OpenAIChatProvider = ModelProvider
 
 
-class DeepSeekProvider(PiProvider):
+class DeepSeekProvider(ModelProvider):
     def __init__(
         self,
         *,
@@ -26,7 +26,7 @@ class DeepSeekProvider(PiProvider):
         )
 
 
-class OpenCodeProvider(PiProvider):
+class OpenCodeProvider(ModelProvider):
     def __init__(
         self,
         *,

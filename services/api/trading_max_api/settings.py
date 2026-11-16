@@ -11,8 +11,22 @@ from zoneinfo import ZoneInfo
 
 from trading_max.infrastructure import SqliteDatabase
 
-from .llm_routing import WORKLOADS, LLMRoute, LLMRouteError, parse_route
+from .assistant_settings import (
+    ASSISTANT_CONSENT_REVISION,
+    AssistantSettingsError,
+    parse_assistant_route,
+    validate_assistant_integration,
+)
+from .llm_routing import (
+    PROVIDER_REGISTRY,
+    SYNTHESIS_WORKLOADS,
+    LLMRoute,
+    LLMRouteError,
+    parse_route,
+)
 from .models import (
+    AssistantPreferences,
+    AssistantPreferencesUpdate,
     AutomationSettingsUpdate,
     IntegrationSummary,
     LLMRoutePolicy,
@@ -290,16 +304,25 @@ class SettingsRepository:
 
     @staticmethod
     def _summary(row: Any) -> IntegrationSummary:
+        spec = PROVIDER_REGISTRY.get(row["provider"])
+        has_credential = bool(row["credential_ref"] and row["credential_fingerprint"])
+        optional_key = spec is not None and spec.auth_method == "optional_api_key"
+        keyless_configured = bool(
+            optional_key
+            and row["model"]
+            and row["base_url"]
+            and row["last_test_status"] == "succeeded"
+        )
         return IntegrationSummary(
             integration_id=row["integration_id"],
             provider=row["provider"],
             profile=row["profile"],
             enabled=bool(row["enabled"]),
-            configured=bool(row["credential_ref"] and row["credential_fingerprint"]),
+            configured=has_credential or keyless_configured,
             model=row["model"],
             base_url=row["base_url"],
             credential_fingerprint=row["credential_fingerprint"],
-            needs_secret=not bool(row["credential_ref"] and row["credential_fingerprint"]),
+            needs_secret=not optional_key and not has_credential,
             last_test_at=_parse_datetime(row["last_test_at"]),
             last_test_status=row["last_test_status"] or "untested",
             last_error_code=row["last_error_code"],
@@ -324,6 +347,101 @@ class SettingsRepository:
                 (integration_id,),
             ).fetchone()
         return self._summary(row) if row is not None else None
+
+    @staticmethod
+    def _assistant_preferences(row: Any) -> AssistantPreferences:
+        return AssistantPreferences(
+            enabled=bool(row["enabled"]),
+            route=row["route"],
+            reasoning=row["reasoning"],
+            accepted_consent_revision=row["accepted_consent_revision"],
+            accepted_at=_parse_datetime(row["accepted_at"]),
+            revision=int(row["revision"]),
+            updated_at=_parse_datetime(row["updated_at"]) or _now(),
+        )
+
+    def get_assistant_preferences(self) -> AssistantPreferences:
+        with self.database.read() as connection:
+            row = connection.execute(
+                "SELECT * FROM assistant_preferences WHERE preference_id = 'local'"
+            ).fetchone()
+        return self._assistant_preferences(row)
+
+    def save_assistant_preferences(
+        self,
+        update: AssistantPreferencesUpdate,
+        *,
+        actor: str = "local",
+    ) -> AssistantPreferences:
+        with self.database.transaction(immediate=True) as connection:
+            previous = self.get_assistant_preferences()
+            if (
+                update.expected_revision is not None
+                and update.expected_revision != previous.revision
+            ):
+                raise AssistantSettingsError(
+                    "assistant_preferences_conflict", "reload the current assistant preferences"
+                )
+            changes = update.model_dump(by_alias=False, exclude_unset=True)
+            enabled = previous.enabled if update.enabled is None else update.enabled
+            route_id = changes.get("route", previous.route)
+            reasoning = changes.get("reasoning", previous.reasoning)
+            consent = changes.get("accepted_consent_revision", previous.accepted_consent_revision)
+            if "accepted_consent_revision" in changes and consent not in (
+                None,
+                ASSISTANT_CONSENT_REVISION,
+            ):
+                raise AssistantSettingsError(
+                    "assistant_consent_required", "accept the current assistant consent revision"
+                )
+            if enabled and consent != ASSISTANT_CONSENT_REVISION:
+                raise AssistantSettingsError(
+                    "assistant_consent_required", "accept the current assistant consent revision"
+                )
+            if enabled or ("route" in changes and route_id is not None):
+                route = parse_assistant_route(route_id)
+                route_id = route.route_id
+                if enabled:
+                    validate_assistant_integration(route, self.get_integration(route.provider))
+            if (enabled, route_id, reasoning, consent) == (
+                previous.enabled,
+                previous.route,
+                previous.reasoning,
+                previous.accepted_consent_revision,
+            ):
+                return previous
+            now = _now()
+            accepted_at = (
+                None
+                if consent is None
+                else previous.accepted_at
+                if consent == previous.accepted_consent_revision
+                else now
+            )
+            revision = previous.revision + 1
+            row = connection.execute(
+                """UPDATE assistant_preferences SET enabled = ?, route = ?, reasoning = ?,
+                   accepted_consent_revision = ?, accepted_at = ?, revision = ?, updated_at = ?
+                   WHERE preference_id = 'local' RETURNING *""",
+                (
+                    int(enabled),
+                    route_id,
+                    reasoning,
+                    consent,
+                    _iso(accepted_at) if accepted_at is not None else None,
+                    revision,
+                    _iso(now),
+                ),
+            ).fetchone()
+            self._audit(
+                connection,
+                actor=actor,
+                action="assistant_preferences.updated",
+                integration_id=None,
+                revision=revision,
+                metadata={"enabled": enabled, "accepted_consent_revision": consent},
+            )
+            return self._assistant_preferences(row)
 
     def get_route_policy(self) -> LLMRoutePolicy:
         with self.database.read() as connection:
@@ -352,7 +470,9 @@ class SettingsRepository:
         policy = self.get_route_policy()
         value = policy.overrides.get(workload or "", policy.default_route)
         try:
-            return parse_route(value)
+            if workload is not None and workload not in SYNTHESIS_WORKLOADS:
+                raise LLMRouteError("not a synthesis workload")
+            return parse_route(value, workload=workload or "portfolio")
         except LLMRouteError as exc:
             raise RuntimeError(f"invalid persisted LLM route policy: {exc}") from exc
 
@@ -363,8 +483,8 @@ class SettingsRepository:
         actor: str = "local",
     ) -> LLMRoutePolicy:
         try:
-            default_route = parse_route(request.default_route).route_id
-            invalid_workloads = set(request.overrides) - set(WORKLOADS)
+            default_route = parse_route(request.default_route, workload="portfolio").route_id
+            invalid_workloads = set(request.overrides) - set(SYNTHESIS_WORKLOADS)
             if invalid_workloads:
                 raise LLMRouteError(
                     f"unknown LLM workloads: {', '.join(sorted(invalid_workloads))}"
@@ -372,7 +492,7 @@ class SettingsRepository:
             overrides = {}
             for workload, route in request.overrides.items():
                 if route.strip():
-                    overrides[workload] = parse_route(route).route_id
+                    overrides[workload] = parse_route(route, workload=workload).route_id
         except LLMRouteError as exc:
             raise ValueError(str(exc)) from exc
 
@@ -442,7 +562,11 @@ class SettingsRepository:
         actor: str = "local",
         use_as_default: bool = False,
     ) -> IntegrationSummary:
-        route = parse_route(f"{provider}/{model}").route_id if use_as_default else None
+        route = (
+            parse_route(f"{provider}/{model}", workload="portfolio").route_id
+            if use_as_default
+            else None
+        )
         if route and not enabled:
             raise ValueError("the default provider must be enabled")
         integration_id = _integration_id(provider, profile)
