@@ -1,46 +1,49 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.51.0 provides an Apple Silicon macOS App as a Developer ID
+Trading Max 1.52.0 provides an Apple Silicon macOS App as a Developer ID
 signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.51.0).
+the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.51.0
+## Verified scope for 1.52.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
 
 Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
-older-version fixture built from the 1.31.0 source with its updater unchanged.
+older-version fixture built from the 1.31.0 source with its updater unchanged,
+installed as Trading Max Preview.app.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.51.0 DMG and reached **Ready to Install**;
+downloaded the exact final 1.52.0 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
 connection and disabled auto-open preference were unchanged. All 27,398
 installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
-with Cmd-Q stopped its owned services, including those of a local workspace.
-After a relaunch, the workspaces window opened in the chosen App language and
-listed the saved connection and the recent local workspace.
+with Cmd-Q stopped its owned services. After a relaunch, the workspaces window
+opened in Simplified Chinese and listed the saved connection.
 
-Version 1.51.0 changes how the native App shell follows its language, so
-acceptance also covered it. Changing the App language rebuilds the menus and
-retitles open windows without a restart; the folder picker and a local
-workspace's service status follow the same language, and each workspace window
-is titled with its name. The bundled backend carries the Pydantic AI model
-layer and the ChatGPT sign-in package: in a synthetic local workspace, ChatGPT
-sign-in obtained a one-time code from OpenAI and was then cancelled. No sign-in
-was completed.
+Version 1.52.0 names the App **Trading Max**, and the DMG contains
+Trading Max.app. An installed App that updates itself keeps its file name: the
+updater finds the new App by its bundle identifier and installs it in place, so
+the menu bar, About and update windows read Trading Max while Finder, the Dock
+and Spotlight keep the old name. To change it, quit the App and rename
+Trading Max Preview.app to Trading Max.app in Finder. Data, saved connections,
+Keychain items and later updates are unaffected. The acceptance covered this
+in-place update and the new message a stopped service leaves, **The local
+service stopped**.
 
 After publication, anonymous downloads of the DMG, manifest and appcast matched
-the accepted local bytes. An installed 1.49.1 App discovered and downloaded the
-public 1.51.0 update through App Settings, reached **Ready to Install** and
+the accepted local bytes. An installed 1.51.0 App discovered and downloaded the
+public 1.52.0 update through App Settings, reached **Ready to Install** and
 installed it through **Install and Relaunch**. Its connection preferences were
 unchanged, the installed bundle matched the accepted package exactly, and it
-reconnected to its saved HTTPS service.
+reconnected to its saved HTTPS service. Renamed to Trading Max.app, it opened
+and reconnected again.
 
+Version 1.52.0 renames the App and changes nothing else in the workspace.
 Version 1.51.0 brings the workspace's changes since 1.49.1 to the App. Every
 chart reading is one card: the time, one leading figure and up to three rows
 keyed to their lines, with candles led by the close and its change. Hover
