@@ -28,12 +28,12 @@ test.describe("held funds in research", () => {
     expect(ticker).toBeTruthy();
     await fundLink.click();
 
-    const lenses = page.getByRole("tablist", { name: "证券研究视角" });
+    const lenses = page.getByRole("tablist", { name: "研究视角" });
     async function expectFundView() {
       await expect(page).toHaveURL(new RegExp("/research\\?ticker=" + ticker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       await expect(lenses.getByRole("tab")).toHaveCount(7);
       await expect(lenses.getByRole("tab", { name: "指数与跟踪" })).toBeVisible();
-      await expect(page.getByText("还不在研究清单里", { exact: false })).toHaveCount(0);
+      await expect(page.getByText("没有找到“", { exact: false })).toHaveCount(0);
       await expect(page.locator(".mx-etf-summary")).toBeVisible();
     }
     await expectFundView();
@@ -41,12 +41,12 @@ test.describe("held funds in research", () => {
     await page.goto("/holdings?q=" + encodeURIComponent(ticker));
     const holding = page.locator("button:visible").filter({ hasText: ticker }).first();
     await holding.click();
-    await page.getByRole("dialog").getByRole("link", { name: "研究这项投资" }).click();
+    await page.getByRole("dialog").getByRole("link", { name: "查看研究" }).click();
     await expectFundView();
 
     await page.goto("/");
     await page.keyboard.press("Control+k");
-    const search = page.getByRole("combobox", { name: "搜索页面或证券" });
+    const search = page.getByRole("combobox", { name: "搜索" });
     await search.fill(ticker);
     await page.getByRole("option", { name: tickerPattern }).click();
     await expectFundView();

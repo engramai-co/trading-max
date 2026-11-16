@@ -32,7 +32,7 @@ test.describe("desktop surfaces", () => {
         await expect(item).toHaveAttribute("target", "_blank");
       }
       await page.keyboard.press("Escape");
-      holdings = page.getByRole("navigation", { name: /快捷导航|Quick navigation/ }).getByRole("link", { name: /^(持仓|Assets)$/ });
+      holdings = page.getByRole("navigation", { name: /快捷导航|Quick navigation/ }).getByRole("link", { name: /^(持仓|Holdings)$/ });
     } else {
       await expect(tools).toBeVisible();
       expect((await sidebar.boundingBox())!.width).toBeLessThanOrEqual(80);
@@ -66,7 +66,7 @@ test.describe("desktop surfaces", () => {
   test("settings reuses the broker validation gate and separates imports", async ({ page }) => {
     await page.goto("/desktop/settings");
     await expect(page.getByRole("heading", { name: /CFD 历史账本|CFD history ledger/ })).toHaveCount(0);
-    await page.getByRole("button", { name: /连接账户|Connect$/, exact: false }).first().click();
+    await page.getByRole("button", { name: /连接账户|Connect account$/, exact: false }).first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("button", { name: /保存连接|Save connection/ })).toBeDisabled();
     await dialog.getByLabel(/^API Key ID/).fill("synthetic-test-id");

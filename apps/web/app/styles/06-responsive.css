@@ -148,7 +148,7 @@
     min-height: 48px;
     font-size: 16px;
   }
-  .mx-command-dialog .mantine-Modal-close {
+  .mx-search-close {
     min-width: 44px;
     min-height: 44px;
   }
@@ -209,6 +209,20 @@
   }
   .mx-mobile-dock a:active .mx-nav-icon {
     transform: scale(0.96);
+  }
+}
+/* Holdings and Research need about 50px at 12px; a 320px phone gives each English
+   name a step smaller type, a narrower gap and edge, and room to spare when bold. */
+@media (max-width: 359px) {
+  html[lang^="en"] .mx-mobile-dock {
+    padding-left: max(4px, env(safe-area-inset-left));
+    padding-right: max(4px, env(safe-area-inset-right));
+  }
+  html[lang^="en"] .mx-mobile-dock > .mx-nav-group {
+    gap: 2px;
+  }
+  html[lang^="en"] .mx-mobile-dock a {
+    font-size: 11px;
   }
 }
 @media (max-width: 767px) {

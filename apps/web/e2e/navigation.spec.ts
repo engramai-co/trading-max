@@ -2,9 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import type { ResearchShell } from "../lib/types";
 
-const searchName = /搜索页面或证券|Search pages or securities/;
+const searchName = /^(搜索|Search)$/;
 async function openSearch(page: Page) {
-  await page.getByRole("button", { name: searchName }).click();
+  // The research page has its own search; the workspace search lives in the top bar.
+  await page.getByRole("banner").getByRole("button", { name: searchName }).click();
   const input = page.getByRole("combobox", { name: searchName });
   await expect(input).toBeFocused();
   return input;
@@ -68,7 +69,7 @@ test.describe("workspace navigation refinements", () => {
     await expect(page.getByRole("option")).toHaveCount(1);
     await expect(page.getByRole("option")).toContainText(/在持仓中搜索|Search holdings/);
     await input.fill("估值");
-    await expect(page.getByRole("status").filter({ hasText: /加上证券代码|Include a ticker/ })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /加上代码|Add a ticker/ })).toBeVisible();
   });
 
   test("static deep links remain available when the directory fails", async ({ page }) => {
@@ -165,9 +166,9 @@ test.describe("workspace navigation refinements", () => {
         .every((button) => button.getBoundingClientRect().width >= 44 && button.getBoundingClientRect().height >= 44))).toBe(true);
       await expect(page.locator(".mx-topbar").getByRole("button", { name: "Choose appearance" })).toBeHidden();
       await expect(page.locator(".mx-mobile-dock")).toBeVisible();
-      // Six cells at 320px: the English names are short enough to fit at 12px without clipping.
+      // Six cells at 320px: Holdings and Research, the longest names, still fit at 12px without clipping.
       const dockLinks = page.locator(".mx-mobile-dock").getByRole("link");
-      await expect(dockLinks).toHaveText(["Home", "Assets", "Returns", "Markets", "Stocks", "Review"]);
+      await expect(dockLinks).toHaveText(["Home", "Holdings", "Returns", "Markets", "Research", "Review"]);
       expect(await dockLinks.evaluateAll((links) => links.every((link) => {
         const label = link.querySelector("span:last-child")!;
         return label.getBoundingClientRect().width <= link.getBoundingClientRect().width + 0.5;
@@ -177,7 +178,7 @@ test.describe("workspace navigation refinements", () => {
       const menu = page.getByRole("menu");
       // Mantine exposes the menu while it fades in; measure and scan it when fully painted.
       await expect(menu).toHaveCSS("opacity", "1");
-      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Connections", "中文", "Light", "Dark", "System"]);
+      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Settings", "中文", "Light", "Dark", "System"]);
       const box = (await menu.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(size.width);
@@ -230,16 +231,16 @@ test.describe("workspace navigation refinements", () => {
     expect((await rail.boundingBox())!.width).toBeLessThanOrEqual(80);
     expect(await nav.innerText()).toBe("");
     expect(await nav.getByRole("link").evaluateAll((links) => links.every((link) => link.getAttribute("aria-label") && link.getBoundingClientRect().height >= 44))).toBe(true);
-    const research = nav.getByRole("link", { name: /证券研究|Research/ });
+    const research = nav.getByRole("link", { name: /^(研究|Research)$/ });
     const researchShape = await research.locator(".mx-nav-icon-outline path").first().getAttribute("d");
     expect(researchShape).not.toBe(await page.locator(".mx-topbar-search path").first().getAttribute("d"));
     expect(researchShape).not.toBe(await nav.getByRole("link", { name: /收益与风险|Performance/ }).locator(".mx-nav-icon-outline path").first().getAttribute("d"));
     await research.hover();
-    await expect(page.getByRole("tooltip")).toHaveText(/证券研究|Research/);
+    await expect(page.getByRole("tooltip")).toHaveText(/^(研究|Research)$/);
     await page.mouse.move(300, 80);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await research.focus();
-    await expect(page.getByRole("tooltip")).toHaveText(/证券研究|Research/);
+    await expect(page.getByRole("tooltip")).toHaveText(/^(研究|Research)$/);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(research).toBeFocused();
@@ -249,7 +250,7 @@ test.describe("workspace navigation refinements", () => {
     test.skip(testInfo.project.name !== "desktop");
     await page.goto("/analytics");
     const nav = page.getByRole("navigation", { name: /主导航|Primary navigation/ });
-    const research = nav.getByRole("link", { name: /证券研究|Research/ });
+    const research = nav.getByRole("link", { name: /^(研究|Research)$/ });
     await research.click();
     await expect(research).toHaveAttribute("aria-current", "page");
     await expect(nav.locator(".mx-nav-group")).toHaveAttribute("data-motion", "pointer");

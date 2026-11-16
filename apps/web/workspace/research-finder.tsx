@@ -1,15 +1,20 @@
 "use client";
 
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
-import { Button, Group, Modal, TextInput } from "@mantine/core";
+import { Button, CloseButton, Modal, TextInput } from "@mantine/core";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/workspace/data";
-import { Empty, Instrument, Notice, Pending, useCopy } from "./foundation";
+import { Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
 import { researchIndexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
 
+/**
+ * One search for stocks, ETFs and indices. Indices come from the local catalogue
+ * as the text changes; listings are looked up when the search is submitted,
+ * because each lookup calls rate-limited listing providers.
+ */
 export function SecurityFinder({
   opened,
   onClose,
@@ -43,42 +48,37 @@ export function SecurityFinder({
     if (showingCurrentSearch) void query.refetch();
     else setSearch(currentText);
   }
+  const results = showingCurrentSearch ? query.data?.results.slice(0, 3) ?? [] : [];
   return (
     <Modal
       opened={opened}
       onClose={onClose}
-      title={t("添加证券", "Add security")}
+      title={t("搜索", "Search")}
+      withCloseButton={false}
+      classNames={{ header: "sr-only", body: "mx-search-body" }}
       size={620}
     >
-      <form onSubmit={submit}>
-        <Group align="flex-end" gap="sm" wrap="nowrap">
+      <div className="mx-search-row">
+        <form onSubmit={submit} role="search">
           <TextInput
-            flex={1}
             data-autofocus
-            aria-label={t("搜索证券", "Search securities")}
-            placeholder={
-              initial || t("证券代码或公司名", "Ticker or company name")
-            }
+            aria-label={t("搜索", "Search")}
+            placeholder={initial || t("代码或名称", "Ticker or name")}
+            enterKeyHint="search"
+            autoComplete="off"
             value={text}
             maxLength={100}
             onChange={(e) => setText(e.currentTarget.value)}
             leftSection={<MagnifyingGlass size={18} />}
           />
-          <Button
-            type="submit"
-            disabled={currentText.length < 2}
-            loading={query.isFetching && showingCurrentSearch}
-          >
-            {t("搜索", "Search")}
-          </Button>
-        </Group>
-      </form>
+        </form>
+        <CloseButton className="mx-search-close" size="lg" aria-label={t("关闭", "Close")} onClick={onClose} />
+      </div>
       {indices.length > 0 && <div className="mx-index-search">
-        <h3>{t("指数", "Indices")}</h3>
         {indices.map((index) => (
           <Link key={index.id} className="mx-row-link mx-research-index-result" href={researchIndexHref(index)} onClick={onClose}>
             <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
-            <span className="mx-form-help">{index.variant}</span>
+            <span className="mx-form-help">{t("指数", "Index")}</span>
             <span>{t("查看", "Open")}</span>
           </Link>
         ))}
@@ -92,41 +92,27 @@ export function SecurityFinder({
         </Notice>
       ) : search.length >= 2 && query.isPending ? (
         <Pending compact />
-      ) : query.data ? (
-        query.data.results.length ? (
-          <div style={{ marginTop: 20 }}>
-            {query.data.results.slice(0, 3).map((r, i) => (
-              <div className="mx-row-link" key={r.figi || r.ticker + i}>
-                <Instrument ticker={r.ticker} name={r.name} small />
-                <span className="mx-form-help">{r.exchange}</span>
-                <Button
-                  size="xs"
-                  variant={r.alreadyWatched ? "default" : "light"}
-                  onClick={() => onSelect(r)}
-                >
-                  {t("查看", "Open")}
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : indices.length ? null : (
-          <Empty
-            title={t("没有找到匹配证券", "No matching securities")}
-            description={t(
-              "尝试使用交易所代码或公司全名。",
-              "Try an exchange ticker or the full company name.",
-            )}
-          />
-        )
-      ) : indices.length ? null : (
-        <Empty
-          title={t("搜索证券", "Search for a security")}
-          description={t(
-            "输入至少两个字符，搜索可研究的证券。",
-            "Enter at least two characters to search available securities.",
-          )}
-        />
-      )}
+      ) : results.length ? (
+        <div className="mx-finder-results">
+          {results.map((r, i) => (
+            <div className="mx-row-link" key={r.figi || r.ticker + i}>
+              <Instrument ticker={r.ticker} name={r.name} small />
+              <span className="mx-form-help">{r.exchange}</span>
+              <Button
+                size="xs"
+                variant={r.alreadyWatched ? "default" : "light"}
+                onClick={() => onSelect(r)}
+              >
+                {t("查看", "Open")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : query.data && !indices.length ? (
+        <p className="mx-finder-empty" role="status">
+          {t("没有找到“", "No results for “") + search + "”"}
+        </p>
+      ) : null}
     </Modal>
   );
 }

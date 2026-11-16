@@ -2,12 +2,13 @@
 
 import type { ResearchShell } from "@/lib/types";
 import { ActionIcon, Checkbox, Group, Select, TextInput } from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
-import { MagnifyingGlass, Plus, PushPin } from "@phosphor-icons/react";
+import { MagnifyingGlass, PushPin } from "@phosphor-icons/react";
 import { useState } from "react";
 import { Instrument, useCopy } from "./foundation";
 import Link from "./link";
-import { indexDirectory, researchIndexHref, matchIndices, savedIndexKey, useIndexCatalog } from "./market-indices-data";
+import {
+  indexDirectory, researchIndexHref, matchIndices, useIndexCatalog, useListedIndices, type IndexIdentity,
+} from "./market-indices-data";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
 
@@ -48,12 +49,12 @@ export function UniverseHeading({
   wide,
   pinned,
   onPin,
-  onAdd,
+  onSearch,
 }: {
   wide: boolean;
   pinned: boolean;
   onPin: () => void;
-  onAdd: () => void;
+  onSearch: () => void;
 }) {
   const t = useCopy();
   return (
@@ -75,11 +76,11 @@ export function UniverseHeading({
           </ActionIcon>
         )}
         <ActionIcon
-          aria-label={t("添加证券", "Add security")}
-          size={30}
-          onClick={onAdd}
+          aria-label={t("搜索", "Search")}
+          variant="subtle"
+          onClick={onSearch}
         >
-          <Plus size={16} />
+          <MagnifyingGlass size={17} />
         </ActionIcon>
       </Group>
     </span>
@@ -101,28 +102,39 @@ export function UniverseList({
   categories,
   instruments,
   ticker,
+  indexId,
   onSelect,
 }: {
   state: ReturnType<typeof useResearchUniverse>;
   categories: ResearchShell["watchlistCategories"];
   instruments: ResearchInstrument[];
   ticker: string;
+  /** The index open beside the list, if any. */
+  indexId?: string;
   onSelect: (ticker: string) => void;
 }) {
   const t = useCopy();
-  const [saved] = useLocalStorage<string[]>({ key: savedIndexKey, defaultValue: [] });
+  const listed = useListedIndices();
   const isIndexCategory = category === "indices";
-  const catalog = useIndexCatalog(isIndexCategory || (filter.trim().length >= 2 && !heldOnly && category === "all"));
-  const indices = isIndexCategory && !filter.trim()
-    ? indexDirectory(catalog.data, saved)
-    : isIndexCategory || (!heldOnly && category === "all")
-      ? matchIndices(catalog.data, filter).slice(0, isIndexCategory ? 60 : 5) : [];
+  const query = filter.trim();
+  const showIndices = !heldOnly && (category === "all" || isIndexCategory);
+  const catalog = useIndexCatalog(showIndices && (listed.ids.length > 0 || isIndexCategory || query.length >= 2));
+  const inList = listed.ids
+    .map((id) => catalog.data?.find((index) => index.id === id))
+    .filter((index): index is IndexIdentity => index !== undefined);
+  // Listed indices sit in the list like stocks and funds; a filter also finds other indices.
+  const indices = !showIndices ? []
+    : isIndexCategory && !query ? indexDirectory(catalog.data, listed.ids)
+    : query ? matchIndices(catalog.data, query).slice(0, isIndexCategory ? 60 : 5 + inList.length)
+    : inList;
+  const order = (a: (typeof indices)[number], b: (typeof indices)[number]) =>
+    Number(listed.has(b.id)) - Number(listed.has(a.id));
   return (
     <>
       <TextInput
         size="xs"
         aria-label={t("筛选研究清单", "Filter research list")}
-        placeholder={t("筛选研究清单…", "Filter research list…")}
+        placeholder={t("筛选", "Filter")}
         value={filter}
         onChange={(e) => setFilter(e.currentTarget.value)}
         leftSection={<MagnifyingGlass size={15} />}
@@ -162,36 +174,41 @@ export function UniverseList({
         checked={heldOnly}
         disabled={isIndexCategory}
         onChange={(e) => setHeldOnly(e.currentTarget.checked)}
-        label={t("仅看我的持仓", "Held in my portfolio")}
+        label={t("仅看持仓", "Holdings only")}
       />
       <div className="mx-watchlist">
-        {indices.map((index) => (
-          <Link key={index.id} className="mx-watchlist-item mx-research-index-result" href={researchIndexHref(index)}>
-            <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
-            <span className="mx-form-help">{t("指数", "Index")}</span>
-          </Link>
-        ))}
-        {displayed.map((i) => (
+        {!isIndexCategory && displayed.map((i) => (
           <button
             key={i.ticker}
             className="mx-watchlist-item"
             data-selected={ticker === i.ticker || undefined}
             onClick={() => onSelect(i.ticker)}
-            aria-label={t("研究 ", "Research ") + i.ticker}
           >
             <Instrument ticker={i.ticker} name={i.name} small />
             {i.held && (
               <span
                 className="mx-status-dot"
+                role="img"
                 aria-label={t("已持有", "Held")}
               />
             )}
           </button>
         ))}
+        {[...indices].sort(order).map((index) => (
+          <Link
+            key={index.id}
+            className="mx-watchlist-item mx-research-index-result"
+            data-selected={indexId === index.id || undefined}
+            href={researchIndexHref(index)}
+          >
+            <Instrument ticker={t(index.nameZh, index.name)} name={index.symbol ?? index.compiler} small />
+            <span className="mx-form-help">{t("指数", "Index")}</span>
+          </Link>
+        ))}
       </div>
-      {!displayed.length && !indices.length && (
+      {(isIndexCategory || !displayed.length) && !indices.length && (
         <p className="mx-form-help">
-          {t("没有匹配的标的。", "No securities match this filter.")}
+          {t("没有匹配项", "No matches")}
         </p>
       )}
     </>

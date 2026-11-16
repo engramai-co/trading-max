@@ -2,14 +2,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.mx-index-research-back {
-  align-items: center;
-  display: inline-flex;
-  gap: 7px;
-  padding: 0 8px;
-  min-height: 40px;
-}
-
 .mx-index-research-hero {
   display: flex;
   align-items: center;
@@ -217,10 +209,6 @@
 }
 .mx-index-research-waterfall-axis > b[data-tone="down"] {
   background: var(--mx-down);
-}
-.mx-index-search > h3 {
-  font-size: 14px;
-  margin: 14px 0 3px;
 }
 @media (max-width: 48em) {
   .mx-index-research-hero {

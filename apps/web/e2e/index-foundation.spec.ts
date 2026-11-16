@@ -67,9 +67,11 @@ async function runPeerFlow(page: Page, baseURL: string, name: string) {
     return route.fulfill({ json: {} });
   });
   await page.goto(new URL("/research?ticker=EQGB.L&view=peers", baseURL).href);
-  await page.getByRole("button", { name: "管理当前证券" }).click();
-  await expect(page.getByText("持仓标的保留在研究中")).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "从研究清单移除" })).toHaveCount(0);
+  await page.getByRole("button", { name: "更多操作" }).click();
+  // A holding stays in the list: removal is offered but unavailable, and says why.
+  const remove = page.getByRole("menuitem", { name: /从研究清单移除/ });
+  await expect(remove).toBeDisabled();
+  await expect(remove).toContainText("持仓中");
   await page.keyboard.press("Escape");
   await page.getByRole("link", { name: /QQQ/ }).last().click();
   await expect(page).toHaveURL(/ticker=QQQ/);
@@ -90,7 +92,7 @@ async function runPeerFlow(page: Page, baseURL: string, name: string) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await add.click();
   await expect(add).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "管理当前证券" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "更多操作" })).toBeVisible();
   expect(posts).toBe(1);
 }
 
