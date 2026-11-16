@@ -85,6 +85,10 @@ test.describe("primary chart reading", () => {
       await expect(chart).toBeVisible();
       await expect(readout).toContainText("Open");
       await expect(chartPanel.getByRole("button", { name: "Candles" })).toHaveAttribute("aria-pressed", "true");
+      // The diagnosis below the chart spans the chart column instead of shrinking to its rows.
+      const [chartBox, diagnosisBox] = await Promise.all([chartPanel.boundingBox(), page.locator(".mx-tech-diagnosis").boundingBox()]);
+      expect(Math.abs(diagnosisBox!.width - chartBox!.width)).toBeLessThanOrEqual(2);
+      expect(diagnosisBox!.x).toBeCloseTo(chartBox!.x, 0);
       if (width === 1100) {
         const [plot, score] = await Promise.all([chart.boundingBox(), page.locator(".mx-tech-rail").boundingBox()]);
         expect(plot!.y).toBeLessThan(700);

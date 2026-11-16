@@ -437,7 +437,9 @@
   gap: 20px;
   align-items: start;
 }
-.mx-tech-evidence {
+/* The diagnosis spans the chart column. Keep this class apart from .mx-tech-evidence,
+   whose direct children are flex factor rows. */
+.mx-tech-diagnosis-slot {
   min-width: 0;
 }
 .mx-tech-rail {

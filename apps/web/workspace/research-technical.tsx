@@ -110,6 +110,6 @@ export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry 
   return <div className="mx-tech-workspace">
     <div className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} /></div>
     <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
-    <div className="mx-tech-evidence">{data ? <TechnicalDiagnosis data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
+    <div className="mx-tech-diagnosis-slot">{data ? <TechnicalDiagnosis data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
   </div>;
 }
