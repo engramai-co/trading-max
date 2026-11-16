@@ -3,14 +3,14 @@
 import { useMediaQuery } from "@mantine/hooks";
 import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { formatDate } from "@/ui/formatters";
+import { formatDate, formatReadingTime, type ReadingGranularity } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
 import { currency, percent } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, useCopy } from "./foundation";
-import { includeDailyMarkers, timelineOption, type TimelineLayer } from "./timeline-option";
-import { timelineReadoutRows, type TimelineTooltip } from "./timeline-tooltip";
+import { includeDailyMarkers, timelineLineColour, timelineOption, type TimelineLayer } from "./timeline-option";
+import { timelineGaps, timelineReadout, timelineRows, type TimelineReading } from "./timeline-reading";
 import { valuationNote, type CalendarTimeline } from "@/lib/portfolio/history";
 import type { NavPoint } from "@/lib/types";
 import type { HistorySelection } from "@/lib/portfolio/prepared";
@@ -26,7 +26,7 @@ export function TimelineChart({
   intraday = false,
   details = [],
   observations,
-  tooltip,
+  reading,
   recordSource,
   showHistoryEvidence = true,
   range,
@@ -43,7 +43,8 @@ export function TimelineChart({
   intraday?: boolean;
   details?: Array<{ label: string; values: Array<number | null>; percentage?: boolean }>;
   observations?: NavPoint[];
-  tooltip?: TimelineTooltip;
+  /** The surface's own figures for a row; by default every plotted line. */
+  reading?: TimelineReading;
   recordSource?: HistorySelection;
   /** Keep the plotted source styles and tooltip when a surface puts provenance in its help. */
   showHistoryEvidence?: boolean;
@@ -63,7 +64,6 @@ export function TimelineChart({
   const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined;
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
-  const dailyDates = new Set(dates.filter((date) => !date.includes("T")).map(Date.parse));
   const plotHeight = (moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510))
     - (shortRange ? 24 : 0);
   if (
@@ -78,21 +78,18 @@ export function TimelineChart({
         <Empty
           headingLevel={emptyHeadingLevel}
           title={pendingCashFlows && dates.length
-            ? t("估值已记录，净盈亏待核对", "Valuations recorded; P&L awaits reconciliation")
+            ? t("估值已记录，净盈亏待核对", "Valuations recorded; net P&L awaits reconciliation")
             : t("还没有可展示的观测记录", "No observations to chart yet")}
           description={pendingCashFlows && dates.length
             ? showHistoryEvidence && recordSource
-              ? t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The P&L chart will return after account cash flows are reconciled. Recorded values remain available below.")
-              : t("账户资金流水核对完成后，将恢复本区间的净盈亏曲线。", "The P&L chart will return after account cash flows are reconciled.")
+              ? t("出入金核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The net P&L chart returns after deposits and withdrawals are reconciled. Recorded values remain available below.")
+              : t("出入金核对完成后，将恢复本区间的净盈亏曲线。", "The net P&L chart returns after deposits and withdrawals are reconciled.")
             : undefined}
         />
         {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} label={label} />}
       </>
     );
   }
-  const timestamp = (time: number) => formatDate(time, locale, !dailyDates.has(time)
-    ? { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone, timeZoneName: "short" }
-    : { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
   const option = timelineOption(dates, layers, colours, (time) => {
     const zone = intraday ? timeZone : "UTC";
     // One line per date; the year appears only on dates outside the
@@ -103,38 +100,55 @@ export function TimelineChart({
       ? day
       : day + "\n" + year;
   },
-    timeline, details, timestamp,
-    tooltip,
-    display,
-    observations?.map((point) => ({ estimated: point.valuationSource === "reconstructed", note: valuationNote(point, t) })),
-    moneyLayout,
-    plotHeight,
-    phone ? 320 : 950,
-  );
+    timeline, {
+      display,
+      estimated: observations?.map((point) => point.valuationSource === "reconstructed"),
+      moneyLayout,
+      plotHeight,
+      plotWidth: phone ? 320 : 950,
+    });
   // Solid is the default. Key only the source exceptions that produced a
   // visible stroke after sampling, using the same series as the chart.
   const sourceKeys = showHistoryEvidence && observations ? [
-    { type: "estimate", dash: "4 3", label: t("重建估算", "Estimate") },
+    { type: "estimate", dash: "4 3", label: t("估算", "Estimate") },
     { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
   ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
   const calendar = timeline && moneyLayout ? includeDailyMarkers(timeline, dates, layers) : timeline;
-  const rows = new Map<number, number>();
-  const hasValues = (row: number) => layers.some((layer) => layer.lines.some((line) => line.values[row] != null));
-  (calendar?.rowIndexes ?? dates.map((_, i) => i)).forEach((row, position) => {
-    if (row != null && hasValues(row)) rows.set(calendar ? position : Date.parse(dates[row]), row);
-  });
-  const positions = [...rows.keys()];
-  const latestRow = rows.get(positions.at(-1)!)!;
-  const readoutContent = tooltip ?? {
-    primary: layers[0].lines.map((line) => ({ ...line, label: line.name, percentage: layers[0].percentage })),
-    secondary: [...layers.slice(1).flatMap((layer) => layer.lines.map((line) => ({ ...line, label: line.name, percentage: layer.percentage }))), ...details],
-  };
-  const gaps = option.series.flatMap((series) => {
-    if (series.id !== "history-gap:0:0" || !("data" in series) || !Array.isArray(series.data)) return [];
-    return series.data.flatMap((point, index, all) => {
-      if (index % 3 !== 0 || !Array.isArray(point) || !Array.isArray(all[index + 1])) return [];
-      return [[Number(point[0]), Number((all[index + 1] as number[])[0])] as const];
-    });
+  const rows = timelineRows(dates, layers, calendar);
+  const granularity: ReadingGranularity = range === "1D" ? "clock"
+    : range === "1W" || range === "1M" || (!range && intraday) ? "intraday" : "day";
+  const gaps = timelineGaps(option.series);
+  const gapEnds = new Set(gaps.map(([, end]) => end));
+  const reconstructed = observations?.map((point) => point.valuationSource === "reconstructed");
+  // When most of the window is reconstructed, the panel says so once; single points are flagged only as exceptions.
+  const mostlyEstimated = !!reconstructed && reconstructed.filter(Boolean).length * 2 >= reconstructed.length;
+  const readout = timelineReadout({
+    rows,
+    layers,
+    colours,
+    reading,
+    time: (row) => {
+      const marks = new Set(layers.flatMap((layer) => layer.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []));
+      return [formatReadingTime(dates[row], locale, timeZone, dates[row].includes("T") ? granularity : "day"), ...marks].join(" · ");
+    },
+    flag: (row, position) => gapEnds.has(position) ? t("缺口后", "After gap")
+      : reconstructed?.[row] && !mostlyEstimated ? t("估算", "Estimate") : undefined,
+    gap: (position) => gaps.some(([start, end]) => position > start + (calendar ? 0.5 : 0) && position < end - (calendar ? 0.5 : 0)),
+    records: fullscreen ? (position) => {
+      const row = rows.get(position);
+      if (row == null) return [];
+      const source = observations?.[row]?.valuationSource ?? "portfolio history";
+      return layers.flatMap((layer) => layer.lines.flatMap((line) => {
+        const value = line.values[row];
+        if (value == null) return [];
+        return [{
+          time: dates[row], zone: dates[row].includes("T") ? timeZone : "UTC", currency: layer.percentage ? "%" : "GBP",
+          basis: layer.percentage ? "fractional return" : "amount", source,
+          gapType: gapEnds.has(position) ? "after-missing-observation" : "",
+          series: line.name, value,
+        }];
+      }));
+    } : undefined,
   });
   const plot = (
     <Plot
@@ -143,40 +157,11 @@ export function TimelineChart({
       fullscreen={fullscreen}
       overlay={moneyLayout && <>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
-          <Legend items={layers[1].lines.map((line) => ({ label: line.name, dashed: line.dashed, colour: "var(--mx-muted)" }))} />
+          <Legend items={layers[1].lines.map((line, index) => ({ label: line.name, dashed: line.dashed, colour: timelineLineColour(colours, 1, index, line) }))} />
         </div>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>{drawdownHeading}</div>
       </>}
-      readout={{
-        positions,
-        latest: timelineReadoutRows(readoutContent, latestRow)[0] ?? "",
-        records: fullscreen ? (position) => {
-          const row = rows.get(position);
-          if (row == null) return [];
-          const source = observations?.[row]?.valuationSource ?? "portfolio history";
-          return layers.flatMap((layer) => layer.lines.flatMap((line) => {
-            const value = line.values[row];
-            if (value == null) return [];
-            return [{
-              time: dates[row], zone: dates[row].includes("T") ? timeZone : "UTC", currency: layer.percentage ? "%" : "GBP",
-              basis: layer.percentage ? "fractional return" : "amount", source,
-              gapType: gaps.some(([, end]) => position === end) ? "after-missing-observation" : "",
-              series: line.name, value,
-            }];
-          }));
-        } : undefined,
-        gap: (position) => gaps.some(([start, end]) => position > start + (calendar ? 0.5 : 0) && position < end - (calendar ? 0.5 : 0)),
-        point: (position) => {
-          const row = rows.get(position);
-          if (row == null) return "";
-          const marks = layers.flatMap((layer) => layer.markers?.filter((mark) => mark.date === dates[row]).map((mark) => mark.name) ?? []);
-          return [timestamp(Date.parse(dates[row])), ...timelineReadoutRows(readoutContent, row), ...new Set(marks)].join("\n");
-        },
-        note: (position) => {
-          const row = rows.get(position);
-          return row != null && observations?.[row] ? valuationNote(observations[row], t) : undefined;
-        },
-      }}
+      readout={readout}
       height={plotHeight}
       option={() => option}
     />

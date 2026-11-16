@@ -232,7 +232,7 @@ describe("drivers beside the figure they explain", () => {
     expect(tag).toBe('<span class="mx-tag mx-tag-warn">截至 09:00</span>');
     expect(cutoffLabel(history, "en", "Europe/London")).toBe("Through 09:00");
     expect(cutoffLabel(history, "en", "Asia/Shanghai")).toBe("Through 17:00");
-    expect(cutoffLabel({ pendingCashFlows: true, cashFlowCutoffAt: null }, "en", "Europe/London")).toBe("Cash flows pending");
+    expect(cutoffLabel({ pendingCashFlows: true, cashFlowCutoffAt: null }, "en", "Europe/London")).toBe("Deposits and withdrawals pending");
     expect(cutoffLabel({ pendingCashFlows: false, cashFlowCutoffAt: null }, "en", "Europe/London")).toBeNull();
     expect(dayDrivers({ attribution: xyz("2026-11-02T15:00:00Z"), scope: "invest", day, dates: morning, pnls: [0, 10], cutOff: true })).toBeNull();
     // Once the figure catches up, the same attribution explains it.

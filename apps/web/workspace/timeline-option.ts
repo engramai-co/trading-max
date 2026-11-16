@@ -2,11 +2,9 @@ import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ChartLine } from "./charts";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
-import { numeric } from "@/lib/numeric";
 import { percent } from "@/workspace/data";
 import { historyGapSeries, historySeries, historySourceSeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
-import { timelineTooltipCard, type TimelineTooltip } from "./timeline-tooltip";
 import { timelineAxis } from "./timeline-axis";
 import { timelineLabels, type TimelineDisplay } from "./timeline-labels";
 import { moneyAxis, type moneyTimelineLayout } from "./money-timeline-layout";
@@ -47,27 +45,34 @@ export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[],
   return result;
 }
 
+/** The stroke a timeline line is drawn with; reading keys and cursor dots use the same colour. */
+export function timelineLineColour(colours: ChartColours, layer: number, index: number, line: Pick<ChartLine, "colour">) {
+  return colours[line.colour ?? (layer === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")];
+}
+
+export type TimelineOptions = {
+  display?: TimelineDisplay;
+  /** Which observations were reconstructed; they are drawn dashed. */
+  estimated?: boolean[];
+  moneyLayout?: ReturnType<typeof moneyTimelineLayout>;
+  /** The canvas height of a single-layer chart. A short chart shrinks its plot to keep its axis labels inside. */
+  plotHeight?: number;
+  plotWidth?: number;
+};
+
 export function timelineOption(
   dates: string[],
   layers: TimelineLayer[],
   colours: ChartColours,
   formatDay: (time: number) => string,
   baseCalendar?: CalendarTimeline,
-  details: Array<{ label: string; values: Array<number | null>; percentage?: boolean }> = [],
-  formatTimestamp = formatDay,
-  tooltip?: TimelineTooltip,
-  display?: TimelineDisplay,
-  provenance?: Array<{ estimated: boolean; note: string }>,
-  moneyLayout?: ReturnType<typeof moneyTimelineLayout>,
-  /** The canvas height of a single-layer chart. A short chart shrinks its plot to keep its axis labels inside. */
-  plotHeight?: number,
-  plotWidth = 1000,
+  { display, estimated, moneyLayout, plotHeight, plotWidth = 1000 }: TimelineOptions = {},
 ): EChartsOption & { series: SeriesOption[] } {
   const calendar = baseCalendar && moneyLayout ? includeDailyMarkers(baseCalendar, dates, layers) : baseCalendar;
   const times = dates.map(Date.parse);
   const timestampRows = calendar ? undefined : new Map(times.map((time, index) => [time, index]));
   const rowAt = (position: number) => calendar ? calendar.rowIndexes[position] ?? -1 : timestampRows?.get(position) ?? -1;
-  const hasEstimates = provenance?.some((point) => point.estimated) ?? false;
+  const hasEstimates = estimated?.some(Boolean) ?? false;
   const labels = calendar && display ? timelineLabels(calendar.categories, display) : undefined;
   // Keep every date candidate: resampling an eight-label subset to five
   // produces uneven 2/2/1/2 strides at the compact breakpoint.
@@ -214,54 +219,9 @@ export function timelineOption(
         splitLine: { lineStyle: { color: colours.grid, type: "dashed" } },
       };
     }),
-    tooltip: {
-      trigger: "axis",
-      renderMode: "html",
-      className: "mx-chart-tooltip",
-      enterable: false,
-      transitionDuration: 0,
-      displayTransition: false,
-      confine: true,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colours.tooltipBorder,
-      backgroundColor: colours.tooltip,
-      textStyle: { color: colours.tooltipText, fontSize: 13 },
-      extraCssText: [
-        "white-space:normal;border-radius:12px",
-        `box-shadow:0 4px 16px ${colours.tooltipShadow}`,
-        `--mx-tooltip-ink:${colours.tooltipText}`,
-        `--mx-tooltip-muted:${colours.tooltipMuted}`,
-        `--mx-tooltip-border:${colours.tooltipBorder}`,
-        `--mx-tooltip-up:${colours.positive}`,
-        `--mx-tooltip-down:${colours.negative}`,
-        "",
-      ].join(";"),
-      formatter: (input) => {
-        // Only actual plotted values can anchor the card, never a missing slot.
-        const entries = Array.isArray(input) ? input : [input];
-        const point = entries.find((entry) => !/^history-(gap|area|observed|estimate):/.test(String(entry.seriesId ?? "")) && Array.isArray(entry.value) && numeric(entry.value[1]) != null);
-        const time = numeric(
-          Array.isArray(point?.value) ? point.value[0] : null,
-        );
-        const index = time == null ? -1 : rowAt(time);
-        if (index < 0) return "";
-        return timelineTooltipCard(tooltip ?? {
-          primary: layers[0]?.lines.map((line) => ({ ...line, label: line.name, percentage: layers[0].percentage })) ?? [],
-          secondary: [
-            ...layers.slice(1).flatMap((layer) => layer.lines.map((line) => ({ ...line, label: line.name, percentage: layer.percentage, signed: true }))),
-            ...details,
-          ],
-        }, index, formatTimestamp(times[index]), provenance?.[index]?.note);
-      },
-    },
     series: layers.flatMap((layer, axis) =>
       layer.lines.flatMap((line, index) => {
-        const colour =
-          colours[
-            line.colour ??
-              (axis === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")
-          ];
+        const colour = timelineLineColour(colours, axis, index, line);
         const marks = [...(layer.markers ?? []), ...(layer.markerDate ? [{ date: layer.markerDate, name: layer.label }] : [])];
         const markPoints = marks.flatMap(({ date, name }) => {
           const row = dates.indexOf(date);
@@ -280,7 +240,7 @@ export function timelineOption(
         const data = layer.drawdown || line.step ? rawData
           : [...sampleLine(rawData, plotWidth, (point) => point.value[0]!, (point) => point.value[1], (point) => markPositions.has(point.value[0]!))];
         const strokes = hasEstimates
-          ? historySourceSeries(data, (position) => provenance?.[rowAt(position)]?.estimated ?? false)
+          ? historySourceSeries(data, (position) => estimated?.[rowAt(position)] ?? false)
           : { observed: data, reconstructed: [] };
         const single = line.values.filter((value) => value != null).length === 1;
         const primary = {

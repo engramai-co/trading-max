@@ -24,7 +24,8 @@ describe("overview and performance value layer", () => {
     expect(history.timeline.rowIndexes[missing]).toBeNull();
     const [value, contributions] = portfolioValueLines(history.points, "total", t);
     expect(value.values).toEqual([100, 180, 190]);
-    expect(contributions).toMatchObject({ values: [90, 170, 170], dashed: true, step: "end", colour: "accent" });
+    // A neutral dash: the chart's one cobalt line is P&L, and amber dashes mean estimates.
+    expect(contributions).toMatchObject({ values: [90, 170, 170], dashed: true, step: "end", colour: "axis" });
     expect(value.values.at(-1)! - value.values[0]!).toBe(90);
     expect(portfolioMoney(history.points, "total").pnl).toBe(10);
   });

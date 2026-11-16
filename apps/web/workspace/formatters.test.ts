@@ -71,7 +71,7 @@ describe("shared financial formatters", () => {
 
   it("names today and earlier years without repeating the reader's own time zone", () => {
     const now = Date.parse("2026-10-28T23:30:00Z");
-    expect(formatDateTime("2026-10-28T22:00:00Z", "zh", "Europe/London", now)).toBe("今天 22:00");
+    expect(formatDateTime("2026-10-28T22:00:00Z", "zh", "Europe/London", now)).toBe("今日 22:00");
     // It is already the next morning in Hong Kong, so 20:00 there is not "today".
     expect(formatDateTime("2026-10-28T12:00:00Z", "zh", "Asia/Hong_Kong", now)).toBe("10月28日 20:00");
     expect(formatDateTime("2025-03-04T09:05:00Z", "en", "Europe/London", now)).toBe("4 Mar 2025 09:05");
