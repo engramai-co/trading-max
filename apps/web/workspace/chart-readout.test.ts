@@ -52,6 +52,26 @@ describe("reading card", () => {
     expect(card({ ...money, more: 2 })).toContain('<div class="mx-reading-more">2 more</div>');
   });
 
+  it("gives a strip without a primary one more row in the primary's place", () => {
+    const rows = ["Buy", "Hold", "Sell", "Other"].map((label, index) => ({ label, value: String(index) }));
+    const plain: Reading = { time: "Current", groups: [rows.slice(0, 3)] };
+    expect(card(plain, "en", "strip").match(/mx-reading-row/g)).toHaveLength(3);
+    expect(card(plain, "en", "strip")).not.toContain("mx-reading-more");
+    expect(card({ ...plain, groups: [rows] }, "en", "strip")).toContain('<div class="mx-reading-more">1 more</div>');
+    expect(card({ ...plain, groups: [rows] }).match(/mx-reading-row/g)).toHaveLength(3);
+  });
+
+  it("speaks every row in full when the card summarises them", () => {
+    const summary: Reading = {
+      time: "Current",
+      groups: [[{ label: "Buy", value: "24", detail: "incl. 9 strong buy" }, { label: "Hold", value: "12" }]],
+      spoken: [[{ label: "Strong buy", value: "9" }, { label: "Buy", value: "15" }, { label: "Hold", value: "12" }]],
+    };
+    expect(readingText(summary, "en")).toBe("Current\nStrong buy 9\nBuy 15\nHold 12");
+    expect(card(summary)).toContain('<dd>24<span class="mx-reading-detail">incl. 9 strong buy</span></dd>');
+    expect(card(summary)).not.toContain("Strong buy 9");
+  });
+
   it("puts the close first and the other prices in a grid, with up to four indicator cells", () => {
     const html = card(candle, "zh");
     expect(html).toContain('<div class="mx-reading-primary"><span class="mx-reading-label">收</span><span class="mx-reading-value">340.42</span><span class="mx-reading-detail" data-tone="up">+3.53 · +1.05%</span></div>');

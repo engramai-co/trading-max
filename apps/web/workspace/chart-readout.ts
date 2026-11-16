@@ -21,6 +21,8 @@ export type Reading = {
   primary?: Omit<ReadingItem, "label"> & { label?: string };
   /** Supporting rows grouped by pane; groups are separated by space, not rules. */
   groups?: ReadingItem[][];
+  /** Every row in full when the groups above summarise them: the live region, copy and export read these instead. */
+  spoken?: ReadingItem[][];
   ohlc?: { close: string; change?: string; tone?: ReadingTone; open: string; high: string; low: string; volume?: string };
   /** Rows the reading leaves out. */
   more?: number;
@@ -53,7 +55,8 @@ const COPY = {
   en: { open: "Open", high: "High", low: "Low", close: "Close", volume: "Volume", more: (count: number) => count + " more" },
 } as const;
 
-/** Secondary rows a card or phone strip shows before folding the rest into "N more". */
+/** Secondary rows a card or phone strip shows before folding the rest into "N more". A strip
+ * without a primary gives the primary's line to one more row, so it is never taller. */
 export const READING_ROW_LIMIT = { card: 3, strip: 2 } as const;
 /** Indicator cells beside a candle; the phone strip has room for the candle only. */
 export const READING_CELL_LIMIT = { card: 4, strip: 0 } as const;
@@ -110,7 +113,8 @@ export function readingTree(reading: Reading, variant: ReadingVariant = "card", 
       (reading.primary.label || reading.primary.key) && node("span", [["class", "mx-reading-label"]], key(reading.primary.key), reading.primary.label),
       node("span", [["class", "mx-reading-value"]], reading.primary.value),
       reading.primary.detail && node("span", [["class", "mx-reading-detail"]], reading.primary.detail));
-  const limit = ohlc ? READING_CELL_LIMIT[variant] : READING_ROW_LIMIT[variant];
+  const limit = ohlc ? READING_CELL_LIMIT[variant]
+    : READING_ROW_LIMIT[variant] + (variant === "strip" && !reading.primary ? 1 : 0);
   let room = limit;
   let hidden = reading.more ?? 0;
   const groups = (reading.groups ?? []).flatMap((group) => {
@@ -164,7 +168,7 @@ export function readingText(reading: Reading, locale: ReadingLocale = documentLo
       line(copy.low, ohlc.low),
       ...(ohlc.volume ? [line(copy.volume, ohlc.volume)] : []),
     ] : reading.primary ? [line(reading.primary.label, reading.primary.value, reading.primary.detail)] : []),
-    ...(reading.groups ?? []).flat().map((item) => line(item.label, item.value, item.detail)),
+    ...(reading.spoken ?? reading.groups ?? []).flat().map((item) => line(item.label, item.value, item.detail)),
     ...(reading.more ? [copy.more(reading.more)] : []),
     ...(reading.flag ? [reading.flag] : []),
   ].filter(Boolean).join("\n");
