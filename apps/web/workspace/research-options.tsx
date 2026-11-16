@@ -13,13 +13,13 @@ import {
   Stack,
 } from "@mantine/core";
 import { useLocalStorage } from "@mantine/hooks";
-import type { EChartsOption } from "echarts";
+import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
 import { useState } from "react";
-import { useLocale } from "@/components/locale-provider";
+import { useLocale, type Locale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { Plot } from "./charts";
-import type { ChartReadout, ReadingItem } from "./chart-readout";
+import type { ChartReadout, Reading, ReadingItem, ReadingMark } from "./chart-readout";
 import { compact, compactTick, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
 import { quoteValue } from "./financial-values";
@@ -33,6 +33,8 @@ import {
   useCopy,
 } from "./foundation";
 import { nearMoneyStrikes } from "./research-math";
+import { minus } from "./reading-figures";
+import { fixed, readingTone, signedNumber, signedPounds } from "./reading-format";
 import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
 
@@ -61,6 +63,156 @@ function validQuote(c: Contract) {
 function sum(values: (number | null | undefined)[]) {
   const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
   return valid.length ? valid.reduce((n, v) => n + v, 0) : null;
+}
+
+/** Calls and puts keep one colour each on bars, lines, legends and reading keys. */
+const SIDES = ["call", "put"] as const;
+type Side = (typeof SIDES)[number];
+export function sideStroke(side: Side, colours: ChartColours) {
+  return side === "call" ? colours.brand : colours.accent;
+}
+
+/**
+ * Expirations on one chart: the first selected leads in cobalt and solid, the others in ink and
+ * grey, dashed or dotted, as comparison lines are elsewhere. Line, legend, dot and key share it.
+ */
+const EXPIRY_LINES = [
+  { colour: "brand", dash: "solid", width: 2 },
+  { colour: "text", dash: "dashed", width: 1.6 },
+  { colour: "axis", dash: "dotted", width: 1.6 },
+  { colour: "axis", dash: "dashed", width: 1.6 },
+  { colour: "text", dash: "dotted", width: 1.6 },
+] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dash: "solid" | "dashed" | "dotted"; width: number }>;
+export function expiryStroke(colours: ChartColours, index: number) {
+  const line = EXPIRY_LINES[Math.min(index, EXPIRY_LINES.length - 1)];
+  return { colour: colours[line.colour], dashed: line.dash === "dashed", dotted: line.dash === "dotted", width: line.width };
+}
+
+/** Open interest summed by strike, calls then puts. */
+export function interestByStrike(contracts: ReadonlyArray<Pick<Contract, "strike" | "side" | "openInterest">>) {
+  const strikes = [...new Set(contracts.map((c) => c.strike))].sort((a, b) => a - b);
+  const counts = SIDES.map((side) => strikes.map((strike) =>
+    sum(contracts.filter((c) => c.strike === strike && c.side === side).map((c) => c.openInterest))));
+  return { strikes, counts };
+}
+
+/** Each side's bars take its colour, so the legend swatch and the reading's key match them. */
+export function interestSeries(colours: ChartColours, names: Record<Side, string>,
+  counts: ReadonlyArray<ReadonlyArray<number | null>>): BarSeriesOption[] {
+  return SIDES.map((side, s) => ({
+    name: names[side],
+    type: "bar",
+    color: sideStroke(side, colours),
+    itemStyle: { color: sideStroke(side, colours) },
+    data: [...counts[s]],
+  }));
+}
+
+/** One strike's open interest: a whole-contract count per side, keyed to its bars. */
+export function interestRows(colours: ChartColours, names: Record<Side, string>,
+  counts: ReadonlyArray<ReadonlyArray<number | null>>, index: number): ReadingItem[] {
+  return SIDES.flatMap((side, s) => counts[s][index] == null ? [] : [{
+    label: names[side], value: number(counts[s][index], 0), key: { colour: sideStroke(side, colours), kind: "bar" as const },
+  }]);
+}
+
+/** One expiration's net gamma per 1% move across spot scenarios, named as its legend entry. */
+export type GammaLine = { name: string; profile: ReadonlyArray<{ spot: number; netGex: number }> };
+
+/** One line per expiration in its own stroke; the first also draws the chart's single zero line. */
+export function gammaSeries(colours: ChartColours, lines: readonly GammaLine[]): LineSeriesOption[] {
+  return lines.map((line, index) => {
+    const stroke = expiryStroke(colours, index);
+    return {
+      name: line.name,
+      type: "line",
+      showSymbol: false,
+      connectNulls: false,
+      color: stroke.colour,
+      itemStyle: { color: stroke.colour },
+      lineStyle: { color: stroke.colour, width: stroke.width, type: stroke.dashed ? [6, 4] : stroke.dotted ? "dotted" : "solid" },
+      data: line.profile.map((p) => [p.spot, p.netGex]),
+      ...(index ? {} : {
+        markLine: {
+          symbol: "none",
+          silent: true,
+          label: { show: false },
+          lineStyle: { color: colours.axis, type: "solid", width: 1 },
+          data: [{ yAxis: 0 }],
+        },
+      }),
+    };
+  });
+}
+
+const gexFormats = new Map<Locale, Intl.NumberFormat>();
+/** Net gamma in the axis's compact units to four significant digits, finer than its round ticks. */
+export function gexFigure(value: number, locale: Locale) {
+  let format = gexFormats.get(locale);
+  if (!format) {
+    format = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-GB", { notation: "compact", maximumSignificantDigits: 4 });
+    gexFormats.set(locale, format);
+  }
+  return minus(format.format(value));
+}
+
+function gammaAt(line: GammaLine, spot: number) {
+  return line.profile.find((p) => p.spot === spot)?.netGex ?? null;
+}
+
+/**
+ * One spot scenario. A single expiration needs no label; several lead with the first and key
+ * every row to its line. Net gamma is not a gain or loss, so it stays in ink.
+ */
+export function gammaReading(colours: ChartColours, lines: readonly GammaLine[], spot: number, locale: Locale): Reading | null {
+  const rows = lines.flatMap((line, index): ReadingItem[] => {
+    const net = gammaAt(line, spot);
+    if (net == null) return [];
+    const stroke = expiryStroke(colours, index);
+    return [{
+      label: line.name,
+      value: gexFigure(net, locale),
+      key: { colour: stroke.colour, ...(stroke.dashed ? { dashed: true } : {}), ...(stroke.dotted ? { dotted: true } : {}) },
+    }];
+  });
+  const [lead, ...rest] = rows;
+  if (!lead) return null;
+  return { time: fixed(spot, 2), primary: lines.length > 1 ? lead : { value: lead.value }, ...(rest.length ? { groups: [rest] } : {}) };
+}
+
+export function gammaMarks(colours: ChartColours, lines: readonly GammaLine[], spot: number): ReadingMark[] {
+  return lines.flatMap((line, index) => {
+    const net = gammaAt(line, spot);
+    return net == null ? [] : [{ value: net, colour: expiryStroke(colours, index).colour }];
+  });
+}
+
+/** The cobalt payoff line, with a quiet zero line: the chart's one series. */
+export function payoffSeries(colours: ChartColours, name: string, points: ReadonlyArray<readonly [number, number]>): LineSeriesOption[] {
+  return [{
+    name,
+    type: "line",
+    showSymbol: false,
+    color: colours.brand,
+    itemStyle: { color: colours.brand },
+    lineStyle: { color: colours.brand, width: 2 },
+    data: points.map(([price, result]) => [price, result]),
+    markLine: {
+      symbol: "none",
+      silent: true,
+      label: { show: false },
+      lineStyle: { color: colours.axis, type: "solid", width: 1 },
+      data: [{ yAxis: 0 }],
+    },
+  }];
+}
+
+/** A hypothetical result at one underlying price: signed and toned, pounds as £, other currencies as the axis names them. */
+export function payoffReading(atExpiry: string, price: number, result: number, currencyCode: string): Reading {
+  return {
+    time: atExpiry + " " + fixed(price, 2),
+    primary: { value: currencyCode === "GBP" ? signedPounds(result) : signedNumber(result, 2), tone: readingTone(result, 2) },
+  };
 }
 /**
  * Before the market opens a contract can have neither bid nor ask. Its implied
@@ -122,6 +274,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
     { params, update } = useRouteState();
   const columnNames = chainColumns(t);
   const { locale, timeZone } = useLocale();
+  const colours = useChartColours();
   const [columns, setColumns] = useLocalStorage<string[]>({
     key: "mx-option-columns-v2",
     defaultValue: baseColumns,
@@ -184,6 +337,33 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const nearest = nearMoneyStrikes(all, options.spot, 1)[0];
   const activeSummary = options.expiries.find((e) => e.expiry === active);
   const activeCols = columns.length ? columns : baseColumns;
+  const sideNames: Record<Side, string> = { call: t("看涨", "Calls"), put: t("看跌", "Puts") };
+  // Open interest by strike across the selected expirations; a reading names the strike as the axis does.
+  const interest = interestByStrike(filtered);
+  const interestAt = (i: number) => interestRows(colours, sideNames, interest.counts, i);
+  const interestNearest = interest.strikes.indexOf(nearMoneyStrikes(interest.strikes, options.spot, 1)[0]);
+  const interestReadout: ChartReadout = {
+    positions: interest.strikes.map((_, i) => i),
+    read: (i) => interest.strikes[i] == null ? null
+      : { time: t("行权价", "Strike") + " " + number(interest.strikes[i], 2), groups: [interestAt(i)] },
+    latest: interestNearest >= 0 ? interestAt(interestNearest).map((row) => row.label + " " + row.value).join(" · ") : "—",
+  };
+  // Net gamma per 1% move across spot scenarios, one line per selected expiration.
+  const gammaLines: GammaLine[] = options.expiries
+    .filter((e) => selected.includes(e.expiry))
+    .map((e) => ({ name: formatCalendarDate(e.expiry, locale), profile: e.gammaProfile }));
+  const gammaSpots = [...new Set(gammaLines.flatMap((line) => line.profile.map((p) => p.spot)))].sort((a, b) => a - b);
+  const gammaNearest = gammaSpots.reduce<number | null>((best, spot) =>
+    best == null || Math.abs(spot - options.spot) < Math.abs(best - options.spot) ? spot : best, null);
+  const gammaLatest = gammaNearest == null ? null : gammaReading(colours, gammaLines, gammaNearest, locale);
+  const gammaReadout: ChartReadout = {
+    positions: gammaSpots,
+    read: (spot) => gammaReading(colours, gammaLines, spot, locale),
+    marks: (spot) => gammaMarks(colours, gammaLines, spot),
+    latest: gammaLatest
+      ? [gammaLatest.primary!, ...(gammaLatest.groups?.[0] ?? [])].map((row) => [row.label, row.value].filter(Boolean).join(" ")).join(" · ")
+      : "—",
+  };
   const when = (v?: string | null) => (v ? formatDateTime(v, locale, timeZone) : "—");
   const listedExpiries = options.availableExpiries?.length ?? 0;
   const partialExpiries = listedExpiries > 0 && available.length < listedExpiries;
@@ -471,33 +651,18 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     "所选到期日未平仓合约数",
                     "Open interest for selected expirations",
                   )}
-                  option={{
-                    legend: { top: 0, data: [t("看涨", "Calls"), t("看跌", "Puts")] },
+                  readout={interestReadout}
+                  option={(c) => ({
+                    legend: { top: 0, data: [sideNames.call, sideNames.put] },
                     grid: { left: 72, right: 24, top: 42, bottom: 54 },
                     xAxis: {
                       type: "category",
                       name: t("行权价", "Strike"),
-                      data: [...new Set(filtered.map((c) => c.strike))].sort(
-                        (a, b) => a - b,
-                      ),
+                      data: interest.strikes,
                     },
                     yAxis: { type: "value", name: t("合约数", "Contracts") },
-                    series: ["call", "put"].map((side) => ({
-                      name: side === "call" ? t("看涨", "Calls") : t("看跌", "Puts"),
-                      type: "bar",
-                      data: [...new Set(filtered.map((c) => c.strike))]
-                        .sort((a, b) => a - b)
-                        .map((strike) =>
-                          sum(
-                            filtered
-                              .filter(
-                                (c) => c.strike === strike && c.side === side,
-                              )
-                              .map((c) => c.openInterest),
-                          ),
-                        ),
-                    })),
-                  }}
+                    series: interestSeries(c, sideNames, interest.counts),
+                  })}
                 />
                 <Readings
                   columns={[
@@ -536,30 +701,18 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                       "所选到期日的价格情景",
                       "Spot scenarios for selected expirations",
                     )}
-                    option={{
-                      legend: { top: 0, type: "scroll", data: selected.map((expiry) => formatCalendarDate(expiry, locale)) },
+                    readout={gammaReadout}
+                    option={(c) => ({
+                      legend: { top: 0, type: "scroll", data: gammaLines.map((line) => line.name) },
                       grid: { left: 80, right: 24, top: 44, bottom: 48 },
                       xAxis: { type: "value", name: cc, scale: true },
                       yAxis: {
                         type: "value",
                         name: `${cc} / 1%`,
-                        axisLabel: { formatter: (v: number) => compactTick(v, locale) },
+                        axisLabel: { formatter: (v: number) => minus(compactTick(v, locale)) },
                       },
-                      series: options.expiries
-                        .filter((e) => selected.includes(e.expiry))
-                        .map((e) => ({
-                          name: formatCalendarDate(e.expiry, locale),
-                          type: "line",
-                          showSymbol: false,
-                          connectNulls: false,
-                          data: e.gammaProfile.map((p) => [p.spot, p.netGex]),
-                          markLine: {
-                            symbol: "none",
-                            label: { show: false },
-                            data: [{ yAxis: 0 }],
-                          },
-                        })),
-                    }}
+                      series: gammaSeries(c, gammaLines),
+                    })}
                   />
                 ) : (
                   <Empty
@@ -720,9 +873,9 @@ function Volatility({
       };
     });
   // Calls and puts keep one colour each across the line, its dot, the legend and the reading's key.
-  const sides = ["call", "put"] as const;
-  const sideName = (side: (typeof sides)[number]) => side === "call" ? t("看涨", "Calls") : t("看跌", "Puts");
-  const sideColour = (side: (typeof sides)[number], c: ChartColours = colours) => side === "call" ? c.brand : c.accent;
+  const sides = SIDES;
+  const sideName = (side: Side) => side === "call" ? t("看涨", "Calls") : t("看跌", "Puts");
+  const sideColour = (side: Side, c: ChartColours = colours) => sideStroke(side, c);
   const sideRows = (values: Array<number | null | undefined>): ReadingItem[] => sides.flatMap((side, i) =>
     values[i] == null ? [] : [{ label: sideName(side), value: percent(values[i], false, 2), key: { colour: sideColour(side) } }]);
   const sideMarks = (values: Array<number | null | undefined>) => sides.flatMap((side, i) =>
@@ -844,6 +997,7 @@ function Payoff({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const colours = useChartColours();
   const [legs, setLegs] = useState<Leg[]>([]),
     [selected, setSelected] = useState<string | null>(null);
   const eligible = contracts.filter(
@@ -904,6 +1058,14 @@ function Payoff({
     (l) =>
       l.premium !== null && eligible.some((c) => c.contractSymbol === l.symbol),
   );
+  // Every leg is priced before the line is drawn, so the reading never meets a missing premium.
+  const atExpiry = t("到期标的价", "Underlying at expiry");
+  const payoffReadout: ChartReadout | undefined = legs.length && complete ? {
+    positions: points,
+    read: (price) => payoffReading(atExpiry, price, pnl(price), currencyCode),
+    marks: (price) => [{ value: pnl(price), colour: colours.brand }],
+    latest: atExpiry + " " + fixed(spot, 2) + " · " + payoffReading(atExpiry, spot, pnl(spot), currencyCode).primary!.value,
+  } : undefined;
   return (
     <Stack mt="lg">
       <Group align="end">
@@ -974,28 +1136,17 @@ function Payoff({
         <>
           <OptionPlot
             label={t("到期损益试算", "Hypothetical expiration P/L")}
-            option={{
+            readout={payoffReadout}
+            option={(c) => ({
               grid: { left: 80, right: 24, top: 30, bottom: 48 },
               xAxis: { type: "value", name: currencyCode },
               yAxis: {
                 type: "value",
                 name: `P/L · ${currencyCode}`,
-                axisLabel: { formatter: (v: number) => compactTick(v, locale) },
+                axisLabel: { formatter: (v: number) => minus(compactTick(v, locale)) },
               },
-              series: [
-                {
-                  name: t("到期损益", "Expiry P/L"),
-                  type: "line",
-                  showSymbol: false,
-                  data: points.map((p) => [p, pnl(p)]),
-                  markLine: {
-                    symbol: "none",
-                    label: { show: false },
-                    data: [{ yAxis: 0 }],
-                  },
-                },
-              ],
-            }}
+              series: payoffSeries(c, t("到期损益", "Expiry P/L"), points.map((p) => [p, pnl(p)] as const)),
+            })}
           />
           <Readings
             columns={[
