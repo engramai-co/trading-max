@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { readingHtml, readingRows, readingText, type Reading } from "./chart-readout";
+import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { ReadingView } from "./reading-card";
 
 const money: Reading = {
@@ -21,7 +21,7 @@ const candle: Reading = {
   groups: [[
     { label: "SMA20", value: "331.35", key: { colour: "#17191c" } },
     { label: "SMA50", value: "322.01", key: { colour: "#536176", dashed: true } },
-    { label: "SMA200", value: "288.23" },
+    { label: "SMA200", value: "288.23", key: { colour: "#17191c", dotted: true } },
     { label: "RSI 14", value: "54.39" },
     { label: "MACD", value: "4.735" },
   ]],
@@ -61,6 +61,13 @@ describe("reading card", () => {
     expect(card(candle, "en", "strip")).not.toContain("SMA20");
   });
 
+  it("draws each key with its line's own stroke", () => {
+    const html = card(candle);
+    expect(html).toContain('<i class="mx-reading-key" style="--key:#17191c" aria-hidden="true"></i>SMA20');
+    expect(html).toContain('<i class="mx-reading-key" data-dashed="" style="--key:#536176" aria-hidden="true"></i>SMA50');
+    expect(html).toContain('<i class="mx-reading-key" data-dotted="" style="--key:#17191c" aria-hidden="true"></i>SMA200');
+  });
+
   it("escapes provider text and drops anything but a colour from the key", () => {
     const html = readingHtml({
       time: "<img src=x onerror=alert(1)>",
@@ -96,21 +103,6 @@ describe("readingText", () => {
       "SMA20 331.35", "SMA50 322.01", "SMA200 288.23", "RSI 14 54.39", "MACD 4.735",
     ]);
     expect(readingText({ time: "No data · 00:00–01:40" }, "en")).toBe("No data · 00:00–01:40");
-  });
-});
-
-describe("readingRows", () => {
-  it("names the point first and aligns label and value lines", () => {
-    expect(readingRows("16 Nov 2026, 01:50 GMT\nPeriod net P&L: £187.82 GBP\nOpen 120.5")).toEqual({
-      heading: "16 Nov 2026, 01:50 GMT",
-      rows: [{ label: "Period net P&L", value: "£187.82 GBP" }, { text: "Open 120.5" }],
-    });
-  });
-
-  it("keeps clock times and single-line readings intact", () => {
-    expect(readingRows("13 Nov · MSCI World 4,870.41")).toEqual({ heading: "", rows: [{ text: "13 Nov · MSCI World 4,870.41" }] });
-    expect(readingRows("13 Nov\nAt 10:30 close")).toEqual({ heading: "13 Nov", rows: [{ text: "At 10:30 close" }] });
-    expect(readingRows("")).toEqual({ heading: "", rows: [] });
   });
 });
 

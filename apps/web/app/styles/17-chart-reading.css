@@ -487,6 +487,9 @@
 .mx-reading-key[data-dashed] {
   border-top-style: dashed;
 }
+.mx-reading-key[data-dotted] {
+  border-top-style: dotted;
+}
 .mx-reading-key[data-kind="bar"] {
   width: 8px;
   height: 8px;

@@ -10,10 +10,7 @@ import { useECharts } from "@/ui/charts/use-echarts";
 import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
-import {
-  closestChartPosition, readingRows, readingText,
-  type ChartReadout, type LegacyChartReadout, type Reading, type ReadingItem,
-} from "./chart-readout";
+import { closestChartPosition, readingText, type ChartReadout, type Reading } from "./chart-readout";
 import { ReadingCard } from "./reading-card";
 import { chartNumber } from "./research-chart-format";
 import { exportChartCsv, exportChartPng } from "./chart-export";
@@ -64,27 +61,6 @@ function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
 /** Phones, and coarse pointers without hover, read a chart through a strip above the plot. */
 const TOUCH_LAYOUT = "(max-width: 767px), (hover: none) and (pointer: coarse)";
 
-/** A string reading from before 1.51.0, shown in the card until its chart returns a Reading. */
-function legacyReading(text: string): Reading | null {
-  const { heading, rows } = readingRows(text);
-  if (!rows.length) return null;
-  if (!heading) return { time: rows.map((row) => "text" in row ? row.text : row.label + " " + row.value).join(" ") };
-  return {
-    time: heading,
-    groups: [rows.map((row): ReadingItem => {
-      if ("label" in row) return row;
-      const at = row.text.lastIndexOf(" ");
-      return at > 0 ? { label: row.text.slice(0, at), value: row.text.slice(at + 1) } : { label: row.text, value: "" };
-    })],
-  };
-}
-
-function normalise(readout: ChartReadout | LegacyChartReadout | undefined): ChartReadout | undefined {
-  if (!readout || "read" in readout) return readout;
-  const { point, ...rest } = readout;
-  return { ...rest, read: (position) => legacyReading(point(position)) };
-}
-
 /** The first index whose position is at or after the target. */
 function after(positions: readonly number[], target: number) {
   let lo = 0, hi = positions.length;
@@ -106,7 +82,7 @@ export function Plot({
   controller,
   onZoom,
   readPoint,
-  readout: source,
+  readout,
   overlay,
   fullscreen = false,
   customGestures = false,
@@ -120,7 +96,7 @@ export function Plot({
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
-  readout?: ChartReadout | LegacyChartReadout;
+  readout?: ChartReadout;
   overlay?: ReactNode;
   fullscreen?: boolean;
   customGestures?: boolean;
@@ -130,7 +106,8 @@ export function Plot({
   const t = useCopy();
   const { locale } = useLocale();
   const pathname = usePathname();
-  const readout = normalise(source);
+  // Callers build a new readout each render; the chart's options only depend on whether there is one.
+  const hasReadout = Boolean(readout);
   const touchLayout = useMediaQuery(TOUCH_LAYOUT) === true;
   const description = useId();
   const [reading, setReading] = useState("");
@@ -185,8 +162,8 @@ export function Plot({
         type: "inside", disabled: true, xAxisIndex: Array.isArray(custom.xAxis) ? custom.xAxis.map((_, i) => i) : 0,
         filterMode: "none",
       }] : undefined),
-      ...(source ? { axisPointer: undefined } : {}),
-      xAxis: themeAxes(source
+      ...(hasReadout ? { axisPointer: undefined } : {}),
+      xAxis: themeAxes(hasReadout
         ? Array.isArray(custom.xAxis) ? custom.xAxis.map((axis) => ({ ...axis, axisPointer: { show: false } }))
           : custom.xAxis ? { ...custom.xAxis, axisPointer: { show: false } } : undefined
         : custom.xAxis, colours, true),
@@ -223,11 +200,11 @@ export function Plot({
         ...(custom.tooltip && !Array.isArray(custom.tooltip)
           ? custom.tooltip
           : {}),
-        ...(source ? { show: false, triggerOn: "none" } : {}),
+        ...(hasReadout ? { show: false, triggerOn: "none" } : {}),
       },
 
     };
-  }, [colours, option, research, locale, source, fullscreen]);
+  }, [colours, option, research, locale, hasReadout, fullscreen]);
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;

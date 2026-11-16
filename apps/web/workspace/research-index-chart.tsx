@@ -8,7 +8,11 @@ import type { LineSeriesOption } from "echarts";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
-import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
+import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
+import { useChartColours } from "@/ui/charts/palette";
+import type { ChartReadout, Reading, ReadingKey } from "./chart-readout";
+import { comparisonFigures, fixed, plainPercent, readingTone, signedPercent } from "./reading-format";
+import { DataBasis } from "./reading-card";
 import { api } from "./data";
 import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
 import type { IndexHistory, IndexIdentity, IndexRange } from "./market-indices-data";
@@ -84,6 +88,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 48em)");
   const [range, setRange] = useState<IndexRange>(index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M");
   const [log, setLog] = useState(false);
@@ -126,19 +131,47 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
     : formatCalendarDate(at, locale);
   const valueText = (value: number | null | undefined) => value == null ? "—"
     : formatNumber(value, locale, { maximumFractionDigits: 2 });
-  const read = (i: number) => dates[i]
-    ? `${stamp(dates[i])} · ${labels.map((name, series) => `${name} ${valueText(values[series]?.[i])}`).join(" · ")}` : "";
+  // The index is the one solid primary line; comparisons are an ink dash and a grey dot.
+  const strokes: ReadingKey[] = [
+    { colour: colours.brand },
+    { colour: colours.text, dashed: true },
+    { colour: colours.axis, dotted: true },
+  ];
+  const read = (i: number): Reading | null => {
+    if (!dates[i]) return null;
+    const time = intraday ? formatReadingTime(dates[i], locale, timeZone, period === "1D" ? "clock" : "intraday") : formatCalendarDate(dates[i], locale);
+    if (!comparing) return { time, primary: { value: fixed(primary[i]) } };
+    return {
+      time: time + " · " + t("起点 = 100", "Rebased to 100"),
+      ...comparisonFigures(labels.map((name, series) => {
+        const value = values[series]?.[i];
+        return { item: { label: name, key: strokes[series], value: fixed(value) }, change: value == null ? null : value / 100 - 1 };
+      }), t("相差", "Difference")),
+    };
+  };
   const positions = primary.flatMap((value, i) => value == null ? [] : [i]);
-  const readoutProps = { readout: { positions, point: read, latest: read(positions.at(-1) ?? -1),
-    gap: (i: number) => primary[Math.round(i)] == null, observationCount: positions.length } };
+  const readout: ChartReadout = {
+    positions,
+    latest: positions.length ? fixed(primary[positions.at(-1)!]) : "—",
+    read,
+    marks: (i) => values.flatMap((series, s) => series[i] == null ? [] : [{ value: series[i]!, colour: strokes[s].colour }]),
+    gap: (i: number) => primary[Math.round(i)] == null,
+    observationCount: positions.length,
+  };
   const tools = !preview && hasRange;
   const logarithmic = log && ["1Y", "3Y", "5Y", "MAX"].includes(period);
   const logDomain = logarithmic ? indexLogDomain(values) : {};
   return (
-    <Panel title={label} help={t(
-      "区间回报从图中首个有效读数计算。对比按第一个共同日期归一为 100；只允许同币种、同回报口径和同对冲的指数。",
-      "Period return uses the first visible observation. Comparisons start at 100 on the first common date, with matching currency, return variant and hedge basis.",
-    )}>
+    <Panel title={label} help={<>
+      <p>{t(
+        "区间收益从图中首个有效读数计算。对比按第一个共同日期归一为 100；只允许同币种、同回报口径和同对冲的指数。",
+        "Period return uses the first visible observation. Comparisons start at 100 on the first common date, with matching currency, return variant and hedge basis.",
+      )}</p>
+      <DataBasis>{t(
+        "指数点位来自数据源的收盘或盘中读数，单位见图上方；回撤和滚动波动率按图中的读数计算，点线跨过缺失的读数。",
+        "Index levels are the provider’s closing or intraday readings, in the unit shown above the chart. Drawdown and rolling volatility use the plotted readings; dotted lines bridge missing ones.",
+      )}</DataBasis>
+    </>}>
       {tools && <div className="mx-index-research-chart-tools">
         <Segments label={t("时间范围", "Range")} value={period}
           options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
@@ -146,7 +179,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
         <div>
           {available.length > 0 && <MultiSelect searchable clearable maxValues={2}
             value={peers.map((item) => item.id)} onChange={setCompare}
-            aria-label={t("比较指数", "Compare indices")} placeholder={t("比较指数", "Compare indices")}
+            aria-label={t("比较指数", "Compare with index")} placeholder={t("比较指数", "Compare with index")}
             data={available.map((item) => ({ value: item.id, label: t(item.nameZh, item.name) }))} />}
           {["1Y", "3Y", "5Y", "MAX"].includes(period) &&
             <Switch checked={logarithmic} onChange={(event) => setLog(event.currentTarget.checked)}
@@ -155,9 +188,9 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
       </div>}
       {hasRange && query.isPending ? <Pending label={t("正在加载走势", "Loading index history")} /> : query.isError
         ? <QueryError retry={query.refetch} showDataStatusLink={false} /> : dates.length < 2
-          ? <Empty title={t("暂无此范围的走势", "No history for this range")} /> : <>
+          ? <Empty title={t("此范围没有走势", "No history for this range")} /> : <>
             <div className="mx-index-research-chart-top">
-              <span>{t("区间回报", "Period return")} <strong className={performance == null ? "" : performance > 0 ? "mx-up" : performance < 0 ? "mx-down" : ""}>
+              <span>{t("区间收益", "Period return")} <strong className={performance == null ? "" : performance > 0 ? "mx-up" : performance < 0 ? "mx-down" : ""}>
                 {formatDeltaPercent(performance, locale, 2)}
               </strong></span>
               <span>{comparing ? t("基准化 · 100", "Rebased · 100") : [unit, index.kind === "index" ? index.currency : null].filter(Boolean).join(" · ")}</span>
@@ -172,7 +205,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
             {comparisons.length > 0 && !comparing &&
               <small className="mx-index-research-caveat">{t("对比序列没有足够的共同日期。", "The comparison series have too few shared dates.")}</small>}
             <Plot height={phone ? 235 : preview ? 276 : 330} label={label}
-              readPoint={read} {...readoutProps}
+              readout={readout}
               option={(colours) => {
                 const inks = [colours.brand, colours.text, colours.axis];
                 const series: LineSeriesOption[] = values.map((data, i) => ({
@@ -189,7 +222,6 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
                     axisLabel: { formatter: (at: string) => period === "MAX" ? at.slice(0, 4) : stamp(at) } },
                   yAxis: { type: logarithmic ? "log" : "value", scale: true, splitNumber: 4,
                     ...logDomain, axisLabel: { formatter: valueText } },
-                  tooltip: { trigger: "axis", valueFormatter: (value) => typeof value === "number" ? valueText(value) : "—" },
                   series: [...series, {
                     id: "history-gap:index", type: "line",
                     data: historyGapSeries(primary.map((value, i) => ({ value: [i, value], symbolSize: 0 }))),
@@ -200,7 +232,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
               }}
             />
             {!preview && (daily || weekly) && <div className="mx-index-research-risk">
-              <RiskChart dates={dates} values={drawdown} title={t("回撤", "Drawdown")} />
+              <RiskChart dates={dates} values={drawdown} title={t("回撤", "Drawdown")} signed />
               <RiskChart dates={dates} values={volatility} title={t("滚动波动率 · 20 点", "Rolling volatility · 20 bars")} />
             </div>}
           </>}
@@ -208,24 +240,40 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
   );
 }
 
-export function RiskChart({ dates, values, title, primary = false }: {
-  dates: string[]; values: (number | null)[]; title: string; primary?: boolean;
+/**
+ * A small daily percentage chart read through the reading card: the date as a calendar day,
+ * one figure in the line's colour, signed and toned when `signed` (drawdown, differences).
+ */
+export function RiskChart({ dates, values, title, primary = false, signed = false }: {
+  dates: string[]; values: (number | null)[]; title: string; primary?: boolean; signed?: boolean;
 }) {
   const { locale } = useLocale();
   const t = useCopy();
+  const colours = useChartColours();
+  const colour = primary ? colours.brand : colours.text;
+  const positions = values.flatMap((value, i) => value == null ? [] : [i]);
+  const figure = (value: number | null | undefined) => signed
+    ? { value: signedPercent(value), ...(readingTone((value ?? 0) * 100) ? { tone: readingTone((value ?? 0) * 100) } : {}) }
+    : { value: plainPercent(value) };
+  const readout: ChartReadout = {
+    positions,
+    latest: positions.length ? figure(values[positions.at(-1)!]).value : "—",
+    read: (i) => values[i] == null ? null : { time: formatCalendarDate(dates[i], locale), primary: figure(values[i]) },
+    marks: (i) => values[i] == null ? [] : [{ value: values[i]!, colour }],
+    gap: (i) => values[Math.round(i)] == null,
+  };
   return <section className="mx-index-research-risk-chart" aria-label={title}>
     <h3>{title}</h3>
     {values.every((value) => value == null) ? <p>{t("历史数据不足", "Insufficient history")}</p>
       : <Plot height={155} label={title}
-        readPoint={(i) => `${formatCalendarDate(dates[i], locale)} · ${title} ${formatPercent(values[i], locale, 2)}`}
-        option={(colours) => ({
+        readout={readout}
+        option={(chartColours) => ({
           animation: false,
           grid: { top: 12, bottom: 32, left: 62, right: 14 },
           xAxis: { type: "category", boundaryGap: false, data: dates,
             axisLabel: { formatter: (day: string) => formatCalendarDate(day, locale) } },
           yAxis: { type: "value", scale: true, splitNumber: 3, axisLabel: { formatter: (value) => formatPercent(value, locale, 1) } },
-          tooltip: { trigger: "axis", valueFormatter: (value) => typeof value === "number" ? formatPercent(value, locale, 2) : "—" },
-          series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: primary ? colours.brand : colours.text, width: 1.5 } }],
+          series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: primary ? chartColours.brand : chartColours.text, width: 1.5 } }],
         })} />}
   </section>;
 }

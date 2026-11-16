@@ -28,7 +28,7 @@ export function TechnicalScoreCard({ data, compact = false, pending = false }: {
   const score = data?.score;
   const valid = score != null && Number.isFinite(score) && score >= 0 && score <= 100;
   const breakdown = data?.scoreBreakdown;
-  const title = t("技术状态", "Technical state");
+  const title = t("技术评分", "Technical score");
   return <div className={`mx-tech-score ${compact ? "mx-tech-score-compact" : ""}`}>
     <div className="mx-tech-heading"><h2>{compact
       // On the overview the title opens the full diagnosis.
@@ -85,7 +85,7 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
         </div>)}</div>
       </section>;
     })}<details className="mx-details"><summary>{t("评分合计", "Score accounting")}</summary>
-      <p>{t("中性起点", "Neutral base")} {breakdown.baseScore} + {t("分项净影响", "Net contributions")} {breakdown.rawScore - breakdown.baseScore} = {breakdown.rawScore}</p>
+      <p>{t("中性起点", "Neutral base")} {breakdown.baseScore} + {t("分项净影响", "Net effect")} {breakdown.rawScore - breakdown.baseScore} = {breakdown.rawScore}</p>
       {breakdown.clampAdjustment !== 0 && <p>{t("0–100 边界调整", "0–100 boundary adjustment")} {breakdown.clampAdjustment > 0 ? "+" : ""}{breakdown.clampAdjustment} → {breakdown.score}</p>}
     </details></div> : <Empty title={tech.scoreExplanationState === "mismatch" ? t("评分依据暂不可核对", "Score inputs cannot be reconciled") : t("评分依据尚未就绪", "Score inputs unavailable")} />}
     <details className="mx-details"><summary>{t("原始指标", "Original readings")}</summary><TechnicalView data={data} embedded /></details>
