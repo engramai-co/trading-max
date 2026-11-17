@@ -97,7 +97,6 @@ async function serve(page: Page, context: () => Context) {
     if (path.endsWith("/health")) return context().healthFailing
       ? route.fulfill({ status: 503, json: {} })
       : route.fulfill({ json: { service: "trading_max-api", status: "ok", latestRunId: "synthetic-decision-context" } });
-    if (path.endsWith("/analysis")) return route.fulfill({ status: 404, json: {} });
     return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {} } : {} });
   });
 }
@@ -448,21 +447,34 @@ test("review shows dated observations, comparable fills and account coverage", a
   await expect(page.getByRole("table", { name: /买入 SYNE/ })).toHaveCount(0);
 });
 
-test("same-day cluster opens each of five decisions and closes from the same control", async ({ page, isMobile }) => {
+test("decisions sharing a day stay points of their own, read one at a time", async ({ page }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
-  if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+  // Synthetic Beta and four more buys share 2 September.
   await serve(page, () => ({ benchmark: 0.021, events: false, cluster: true }));
+  const reviews: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).searchParams.get("lens") === "decision_review") reviews.push(request.url());
+  });
   await page.goto("/account-analysis?account=A&reviewView=decisions");
-  const list = page.getByRole("region", { name: /所选日期的决定|Decisions on the selected date/ });
-  const marker = page.getByRole("group", { name: /同日决定|Same-day decisions/ }).getByRole("button", { name: /\+5/ });
-  await expect(marker).toHaveAttribute("aria-expanded", "false");
-  if (isMobile) await marker.tap();
-  else await marker.press("Enter");
-  await expect(marker).toHaveAttribute("aria-expanded", "true");
-  await expect(list.getByRole("link")).toHaveCount(5);
-  await expect(list).toContainText("Synthetic cluster 4");
-  await marker.click();
-  await expect(list).toBeHidden();
+  const panel = page.locator(".mx-decision-review");
+  const chart = panel.getByRole("group", { name: "买卖决定的时间线" });
+  // The keys open readings once the chart has drawn.
+  await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+  // The chart alone carries the day: no note or list of days beneath it.
+  await expect(panel).not.toContainText("同日多笔");
+  await expect(page.getByRole("group", { name: "同日决定" })).toHaveCount(0);
+  const card = panel.locator(".mx-reading-tooltip");
+  const spoken = panel.locator("[aria-live]:not([role])");
+  await chart.press("Home");
+  await expect(spoken).toHaveText(/SYNA 卖出 £500/);
+  for (const [ticker, amount] of [["SYNB", "£800"], ["SYNC1", "£100"], ["SYNC2", "£200"], ["SYNC3", "£300"], ["SYNC4", "£400"]]) {
+    await chart.press("ArrowRight");
+    await expect(spoken).toHaveText(new RegExp(ticker + " 买入 " + amount));
+    await expect(card).toBeVisible();
+    await expect(card).toContainText(ticker + " 买入 " + amount);
+  }
+  // The decisions page no longer asks for an AI review.
+  expect(reviews).toEqual([]);
 });
 
 test("CFD without history offers prerequisites and the import screen", async ({ page }) => {

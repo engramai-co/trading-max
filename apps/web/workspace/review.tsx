@@ -458,7 +458,6 @@ function AccountJournal({
             <DecisionReview
               data={data.selectedAccountDecisions}
               account={code}
-              dataAsOf={data.reviewAsOf}
               focus={decision}
               arrive={landing}
               horizons={horizons}

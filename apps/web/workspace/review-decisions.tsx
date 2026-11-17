@@ -29,7 +29,6 @@ import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
 import { minus } from "./reading-figures";
 import { readingTone } from "./reading-format";
-import { DecisionNarrative } from "./review-narrative";
 import { SecurityPeek } from "./security-peek";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
@@ -501,58 +500,34 @@ export function decisionReading(row: TradeDecision, horizon: Horizon, days: numb
   };
 }
 
-/** A same-day marker's reading: how many decisions, the two largest by amount, and how many more. */
-export function clusterReading(date: string, group: TradeDecision[], horizon: Horizon, days: number, t: Copy, locale: "zh" | "en"): Reading {
-  const largest = [...group].sort((a, b) => b.amountGbp - a.amountGbp).slice(0, 2);
-  return {
-    time: formatCalendarDate(date, locale) + " · " + group.length + " " + (group.length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")),
-    groups: [largest.map((row) => {
-      const effect = decisionEffect(row, horizon);
-      return {
-        label: decisionName(row, t, locale),
-        value: effect != null ? minus(signedMoney(effect)) : pendingOutcome(row, horizon, days, t, locale) ?? "—",
-      };
-    })],
-    more: group.length > 2 ? group.length - 2 : undefined,
-  };
+/**
+ * The timeline's points by side, buys then sells: one for each decision, so decisions made on the
+ * same day keep their own outcome and reading. The decision the page opened on is drawn last, over
+ * the others. The keyboard steps through every point by date.
+ */
+export function timelinePoints(rows: TradeDecision[], focus?: TradeDecision) {
+  const sides = (["buy", "sell"] as const).map((side) =>
+    rows.filter((row) => row.side === side && row !== focus).concat(focus?.side === side ? [focus] : []));
+  const marks = sides
+    .flatMap((points, seriesIndex) => points.map((row, dataIndex) => ({ row, seriesIndex, dataIndex })))
+    .sort((a, b) => a.row.date.localeCompare(b.row.date));
+  return { sides, marks };
 }
 
 /** Every decision by date and effect; the one the page opened on is larger, ringed and drawn on top. */
-export function groupDecisionsByDate(rows: TradeDecision[]) {
-  const days = new Map<string, TradeDecision[]>();
-  for (const row of rows) {
-    const group = days.get(row.date) ?? [];
-    group.push(row);
-    days.set(row.date, group);
-  }
-  return [...days].sort(([a], [b]) => a.localeCompare(b));
-}
-
 function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[]; horizon: Horizon; days: number; focus?: TradeDecision }) {
   const t = useCopy();
   const { locale } = useLocale();
   // The chart's option only changes with its data: a new option resets ECharts, which would
   // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
-  const listId = useId();
-  const groups = useMemo(() => groupDecisionsByDate(rows), [rows]);
-  const focusKey = focus ? decisionParam(focus) : undefined;
-  const [picked, setPicked] = useState<{ date: string | null; focusKey?: string }>();
-  const selected = picked && picked.focusKey === focusKey ? picked.date : focus?.date ?? null;
-  const pick = (date: string) => setPicked({ date: selected === date ? null : date, focusKey });
-  const active = groups.find(([date]) => date === selected);
+  const { sides, marks } = useMemo(() => timelinePoints(rows, focus), [rows, focus]);
   const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp)), [rows]);
-  // The cluster marker is plotted at the average of observed decisions; the
-  // expanded list carries every actual outcome and every unobserved decision.
-  const groupValue = useCallback((group: TradeDecision[]) => {
-    const values = group.map((row) => decisionEffect(row, horizon)).filter((value): value is number => value != null);
-    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-  }, [horizon]);
   const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
     const effect = decisionEffect(row, horizon);
     const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
     const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
-    const ring = row.date === selected ? { borderColor: colours.text, borderWidth: 2 } : null;
+    const ring = row === focus ? { borderColor: colours.text, borderWidth: 2 } : null;
     return {
       value: [Date.parse(row.date), effect ?? 0],
       symbolSize: ring ? Math.max(16, size + 8) : size,
@@ -561,18 +536,14 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
         : { color: colour, opacity: ring ? 1 : 0.85, ...ring },
       row,
     };
-  }, [horizon, largest, selected]);
+  }, [focus, horizon, largest]);
   const option = useCallback((colours: Record<string, string>) => ({
-    grid: { top: 40, right: 26, bottom: 30, left: 64 },
+    grid: { top: 40, right: 18, bottom: 30, left: 64 },
     tooltip: {
       ...READING_TOOLTIP,
       trigger: "item" as const,
-      formatter: (input: unknown) => {
-        const { row, date, group } = (input as { data: { row?: TradeDecision; date?: string; group?: TradeDecision[] } }).data;
-        if (row) return readingHtml(decisionReading(row, horizon, days, t, locale), locale);
-        if (!group || !date) return "";
-        return readingHtml(clusterReading(date, group, horizon, days, t, locale), locale);
-      },
+      formatter: (input: unknown) =>
+        readingHtml(decisionReading((input as { data: { row: TradeDecision } }).data.row, horizon, days, t, locale), locale),
     },
     xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
     yAxis: {
@@ -580,41 +551,20 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       axisLabel: { formatter: (value: number) => minus(signedMoney(value)) },
       splitLine: { lineStyle: { color: colours.grid, type: "dashed" as const } },
     },
-    series: [
-      ...(["buy", "sell"] as const).map((side) => ({
-        type: "scatter" as const,
-        name: side === "buy" ? t("买入", "Buys") : t("卖出", "Sells"),
-        symbol: side === "buy" ? "circle" : "diamond",
-        itemStyle: { color: colours.axis },
-        data: groups.filter(([, group]) => group.length === 1 && group[0].side === side)
-          .map(([, [row]]) => point(row, colours)),
-        markLine: side === "buy"
-          ? { silent: true, symbol: "none", data: [{ yAxis: 0 }], lineStyle: { color: colours.axis, type: "solid" as const, width: 1 }, label: { show: false } }
-          : undefined,
-      })),
-      {
-        type: "scatter" as const,
-        name: t("同日决定", "Same-day decisions"),
-        symbol: "roundRect",
-        symbolSize: [32, 23],
-        z: 4,
-        itemStyle: { color: colours.tooltip, borderColor: colours.axis, borderWidth: 1 },
-        data: groups.filter(([, group]) => group.length > 1).map(([date, group]) => ({
-          value: [Date.parse(date), groupValue(group)], date, group,
-          itemStyle: date === selected ? { borderColor: colours.brand, borderWidth: 2 } : undefined,
-          label: { show: true, formatter: "+" + group.length, color: colours.tooltipText },
-        })),
-      },
-    ],
+    series: (["buy", "sell"] as const).map((side, index) => ({
+      type: "scatter" as const,
+      name: side === "buy" ? t("买入", "Buys") : t("卖出", "Sells"),
+      symbol: side === "buy" ? "circle" : "diamond",
+      itemStyle: { color: colours.axis },
+      // Later points draw over earlier ones, and the opened decision's series over the other.
+      z: focus?.side === side ? 3 : 2,
+      data: sides[index].map((row) => point(row, colours)),
+      markLine: side === "buy"
+        ? { silent: true, symbol: "none", data: [{ yAxis: 0 }], lineStyle: { color: colours.axis, type: "solid" as const, width: 1 }, label: { show: false } }
+        : undefined,
+    })),
     legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-  }), [days, groupValue, groups, horizon, locale, point, selected, t]);
-  const clusters = groups.filter(([, group]) => group.length > 1);
-  // Every marker in date order, as the keyboard steps through them: singles by side, then same-day markers.
-  const marks = (["buy", "sell"] as const).flatMap((side, seriesIndex) =>
-    groups.filter(([, group]) => group.length === 1 && group[0].side === side)
-      .map(([date], dataIndex) => ({ date, seriesIndex, dataIndex })))
-    .concat(clusters.map(([date], dataIndex) => ({ date, seriesIndex: 2, dataIndex })))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  }), [days, focus, horizon, locale, point, sides, t]);
   const [tip, setTip] = useState(false);
   const [step, setStep] = useState<number | null>(null);
   const bound = useRef<WeakSet<ECharts>>(new WeakSet());
@@ -631,24 +581,15 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
     setTip(false);
     setStep(null);
   });
-  const spoken = step == null || !marks[step] ? "" : (() => {
-    const group = groups.find(([date]) => date === marks[step].date)?.[1] ?? [];
-    return readingText(group.length > 1
-      ? clusterReading(marks[step].date, group, horizon, days, t, locale)
-      : decisionReading(group[0], horizon, days, t, locale), locale);
-  })();
-  return <>
+  const spoken = step == null || !marks[step] ? "" : readingText(decisionReading(marks[step].row, horizon, days, t, locale), locale);
+  return (
     <div onPointerEnter={bind} onKeyDownCapture={(event) => {
-      // The chart's own keys step through its first series only; these reach every marker.
-      if (!["ArrowLeft", "ArrowRight", "Home", "End", "Enter", " "].includes(event.key) || !marks.length) return;
+      // The chart's own keys step through its first series only; these reach every decision.
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !marks.length) return;
       if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "group") return;
       event.preventDefault();
       event.stopPropagation();
       bind();
-      if (event.key === "Enter" || event.key === " ") {
-        if (step != null && marks[step]) pick(marks[step].date);
-        return;
-      }
       const next = event.key === "Home" ? 0 : event.key === "End" ? marks.length - 1
         : step == null ? (event.key === "ArrowLeft" ? marks.length - 1 : 0)
           : Math.max(0, Math.min(marks.length - 1, step + (event.key === "ArrowRight" ? 1 : -1)));
@@ -659,36 +600,11 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       if (step == null || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
       chart.current?.dispatchAction({ type: "hideTip" });
       setStep(null);
-    }} onClick={(event) => {
-      const instance = chart.current;
-      const bounds = instance?.getDom().getBoundingClientRect();
-      if (!instance || !bounds || !(event.target instanceof Node) || !instance.getDom().contains(event.target)) return;
-      const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
-      let match: { date: string; distance: number } | undefined;
-      for (const [date, group] of groups) {
-        const [px, py] = instance.convertToPixel({ gridIndex: 0 }, [Date.parse(date), groupValue(group)]);
-        const distance = Math.hypot(x - px, y - py);
-        if (distance <= (group.length > 1 ? 19 : 13) && (!match || distance < match.distance)) match = { date, distance };
-      }
-      if (match) pick(match.date);
     }}>
       <Plot research controller={chart} label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />
       <span className="sr-only" aria-live="polite" aria-atomic="true">{spoken}</span>
     </div>
-    {clusters.length > 0 && <p className="mx-muted">{t("同日多笔决定按已观测结果的平均值标记，可展开逐笔查看。", "Same-day markers use the average observed result. Open a date to read each decision.")}</p>}
-    {clusters.length > 0 && <div className="mx-decision-clusters" role="group" aria-label={t("同日决定", "Same-day decisions")}>
-      {clusters.map(([date, group]) => <button type="button" className="mx-index-retry" key={date}
-        aria-controls={listId} aria-expanded={date === active?.[0]} onClick={() => pick(date)}>
-        {formatCalendarDate(date, locale)} <strong>+{group.length}</strong>
-      </button>)}
-    </div>}
-    <div id={listId} hidden={!active}>
-      {active && <section aria-label={t("所选日期的决定", "Decisions on the selected date")} className="mx-decision-day">
-        <h3>{formatCalendarDate(active[0], locale)} · {active[1].length} {active[1].length === 1 ? t("笔决定", "decision") : t("笔决定", "decisions")}</h3>
-        {decisionKeys(active[1]).map((key, i) => <DecisionRow key={key} row={active[1][i]} horizon={horizon} days={days} sided />)}
-      </section>}
-    </div>
-  </>;
+  );
 }
 
 /** How the same-day round trips did, and how much of each day's range they took. */
@@ -801,7 +717,6 @@ function BestCloses({ rows }: { rows: ClosedTrade[] }) {
 export function DecisionReview({
   data,
   account,
-  dataAsOf,
   focus,
   arrive = false,
   onClear,
@@ -810,8 +725,6 @@ export function DecisionReview({
 }: {
   data: AccountDecisions | null | undefined;
   account?: AccountCode;
-  /** When the reviewed figures were built; an older AI review says when it was written. */
-  dataAsOf?: string | null;
   /** The decision a link opened the page on. It leads the review while the review has it. */
   focus?: DecisionRef | null;
   /** The page has just opened: focus moves to that decision when this review first draws it, and never again. */
@@ -975,7 +888,6 @@ export function DecisionReview({
           </p>
         )}
       </Panel>
-      {account && <DecisionNarrative account={account} dataAsOf={dataAsOf ?? data.asOf} />}
       <div className="mx-grid">
         <Panel title={t("卖出后上涨最多", "Sold before the biggest rises")}>
           <DecisionRows rows={sold.worst} horizon={horizon} empty={t("没有卖出后上涨的记录", "No sale was followed by a rise")} />

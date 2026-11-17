@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { formatCalendarDate } from "@/ui/formatters";
 import { readingHtml, readingText } from "./chart-readout";
 import {
-  clusterReading,
   contextFit,
   decisionAction,
   decisionContext,
@@ -24,6 +23,7 @@ import {
   sameDecision,
   sideVerdict,
   signedMoney,
+  timelinePoints,
   verdictWord,
   windowObserved,
   type TradeDecision,
@@ -366,24 +366,44 @@ describe("a timeline point's reading", () => {
     expect(decisionReading(flat, "horizon", 20, en, "en").primary?.tone).toBeUndefined();
   });
 
-  it("reads a same-day marker as its count, the two largest decisions and how many more", () => {
-    const group = [
-      { ...row("buy", "SMALL", 10, 10), amountGbp: 1000 },
-      { ...row("sell", "BIG", -20, -20), amountGbp: 5000 },
-      { ...row("buy", "MID", 30, 30), amountGbp: 3000 },
-      { ...row("sell", "WAIT", null, 5), amountGbp: 200, observedDays: 3, horizonComplete: false },
-    ];
-    const reading = clusterReading("2026-06-01", group, "horizon", 20, zh, "zh");
-    expect(reading.time).toBe(formatCalendarDate("2026-06-01", "zh") + " · 4 笔决定");
-    expect(reading.groups?.[0]).toEqual([{ label: "BIG 卖出", value: "−£20" }, { label: "MID 买入", value: "+£30" }]);
-    expect(reading.more).toBe(2);
-    expect(clusterReading("2026-06-01", group, "horizon", 20, en, "en").groups?.[0][0].label).toBe("Sold BIG");
-  });
-
   it("escapes provider text in the tooltip card", () => {
     const html = readingHtml(decisionReading({ ...amd, events: [{ date: "2026-07-20", kind: "news" as const, title: "<img src=x onerror=alert(1)>" }] }, "horizon", 20, en, "en"), "en");
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
+  });
+});
+
+describe("the decision timeline", () => {
+  const on = (date: string, side: "buy" | "sell", ticker: string) => ({ ...row(side, ticker, 10, 10), date });
+  // A busy day of five decisions between two quieter ones.
+  const decisions = [
+    on("2026-05-29", "sell", "EARLY"),
+    on("2026-06-01", "buy", "B1"),
+    on("2026-06-01", "sell", "S1"),
+    on("2026-06-01", "buy", "B2"),
+    on("2026-06-01", "buy", "B3"),
+    on("2026-06-01", "sell", "S2"),
+    on("2026-06-03", "buy", "LATE"),
+  ];
+
+  it("plots every decision as its own point, decisions sharing a day included", () => {
+    const { sides } = timelinePoints(decisions);
+    expect(sides.map((points) => points.map((point) => point.ticker))).toEqual([["B1", "B2", "B3", "LATE"], ["EARLY", "S1", "S2"]]);
+  });
+
+  it("steps through every decision by date, each step reading its own point", () => {
+    const { sides, marks } = timelinePoints(decisions);
+    expect(marks.map((mark) => mark.row.ticker)).toEqual(["EARLY", "B1", "B2", "B3", "S1", "S2", "LATE"]);
+    for (const mark of marks) expect(sides[mark.seriesIndex][mark.dataIndex]).toBe(mark.row);
+  });
+
+  it("draws the decision the page opened on last, over the others of its side", () => {
+    const opened = decisions[1];
+    const { sides, marks } = timelinePoints(decisions, opened);
+    expect(sides[0].at(-1)).toBe(opened);
+    expect(new Set(sides.flat())).toEqual(new Set(decisions));
+    expect(marks.map((mark) => mark.row.date)).toEqual([...decisions.map((row) => row.date)].sort());
+    for (const mark of marks) expect(sides[mark.seriesIndex][mark.dataIndex]).toBe(mark.row);
   });
 });
 
