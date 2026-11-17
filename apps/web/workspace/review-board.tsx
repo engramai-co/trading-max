@@ -17,6 +17,7 @@ import {
   decisionAction,
   decisionEffect,
   decisionExtremes,
+  decisionKeys,
   decisionParam,
   effectTone,
   favourableCount,
@@ -296,12 +297,14 @@ export function DecisionExtremes({ rows, horizon, showAccount }: { rows: ScopedD
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { helped, cost } = decisionExtremes(rows, horizon);
-  const list = (items: ScopedDecision[], empty: string) => items.length
-    ? items.map((row) => (
-      <DecisionLine key={row.account + decisionParam(row) + row.name} row={row} horizon={horizon}
+  // Keys never depend on a security's display name, so a name correction keeps the row and its focus.
+  const list = (items: ScopedDecision[], empty: string) => {
+    const keys = decisionKeys(items);
+    return items.length ? items.map((row, index) => (
+      <DecisionLine key={keys[index]} row={row} horizon={horizon}
         account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row)} />
-    ))
-    : <p className="mx-review-empty">{empty}</p>;
+    )) : <p className="mx-review-empty">{empty}</p>;
+  };
   return (
     <div className="mx-grid mx-review-extremes">
       <Panel title={t("帮你最多", "Helped most")}>{list(helped, t("还没有帮到你的决定", "No decision has helped yet"))}</Panel>
@@ -330,6 +333,7 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
     mark = sides.size > 1 ? "mixed" : entry.rows[0].side;
     const effect = tradeEffect(entry.rows);
     const single = entry.rows.length === 1 ? entry.rows[0] : null;
+    const chipKeys = decisionKeys(entry.rows);
     const label = single
       ? decisionAction(single, t) + single.ticker
       : sides.size > 1
@@ -351,8 +355,8 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
         </p>
         {!single && (
           <ul className="mx-journal-chips">
-            {entry.rows.map((row) => (
-              <li key={decisionParam(row) + row.name}>
+            {entry.rows.map((row, index) => (
+              <li key={chipKeys[index]}>
                 <Link href={decisionHref(entry.account, row)}>
                   {sides.size > 1 && <span className={"mx-journal-mark mx-journal-mark-" + row.side} aria-hidden="true" />}
                   <span className="sr-only">{decisionAction(row, t)}</span>

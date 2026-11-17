@@ -146,10 +146,6 @@
     min-width: 220px;
   }
 }
-.mx-account-read {
-  display: grid;
-  gap: inherit;
-}
 .mx-research-page {
   position: relative;
 }

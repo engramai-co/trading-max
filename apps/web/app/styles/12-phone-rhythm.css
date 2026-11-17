@@ -119,7 +119,6 @@
   }
   .mx-page .mx-metric .mx-number,
   .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric:not(:first-child) .mx-number,
-  .mx-page .mx-review-bento .mx-metric-lead > .mx-metric:not(:first-child) .mx-number,
   .mx-page .mx-highlight-value {
     margin-top: var(--mx-space-tight);
     font-size: var(--mx-text-metric);
@@ -128,7 +127,6 @@
     letter-spacing: -0.02em;
   }
   .mx-page .mx-metric-grid.mx-metric-lead > .mx-metric:first-child .mx-number,
-  .mx-page .mx-review-bento .mx-metric-lead > .mx-metric:first-child .mx-number,
   .mx-page .mx-period-figure strong,
   .mx-page .mx-security-panel .mx-security-price strong,
   .mx-page .mx-health-hero h2,
@@ -235,22 +233,18 @@
     margin-top: var(--mx-space-tight);
     gap: var(--mx-space-tight) var(--mx-space-group);
   }
-  /* Evidence tables and tabs scroll within their own regions, without widening the review grid. */
-  .mx-account-review-page .mx-account-read {
-    grid-template-columns: minmax(0, 1fr);
-  }
   /* Pair metrics when their amounts fit. A wider amount takes a row before it can overlap its neighbor. */
-  .mx-page .mx-review-bento .mx-metric-grid {
+  .mx-page .mx-review-lead > .mx-metric-lead {
     display: flex;
     flex-wrap: wrap;
   }
-  .mx-review-bento .mx-metric {
+  .mx-review-lead > .mx-metric-lead > .mx-metric {
     flex: 1 1 40%;
   }
-  .mx-review-bento .mx-metric-label {
+  .mx-review-lead > .mx-metric-lead .mx-metric-label {
     overflow-wrap: anywhere;
   }
-  .mx-review-bento .mx-number {
+  .mx-review-lead > .mx-metric-lead .mx-number {
     white-space: nowrap;
   }
   .mx-page .mx-review-evidence {
@@ -258,9 +252,6 @@
   }
   .mx-page .mx-review-evidence > .mx-tabs {
     margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
-  }
-  .mx-page .mx-review-freshness {
-    margin-top: var(--mx-space-group);
   }
   .mx-page .mx-review-highlights {
     column-gap: var(--mx-space-items);
@@ -406,20 +397,11 @@
   .mx-page .mx-decision-review > .mx-metric-grid > .mx-metric {
     min-width: 0;
   }
-  /* The account review and data status headings keep their control beside the title. */
-  .mx-account-review-page > .mx-page-heading,
+  /* The data status heading keeps its control beside the title. */
   .mx-health-page > .mx-page-heading {
     flex-direction: row;
     align-items: center;
     flex-wrap: wrap;
-  }
-  /* The account select sits beside a short title and takes its own row under a long one; either way it grows to
-     name the account in full. */
-  .mx-account-review-page > .mx-page-heading .mx-page-actions {
-    flex: 1 0 128px;
-  }
-  .mx-page .mx-review-account {
-    width: 100%;
   }
   .mx-page .mx-connection-card + .mx-connection-card {
     border-top: 1px solid var(--mx-border);
