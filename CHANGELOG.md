@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+- The decision review timeline draws every buy and sell as its own point again, each with its own reading. Since 1.48.0, days with more than one decision were drawn as numbered boxes that covered the chart of an active account, with a note and a list of those days beneath it.
+
+### Removed
+- The AI review card on an account's decision review.
+
 ## [1.52.1] - 2026-11-16
 
 ### Changed

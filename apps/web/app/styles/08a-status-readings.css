@@ -33,26 +33,6 @@
 .mx-review-prerequisites li + li {
   margin-block-start: 6px;
 }
-.mx-decision-clusters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px 10px;
-  margin-block: 4px;
-}
-.mx-decision-clusters button {
-  min-height: 32px;
-}
-.mx-decision-clusters button[aria-expanded="true"] {
-  color: var(--mx-accent);
-}
-.mx-decision-day {
-  margin-block-start: 10px;
-  border-top: 1px solid var(--mx-border);
-}
-.mx-decision-day h3 {
-  margin: 12px 0 4px;
-  font-size: 14px;
-}
 
 @media (max-width: 767px) {
   .mx-health-hero {
