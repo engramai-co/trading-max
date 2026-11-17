@@ -267,7 +267,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                     )}
               </Notice>
             )}
-            {desktop && imported && <Group><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/account-analysis?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></Group>}
+            {desktop && imported && <Group><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/review?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></Group>}
             {preference.isError && (
               <Notice tone="bad">
                 {t(

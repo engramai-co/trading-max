@@ -229,7 +229,7 @@ describe("the decision a link opens", () => {
 
   it("comes back unchanged through a link's query string", () => {
     const buy = { date: "2026-11-03", side: "buy" as const, ticker: "EURUSD=X" };
-    const href = "/account-analysis?" + new URLSearchParams({ account: "B", reviewView: "decisions", decision: decisionParam(buy) });
+    const href = "/review?" + new URLSearchParams({ account: "B", decision: decisionParam(buy) });
     expect(href).toContain("decision=2026-11-03.buy.EURUSD%3DX");
     expect(parseDecisionParam(new URL(href, "https://example.test").searchParams.get("decision"))).toEqual(buy);
   });

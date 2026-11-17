@@ -23,7 +23,7 @@ import { currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
+import { Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
@@ -422,11 +422,25 @@ export function notableDecisions(rows: TradeDecision[], side: "buy" | "sell", ho
 }
 
 /**
+ * The decisions that helped and cost the most at a horizon, buys and sells together: an effect is
+ * always measured against not trading, so a sale that avoided a fall helps like a buy that rose.
+ */
+export function decisionExtremes<T extends TradeDecision>(rows: T[], horizon: Horizon, limit = 4) {
+  const scored = rows.filter((row) => Math.round(decisionEffect(row, horizon) ?? 0) !== 0);
+  const by = (sign: 1 | -1) =>
+    scored
+      .filter((row) => sign * (decisionEffect(row, horizon) ?? 0) > 0)
+      .sort((a, b) => sign * ((decisionEffect(b, horizon) ?? 0) - (decisionEffect(a, horizon) ?? 0)))
+      .slice(0, limit);
+  return { helped: by(1), cost: by(-1) };
+}
+
+/**
  * One decision: the security, its effect over "date · amount · then", and the arrow to its research.
  * A decision shown on its own also names its side. Until its window has closes to judge it by, it
  * says where it stands in place of an effect: observing, or how many of the trading days have passed.
  */
-function DecisionRow({ row, horizon, days = 20, sided = false }: { row: TradeDecision; horizon: Horizon; days?: number; sided?: boolean }) {
+export function DecisionRow({ row, horizon, days = 20, sided = false }: { row: TradeDecision; horizon: Horizon; days?: number; sided?: boolean }) {
   const t = useCopy();
   const { locale } = useLocale();
   const effect = decisionEffect(row, horizon);
@@ -457,18 +471,6 @@ function DecisionRow({ row, horizon, days = 20, sided = false }: { row: TradeDec
   );
 }
 
-function DecisionRows({ rows, horizon, empty }: { rows: TradeDecision[]; horizon: Horizon; empty: string }) {
-  if (!rows.length) return <p className="mx-muted">{empty}</p>;
-  const keys = decisionKeys(rows);
-  return (
-    <>
-      {rows.map((row, index) => (
-        <DecisionRow key={keys[index]} row={row} horizon={horizon} />
-      ))}
-    </>
-  );
-}
-
 /** How a decision names itself in a reading: "AMD 买入" in Chinese, "Bought AMD" in English. */
 function decisionName(row: TradeDecision, t: Copy, locale: "zh" | "en") {
   const action = decisionAction(row, t).trim();
@@ -479,12 +481,13 @@ function decisionName(row: TradeDecision, t: Copy, locale: "zh" | "en") {
  * A timeline point's reading: the day, ticker, side and amount on top; the outcome as the one
  * figure, in gain or loss colour, or what it still waits for; then at most two dated events.
  */
-export function decisionReading(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en"): Reading {
+export function decisionReading(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en", account?: string): Reading {
   const effect = decisionEffect(row, horizon);
   const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
   const events = row.events ?? [];
   return {
-    time: formatCalendarDate(row.date, locale) + " · " + decisionName(row, t, locale) + " " + currency(row.amountGbp),
+    time: [formatCalendarDate(row.date, locale), account, decisionName(row, t, locale) + " " + currency(row.amountGbp)]
+      .filter(Boolean).join(" · "),
     primary: effect != null
       ? {
           label: t("之后", "Then"),
@@ -514,8 +517,19 @@ export function timelinePoints(rows: TradeDecision[], focus?: TradeDecision) {
   return { sides, marks };
 }
 
-/** Every decision by date and effect; the one the page opened on is larger, ringed and drawn on top. */
-function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[]; horizon: Horizon; days: number; focus?: TradeDecision }) {
+/**
+ * Every decision by date and effect; the one the page opened on is larger, ringed and drawn on top.
+ * Picking a point, by pointer or with Enter, opens that decision; across accounts, each reading names
+ * its account.
+ */
+export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf }: {
+  rows: TradeDecision[];
+  horizon: Horizon;
+  days: number;
+  focus?: TradeDecision;
+  onPick?: (row: TradeDecision) => void;
+  accountOf?: (row: TradeDecision) => string | undefined;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   // The chart's option only changes with its data: a new option resets ECharts, which would
@@ -537,13 +551,17 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
       row,
     };
   }, [focus, horizon, largest]);
+  const reading = useCallback(
+    (row: TradeDecision) => decisionReading(row, horizon, days, t, locale, accountOf?.(row)),
+    [accountOf, days, horizon, locale, t],
+  );
   const option = useCallback((colours: Record<string, string>) => ({
     grid: { top: 40, right: 18, bottom: 30, left: 64 },
     tooltip: {
       ...READING_TOOLTIP,
       trigger: "item" as const,
       formatter: (input: unknown) =>
-        readingHtml(decisionReading((input as { data: { row: TradeDecision } }).data.row, horizon, days, t, locale), locale),
+        readingHtml(reading((input as { data: { row: TradeDecision } }).data.row), locale),
     },
     xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
     yAxis: {
@@ -564,10 +582,16 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
         : undefined,
     })),
     legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-  }), [days, focus, horizon, locale, point, sides, t]);
+  }), [focus, locale, point, reading, sides, t]);
   const [tip, setTip] = useState(false);
   const [step, setStep] = useState<number | null>(null);
   const bound = useRef<WeakSet<ECharts>>(new WeakSet());
+  // The chart keeps the handlers it was given once; the latest pick handler is read when a point is picked.
+  const picker = useRef(onPick);
+  useLayoutEffect(() => {
+    picker.current = onPick;
+  });
+  const pick = (row: TradeDecision) => picker.current?.(row);
   // The tooltip opens for the pointer, a tap or the arrow keys; Escape closes it wherever focus is.
   const bind = () => {
     const instance = chart.current;
@@ -575,21 +599,29 @@ function DecisionTimeline({ rows, horizon, days, focus }: { rows: TradeDecision[
     bound.current.add(instance);
     instance.on("showTip", () => setTip(true));
     instance.on("hideTip", () => setTip(false));
+    instance.on("click", (params) => {
+      const row = (params.data as { row?: TradeDecision } | undefined)?.row;
+      if (row) pick(row);
+    });
   };
   useEscapeLayer(tip, () => {
     chart.current?.dispatchAction({ type: "hideTip" });
     setTip(false);
     setStep(null);
   });
-  const spoken = step == null || !marks[step] ? "" : readingText(decisionReading(marks[step].row, horizon, days, t, locale), locale);
+  const spoken = step == null || !marks[step] ? "" : readingText(reading(marks[step].row), locale);
   return (
     <div onPointerEnter={bind} onKeyDownCapture={(event) => {
       // The chart's own keys step through its first series only; these reach every decision.
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || !marks.length) return;
+      if (!["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key) || !marks.length) return;
       if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "group") return;
       event.preventDefault();
       event.stopPropagation();
       bind();
+      if (event.key === "Enter") {
+        if (step != null && marks[step]) pick(marks[step].row);
+        return;
+      }
       const next = event.key === "Home" ? 0 : event.key === "End" ? marks.length - 1
         : step == null ? (event.key === "ArrowLeft" ? marks.length - 1 : 0)
           : Math.max(0, Math.min(marks.length - 1, step + (event.key === "ArrowRight" ? 1 : -1)));
@@ -620,7 +652,7 @@ export function roundTripVerdict(summary: AccountDecisions["roundTripSummary"] |
   };
 }
 
-function RoundTrips({ data }: { data: AccountDecisions }) {
+export function RoundTrips({ data }: { data: AccountDecisions }) {
   const t = useCopy();
   const { locale } = useLocale();
   const verdict = roundTripVerdict(data.roundTripSummary);
@@ -666,7 +698,7 @@ function RoundTrips({ data }: { data: AccountDecisions }) {
 }
 
 /** Closed trades beside the best close while they were held: what selling then would have made. */
-function BestCloses({ rows }: { rows: ClosedTrade[] }) {
+export function BestCloses({ rows }: { rows: ClosedTrade[] }) {
   const t = useCopy();
   const { locale } = useLocale();
   if (!rows.length) return null;
@@ -714,38 +746,20 @@ function BestCloses({ rows }: { rows: ClosedTrade[] }) {
   );
 }
 
-export function DecisionReview({
-  data,
-  account,
-  focus,
-  arrive = false,
-  onClear,
-  horizons,
-  onHorizons,
-}: {
-  data: AccountDecisions | null | undefined;
-  account?: AccountCode;
-  /** The decision a link opened the page on. It leads the review while the review has it. */
-  focus?: DecisionRef | null;
-  /** The page has just opened: focus moves to that decision when this review first draws it, and never again. */
-  arrive?: boolean;
-  /** Lets go of the decision; the review stays as it is beneath it. */
-  onClear?: () => void;
-  /** The page's horizon choices, so a failed refetch or another angle that draws this panel anew keeps them. */
-  horizons: HorizonChoices;
-  onHorizons: Dispatch<SetStateAction<HorizonChoices>>;
-}) {
-  const t = useCopy();
-  const { locale } = useLocale();
-  // A refresh can take the decision away, and a link can fit two securities that share a ticker:
-  // either way the review reads as if no decision was named.
-  const focused = linkedDecision(data?.decisions, focus);
-  // Each decision keeps its own horizon, and so does the review without one: Back to a decision
-  // brings its own choice, or the horizon it opens on, never one made in the ordinary review.
+/**
+ * The horizon a review reads at, kept per account and decision so it outlives the panels that show
+ * it. A decision keeps the horizon it opened on until the reader chooses another; letting go of a
+ * decision leaves the review beneath on that horizon unless it has a choice of its own.
+ */
+export function useDecisionHorizon(
+  account: AccountCode | undefined,
+  focused: TradeDecision | undefined,
+  horizons: HorizonChoices,
+  onHorizons: Dispatch<SetStateAction<HorizonChoices>>,
+) {
   const scope = horizonScope(account, focused);
   const ordinary = horizonScope(account);
   const horizon = horizons[scope] ?? openingHorizon(focused);
-  const choose = (value: Horizon) => onHorizons((current) => ({ ...current, [scope]: value }));
   // A decision's opening horizon is kept the first time it is shown, so a refetch that completes its
   // window leaves the figures the reader is looking at; only the reader's own choice changes it.
   // React runs this before any later update, such as a refetch, is drawn.
@@ -757,153 +771,126 @@ export function DecisionReview({
   useEffect(() => {
     keep();
   }, [scope]);
+  return {
+    horizon,
+    choose: (value: Horizon) => onHorizons((current) => ({ ...current, [scope]: value })),
+    release: () => onHorizons((current) => (current[ordinary] ? current : { ...current, [ordinary]: horizon })),
+  };
+}
+
+/** The horizon a review compares at: after its trading days, or to date. */
+export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; days: number; onChange: (value: Horizon) => void }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return (
+    <Segments
+      label={t("对照时点", "Compare at")}
+      value={horizon}
+      onChange={onChange}
+      options={[
+        { value: "horizon", label: locale === "zh" ? `${days} 个交易日后` : `${days} trading days` },
+        { value: "date", label: t("至今", "To date") },
+      ]}
+    />
+  );
+}
+
+/**
+ * Every decision by date and outcome. A decision a link or a pick names leads the panel with its
+ * context, and focus moves to it once each time one is named.
+ */
+export function DecisionTimelinePanel({
+  rows,
+  days,
+  horizon,
+  focus,
+  onClear,
+  onPick,
+  accountOf,
+  unpriced = [],
+}: {
+  rows: TradeDecision[];
+  days: number;
+  horizon: Horizon;
+  focus?: TradeDecision;
+  /** Lets go of the decision; the review stays as it is beneath it. */
+  onClear?: () => void;
+  onPick?: (row: TradeDecision) => void;
+  /** Across accounts, the account each reading names. */
+  accountOf?: (row: TradeDecision) => string | undefined;
+  unpriced?: string[];
+}) {
+  const t = useCopy();
+  const { locale } = useLocale();
   const card = useRef<HTMLDivElement>(null);
-  const heading = useRef<HTMLHeadingElement>(null);
-  const toolRow = useRef<HTMLDivElement>(null);
-  const arrived = useRef(false);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const focusKey = focus ? decisionParam(focus) : "";
+  const landed = useRef("");
   const land = useEffectEvent(() => {
     const link = card.current?.querySelector<HTMLElement>(".mx-row-link");
-    if (!arrive || arrived.current || !link) return;
+    if (!focusKey || landed.current === focusKey || !link) return;
     // Set before focusing: StrictMode runs this effect twice, and the second run must not move anything.
-    arrived.current = true;
+    landed.current = focusKey;
     link.focus({ preventScroll: true });
     card.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
   });
-  // Only the first render moves focus; later renders and refetches leave it where the reader put it.
+  // A refetch that keeps the decision leaves focus where the reader put it.
   useEffect(() => {
     land();
-  }, []);
-  if (!data || data.status !== "available")
-    return (
-      <Panel>
-        <Empty
-          title={t("还没有买卖决定的复盘", "No decision review yet")}
-          description={t(
-            "完成一次完整更新后，这里会逐笔对照每次买入和卖出之后的价格。",
-            "After a full update, each buy and sell is compared with the price that followed.",
-          )}
-        />
-      </Panel>
-    );
-  const rows = data.decisions ?? [];
-  const days = data.horizonDays ?? 20;
-  const window = horizon === "horizon"
-    ? (locale === "zh" ? ` ${days} 个交易日` : ` after ${days} trading days`)
-    : t("至今", " to date");
-  const sells = sideVerdict(rows, "sell", horizon);
-  const buys = sideVerdict(rows, "buy", horizon);
-  const trips = roundTripVerdict(data.roundTripSummary);
-  const sold = notableDecisions(rows, "sell", horizon);
-  const bought = notableDecisions(rows, "buy", horizon);
-  const closed = (data.closedTrades ?? []).filter((row) => (row.givenBackGbp ?? 0) > 0);
-  const unpriced = data.coverage?.unpricedTickers ?? [];
-  const verdict = (side: "buy" | "sell", summary: ReturnType<typeof sideVerdict>) => {
-    const word = summary.evaluated ? verdictWord(side, summary.effect, t) : "";
-    return (
-      <Metric
-        label={(side === "sell" ? t("卖出后", "Sells") : t("买入后", "Buys")) + window + (word ? " · " + word : "")}
-        value={summary.evaluated ? currency(Math.abs(summary.effect)) : "—"}
-        tone={word ? (summary.effect < 0 ? "down" : "up") : undefined}
-        note={summary.evaluated ? favourableCount(side, summary.favourable, summary.evaluated, locale) : undefined}
-      />
-    );
-  };
-  const title = t("买卖决定", "Buy and sell decisions");
+  }, [focusKey]);
+  const title = horizon === "horizon"
+    ? (locale === "zh" ? `每笔决定 ${days} 个交易日后的结果` : `Each decision after ${days} trading days`)
+    : t("每笔决定至今的结果", "Each decision to date");
   return (
-    <>
-      <Panel className="mx-decision-review">
-        {/* The selected tab above already names this panel, so its heading is for assistive technology.
-            Letting go of a decision returns focus here, to the panel the decision led. */}
-        <div ref={toolRow} className="mx-panel-heading mx-decision-tools">
-          <div className="mx-panel-title">
-            <h2 ref={heading} className="sr-only" tabIndex={-1}>
-              {title}
-            </h2>
-            <Help label={title} basis={t(
-              "只用已收盘的价格和当日的最终汇率；数据源缺失的价格或汇率最多等待三个交易日，之后沿用此前的值。数据源日后补齐或更正历史时，效果会随之重算。",
-              "Only completed closes and each day's final exchange rate are used; a missing price or rate waits up to three trading days for the data provider, then takes the last value before it. If the provider later fills in or corrects its history, effects are restated.",
-            )}>
-              <p>
-                {t(
-                  "每个交易日的同一代码、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算。同一天又买又卖时，配对的股数算作日内往返，单独计算，只有多买或多卖的部分算作决定。",
-                  "One ticker, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "对照的是不做这笔交易：买入之后上涨或派息记为赚，下跌记为亏；卖出之后上涨或派息记为少赚，下跌记为少亏。",
-                  "Each decision is compared with not trading: a buy gains when the price then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls.",
-                )}
-              </p>
-            </Help>
-          </div>
-          <Segments
-            label={t("对照时点", "Compare at")}
-            value={horizon}
-            onChange={choose}
-            options={[
-              { value: "horizon", label: locale === "zh" ? `${days} 个交易日后` : `${days} trading days` },
-              { value: "date", label: t("至今", "To date") },
-            ]}
-          />
-        </div>
-        {focused && (
-          <div ref={card} className="mx-decision-focus">
-            <DecisionRow row={focused} horizon={horizon} days={days} sided />
-            {onClear && (
-              <CloseButton
-                className="mx-decision-unfocus"
-                size="md"
-                aria-label={t("取消选中这笔决定", "Deselect this decision")}
-                onClick={() => {
-                  heading.current?.focus({ preventScroll: true });
-                  // The heading's row comes into view below the sticky bar, so the next Tab, to its help, shows.
-                  toolRow.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
-                  // The review beneath stays as it is: without a choice of its own, it keeps this horizon.
-                  onHorizons((current) => (current[ordinary] ? current : { ...current, [ordinary]: horizon }));
-                  onClear();
-                }}
-              />
-            )}
-          </div>
-        )}
-        <div className="mx-metric-grid mx-metric-grid-three">
-          {verdict("sell", sells)}
-          {verdict("buy", buys)}
-          {trips.count > 0 && (
-            <Metric
-              label={t("日内往返", "Round trips") + (Math.round(trips.result) ? " · " + (trips.result > 0 ? t("赚", "gained") : t("亏", "lost")) : "")}
-              value={currency(Math.abs(trips.result))}
-              tone={Math.round(trips.result) ? (trips.result < 0 ? "down" : "up") : undefined}
-              note={locale === "zh" ? `${trips.favourable} / ${trips.count} 次盈利` : `${trips.favourable} of ${trips.count} gained`}
+    <Panel
+      className="mx-decision-review"
+      title={title}
+      helpLabel={t("买卖决定", "Buy and sell decisions")}
+      help={<>
+        <p>
+          {t(
+            "每个交易日的同一代码、同一方向算一次决定，用拆股调整后的收盘价（英镑）加上之后的分红计算。同一天又买又卖时，配对的股数算作日内往返，单独计算，只有多买或多卖的部分算作决定。",
+            "One ticker, one side and one trading day make a decision, measured on split-adjusted closes in GBP plus the dividends that followed. When a day both buys and sells, the matched shares are a same-day round trip scored on their own, and only the shares beyond it count as a decision.",
+          )}
+        </p>
+        <p>
+          {t(
+            "对照的是不做这笔交易：买入之后上涨或派息记为赚，下跌记为亏；卖出之后上涨或派息记为少赚，下跌记为少亏。",
+            "Each decision is compared with not trading: a buy gains when the price then rises or pays out and loses when it falls; a sell gives up gains when it then rises or pays out and avoids losses when it falls.",
+          )}
+        </p>
+      </>}
+      helpBasis={t(
+        "只用已收盘的价格和当日的最终汇率；数据源缺失的价格或汇率最多等待三个交易日，之后沿用此前的值。数据源日后补齐或更正历史时，效果会随之重算。",
+        "Only completed closes and each day's final exchange rate are used; a missing price or rate waits up to three trading days for the data provider, then takes the last value before it. If the provider later fills in or corrects its history, effects are restated.",
+      )}
+    >
+      {/* Letting go of a decision returns focus here, to the panel the decision led. */}
+      <span ref={anchor} className="sr-only" tabIndex={-1}>{title}</span>
+      {focus && (
+        <div ref={card} className="mx-decision-focus">
+          <DecisionRow row={focus} horizon={horizon} days={days} sided />
+          {onClear && (
+            <CloseButton
+              className="mx-decision-unfocus"
+              size="md"
+              aria-label={t("取消选中这笔决定", "Deselect this decision")}
+              onClick={() => {
+                anchor.current?.focus({ preventScroll: true });
+                onClear();
+              }}
             />
           )}
         </div>
-        <DecisionTimeline rows={rows} horizon={horizon} days={days} focus={focused} />
-        {unpriced.length > 0 && (
-          <p className="mx-muted mx-decision-coverage">
-            {locale === "zh"
-              ? `${unpriced.length} 项持仓没有可核对的行情，未计入：${unpriced.join("、")}`
-              : `${unpriced.length} ${unpriced.length === 1 ? "holding has" : "holdings have"} no reconcilable prices and ${unpriced.length === 1 ? "is" : "are"} excluded: ${unpriced.join(", ")}`}
-          </p>
-        )}
-      </Panel>
-      <div className="mx-grid">
-        <Panel title={t("卖出后上涨最多", "Sold before the biggest rises")}>
-          <DecisionRows rows={sold.worst} horizon={horizon} empty={t("没有卖出后上涨的记录", "No sale was followed by a rise")} />
-        </Panel>
-        <Panel title={t("卖出后下跌最多", "Sold before the biggest falls")}>
-          <DecisionRows rows={sold.best} horizon={horizon} empty={t("没有卖出后下跌的记录", "No sale was followed by a fall")} />
-        </Panel>
-        <Panel title={t("买入后下跌最多", "Bought before the biggest falls")}>
-          <DecisionRows rows={bought.worst} horizon={horizon} empty={t("没有买入后下跌的记录", "No purchase was followed by a fall")} />
-        </Panel>
-        <Panel title={t("买入后上涨最多", "Bought before the biggest rises")}>
-          <DecisionRows rows={bought.best} horizon={horizon} empty={t("没有买入后上涨的记录", "No purchase was followed by a rise")} />
-        </Panel>
-      </div>
-      <BestCloses rows={closed} />
-      <RoundTrips data={data} />
-    </>
+      )}
+      <DecisionTimeline rows={rows} horizon={horizon} days={days} focus={focus} onPick={onPick} accountOf={accountOf} />
+      {unpriced.length > 0 && (
+        <p className="mx-muted mx-decision-coverage">
+          {locale === "zh"
+            ? `${unpriced.length} 项持仓没有可核对的行情，未计入：${unpriced.join("、")}`
+            : `${unpriced.length} ${unpriced.length === 1 ? "holding has" : "holdings have"} no reconcilable prices and ${unpriced.length === 1 ? "is" : "are"} excluded: ${unpriced.join(", ")}`}
+        </p>
+      )}
+    </Panel>
   );
 }

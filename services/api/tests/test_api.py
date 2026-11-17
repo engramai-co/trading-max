@@ -385,11 +385,11 @@ def test_review_lens_counts_observing_decisions_before_keeping_the_latest(
         index = client.get("/v1/dashboard/lens/review").json()["decisionReviews"]["A"]
         account = client.get("/v1/dashboard/lens/account-analysis?account=A").json()
 
-    # The index keeps the latest eight still observing and the scored one beside them.
+    # The review carries every decision for its timeline and counts those still observing.
     assert index["observingCount"] == 12
     assert [row["ticker"] for row in index["decisions"]] == [
         "OLD",
-        *[f"T{index:02d}" for index in range(4, 12)],
+        *[f"T{index:02d}" for index in range(12)],
     ]
     # The account page reads the whole review, so it has no count to add.
     assert len(account["selectedAccountDecisions"]["decisions"]) == 13

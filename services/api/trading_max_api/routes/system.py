@@ -133,16 +133,11 @@ def _observing(decision: TradeDecision) -> bool:
 
 
 def _review_index(review: AccountDecisions, keep: int = 8) -> AccountDecisions:
-    """The latest decisions still observing and, separately, the latest with an outcome."""
+    """Every decision, which the review's timeline plots, with its latest round trips and closed trades."""
 
-    observing = [index for index, row in enumerate(review.decisions) if _observing(row)]
-    observed = [index for index, row in enumerate(review.decisions) if not _observing(row)]
     return review.model_copy(
         update={
-            "decisions": [
-                review.decisions[index] for index in sorted(observing[-keep:] + observed[-keep:])
-            ],
-            "observing_count": len(observing),
+            "observing_count": sum(1 for row in review.decisions if _observing(row)),
             "round_trips": review.round_trips[-keep:],
             "closed_trades": review.closed_trades[:3],
         }
@@ -431,8 +426,8 @@ def dashboard_lens(
             policy=dashboard_data.policy,
         )
     if view == "review":
-        # The index needs each account's verdict, how many decisions still wait for
-        # a close, and its latest decisions with an outcome.
+        # The review needs each account's verdict, how many decisions still wait for
+        # a close, and every decision for its timeline.
         reviews = {
             code: _review_index(review)
             for code, review in _decision_reviews(request, manifest.run_id).items()

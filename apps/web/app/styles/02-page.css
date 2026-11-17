@@ -79,6 +79,13 @@ html[data-scrolled] .mx-topbar-title strong {
   font-weight: 600;
   line-height: 1.25;
 }
+/* A page's own scopes sit beside its title and wrap below it when the row is full. */
+.mx-page-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 22px;
+}
 .mx-page-heading p {
   color: var(--mx-muted);
   font-size: 12px;
