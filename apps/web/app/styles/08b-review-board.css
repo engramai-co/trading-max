@@ -1,6 +1,8 @@
 /* The review: one page for every account, its scope beside the title. */
 .mx-review-body {
   display: grid;
+  /* One column that never grows past the page, whatever a wide row inside it asks for. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
 .mx-review-body > * {
