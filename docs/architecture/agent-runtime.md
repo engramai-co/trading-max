@@ -63,13 +63,13 @@ fallback to another provider.
 | --- | --- | --- |
 | POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
-| GET | `/v1/assistant/conversations` | Recent conversations with titles. |
+| GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
 | DELETE | `/v1/assistant/conversations/{id}` | Delete a conversation and its messages. |
-| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort and consent. |
+| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort, consent, background briefs and sharing saved valuation assumptions. |
 
-The web app proxies these under `/api/backend/assistant/`; the chat route passes
-the stream through without buffering or compression.
+The web app proxies assistant and settings routes under `/api/backend`.
+The chat route passes the stream through without buffering or compression.
 
 The assistant connection test in Settings makes one small exchange in which the
 model must call a tool. Models that only return text fail it with
@@ -85,7 +85,13 @@ agreement; the web test suite fails when they drift.
 ## Privacy
 
 The assistant is off until the user enables it and accepts the current consent
-revision. The selected provider receives tool results, not raw stores, limited
+revision. Settings names the recipient and asks for consent again when the
+provider changes. Turning the assistant off retains consent. Withdrawing
+consent disables it and keeps conversations available for separate deletion.
+Background writing and sharing saved valuation assumptions each have a
+default-on preference. Both require enablement and current consent.
+
+The selected provider receives tool results, not raw stores, limited
 to what the question needs. Conversations stay in the workspace database;
 deleting one removes its messages there, though backups taken earlier keep
 their copy. Pydantic AI instrumentation stays off and no vendor tracing is used.

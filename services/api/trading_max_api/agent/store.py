@@ -228,6 +228,14 @@ class SqliteConversationStore(ConversationStore):
                 raise ConversationConflict(conversation_id)
             connection.execute(_PRUNE_UNREACHABLE)
 
+    async def delete_scope(self, scope: str) -> None:
+        await asyncio.to_thread(self._db_delete_scope, scope)
+
+    def _db_delete_scope(self, scope: str) -> None:
+        with self._database.transaction(immediate=True) as connection:
+            connection.execute("DELETE FROM assistant_conversations WHERE scope = ?", (scope,))
+            connection.execute(_PRUNE_UNREACHABLE)
+
     def _db_read_entry(self, entry_id: str) -> ConversationEntry:
         with self._database.read() as connection:
             row = connection.execute(

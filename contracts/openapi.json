@@ -2058,6 +2058,17 @@
             ],
             "title": "Acceptedconsentrevision"
           },
+          "backgroundBriefsEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backgroundbriefsenabled"
+          },
           "enabled": {
             "anyOf": [
               {
@@ -2110,6 +2121,17 @@
               }
             ],
             "title": "Route"
+          },
+          "shareValuationAssumptions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharevaluationassumptions"
           }
         },
         "title": "AssistantPreferencesUpdate",
@@ -2214,6 +2236,10 @@
             ],
             "title": "Acceptedconsentrevision"
           },
+          "backgroundBriefsEnabled": {
+            "title": "Backgroundbriefsenabled",
+            "type": "boolean"
+          },
           "consentRevision": {
             "title": "Consentrevision",
             "type": "integer"
@@ -2269,6 +2295,10 @@
             ],
             "title": "Route"
           },
+          "shareValuationAssumptions": {
+            "title": "Sharevaluationassumptions",
+            "type": "boolean"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -2279,6 +2309,8 @@
           "enabled",
           "route",
           "reasoning",
+          "backgroundBriefsEnabled",
+          "shareValuationAssumptions",
           "acceptedConsentRevision",
           "acceptedAt",
           "revision",
@@ -24251,6 +24283,46 @@
       }
     },
     "/v1/assistant/conversations": {
+      "delete": {
+        "operationId": "delete_assistant_conversations_v1_assistant_conversations_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Assistant Conversations",
+        "tags": [
+          "assistant"
+        ]
+      },
       "get": {
         "operationId": "assistant_conversations_v1_assistant_conversations_get",
         "responses": {
@@ -28343,6 +28415,16 @@
             "schema": {
               "title": "Provider",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "saved",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Saved",
+              "type": "boolean"
             }
           },
           {

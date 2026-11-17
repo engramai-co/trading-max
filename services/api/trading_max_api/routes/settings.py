@@ -24,7 +24,12 @@ from trading_max.ingestion.brokers.trading212 import (
 )
 
 from ..agent.probe import check_assistant_connection
-from ..assistant_settings import ASSISTANT_CONSENT_REVISION, AssistantSettingsError
+from ..assistant_settings import (
+    ASSISTANT_CONSENT_REVISION,
+    AssistantSettingsError,
+    parse_assistant_route,
+    validate_assistant_integration,
+)
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
     PROVIDER_REGISTRY,
@@ -824,14 +829,26 @@ def _assistant_candidate_digest(request: Request, candidate: AssistantIntegratio
     dependencies=[Depends(require_write_auth)],
 )
 async def test_assistant_provider(
-    provider: str, body: AssistantIntegrationCandidate, request: Request
+    provider: str, body: AssistantIntegrationCandidate, request: Request, saved: bool = False
 ) -> IntegrationTestResult:
     spec = _llm_spec_or_404(provider, workload="assistant")
     candidate = _assistant_candidate(body, spec)
     key = candidate.api_key
     codex_credentials = None
     try:
-        if key is None and not spec.local:
+        if saved:
+            repository = app_service(request, "settings_repository")
+            integration, destination = validate_assistant_integration(
+                parse_assistant_route(f"{spec.provider}/{body.model}"),
+                repository.get_integration(spec.provider),
+            )
+            # A saved credential may only be used at its stored, validated destination.
+            candidate = AssistantIntegrationCandidate(model=candidate.model, base_url=destination)
+            key = None
+            needs_saved_key = not spec.local or bool(integration.credential_fingerprint)
+        else:
+            needs_saved_key = key is None and not spec.local
+        if needs_saved_key:
             key, codex_credentials = await run_in_threadpool(
                 assistant_provider_credentials,
                 app_service(request, "settings"),
@@ -847,6 +864,8 @@ async def test_assistant_provider(
                 codex_credentials=codex_credentials,
             )
         )
+    except AssistantSettingsError as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code}) from None
     except Exception as exc:
         raise _safe_integration_error(exc) from None
     return IntegrationTestResult(
@@ -861,7 +880,7 @@ async def test_assistant_provider(
                 integration_id=spec.credential_ref,
                 digest=_assistant_candidate_digest(request, candidate),
             )
-            if spec.local or candidate.api_key is not None
+            if not saved and (spec.local or candidate.api_key is not None)
             else None
         ),
     )

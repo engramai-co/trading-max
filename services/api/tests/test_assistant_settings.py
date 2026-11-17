@@ -343,6 +343,8 @@ def test_assistant_preferences_are_explicit_opt_in_and_revision_checked(assistan
     client, _, _ = assistant_client
     initial = client.get(_PREFERENCES).json()
     assert initial["enabled"] is False
+    assert initial["backgroundBriefsEnabled"] is True
+    assert initial["shareValuationAssumptions"] is True
     assert initial["route"] is None
     assert initial["acceptedConsentRevision"] is None
     assert initial["consentRevision"] == _CONSENT
@@ -370,7 +372,11 @@ def test_assistant_preferences_are_explicit_opt_in_and_revision_checked(assistan
     assert accepted["acceptedAt"] is not None
     assert update(enabled=True).json()["detail"]["code"] == "provider_route_invalid"
     assert (
-        update(enabled=True, route="openrouter/anthropic/claude-sonnet-5").json()["detail"]["code"]
+        update(
+            enabled=True,
+            route="openrouter/anthropic/claude-sonnet-5",
+            acceptedConsentRevision=_CONSENT,
+        ).json()["detail"]["code"]
         == "provider_not_configured"
     )
     assert update(reasoning="medium", expectedRevision=initial["revision"]).status_code == 409
@@ -444,6 +450,18 @@ def test_assistant_provider_checks_candidate_before_save_and_keeps_picker_unchan
     assert settings.json()["route"] == f"{provider}/{model}"
     assert settings.json()["enabled"] is True
 
+    # The picker tests this stored route, even for a local server with an optional key.
+    probe = client.post(f"{path}/test?saved=true", json={"model": model}, headers=_AUTH)
+    assert probe.status_code == 200
+    assert probe.json()["validationToken"] is None
+    assert (attempts[-1].base_url, attempts[-1].api_key) == (url, key)
+    if provider == "lmstudio":
+        client.post(
+            f"{path}/test?saved=true",
+            json={"model": model, "baseUrl": "http://localhost:9999/v1"},
+            headers=_AUTH,
+        ).raise_for_status()
+        assert attempts[-1].base_url == url
     old_metadata = client.get(_PROVIDERS).json()
     assert provider not in {item["provider"] for item in old_metadata["integrations"]}
     assert provider not in {item["provider"] for item in old_metadata["providers"]}
@@ -510,3 +528,59 @@ def test_synthesis_connection_uses_the_same_native_check(assistant_client) -> No
         "anthropic",
         provider_spec("anthropic").base_url,
     )
+
+
+def test_migrate_consent_and_preserve_model_choice(tmp_path: Path) -> None:
+    migrations = tmp_path / "migrations"
+    migrations.mkdir()
+    for migration in MIGRATIONS.glob("*.sql"):
+        if migration.name < "0025":
+            shutil.copyfile(migration, migrations / migration.name)
+    database = SqliteDatabase(tmp_path / "trading_max.db", migrations_dir=migrations)
+    with database.transaction() as connection:
+        connection.execute(
+            "UPDATE assistant_preferences SET enabled=1, route='openai/gpt-5.4', reasoning='low', "
+            "accepted_at='2026-01-01', accepted_consent_revision=1, revision=7"
+        )
+    database.close()
+
+    repository = SettingsRepository(tmp_path)
+    try:
+        upgraded = repository.get_assistant_preferences()
+        assert (upgraded.route, upgraded.reasoning, upgraded.revision) == (
+            "openai/gpt-5.4",
+            "low",
+            8,
+        )
+        assert not upgraded.enabled and upgraded.accepted_consent_revision is None
+        assert upgraded.accepted_at is None
+        assert upgraded.background_briefs_enabled and upgraded.share_valuation_assumptions
+        with pytest.raises(ProviderRuntimeError, match="enable the assistant"):
+            resolve_assistant_connection(
+                Settings(data_root=tmp_path), repository, _UnavailableStore()
+            )
+    finally:
+        repository.close()
+
+
+def test_privacy_preferences_and_consent_follow_the_selected_provider(assistant_client) -> None:
+    client, _, _ = assistant_client
+
+    def save(**fields):
+        return client.put(_PREFERENCES, headers=_AUTH, json=fields)
+
+    first = save(
+        route="openai/gpt-5.4",
+        acceptedConsentRevision=_CONSENT,
+        backgroundBriefsEnabled=False,
+        shareValuationAssumptions=False,
+    ).json()
+    assert first["backgroundBriefsEnabled"] is False and first["shareValuationAssumptions"] is False
+    second = save(route="openai/gpt-5.6-luna").json()
+    assert second["acceptedAt"] == first["acceptedAt"]
+    assert save(backgroundBriefsEnabled=True, expectedRevision=first["revision"]).status_code == 409
+    third = save(route="anthropic/claude-sonnet-5", expectedRevision=second["revision"]).json()
+    assert third["acceptedConsentRevision"] is None and third["acceptedAt"] is None
+    assert third["backgroundBriefsEnabled"] is False and third["shareValuationAssumptions"] is False
+    assert save(backgroundBriefsEnabled=True).json()["shareValuationAssumptions"] is False
+    assert save(shareValuationAssumptions=True).json()["backgroundBriefsEnabled"] is True

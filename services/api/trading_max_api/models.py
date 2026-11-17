@@ -711,6 +711,8 @@ class AssistantPreferences(ApiModel):
     enabled: bool
     route: str | None
     reasoning: AssistantReasoning | None
+    background_briefs_enabled: bool
+    share_valuation_assumptions: bool
     accepted_consent_revision: int | None
     accepted_at: datetime | None
     revision: int
@@ -721,6 +723,8 @@ class AssistantPreferencesUpdate(ApiModel):
     enabled: bool | None = None
     route: str | None = Field(default=None, max_length=_MAX_ASSISTANT_ROUTE_LENGTH)
     reasoning: AssistantReasoning | None = None
+    background_briefs_enabled: bool | None = None
+    share_valuation_assumptions: bool | None = None
     accepted_consent_revision: int | None = Field(default=None, ge=1, strict=True)
     expected_revision: int | None = Field(default=None, ge=1)
 

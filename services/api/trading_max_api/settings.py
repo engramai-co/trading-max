@@ -354,6 +354,8 @@ class SettingsRepository:
             enabled=bool(row["enabled"]),
             route=row["route"],
             reasoning=row["reasoning"],
+            background_briefs_enabled=bool(row["background_briefs_enabled"]),
+            share_valuation_assumptions=bool(row["share_valuation_assumptions"]),
             accepted_consent_revision=row["accepted_consent_revision"],
             accepted_at=_parse_datetime(row["accepted_at"]),
             revision=int(row["revision"]),
@@ -386,6 +388,19 @@ class SettingsRepository:
             enabled = previous.enabled if update.enabled is None else update.enabled
             route_id = changes.get("route", previous.route)
             reasoning = changes.get("reasoning", previous.reasoning)
+            background = (
+                previous.background_briefs_enabled
+                if update.background_briefs_enabled is None
+                else update.background_briefs_enabled
+            )
+            assumptions = (
+                previous.share_valuation_assumptions
+                if update.share_valuation_assumptions is None
+                else update.share_valuation_assumptions
+            )
+            provider_changed = (route_id or "").partition("/")[0] != (
+                previous.route or ""
+            ).partition("/")[0]
             consent = changes.get("accepted_consent_revision", previous.accepted_consent_revision)
             if "accepted_consent_revision" in changes and consent not in (
                 None,
@@ -394,6 +409,8 @@ class SettingsRepository:
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
                 )
+            if provider_changed and "accepted_consent_revision" not in changes:
+                consent = None
             if enabled and consent != ASSISTANT_CONSENT_REVISION:
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
@@ -403,10 +420,12 @@ class SettingsRepository:
                 route_id = route.route_id
                 if enabled:
                     validate_assistant_integration(route, self.get_integration(route.provider))
-            if (enabled, route_id, reasoning, consent) == (
+            if (enabled, route_id, reasoning, background, assumptions, consent) == (
                 previous.enabled,
                 previous.route,
                 previous.reasoning,
+                previous.background_briefs_enabled,
+                previous.share_valuation_assumptions,
                 previous.accepted_consent_revision,
             ):
                 return previous
@@ -415,18 +434,21 @@ class SettingsRepository:
                 None
                 if consent is None
                 else previous.accepted_at
-                if consent == previous.accepted_consent_revision
+                if consent == previous.accepted_consent_revision and not provider_changed
                 else now
             )
             revision = previous.revision + 1
             row = connection.execute(
                 """UPDATE assistant_preferences SET enabled = ?, route = ?, reasoning = ?,
+                   background_briefs_enabled = ?, share_valuation_assumptions = ?,
                    accepted_consent_revision = ?, accepted_at = ?, revision = ?, updated_at = ?
                    WHERE preference_id = 'local' RETURNING *""",
                 (
                     int(enabled),
                     route_id,
                     reasoning,
+                    int(background),
+                    int(assumptions),
                     consent,
                     _iso(accepted_at) if accepted_at is not None else None,
                     revision,

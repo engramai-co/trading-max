@@ -188,6 +188,11 @@ class AssistantService:
     def _release(self, conversation_id: str) -> None:
         self._active.pop(conversation_id, None)
 
+    def _expire_abandoned_runs(self) -> None:
+        horizon = time.monotonic() - RUN_TIMEOUT_SECONDS - 30
+        for stale in [key for key, started in self._active.items() if started < horizon]:
+            self._release(stale)
+
     async def status(self) -> dict[str, Any]:
         """Whether a turn could start now, without calling the model."""
 
@@ -204,9 +209,7 @@ class AssistantService:
         if not isinstance(conversation_id, str) or not CONVERSATION_ID.fullmatch(conversation_id):
             raise HTTPException(status_code=422, detail={"code": "conversation_id_invalid"})
         context = _context(body, request)
-        horizon = time.monotonic() - RUN_TIMEOUT_SECONDS - 30
-        for stale in [key for key, started in self._active.items() if started < horizon]:
-            self._release(stale)
+        self._expire_abandoned_runs()
         if conversation_id in self._active:
             raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
         if len(self._active) >= MAX_ACTIVE_RUNS:
@@ -299,6 +302,12 @@ class AssistantService:
             message.model_dump(mode="json", by_alias=True, exclude_none=True)
             for message in messages
         ]
+
+    async def delete_conversations(self) -> None:
+        self._expire_abandoned_runs()
+        if self._active:
+            raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
+        await self.store.delete_scope(CONVERSATION_SCOPE)
 
     async def delete(self, conversation_id: str) -> None:
         _check_conversation_id(conversation_id)
