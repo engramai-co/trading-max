@@ -6,3 +6,7 @@ export async function GET(request: Request) {
     { signal: request.signal },
   );
 }
+
+export async function DELETE() {
+  return proxyToBackend("/v1/assistant/conversations", { method: "DELETE" });
+}

@@ -14,6 +14,9 @@ export type AccountSummary = ApiSchemas["AccountSummary"];
 
 export type CfdSummary = ApiSchemas["CfdSummary"];
 export type CfdImportStatus = Concrete<ApiSchemas["CfdImportStatus"]>;
+export type AssistantSettings = ApiSchemas["AssistantSettingsResponse"];
+export type AssistantUpdate = ApiSchemas["AssistantPreferencesUpdate"];
+
 export type AutomationSettings = Concrete<ApiSchemas["AutomationSettings"]> & {
   liveEnabled?: boolean;
   liveIntervalSeconds?: number;

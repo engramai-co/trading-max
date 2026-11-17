@@ -4,6 +4,10 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Added
+- Settings now has a MaxAI section. Choose a connected model, test its tool calls and review which data the provider receives before enabling it. Background brief writing and sharing saved valuation assumptions each have their own switch.
+- Turn MaxAI off, withdraw consent or delete all local conversations independently. Existing users must accept the updated disclosure to enable MaxAI again.
+
 ## [1.53.1] - 2026-11-18
 
 ### Security
