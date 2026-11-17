@@ -26,8 +26,6 @@ import {
   signedMoney,
   verdictWord,
 } from "./review-decisions";
-import { ReviewDisclosure } from "./review-observations";
-
 type Evidence = components["schemas"]["InvestmentReviewEvidence"];
 type FillEffect = components["schemas"]["FillEffect"];
 type HoldingMove = components["schemas"]["HoldingMove"];
@@ -39,6 +37,16 @@ type Copy = (zh: string, en: string) => string;
 export type DecisionAccount = "A" | "B";
 export type ReviewScope = "all" | AccountCode;
 export type ScopedDecision = TradeDecision & { account: DecisionAccount };
+
+/** More of a list, opened in place. */
+export function ReviewDisclosure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="mx-review-disclosure">
+      <summary>{label}</summary>
+      {children}
+    </details>
+  );
+}
 
 /** The review's scope from its address: every account, or one of them. */
 export function reviewScope(value: string | null | undefined, fallback: ReviewScope = "all"): ReviewScope {
@@ -272,7 +280,7 @@ function DecisionLine({ row, horizon, account, href }: { row: TradeDecision; hor
   const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
   const detail = [decisionAction(row, t).trim(), formatCalendarDate(row.date, locale), currency(row.amountGbp), account].filter(Boolean).join(" · ");
   return (
-    <Link className="mx-row-link mx-decision-row" href={href}>
+    <Link className="mx-row-link mx-review-line" href={href}>
       <Instrument ticker={row.ticker} name={detail} small />
       <span className={"mx-row-value mx-" + effectTone(effect)}>
         <span>{signedMoney(effect)}</span>

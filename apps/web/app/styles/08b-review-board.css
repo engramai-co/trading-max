@@ -98,6 +98,17 @@ a.mx-review-accounts-row:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* A decision in a short list: the security and what was done, then the effect over its change. */
+.mx-review-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+  column-gap: 16px;
+}
+.mx-review-line > svg {
+  justify-self: end;
+  color: var(--mx-muted);
+}
+
 /* The record: one line per day and account, the date in its own column. */
 .mx-review-journal {
   margin: 0;
@@ -243,8 +254,8 @@ a.mx-journal-act:focus-visible,
     grid-template-columns: minmax(0, 1fr) auto auto 14px;
     gap: 10px;
   }
-  .mx-review-accounts-row > span:nth-of-type(3),
-  .mx-review-accounts-row > span:nth-of-type(4) {
+  a.mx-review-accounts-row > span:nth-of-type(3),
+  a.mx-review-accounts-row > span:nth-of-type(4) {
     display: none;
   }
   .mx-review-accounts-head > span:nth-child(4),
