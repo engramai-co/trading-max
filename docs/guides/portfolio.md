@@ -7,7 +7,7 @@
 Overview combines investing accounts and shows account value, unrealised P&L,
 today's return, period net P&L, today's US sectors, and every holding with its weight,
 latest move and research readings. Use the account selector to inspect an
-individual account; account review has the per-account figures. Invest and
+individual account; Review, scoped to one account, has the per-account figures. Invest and
 Stocks ISA remain distinct records even when the same holding appears in both.
 
 Historical CFD records, where imported, are a separate realised-cash proxy.
@@ -112,9 +112,13 @@ last board and says so beside its time.
 
 ## Review and refresh
 
-Review shows available account and realised-trade evidence. Realised attribution
-requires matched opening and closing records. Historical imports may have less
-coverage than current holdings.
+Review opens on every account: what buys, sells and same-day round trips did,
+each decision on a timeline, the decisions that helped and cost the most, and a
+recent record that puts each day's trades beside the holdings that moved while
+nothing was done. Choose an account beside the title for its money,
+attribution, trade quality, behaviour, phases and ending risk. Realised
+attribution requires matched opening and closing records. Historical imports
+may have less coverage than current holdings.
 Buy and sell decisions use completed closes and may be restated when the data
 provider corrects its history; see [decision review](data-and-metrics.md#decision-review).
 

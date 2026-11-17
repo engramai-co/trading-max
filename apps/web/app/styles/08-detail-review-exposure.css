@@ -159,17 +159,11 @@
 .mx-table th[scope="row"] {
   font-weight: 500;
 }
-.mx-review-account {
-  width: 150px;
-}
 .mx-review-evidence {
   display: flex;
   flex-direction: column;
   gap: 22px;
   scroll-margin-top: 20px;
-}
-.mx-review-freshness {
-  margin-top: 22px;
 }
 .mx-review-highlights {
   display: grid;
@@ -275,23 +269,6 @@ button.mx-review-highlight:focus-visible {
   }
   .mx-decision-tools > .mx-segments > button {
     flex: 1;
-  }
-  .mx-review-bento .mx-metric-grid {
-    gap: 14px 18px;
-  }
-  .mx-review-bento .mx-metric-lead > .mx-metric:first-child .mx-number {
-    font-size: 22px;
-    letter-spacing: -0.5px;
-  }
-  .mx-review-bento .mx-metric-grid.mx-metric-lead > .mx-metric:not(:first-child) .mx-number {
-    font-size: 17px;
-    letter-spacing: -0.3px;
-  }
-  .mx-review-bento .mx-number {
-    margin-top: 3px;
-  }
-  .mx-review-freshness {
-    margin-top: 14px;
   }
   .mx-review-highlights {
     grid-template-columns: minmax(0, 1fr);
@@ -770,99 +747,19 @@ button.mx-text-link {
   }
 }
 
-/* Recent decisions and the two ledgers share the review's existing panel rhythm. */
-.mx-review-observation-grid {
-  align-items: stretch;
-  font-variant-numeric: tabular-nums;
-}
 details.mx-review-disclosure > summary {
   min-height: 32px;
   color: var(--mx-brand);
   font-weight: 600;
 }
-.mx-review-observations {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.mx-review-observations li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 12px;
-  padding-block: 10px;
-  border-top: 1px solid var(--mx-border);
-  font-size: 13px;
-}
-.mx-review-observations li > span {
-  text-align: right;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.mx-review-observations small {
-  font-size: 12px;
-  color: var(--mx-muted);
-  font-weight: 500;
-}
-.mx-review-observations li > div > small,
-.mx-review-observations li > span > small:last-child {
-  display: block;
-}
-.mx-review-fill-context,
 .mx-review-empty {
   margin: 0 0 12px;
   color: var(--mx-muted);
   font-size: 13px;
 }
-.mx-review-fill-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: right;
-  font-size: 13px;
-}
-.mx-review-fill-table thead {
-  color: var(--mx-muted);
-  font-size: 12px;
-}
-.mx-review-fill-table :is(th, td) {
-  padding-block: 10px;
-}
-.mx-review-fill-table td:nth-child(3) {
-  color: var(--mx-muted);
-  padding-inline: 8px;
-}
-.mx-review-fill-table td:last-child {
-  font-weight: 600;
-}
-.mx-review-fill-table tbody tr,
-.mx-review-fill-more {
-  border-top: 1px solid var(--mx-border);
-}
-.mx-review-fill-table tbody th {
-  text-align: left;
-  font-weight: 500;
-}
-details.mx-review-fill-more > summary {
-  min-height: 40px;
-  font-size: 12px;
-}
 @media (max-width: 767px) {
-  .mx-review-observation-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-  }
-  .mx-review-observation-grid .mx-panel-heading {
-    flex-direction: row;
-    align-items: center;
-  }
   details.mx-review-disclosure > summary {
     min-height: 44px;
-  }
-  .mx-review-observations li {
-    padding-block: 12px;
-  }
-  .mx-review-fill-table td:nth-child(3) {
-    padding-inline: 6px;
   }
 }
 

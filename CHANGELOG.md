@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.53.0] - 2026-11-17
+
+### Changed
+- Review is one page for every account. The switch beside its title chooses all accounts, Invest, Stocks ISA or CFD, and earlier links to an account's review open it in that account.
+- Review leads with what buys, sells and same-day round trips did, then plots every decision on one timeline; picking a point opens that decision in its account. The decisions that helped and cost the most follow side by side, buys and sells together.
+- A recent record replaces the separate recent decisions, no-trade and trade side-effect panels: each day's trades in an account form one entry, with any share their fills moved by a percentage point or more, beside holdings that moved while nothing was done, weight drifts and cash held.
+- One account's review adds its attribution, trade quality, behaviour, strategy risk, phases and ending risk below; same-day round trips and the best close while held are under Trade quality.
+
 ## [1.52.2] - 2026-11-17
 
 ### Fixed

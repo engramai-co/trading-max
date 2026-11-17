@@ -1,0 +1,281 @@
+/* The review: one page for every account, its scope beside the title. */
+.mx-review-body {
+  display: grid;
+  /* One column that never grows past the page, whatever a wide row inside it asks for. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
+}
+.mx-review-body > * {
+  margin: 0;
+}
+
+/* The lead: what buying, selling and round trips did, then where. */
+.mx-review-lead > .mx-review-verdicts .mx-number {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+.mx-review-accounts {
+  margin-top: 22px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-review-accounts ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-review-accounts-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.3fr) repeat(4, minmax(0, 1fr)) 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--mx-border);
+  color: inherit;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.mx-review-accounts li:last-child > .mx-review-accounts-row {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.mx-review-accounts-row > span {
+  text-align: right;
+  white-space: nowrap;
+}
+.mx-review-accounts-row > strong {
+  font-weight: 600;
+}
+.mx-review-accounts-head {
+  padding: 10px 0;
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-review-accounts-head > span:first-child {
+  text-align: left;
+}
+a.mx-review-accounts-row > svg {
+  justify-self: end;
+  color: var(--mx-muted);
+  transition: color 150ms var(--mx-ease), transform 150ms var(--mx-ease);
+}
+a.mx-review-accounts-row:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+@media (hover: hover) {
+  a.mx-review-accounts-row:hover > strong,
+  a.mx-review-accounts-row:hover > svg {
+    color: var(--mx-brand);
+  }
+  a.mx-review-accounts-row:hover > svg {
+    transform: translate(1px, -1px);
+  }
+}
+
+/* One account's money, quieter than its verdicts. */
+.mx-review-money {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 28px;
+  margin: 22px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-review-money > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.mx-review-money dt {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-review-money dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A decision in a short list: the security and what was done, then the effect over its change. */
+.mx-review-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+  column-gap: 16px;
+}
+.mx-review-line > svg {
+  justify-self: end;
+  color: var(--mx-muted);
+}
+
+/* The record: one line per day and account, the date in its own column. */
+.mx-review-journal {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-journal-item {
+  display: grid;
+  grid-template-columns: 116px 10px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 13px 0;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-review-journal > .mx-journal-item:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.mx-journal-date {
+  color: var(--mx-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mx-journal-mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mx-ink);
+  justify-self: center;
+}
+.mx-journal-mark-sell {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.mx-journal-mark-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--mx-muted);
+}
+.mx-journal-mark-mixed {
+  background: linear-gradient(90deg, var(--mx-ink) 50%, transparent 50%);
+  box-shadow: inset 0 0 0 1.5px var(--mx-ink);
+}
+.mx-journal-body {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.mx-journal-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0;
+}
+.mx-journal-act {
+  color: var(--mx-ink);
+  font-weight: 600;
+}
+a.mx-journal-act {
+  text-decoration: none;
+}
+.mx-journal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-journal-chips a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--mx-border);
+  border-radius: 999px;
+  color: var(--mx-ink);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 150ms var(--mx-ease), color 150ms var(--mx-ease);
+}
+.mx-journal-chips .mx-journal-mark {
+  width: 6px;
+  height: 6px;
+}
+.mx-journal-shift {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 0;
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-journal-shift strong {
+  color: var(--mx-ink);
+  font-weight: 600;
+}
+.mx-journal-figure {
+  display: grid;
+  justify-items: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mx-journal-figure small {
+  color: var(--mx-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+a.mx-journal-act:focus-visible,
+.mx-journal-chips a:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+@media (hover: hover) {
+  a.mx-journal-act:hover {
+    color: var(--mx-brand);
+  }
+  .mx-journal-chips a:hover {
+    border-color: var(--mx-brand);
+    color: var(--mx-brand);
+  }
+}
+
+@media (max-width: 767px) {
+  .mx-review-body {
+    gap: var(--mx-space-section);
+  }
+  .mx-review-lead > .mx-review-verdicts .mx-number {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-review-accounts {
+    margin-top: var(--mx-space-items);
+  }
+  /* On a phone an account keeps its name, its two verdicts and its way in. */
+  .mx-review-accounts-row {
+    grid-template-columns: minmax(0, 1fr) auto auto 14px;
+    gap: 10px;
+  }
+  a.mx-review-accounts-row > span:nth-of-type(3),
+  a.mx-review-accounts-row > span:nth-of-type(4) {
+    display: none;
+  }
+  .mx-review-accounts-head > span:nth-child(4),
+  .mx-review-accounts-head > span:nth-child(5) {
+    display: none;
+  }
+  .mx-review-money {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: var(--mx-space-items);
+    padding-top: var(--mx-space-items);
+  }
+  .mx-journal-item {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: var(--mx-space-items) 0;
+  }
+  .mx-journal-date {
+    grid-column: 1 / -1;
+  }
+}
+

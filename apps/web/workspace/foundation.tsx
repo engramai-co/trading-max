@@ -294,6 +294,7 @@ export function Page({
   title,
   titleHidden = false,
   description,
+  nav,
   actions,
   children,
   className = "",
@@ -303,16 +304,19 @@ export function Page({
   /** Keep the heading for assistive technology when the layout names the page. */
   titleHidden?: boolean;
   description?: ReactNode;
+  /** A switch between the page's own scopes, beside its title. */
+  nav?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
+  const heading = <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>;
   return (
     <div className={"mx-page " + className}>
       <header className={"mx-page-heading" + (titleHidden ? " mx-page-tools" : "")}>
         <div>
           {eyebrow && <div className="mx-eyebrow">{eyebrow}</div>}
-          <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>
+          {nav ? <div className="mx-page-title">{heading}{nav}</div> : heading}
           {description && <p>{description}</p>}
         </div>
         {actions && <div className="mx-page-actions">{actions}</div>}

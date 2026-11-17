@@ -645,7 +645,7 @@ function RiskCard({
         "Metrics use the full available history. Sharpe accounts for all volatility; Sortino focuses on downside risk. Missing metrics indicate insufficient data, not zero risk.",
       )}
       action={
-        <TextLink href={"/account-analysis?account=" + code}>
+        <TextLink href={"/review?account=" + code}>
           {t("复盘账户", "Review account")}
         </TextLink>
       }

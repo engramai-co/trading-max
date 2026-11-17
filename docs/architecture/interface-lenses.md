@@ -12,7 +12,8 @@ data is available, then request only the payload needed by the active view.
 | Holdings · positions | `holdings-positions` | Direct positions and portfolio totals |
 | Holdings · look-through | `holdings-lookthrough` | ETF/entity-resolved look-through only; fetched after the view is selected |
 | Performance | `analytics?detail=summary` | Account summaries, daily NAV, risk and policy metrics; money charts use the pinned history endpoint |
-| Account detail | `account-analysis?account=A|B|C` | One account, its metrics, report, holdings and relevant NAV history |
+| Review · every account | `review` | Both investing accounts' decisions, round-trip summaries, TWR and recent review evidence |
+| Review · one account | `account-analysis?account=A|B|C&detail=summary` | One account's decisions, review, report, holdings and relevant NAV history |
 
 The FastAPI contract is `DashboardLensSnapshot`. Fields outside the selected
 lens are omitted from the JSON response, not merely ignored by the frontend.
