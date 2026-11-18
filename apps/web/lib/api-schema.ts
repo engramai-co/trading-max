@@ -939,6 +939,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/research/{ticker}/models/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Research Model Baseline */
+        put: operations["research_model_baseline_v1_research__ticker__models_baseline_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/research/{ticker}/portfolio-impact": {
         parameters: {
             query?: never;
@@ -997,11 +1014,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Valuation Preview Defaults */
-        get: operations["valuation_preview_defaults_v1_research__ticker__valuation_preview_get"];
+        /** Operating Preview Defaults */
+        get: operations["operating_preview_defaults_v1_research__ticker__valuation_preview_get"];
         put?: never;
-        /** Valuation Preview Calculate */
-        post: operations["valuation_preview_calculate_v1_research__ticker__valuation_preview_post"];
+        /** Operating Preview Calculate */
+        post: operations["operating_preview_calculate_v1_research__ticker__valuation_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1696,6 +1713,24 @@ export interface paths {
         put?: never;
         /** Remove Watchlist Item */
         post: operations["remove_watchlist_item_v1_watchlist__ticker__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v2/research/{ticker}/valuation-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Valuation Preview Defaults */
+        get: operations["valuation_preview_defaults_v2_research__ticker__valuation_preview_get"];
+        put?: never;
+        /** Valuation Preview Calculate */
+        post: operations["valuation_preview_calculate_v2_research__ticker__valuation_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2551,6 +2586,11 @@ export interface components {
             performanceEnabled?: boolean | null;
             /** Researchenabled */
             researchEnabled?: boolean | null;
+        };
+        /** BaselineSelection */
+        BaselineSelection: {
+            /** Modelid */
+            modelId: string | null;
         };
         /** BenchmarkPricePoint */
         BenchmarkPricePoint: {
@@ -4214,12 +4254,16 @@ export interface components {
         ForwardPeSource: "yahoo-consensus" | "yahoo-forward-pe";
         /** FrozenValuationBasis */
         FrozenValuationBasis: {
+            /** Bookpershare */
+            bookPerShare?: number | null;
             /**
              * Cashflowtype
              * @default operating-cash-flow-less-capex-equity-proxy
-             * @constant
+             * @enum {string}
              */
-            cashFlowType: "operating-cash-flow-less-capex-equity-proxy";
+            cashFlowType: "operating-cash-flow-less-capex-equity-proxy" | "net-income-proxy" | "residual-income";
+            /** Commonearnings */
+            commonEarnings?: number | null;
             /** Currency */
             currency: string;
             /** Dataversion */
@@ -4232,10 +4276,28 @@ export interface components {
             discountRateType: "cost-of-equity";
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Family
+             * @default cash-flow
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
+            /** Fxrate */
+            fxRate?: number | null;
+            /** Openingcash */
+            openingCash?: number | null;
+            /** Ordinaryperreceipt */
+            ordinaryPerReceipt?: number | null;
+            /** Periodchoice */
+            periodChoice?: ("latest-four-quarters" | "previous-four-quarters" | "latest-fiscal-year" | "previous-fiscal-year") | null;
+            /** Periodid */
+            periodId?: string | null;
             /** Quoteid */
             quoteId: string;
+            /** Reportingcurrency */
+            reportingCurrency?: string | null;
             /** Revenue */
-            revenue: number;
+            revenue: number | null;
             /** Shares */
             shares: number;
             /** Spot */
@@ -6411,6 +6473,136 @@ export interface components {
             /** Verificationurl */
             verificationUrl?: string | null;
         };
+        /** OperatingBasis */
+        OperatingBasis: {
+            /**
+             * Cashflowtype
+             * @default operating-cash-flow-less-capex-equity-proxy
+             * @constant
+             */
+            cashFlowType: "operating-cash-flow-less-capex-equity-proxy";
+            /** Currency */
+            currency: string;
+            /** Dataversion */
+            dataVersion: string;
+            /**
+             * Discountratetype
+             * @default cost-of-equity
+             * @constant
+             */
+            discountRateType: "cost-of-equity";
+            /** Evidence */
+            evidence?: components["schemas"]["EvidenceRef"][];
+            /** Quoteid */
+            quoteId: string;
+            /** Revenue */
+            revenue: number;
+            /** Shares */
+            shares: number;
+            /** Spot */
+            spot: number;
+            /** Spotasof */
+            spotAsOf?: string | null;
+            /**
+             * Spotsource
+             * @default quote
+             * @enum {string}
+             */
+            spotSource: "quote" | "broker";
+            /** Startmargin */
+            startMargin: number;
+            /** Ticker */
+            ticker: string;
+        };
+        /** OperatingProjection */
+        OperatingProjection: {
+            /**
+             * Equityflooradjustment
+             * @default 0
+             */
+            equityFloorAdjustment: number;
+            inputs: components["schemas"]["OperatingScenarioInputs"];
+            /** Operatingvalue */
+            operatingValue: number;
+            /** Terminalcontribution */
+            terminalContribution: number | null;
+            /** Terminalpresentvalue */
+            terminalPresentValue: number;
+            /** Terminalvalue */
+            terminalValue: number;
+            /** Upside */
+            upside: number;
+            /** Value */
+            value: number;
+            /** Years */
+            years: components["schemas"]["OperatingProjectionYear"][];
+        };
+        /** OperatingProjectionYear */
+        OperatingProjectionYear: {
+            /** Cashflowpershare */
+            cashflowPerShare: number;
+            /** Discountfactor */
+            discountFactor: number;
+            /** Fcfmargin */
+            fcfMargin: number;
+            /** Freecashflow */
+            freeCashflow: number;
+            /** Growth */
+            growth: number;
+            /** Presentvalue */
+            presentValue: number;
+            /** Revenue */
+            revenue: number;
+            /** Shares */
+            shares: number;
+            /** Year */
+            year: number;
+        };
+        /** OperatingScenarioInputs */
+        OperatingScenarioInputs: {
+            /** Discountrate */
+            discountRate: number;
+            /** Exitfcfmultiple */
+            exitFcfMultiple: number;
+            /** Revenuecagr */
+            revenueCagr: number;
+            /** Sharecagr */
+            shareCagr: number;
+            /** Targetfcfmargin */
+            targetFcfMargin: number;
+        };
+        /** OperatingValuationPreview */
+        OperatingValuationPreview: {
+            basis: components["schemas"]["OperatingBasis"];
+            /** Defaultsource */
+            defaultSource?: ("saved-model" | "configured-scenarios" | "sector-template" | "user-input") | null;
+            /**
+             * Formulaversion
+             * @default equity-proxy-projection-v1
+             */
+            formulaVersion: string;
+            /**
+             * Horizon
+             * @enum {integer}
+             */
+            horizon: 5 | 10;
+            /** Id */
+            id: string;
+            /** Impliedgrowth */
+            impliedGrowth: number | null;
+            /** Impliedgrowthbound */
+            impliedGrowthBound?: ("below" | "above") | null;
+            /** Impliedgrowthreason */
+            impliedGrowthReason?: string | null;
+            /** References */
+            references?: components["schemas"]["AssumptionReference"][];
+            /** Scenarios */
+            scenarios: {
+                [key: string]: components["schemas"]["OperatingProjection"];
+            };
+            /** Sensitivity */
+            sensitivity: components["schemas"]["SensitivityCell"][];
+        };
         /** OptionAvailability */
         OptionAvailability: {
             /** Currentexpiries */
@@ -6789,18 +6981,26 @@ export interface components {
         ProjectionYear: {
             /** Cashflowpershare */
             cashflowPerShare: number;
+            /** Closingbook */
+            closingBook?: number | null;
             /** Discountfactor */
             discountFactor: number;
+            /** Earningspershare */
+            earningsPerShare?: number | null;
             /** Fcfmargin */
-            fcfMargin: number;
+            fcfMargin: number | null;
+            /** Financing */
+            financing?: number | null;
             /** Freecashflow */
-            freeCashflow: number;
+            freeCashflow: number | null;
             /** Growth */
-            growth: number;
+            growth: number | null;
             /** Presentvalue */
             presentValue: number;
             /** Revenue */
-            revenue: number;
+            revenue: number | null;
+            /** Roe */
+            roe?: number | null;
             /** Shares */
             shares: number;
             /** Year */
@@ -7450,6 +7650,8 @@ export interface components {
         };
         /** ResearchJournal */
         ResearchJournal: {
+            /** Baselinemodelid */
+            baselineModelId?: string | null;
             /** Models */
             models?: components["schemas"]["SavedResearchModel"][];
             /** Notes */
@@ -7558,6 +7760,14 @@ export interface components {
         ResearchModelSaveRequest: {
             /** Dataversion */
             dataVersion?: string | null;
+            /** Family */
+            family?: ("cash-flow" | "net-income" | "residual-income") | null;
+            /**
+             * Formulaversion
+             * @default statement-equity-v2
+             * @enum {string}
+             */
+            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
             /**
              * Horizon
              * @default 5
@@ -8543,13 +8753,24 @@ export interface components {
             /** Discountrate */
             discountRate: number;
             /** Exitfcfmultiple */
-            exitFcfMultiple: number;
+            exitFcfMultiple?: number | null;
+            /** Initialroe */
+            initialRoe?: number | null;
+            /** Payout */
+            payout?: number | null;
+            /**
+             * Rampyears
+             * @default 3
+             */
+            rampYears: number;
             /** Revenuecagr */
-            revenueCagr: number;
+            revenueCagr?: number | null;
             /** Sharecagr */
-            shareCagr: number;
+            shareCagr?: number | null;
             /** Targetfcfmargin */
-            targetFcfMargin: number;
+            targetFcfMargin?: number | null;
+            /** Terminalpb */
+            terminalPb?: number | null;
         };
         /** ScenarioProjection */
         ScenarioProjection: {
@@ -8563,6 +8784,8 @@ export interface components {
             operatingValue: number;
             /** Terminalcontribution */
             terminalContribution: number | null;
+            /** Terminalpremiumpresentvalue */
+            terminalPremiumPresentValue?: number | null;
             /** Terminalpresentvalue */
             terminalPresentValue: number;
             /** Terminalvalue */
@@ -9721,6 +9944,12 @@ export interface components {
         };
         /** ValuationAssumptionsUpsertRequest */
         ValuationAssumptionsUpsertRequest: {
+            /**
+             * Family
+             * @default cash-flow
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
             /** Name */
             name?: string | null;
             /** Scenarios */
@@ -9735,6 +9964,12 @@ export interface components {
         };
         /** ValuationCompanyAssumptions */
         ValuationCompanyAssumptions: {
+            /**
+             * Family
+             * @default cash-flow
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
             /**
              * Name
              * @default
@@ -9762,8 +9997,9 @@ export interface components {
             /**
              * Formulaversion
              * @default equity-proxy-projection-v1
+             * @enum {string}
              */
-            formulaVersion: string;
+            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
             /**
              * Horizon
              * @enum {integer}
@@ -9779,6 +10015,24 @@ export interface components {
             impliedGrowthReason?: string | null;
             /** References */
             references?: components["schemas"]["AssumptionReference"][];
+            /** Reversebound */
+            reverseBound?: ("below" | "above") | null;
+            reverseInputs?: components["schemas"]["ScenarioInputs"] | null;
+            /** Reverselimits */
+            reverseLimits?: [
+                number,
+                number
+            ] | null;
+            /**
+             * Reversemetric
+             * @default revenue-growth
+             * @enum {string}
+             */
+            reverseMetric: "revenue-growth" | "target-margin" | "initial-roe" | "year-five-revenue";
+            /** Reversereason */
+            reverseReason?: string | null;
+            /** Reversevalue */
+            reverseValue?: number | null;
             /** Scenarios */
             scenarios: {
                 [key: string]: components["schemas"]["ScenarioProjection"];
@@ -9790,6 +10044,14 @@ export interface components {
         ValuationPreviewRequest: {
             /** Dataversion */
             dataVersion?: string | null;
+            /** Family */
+            family?: ("cash-flow" | "net-income" | "residual-income") | null;
+            /**
+             * Formulaversion
+             * @default statement-equity-v2
+             * @enum {string}
+             */
+            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
             /**
              * Horizon
              * @default 5
@@ -9815,6 +10077,8 @@ export interface components {
             };
             /** Basegrowth */
             baseGrowth: number | null;
+            /** Baselinemodelid */
+            baselineModelId?: string | null;
             /** Currency */
             currency: string;
             /** Enterprisetoebitda */
@@ -9874,12 +10138,20 @@ export interface components {
             discountRate?: number | null;
             /** Exitfcfmultiple */
             exitFcfMultiple?: number | null;
+            /** Initialroe */
+            initialRoe?: number | null;
+            /** Payout */
+            payout?: number | null;
+            /** Rampyears */
+            rampYears?: number | null;
             /** Revenuecagr */
             revenueCagr?: number | null;
             /** Sharecagr */
             shareCagr?: number | null;
             /** Targetfcfmargin */
             targetFcfMargin?: number | null;
+            /** Terminalpb */
+            terminalPb?: number | null;
         };
         /** ValuationSensitivity */
         ValuationSensitivity: {
@@ -10092,12 +10364,20 @@ export interface components {
             exitFcfMultiple?: number | null;
             /** Gordonmultiple */
             gordonMultiple?: number | null;
+            /** Initialroe */
+            initialRoe?: number | null;
+            /** Payout */
+            payout?: number | null;
+            /** Rampyears */
+            rampYears?: number | null;
             /** Revenuecagr */
             revenueCagr?: number | null;
             /** Sharecagr */
             shareCagr?: number | null;
             /** Targetfcfmargin */
             targetFcfMargin?: number | null;
+            /** Terminalpb */
+            terminalPb?: number | null;
             /** Value */
             value?: number | null;
             /** Value10 */
@@ -10109,12 +10389,20 @@ export interface components {
             discountRate?: number | null;
             /** Exitfcfmultiple */
             exitFcfMultiple?: number | null;
+            /** Initialroe */
+            initialRoe?: number | null;
+            /** Payout */
+            payout?: number | null;
+            /** Rampyears */
+            rampYears?: number | null;
             /** Revenuecagr */
             revenueCagr?: number | null;
             /** Sharecagr */
             shareCagr?: number | null;
             /** Targetfcfmargin */
             targetFcfMargin?: number | null;
+            /** Terminalpb */
+            terminalPb?: number | null;
         };
     };
     responses: never;
@@ -11923,6 +12211,43 @@ export interface operations {
             };
         };
     };
+    research_model_baseline_v1_research__ticker__models_baseline_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BaselineSelection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchJournal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     research_portfolio_impact_v1_research__ticker__portfolio_impact_get: {
         parameters: {
             query?: never;
@@ -12022,7 +12347,7 @@ export interface operations {
             };
         };
     };
-    valuation_preview_defaults_v1_research__ticker__valuation_preview_get: {
+    operating_preview_defaults_v1_research__ticker__valuation_preview_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -12039,7 +12364,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValuationPreview"];
+                    "application/json": components["schemas"]["OperatingValuationPreview"];
                 };
             };
             /** @description Validation Error */
@@ -12053,7 +12378,7 @@ export interface operations {
             };
         };
     };
-    valuation_preview_calculate_v1_research__ticker__valuation_preview_post: {
+    operating_preview_calculate_v1_research__ticker__valuation_preview_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -12074,7 +12399,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValuationPreview"];
+                    "application/json": components["schemas"]["OperatingValuationPreview"];
                 };
             };
             /** @description Validation Error */
@@ -13827,6 +14152,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WatchlistMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    valuation_preview_defaults_v2_research__ticker__valuation_preview_get: {
+        parameters: {
+            query?: {
+                family?: ("cash-flow" | "net-income" | "residual-income") | null;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValuationPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    valuation_preview_calculate_v2_research__ticker__valuation_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValuationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValuationPreview"];
                 };
             };
             /** @description Validation Error */

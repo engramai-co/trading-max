@@ -143,6 +143,7 @@ class TypedWorkerRuntime:
                     self.snapshots,
                     fx_loader=self.research_service.fx_loader,
                     assumptions_store=self.valuation_assumptions,
+                    state_root=self.state_root,
                 ),
                 EarningsArtifactStage(self.artifacts, self.research_service),
                 MacroCalendarStage(self.artifacts, self.snapshots),

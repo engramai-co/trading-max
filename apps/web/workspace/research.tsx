@@ -674,7 +674,7 @@ function SecurityResearchWorkspace() {
                       )}
                       {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
-                        <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
+                        <ValuationWorkbench key={displayData.ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (

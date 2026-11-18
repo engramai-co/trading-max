@@ -6,8 +6,6 @@ All notable public Trading Max releases are recorded here.
 
 ### Added
 - With MaxAI enabled, select a look-through allocation, performance range or market sector for a sourced reading. Citations reopen the selected object and publication while available. Daily attribution identifies its observed intervals and largest move. Global map cards explain the selected market, and Data status can explain a failed update or stale snapshot.
-- Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Follow-ups use the reading’s selected account, period and security. Replies show figures and coverage directly from the cited records, and name the dataset when reporting its freshness. Screen readers announce each source and any verification notice. The sidebar reflows wide screens and fills the screen on phones. Keyboard focus follows the panel when it becomes a dialog. Tabbing through saved conversations scrolls the focused control into view. Unsent messages stay editable during background connection checks. Unsent drafts also survive temporary readiness failures. Historical event replies show their published dates and link to their sources. Broker decision links reopen the cited publication and disclose when it has expired.
-- Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. The daily brief also lists dated official macro releases in your display time zone. Benchmark citations reopen the portfolio and prices from the cited publication. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves. Key moments include dated dividend records and headlines for the chart’s listing. A headline published after the exchange closes goes with the next session.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
@@ -18,6 +16,32 @@ All notable public Trading Max releases are recorded here.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.58.0] - 2026-11-18
+
+### Added
+- Open MaxAI from the workspace bar or press ⌘J. Conversations follow you between pages, and follow-up questions keep the original account, period and security. The sidebar sits beside the page on wide screens and fills the screen on phones. Opening it while MaxAI is off shows where to enable it in Settings.
+- Replies cite the records behind figures, dates and data freshness. You can reopen the original Returns comparison, Broker decision, earnings or dividend record while its publication is retained. Expired records show an unavailable message. Screen readers announce sources, and keyboard users can move through saved conversations.
+- Closing the sidebar or losing the model connection temporarily preserves your unsent message. You can keep typing during a background connection check and send once MaxAI is ready again.
+- Overview has collapsible daily and weekly portfolio briefs covering performance, trades and upcoming events. Scheduled briefs include dated official releases in your display time zone. With background writing enabled, daily briefs are prepared after full updates and the weekly brief after 02:00 on Saturday in London.
+
+## [1.57.2] - 2026-11-18
+
+### Fixed
+- The public release check recognises the upcoming-events API route as source code.
+
+## [1.57.1] - 2026-11-18
+
+### Changed
+- Live and saved valuation readings explain when negative equity value reaches the zero floor. When a listing lacks a verified share unit or depositary receipt ratio, the Research Desk identifies the missing input.
+
+## [1.57.0] - 2026-11-18
+
+### Changed
+- The Research Desk values banks and insurers from common book value and residual income, trading platforms from earnings, and other companies from equity cash flow. Choose the model in the desk and inspect its period, currency and share basis. A missing quarter falls back to an earlier complete year of statements. Cash-flow and earnings models with reported zero revenue show the year-five revenue implied by price.
+- Valuations fall for the eleven cash-burning companies previously modelled from a zero starting margin. Their actual losses now enter the forecast and financing beyond available cash dilutes later returns.
+- Per-share valuations check the quoted symbol and exchange before using a catalog share type. Shell’s New York valuation uses two ordinary shares per ADS, and its London valuation uses one ordinary share.
+- A saved model can serve as the overview baseline. Model upside uses its five-year base value and the batch price. Clearing the baseline restores the automatic reading.
 
 ## [1.56.0] - 2026-11-18
 

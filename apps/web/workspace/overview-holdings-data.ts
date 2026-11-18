@@ -1,7 +1,7 @@
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
 import { findETF, type Copy, type ETFReading } from "./etf-data";
-import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, isFundHolding } from "./holding-groups";
+import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, holdingValuation, isFundHolding } from "./holding-groups";
 
 /**
  * Holdings with a colour and a donut segment of their own: the largest eight, then any flagged holding beyond
@@ -30,6 +30,7 @@ export type LedgerRow = {
   isin: string | null;
   score: number | null;
   upside: number | null;
+  baselineId?: string | null;
   /** Index into the allocation palette for this row's own donut segment; null shares the neutral segment. */
   colour: number | null;
   facts: AttentionFact[];
@@ -121,6 +122,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
     const coloured = index < COLOURED_HOLDINGS || signal !== undefined;
+    const valuation = fund ? undefined : holdingValuation(valuations, positions);
     const etf = fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined;
     return {
       ticker,
@@ -137,7 +139,8 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
       etf,
       isin: positions[0].fundIsin || etf?.isin || null,
       score: finite(holdingTechnical(technical, ticker, positions)?.score),
-      upside: fund ? null : finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside),
+      upside: finite(valuation?.ev5Upside),
+      baselineId: valuation?.baselineModelId,
       colour: coloured ? colours++ : null,
       facts: signal?.facts ?? [],
       href: signal?.href ?? "/research?ticker=" + encodeURIComponent(positions[0].researchTicker ?? ticker),

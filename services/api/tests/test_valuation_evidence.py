@@ -166,6 +166,9 @@ def _publish(store, issuer, *, created_at=None, inject=None):
             "currency": issuer.quote_currency,
             "assumptions": {
                 "sharesOutstanding": issuer.share_count,
+                "shareUnit": "ordinary",
+                "shareUnitVenue": "XLON" if london else "XNYS",
+                "listing": issuer.listing,
                 "fxRate": issuer.fx,
                 "discountRate": 0.6,
                 "discountRateInputs": {"costEquity": 0.1},
@@ -242,7 +245,7 @@ def _desk(store, issuer, request):
     app.state.research_journal = SimpleNamespace()  # Any journal access fails.
     body = request.model_dump(mode="json", exclude={"citations"})
     with TestClient(app) as client:
-        response = client.post(f"/v1/research/{issuer.ticker}/valuation-preview", json=body)
+        response = client.post(f"/v2/research/{issuer.ticker}/valuation-preview", json=body)
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -340,18 +343,6 @@ def test_frozen_replay_matches_full_desk_worksheet(tmp_path, issuer, horizon):
             "complete-ttm-currency-and-share-count-required",
             Metric.REVENUE,
         ),
-        (
-            replace(MATURE, quarterly_ocf=10),
-            "unsupported",
-            "non-positive-starting-free-cash-flow",
-            None,
-        ),
-        (
-            replace(MATURE, sector="Financial Services", industry="Banks"),
-            "unsupported",
-            "cashflow-model-not-applicable",
-            None,
-        ),
     ],
 )
 def test_missing_and_unsupported_do_not_project(tmp_path, issuer, state, reason, missing_metric):
@@ -370,9 +361,6 @@ def test_missing_and_unsupported_do_not_project(tmp_path, issuer, state, reason,
     if missing_metric is not None:
         row = next(row for row in basis.items if row.metric == missing_metric)
         assert row.state == "missing" and row.value is None
-    if reason == "non-positive-starting-free-cash-flow":
-        row = next(row for row in basis.items if row.metric == Metric.FREE_CASHFLOW)
-        assert row.value == -60  # The observation survives; only the model is unsupported.
 
 
 def test_restatement_creates_new_evidence_without_mutating_the_pinned_replay(tmp_path):
@@ -668,6 +656,9 @@ def test_batch_and_frozen_limits(tmp_path):
         tools.evaluate_valuation(_request(horizon=10))
 
     tools = ValuationEvidenceTools(binding, frozen)
+    # Use the empty catalog to exercise the call-count cap independently of bytes.
+    empty = frozen.model_copy(update={"rows": ()})
+    tools = ValuationEvidenceTools(binding, empty)
     for _ in range(MAX_BATCH_CALLS):
         tools.get_valuation_basis()
     with pytest.raises(EvidenceLimitError, match="batch budget"):
@@ -679,7 +670,6 @@ def test_batch_and_frozen_limits(tmp_path):
     [
         (1.0, 0.16, "below", "reverse-dcf-outside-bounds"),
         (10000.0, 0.16, "above", "reverse-dcf-outside-bounds"),
-        (25.0, -0.1, None, "reverse-dcf-withheld"),
     ],
 )
 def test_reverse_dcf_reports_bounds_or_refuses_a_non_monotone_solve(
@@ -761,3 +751,589 @@ def test_date_only_filing_and_mismatched_fx_version(tmp_path):
     assert revenue.published_at == AS_OF.date()
     assert revenue.state == "available"
     assert basis.reason == "currency-conversion-unavailable"
+
+
+@pytest.mark.parametrize("family", ["net-income", "residual-income", "cash-flow"])
+def test_new_families_freeze_and_replay_the_same_desk_basis(tmp_path, family):
+    def inject(batches):
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 100)}
+        )
+        raw["quarterlyBalanceSheet"] = [
+            {"index": k, **dict.fromkeys(dates, n)}
+            for k, n in [("Common Stock Equity", 2000), ("Cash And Cash Equivalents", 15)]
+        ]
+        if family == "residual-income":
+            raw["quarterlyIncomeStatement"] = raw["quarterlyIncomeStatement"][1:]
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = family
+
+    issuer = replace(MATURE, quarterly_ocf=-450)
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, issuer, inject=inject)
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    tools = ValuationEvidenceTools(binding, frozen)
+    basis = tools.get_valuation_basis().basis
+    assert basis.family == family
+    raw = _request().model_dump()
+    if family == "residual-income":
+        raw["scenarios"] = {
+            key: {"initialRoe": 0.15, "payout": 0, "discountRate": 0.1, "terminalPb": 1}
+            for key in ("bear", "base", "bull")
+        }
+    req = EvaluateValuationRequest.model_validate(raw)
+    result = tools.evaluate_valuation(req)
+    desk = _desk(store, issuer, req)
+    assert result.state == "available"
+    _equal(result.projections["base"].model_dump(), desk["scenarios"]["base"])
+    assert result.reverse_dcf.metric == desk["reverseMetric"]
+    assert result.reverse_dcf.value == desk["reverseValue"]
+    if family == "cash-flow":
+        assert basis.start_margin < 0 and result.reverse_dcf.metric == "target-margin"
+        assert result.projections["base"].years[0].financing > 0
+    elif family == "net-income":
+        assert basis.start_margin == 0.1
+    else:
+        assert basis.revenue is None
+        assert basis.book_per_share == 20
+        assert result.projections["base"].terminal_contribution == pytest.approx(1)
+
+
+def test_missing_cash_is_disclosed_when_a_scenario_requires_funding(tmp_path):
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, replace(MATURE, quarterly_ocf=-500))
+    tools = ValuationEvidenceTools(binding, freeze_valuation_evidence(binding, snapshots=store))
+    assert tools.get_valuation_basis().basis.opening_cash is None
+    assert tools.evaluate_valuation(_request()).reason == "opening-cash-required-for-burn"
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("has_batch_price", [True, False])
+def test_retained_ordinary_snapshot_upgrades_without_republishing(
+    tmp_path, version, has_batch_price
+):
+    from services.api.trading_max_api.research_journal import ResearchJournalStore
+    from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
+
+    def legacy(batches):
+        # A pre-share-unit snapshot can already contain the public reference catalog.
+        batches["reference/security_master.json"] = {
+            "records": [
+                {
+                    "entityId": "synthetic-equity",
+                    "canonicalTicker": MATURE.ticker,
+                    "listings": [{"ticker": MATURE.ticker, "mic": "XNYS", "source": "synthetic"}],
+                    "entityName": "Synthetic Company",
+                    "providerSecurityType": "Common Stock",
+                    "source": "synthetic",
+                }
+            ]
+        }
+        row = batches["research/valuation.json"]["rows"][0]
+        row["assumptions"].pop("shareUnit")
+        row["assumptions"].pop("listing")
+        row.update(
+            source="trading-max-valuation-v5",
+            method="levered-fcf-exit-scenarios",
+            model_status="indicative",
+            ev5=25,
+            scenarios={
+                key: {
+                    field: params[field]
+                    for field in (
+                        "revenueCagr",
+                        "targetFcfMargin",
+                        "exitFcfMultiple",
+                        "shareCagr",
+                        "discountRate",
+                    )
+                }
+                for key, params in _request().model_dump()["scenarios"].items()
+            },
+        )
+        if not has_batch_price:
+            # The previous desk could price a retained worksheet from its five inputs.
+            for field in ("source", "method", "model_status", "ev5"):
+                row.pop(field)
+
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, MATURE, inject=legacy)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    route = f"/{version}/research/{MATURE.ticker}/valuation-preview"
+    with TestClient(app) as client:
+        for response in (
+            client.get(route),
+            client.post(route, json=_request().model_dump(exclude={"citations"})),
+        ):
+            assert response.status_code == 200, response.text
+            assert response.json()["basis"]["shares"] == MATURE.share_count
+            assert response.json()["scenarios"]["base"]["value"] > 0
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    assert (
+        ValuationEvidenceTools(binding, frozen).get_valuation_basis().basis.shares
+        == MATURE.share_count
+    )
+
+
+@pytest.mark.parametrize("family", ["cash-flow", "net-income", "residual-income"])
+@pytest.mark.parametrize(
+    ("ticker", "unit", "expected"),
+    [
+        ("SYN", "receipt", "receipt-ratio-unverified"),
+        ("SYN", "ordinary", "complete-ttm-currency-and-share-count-required"),
+        ("BABA", "receipt", "complete-ttm-currency-and-share-count-required"),
+    ],
+)
+def test_preview_distinguishes_unverified_receipt_ratio_from_missing_count(
+    tmp_path, family, ticker, unit, expected
+):
+    issuer = replace(MATURE, ticker=ticker)
+    store = ArtifactStore(tmp_path)
+
+    def inject(batches):
+        stored = batches["research/valuation.json"]["rows"][0]["assumptions"]
+        stored.update(shareUnit=unit, sharesOutstanding=None)
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 25)}
+        )
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Common Stock Equity", **dict.fromkeys(dates, 500)}
+        ]
+        if expected == "receipt-ratio-unverified":
+            raw["quarterlyBalanceSheet"].append(
+                {"index": "Ordinary Shares Number", **dict.fromkeys(dates, 100)}
+            )
+
+    _publish(store, issuer, inject=inject)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = SimpleNamespace()
+    body = {**_request().model_dump(exclude={"citations"}), "family": family}
+    with TestClient(app) as client:
+        for version in ("v1", "v2"):
+            response = client.post(f"/{version}/research/{ticker}/valuation-preview", json=body)
+            assert response.status_code == 422
+            legacy = (
+                "positive-common-equity-and-common-income-required"
+                if family == "residual-income" and ticker == "BABA"
+                else "complete-ttm-currency-and-share-count-required"
+            )
+            assert response.json()["detail"] == (expected if version == "v2" else legacy)
+
+
+@pytest.mark.parametrize("venue", [None, "OTC Markets", "NasdaqGS", "NYSE"])
+def test_receipt_requires_its_reviewed_venue(tmp_path, venue):
+    issuer = replace(MATURE, ticker="BABA", share_count=800)
+
+    def inject(batches):
+        metrics = batches["research/fundamentals.json"]["rows"][0]["metrics"]
+        metrics["fullExchangeName"] = venue
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        ends = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(ends, 800)}
+        ]
+
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, issuer, inject=inject)
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    basis = ValuationEvidenceTools(binding, frozen).get_valuation_basis().basis
+    if venue == "NYSE":
+        assert (basis.shares, basis.ordinary_per_receipt) == (100, 8)
+    else:
+        assert basis is None
+
+
+def _ordinary_catalog(ticker, venue, *, listed_ticker=None):
+    from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
+
+    return CatalogSecurityMaster(
+        SecurityMasterCatalog.model_validate(
+            {
+                "records": [
+                    {
+                        "entityId": "synthetic-equity",
+                        "canonicalTicker": ticker,
+                        "entityName": "Synthetic Company",
+                        "providerSecurityType": "Common Stock",
+                        "listings": [
+                            {
+                                "ticker": listed_ticker or ticker,
+                                "exchange": venue,
+                                "source": "synthetic",
+                            }
+                        ],
+                        "source": "synthetic",
+                    }
+                ]
+            }
+        )
+    )
+
+
+def _batch_row(batches, issuer, listing=None, *, security_master=None, assumptions=None):
+    from trading_max.research.fundamentals import build_valuation
+
+    fundamental = batches["research/fundamentals.json"]["rows"][0]
+    fundamental["metrics"]["sharesOutstanding"] = issuer.share_count
+    raw = batches["research/financials.json"]["rows"][0]["financials"]
+    if listing:
+        raw["evidence"] = {
+            "listedShareUnits": {listing: "ordinary"},
+            "shareUnitFiling": "https://issuer.invalid/cover",
+        }
+    batch = build_valuation(
+        {
+            "tickers": [issuer.ticker],
+            "rows": [
+                {"ticker": issuer.ticker, "price": issuer.raw_spot, "currency": issuer.quote_unit}
+            ],
+        },
+        batches["research/fundamentals.json"],
+        financials=batches["research/financials.json"],
+        security_master=security_master,
+        assumptions=assumptions,
+    )
+    row = batch.rows[0]
+    batches["research/valuation.json"]["rows"] = [row]
+    return row
+
+
+@pytest.mark.parametrize(
+    ("symbol", "venue", "zone", "ccy", "market"),
+    [
+        ("SYN.CO", "Copenhagen", "Europe/Copenhagen", "DKK", "XCSE"),
+        ("SYN.ST", "Stockholm", "Europe/Stockholm", "SEK", "XSTO"),
+        ("SYN.HE", "Helsinki", "Europe/Helsinki", "EUR", "XHEL"),
+        ("SYN.OL", "Oslo", "Europe/Oslo", "NOK", "XOSL"),
+        ("SYN.LS", "Lisbon", "Europe/Lisbon", "EUR", "XLIS"),
+        ("SYN.VI", "Vienna", "Europe/Amsterdam", "EUR", "XWBO"),
+        ("SYN.WA", "Warsaw", "Europe/Warsaw", "PLN", "XWAR"),
+        ("0001.HK", "HKSE", "Asia/Hong_Kong", "HKD", "XHKG"),
+        ("1001.T", "Tokyo", "Asia/Tokyo", "JPY", "XTKS"),
+        ("001001.KS", "KSC", "Asia/Seoul", "KRW", "XKRX"),
+        ("001002.KQ", "KOSDAQ", "Asia/Seoul", "KRW", "XKRX"),
+    ],
+)
+def test_local_ordinary_venue_serves_batch_and_preview(tmp_path, symbol, venue, zone, ccy, market):
+    issuer = replace(MATURE, ticker=symbol, quote_unit=ccy, reporting=ccy)
+    listing = f"{market}:{symbol}"
+    result = {}
+
+    def inject(batches):
+        batches["research/fundamentals.json"]["rows"][0]["metrics"].update(
+            fullExchangeName=venue, exchangeTimezoneName=zone
+        )
+        result.update(_batch_row(batches, issuer, security_master=_ordinary_catalog(symbol, venue)))
+
+    store = ArtifactStore(tmp_path)
+    _publish(store, issuer, inject=inject)
+    assert result["assumptions"]["listing"] == listing
+    assert result["ev5"] > 0
+    req = _request()
+    desk = _desk(store, issuer, req)
+    assert desk["basis"]["currency"] == ccy
+    assert desk["basis"]["shares"] == issuer.share_count
+
+
+@pytest.mark.parametrize("revenue", [None, 0, -200, 100])
+@pytest.mark.parametrize("incomplete_latest", [False, True])
+def test_residual_period_and_roe_ignore_revenue_in_batch_desk_and_evidence(
+    tmp_path, revenue, incomplete_latest
+):
+    issuer = replace(MATURE, ticker="SOFI")
+    result = {}
+
+    def inject(batches):
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        ends = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        inc = "Net Income Common Stockholders"
+        book = "Common Stock Equity"
+        raw["quarterlyIncomeStatement"] = [{"index": inc, **dict.fromkeys(ends, 25)}]
+        if revenue is not None or incomplete_latest:
+            raw["quarterlyIncomeStatement"].append(
+                {
+                    "index": "Total Revenue",
+                    **dict.fromkeys(ends, 0 if incomplete_latest else revenue),
+                }
+            )
+        if not incomplete_latest:
+            raw["quarterlyBalanceSheet"] = [{"index": book, **dict.fromkeys(ends, 500)}]
+        raw["incomeStatement"] = [{"index": inc, "2024-12-31": 100}]
+        if revenue is not None:
+            raw["incomeStatement"].append({"index": "Total Revenue", "2024-12-31": revenue})
+        raw["balanceSheet"] = [{"index": book, "2024-12-31": 500}]
+        result.update(_batch_row(batches, issuer, issuer.listing))
+
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, issuer, inject=inject)
+    period = "annual:2024-12-31" if incomplete_latest else "ttm:2025-12-31"
+    # Published scenario values for these annual and TTM fixtures, before changing
+    # the order of operations to sum discounted dividends and the terminal price.
+    assert result["valueRange"] == pytest.approx(
+        {"bear": 4.053558499297, "base": 5.903231421315, "bull": 8.181772476508}, abs=1e-12
+    )
+    assert result["valueRange10"] == pytest.approx(
+        {"bear": 4.315132064580, "base": 6.824695713668, "bull": 10.415831826285}, abs=1e-12
+    )
+    assert result["assumptions"]["periodId"] == period
+    assert result["assumptions"]["reverseMetric"] == "initial-roe"
+    req = EvaluateValuationRequest(
+        scenarios={
+            key: {"initialRoe": 0.2, "discountRate": 0.1, "terminalPb": 1, "payout": 0}
+            for key in ("bear", "base", "bull")
+        }
+    )
+    desk = _desk(store, issuer, req)
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    tools = ValuationEvidenceTools(binding, frozen)
+    basis = tools.get_valuation_basis().basis
+    assert basis.period_id == desk["basis"]["periodId"] == period
+    assert basis.period_choice == desk["basis"]["periodChoice"]
+    scoped = binding.model_copy(
+        update={"permitted_fields": binding.permitted_fields - {Metric.REVENUE}}
+    )
+    scoped_frozen = freeze_valuation_evidence(scoped, snapshots=store)
+    scoped_basis = ValuationEvidenceTools(scoped, scoped_frozen).get_valuation_basis().basis
+    assert (scoped_basis.period_id, scoped_basis.period_choice) == (
+        basis.period_id,
+        basis.period_choice,
+    )
+    evaluated = tools.evaluate_valuation(req)
+    assert evaluated.reverse_dcf.metric == desk["reverseMetric"] == "initial-roe"
+    _equal(evaluated.projections["base"].model_dump(), desk["scenarios"]["base"])
+
+
+@pytest.mark.parametrize(
+    ("ticker", "venue", "zone", "market", "currency", "quoted", "total"),
+    [
+        ("NOVO-B.CO", "Copenhagen", "Europe/Copenhagen", "XCSE", "DKK", 3330, 4410),
+        ("VOLV-B.ST", "Stockholm", "Europe/Stockholm", "XSTO", "SEK", 1590, 2030),
+    ],
+)
+@pytest.mark.parametrize("has_catalog", [True, False])
+def test_local_b_class_values_company_wide_cash_flow(
+    tmp_path, ticker, venue, zone, market, currency, quoted, total, has_catalog
+):
+    issuer = replace(
+        MATURE, ticker=ticker, quote_unit=currency, reporting=currency, share_count=quoted
+    )
+    store = ArtifactStore(tmp_path)
+    listing = f"{market}:{ticker}"
+    catalog = _ordinary_catalog(ticker, venue) if has_catalog else None
+    row = {}
+
+    def inject(batches):
+        batches["research/fundamentals.json"]["rows"][0]["metrics"].update(
+            fullExchangeName=venue, exchangeTimezoneName=zone
+        )
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        ends = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(ends, total)}
+        ]
+        row.update(_batch_row(batches, issuer, security_master=catalog))
+
+    binding = _publish(store, issuer, inject=inject).model_copy(update={"listing": listing})
+    assert row["ev5"] is not None, row["model_warnings"]
+    assert row["assumptions"]["sharesOutstanding"] == total
+    desk = _desk(store, issuer, _request())
+    assert desk["basis"]["shares"] == total
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    basis = ValuationEvidenceTools(binding, frozen).get_valuation_basis()
+    assert basis.basis.shares == total
+    count = next(i for i in basis.items if i.metric == Metric.SHARES)
+    assert count.locator.dataset == "financials"
+
+
+@pytest.mark.parametrize(
+    ("ticker", "quote_unit", "factor", "expected_shares"),
+    [("BP.L", "GBp", 0.8, 60), ("BP", "USD", 1, 10), ("UNKNOWN", "USD", 1, None)],
+)
+def test_retained_share_basis_needs_positive_listing_evidence(
+    tmp_path, ticker, quote_unit, factor, expected_shares
+):
+    from services.api.trading_max_api.research_journal import ResearchJournalStore
+    from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
+
+    issuer = replace(
+        MATURE,
+        ticker=ticker,
+        quote_unit=quote_unit,
+        reporting="USD",
+        fx=factor,
+        share_count=60,
+        quarterly_ocf=75,
+    )
+    store = ArtifactStore(tmp_path)
+
+    def legacy(batches):
+        row = batches["research/valuation.json"]["rows"][0]
+        row["assumptions"].pop("shareUnit")
+        row["assumptions"].pop("listing")
+        row.update(
+            method="levered-fcf-exit-scenarios", scenarios=_request().model_dump()["scenarios"]
+        )
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        ends = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(ends, 60)}
+        ]
+
+    binding = _publish(store, issuer, inject=legacy)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    # Annual FCF 200, discounted at 10% with a 10x exit, values the company at 2000.
+    inputs = {
+        "revenueCagr": 0,
+        "targetFcfMargin": 0.05,
+        "discountRate": 0.1,
+        "exitFcfMultiple": 10,
+        "shareCagr": 0,
+    }
+    request_body = {"scenarios": {key: dict(inputs) for key in ("bear", "base", "bull")}}
+    with TestClient(app) as client:
+        for v in ("v1", "v2"):
+            route = f"/{v}/research/{ticker}/valuation-preview"
+            for response in (
+                client.get(route),
+                client.post(route, json=request_body),
+            ):
+                if expected_shares is None:
+                    assert response.status_code == 422
+                    assert response.json()["detail"] == (
+                        "listed-share-unit-unverified"
+                        if v == "v2"
+                        else "complete-ttm-currency-and-share-count-required"
+                    )
+                else:
+                    assert response.status_code == 200, response.text
+                    assert response.json()["basis"]["shares"] == expected_shares
+                    assert response.json()["basis"]["revenue"] == 4000 * factor
+                    if response.request.method == "POST":
+                        assert response.json()["scenarios"]["base"]["value"] == pytest.approx(
+                            2000 * factor / expected_shares
+                        )
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    result = ValuationEvidenceTools(binding, frozen).get_valuation_basis()
+    if expected_shares is None:
+        assert result.basis is None
+    else:
+        assert result.basis.shares == expected_shares
+        assert result.basis.ordinary_per_receipt == (6 if ticker == "BP" else None)
+
+
+@pytest.mark.parametrize(
+    "reader",
+    ["batch", "retained_preview", "frozen_evidence", "published_preview", "published_evidence"],
+)
+@pytest.mark.parametrize(
+    ("ticker", "catalog_venue", "listed_ticker", "expected_shares"),
+    [
+        ("SHEL", "LSE", "SHEL", 30),
+        ("SHEL.L", "LSE", "SHEL", 60),
+        ("SYN", "LSE", "SYN", None),
+        ("SYN", "NasdaqGS", "SYN", None),
+        ("SYN", "NYSE", "OTHER", None),
+        ("SYN", "", "SYN", None),
+        ("SYN", "XNYS", "SYN", 60),
+    ],
+)
+def test_catalog_share_type_requires_the_quoted_listing(
+    tmp_path, reader, ticker, catalog_venue, listed_ticker, expected_shares
+):
+    template = LONDON if ticker.endswith(".L") else MATURE
+    issuer = replace(template, ticker=ticker, share_count=60, quarterly_ocf=75)
+    catalog = _ordinary_catalog(ticker, catalog_venue, listed_ticker=listed_ticker)
+    params = {
+        "revenueCagr": 0,
+        "targetFcfMargin": 0.05,
+        "discountRate": 0.1,
+        "exitFcfMultiple": 10,
+        "shareCagr": 0,
+    }
+    scenarios = {name: dict(params) for name in ("bear", "base", "bull")}
+    store = ArtifactStore(tmp_path)
+    batch = {}
+
+    def inject(batches):
+        batches["reference/security_master.json"] = catalog.catalog.model_dump(mode="json")
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(dates, 60)}
+        ]
+        if reader == "batch":
+            batch.update(
+                _batch_row(
+                    batches,
+                    issuer,
+                    security_master=catalog,
+                    assumptions={"companies": [{"ticker": ticker, "scenarios": scenarios}]},
+                )
+            )
+        else:
+            row = batches["research/valuation.json"]["rows"][0]
+            row["assumptions"].pop("shareUnitVenue")
+            if reader.startswith("published"):
+                # The previous batch could persist the permissive catalog decision.
+                row["assumptions"].update(
+                    family="cash-flow", shareUnit="ordinary", listing=issuer.listing
+                )
+            else:
+                row["assumptions"].pop("listing")
+                row["assumptions"].pop("shareUnit")
+            row["scenarios"] = scenarios
+
+    binding = _publish(store, issuer, inject=inject)
+    if reader == "batch":
+        if expected_shares is None:
+            assert batch["ev5"] is None
+            return
+        shares, value = batch["assumptions"]["sharesOutstanding"], batch["ev5"]
+    elif reader.endswith("preview"):
+        app = FastAPI()
+        app.include_router(router)
+        app.state.store = store
+        app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+        app.state.research_journal = SimpleNamespace()
+        with TestClient(app) as client:
+            response = client.post(
+                f"/v2/research/{ticker}/valuation-preview", json={"scenarios": scenarios}
+            )
+        if expected_shares is None:
+            assert response.status_code == 422
+            return
+        assert response.status_code == 200, response.text
+        shares, value = (
+            response.json()["basis"]["shares"],
+            response.json()["scenarios"]["base"]["value"],
+        )
+    else:
+        tools = ValuationEvidenceTools(binding, freeze_valuation_evidence(binding, snapshots=store))
+        basis = tools.get_valuation_basis().basis
+        if expected_shares is None:
+            assert basis is None
+            return
+        shares = basis.shares
+        value = (
+            tools.evaluate_valuation(EvaluateValuationRequest(scenarios=scenarios))
+            .projections["base"]
+            .value
+        )
+    assert shares == expected_shares
+    assert value == pytest.approx(2000 / expected_shares)

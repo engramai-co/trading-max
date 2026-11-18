@@ -57,7 +57,7 @@ _PORTFOLIO_TIME_ZONE = ZoneInfo("Europe/London")
 
 
 def researched_holdings(holdings) -> set[str]:
-    """Stocks are researched under their display ticker; funds under their listing (EQQQ.L)."""
+    """Include technical readings published under old display symbols or exact listings."""
     return {holding.ticker for holding in holdings} | {
         holding.research_ticker for holding in holdings if holding.research_ticker
     }
@@ -543,6 +543,9 @@ def dashboard_lens(
 
     if view == "overview":
         held = researched_holdings(dashboard_data.holdings)
+        equity_listings = {
+            h.research_ticker or h.ticker for h in dashboard_data.holdings if not h.is_fund
+        }
         account_names = {item.code: item.name for item in dashboard_data.accounts}
         review_summaries = [
             OverviewReviewSummary(
@@ -600,7 +603,11 @@ def dashboard_lens(
                 for item in dashboard_data.technical
                 if item.ticker in held
             ],
-            valuations=[item for item in dashboard_data.valuations if item.ticker in held],
+            valuations=[
+                app_service(request, "research_journal").overview_valuation(item)
+                for item in dashboard_data.valuations
+                if item.ticker in equity_listings
+            ],
             nav=dashboard_data.nav[-31:],
             intraday_nav=_latest_intraday_points(dashboard_data.intraday_nav),
         )

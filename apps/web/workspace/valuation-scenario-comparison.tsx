@@ -96,7 +96,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
             onClick={() => onSelect(key)}
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
-            <span>{name(key)}</span>
+            <span>{name(key)}{scenario.equityFloorAdjustment > 0 && " · " + t("按零计", "Zero floor")}</span>
             <strong>{currency(scenario.value, preview.basis.currency, 2)}</strong>
             <span className={`mx-${tone(scenario.upside)}`}>{percent(scenario.upside, true, 2)}</span>
           </button>;

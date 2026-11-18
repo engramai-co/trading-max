@@ -183,11 +183,10 @@ def published_positions(
 ) -> list[JsonObject]:
     fund_identities = _fund_identities(lookthrough)
     catalog = CatalogSecurityMaster.default()
-    if fund_identities:
-        with suppress(FileNotFoundError):
-            catalog = CatalogSecurityMaster(
-                SecurityMasterCatalog.model_validate(store.read_json(run_id, SECURITY_MASTER_KEY))
-            )
+    with suppress(FileNotFoundError):
+        catalog = CatalogSecurityMaster(
+            SecurityMasterCatalog.model_validate(store.read_json(run_id, SECURITY_MASTER_KEY))
+        )
     try:
         diluted_cost_raw = store.read_json(run_id, "account/diluted_cost_metrics.json")
     except FileNotFoundError:
@@ -275,9 +274,7 @@ def published_positions(
                     "dayChangeDate": day_change.date if day_change else None,
                     "dayChangeClosedOn": day_change.closed_on if day_change else None,
                     "isFund": fund is not None,
-                    "researchTicker": fund_listing(position, catalog).ticker
-                    if fund is not None
-                    else None,
+                    "researchTicker": fund_listing(position, catalog).ticker,
                     "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }
             )

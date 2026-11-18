@@ -263,3 +263,27 @@ def test_edgar_filing_declares_contact_user_agent(tmp_path, monkeypatch):
     assert (
         ResearchEvidenceProvider(tmp_path)._document("https://www.sec.gov/example.htm") == filing()
     )
+
+
+@pytest.mark.parametrize("exchange", ["NYSE", "The Nasdaq Global Select Market"])
+def test_cover_share_units_bind_title_symbol_and_exchange_to_one_context(exchange):
+    def field(context, tag, value):
+        return f'<ix:nonNumeric contextRef="{context}" name="dei:{tag}">{value}</ix:nonNumeric>'
+
+    facts = []
+    for context, symbol, title in [
+        ("ordinary", "SYN", "Class A Common Stock, par value $0.01"),
+        ("receipt", "SYN.A", "American Depositary Shares, each representing eight ordinary shares"),
+    ]:
+        facts.extend(
+            [
+                field(context, "TradingSymbol", symbol),
+                field(context, "Security12bTitle", title),
+                field(context, "SecurityExchangeName", exchange),
+            ]
+        )
+    facts.append(field("unrelated", "TradingSymbol", "OTHER"))
+    parsed = parse_filing(
+        "".join(facts), url="https://issuer.invalid/filing", filed_at="2025-12-31", form="20-F"
+    )
+    assert parsed["listedShareUnits"] == {"US:SYN": "ordinary", "US:SYN.A": "receipt"}

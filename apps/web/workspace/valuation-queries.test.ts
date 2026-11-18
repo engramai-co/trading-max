@@ -22,6 +22,7 @@ const lens = {
   financialFacts: { version: "facts-1" },
 } as unknown as ResearchLensSnapshot;
 const inputs = {
+  rampYears: 3,
   revenueCagr: 0.1,
   targetFcfMargin: 0.15,
   discountRate: 0.1,
@@ -32,7 +33,7 @@ const spot100 = { source: "broker" as const, price: 100, asOf: "2026-11-04T15:40
 const spot120 = { source: "broker" as const, price: 120, asOf: "2026-11-04T15:50:00Z" };
 
 /** A preview as the service answers it: its id covers the basis, spot included. */
-function preview(spot: typeof spot100, scenarios: Record<string, typeof inputs> = {}): Preview {
+function preview(spot: typeof spot100, scenarios: PreviewRequest["scenarios"] = {}): Preview {
   return {
     id: `preview-${spot.price}`,
     basis: {
@@ -217,4 +218,23 @@ describe("valuation previews", () => {
     page.stop();
     client.clear();
   });
+});
+
+it("isolates family defaults and replays the chosen formula and family", () => {
+  const cash = preview(spot100);
+  const bank = {
+    ...cash,
+    formulaVersion: "statement-equity-v2" as const,
+    basis: { ...cash.basis, family: "residual-income" as const },
+  };
+  expect(valuationDefaultsQuery(lens, spot100, "cash-flow").queryKey).not.toEqual(
+    valuationDefaultsQuery(lens, spot100, "residual-income").queryKey,
+  );
+  expect(loadedValuationQuery(lens, "cash-flow").queryKey).not.toEqual(
+    loadedValuationQuery(lens, "residual-income").queryKey,
+  );
+  expect(previewRequest(bank, 10)).toMatchObject({
+    family: "residual-income", formulaVersion: "statement-equity-v2", horizon: 10,
+  });
+  expect(editorIdentity(bank)).not.toEqual(editorIdentity(cash));
 });
