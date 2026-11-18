@@ -274,6 +274,31 @@ test.describe("valuation refresh", () => {
   });
 
   for (const { width, height } of [{ width: 800, height: 900 }, { width: 768, height: 1024 }]) {
+    test(`a delayed target-margin reading keeps Historical valuation in place at ${width}×${height}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      await page.route("**/SYNT/valuation-preview*", async route => {
+        await gate;
+        const model = preview("SYNT", 100, "2026-11-04", true, {});
+        await route.fulfill({ json: { ...model, formulaVersion: "statement-equity-v2", defaultSource: "sector-template",
+          basis: { ...model.basis, family: "cash-flow", startMargin: -0.05 }, reverseMetric: "target-margin", reverseValue: 0.17,
+        } });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const history = page.locator("#research-history");
+      const reverse = page.locator(".mx-valuation-readout .mx-metric").nth(1);
+      await expect(reverse).toContainText("Price-implied growth");
+      await page.evaluate(() => document.fonts.ready);
+      const top = (await history.boundingBox())!.y;
+      release();
+      await expect(reverse).toContainText("Target margin implied by price");
+      await expect(reverse.locator(".mx-number-value")).toHaveText("17.0%");
+      expect((await history.boundingBox())!.y).toBe(top);
+    });
+
     for (const locale of ["en", "zh"] as const) {
       test(`a delayed floor keeps Historical valuation in place at ${width}×${height} · ${locale}`, async ({ page }) => {
         await page.setViewportSize({ width, height });

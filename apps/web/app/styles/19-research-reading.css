@@ -78,6 +78,9 @@
 .mx-valuation-readout > .mx-metric:last-child {
   padding-inline-end: 0;
 }
+.mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
+  flex-wrap: nowrap;
+}
 .mx-valuation-readout .mx-number {
   font-size: clamp(18px, 2.3cqi, 28px);
 }
@@ -269,7 +272,6 @@
   /* Reserve the wrapped reverse label and its help control before the model arrives. */
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
     min-height: 2lh;
-    flex-wrap: nowrap;
   }
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-note {
     min-height: 2lh;
