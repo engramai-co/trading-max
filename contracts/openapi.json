@@ -27044,6 +27044,20 @@
             }
           },
           {
+            "in": "query",
+            "name": "projection",
+            "required": false,
+            "schema": {
+              "default": "returns",
+              "enum": [
+                "returns",
+                "risk"
+              ],
+              "title": "Projection",
+              "type": "string"
+            }
+          },
+          {
             "description": "summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation.",
             "in": "query",
             "name": "detail",

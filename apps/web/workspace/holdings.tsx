@@ -73,12 +73,12 @@ function Positions() {
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const cited = params.get("evidence") && params.get("snapshotId") || undefined;
-  const query = useDashboardLens("holdings-positions",undefined,true,undefined,cited);
-  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
-  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const account = ["A", "B"].includes(params.get("account") ?? "")
     ? params.get("account")!
     : "all";
+  const query = useDashboardLens("holdings-positions",cited && (account === "A" || account === "B") ? account : undefined,true,cited ? {detail:"summary"} : undefined,cited);
+  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
+  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
   const [selected, setSelected] = useState<{ holding: Holding; runId?: string; accountAsOf?: string | null; scope: string } | null>(null);

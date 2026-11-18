@@ -14,11 +14,11 @@ export class HistoryRequestError extends Error {
 }
 
 /** Bounded process cache only; a miss reopens the same immutable snapshot. */
-export async function readPreparedHistory(selection: HistorySelection): Promise<Prepared> {
+export async function readPreparedHistory(selection: HistorySelection, retained = false): Promise<Prepared> {
   const key = JSON.stringify(selection);
   for (const [id, entry] of cache) if (entry.expires <= Date.now()) cache.delete(id);
   const existing = cache.get(key);
-  if (existing) { cache.delete(key); cache.set(key, existing); return existing.value; }
+  if (existing && !retained) { cache.delete(key); cache.set(key, existing); return existing.value; }
   const inFlight = pending.get(key);
   if (inFlight) return inFlight;
   if (pending.size >= 4) throw new HistoryRequestError("History is busy. Please retry shortly.", 503);

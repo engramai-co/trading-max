@@ -182,7 +182,7 @@ export function Lookthrough() {
   const t = useCopy();
   const params = useSearchParams();
   const cited = params?.get("evidence") && params.get("snapshotId") || undefined;
-  const query = useDashboardLens("holdings-lookthrough", undefined, true, undefined, cited);
+  const query = useDashboardLens("holdings-lookthrough", undefined, true, cited ? {detail:"summary"} : undefined, cited);
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
   return query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />

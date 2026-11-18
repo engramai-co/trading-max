@@ -240,3 +240,35 @@ def test_retained_returns_cannot_evict_the_live_dashboard(research_root, tmp_pat
             )
             assert result.status_code == 200
         assert app.state.cached_dashboard(publications[-1], include_history=False) is live
+
+
+def test_retained_risk_and_holdings_use_only_page_records(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "retained")
+    typed_fixture(research_root, store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        live = client.get("/v1/dashboard/lens/analytics?scope=isa&detail=summary").json()
+        run = live["runId"]
+        current_holdings = client.get("/v1/dashboard/lens/holdings-lookthrough").json()
+        typed_fixture(research_root, store)
+        monkeypatch.setattr(
+            app.state, "cached_dashboard", lambda *a, **kw: pytest.fail("loaded full dashboard")
+        )
+        base = {"run_id": run, "detail": "summary"}
+        selected = client.get(
+            "/v1/dashboard/lens/analytics", params={**base, "scope": "isa", "projection": "risk"}
+        )
+        assert selected.status_code == 200
+        risk = selected.json()
+        assert risk["risk"] == {"B": live["risk"]["B"]}
+        assert [(p["date"], p.get("isaDrawdown")) for p in risk["nav"]] == [
+            (p["date"], p.get("isaDrawdown")) for p in live["nav"]
+        ]
+        assert all(set(p) <= {"date", "isa", "isaDrawdown", "flowStatus"} for p in risk["nav"])
+        assert not {"accounts", "benchmarkSeries", "holdings"} & risk.keys()
+        holdings = client.get("/v1/dashboard/lens/holdings-lookthrough", params=base)
+        assert holdings.status_code == 200
+        assert holdings.json().get("lookthrough") == current_holdings.get("lookthrough")
+        assert not {"accounts", "risk", "nav", "benchmarkSeries"} & holdings.json().keys()

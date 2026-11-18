@@ -21,7 +21,13 @@ from trading_max.research.calendars.refresh import MACRO_KEY, MACRO_STATUS_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
 from ..artifacts import ArtifactStore
-from ..dashboard import benchmark_series
+from ..dashboard import (
+    benchmark_series,
+    published_broker,
+    published_lookthrough,
+    published_positions,
+    risk_metrics,
+)
 from ..dashboard_models import (
     AccountCode,
     AccountDecisions,
@@ -183,17 +189,41 @@ def _benchmark_series_for_nav(
     }
 
 
-def _retained_returns(
-    store: ArtifactStore, manifest: SnapshotManifest, scope: str
+def _retained_analytics(
+    store: ArtifactStore, manifest: SnapshotManifest, scope: str, projection: str
 ) -> DashboardLensSnapshot:
     run = manifest.run_id
     broker = store.read_json(run, "account/broker_snapshot_metrics.json")
     nav = daily_nav(store, run, broker["accounts"])
+    risk = projection == "risk"
+    metric = scope + ("_drawdown" if risk else "_twr")
     omit = {
         key: None
         for key in NavPoint.model_fields
-        if key not in {"date", "flow_status", "intraday", scope, scope + "_twr"}
+        if key not in {"date", "flow_status", "intraday", scope, metric}
     }
+    base = dict(
+        view="analytics",
+        run_id=run,
+        generated_at=manifest.created_at.isoformat(),
+        broker_as_of=str(broker.get("generated_at_utc") or ""),
+        nav=[p.model_copy(update=omit) for p in nav],
+    )
+    if risk:
+        try:
+            metrics = store.read_json(run, "account/synthetic_nav_metrics.json")
+        except FileNotFoundError:
+            metrics = {}
+        codes = ("A", "B") if scope == "total" else ("A",) if scope == "invest" else ("B",)
+        return DashboardLensSnapshot(
+            **base,
+            research_as_of="",
+            risk={
+                code: risk_metrics(metrics[code])
+                for code in codes
+                if code in broker["accounts"] and code in metrics
+            },
+        )
     try:
         technical = store.read_json(run, "research/technical.json")
     except FileNotFoundError:
@@ -203,13 +233,40 @@ def _retained_returns(
         for ticker, points in benchmark_series(technical).items()
     }
     return DashboardLensSnapshot(
-        view="analytics",
-        run_id=run,
-        generated_at=manifest.created_at.isoformat(),
-        broker_as_of=str(broker.get("generated_at_utc") or ""),
+        **base,
         research_as_of=str(technical.get("as_of") or ""),
-        nav=[p.model_copy(update=omit) for p in nav],
         benchmark_series=_benchmark_series_for_nav(nav, series),
+    )
+
+
+def _retained_holdings(store, manifest, view, account):
+    run = manifest.run_id
+    base = dict(
+        view=view, run_id=run, generated_at=manifest.created_at.isoformat(), research_as_of=""
+    )
+    try:
+        lookthrough = published_lookthrough(store, run)
+    except FileNotFoundError:
+        if view == "holdings-lookthrough":
+            raise HTTPException(404, "Cited allocation unavailable") from None
+        lookthrough = {}
+    if view == "holdings-lookthrough":
+        return DashboardLensSnapshot(
+            **base, broker_as_of=lookthrough.get("brokerAsOf") or "", lookthrough=lookthrough
+        )
+    broker = published_broker(store, run)
+    accounts = broker["accounts"]
+    investable = [code for code in ("A", "B") if code in accounts]
+    selected = [code for code in investable if account is None or code == account]
+    total = sum((accounts[code].get("total_value_gbp") or 0) for code in investable)
+    return DashboardLensSnapshot(
+        **base,
+        broker_as_of=broker.get("generated_at_utc") or "",
+        holdings=published_positions(store, run, broker, selected, total, lookthrough),
+        total_invested_gbp=sum(accounts[c].get("investments_value_gbp") or 0 for c in selected),
+        total_unrealized_pnl_gbp=sum(
+            accounts[c].get("unrealized_profit_loss_gbp") or 0 for c in selected
+        ),
     )
 
 
@@ -394,6 +451,7 @@ def dashboard_lens(
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
+    projection: Literal["returns", "risk"] = "returns",
     detail: Literal["full", "summary"] = Query(
         default="full",
         description=(
@@ -406,18 +464,27 @@ def dashboard_lens(
     ),
 ) -> DashboardLensSnapshot:
     if run_id is not None:
-        if (
-            view != "analytics"
-            or account is not None
-            or detail != "summary"
-            or scope not in {None, "invest", "isa", "total"}
-        ):
-            raise HTTPException(422, "Retained dashboard lenses support only the Returns summary")
+        holdings = view in {"holdings-positions", "holdings-lookthrough"}
+        valid_holdings = (
+            holdings
+            and (account is None or view == "holdings-positions" and account in {"A", "B"})
+            and scope is None
+            and projection == "returns"
+        )
+        valid_analytics = (
+            view == "analytics" and account is None and scope in {None, "invest", "isa", "total"}
+        )
+        if detail != "summary" or not (valid_holdings or valid_analytics):
+            raise HTTPException(422, "Unsupported retained dashboard projection")
         manifest = _dashboard_manifest(request, run_id)
-        selected = scope or "total"
-        return request.app.state.retained_returns.get_or_compute(
-            (run_id, selected),
-            lambda: _retained_returns(app_service(request, "store"), manifest, selected),
+        store = app_service(request, "store")
+        return request.app.state.retained_lenses.get_or_compute(
+            (run_id, view, scope, account, projection),
+            lambda: (
+                _retained_holdings(store, manifest, view, account)
+                if holdings
+                else _retained_analytics(store, manifest, scope or "total", projection)
+            ),
         )
     manifest = latest_or_503(request)
     dashboard_data = request.app.state.cached_dashboard(

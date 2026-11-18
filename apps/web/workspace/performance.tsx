@@ -96,40 +96,40 @@ export function PerformanceContent({
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
     ? { start, end } : null;
   const requestedRange = view === "risk" || customRange ? "ALL" : view === "returns" && range === "1D" ? "3M" : range;
-  const selection = useMemo(() => ({ range: requestedRange, scope: requestedScope, detail: "summary" as const }),
-    [requestedRange, requestedScope]);
-  // The account review lens supplies account history but no benchmark prices.
-  const usesAnalytics = !suppliedData || view === "returns";
   const citedId = params.get("snapshotId");
-  const inspectionCitation = Boolean(citedId && params.get("inspectFrom") && params.get("inspectTo"));
-  const pinnedLens = (view === "returns" && params.get("evidence") === "compare_benchmarks") || inspectionCitation
+  const linkedFrom = params.get("inspectFrom"), linkedTo = params.get("inspectTo");
+  const inspectionCitation = Boolean(citedId && linkedFrom && linkedTo);
+  const pinnedLens = view !== "money" && (inspectionCitation || (view === "returns" && params.get("evidence") === "compare_benchmarks"))
     ? citedId || undefined : undefined;
+  const moneyFrom = params.get("moneyFrom"), moneyTo = params.get("moneyTo");
+  const moneyCitation = params.get("evidence") === "period_performance" &&
+    moneyFrom && moneyTo && /^\d{4}-\d{2}-\d{2}$/.test(moneyFrom) && /^\d{4}-\d{2}-\d{2}$/.test(moneyTo) && moneyFrom <= moneyTo;
+  const pinnedMoney = view === "money" && (inspectionCitation || moneyCitation) ? citedId : null;
+  const retainedRisk = Boolean(pinnedLens && view === "risk");
+  const selection = useMemo(() => ({range:requestedRange, scope:requestedScope, detail:"summary" as const,
+    ...(retainedRisk ? {projection:"risk" as const} : {})}), [requestedRange, requestedScope, retainedRisk]);
+  const usesAnalytics = !pinnedMoney && (!suppliedData || view === "returns" || Boolean(pinnedLens));
   const summary = useDashboardLens("analytics", undefined, usesAnalytics, selection, pinnedLens);
   const incoming = usesAnalytics ? summary.data : suppliedData;
-  // A cited GBP figure uses exactly the same prepared history, immutable publication and range as the tool.
-  const moneyFrom = params.get("moneyFrom"), moneyTo = params.get("moneyTo");
-  const pinnedMoney = view === "money" && params.get("evidence") === "period_performance" &&
-    moneyFrom && moneyTo && /^\d{4}-\d{2}-\d{2}$/.test(moneyFrom) && /^\d{4}-\d{2}-\d{2}$/.test(moneyTo) &&
-    moneyFrom <= moneyTo && citedId && /^[a-zA-Z0-9_-]{1,100}$/.test(citedId) ? citedId : null;
   const historyId = pinnedMoney ?? incoming?.runId ?? "";
   const historyQuery = usePortfolioHistory({ runId: historyId, range: requestedRange, scope: requestedScope },
-    view === "money" && Boolean(historyId));
+    view === "money" && Boolean(historyId), [], Boolean(pinnedMoney));
   const runtime = useChartRuntime();
   // A single commit point: figures, dates, records and plots all consume this pair.
   // Neither half can overwrite a complete prior selection on its own.
-  const current = useMemo(() => incoming && (view !== "money" || historyQuery.data) ? {
+  const current = useMemo(() => (incoming || pinnedMoney) && (view !== "money" || historyQuery.data) ? {
     data: incoming, history: historyQuery.data, range: requestedRange, scope: requestedScope,
     view, updatedAt: Math.max(summary.dataUpdatedAt, historyQuery.dataUpdatedAt),
-  } : undefined, [incoming, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
+  } : undefined, [incoming, pinnedMoney, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
   const reading = useReadingBoundary();
   const identity = [view,requestedScope,requestedRange,benchmark,start,end,citedId].join("|");
   const activeRange = ready && selectionRange?.identity === identity ? selectionRange : null;
-  const publicationOf = (chart: NonNullable<typeof current>) => chart.view === "money" ? chart.history?.runId : chart.data.runId;
+  const publicationOf = (chart: NonNullable<typeof current>) => chart.view === "money" ? chart.history?.runId : chart.data?.runId;
   const retained = useRetainedResult(current, Object.is, (next, previous) =>
     (!activeRange || publicationOf(next) === activeRange.snapshotId) &&
-    (!reading.active || next.data.runId === pinnedLens || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope));
+    (!reading.active || next.data?.runId === pinnedLens || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope));
   const shown = retained?.view === view && retained.scope === requestedScope &&
-    (!pinnedLens || (!summary.isError && retained.data.runId === pinnedLens)) && (!pinnedMoney || (!historyQuery.isError && retained.history?.runId === pinnedMoney)) ? retained : undefined;
+    (!pinnedLens || (!summary.isError && retained.data?.runId === pinnedLens)) && (!pinnedMoney || (!historyQuery.isError && retained.history?.runId === pinnedMoney)) ? retained : undefined;
   const data = shown?.data;
   const scope = shown?.scope ?? requestedScope;
   const actualRange = shown?.range ?? requestedRange;
@@ -168,7 +168,7 @@ export function PerformanceContent({
     { value: "isa", label: accountName(profile, "B") },
   ];
   const scopeOptions =
-    view === "money" && (incoming?.cfd || data?.cfd)
+    view === "money" && (incoming?.cfd || data?.cfd || requestedScope === "household" || requestedScope === "cfd")
       ? [
           ...allScope,
           {
@@ -195,7 +195,7 @@ export function PerformanceContent({
     setSelectionRange({start:points[0].date,end:points.at(-1)!.date,identity,snapshotId:plottedId});
     setPhoneRange(null);
   }
-  const linkedFrom = params.get("inspectFrom"), linkedTo=params.get("inspectTo");
+
   const citedWindow = citedId && citedId===plottedId && linkedFrom && linkedTo
     ? {start:linkedFrom,end:linkedTo,snapshotId:citedId} : null;
   const selectedWindow = activeRange ?? citedWindow;
@@ -350,7 +350,7 @@ export function PerformanceContent({
           ]}
         />
         <span className="mx-freshness-group">
-          {(!data || runtime.status === "loading") && waiting ? <WaitingAsOf label={waitingLabel} /> : <Freshness date={data?.brokerAsOf} />}
+          {(!data || runtime.status === "loading") && waiting ? <WaitingAsOf label={waitingLabel} /> : <Freshness date={shown?.history?.brokerAsOf ?? data?.brokerAsOf} />}
           {view !== "money" && inlineFailure && <UpdateFailure {...inlineFailure} />}
         </span>
         <Select

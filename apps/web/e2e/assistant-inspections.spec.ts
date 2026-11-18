@@ -82,6 +82,7 @@ async function setup(
     const url = new URL(route.request().url());
     const path = url.pathname.replace("/api/backend", "");
     const fixture = backendFixture(url);
+    if (path === "/profile") return route.fulfill({json:{...(fixture as object),assistantEnabled:ready}});
     if (path === "/assistant/status")
       return route.fulfill({
         json: { ready, code: ready ? null : "assistant_disabled" },
@@ -410,6 +411,8 @@ test("off leaves the original page controls and sends no role requests", async (
   page,
 }) => {
   const calls = await setup(page, "en", false, false);
+  const statusRequests:string[]=[];
+  page.on("request",r=>{if (r.url().endsWith("/assistant/status")) statusRequests.push(r.url());});
   for (const url of [
     "/holdings?view=lookthrough",
     "/analytics?view=returns",
@@ -426,6 +429,7 @@ test("off leaves the original page controls and sends no role requests", async (
     ).toHaveCount(0);
   }
   expect(calls).toEqual([]);
+  expect(statusRequests).toEqual([]);
 });
 
 test("keyboard range survives a failed reading, stop and retry", async ({
@@ -678,3 +682,58 @@ test("company reading returns keyboard focus to the underlying detail", async ({
   await expect.poll(()=>detail.evaluate(node=>node.contains(document.activeElement))).toBe(true);
   if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-company-detail-focus.png")});
 });
+
+for (const view of ["holdings","money","returns","risk"] as const) {
+  test(`opens the cited ${view} using the retained dashboard API`, async ({page,request})=>{
+    const calls=await setup(page,"en",false);
+    // The assistant is synthetic; both dashboard routes go through the actual Next and API servers.
+    await page.route("**/api/backend/dashboard/**",route=>route.continue());
+    const publication = await request.get("/api/backend/dashboard/lens/analytics?scope=isa&detail=summary&range=ALL");
+    expect(publication.ok()).toBe(true);
+    const latest = await publication.json() as DashboardLens;
+    const id = process.env.TM_RETAINED_QA_RUN ?? latest.runId;
+    const scope = view==="money" ? "household" : "isa";
+    const bad:string[]=[];
+    page.on("response",r=>{if(r.url().includes("/dashboard/") && r.status()>=400) bad.push(String(r.status())+" "+r.url());});
+    const q=new URLSearchParams({snapshotId:id,view,scope,range:"ALL",benchmark:"VOO",evidence:view==="holdings"?"selected_exposure":"selected_daily"});
+    let path="/analytics";
+    if(view==="holdings"){
+      path="/holdings";
+      q.set("view","lookthrough"); q.set("dimension","country"); q.set("category","US");
+    }else{
+      let dates:string[];
+      if(view==="money"){
+        const r=await request.get("/api/backend/dashboard/history?"+new URLSearchParams({runId:id,scope,range:"1M"}));
+        expect(r.ok()).toBe(true);
+        const {history}=await r.json();
+        dates=history.points.map((p:{date:string})=>p.date);
+        q.set("range","1M");q.set("evidence","selected_money");
+      }else{
+        const r=await request.get("/api/backend/dashboard/lens/analytics?"+new URLSearchParams({runId:id,scope,detail:"summary",range:"ALL"}));
+        expect(r.ok()).toBe(true);
+        const data=await r.json() as DashboardLens;
+        const prices=new Set(data.benchmarkSeries?.VOO?.map(p=>p.date));
+        dates=(data.nav??[]).filter(p=>p.isaTwr!=null && (view==="risk" || prices.has(p.date))).map(p=>p.date);
+      }
+      expect(dates.length).toBeGreaterThan(1);
+      q.set("inspectFrom",dates.at(-2)!); q.set("inspectTo",dates.at(-1)!);
+    }
+    const response=page.waitForResponse(r=>{
+      const url=new URL(r.url());
+      return url.searchParams.get("runId")===id && url.pathname.endsWith(view==="holdings"?"/lens/holdings-lookthrough":view==="money"?"/dashboard/history":"/lens/analytics");
+    });
+    await page.goto(path+"?"+q);
+    const pinned=await response;
+    expect(pinned.status()).toBe(200);
+    const data=await pinned.json();
+    expect(data.runId).toBe(id);
+    if(view==="risk") {
+      expect(data.nav.some((p:{isaDrawdown?:number})=>p.isaDrawdown!=null)).toBe(true);
+      expect(Object.keys(data.risk)).toEqual(["B"]);
+      expect(data).not.toHaveProperty("benchmarkSeries");
+    }
+    if(view==="holdings") expect(data.lookthrough.countryAllocation.length).toBeGreaterThan(0);
+    await expect.poll(()=>calls.at(-1)).toMatchObject({role:view==="holdings"?"exposure":"attribution",snapshotId:id});
+    expect(bad).toEqual([]);
+  });
+}
