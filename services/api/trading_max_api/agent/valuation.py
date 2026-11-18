@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from uuid import uuid4
 
 from pydantic import Field, ValidationError
-from pydantic_ai import Agent, DeferredToolRequests, UsageLimits
+from pydantic_ai import Agent, CancellationToken, DeferredToolRequests, UsageLimits
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from trading_max.domain import DomainModel
@@ -302,7 +302,9 @@ class DraftAgent:
             }
         )
 
-    async def run(self, model: Model, settings: ModelSettings) -> DraftResult:
+    async def run(
+        self, model: Model, settings: ModelSettings, cancellation_token: CancellationToken | None
+    ) -> DraftResult:
         agent = Agent(output_type=[str, DeferredToolRequests], instructions=INSTRUCTIONS, retries=0)
 
         @agent.tool_plain
@@ -340,6 +342,7 @@ class DraftAgent:
             model=model,
             model_settings=settings,
             usage_limits=LIMITS,
+            cancellation_token=cancellation_token,
             timeout=90,
         )
         deferred = result.output

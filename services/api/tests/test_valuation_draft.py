@@ -353,12 +353,16 @@ def test_only_deferred_evaluated_candidates_can_leave_the_run(desk, monkeypatch)
     assert not state.valuation_drafts.root.exists()
 
 
-def test_closing_stream_cancels_model_and_releases_workspace(desk):
+@pytest.mark.parametrize("revoke", [True, False])
+def test_revocation_or_disconnect_cancels_pending_provider_and_releases_workspace(desk, revoke):
+    from pydantic_ai import CancellationToken
+
     client, state, _, _ = desk
     _, body = inputs(client)
 
     async def exercise():
         started, cancelled = asyncio.Event(), asyncio.Event()
+        token = CancellationToken()
 
         async def block(messages, info):
             started.set()
@@ -368,7 +372,7 @@ def test_closing_stream_cancels_model_and_releases_workspace(desk):
                 cancelled.set()
 
         async def bind():
-            return BoundModel(FunctionModel(block), {})
+            return BoundModel(FunctionModel(block), {}, token)
 
         state.assistant.bind_model = bind
 
@@ -381,7 +385,13 @@ def test_closing_stream_cancels_model_and_releases_workspace(desk):
         )
         assert '"preparing"' in await anext(response.body_iterator)
         await asyncio.wait_for(started.wait(), 3)
-        await response.body_iterator.aclose()
+        if revoke:
+            token.cancel()
+            async with asyncio.timeout(3):
+                events = [json.loads(event) async for event in response.body_iterator]
+            assert events[-1]["code"] == "valuation-draft-settings-changed"
+        else:
+            await response.body_iterator.aclose()
         assert cancelled.is_set()
         assert not state.valuation_drafts.running.locked()
 

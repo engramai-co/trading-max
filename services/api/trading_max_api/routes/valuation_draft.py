@@ -8,7 +8,7 @@ from typing import Any
 
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic_ai.exceptions import RunTimedOut
+from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from starlette.responses import StreamingResponse
 from trading_max.research.fundamentals import sector_profile_by_label
 from trading_max.research.statement_valuation import scenario_template_inputs
@@ -206,7 +206,7 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                 bound = await app_service(request, "assistant").bind_model()
                 check_preferences()
                 async with bound.model:
-                    result = await runner.run(bound.model, bound.settings)
+                    result = await runner.run(bound.model, bound.settings, bound.cancellation_token)
                 check_preferences()
                 journal = app_service(request, "research_journal")
 
@@ -275,6 +275,8 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
 
 def _failure(exc: Any) -> str:
+    if isinstance(exc, RunCancelled):
+        return "valuation-draft-settings-changed"
     if isinstance(exc, TimeoutError | RunTimedOut):
         return "assistant_timeout"
     if isinstance(exc, AssistantUnavailable):
