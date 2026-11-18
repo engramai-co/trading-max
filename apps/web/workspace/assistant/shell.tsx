@@ -36,14 +36,13 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
   const lastControl = useRef<HTMLElement>(null);
   const gateClose = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
-    if (!open) { lastControl.current = null; return; }
-    if (searchOpen) return;
+    if (!ready && !pending) lastControl.current = null;
+    if (!open || searchOpen) return;
     const active = document.activeElement;
     // A non-modal desktop panel may revalidate while the reader is working elsewhere.
     if (active && active !== document.body && !panel.current?.contains(active) && !active.matches("[data-assistant-trigger]")) return;
     if (pending || !ready) {
       gateClose.current?.focus({preventScroll:true});
-      if (!pending) lastControl.current = null;
     } else if (lastControl.current?.isConnected) {
       lastControl.current.focus({preventScroll:true});
     }

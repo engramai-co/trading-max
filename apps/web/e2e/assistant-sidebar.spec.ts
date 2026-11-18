@@ -516,8 +516,8 @@ test("withdrawal in Settings closes another window's saved History", async ({pag
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
 });
 
-for (const outcome of ["draft", "history button", "withdrawn"] as const) {
-  test("stale consent revalidation keeps panel focus: " + outcome, async ({page}) => {
+for (const outcome of ["draft", "history button", "reopened draft", "withdrawn"] as const) {
+  test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
     await fixtures(page);
@@ -526,9 +526,14 @@ for (const outcome of ["draft", "history button", "withdrawn"] as const) {
     const panel = page.locator("#mx-assistant-panel");
     const draft = panel.getByRole("textbox", {name:"Message"});
     await draft.fill("Keep this draft");
+    const shots = process.env.ASSISTANT_SCREENSHOTS;
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
     await expect(control).toBeFocused();
+    if (outcome === "reopened draft") {
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
+    }
 
     let release!: () => void;
     const response = new Promise<void>(resolve => { release = resolve; });
@@ -538,11 +543,13 @@ for (const outcome of ["draft", "history button", "withdrawn"] as const) {
       await route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
-    if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
+    else if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     else await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     try {
       await expect(panel.getByText("Checking connection…")).toBeVisible();
       await expect.soft(panel.locator(":focus"), "focus during the check").toHaveCount(1, {timeout:1000});
+      if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-checking-focus.png")});
       for (const key of ["Tab", "Shift+Tab"]) {
         await page.keyboard.press(key);
         await expect.soft(panel.locator(":focus"), key + " during the check").toHaveCount(1, {timeout:1000});
@@ -554,9 +561,11 @@ for (const outcome of ["draft", "history button", "withdrawn"] as const) {
       await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
       await expect(panel.locator("a:focus,button:focus")).toHaveCount(1);
       await expect(draft).toHaveCount(0);
+      if (shots) await page.screenshot({path:join(shots,info.project.name + "-withdrawn-focus.png")});
     } else {
       await expect(control).toBeFocused();
       await expect(draft).toHaveValue("Keep this draft");
+      if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-restored-focus.png")});
       await page.keyboard.press("Tab");
       await expect(panel.locator(":focus")).toHaveCount(1);
     }
