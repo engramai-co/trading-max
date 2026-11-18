@@ -415,6 +415,7 @@ test("disabled Overview matches main's cold request and script counts", async ({
   const baseline = await cold(main!, false);
   const actual = await cold(process.env.PLAYWRIGHT_BASE_URL!, true);
   await info.attach("cold-load-counts",{body:JSON.stringify({baseline,actual}),contentType:"application/json"});
+  expect(actual.requests.filter(path => path.startsWith("/api/backend/assistant/"))).toEqual([]);
   expect.soft(actual.requests).toEqual(baseline.requests);
   expect(actual.scripts).toBeLessThanOrEqual(baseline.scripts);
 });
@@ -897,8 +898,12 @@ test("mixed historical event replies retain their published dates and citations"
   await fixtures(page);
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   const items = historicalEvents.data.items;
-  // The verified answer format allows four observations per reply; both turns use the full tool result.
-  const turns = [["news", "earnings", "ex_dividend", "dividend"], ["dividend_pay", "rating_change", "filing", "own_trade"]];
+  // Each turn selects up to four observations from the same eight-row tool result.
+  const turns = [
+    ["news", "earnings", "ex_dividend", "dividend"],
+    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
+    ["news", "rating_change", "filing", "own_trade"],
+  ];
   let next = 0;
   await page.route("**/api/backend/assistant/chat*", route => {
     const id = "historical-" + next;
