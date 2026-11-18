@@ -1689,3 +1689,57 @@ def test_fund_bar_distribution_qualifies_once_on_its_own_listing(bound, monkeypa
     assert [event["kind"] for event in moment["events"]] == [
         "ex_dividend" if disclosure == "ex_date" else "dividend"
     ]
+
+
+@pytest.mark.parametrize(
+    ("venue", "session"), [("FRA", "2026-01-30"), ("GER", "2026-02-02"), ("UNVERIFIED", None)]
+)
+def test_evening_headline_uses_observed_german_venue(bound, venue, session):
+    app, initial, _ = bound
+    store = app.state.store
+    ticker = "SYN"
+    friday = DATES[-3]
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"] = [
+        {**technical["rows"][0], "ticker": ticker, "exchange": venue, "timezone": "Europe/Berlin"}
+    ]
+    article = {
+        "id": "friday",
+        "title": "Synthetic update",
+        "publisher": "Wire",
+        "url": "https://example.test/friday",
+        "date": friday,
+        "instant": friday + "T18:00:00Z",
+    }
+    payloads = {
+        tools.TECHNICAL: technical,
+        NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": friday}}},
+        tools.FUNDAMENTALS: {
+            "rows": [
+                {
+                    "ticker": ticker,
+                    "metrics": {
+                        "fullExchangeName": "XETRA",
+                        "exchangeTimezoneName": "Europe/Berlin",
+                    },
+                }
+            ]
+        },
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    reading = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": ticker, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+        )
+        .json()
+    )
+    dates = [
+        e["date"] for day in reading["data"]["items"] for e in day["events"] if e["kind"] == "news"
+    ]
+    assert dates == ([session] if session else [])
+    assert ("listing_calendar_unavailable" in reading["quality"]["issues"]) == (session is None)

@@ -89,9 +89,11 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
     if evidence.get("news"):
         keys.append(FINANCIALS)
     rows = [row for row in listed_headlines(ticker, raw_rows) if row]
-    exchange = series.exchange_calendar or listing_calendar(
-        ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
-    )
+    exchange = series.exchange_calendar
+    if not exchange and not series.published_bar_exchange:
+        exchange = listing_calendar(
+            ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
+        )
     for row in headline_stories(rows, raw_rows):
         published = row["date"]
         day = _news_session(exchange, row["instant"]) if row["instant"] else published

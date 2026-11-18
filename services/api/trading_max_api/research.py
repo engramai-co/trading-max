@@ -2558,6 +2558,7 @@ class ResearchLedger:
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
+            published_bar_exchange=str(source.get("exchange") or "").strip() or None,
             exchange_calendar=listing_calendar(
                 bar_ticker, source.get("exchange"), source.get("timezone")
             ),
