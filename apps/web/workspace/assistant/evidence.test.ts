@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dividendAmount } from "@/lib/dividend-disclosure";
+import earlyClose from "../../tests/fixtures/market-early-close.json";
 import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
@@ -342,13 +343,13 @@ it("resolves each published historical event date to its source in mixed replies
 });
 
 it("preserves the selected market on an early-close source link", () => {
-  const day = "2026-11-27";
-  const message = fieldReply("upcoming_events", {snapshot_id:"saved",scope:"broker_total",
-    bound_arguments:{market:"US", ticker:"ALFA"},data:{start:day,end:day,timezone:"Europe/London",
-    items:[{kind:"half_day",market:"XNYS",date:day,title_en:"Early close",evidence_id:"ev_early"}]}}, "/data/items/0/date");
+  const {output, arguments:args} = earlyClose;
+  const message = fieldReply("upcoming_events", {...output,bound_arguments:args}, "/data/items/0/date");
   const [line] = verifiedLines(message, "en");
   const url = new URL(evidenceHref(line.evidence!)!, "http://localhost");
-  expect(Object.fromEntries(url.searchParams)).toMatchObject({market:"US",eventTicker:"ALFA",eventId:"ev_early",snapshotId:"saved"});
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({
+    market:args.market,eventTicker:args.ticker,eventId:output.data.items[0].evidence_id,snapshotId:output.snapshot_id,
+  });
 });
 
 it("withholds Broker links without an investing account and a decision identity", () => {

@@ -1,3 +1,4 @@
+import earlyClose from "../tests/fixtures/market-early-close.json";
 import listingRefusal from "../tests/fixtures/listing-prices-unavailable.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -512,3 +513,23 @@ test("phone resize with an open research card has one modal and sends focus to M
   await expect(page.getByRole("dialog")).toHaveCount(1);
 });
 
+
+
+test("a selected-session early close reopens the bound market and retained row", async ({page}, info) => {
+  const {output, arguments:args} = earlyClose;
+  const row = output.data.items[0];
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/research/MARKET/citation?**", route => {
+    const query = new URL(route.request().url()).searchParams;
+    const selected = query.get("market") === args.market && query.get("eventTicker") === args.ticker &&
+      query.get("snapshotId") === output.snapshot_id && query.get("eventId") === row.evidence_id &&
+      query.get("evidenceId") === output.evidence_id && query.get("timezone") === output.data.timezone;
+    return selected ? route.fulfill({json:{output,lines:[]}}) : route.fulfill({status:404,json:{detail:"cited-research-unavailable"}});
+  });
+  await page.goto("/research?" + new URLSearchParams({ticker:"MARKET",evidence:"upcoming_events",evidenceId:output.evidence_id,
+    start:args.start,end:args.end,snapshotId:output.snapshot_id,field:"/data/items/0/date",market:args.market,
+    eventTicker:args.ticker,eventId:row.evidence_id,timezone:output.data.timezone}));
+  await expect(page.getByText(/XNYS early close.*27 Nov 2026/)).toBeVisible();
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-retained-early-close.png")});
+});
