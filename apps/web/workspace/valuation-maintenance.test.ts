@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { periodText } from "./evidence-notices";
-import { distinct, pair, restatementGapText, signedValue } from "./valuation-maintenance";
+import { distinct, pair, restatementGapStatus, restatementGapText, signedValue } from "./valuation-maintenance";
 import { sortedLocks } from "./valuation-queries";
 
 describe("new evidence figures", () => {
@@ -52,5 +52,18 @@ describe("new evidence figures", () => {
     expect(restatementGapText({ ...review, restatementCheck: "unavailable", restatementGap: "period-missing" }, zh, "zh"))
       .toBe("保存时的期间已不在当前报表中，无法核对重述。");
     expect(restatementGapText({ ...review, restatementCheck: "unchanged", restatementGap: null }, en, "en")).toBeNull();
+  });
+
+  it("shows a short status for an incomplete restatement check and keeps the reason for its help", () => {
+    const zh = (a: string) => a, en = (_: string, b: string) => b;
+    expect(restatementGapStatus({ restatementCheck: "restated", restatementGap: "metrics-incomplete" }, zh))
+      .toBe("重述影响无法计算");
+    expect(restatementGapStatus({ restatementCheck: "restated", restatementGap: "metrics-incomplete" }, en))
+      .toBe("Restatement effect unavailable");
+    expect(restatementGapStatus({ restatementCheck: "unchanged", restatementGap: "metrics-incomplete" }, en))
+      .toBe("Restatements partly checked");
+    expect(restatementGapStatus({ restatementCheck: "unavailable", restatementGap: "currency-changed" }, zh))
+      .toBe("无法核对重述");
+    expect(restatementGapStatus({ restatementCheck: "unchanged", restatementGap: null }, en)).toBeNull();
   });
 });
