@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -61,7 +62,7 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
-    price_series: PublishedPriceReader | None = None
+    bind_price_series: Callable[[], PublishedPriceReader] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -70,7 +71,7 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         return AssistantDeps(
-            price_series=self.price_series,
+            price_series=self.bind_price_series() if self.bind_price_series else None,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

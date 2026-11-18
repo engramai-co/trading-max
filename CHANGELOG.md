@@ -15,14 +15,14 @@ All notable public Trading Max releases are recorded here.
 - The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
 - Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
 
+### Fixed
+- Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
 ## [1.54.0] - 2026-11-18
 
 ### Added
 - Settings now has a MaxAI section. Choose a connected model, test its tool calls and review which data the provider receives before enabling it. Background brief writing and sharing saved valuation assumptions each have their own switch.
 - Turning MaxAI off or withdrawing consent stops active replies. Local conversations can be deleted separately. Existing users must accept the updated disclosure to enable MaxAI again, and changing the provider or local endpoint requires fresh consent.
-
-### Fixed
-- Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
 ## [1.53.1] - 2026-11-18
 

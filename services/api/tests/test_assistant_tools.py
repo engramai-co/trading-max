@@ -43,7 +43,7 @@ def publication(tmp_path):
     manifest = publish_fixture(store)
     research = ResearchLedger(store, WatchlistStore(tmp_path))
     deps = replace(
-        AssistantDepsFactory(store, price_series=research.published_price_series).for_run(),
+        AssistantDepsFactory(store, bind_price_series=research.bind_price_series).for_run(),
         captured_at=STALE_NOW,
     )
     return store, manifest, deps
@@ -356,6 +356,7 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
         (socket, "getaddrinfo"),
         (HistoryReader, "read"),
         (WatchlistStore, "load"),
+        (WatchlistStore, "listing_exchanges"),
         (ResearchLedger, "lens_snapshot"),
         (SecurityPriceHistory, "get"),
         (FundResearchService, "get"),

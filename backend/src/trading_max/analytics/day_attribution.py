@@ -38,14 +38,14 @@ WINDOW_DAYS = 5
 
 
 @dataclass(frozen=True)
-class SplitLeg:
+class ShareMovement:
     observed_at: datetime
     isin: str
-    opening: bool
+    action: str
     quantity: Decimal
 
 
-type SplitLegs = Mapping[str, tuple[SplitLeg, ...]]
+type ShareMovements = Mapping[str, tuple[ShareMovement, ...]]
 
 
 class BaselinePosition(DomainModel):
@@ -215,34 +215,40 @@ def _restate(start: BaselinePosition, quantity: Decimal) -> BaselinePosition:
 
 
 def _opening_units(
-    start: BaselinePosition, end: BaselinePosition, legs: list[SplitLeg]
-) -> BaselinePosition | None:
-    """Translate an unchanged broker cost basis to the closing share units.
-
-    Brokers restate quantity and native average purchase price reciprocally on
-    a split. The unchanged sterling cost independently distinguishes a change
-    of units from an ordinary purchase or disposal.
-    """
-    if legs:
-        # The export records the extinguished shares followed by their replacement.
-        # A trade, unmatched leg or ambiguous listing cannot prove common units.
-        if len(legs) % 2 or not start.isin or start.isin != end.isin:
-            return None
-        quantity = start.quantity
-        for close, opened in zip(legs[::2], legs[1::2], strict=True):
-            if (
-                close.opening
-                or not opened.opening
-                or close.quantity != quantity
-                or opened.quantity <= 0
-                or close.isin != start.isin
-                or opened.isin != start.isin
-            ):
+    start: BaselinePosition, end: BaselinePosition, movements: list[ShareMovement]
+) -> tuple[BaselinePosition, Decimal] | None:
+    """Reconcile the observed units and retain only shares held through the interval."""
+    if start.isin and end.isin and start.isin != end.isin:
+        return None
+    if movements:
+        quantity = held = start.quantity
+        factor = Decimal(1)
+        pending_close = False
+        for move in movements:
+            if move.quantity <= 0:
                 return None
-            quantity = opened.quantity
-        return _restate(start, quantity) if quantity == end.quantity else None
+            if pending_close:
+                if move.action != "split_open":
+                    return None
+                ratio = move.quantity / quantity
+                factor *= ratio
+                held *= ratio
+                quantity = move.quantity
+                pending_close = False
+            elif move.action == "split_close" and move.quantity == quantity:
+                pending_close = True
+            elif move.action == "buy":
+                quantity += move.quantity
+            elif move.action == "sell" and move.quantity <= quantity:
+                quantity -= move.quantity
+                held = min(held, quantity)
+            else:
+                return None
+        if pending_close or quantity != end.quantity:
+            return None
+        return _restate(start, start.quantity * factor), held
     if start.quantity == end.quantity:
-        return start
+        return start, start.quantity
     factor = end.quantity / start.quantity
     same_cost = (
         start.total_cost_gbp is not None
@@ -250,67 +256,62 @@ def _opening_units(
         and end.total_cost_gbp is not None
         and abs(start.total_cost_gbp - end.total_cost_gbp) <= CENT
     )
-    if same_cost:
-        if (
-            start.price_currency
-            and start.price_currency == end.price_currency
-            and start.average_price_paid
-            and start.average_price_paid > 0
-            and end.average_price_paid
-            and end.average_price_paid > 0
-            and abs(start.average_price_paid / end.average_price_paid / factor - 1)
-            <= Decimal("0.0001")
-        ):
-            return _restate(start, end.quantity)
-        return None
     if (
-        start.average_price_paid
-        and start.average_price_paid == end.average_price_paid
-        and start.price_currency == end.price_currency
-    ):
-        return start
-    # Without action or cost evidence, do not assign a price loss if the marks
-    # agree more closely in restated units. The quotes can withhold a figure,
-    # but only broker evidence can establish a split factor.
-    opening_mark, closing_mark = start.local_price, end.local_price
-    if (
-        opening_mark
-        and closing_mark
-        and opening_mark > 0
-        and closing_mark > 0
+        same_cost
         and start.price_currency
         and start.price_currency == end.price_currency
-        and abs(closing_mark * factor - opening_mark) < abs(closing_mark - opening_mark)
+        and start.average_price_paid
+        and start.average_price_paid > 0
+        and end.average_price_paid
+        and end.average_price_paid > 0
+        and abs(start.average_price_paid / end.average_price_paid / factor - 1) <= Decimal("0.0001")
     ):
-        return None
-    return start
+        return _restate(start, end.quantity), end.quantity
+    # Marks and market values cannot distinguish a fill from a change of units.
+    return None
 
 
 def _contributions(
     opening: list[BaselinePosition],
     current: list[BaselinePosition],
     unreconciled: set[str],
-    split_legs: SplitLegs,
+    share_movements: ShareMovements,
     since: datetime,
     as_of: datetime,
 ) -> list[PositionContribution]:
     now = {position.key: position for position in current}
+    instruments: dict[str, dict[str, set[str]]] = {}
+    for position in (*opening, *current):
+        instruments.setdefault(position.ticker.upper(), {}).setdefault(position.key, set()).add(
+            position.isin
+        )
     rows = []
     for start in opening:
         end = now.get(start.key)
         if end is None or start.quantity <= 0 or end.quantity <= 0:
             continue
-        legs = [
-            leg
-            for leg in split_legs.get(end.ticker.upper(), ())
-            if since < leg.observed_at <= as_of
-            and (not end.isin or not leg.isin or leg.isin == end.isin)
+        isin = end.isin or start.isin
+        ticker = end.ticker.upper()
+        movements = [
+            move
+            for move in share_movements.get(ticker, ())
+            if since < move.observed_at <= as_of
+            and (not isin or not move.isin or move.isin == isin)
         ]
-        start = _opening_units(start, end, legs)
-        if start is None:
+        # Export rows use tickers and ISINs, while baselines carry the exact broker
+        # listing. A shared symbol without matching ISINs cannot identify a fill.
+        ambiguous = any(
+            other_key != end.key and (not move.isin or not any(isins) or move.isin in isins)
+            for move in movements
+            for other_key, isins in instruments[ticker].items()
+        )
+        reconciled = None if ambiguous else _opening_units(start, end, movements)
+        if reconciled is None:
             unreconciled.add(end.key)
             continue
-        held = min(start.quantity, end.quantity)
+        start, held = reconciled
+        if held <= 0:
+            continue
         opening_price = start.value_gbp / start.quantity
         change = held * (end.value_gbp / end.quantity - opening_price)
         change = change.quantize(CENT)
@@ -346,7 +347,7 @@ def update_day_attribution(
     previous_baseline: Mapping[str, Any] | None,
     accounts: Mapping[str, Mapping[str, Any]],
     *,
-    split_legs: Mapping[str, SplitLegs] | None = None,
+    share_movements: Mapping[str, ShareMovements] | None = None,
 ) -> tuple[DayBaseline, DayAttribution]:
     """Carry or reset each account's opening and attribute the change since it."""
 
@@ -380,7 +381,7 @@ def update_day_attribution(
             opening[code].positions,
             current,
             unreconciled,
-            (split_legs or {}).get(code, {}),
+            (share_movements or {}).get(code, {}),
             opening[code].captured_at,
             observed[code],
         )
@@ -399,7 +400,7 @@ def update_window_attribution(
     accounts: Mapping[str, Mapping[str, Any]],
     *,
     history: Callable[[date], DayBaseline | None] | None = None,
-    split_legs: Mapping[str, SplitLegs] | None = None,
+    share_movements: Mapping[str, ShareMovements] | None = None,
 ) -> tuple[WindowBaselines, WindowAttribution]:
     """Chain the daily openings of the 5D window up to the current observation.
 
@@ -444,7 +445,7 @@ def update_window_attribution(
         unreconciled: set[str] = set()
         for (since, start), (as_of, end) in pairwise(points):
             for row in _contributions(
-                start, end, unreconciled, (split_legs or {}).get(code, {}), since, as_of
+                start, end, unreconciled, (share_movements or {}).get(code, {}), since, as_of
             ):
                 instrument = row.instrument or row.ticker
                 prior = totals.get(instrument)

@@ -92,7 +92,7 @@ return up to 20 rows per call.
 
 | Reading | Tool | Calculation |
 | --- | --- | --- |
-| `daily-returns` | `daily_returns` | Close-to-close changes in published portfolio TWR wealth, ranked lowest first within the selected Returns range. Ties share a rank. The selected benchmark defaults to VOO. The interval endpoints are observations of the selected account scope. Benchmark changes require both closes. A custom range takes inclusive start and end dates. CFD and household have no TWR. |
+| `daily-returns` | `daily_returns` | Published daily TWR, or the change between consecutive wealth observations for legacy exports, ranked lowest first within the Returns chart’s calendar cut. Undefined intervals stay outside the sample. Returns equal at the twelve-decimal publication precision share a rank. The selected benchmark defaults to VOO. The interval endpoints are observations of the selected account scope. Benchmark changes require both closes. A custom range takes inclusive start and end dates. CFD and household have no TWR. |
 | `holding-fx` | `holding_fx_split` | Invest and Stocks ISA position and account amounts in GBP. The 1D and 5D readings use the Holdings contribution windows. Open-position FX matches the holdings table and drawer. |
 | `dated-exposure` | `dated_exposure` | Combined broker country, sector, GICS sub-industry or top-40 company exposure on or before the requested date. The response gives the actual observation date and earliest retained date. |
 | `decision-timing` | `decision_timing_and_habits` | Rule-based buy and sell counts, scored effects, and hindsight timing for each published decision. Habits use the selected horizon for the whole group and open at 20 sessions. A focused account, ticker, decision date and side opens to date if its 20-session window is incomplete. |
@@ -102,8 +102,9 @@ The FX split uses the shares held at both ends of each measured segment. The
 local price effect converts the change in the native quote at the closing GBP
 rate. The FX effect is the remaining held-share contribution, including the
 revaluation of the opening exposure. The 5D reading sums the rounded daily
-segments for each broker listing. Paired broker split transactions establish the
-share units. An unchanged sterling cost and reciprocal change in native purchase
+segments for each broker listing. Executed buys and sells reconcile changes in
+quantity. Paired split transactions translate the opening quantity and price into
+closing units. An unchanged sterling cost and reciprocal change in native purchase
 price and share count can also reconcile them. Unreconciled units withhold that
 listing and its account subtotal. Daily attribution must match the current broker
 observation. Cash, trading within a segment and changes
@@ -120,7 +121,8 @@ artifact. Later refreshes that day reuse the pin. The latest snapshot carries 35
 calendar days plus the last observed date in each of the past 60 months.
 Historical snapshots and backups keep their own pins. Dated keys reuse the
 published bytes, preserving the invested-asset denominator, eligible-equity and
-portfolio GICS coverage and each row's classification status.
+portfolio GICS coverage and each row's classification status. Current and dated
+readings use the same classification coverage.
 A month without a refresh has no invented month-end observation.
 
 Hindsight compares the decision's close with other completed closes in the
@@ -137,7 +139,9 @@ compare with the preceding 20 published sessions using population standard
 deviation. A missing or constant reference window has no volume score.
 Absolute moves and absolute volume z-scores rank separately across all
 visible days. Among dates with evidence, the better rank wins, with the
-earlier date breaking a tie. Research's published daily series carries a
+earlier date breaking a tie. The chart and reading resolve the same requested
+listing, including exchange-qualified watchlist aliases. A run captures its
+aliases at the start and reads prices and events from its pinned snapshot. The series carries a
 `publishedSeriesId` bound to the price artifact and ticker. A chart caller
 passes it as `published_series_id` so a newer publication cannot be
 mistaken for the chart on screen. Live or differently sampled charts

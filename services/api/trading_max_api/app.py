@@ -173,7 +173,7 @@ def create_app(
         store=SqliteConversationStore(assistant_database),
         bind_model=bind_assistant_model,
         deps_for_run=AssistantDepsFactory(
-            store=store, price_series=research.published_price_series
+            store=store, bind_price_series=research.bind_price_series
         ).for_run,
         check_ready=assistant_ready,
     )

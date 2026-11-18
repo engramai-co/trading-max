@@ -8,7 +8,7 @@ from itertools import pairwise
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, StringConstraints, model_validator
-from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES, exposure_rows
+from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, nav_number, period_return
@@ -17,6 +17,7 @@ from trading_max.research.held_funds import FUND_PRICES_KEY
 from ..dashboard import _benchmark_series
 from ..projections.day_change import measures_broker_observation, within_trading_days
 from ..projections.nav import nav_series
+from ..projections.values import csv_rows
 from ..research import _canonical_ticker, _find, published_price_series_id
 from .deps import AssistantDeps
 from .tools import (
@@ -36,6 +37,7 @@ from .tools import (
     Scoped,
     Ticker,
     _broker,
+    _exposure_reading,
     _iso,
     _mapped,
     _math_scope,
@@ -129,11 +131,22 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
             *(
                 deps.store.read_text(deps.snapshot_id, HISTORY_KEYS[i]) if code in codes else ""
                 for i, code in enumerate("AB")
-            )
+            ),
+            include_daily_returns=True,
         )
+        if window != "ALL":
+            # Returns cuts the full published calendar before selecting the
+            # investment scope. Other accounts supply dates, never returns.
+            calendar = {p["date"] for p in daily}
+            for code, key in zip("ABC", HISTORY_KEYS[:3], strict=True):
+                if code not in codes and (code == "C" or code in accounts) and read.ref(key):
+                    calendar.update(
+                        r["Date"] for r in csv_rows(deps.store.read_text(deps.snapshot_id, key))
+                    )
+            visible = {p["date"] for p in in_range([{"date": d} for d in calendar], window)}
+            daily = [p for p in daily if p["date"] in visible]
     except (FileNotFoundError, SnapshotIntegrityError, KeyError, TypeError, ValueError):
         return read.missing("history_unavailable", keys=keys)
-    daily = in_range(daily, window)
     if args.start:
         daily = [p for p in daily if args.start <= p["date"] <= args.end]
     raw = read.read(TECHNICAL) or {}
@@ -152,7 +165,7 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
         issues.append("benchmark_basis_not_published")
     rows = []
     for a, b in pairwise(daily):
-        value = period_return(nav_number(a, scope, "Twr"), nav_number(b, scope, "Twr"))
+        value = b.get(scope + "DailyReturn")
         if value is None:
             issues.append("daily_twr_missing")
             continue
@@ -170,9 +183,10 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
                 "benchmark_return_fractions": benchmarks,
             }
         )
-    ranks = sorted(row["return_fraction"] for row in rows)
+    # Official daily returns are published to twelve fractional decimal places.
+    ranks = sorted(round(row["return_fraction"], 12) for row in rows)
     for row in rows:
-        row["worst_rank"] = 1 + bisect_left(ranks, row["return_fraction"])
+        row["worst_rank"] = 1 + bisect_left(ranks, round(row["return_fraction"], 12))
     if not rows:
         return read.missing("daily_twr_endpoints_missing", keys=(*keys, TECHNICAL))
     return read.page(
@@ -180,7 +194,7 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
         args,
         {
             "currency": "GBP",
-            "basis": "published_daily_twr_wealth",
+            "basis": "published_daily_twr",
             "range": window,
             "window_twr_fraction": period_return(
                 nav_number(daily[0], scope, "Twr"), nav_number(daily[-1], scope, "Twr")
@@ -323,46 +337,10 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
         )
     key = f"{PREFIX}{date_key}.json"
     raw = read.read(key) or {}
-    rows_key, name, basis = DIMENSIONS[args.dimension]
+    rows_key, _, basis = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=[key])
-    ranked = exposure_rows(raw, args.dimension)
-    rows = [
-        {
-            "name": _text(row.get(name), 512),
-            "value_gbp": _number(row.get("valueGbp")),
-            "weight_fraction": _number(row.get("allocationPct")),
-            **(
-                {"ticker": _text(row.get("ticker"), 64), "isin": _text(row.get("isin"), 64)}
-                if args.dimension == "company"
-                else {}
-            ),
-            **(
-                {
-                    "code": _text(row.get("subIndustryCode"), 16),
-                    "classification_status": _text(row.get("classificationStatus"), 32),
-                }
-                if args.dimension == "gics"
-                else {}
-            ),
-        }
-        for row in (ranked[:TOP_COMPANIES] if args.dimension == "company" else ranked)
-    ]
-    coverage = _number(raw.get("lookthroughCoveragePct"))
-    issues = ["lookthrough_incomplete"] if coverage is None or coverage < 0.99995 else []
-    gics = {}
-    if args.dimension == "gics":
-        classification = _number(raw.get("gicsCoveragePct"))
-        gics = {
-            "gics_coverage_fraction": classification,
-            "gics_portfolio_coverage_fraction": _number(raw.get("gicsPortfolioCoveragePct")),
-        }
-        if (
-            classification is None
-            or classification < 0.99995
-            or any(r["classification_status"] is None for r in rows)
-        ):
-            issues.append("gics_classification_incomplete")
+    rows, coverage, issues = _exposure_reading(raw, args.dimension, dated=True)
     if (ref := read.ref(key)) and ref.warnings:
         issues.append("source_reported_warnings")
     return read.page(
@@ -376,8 +354,7 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
             "currency": "GBP",
             "dimension": args.dimension,
             "basis": raw.get(basis) if basis else "direct_and_fund_constituents",
-            "lookthrough_coverage_fraction": coverage,
-            **gics,
+            **coverage,
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
             "company_limit": TOP_COMPANIES if args.dimension == "company" else None,
         },

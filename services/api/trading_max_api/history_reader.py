@@ -223,7 +223,7 @@ class HistoryReader:
         references = sorted(
             (a.key, a.sha256) for a in manifest.artifacts if a.key in (*_KEYS, _BROKER_KEY)
         )
-        revision = hashlib.sha256(json.dumps([2, references]).encode()).hexdigest()
+        revision = hashlib.sha256(json.dumps([3, references]).encode()).hexdigest()
         broker = self.store.read_json(manifest.run_id, _BROKER_KEY)
         live = None
         with suppress(FileNotFoundError, TypeError, ValueError):

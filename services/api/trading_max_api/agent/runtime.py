@@ -90,6 +90,24 @@ class TurnLimits(UsageLimits):
         super().check_before_request(usage)
 
 
+@dataclass(kw_only=True)
+class TurnLimits(UsageLimits):
+    """Keep the framework's stored lifetime counters and apply budgets to this turn."""
+
+    opening: RunUsage | None = None
+
+    def check_before_request(self, usage: RunUsage) -> None:
+        if self.opening is None:
+            self.opening = copy(usage)
+            if self.request_limit is not None:
+                self.request_limit += usage.requests
+            if self.tool_calls_limit is not None:
+                self.tool_calls_limit += usage.tool_calls
+            if self.total_tokens_limit is not None:
+                self.total_tokens_limit += usage.total_tokens
+        super().check_before_request(usage)
+
+
 def build_assistant_agent(toolsets: Sequence[AbstractToolset]) -> Agent:
     """One agent instance serves every run; the model and data are bound per run.
 
