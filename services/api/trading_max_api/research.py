@@ -2544,7 +2544,7 @@ class ResearchLedger:
             else {}
         )
         all_markers, unresolved = chart_trade_markers(
-            raw_markers, bar_ticker, lambda: self._marker_listings(manifest, raw_markers)
+            raw_markers, bar_ticker, currency, lambda: self._marker_listings(manifest, raw_markers)
         )
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,

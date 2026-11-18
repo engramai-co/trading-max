@@ -146,7 +146,11 @@ Events must match the listing on the published bar row. The chart resolves each
 broker fill by its recorded instrument code. A bare CSV ticker or an older
 marker requires one matching listing across the pinned research, broker
 positions and venue-qualified fills. Trades resolved to the same listing and
-date share one daily marker.
+date share one daily marker, including earlier ticker aliases. Execution prices
+use the chart’s quote unit before share weighting. The broker’s fill rate or a
+dated FX observation pinned at publication supplies any conversion. If a
+priced fill lacks its unit or rate, its side retains its trades and quantities
+and withholds the average.
 Key moments use the chart's resolved trades and report `trade_listing_unresolved`
 for an ambiguous trade in the selected account and date range. If the aliases cannot
 be read, key moments return an unavailable reading. Their evidence IDs include

@@ -7,17 +7,21 @@ discovery.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.listing import broker_listing
 
 from .fx import FxResolver, normalized_currency, resolve_fx
+from .trade_prices import average_fill_price, record_price_fx
 
 IDENTITY_COLUMNS = (
     "Action",
@@ -257,6 +261,8 @@ def transaction_fee_issues(transactions: pd.DataFrame) -> list[str]:
 def transaction_marker_rows(
     account_transactions: Mapping[str, pd.DataFrame],
     known_positions: Iterable[Mapping[str, object]],
+    *,
+    fx_resolver: FxResolver | None = None,
 ) -> list[dict[str, Any]]:
     """Aggregate real broker fills into B/S/T markers for researched holdings.
 
@@ -270,10 +276,14 @@ def transaction_marker_rows(
 
     ticker_aliases: dict[str, str] = {}
     isin_aliases: dict[str, str] = {}
+    chart_currencies: dict[str, set[str]] = defaultdict(set)
     for position in known_positions:
         canonical = _normalized_security_value(position.get("ticker"))
         if not canonical:
             continue
+        holding_currency, _ = major_quote_unit(_currency(position.get("price_currency")))
+        if holding_currency:
+            chart_currencies[canonical].add(holding_currency)
         for value in (position.get("ticker"), position.get("broker_ticker")):
             alias = _normalized_security_value(value)
             if alias:
@@ -316,10 +326,6 @@ def transaction_marker_rows(
                     "sell_orders": 0,
                     "buy_quantity": 0.0,
                     "sell_quantity": 0.0,
-                    "buy_price_quantity": 0.0,
-                    "sell_price_quantity": 0.0,
-                    "buy_priced_quantity": 0.0,
-                    "sell_priced_quantity": 0.0,
                     "fills": [],
                 },
             )
@@ -331,6 +337,11 @@ def transaction_marker_rows(
             total = row.get("TotalN")
             currency = _currency(row.get("Currency (Total)")) or None
             price = row.get("PriceN")
+            price_currency = _currency(row.get("Currency (Price / share)"))
+            for unit in (price_currency, currency):
+                if unit:
+                    chart_currencies[ticker].add(major_quote_unit(unit)[0])
+            rate = pd.to_numeric(row.get("Exchange rate"), errors="coerce")
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
@@ -340,35 +351,36 @@ def transaction_marker_rows(
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,
-                    "price": float(price) if pd.notna(price) else None,
+                    "price": float(price) if pd.notna(price) and isfinite(price) else None,
+                    "price_currency": price_currency or None,
+                    "exchange_rate": float(rate)
+                    if pd.notna(rate) and isfinite(rate) and rate > 0
+                    else None,
                     "amount": abs(float(total)) if pd.notna(total) and currency else None,
                     "currency": currency,
                 }
             )
-            if pd.notna(price) and quantity_value > 0:
-                marker[f"{side}_price_quantity"] += float(price) * quantity_value
-                marker[f"{side}_priced_quantity"] += quantity_value
 
     rows: list[dict[str, Any]] = []
     for marker in grouped.values():
         has_buys = marker["buy_orders"] > 0
         has_sells = marker["sell_orders"] > 0
         kind = "T" if has_buys and has_sells else "B" if has_buys else "S"
-        buy_priced_quantity = marker.pop("buy_priced_quantity")
-        sell_priced_quantity = marker.pop("sell_priced_quantity")
-        buy_price_quantity = marker.pop("buy_price_quantity")
-        sell_price_quantity = marker.pop("sell_price_quantity")
         marker["kind"] = kind
         marker["fills"].sort(key=lambda fill: fill["at"])
         marker["accounts"] = sorted(marker["accounts"])
         marker["buy_quantity"] = round(marker["buy_quantity"], 8)
         marker["sell_quantity"] = round(marker["sell_quantity"], 8)
-        marker["buy_average_price"] = (
-            round(buy_price_quantity / buy_priced_quantity, 8) if buy_priced_quantity else None
-        )
-        marker["sell_average_price"] = (
-            round(sell_price_quantity / sell_priced_quantity, 8) if sell_priced_quantity else None
-        )
+        fills = marker["fills"]
+        currencies = {
+            major_quote_unit(f["price_currency"] or "")[0] for f in fills if f["price"] is not None
+        }
+        basis = next(iter(currencies)) if len(currencies) == 1 else "GBP"
+        marker["price_currency"] = basis or None
+        for fill in fills:
+            record_price_fx(fill, chart_currencies[marker["ticker"]] | {"GBP"}, fx_resolver)
+        for side in ("buy", "sell"):
+            marker[f"{side}_average_price"] = average_fill_price(fills, side, basis)
         rows.append(marker)
     return sorted(rows, key=lambda row: (row["date"], row["ticker"]))
 

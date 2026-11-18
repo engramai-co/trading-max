@@ -62,8 +62,8 @@ def _managed_export(
         ]
     export.write_text(
         "ID,Action,Time (UTC),Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
-        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result),Currency (Price / share)\n"
+        + "\n".join(row + ",GBP,GBP,GBP,GBP" for row in rows)
         + "\n",
         encoding="utf-8",
     )
@@ -215,6 +215,7 @@ def test_account_review_stage_consumes_typed_lenses_and_publishes_both_accounts(
         ("isa", 100.0, "GBP"),
     ]
     assert hold == {
+        "price_currency": "GBP",
         "ticker": "HOLD",
         "date": "2026-08-01",
         "accounts": ["invest", "isa"],

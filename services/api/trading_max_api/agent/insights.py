@@ -529,15 +529,12 @@ def dated_events(
         issues.append("trade_listing_unresolved")
     for row in series.trade_markers:
         # The chart resolves listing identity. Limit its marker to the authorised accounts.
-        sides = {f.side for f in row.fills if f.account in scopes}
-        marker = {
-            frozenset({"buy", "sell"}): "T",
-            frozenset({"buy"}): "B",
-            frozenset({"sell"}): "S",
-        }.get(frozenset(sides))
-        if not row.fills and row.accounts and set(row.accounts) <= scopes:
-            marker = row.kind
-        if marker:
+        kinds = {"B" if f.side == "buy" else "S" for f in row.fills if f.account in scopes}
+        kinds.update(
+            kind for accounts, kind in row.aggregate_sides if accounts and accounts <= scopes
+        )
+        if kinds:
+            marker = next(iter(kinds)) if len(kinds) == 1 else "T"
             add(row.date, "own_trade", marker)
     return events, keys, issues
 
