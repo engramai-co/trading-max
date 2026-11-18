@@ -7,6 +7,7 @@ it("keeps each adjacent candle reachable at the top and inside the chart", () =>
     const placed = placeMarkers(points,200);
     expect(placed.map(p => p.x)).toEqual(points.map(p => p.x));
     expect(placed.every(p => p.high === high && p.y >= 10 && p.y <= 190)).toBe(true);
+    if (high === 130) expect(placed.every(point => point.y + 9 < high)).toBe(true);
     for (const a of placed) for (const b of placed) if (a !== b) expect(Math.abs(a.y - b.y)).toBeGreaterThanOrEqual(28);
   }
 });
