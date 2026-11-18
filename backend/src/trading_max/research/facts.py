@@ -151,6 +151,9 @@ METRICS: dict[str, tuple[str, ...]] = {
     "debt": ("Total Debt",),
     "equity": ("Stockholders Equity", "Common Stock Equity"),
     "tangibleEquity": ("Net Tangible Assets",),
+    "commonEquity": ("Common Stock Equity",),
+    "commonIncome": ("Net Income Common Stockholders", "Net Income Applicable To Common Shares"),
+    "ordinaryShares": ("Ordinary Shares Number",),
     "assets": ("Total Assets",),
     "buybacks": ("Repurchase Of Capital Stock", "Common Stock Payments"),
     "dividends": ("Cash Dividends Paid", "Common Stock Dividend Paid"),
@@ -158,7 +161,16 @@ METRICS: dict[str, tuple[str, ...]] = {
     "dilutedShares": ("Diluted Average Shares",),
     "basicShares": ("Basic Average Shares",),
 }
-STOCK_METRICS = {"cash", "debt", "equity", "tangibleEquity", "assets", "shareCount"}
+STOCK_METRICS = {
+    "cash",
+    "debt",
+    "equity",
+    "tangibleEquity",
+    "assets",
+    "shareCount",
+    "commonEquity",
+    "ordinaryShares",
+}
 
 
 def _end(value: Any) -> str | None:
@@ -261,7 +273,7 @@ def build_financial_facts(
                 "perShare"
                 if metric == "eps"
                 else "shares"
-                if metric in {"shareCount", "dilutedShares", "basicShares"}
+                if metric in {"shareCount", "ordinaryShares", "dilutedShares", "basicShares"}
                 else "currency"
             )
             observations[metric] = MetricObservation(

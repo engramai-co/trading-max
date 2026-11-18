@@ -35,4 +35,21 @@ def quote_listing(symbol: str | None, exchange: str | None, timezone: str | None
         return f"{LONDON}:{code.removesuffix('.L')}"
     if code and "." not in code and calendar == "XNYS":
         return f"{US}:{code}"
+    # Retain the provider suffix and require the exchange to corroborate it.
+    suffixes = {
+        "XHKG": (".HK",),
+        "XTKS": (".T",),
+        "XKRX": (".KS", ".KQ"),
+        "XPAR": (".PA",),
+        "XAMS": (".AS",),
+        "XBRU": (".BR",),
+        "XETR": (".DE",),
+        "XFRA": (".F", ".DE"),
+        "XMIL": (".MI",),
+        "XMAD": (".MC",),
+        "XSWX": (".SW",),
+        "XDUB": (".IR",),
+    }
+    if code.endswith(suffixes.get(calendar, ())):
+        return f"{calendar}:{code}"
     return None
