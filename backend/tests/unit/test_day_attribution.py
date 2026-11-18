@@ -464,3 +464,88 @@ def test_open_position_uses_broker_fx_then_native_cost_basis():
     assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp is None
     raw["instrument"]["currency"] = "GBX"
     assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == 0
+
+
+def test_split_changes_share_units_before_daily_and_window_fx_and_withholds_uncertain_units():
+    def account(at, qty, price, pounds, average, cost):
+        result = _account(at, ("SYN", str(qty), str(pounds)))
+        result["positions"][0].update(
+            current_price=str(price),
+            price_currency="USD",
+            average_price_paid=average,
+            total_cost_gbp=cost,
+        )
+        return {"A": result}
+
+    before = account("2026-11-02T08:00:00Z", 10, 100, 800, 80, 640)
+    after = account("2026-11-02T17:00:00Z", 20, 50, 700, 40, 640)
+    opening, _ = update_day_attribution(None, before)
+    _, daily = update_day_attribution(_saved(opening), after)
+    _, five = update_window_attribution(None, opening, after)
+    for result in (daily, five):
+        row = result.accounts["A"].contributions[0]
+        assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (
+            -100,
+            0,
+            -100,
+        )
+    next_day = account("2026-11-03T08:00:00Z", 20, 55, 770, 40, 640)
+    saved, _ = update_window_attribution(None, opening, before)
+    new_opening, _ = update_day_attribution(_saved(opening), next_day)
+    _, window = update_window_attribution(_saved(saved), new_opening, next_day)
+    row = window.accounts["A"].contributions[0]
+    assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (-30, 70, -100)
+    after["A"]["positions"][0]["average_price_paid"] = None
+    _, daily = update_day_attribution(_saved(opening), after)
+    _, five = update_window_attribution(None, opening, after)
+    for result in (daily, five):
+        assert result.accounts["A"].contributions == []
+        assert result.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+
+
+def test_reported_broker_split_reconciles_exact_share_units_across_window(tmp_path):
+    from trading_max.application.nav_stages import broker_split_legs
+
+    path = tmp_path / "synthetic.csv"
+    path.write_text(
+        "Action,Time (UTC),Ticker,ISIN,No. of shares,Total\n"
+        "Stock split close,2026-11-03T07:01:00Z,SYN,TEST00000001,10,0\n"
+        "Stock split open,2026-11-03T07:01:01Z,SYN,TEST00000001,20,0\n"
+    )
+    legs = {"A": broker_split_legs(path, path.stat().st_mtime_ns, path.stat().st_size)}
+
+    def account(at, qty, price, value):
+        raw = _account(at, ("SYN", str(qty), str(value)))
+        raw["positions"][0].update(
+            isin="TEST00000001", current_price=str(price), price_currency="USD"
+        )
+        return {"A": raw}
+
+    first = account("2026-11-02T09:00:00Z", 10, 100, 800)
+    opening, _ = update_day_attribution(None, first)
+    saved, _ = update_window_attribution(None, opening, first)
+    for qty in (20, 17):
+        after = account("2026-11-03T08:00:00Z", qty, 50, qty * 35)
+        today, _ = update_day_attribution(_saved(opening), after)
+        _, window = update_window_attribution(_saved(saved), today, after, split_legs=legs)
+        if qty == 20:
+            row = window.accounts["A"].contributions[0]
+            assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (
+                -100,
+                0,
+                -100,
+            )
+        else:
+            assert not window.accounts["A"].contributions
+            assert window.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+
+
+def test_unverified_five_for_four_share_change_cannot_create_a_price_loss():
+    before = _account("2026-11-02T08:00:00Z", ("SYN", "4", "320"))
+    after = _account("2026-11-02T16:00:00Z", ("SYN", "5", "300"))
+    for raw, price in ((before, 100), (after, 80)):
+        raw["positions"][0].update(current_price=price, price_currency="USD")
+    opening, _ = update_day_attribution(None, {"A": before})
+    _, day = update_day_attribution(_saved(opening), {"A": after})
+    assert day.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+    assert not day.accounts["A"].contributions

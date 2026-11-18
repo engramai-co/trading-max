@@ -33,6 +33,7 @@ class AccountPositionMetrics(DomainModel):
     total_cost_gbp: Decimal
     unrealized_profit_loss_gbp: Decimal
     fx_impact_gbp: Decimal | None = None
+    average_price_paid: Decimal | None = None
 
 
 class AccountSnapshotMetrics(DomainModel):
@@ -115,6 +116,7 @@ def _position_metrics(position: BrokerPosition) -> AccountPositionMetrics:
         total_cost_gbp=position.total_cost_gbp,
         unrealized_profit_loss_gbp=position.unrealized_profit_loss_gbp,
         fx_impact_gbp=fx_impact,
+        average_price_paid=position.average_price_paid,
     )
 
 
