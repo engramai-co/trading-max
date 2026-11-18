@@ -182,6 +182,20 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
             "currency": "GBP",
             "basis": "published_daily_twr_wealth",
             "range": window,
+            "window_twr_fraction": period_return(
+                nav_number(daily[0], scope, "Twr"), nav_number(daily[-1], scope, "Twr")
+            ),
+            "window_benchmarks": {
+                name: result
+                for name, values in aligned.items()
+                if (
+                    result := period_return(
+                        values.get(daily[0]["date"]), values.get(daily[-1]["date"])
+                    )
+                )
+                is not None
+            },
+            "worst_day": min(rows, key=lambda row: row["return_fraction"]),
             "window_start": daily[0]["date"],
             "window_end": daily[-1]["date"],
             "benchmark": args.benchmark,

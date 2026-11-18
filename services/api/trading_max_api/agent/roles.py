@@ -121,6 +121,12 @@ class PageRole:
 
 
 def role_registry() -> dict[str, PageRole]:
+    from .attribution_role import ATTRIBUTION
+    from .diagnosis_role import DIAGNOSIS
+    from .exposure_role import EXPOSURE
+    from .market_roles import MARKET_ROLES
     from .overview_roles import OVERVIEW_ROLES
 
-    return {role.id: role for role in OVERVIEW_ROLES}
+    return {
+        role.id: role for role in (*OVERVIEW_ROLES, EXPOSURE, ATTRIBUTION, DIAGNOSIS, *MARKET_ROLES)
+    }

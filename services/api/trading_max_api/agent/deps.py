@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
+from .page_sources import PageSources
 
 AccountScope = Literal["invest", "isa", "broker_total", "household", "cfd"]
 ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
@@ -45,6 +46,8 @@ class AssistantDeps:
     page_hint: str | None = None
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
+
+    page_sources: PageSources | None = None
 
     @property
     def snapshot_id(self) -> str | None:
