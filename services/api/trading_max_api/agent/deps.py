@@ -6,8 +6,10 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic_ai import ModelRetry
 
 from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
@@ -18,6 +20,19 @@ ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
     ("invest", "isa", "broker_total", "household", "cfd")
 )
 DEFAULT_TIMEZONE = ZoneInfo("Europe/London")
+
+
+# A missing key leaves an argument to the caller. A bound null is an explicit selection.
+type ToolBindings = dict[str, dict[str, str | int | bool | None]]
+
+
+def bind_arguments(supplied: dict[str, Any], bound: dict[str, Any]) -> dict[str, Any]:
+    for key, selected in bound.items():
+        if key in supplied and (
+            type(supplied[key]) is not type(selected) or supplied[key] != selected
+        ):
+            raise ModelRetry("Tool argument conflicts with the selected object: " + key)
+    return supplied | bound
 
 
 class AssistantSnapshotReader(Protocol):
@@ -49,6 +64,19 @@ class AssistantDeps:
     price_series: PublishedPriceReader | None = None
 
     page_sources: PageSources | None = None
+    role_bindings: ToolBindings | None = None
+
+    def bound_evidence(self, tool: str) -> dict[str, str | None]:
+        """Use string identifiers in links, retaining null to clear an unselected filter."""
+        if self.role_bindings is None:
+            return {}
+        arguments = {"snapshotId": self.snapshot_id}
+        for name, value in self.role_bindings[tool].items():
+            if isinstance(value, bool):
+                arguments[name] = "true" if value else "false"
+            else:
+                arguments[name] = str(value) if value is not None else None
+        return arguments
 
     @property
     def snapshot_id(self) -> str | None:

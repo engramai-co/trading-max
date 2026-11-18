@@ -256,6 +256,26 @@ with the next question. A follow-up keeps the reading's page, account, period,
 object and immutable snapshot across navigation and when restoring a stopped
 draft.
 
+A role can declare `tool_bindings(context, snapshot_id)`. Its input is the
+validated role object and the immutable publication used by the turn. It
+returns one entry per enabled tool, with that tool's argument names and selected
+values. For example, a selected-money reading can bind `scope`, `start` and
+`end` from the chart. Use the tool's actual field names, converting identifiers
+where its schema requires it. An empty argument map enables a tool without
+pinning its arguments. Omitting a tool excludes it for the selection, and every
+enabled tool must belong to the role's allowlist.
+
+The registry omits pinned fields from the model's tool schema, supplies omitted
+values and rejects a conflicting value before execution. The same checks apply
+to deterministic reads through `RoleTools.read`, including reads used to derive
+a data version. Facts can pass a dictionary containing only free arguments.
+Bound selections and the snapshot travel in the result's `bound_arguments`
+and in streamed, saved and reopened evidence links. Named display variants
+declare the selectable dimensions in `RoleContext.variant_fields` and use
+`reader.for_variant(validated_context)` on the same snapshot. Their
+evidence stays with the variant. A role adopting bindings starts a separate
+reading cache so older answers cannot supply unverified selections.
+
 The chat route defaults to `format=prose` and streams a tool-grounded answer
 in the user's language. The sidebar passes `format=references` to request
 two to four references for the current turn. For example,

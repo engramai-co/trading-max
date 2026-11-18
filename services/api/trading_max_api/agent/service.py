@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import anyio
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 from pydantic_ai import Agent, CancellationToken
 from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from pydantic_ai.models import Model
@@ -31,6 +31,7 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
 from .deps import AccountScope
+from .roles import PageRole, RoleContext
 from .runtime import SIDEBAR_FORMAT, USAGE_LIMITS, TurnLimits, error_code, run_context
 from .store import SqliteConversationStore
 from .tools import Lens, PageRange, Ticker
@@ -75,6 +76,7 @@ class ChatContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    _reading: tuple[PageRole, RoleContext] | None = PrivateAttr(default=None)
     role: str | None = Field(default=None, max_length=64)
     snapshot_id: str | None = Field(
         default=None, alias="snapshotId", max_length=100, pattern=r"^[A-Za-z0-9_-]+$"
@@ -153,9 +155,9 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                 or context.lens
             ):
                 raise ValueError("brief origin does not match its scope and period")
-            context.object = role.context_schema.model_validate(context.object or {}).model_dump(
-                mode="json"
-            )
+            selected = role.context_schema.model_validate(context.object or {})
+            context._reading = role, selected
+            context.object = selected.model_dump(mode="json")
             if role.id in {"exposure", "attribution", "market-map", "market-sector", "diagnosis"}:
                 job_record = role.id == "diagnosis" and context.object["issue"] == "job"
                 if (not context.snapshot_id and not job_record) or context.ticker or context.lens:
@@ -286,6 +288,9 @@ class AssistantService:
                 deps = replace(deps, manifest=deps.store.load_manifest(context.snapshot_id))
             except FileNotFoundError:
                 raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
+        if context._reading:
+            role, selected = context._reading
+            deps = role.bind(deps, selected)
         model = bound.model
         started = time.monotonic()
 

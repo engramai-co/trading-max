@@ -13,7 +13,7 @@ from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_ai import ModelRetry, RunContext
-from pydantic_ai.toolsets import FunctionToolset
+from pydantic_ai.toolsets import FunctionToolset, WrapperToolset
 from trading_max.analytics.exposure_history import DIMENSIONS, TOP_COMPANIES, exposure_rows
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import (
@@ -45,7 +45,7 @@ from ..models import ArtifactInfo
 from ..projections.broker import overlay_live_broker_snapshot
 from ..research import _freshness
 from ..valuation_evidence import freeze_valuation_evidence
-from .deps import AccountScope, AssistantDeps
+from .deps import AccountScope, AssistantDeps, bind_arguments
 
 MAX_ARGUMENT_BYTES = 16 * 1024
 MAX_RESULT_BYTES = 48 * 1024
@@ -213,10 +213,26 @@ class _BoundedValidator:
     """Apply the wire limit before Pydantic AI parses or executes a tool call."""
 
     inner: Any
+    bound: dict[str, Any] | None = None
+
+    def _bind(self, value: Any) -> dict:
+        if not isinstance(value, dict):
+            raise ModelRetry("Tool arguments must be a JSON object.")
+        if "args" in value:
+            if set(value) != {"args"} or not isinstance(value["args"], dict):
+                raise ModelRetry("Use a single tool argument object.")
+            value = value["args"]
+        return bind_arguments(value, self.bound or {})
 
     def validate_json(self, value: str, **kwargs: Any) -> Any:
         if len(value) > MAX_ARGUMENT_BYTES or len(value.encode()) > MAX_ARGUMENT_BYTES:
             raise ModelRetry("Tool arguments exceed 16 KiB; send a smaller request.")
+        if self.bound:
+            try:
+                raw = json.loads(value)
+            except (ValueError, RecursionError):
+                raise ModelRetry("Tool arguments must be a complete JSON object.") from None
+            return self.inner.validate_json(json.dumps(self._bind(raw)), **kwargs)
         return self.inner.validate_json(value, **kwargs)
 
     def validate_python(self, value: Any, **kwargs: Any) -> Any:
@@ -226,7 +242,7 @@ class _BoundedValidator:
             raise ModelRetry("Tool arguments must be a JSON object.") from None
         if size > MAX_ARGUMENT_BYTES:
             raise ModelRetry("Tool arguments exceed 16 KiB; send a smaller request.")
-        return self.inner.validate_python(value, **kwargs)
+        return self.inner.validate_python(self._bind(value) if self.bound else value, **kwargs)
 
 
 PAGE_TOOLS = {
@@ -250,6 +266,48 @@ class _AssistantToolset(FunctionToolset[AssistantDeps]):
             if name not in PAGE_TOOLS
             or (ctx.deps.page_sources and PAGE_TOOLS[name] == ctx.deps.page_hint)
         }
+
+
+class RoleToolset(WrapperToolset):
+    """Apply the run's selection after individual registries prepare their available tools."""
+
+    async def get_tools(self, ctx: Context):
+        registered = await super().get_tools(ctx)
+        bindings = getattr(ctx.deps, "role_bindings", None)
+        if bindings is None:
+            return registered
+        result = {}
+        for name, tool in registered.items():
+            if name not in bindings:
+                continue
+            bound = bindings[name]
+            definition = tool.tool_def
+            if bound:
+                schema = definition.parameters_json_schema
+                properties = schema.get("properties", {})
+                if bound.keys() - properties.keys():
+                    raise ValueError("Binding references an unknown argument for " + name)
+                schema = {
+                    **schema,
+                    "properties": {k: v for k, v in properties.items() if k not in bound},
+                    "required": [k for k in schema.get("required", []) if k not in bound],
+                }
+                definition = replace(definition, parameters_json_schema=schema)
+            validator = tool.args_validator
+            if bound:
+                validator = (
+                    replace(validator, bound=bound)
+                    if isinstance(validator, _BoundedValidator)
+                    else _BoundedValidator(validator, bound)
+                )
+            result[name] = replace(tool, tool_def=definition, args_validator=validator)
+        return result
+
+    async def call_tool(self, name, tool_args, ctx, tool):
+        result = await super().call_tool(name, tool_args, ctx, tool)
+        if getattr(ctx.deps, "role_bindings", None) is not None:
+            return {**result, "bound_arguments": ctx.deps.bound_evidence(name)}
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +352,11 @@ class _Read:
             "data": data,
             "snapshot_id": self.deps.snapshot_id,
             "scope": self.scope,
+            **(
+                {"bound_arguments": self.deps.bound_evidence(self.tool)}
+                if self.deps.role_bindings is not None
+                else {}
+            ),
             "sources": [
                 _source(ref) for key in dict.fromkeys(keys) if (ref := self.ref(key)) is not None
             ],
