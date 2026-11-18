@@ -1061,3 +1061,26 @@ def test_saved_probe_rejects_a_replacement_key_before_its_metadata_is_saved(
     assert [(attempt.base_url, attempt.api_key) for attempt in attempts] == [
         (new_url, candidate["apiKey"])
     ]
+
+
+def test_background_binding_and_dispatch_require_current_background_consent(assistant_client):
+    client, _, credentials = assistant_client
+    repo = client.app.state.settings_repository
+    _register(repo, "ollama", "local-model", key=False)
+    _enable(repo, "ollama/local-model")
+
+    def bind():
+        return resolve_assistant_connection(
+            client.app.state.settings, repo, credentials, background=True
+        )
+
+    bound = bind()
+    chat = resolve_assistant_connection(client.app.state.settings, repo, credentials)
+    bound.before_request()
+    client.put(
+        _PREFERENCES, json={"backgroundBriefsEnabled": False}, headers=_AUTH
+    ).raise_for_status()
+    assert bound.cancellation_token.cancelled and not chat.cancellation_token.cancelled
+    for check in [bound.before_request, bind]:
+        with pytest.raises(ProviderRuntimeError, match="assistant_disabled"):
+            check()

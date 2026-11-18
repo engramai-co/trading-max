@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -75,6 +75,9 @@ class ChatContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role: str | None = Field(default=None, max_length=64)
+    snapshot_id: str | None = Field(
+        default=None, alias="snapshotId", max_length=100, pattern=r"^[A-Za-z0-9_-]+$"
+    )
     object: dict[str, Any] | None = Field(default=None, max_length=20)
     page: PageHint | None = None
     scope: AccountScope | None = None
@@ -138,12 +141,20 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
             from .roles import role_registry
 
             role = role_registry().get(context.role)
-            if not role:
-                raise ValueError("unknown role")
+            if not role or role.page != context.page:
+                raise ValueError("role does not belong to the supplied page")
+            if role.id in {"daily", "weekly"} and (
+                context.scope != "broker_total"
+                or context.range != ("1W" if role.id == "weekly" else "1D")
+                or not context.snapshot_id
+                or context.ticker
+                or context.lens
+            ):
+                raise ValueError("brief origin does not match its scope and period")
             context.object = role.context_schema.model_validate(context.object or {}).model_dump(
                 mode="json"
             )
-        elif context.object:
+        elif context.object or context.snapshot_id:
             raise ValueError("object requires a role")
         return context
     except (ValueError, ValidationError):
@@ -196,6 +207,7 @@ class AssistantService:
     deps_for_run: DepsForRun
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     check_ready: Callable[[], Awaitable[dict[str, Any]]] | None = None
+    bind_background_model: Callable[[], Awaitable[BoundModel]] | None = None
     # conversation id -> start time; an entry outlives its run only if a response
     # was abandoned before streaming began, so expire it after the run timeout.
     _active: dict[str, float] = field(default_factory=dict, init=False, repr=False)
@@ -247,6 +259,11 @@ class AssistantService:
             raise HTTPException(status_code=exc.status_code, detail={"code": exc.code}) from None
         zone = _timezone(context.timezone)
         deps = self.deps_for_run(context.page, zone.key)
+        if context.snapshot_id and context.snapshot_id != deps.snapshot_id:
+            try:
+                deps = replace(deps, manifest=deps.store.load_manifest(context.snapshot_id))
+            except FileNotFoundError:
+                raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
         model = bound.model
         started = time.monotonic()
 
@@ -330,7 +347,7 @@ class AssistantService:
 
     async def delete_conversations(self) -> None:
         self._expire_abandoned_runs()
-        if self._active:
+        if any(CONVERSATION_ID.fullmatch(key) for key in self._active):
             raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
         await self.store.delete_scope(CONVERSATION_SCOPE)
 

@@ -43,9 +43,12 @@ class ReadingService:
     database: SqliteDatabase
 
     def cached(
-        self, role: PageRole, context: RoleContext, version: str | None
+        self, role: PageRole, context: RoleContext, version: str | None, *, scheduled: bool = False
     ) -> RoleReading | None:
-        key = (role.id, role.object_key(context))
+        key = (
+            ("scheduled:" + role.id) if scheduled or version is None else role.id,
+            role.object_key(context),
+        )
         with self.database.read() as db:
             if version is None:
                 row = db.execute(
@@ -92,6 +95,7 @@ class ReadingService:
         context: RoleContext,
         deps: AssistantDeps,
         *,
+        scheduled: bool = False,
         cached_only: bool = False,
         latest: bool = False,
         permitted: Callable[[], bool] = lambda: True,
@@ -108,14 +112,18 @@ class ReadingService:
         if not latest and not version:
             yield ReadingEvent(type="empty")
             return
-        saved = self.cached(role, context, None if latest else version)
+        saved = self.cached(role, context, None if latest else version, scheduled=scheduled)
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return
         if cached_only or not deps.manifest or not version:
             yield ReadingEvent(type="empty")
             return
-        key = (role.id, role.object_key(context), version)
+        key = (
+            ("scheduled:" + role.id) if scheduled else role.id,
+            role.object_key(context),
+            version,
+        )
         reservation = "reading:" + json.dumps(key)
         try:
             self.assistant.claim(reservation)
@@ -128,10 +136,17 @@ class ReadingService:
             if len(facts) < 2:
                 yield ReadingEvent(type="empty")
                 return
+            if not permitted():
+                yield ReadingEvent(type="error", code="assistant_disabled")
+                return
+            bind = self.assistant.bind_background_model if scheduled else self.assistant.bind_model
+            if bind is None:
+                yield ReadingEvent(type="error", code="assistant_disabled")
+                return
+            bound = await bind()
             if not permitted() or not reserve():
                 yield ReadingEvent(type="error", code="assistant_disabled")
                 return
-            bound = await self.assistant.bind_model()
             agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
             prompt = json.dumps(
                 [
@@ -176,7 +191,11 @@ class ReadingService:
                 yield ReadingEvent(type="error", code="provider_invalid_output")
                 return
             reading = RoleReading(
-                role=role.id, version=version, as_of=deps.manifest.created_at, lines=lines
+                role=role.id,
+                version=version,
+                snapshot_id=deps.snapshot_id,
+                as_of=deps.manifest.created_at,
+                lines=lines,
             )
             if not permitted() or not (await self.assistant.status())["ready"]:
                 yield ReadingEvent(type="error", code="assistant_unavailable")

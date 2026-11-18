@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from functools import partial
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI
@@ -136,10 +137,14 @@ def create_app(
         credentials,
     )
 
-    async def bind_assistant_model() -> BoundModel:
+    async def bind_assistant_model(*, background: bool = False) -> BoundModel:
         try:
             connection = await asyncio.to_thread(
-                resolve_assistant_connection, settings, preferences, credentials
+                resolve_assistant_connection,
+                settings,
+                preferences,
+                credentials,
+                background=background,
             )
             model = build_model(connection.to_model_connection())
         except ProviderRuntimeError as exc:
@@ -170,6 +175,7 @@ def create_app(
         agent=build_assistant_agent([build_assistant_toolset()]),
         store=SqliteConversationStore(assistant_database),
         bind_model=bind_assistant_model,
+        bind_background_model=partial(bind_assistant_model, background=True),
         deps_for_run=AssistantDepsFactory(store=store).for_run,
         check_ready=assistant_ready,
     )
@@ -527,7 +533,7 @@ def create_app(
             return bool(
                 current.enabled
                 and current.accepted_consent_revision == ASSISTANT_CONSENT_REVISION
-                and getattr(current, "background_briefs_enabled", False)
+                and current.background_briefs_enabled
             )
 
         brief_writer = BriefWriter(

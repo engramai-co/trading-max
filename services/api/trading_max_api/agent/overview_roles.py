@@ -40,9 +40,113 @@ def line(
     )
 
 
+def calendar_days(raw: object) -> list[str]:
+    days = set()
+    for value in raw if isinstance(raw, list) else [raw]:
+        try:
+            days.add(date.fromisoformat(str(value)[:10]).isoformat())
+        except ValueError:
+            continue
+    return sorted(days)
+
+
+def holding_events(read: RoleTools, ticker: str, today: str) -> list[tuple[str, ReadingLine]]:
+    result = []
+    cursor = 0
+    while True:
+        events = read.read(
+            tools.read_research_lens,
+            tools.ResearchArgs(
+                ticker=ticker, lens="analyst", field="earningsEvents", cursor=cursor, limit=20
+            ),
+        )
+        data = events.get("data") or {}
+        for event in data.get("items", []):
+            days = calendar_days(event.get("date"))
+            if (
+                not days
+                or days[0] < today
+                or not event.get("id")
+                or event.get("status") == "reported"
+            ):
+                continue
+            day = days[0]
+            result.append(
+                (
+                    day,
+                    line(
+                        "next",
+                        f"{day} · {ticker} 预计财报",
+                        f"{day} · {ticker} estimated earnings",
+                        events,
+                        "financials",
+                        "read_research_lens",
+                        ticker=ticker,
+                        lens="analyst",
+                        event="earnings",
+                        eventId=event["id"],
+                        date=day,
+                    ),
+                )
+            )
+        cursor = data.get("next_cursor")
+        if cursor is None:
+            break
+    lens = read.read(tools.read_research_lens, tools.ResearchArgs(ticker=ticker, lens="ledger"))
+    calendar = next(
+        (
+            row["value"]
+            for row in (lens.get("data") or {}).get("items", [])
+            if row.get("path") == "/calendar" and isinstance(row.get("value"), dict)
+        ),
+        {},
+    )
+    window = calendar_days(calendar.get("Earnings Date"))
+    if not result and window and window[-1] >= today:
+        span = " – ".join(dict.fromkeys((window[0], window[-1])))
+        result.append(
+            (
+                window[0],
+                line(
+                    "next",
+                    f"{span} · {ticker} 预计财报",
+                    f"{span} · {ticker} estimated earnings",
+                    lens,
+                    "financials",
+                    "read_research_lens",
+                    ticker=ticker,
+                    lens="overview",
+                    event="earningsWindow",
+                    date=window[0],
+                    end=window[-1],
+                ),
+            )
+        )
+    for day in calendar_days(calendar.get("Ex-Dividend Date")):
+        if day >= today:
+            result.append(
+                (
+                    day,
+                    line(
+                        "next",
+                        f"{day} · {ticker} 除息",
+                        f"{day} · {ticker} ex-dividend",
+                        lens,
+                        "disclosure",
+                        "read_research_lens",
+                        ticker=ticker,
+                        lens="overview",
+                        event="exDividend",
+                        date=day,
+                    ),
+                )
+            )
+    return result
+
+
 def upcoming(read: RoleTools, today: date) -> list[ReadingLine]:
     seen: set[str] = set()
-    candidates: list[tuple[str, ReadingLine]] = []
+    candidates = []
     cursor = 0
     while True:
         holdings = read.read(
@@ -51,43 +155,9 @@ def upcoming(read: RoleTools, today: date) -> list[ReadingLine]:
         data = holdings.get("data") or {}
         for item in data.get("items", []):
             ticker = item.get("ticker")
-            if not ticker or ticker in seen:
-                continue
-            seen.add(ticker)
-            lens = read.read(
-                tools.read_research_lens, tools.ResearchArgs(ticker=ticker, lens="ledger")
-            )
-            for row in (lens.get("data") or {}).get("items", []):
-                values = row.get("value") if row.get("path") == "/calendar" else None
-                if not isinstance(values, dict):
-                    continue
-                for field, zh, en, source in (
-                    ("Earnings Date", "财报", "earnings", "financials"),
-                    ("Ex-Dividend Date", "除息", "ex-dividend", "disclosure"),
-                ):
-                    raw = values.get(field)
-                    for value in raw if isinstance(raw, list) else [raw]:
-                        try:
-                            day = date.fromisoformat(str(value)[:10])
-                        except ValueError:
-                            continue
-                        if day < today:
-                            continue
-                        candidates.append(
-                            (
-                                day.isoformat(),
-                                line(
-                                    "next",
-                                    f"{day} · {ticker} {zh}",
-                                    f"{day} · {ticker} {en}",
-                                    lens,
-                                    source,
-                                    "read_research_lens",
-                                    ticker=ticker,
-                                    lens="analyst",
-                                ),
-                            )
-                        )
+            if ticker and ticker not in seen:
+                seen.add(ticker)
+                candidates.extend(holding_events(read, ticker, today.isoformat()))
         cursor = data.get("next_cursor")
         if cursor is None:
             break
@@ -169,6 +239,10 @@ def overview_facts(
             "account",
             "period_performance",
             **args,
+            metric="period_pnl_gbp",
+            start=start or end,
+            end=end,
+            snapshotId=read.deps.snapshot_id,
         )
     ]
     market = benchmark_line(read, args, context.benchmark)
@@ -217,13 +291,19 @@ def overview_facts(
     return [*facts, *upcoming(read, read.deps.manifest.created_at.astimezone(LONDON).date())]
 
 
+def full_publication(job: JobRecord) -> bool:
+    scopes = {"nightly": "all", "reconciliation": "all", "research": "research"}
+    return bool(
+        job.status == "succeeded"
+        and job.scope == scopes.get(job.trigger)
+        and not job.tickers
+        and job.scheduled_for
+        and job.snapshot_run_id
+    )
+
+
 def overview_schedule(weekly: bool, job: JobRecord) -> list[BriefTarget]:
-    if (
-        job.status != "succeeded"
-        or job.trigger not in {"nightly", "research", "reconciliation"}
-        or not job.scheduled_for
-        or not job.snapshot_run_id
-    ):
+    if not full_publication(job):
         return []
     stamp = job.scheduled_for.astimezone(LONDON)
     if weekly and (stamp.weekday() != 5 or stamp.hour < 2):
