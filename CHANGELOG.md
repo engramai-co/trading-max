@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-11-18
+
 ### Added
 - Research can open a security-specific position reading, inspect up to three event-backed price moves, and show a pre-written earnings brief in Financials and Estimates & events. Each observation links to its evidence.
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Replies show figures and coverage directly from the cited records. The sidebar reflows wide screens and fills the screen on phones.
