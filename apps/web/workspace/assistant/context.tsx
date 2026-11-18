@@ -102,10 +102,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", visible);
     };
   }, [revalidate, confirmConsent]);
-  const close = useCallback(() => {
-    setOpen(false);
-    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-assistant-trigger]")?.focus({ preventScroll: true }));
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
   const toggle = useCallback(() => { if (open) close(); else { revalidate(); setOpen(true); } }, [open, close, revalidate]);
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {

@@ -628,6 +628,59 @@ test("a newer consent signal keeps active streams cancelled until that profile c
   }
 });
 
+for (const transition of ["reopening", "delayed overlay activation", "readiness revalidation"] as const) {
+  test("typing continues in the draft after " + transition, async ({page}, info) => {
+    await fixtures(page);
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+    if (transition === "delayed overlay activation") await page.setViewportSize({width:1440, height:900});
+    await page.goto("/");
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    await page.locator("[data-assistant-trigger]").click();
+    const panel = page.locator("#mx-assistant-panel");
+    const draft = panel.getByRole("textbox", {name:"Message"});
+    await expect(draft).toBeFocused();
+    await page.keyboard.type("First");
+    await expect(draft).toHaveValue("First");
+    if (transition === "reopening") {
+      await panel.getByRole("button", {name:"Close sidebar"}).click();
+      await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
+      await page.keyboard.press("Control+j");
+      await expect(draft).toBeVisible();
+    } else if (transition === "delayed overlay activation") {
+      // Activate the modal keyboard boundary after the composer has received real keystrokes.
+      await page.setViewportSize(info.project.name === "mobile" ? {width:390,height:844} : {width:1100,height:900});
+      await expect(panel).toHaveRole("dialog");
+    } else {
+      let release!: () => void;
+      const response = new Promise<void>(resolve => { release = resolve; });
+      await page.route("**/api/backend/assistant/status", async route => {
+        await response;
+        await route.fulfill({json:{ready:true, code:null}});
+      });
+      await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      try {
+        await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+      } finally { release(); }
+      await expect(draft).toBeVisible();
+    }
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0))));
+    await page.keyboard.type(" and second");
+    await expect(draft).toHaveValue("First and second");
+    const shots = process.env.ASSISTANT_SCREENSHOTS;
+    if (shots) await page.screenshot({path:join(shots, info.project.name + "-" + transition.replaceAll(" ", "-") + ".png")});
+    if (transition === "delayed overlay activation") {
+      await page.keyboard.press("Tab");
+      await expect(panel.getByRole("button", {name:"Send"})).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(panel.getByRole("button", {name:"New conversation"})).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(panel.getByRole("button", {name:"Send"})).toBeFocused();
+    }
+  });
+}
+
 for (const outcome of ["draft", "history button", "reopened draft", "Control+j", "Meta+j", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
