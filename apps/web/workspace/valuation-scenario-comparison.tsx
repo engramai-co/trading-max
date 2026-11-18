@@ -44,7 +44,11 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
     if (!instance || bound.current.has(instance)) return;
     bound.current.add(instance);
     instance.on("mouseover", (event) => {
-      if (event.componentType === "series") setHovered(KEYS.find(key => key === event.seriesId) ?? null);
+      if (event.componentType !== "series") return;
+      // A line body reports its index. Hidden pending lines change the active series order.
+      const series = event.seriesId ? undefined : instance.getOption().series;
+      const id = event.seriesId ?? (Array.isArray(series) ? series[event.seriesIndex ?? -1]?.id : null);
+      setHovered(KEYS.find(key => key === id) ?? null);
     });
     instance.on("mouseout", () => setHovered(null));
     instance.on("globalout", () => setHovered(null));

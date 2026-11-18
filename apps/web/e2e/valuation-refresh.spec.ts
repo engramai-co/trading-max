@@ -1158,6 +1158,36 @@ test.describe("frozen draft review", () => {
     await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeGreaterThan(offered[1].end);
   });
 
+  test("hovering settled line bodies and endpoints highlights their own cards", async ({page, isMobile}, info) => {
+    test.skip(isMobile, "Continuous mouse hover is verified on desktop.");
+    const {comparison, plot, accept, release} = await pendingBaseReview(page);
+    async function checkHover() {
+      for (const key of ["bear","bull"] as const) {
+        const line = await settledStroke(plot, key);
+        const card = comparison.getByRole("button", {name:key === "bear" ? /^Bear/ : /^Bull/});
+        for (const x of [(line.start + line.end) / 2, line.end - 3]) {
+          await plot.hover({position:{x:2,y:5}});
+          await plot.hover({position:{x,y:line.y}});
+          await expect(card).toHaveAttribute("data-hover","true");
+        }
+      }
+    }
+    try {
+      await checkHover();
+      await accept();
+      await checkHover();
+      const screenshots = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+      if (screenshots) {
+        const bull = await settledStroke(plot, "bull");
+        await plot.hover({position:{x:(bull.start + bull.end) / 2, y:bull.y}});
+        await expect(comparison.getByRole("button", {name:/^Bull/})).toHaveAttribute("data-hover","true");
+        await comparison.screenshot({path:join(screenshots, `bull-hover-${info.project.name}.png`), scale:"css"});
+      }
+    } finally {
+      release();
+    }
+  });
+
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
     const {editor, entry} = await reviewDraft(page);
     await entry.click();
