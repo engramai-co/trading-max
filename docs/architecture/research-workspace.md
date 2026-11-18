@@ -92,11 +92,12 @@ selection. Published charts are pinned to their research artifact. External
 daily charts and index charts use bounded local caches of the exact series
 already served. An expired or mismatched identity yields no reading.
 
-Financials and Estimates & events share a collapsed earnings brief when a
-held or research-list company has a published reading matching the reported
-results and dated consensus estimates on the page. The background writer
-excludes intraday updates and deduplicates material revisions. Prices,
-event dates, EPS units, currencies and estimates come from deterministic tools.
+Financials & business and Expectations & events open with a collapsed earnings
+brief, ahead of their first section, when a held or research-list company has a
+published reading matching the reported results and dated consensus estimates
+on the page. The background writer excludes intraday updates and deduplicates
+material revisions. Prices, event dates, EPS units, currencies and estimates
+come from deterministic tools.
 
 ## Listing venue resolution
 
