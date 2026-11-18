@@ -330,6 +330,7 @@ def transaction_marker_rows(
             marker[f"{side}_quantity"] += quantity_value
             total = row.get("TotalN")
             currency = _currency(row.get("Currency (Total)")) or None
+            price = row.get("PriceN")
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
@@ -339,11 +340,11 @@ def transaction_marker_rows(
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,
+                    "price": float(price) if pd.notna(price) else None,
                     "amount": abs(float(total)) if pd.notna(total) and currency else None,
                     "currency": currency,
                 }
             )
-            price = row.get("PriceN")
             if pd.notna(price) and quantity_value > 0:
                 marker[f"{side}_price_quantity"] += float(price) * quantity_value
                 marker[f"{side}_priced_quantity"] += quantity_value
