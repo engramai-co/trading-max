@@ -122,7 +122,9 @@ class MarketResearchService:
         options_loader: OptionsLoader = _default_options,
         adr_loader: AdrLoader = adr_research,
         prices: SharedMarketPrices | None = None,
+        assistant_enabled: Callable[[], bool] = lambda: False,
     ) -> None:
+        self.assistant_enabled = assistant_enabled
         self.history_loader = history_loader
         self.options_loader = options_loader
         self.adr_loader = adr_loader
@@ -191,7 +193,7 @@ class MarketResearchService:
                 for spec in WORLD_INDUSTRY_INDICES
                 if spec.level == "sector" and spec.symbol
             ]
-            if set(universe).difference(fund_tickers)
+            if set(universe).difference(fund_tickers) and self.assistant_enabled()
             else []
         )
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-benchmark") as pool:

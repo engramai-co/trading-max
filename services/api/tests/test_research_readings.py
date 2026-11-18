@@ -543,7 +543,8 @@ def test_published_technical_zone_and_venue_determine_timed_headline_coverage(
         assert "listing_calendar_unavailable" in result["quality"]["issues"]
 
 
-def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, monkeypatch):
+@pytest.mark.parametrize("enabled", [True, False])
+def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, monkeypatch, enabled):
     from contextlib import nullcontext
     from unittest.mock import Mock
 
@@ -560,6 +561,7 @@ def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, mon
         store.immutable_snapshots,
         SimpleNamespace(prices=SimpleNamespace(yahoo_request=nullcontext)),
     )
+    stage.assistant_enabled = lambda: enabled
     monkeypatch.setattr(
         news,
         "verified_news",
@@ -583,6 +585,9 @@ def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, mon
         StageContext(job_id="synthetic", scope="research", trigger="research", tickers=("OTHER",))
     )
     stories = store.immutable_artifacts.get_json(result.artifacts[0].artifact_id).payload
+    if not enabled:
+        assert spec.symbol not in stories["securities"]
+        return
     assert spec.symbol in stories["securities"]
     publication(
         store,

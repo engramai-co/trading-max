@@ -89,17 +89,19 @@ class _CountingService:
         return self.service.run(tickers)
 
 
-def test_research_stages_use_one_immutable_market_input(tmp_path) -> None:
+@pytest.mark.parametrize("enabled", [True, False])
+def test_research_stages_use_one_immutable_market_input(tmp_path, enabled) -> None:
     artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
     provider = _CountingService()
 
+    provider.service.assistant_enabled = lambda: enabled
     market = MarketSnapshotStage(artifacts, provider)
     market_result = market.run(_context())
     assert provider.calls == 1
     sector_symbols = {s.symbol for s in WORLD_INDUSTRY_INDICES if s.level == "sector"}
-    assert {
-        symbol for symbol, period in provider.history_periods.items() if period == "6mo"
-    } == sector_symbols
+    assert {symbol for symbol, period in provider.history_periods.items() if period == "6mo"} == (
+        sector_symbols if enabled else set()
+    )
     assert all(
         period == "max"
         for symbol, period in provider.history_periods.items()

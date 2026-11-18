@@ -107,9 +107,10 @@ class SecurityNewsStage(EventSourceStage):
     version = "security-news-v2"
     collection = "securities"
 
-    def __init__(self, artifacts, snapshots, market_service):
+    def __init__(self, artifacts, snapshots, market_service, assistant_enabled=lambda: False):
         super().__init__(artifacts, snapshots)
         self.market = market_service
+        self.assistant_enabled = assistant_enabled
 
     def refresh(self, previous, context, now):
         financials = _upstream_json(self.artifacts, context, "research/financials.json")
@@ -126,6 +127,7 @@ class SecurityNewsStage(EventSourceStage):
             for spec in INDEX_REGISTRY.values()
             if spec.symbol and spec.rights == "provider-terms"
         )
+        indices = indices if self.assistant_enabled() else ()
         payload = refresh_news(
             previous, [*context.tickers, *indices], now, self.market.prices, financials=evidence
         )

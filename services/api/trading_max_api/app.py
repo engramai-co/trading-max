@@ -406,11 +406,18 @@ def create_app(
 
     alpaca_source = market_price_source_factory(settings.data_root, preferences, credentials)
     market_prices = SharedMarketPrices(alpaca=alpaca_source)
+
+    def assistant_enabled():
+        return preferences.get_profile().assistant_enabled
+
     jobs = TypedJobManager(
         store,
         watchlist,
         broker_profiles_loader=broker_profiles_loader(preferences),
-        market_service=MarketResearchService(prices=market_prices),
+        assistant_enabled=assistant_enabled,
+        market_service=MarketResearchService(
+            prices=market_prices, assistant_enabled=assistant_enabled
+        ),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,
         on_snapshot_published=on_snapshot_published,
