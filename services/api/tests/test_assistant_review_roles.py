@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 from trading_max.analytics.decision_review import CALCULATION_VERSION
@@ -14,11 +15,13 @@ from trading_max.research.news import NEWS_KEY
 
 from services.api.tests.test_assistant_insights import republish
 from services.api.tests.test_assistant_readings import job, sample
+from services.api.tests.test_assistant_runtime import answer_after_tool, events, make_app, user_turn
 from services.api.trading_max_api.agent import tools
 from services.api.trading_max_api.agent.insights import decision_timing_and_habits
 from services.api.trading_max_api.agent.review_patterns import EVIDENCE, review_patterns
 from services.api.trading_max_api.agent.review_roles import DecisionContext, HabitsContext, targets
 from services.api.trading_max_api.agent.roles import RoleTools, role_registry
+from services.api.trading_max_api.agent.runtime import build_assistant_agent
 from services.api.trading_max_api.agent.service import BoundModel
 
 
@@ -329,7 +332,7 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
     by_section = {line.section: line for line in facts}
     for kind, source, target in (
         ("earnings", "financials", "events"),
-        ("rating_change", "analysts", "ratings"),
+        ("rating_change", "analysts", "actions"),
     ):
         ref = by_section[kind].evidence
         assert ref.source == source and ref.arguments.get("analystView") == target
@@ -393,3 +396,54 @@ def test_decision_and_habit_followups_can_only_read_the_selected_object(tmp_path
         habits.read(review_patterns, {"horizon": "20_sessions"})
     with pytest.raises(ValueError):
         reader.read(review_patterns, {})
+
+
+@pytest.mark.parametrize("role_id", ["decision", "habits"])
+@pytest.mark.parametrize("substitute", [False, True])
+def test_review_chat_applies_its_registered_tool_selection(tmp_path, role_id, substitute):
+    _, publish, row, _ = setup_review(tmp_path)
+    deps = publish()
+    role = role_registry()[role_id]
+    context = (
+        DecisionContext(
+            scope="invest",
+            page_scope="invest",
+            ticker="TEST",
+            side="buy",
+            decision_date=row["date"],
+            horizon="20_sessions",
+        )
+        if role_id == "decision"
+        else HabitsContext(scope="invest", habit="basket_buy")
+    )
+    bindings = role.bind(deps, context)
+    assert bindings.role_bindings.keys() == role.allowed_tools
+    (tool,) = role.allowed_tools
+    stream, _ = answer_after_tool(
+        tool, json.dumps({"args": {"scope": "isa"} if substitute else {}})
+    )
+
+    async def check_tools(messages, info):
+        assert [spec.name for spec in info.function_tools] == [tool]
+        properties = info.function_tools[0].parameters_json_schema["properties"]
+        assert not properties.keys() & bindings.role_bindings[tool].keys()
+        async for chunk in stream(messages, info):
+            yield chunk
+
+    app, service = make_app(tmp_path, check_tools)
+    service.agent = build_assistant_agent([tools.build_assistant_toolset()])
+    service.deps_for_run = lambda page, tz: deps
+    body = user_turn("review", "question", "Continue the selected reading")
+    body["context"] = {
+        "role": role_id,
+        "page": "review",
+        "scope": "invest",
+        "object": context.model_dump(),
+        "snapshotId": deps.snapshot_id,
+    }
+    response = TestClient(app).post("/v1/assistant/chat", json=body)
+    assert response.status_code == 200
+    outputs = [e["output"] for e in events(response.text) if e["type"] == "tool-output-available"]
+    assert [r["bound_arguments"] for r in outputs] == (
+        [] if substitute else [bindings.bound_evidence(tool)]
+    )

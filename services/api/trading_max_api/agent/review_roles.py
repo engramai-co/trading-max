@@ -184,7 +184,7 @@ def prior_events(result, row):
                 source,
                 "decision_timing_and_habits",
                 **arguments,
-                analystView="events" if kind == "earnings" else "ratings",
+                analystView="events" if kind == "earnings" else "actions",
                 date=when,
             )
         )

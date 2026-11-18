@@ -187,7 +187,7 @@ export function ReviewWorkspace() {
       {!result && query.isPending ? (
         <Pending shape="review" label={t("正在读取账户复盘…", "Loading account reviews…")} />
       ) : !result || !data ? (
-        <QueryError retry={query.refetch} />
+        <QueryError retry={query.refetch} title={snapshotId ? t("引用的数据版本暂不可用", "Cited publication unavailable") : undefined} />
       ) : (
         <div className="mx-data-body mx-review-body" aria-busy={result.scope !== scope || undefined}>
           {shown === "C" ? (

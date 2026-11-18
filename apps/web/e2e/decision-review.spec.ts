@@ -1129,6 +1129,7 @@ for (const expanded of [false, true]) {
 
 test("the ranked arrow and reading fallback lead to the selected twin", async ({page},info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
   await serve(page, () => ({benchmark:0.02,events:false,twin:true}));
   await page.route("**/api/backend/assistant/status",route=>route.fulfill({json:{ready:true}}));
   await page.route("**/api/backend/assistant/roles/*/reading",route=>route.fulfill({contentType:"application/x-ndjson",body:'{"type":"error","code":"assistant_unavailable"}\n'}));
@@ -1157,6 +1158,30 @@ test("the ranked arrow and reading fallback lead to the selected twin", async ({
   const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
   await page.locator("#mx-assistant-panel textarea").press("Enter");
   expect((await sent).postDataJSON().context).toMatchObject({scope:"invest", object:{ordinal:1, ticker:"SYND.AS"}});
+});
+
+test("an expired decision citation withholds the cached account review", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, twin: true }));
+  const account = "**/api/backend/dashboard/lens/account-analysis?**";
+  const cited = "synthetic-decision-context";
+  let expired = false;
+  await page.route(account, route => {
+    if (expired && new URL(route.request().url()).searchParams.get("runId") === cited) {
+      return route.fulfill({ status: 404, json: { detail: "snapshot not found" } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=1&snapshotId=" + cited);
+  const selection = page.locator(".mx-decision-focus");
+  await expect(selection).toContainText("£120");
+  expired = true;
+  const missing = page.waitForResponse(r => r.status() === 404 && r.url().includes("runId=" + cited));
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+  await missing;
+  await expect(page.getByText("引用的数据版本暂不可用", {exact:true})).toBeVisible();
+  await expect(selection).toHaveCount(0);
 });
 
 test("a phone citation focuses a newly loaded fall timeline", async ({ page }, info) => {
@@ -1193,6 +1218,7 @@ test("basket review includes unpriced purchases and discloses their missing outc
 
 test("earnings and rating source words open their own research sections", async ({ page }, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
   await serve(page, () => ({ benchmark: 0.03, events: true }));
   await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
   await page.route("**/api/backend/research/**", route => {
@@ -1209,7 +1235,7 @@ test("earnings and rating source words open their own research sections", async 
     return route.fulfill({json: data ?? {}});
   });
   await page.route("**/api/backend/assistant/roles/decision/reading", route => {
-    const lines = [["财报", "financials", "events"], ["评级", "analysts", "ratings"], ["消息", "publisher", ""]]
+    const lines = [["财报", "financials", "events"], ["评级", "analysts", "actions"], ["消息", "publisher", ""]]
       .map(([zh, source, section]) => ({ section: section || "headline", zh, en: zh,
         evidence: { tool: "decision_timing_and_habits", evidenceId: "ev_selected", source,
           publisher: source === "publisher" ? "Synthetic Wire" : undefined,
@@ -1219,7 +1245,7 @@ test("earnings and rating source words open their own research sections", async 
       type:"result",reading:{role:"decision",asOf,lines},
     }) + "\n"});
   });
-  for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "ratings", "机构行动"]]) {
+  for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "actions", "机构行动"]]) {
     await page.goto("/review?account=A");
     await panel(page, "帮你最多").getByRole("button", {name:/SYNB/}).click();
     await expect(page.getByRole("link", {name:"Synthetic Wire"})).toHaveAttribute("href", "https://example.org/synthetic");
@@ -1227,6 +1253,7 @@ test("earnings and rating source words open their own research sections", async 
     await expect(page).toHaveURL(new RegExp("ticker=SYNT.*analystView=" + section + ".*#research-" + section));
     const anchor = page.locator("#research-" + section);
     await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
+    await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeFocused();
     await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
     await expect(anchor).toContainText(section === "events" ? "已公布" : "Synthetic Research");
     expect(await page.evaluate(() => window.scrollX)).toBe(0);

@@ -120,22 +120,22 @@ it("reads quotation currency from the same research dataset and normalised valua
 });
 
 it("opens the earnings and ratings sections from their own evidence", () => {
-  for (const section of ["events","ratings"]) {
+  for (const section of ["events","actions","ratings"]) {
     const href = evidenceHref({evidenceId:"ev_source",tool:"news_and_events",source:section === "events" ? "financials" : "analysts",arguments:{ticker:"TEST",lens:"analyst",analystView:section}});
     const url = new URL(href!, "http://localhost");
-    expect(url.searchParams.get("analystView")).toBe(section);
-    expect(url.hash).toBe("#research-" + section);
+    expect(url.searchParams.get("analystView")).toBe(section === "ratings" ? "actions" : section);
+    expect(url.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
   }
 });
 
-it.each(["events", "ratings"])("opens the selected listing’s %s section from a decision", section => {
+it.each(["events", "actions", "ratings"])("opens the selected listing’s %s section from a decision", section => {
   const href = evidenceHref({evidenceId: "ev_decision", tool: "decision_timing_and_habits",
     source: section === "events" ? "financials" : "analysts",
     arguments: {ticker: "TEST", listing: "TEST.L", lens: "analyst", analystView: section}});
   const opened = new URL(href!, "https://example.org");
   expect(opened.pathname).toBe("/research");
   expect(opened.searchParams.get("ticker")).toBe("TEST.L");
-  expect(opened.hash).toBe("#research-" + section);
+  expect(opened.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
 });
 
 it.each([

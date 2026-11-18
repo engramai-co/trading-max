@@ -29,11 +29,11 @@ describe("sidebar fields from the review tools", () => {
     expect(render("/data/items/2/security_return")).toBeNull();
   });
 
-  it("reopens the selected decision from a follow-up that supplied no tool arguments", () => {
+  it.each([outputs.decision.bound_arguments, {}])("reopens the published decision with or without role bindings", (bound) => {
     const [line] = verifiedLines({
       id: "answer", role: "assistant", parts: [
         { type: "dynamic-tool", toolName: decisionTool, toolCallId: "d", state: "output-available",
-          input: {}, output: outputs.decision },
+          input: {}, output: { ...outputs.decision, bound_arguments: bound } },
         { type: "text", text: "{{/data/items/0/hindsight/missed_gbp}} [ev_decision]\n{{history}} [inference]" },
       ],
     });

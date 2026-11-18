@@ -92,10 +92,12 @@ export function evidenceHref(ref: Evidence): string | null {
     }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
   }
-  if (eventSource && a.lens === "analyst" && ["ratings","events"].includes(a.analystView)) {
-    params.set("analystView", a.analystView);
+  // Saved rating-change observations used the former ratings tab.
+  const section = a.analystView === "ratings" ? "actions" : a.analystView;
+  if (eventSource && a.lens === "analyst" && ["actions", "events"].includes(section)) {
+    params.set("analystView", section);
     params.set("evidence",ref.tool);
-    return path + "?" + params + "#research-" + a.analystView;
+    return path + "?" + params + "#research-" + section;
   }
   params.set("evidence", ref.tool);
   return path + "?" + params;
