@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ECharts } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
@@ -28,8 +28,10 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
 }) {
   const t = useCopy();
   const keys = KEYS;
+  const plotted = useMemo(() => KEYS.filter(key => !pendingScenarios.includes(key)), [pendingScenarios]);
   const seriesName = useCallback((key: ScenarioKey) =>
-    SCENARIO_NAMES[key](t) + (stagedScenarios.includes(key) ? t(" · 草稿", " · Draft") : ""), [stagedScenarios, t]);
+    SCENARIO_NAMES[key](t) + (pendingScenarios.includes(key) ? t(" · 待计算", " · Pending")
+      : stagedScenarios.includes(key) ? t(" · 草稿", " · Draft") : ""), [pendingScenarios, stagedScenarios, t]);
   const name = (key: ScenarioKey) => SCENARIO_NAMES[key](t);
   // The cards above already carry each value and gap, so the chart has no tooltip:
   // a line under the pointer lights its card, and a card under the pointer or focus lights its line.
@@ -41,7 +43,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
     if (!instance || bound.current.has(instance)) return;
     bound.current.add(instance);
     instance.on("mouseover", (event) => {
-      if (event.componentType === "series") setHovered(KEYS[event.seriesIndex ?? -1] ?? null);
+      if (event.componentType === "series") setHovered(KEYS.find(key => key === event.seriesId) ?? null);
     });
     instance.on("mouseout", () => setHovered(null));
     instance.on("globalout", () => setHovered(null));
@@ -49,11 +51,11 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
   const light = (key: ScenarioKey | null) => {
     setHovered(key);
     chart.current?.dispatchAction({ type: "downplay" });
-    if (key) chart.current?.dispatchAction({ type: "highlight", seriesIndex: KEYS.indexOf(key) });
+    if (key) chart.current?.dispatchAction({ type: "highlight", seriesId: key });
   };
   // Symmetric percentage bounds keep spot at the same physical position even
   // when a different scenario or horizon requires a larger comparison range.
-  const extent = Math.max(0.25, Math.ceil(Math.max(...keys.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  const extent = Math.max(0.25, Math.ceil(Math.max(0, ...plotted.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
   // Unlevered equity cannot lose more than 100%, so the downside scale never extends below -100%.
   const minBound = -Math.min(1, extent);
   const maxBound = extent;
@@ -73,11 +75,11 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
       axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
     },
     tooltip: { show: false },
-    series: KEYS.map((key, i) => ({
-      name: seriesName(key), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
+    series: plotted.map((key, i) => ({
+      id: key, name: seriesName(key), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
       // The whole line answers the pointer, not only its two dots.
       triggerLineEvent: true,
-      data: [[0, i], [preview.scenarios[key].upside, i]],
+      data: [[0, KEYS.indexOf(key)], [preview.scenarios[key].upside, KEYS.indexOf(key)]],
       lineStyle: { color: c.brand, width: selected === key ? 3 : 2, opacity: selected === key ? 0.85 : 0.25 },
       itemStyle: { color: selected === key ? c.brand : c.axis },
       emphasis: { lineStyle: { opacity: 0.85 } },
@@ -87,7 +89,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
         label: { formatter: t("现价", "Current price"), position: "start" as const, color: c.text },
       } : undefined,
     })),
-  }), [maxBound, minBound, preview, selected, seriesName, stagedScenarios.length, t]);
+  }), [maxBound, minBound, plotted, preview, selected, seriesName, stagedScenarios.length, t]);
   return (
     <div className="mx-scenario-comparison" onPointerEnter={bind}>
       <div className="mx-scenario-spot">
@@ -112,6 +114,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
       </div>
       <DeferredPlot
         research
+        updateWhileReading
         label={[t("情景估值与现价的百分比差距", "Scenario valuations relative to current price"), ...keys.filter(key => stagedScenarios.includes(key)).map(seriesName)].join(" · ")}
         height={180}
         controller={chart}

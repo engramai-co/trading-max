@@ -839,10 +839,10 @@ const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snap
       observedAt:"2026-02-10T21:00:00Z", value: 1000, unit: "currency", currency: "USD" },
   } } };
 
-async function captureDraft(page: Page, project: string, locale: string, scheme: string, example: string) {
+async function captureDraft(page: Page, project: string, locale: string, scheme: string, example: string, anchor = "#valuation-assumptions") {
   const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
   if (!dir) return;
-  await page.locator("#valuation-assumptions").evaluate(el => {
+  await page.locator(anchor).evaluate(el => {
     window.scrollBy({top: el.getBoundingClientRect().top - (window.innerWidth < 768 ? 140 : 75), behavior: "instant"});
   });
   if (project === "desktop") {
@@ -1083,7 +1083,7 @@ test.describe("frozen draft review", () => {
     await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
   });
 
-  test("a pending base review keeps settled bear and bull readings visible", async ({page}) => {
+  test("a pending base review keeps settled bear and bull readings visible", async ({page}, info) => {
     const {editor, entry} = await reviewDraft(page);
     await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
       body:JSON.stringify({...draftResponse, result:{...draftResponse.result, proposals:[
@@ -1098,15 +1098,28 @@ test.describe("frozen draft review", () => {
     await entry.click();
     const readings = page.locator(".mx-scenario-cards .mx-draft-reading");
     await expect(readings).toHaveText([/141.00/,/183.00/,/210.00/]);
+    const comparison = page.locator(".mx-scenario-comparison");
+    const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+    const reading = comparison.getByRole("status");
+    await comparison.scrollIntoViewIfNeeded();
+    await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
     const pending = page.waitForRequest(req => req.method() === "POST" && req.url().includes("/SYNT/valuation-preview"));
     await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"}).click();
     try {
       await pending;
       await expect(readings).toHaveText([/141.00/,/Draft …/,/210.00/]);
+      await expect(plot).toHaveAccessibleName(/Bear · Draft.*Base · Pending.*Bull · Draft/);
+      await plot.press("End");
+      await expect(reading).toContainText("Bear · Draft: +41%");
+      await expect(reading).toContainText("Bull · Draft: +110%");
+      await expect(reading).not.toContainText("Base");
+      await captureDraft(page, info.project.name, "en", "light", "base-pending", ".mx-scenario-comparison");
     } finally {
       release();
     }
     await expect(readings).toHaveText([/141.00/,/195.00/,/210.00/]);
+    await expect(plot).toHaveAccessibleName(/Base · Draft/);
+    await expect(reading).toContainText("Base · Draft: +95%");
   });
 
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
@@ -1219,8 +1232,7 @@ test("explicitly choosing the displayed model preserves edited saved assumptions
   await page.reload();
   await expect(select).toHaveValue("Equity cash flow");
   await expect(growth).toHaveValue("23%");
-  const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
-  if (dir) await editor.screenshot({path:join(dir, `${info.project.name}-same-family-reopened.png`)});
+  await captureDraft(page, info.project.name, "en", "light", "same-family-reopened");
   await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
   await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"})).toBeVisible();
   expect(selections.at(-1)).toBeNull();
