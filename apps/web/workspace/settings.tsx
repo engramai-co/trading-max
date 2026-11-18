@@ -122,6 +122,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
   }
   return (
     <Page
+      className="mx-settings-page"
       title={desktop ? t("工作区设置", "Workspace settings") : t("设置", "Settings")}
       description={desktop ? t("账户连接与更新计划保存在当前服务；App 的启动与连接切换在 ⌘, 中管理。", "Accounts and schedules belong to the selected service. Manage App startup and workspace switching with ⌘,.") : undefined}
     >
