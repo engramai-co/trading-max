@@ -1221,7 +1221,7 @@ def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
     review = build_decision_review(
         trades, {key: SecurityPrices(key, "NVDA", "NVDA", "NVDA", prices)}, as_of=prices.index[-1]
     )
-    basket = [r for r in review["decisions"] if r.get("basket_buy")]
+    basket = [r for r in review["decisions"] if r.get("basket_buy")] + review["unpriced_basket_buys"]
     assert {r["ticker"] for r in basket} == {"AMD", "NVDA"}
     missing = next(r for r in basket if r["ticker"] == "AMD")
     assert missing["quantity"] == 1 and missing["amount_gbp"] == 100

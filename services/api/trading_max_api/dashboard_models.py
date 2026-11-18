@@ -1394,6 +1394,7 @@ class TradeDecision(ApiModel):
     horizon_complete: bool | None = None
     before_earnings: bool | None = None
     basket_buy: bool | None = None
+    unpriced: bool | None = None
     #: Present on the decisions the review lists: events from a week before to the horizon.
     events: list[DecisionEvent] | None = None
 
@@ -1450,6 +1451,7 @@ class AccountDecisions(ApiModel):
     buys: DecisionSide = Field(default_factory=DecisionSide)
     sells: DecisionSide = Field(default_factory=DecisionSide)
     decisions: list[TradeDecision] = Field(default_factory=list)
+    unpriced_basket_buys: list[TradeDecision] = Field(default_factory=list)
     round_trips: list[RoundTripReview] = Field(default_factory=list)
     round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)

@@ -21,7 +21,7 @@ class HabitArgs(Args):
 
 def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     """Count verified pre-earnings purchases, untraded falls and same-day baskets.
-    Money after an untraded fall is hypothetical, sized to the mean purchase through that day.
+    The untraded-fall effect is the signed net of hypothetical purchases at the mean purchase size through each day.
     For sidebar figures use /data/groups/GROUP/count, evaluated, effect_gbp or mean_return.
     """
     read = _Read(ctx.deps, "review_patterns", args, args.scope)
@@ -45,7 +45,7 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
         journal = _mapped(evidence.get(code))
         if journal.get("coverage") != "complete":
             issues.append("partial_journal")
-        for row in _rows(account.get("decisions")):
+        for row in _rows(account.get("decisions")) + _rows(account.get("unpriced_basket_buys")):
             complete = row.get("horizon_complete", row.get("effect_horizon_gbp") is not None)
             observed = row.get("observed_days")
             scored = (

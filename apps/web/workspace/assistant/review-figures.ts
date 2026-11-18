@@ -34,8 +34,8 @@ function habitField(key: string, field: string, group: Json, t: Copy) {
   if (key === "untraded_fall") {
     const label =
       value >= 0
-        ? t("事后看，错过约", "In hindsight, missed gains of about")
-        : t("事后看，避开约", "In hindsight, avoided losses of about");
+        ? t("事后看，假设加仓的净收益约", "In hindsight, net hypothetical gain of about")
+        : t("事后看，假设加仓的净亏损约", "In hindsight, net hypothetical loss of about");
     return [
       name,
       label + " " + currency(Math.abs(value), "GBP", 2),

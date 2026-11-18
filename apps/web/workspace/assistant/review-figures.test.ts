@@ -34,7 +34,7 @@ describe("sidebar fields from the review tools", () => {
     const text = renderToolField(habitsTool, output, pointer, "en", zone);
     for (const word of [
       "Large falls without a trade",
-      "avoided losses",
+      "net hypothetical loss",
       "£7.00",
       "average purchase",
       "1/1 measured",
@@ -44,7 +44,7 @@ describe("sidebar fields from the review tools", () => {
     ]) {
       expect(text).toContain(word);
     }
-    expect(renderToolField(habitsTool, output, pointer, "zh", zone)).toContain("事后看，避开约 £7.00");
+    expect(renderToolField(habitsTool, output, pointer, "zh", zone)).toContain("事后看，假设加仓的净亏损约 £7.00");
     expect(renderToolField(habitsTool, output, "/data/groups/basket_buy/mean_return", "en", zone)).toContain(
       "+4.5%",
     );

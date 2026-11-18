@@ -367,7 +367,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             continue
         as_of[CODE_SCOPE[code]] = _iso(account.get("as_of"))
         ordinals: Counter[tuple[str, str, str]] = Counter()
-        for row in _rows(account.get("decisions")):
+        for row in _rows(account.get("decisions")) + _rows(account.get("unpriced_basket_buys")):
             ticker, day = _text(row.get("ticker"), 64), _iso(row.get("date"))
             side = row.get("side")
             if not day or not ticker or side not in {"buy", "sell"}:

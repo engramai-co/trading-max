@@ -277,12 +277,16 @@ publishes results to the scheduled cache. A visible overview polls this cache
 every thirty seconds without calling a provider. One brief
 includes bilingual text and all supported benchmark comparisons, so changing
 language or benchmark needs no further model call.
+
 ## Decision review
 
 Opening a buy or sell reads its account, date, side, ticker and selected horizon
 from the same published review. Earlier results, rating changes and dated
-headlines use the resolved listing. When the fill has only a date, the seven
-preceding calendar days exclude the trade date. The matched S&P 500 return is
+headlines use the resolved listing and the earliest broker fill in the decision.
+An exact publication instant must precede that fill in UTC. For an unzoned
+archive date, even its latest possible publication must precede the fill.
+Older records with date-only fills use the start of the UTC business day.
+The pre-trade close uses a provider observation and a verified GBP conversion. The matched S&P 500 return is
 in GBP. The hindsight comparison uses the best feasible close in the same
 window and the account’s mean purchase size for the security through that day.
 
@@ -295,12 +299,13 @@ its pinned records without another model call.
 - Pre-earnings buys fall in the seven calendar days before a recorded result.
   A same-day report is excluded because the sequence may be unknown.
 - Same-day basket buys cover purchases of multiple listings in the same account
-  on a trading day. Each net buy is one decision.
+  on a trading day, including members without a verified closing price. Each
+  net buy is one decision. The filter shows the unmeasured members.
 - Untraded falls come from the review journal’s qualifying negative holding
   moves. A hypothetical purchase uses the average purchase order for that
   security in that account through that date, GBP closes and subsequent
-  dividends. A positive hypothetical result is a missed gain and a negative
-  result is an avoided loss. Missing windows and missing purchase bases are
+  dividends. The brief labels the signed total as a net hypothetical outcome in
+  hindsight. The rankings show individual missed gains and avoided losses. Missing windows and missing purchase bases are
   excluded from the amount and the brief shows the measured count.
 
 ## News and scheduled events

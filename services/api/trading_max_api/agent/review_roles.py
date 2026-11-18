@@ -142,6 +142,12 @@ def decision_facts(read: RoleTools, context: DecisionContext):
                 **ref,
             )
         )
+    if len(before) == 3:
+        # Price, return and hindsight share this exact decision result. Each event
+        # keeps its own source and link within the four-line reading.
+        after.zh += " " + last.zh
+        after.en += " " + last.en
+        return [*before, after]
     return [*before, after, last]
 
 
@@ -198,7 +204,7 @@ def prior_events(
     for kind in ("earnings", "rating_change"):
         if kind not in latest:
             continue
-        item, result = latest[kind]
+        item, _ = latest[kind]
         when = item["local_date"]
         if kind == "earnings":
             zh, en, source = f"{when} 公布财报。", f"Results were reported on {when}.", "financials"
@@ -209,15 +215,19 @@ def prior_events(
                 f"On {when}, {firm} updated its rating{(' to ' + grade) if grade else ''}.",
                 "analysts",
             )
-        # When both observations share a returned tool page, its evidence covers
-        # both, including on a four-line reading with a separate news lead.
-        if facts and "news" in latest:
-            if facts[0].evidence.evidence_id == result["evidence_id"]:
-                facts[0].zh += " " + zh
-                facts[0].en += " " + en
-            continue
         facts.append(
-            line(kind, zh, en, result, source, "news_and_events", **arguments, lens="analyst")
+            line(
+                kind,
+                zh,
+                en,
+                item,
+                source,
+                "news_and_events",
+                **arguments,
+                lens="analyst",
+                analystView="events" if kind == "earnings" else "ratings",
+                date=when,
+            )
         )
     if "news" in latest:
         item, _ = latest["news"]
@@ -262,8 +272,8 @@ def habit_line(key, result, horizon, scope):
         zh += "暂无可核实结果。"
         en += ", no verified outcome."
     elif key == "untraded_fall":
-        zh += f"，按各自平均买单，{'错过约' if effect >= 0 else '避开约'} {money(abs(effect))}。"
-        en += f", about {money(abs(effect))} in {'missed gains' if effect >= 0 else 'avoided losses'} at each security’s average purchase size."
+        zh += f"。事后看，按各自平均买单，假设加仓的净{'收益' if effect >= 0 else '亏损'}约 {money(abs(effect))}。"
+        en += f". In hindsight, the net hypothetical {'gain' if effect >= 0 else 'loss'} was about {money(abs(effect))} at each security’s average purchase size."
     else:
         mean = group["mean_return"]
         zh += (f"，平均回报 {mean:+.1%}" if mean is not None else "") + f"，合计 {money(effect)}。"

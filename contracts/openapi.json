@@ -607,6 +607,13 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "unpricedBasketBuys": {
+            "items": {
+              "$ref": "#/components/schemas/TradeDecision"
+            },
+            "title": "Unpricedbasketbuys",
+            "type": "array"
           }
         },
         "required": [
@@ -23758,6 +23765,17 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "unpriced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced"
           }
         },
         "required": [

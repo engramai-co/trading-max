@@ -294,6 +294,14 @@ def build_decision_review(
             if end is not None and end > day and end in security.final_days:
                 change, _ = _window(security, start, close, end)
                 setattr(move, field, _round(basis * change) if change is not None else None)
+    # Basket membership is a ledger fact, independent of listing resolution or prices.
+    net_shares = fills["SharesN"].where(fills["Side"] == "buy", -fills["SharesN"])
+    net_buys = net_shares.groupby([fills["SecurityIdentity"], fills["BusinessDate"]]).sum(
+        min_count=1
+    )
+    positive = net_buys[net_buys > 0]
+    basket_members = positive[positive.groupby(level=1).transform("size") >= 2]
+    unpriced_basket_buys = []
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0
@@ -310,12 +318,31 @@ def build_decision_review(
             )
             for side, rows in day_rows.groupby("Side", sort=True)
         }
-        if security is None:
+        start = _close_on(security.closes, pd.Timestamp(day)) if security else None
+        basket_buy = (identity, day) in basket_members.index
+        if security is None or start is None or start[1] <= 0:
             unscored += len(legs)
-            continue
-        start = _close_on(security.closes, pd.Timestamp(day))
-        if start is None or start[1] <= 0:
-            unscored += len(legs)
+            if basket_buy:
+                amount, shares = legs["buy"]
+                bought = day_rows[day_rows["Side"] == "buy"]
+                if shares > 0 and bought["AmountGBP"].notna().all():
+                    net = float(basket_members.loc[(identity, day)])
+                    ticker = str(bought["Ticker"].iloc[0])
+                    unpriced_basket_buys.append(
+                        {
+                            "date": pd.Timestamp(day).date().isoformat(),
+                            "ticker": ticker,
+                            "name": str(bought.iloc[0].get("Name") or ticker),
+                            "side": "buy",
+                            "kind": "T" if len(legs) > 1 else "B",
+                            "quantity": _round(net, 6),
+                            "amount_gbp": _round(net * amount / shares),
+                            "settled_per_share_gbp": _round(amount / shares, 4),
+                            "first_fill_at": day_rows["Time"].min().isoformat(),
+                            "basket_buy": True,
+                            "unpriced": True,
+                        }
+                    )
             continue
         stamp = pd.Timestamp(day)
         stamp = (stamp.tz_convert("UTC").tz_localize(None) if stamp.tz else stamp).normalize()
@@ -424,6 +451,7 @@ def build_decision_review(
                     else None,
                     "settled_per_share_gbp": _round(amount / shares, 4) if shares > 0 else None,
                     "listing": security.symbol,
+                    **({"basket_buy": True} if side == "buy" and basket_buy else {}),
                     "return_horizon": _round(horizon_return, 6),
                     "effect_horizon_gbp": None
                     if horizon_return is None
@@ -451,13 +479,6 @@ def build_decision_review(
                     "hindsight_to_date": hindsight_latest,
                 }
             )
-    baskets: dict[str, set[str]] = {}
-    for row in decisions:
-        if row["side"] == "buy":
-            baskets.setdefault(row["date"], set()).add(row["listing"])
-    for row in decisions:
-        if row["side"] == "buy" and len(baskets[row["date"]]) > 1:
-            row["basket_buy"] = True
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))
     round_trips.sort(key=lambda row: (row["date"], row["ticker"]))
     prices_by_ticker = {security.ticker: security for security in prices.values()}
@@ -474,6 +495,9 @@ def build_decision_review(
         "buys": _side_summary([row for row in decisions if row["side"] == "buy"]),
         "sells": _side_summary([row for row in decisions if row["side"] == "sell"]),
         "decisions": decisions[-MAX_DECISIONS:],
+        "unpriced_basket_buys": sorted(
+            unpriced_basket_buys, key=lambda r: (r["date"], r["ticker"])
+        )[-MAX_DECISIONS:],
         "round_trips": round_trips[-MAX_ROUND_TRIPS:],
         "round_trip_summary": {
             "count": len(round_trips),

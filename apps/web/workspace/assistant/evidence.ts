@@ -66,6 +66,11 @@ export function evidenceHref(ref: Evidence) {
     }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
   }
+  if (ref.tool === "news_and_events" && a.lens === "analyst" && ["ratings","events"].includes(a.analystView)) {
+    params.set("analystView", a.analystView);
+    params.set("evidence",ref.tool);
+    return path + "?" + params + "#research-" + a.analystView;
+  }
   params.set("evidence", ref.tool);
   return path + "?" + params;
 }

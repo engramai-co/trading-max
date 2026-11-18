@@ -1825,6 +1825,8 @@ export interface components {
              * @enum {string}
              */
             status: "available" | "unavailable";
+            /** Unpricedbasketbuys */
+            unpricedBasketBuys?: components["schemas"]["TradeDecision"][];
         };
         /** AccountEffects */
         AccountEffects: {
@@ -9264,6 +9266,8 @@ export interface components {
             side: "buy" | "sell";
             /** Ticker */
             ticker: string;
+            /** Unpriced */
+            unpriced?: boolean | null;
         };
         /** Trading212IntegrationCandidate */
         Trading212IntegrationCandidate: {
