@@ -3,10 +3,12 @@ import sqlite3
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from trading_max.application import AccountSnapshotStage, StageContext
 
 from services.api.trading_max_api import history_reader as module
 from services.api.trading_max_api.app import create_app
@@ -296,6 +298,95 @@ def test_retained_risk_and_holdings_use_only_page_records(
             row for row in live_positions.get("holdings", []) if row["account"] == "B"
         ]
         assert not {"accounts", "risk", "nav", "benchmarkSeries", "lookthrough"} & positions.keys()
+
+
+def test_retained_positions_match_live_worker_amounts(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+    for profile, value, cost, stamp in [
+        ("invest", "210.50", "200", "2026-08-01T18:00:00Z"),
+        ("isa", "700.25", "720", "2026-08-01T19:00:00Z"),
+    ]:
+        pnl = str(Decimal(value) - Decimal(cost))
+        path = store.data_root / "trading212" / profile / "snapshots" / "snapshot_test.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "fetched_at_utc": stamp,
+                    "account_summary": {
+                        "currency": "GBP",
+                        "totalValue": str(Decimal(value) + 100),
+                        "cash": {"availableToTrade": "100"},
+                        "investments": {
+                            "currentValue": value,
+                            "totalCost": cost,
+                            "realizedProfitLoss": "0",
+                            "unrealizedProfitLoss": pnl,
+                        },
+                    },
+                    "positions": [
+                        {
+                            "instrument": {
+                                "ticker": "SYNl_EQ",
+                                "name": "Synthetic",
+                                "isin": "GB0000000012",
+                                "currency": "GBP",
+                            },
+                            "quantity": "1",
+                            "currentPrice": value,
+                            "walletImpact": {
+                                "currentValue": value,
+                                "totalCost": cost,
+                                "unrealizedProfitLoss": pnl,
+                            },
+                        }
+                    ],
+                }
+            )
+        )
+    result = AccountSnapshotStage(store.data_root, store.immutable_artifacts).run(
+        StageContext(job_id="synthetic", scope="accounts")
+    )
+    base = store.immutable_snapshots.latest().manifest.artifacts
+    replaced = {ref.key for ref in result.artifacts}
+    run = store.immutable_snapshots.publish(
+        scope="all",
+        source="test",
+        artifacts=[*[ref for ref in base if ref.key not in replaced], *result.artifacts],
+    ).manifest.run_id
+    broker = store.read_json(run, "account/broker_snapshot_metrics.json")
+    assert broker["accounts"]["B"]["investments_value_gbp"] == "700.25"
+    path = "/v1/dashboard/lens/holdings-positions"
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=False))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        live = client.get(path, params={"detail": "summary"}).json()
+        assert live["runId"] == run
+        typed_fixture(research_root, store)
+        for account, invested, pnl in [(None, 910.75, -9.25), ("B", 700.25, -19.75)]:
+            params = {"run_id": run, "detail": "summary"}
+            if account:
+                params["account"] = account
+            response = client.get(path, params=params)
+            assert response.status_code == 200
+            actual = response.json()
+            rows = [row for row in live["holdings"] if account is None or row["account"] == account]
+            assert actual["holdings"] == rows
+            assert actual["totalInvestedGbp"] == invested
+            assert actual["totalUnrealizedPnlGbp"] == pnl
+            for row in rows:
+                code = row["account"]
+                assert (
+                    actual["positionAsOf"][code]
+                    == live["positionAsOf"][code]
+                    == broker["accounts"][code]["fetched_at"]
+                )
+                assert row["allocationPct"] == pytest.approx(row["currentValueGbp"] / 1110.75)
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert run in store.prune_snapshots(keep_recent=1)
+        assert client.get(path, params={"run_id": run, "detail": "summary"}).status_code == 404
 
 
 def test_archived_money_revisions_do_not_evict_live_history(

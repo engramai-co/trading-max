@@ -48,6 +48,7 @@ from ..history_reader import HistorySnapshot, daily_nav
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
 from ..projections.broker import positions_observed_at
 from ..projections.day_change import within_trading_days
+from ..projections.values import number_value
 from .dependencies import app_service, latest_or_503
 
 router = APIRouter()
@@ -263,7 +264,7 @@ def _retained_holdings(store, manifest, view, account):
     accounts = broker["accounts"]
     investable = [code for code in ("A", "B") if code in accounts]
     selected = [code for code in investable if account is None or code == account]
-    total = sum((accounts[code].get("total_value_gbp") or 0) for code in investable)
+    total = sum(number_value(accounts[code].get("total_value_gbp")) for code in investable)
     return DashboardLensSnapshot(
         **base,
         broker_as_of=(
@@ -275,9 +276,11 @@ def _retained_holdings(store, manifest, view, account):
         else broker.get("generated_at_utc") or "",
         position_as_of={code: positions_observed_at(accounts[code]) for code in selected},
         holdings=published_positions(store, run, broker, selected, total, lookthrough),
-        total_invested_gbp=sum(accounts[c].get("investments_value_gbp") or 0 for c in selected),
+        total_invested_gbp=sum(
+            number_value(accounts[c].get("investments_value_gbp")) for c in selected
+        ),
         total_unrealized_pnl_gbp=sum(
-            accounts[c].get("unrealized_profit_loss_gbp") or 0 for c in selected
+            number_value(accounts[c].get("unrealized_profit_loss_gbp")) for c in selected
         ),
     )
 
