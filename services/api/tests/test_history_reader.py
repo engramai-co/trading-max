@@ -217,3 +217,26 @@ def test_analytics_lens_pins_nav_and_prices_and_rechecks_retention(
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert run in store.prune_snapshots(keep_recent=1)
         assert client.get(pinned_url).status_code == 404
+
+
+def test_retained_returns_cannot_evict_the_live_dashboard(research_root, tmp_path, typed_fixture):
+    store = ArtifactStore(tmp_path / "state")
+    publications = []
+    for _ in range(6):
+        typed_fixture(research_root, store)
+        publications.append(store.latest_manifest())
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        live = app.state.cached_dashboard(publications[-1], include_history=False)
+        for publication in publications[:-1]:
+            result = client.get(
+                "/v1/dashboard/lens/analytics",
+                params={
+                    "scope": "invest",
+                    "detail": "summary",
+                    "run_id": publication.run_id,
+                },
+            )
+            assert result.status_code == 200
+            assert set(result.json()["nav"][0]) <= {"date", "flowStatus", "invest", "investTwr"}
+        assert app.state.cached_dashboard(publications[-1], include_history=False) is live
