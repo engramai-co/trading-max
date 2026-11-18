@@ -147,6 +147,7 @@ test("a fund benchmark opens an index with private exposure, constituents and ch
 
 test("the index opening card and key moment keep the selected index series", async ({ page, baseURL, isMobile }) => {
   await indexFixture(page, baseURL!);
+  await page.route("**/api/backend/profile",route => route.fulfill({json:{accountLabels:{},assistantEnabled:true}}));
   const date = points[10].at.slice(0, 10);
   const reads: string[] = [];
   await page.route("**/api/backend/assistant/**", route => {

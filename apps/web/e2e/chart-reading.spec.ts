@@ -136,7 +136,7 @@ test.describe("primary chart reading", () => {
       const track = chartPanel.getByRole("region", { name: "Event timeline" });
       await expect(track.getByRole("button", { name: / B$/ })).toBeVisible();
       await expect(track.getByRole("button", { name: / S$/ })).toBeVisible();
-      const marker = track.getByRole("button", { name: / T \+2$/ });
+      const marker = track.getByRole("button", { name: / · T \(\+2\)$/ });
       await marker.focus();
       await page.keyboard.press("Enter");
       await expect(marker).toHaveAttribute("aria-expanded", "true");
