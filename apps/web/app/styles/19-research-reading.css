@@ -243,6 +243,9 @@
   .mx-compact-records abbr {
     text-decoration: none;
   }
+}
+/* A side panel can leave the readout as little room as a phone viewport. */
+@container research-reading (max-width: 39rem) {
   .mx-valuation-readout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -283,6 +286,8 @@
     margin: 0;
     font-size: 18px;
   }
+}
+@media (max-width: 767px) {
   .mx-reading-sections .mx-table {
     width: max-content;
     min-width: 100%;

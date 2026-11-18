@@ -284,7 +284,7 @@ test.describe("valuation refresh", () => {
         const note = readout.getByText(locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计");
         const endpoint = "**/SYNT/valuation-preview*";
         let standardTop: number | undefined;
-        for (const example of ["floored", "exact-zero", "larger-text"]) {
+        for (const example of ["floored", "exact-zero", "larger-text", "narrow-pane"]) {
           let release!: () => void;
           const gate = new Promise<void>(resolve => { release = resolve; });
           const model = preview("SYNT", 100, "2026-11-04", true, {});
@@ -294,6 +294,9 @@ test.describe("valuation refresh", () => {
           });
           await page.route(endpoint, async route => { await gate; await route.fulfill({ json: model }); });
           await page.goto("/research?ticker=SYNT&view=valuation");
+          if (example === "narrow-pane") {
+            await page.locator(".mx-reading-container").evaluate(container => { container.style.maxWidth = "475px"; });
+          }
           if (example === "larger-text") {
             await page.addStyleTag({ content: ".mx-valuation-readout .mx-valuation-floor { font-size: 32px; }" });
           }
