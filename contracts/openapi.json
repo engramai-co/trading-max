@@ -6505,17 +6505,6 @@
             ],
             "title": "Effect Gbp"
           },
-          "execution_price_gbp": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Execution Price Gbp"
-          },
           "hindsight": {
             "anyOf": [
               {
@@ -6574,6 +6563,28 @@
             ],
             "title": "Observed Days"
           },
+          "prior_close_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Close Date"
+          },
+          "prior_close_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Close Gbp"
+          },
           "scope": {
             "title": "Scope",
             "type": "string"
@@ -6588,6 +6599,17 @@
               }
             ],
             "title": "Security Return"
+          },
+          "settled_per_share_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Per Share Gbp"
           },
           "side": {
             "title": "Side",

@@ -1177,6 +1177,8 @@ def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
         trades, {key: security}, as_of=closes.index[-1], holding_moves=[drop, pending]
     )
     assert len(review["decisions"]) == 3
+    assert review["decisions"][1]["prior_close_date"] == "2026-01-05"
+    assert review["decisions"][1]["prior_close_gbp"] == 100
     assert drop.average_purchase_gbp == 200
     assert drop.hypothetical_horizon_gbp == 50
     assert drop.hypothetical_to_date_gbp == -40

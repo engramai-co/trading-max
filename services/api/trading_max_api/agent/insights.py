@@ -400,7 +400,9 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                         {
                             "listing": _text(row.get("listing"), 32),
                             "name": _text(row.get("name"), 160),
-                            "execution_price_gbp": _number(row.get("execution_price_gbp")),
+                            "prior_close_date": _iso(row.get("prior_close_date")),
+                            "prior_close_gbp": _number(row.get("prior_close_gbp")),
+                            "settled_per_share_gbp": _number(row.get("settled_per_share_gbp")),
                             "security_return": _number(row.get(f"return_{suffix}"))
                             if usable
                             else None,

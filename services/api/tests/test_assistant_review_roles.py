@@ -26,7 +26,7 @@ def setup_review(tmp_path):
         "listing": "TEST",
         "side": "buy",
         "kind": "B",
-        "execution_price_gbp": 40.0,
+        "settled_per_share_gbp": 40.0,
         "before_earnings": True,
         "basket_buy": True,
         "horizon_complete": True,
@@ -56,6 +56,23 @@ def setup_review(tmp_path):
     def publish():
         payloads = {
             tools.DECISIONS: {"accounts": accounts},
+            tools.ANALYST: {
+                "rows": [
+                    {
+                        "ticker": "TEST",
+                        "analyst": {
+                            "earningsEvents": [{"date": "2026-01-29", "status": "reported"}],
+                            "upgradesDowngrades": [
+                                {
+                                    "GradeDate": "2026-01-30",
+                                    "Firm": "Synthetic Research",
+                                    "ToGrade": "Neutral",
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
             EVIDENCE: {
                 "accounts": {
                     "A": {
@@ -131,6 +148,7 @@ def test_decision_uses_dated_lead_and_hindsight_label_through_test_model(tmp_pat
         and "+9.0%" in lines["outcome"].en
         and "+3.0%" in lines["outcome"].en
     )
+    assert "2026-01-29" in lines["earnings"].en and "Synthetic Research" in lines["earnings"].en
     assert "In hindsight" in lines["hindsight"].en and "£12.00" in lines["hindsight"].en
     assert (
         lines["headline"].evidence.publisher == "Synthetic Wire"
@@ -170,6 +188,7 @@ def test_habit_cache_reprices_running_outcome_and_waits_for_material_changes(tmp
         "broker_total",
     }
     assert not targets(record.model_copy(update={"trigger": "live"}), reader)
+    assert not targets(record.model_copy(update={"trigger": "on_demand", "scope": "live"}), reader)
     result = asyncio.run(run(deps, scheduled=True))[-1].reading
     assert [line.section for line in result.lines] == [
         "basket_buy",

@@ -64,17 +64,24 @@ def decision_facts(read: RoleTools, context: DecisionContext):
             return []
     ref = {**args, "ordinal": str(context.ordinal)}
     stamp = context.decision_date
-    price = row.get("execution_price_gbp")
+    price = row.get("settled_per_share_gbp")
     first_zh = (
-        f"{stamp} 每股成交金额 {money(price)}。"
+        f"{stamp} 每股结算金额 {money(price)}。"
         if price is not None
-        else f"{stamp} 每股成交金额未记录。"
+        else f"{stamp} 每股结算金额未记录。"
     )
     first_en = (
-        f"On {stamp}, the trade averaged {money(price)} per share."
+        f"On {stamp}, settlement averaged {money(price)} per share."
         if price is not None
-        else f"The trade price on {stamp} is unavailable."
+        else f"Settlement per share on {stamp} is unavailable."
     )
+    if row.get("prior_close_date") and row.get("prior_close_gbp") is not None:
+        earlier, close = (
+            row["prior_close_date"],
+            f"£{row['prior_close_gbp']:,.4f}".rstrip("0").rstrip("."),
+        )
+        first_zh = f"成交前，{earlier} 复权收盘价为 {close}。"
+        first_en = f"Before the trade, the split-adjusted close on {earlier} was {close}."
     zh, en = period(context.horizon)
     change, market = row.get("security_return"), row.get("market_return")
     after_zh = f"{zh}回报 {change:+.1%}" if change is not None else f"{zh}回报暂无结果"
@@ -122,83 +129,102 @@ def decision_facts(read: RoleTools, context: DecisionContext):
             f"Hindsight comparison {en}: the best close or average purchase size is unavailable.",
         )
     last = line("hindsight", *hindsight, result, "review", "decision_timing_and_habits", **ref)
-    # With only a trade date, a same-day release may have followed the fill.
-    # The preceding full days provide an unambiguous decision-time boundary.
-    listing = row.get("listing")
-    facts = []
-    day = date.fromisoformat(stamp)
-    if listing and day > date.min + timedelta(days=8):
-        event_args = {
-            "scope": context.scope,
-            "ticker": listing,
-            "start": (day - timedelta(days=7)).isoformat(),
-            "end": (day - timedelta(days=1)).isoformat(),
-        }
-        events = []
-        cursor = 0
-        while True:
-            event_result = read.read(
-                news_and_events, EventArgs(**event_args, cursor=cursor, limit=20)
+    before = prior_events(read, context, row.get("listing"))
+    if not before:
+        before.append(
+            line(
+                "before",
+                "无法核对该笔成交所属上市地的此前事件。",
+                "Earlier events could not be verified for this listing.",
+                result,
+                "review",
+                "decision_timing_and_habits",
+                **ref,
             )
-            event_data = event_result.get("data") or {}
-            events.extend(event_data.get("items", []))
-            cursor = event_data.get("next_cursor")
-            if cursor is None:
-                break
-        for event in events:
-            kind = event["kind"]
-            if kind not in {"earnings", "rating_change", "news"} or (
-                kind == "earnings" and event.get("status") != "reported"
+        )
+    return [*before, after, last]
+
+
+def prior_events(read: RoleTools, context: DecisionContext, listing: str | None):
+    # Date-only fills cannot establish the order of a release and a same-day trade.
+    day = date.fromisoformat(context.decision_date)
+    if not listing or day <= date.min + timedelta(days=8):
+        return []
+    arguments = {
+        "scope": context.scope,
+        "ticker": listing,
+        "start": (day - timedelta(days=7)).isoformat(),
+        "end": (day - timedelta(days=1)).isoformat(),
+    }
+    latest = {}
+    cursor = 0
+    while True:
+        page = read.read(news_and_events, EventArgs(**arguments, cursor=cursor, limit=20))
+        for item in (page.get("data") or {}).get("items", []):
+            kind = item["kind"]
+            if kind in {"news", "rating_change"} or (
+                kind == "earnings" and item.get("status") == "reported"
             ):
-                continue
-            section = "headline" if kind == "news" else "before"
-            if section in {fact.section for fact in facts}:
-                continue
-            published = event["date"]
-            source = {"earnings": "financials", "rating_change": "analysts", "news": "publisher"}[
-                kind
-            ]
-            if kind == "earnings":
-                before = (f"{published} 公布财报。", f"Results were reported on {published}.")
-            elif kind == "rating_change":
-                firm = event.get("firm") or ""
-                grade = event.get("to_grade") or ""
-                before = (
-                    f"{published} {firm} 更新评级 {grade}。",
-                    f"On {published}, {firm} updated its rating{(' to ' + grade) if grade else ''}.",
-                )
-            else:
-                before = (
-                    f"{published} 新闻线索：{event['title_zh']}",
-                    f"Dated lead, {published}: {event['title_en']}",
-                )
-            evidence = line(
-                section,
-                *before,
-                event,
-                source,
+                latest.setdefault(kind, (item, page))
+        cursor = (page.get("data") or {}).get("next_cursor")
+        if cursor is None or len(latest) == 3:
+            break
+
+    facts = []
+    for kind in ("earnings", "rating_change"):
+        if kind not in latest:
+            continue
+        item, result = latest[kind]
+        when = item["local_date"]
+        if kind == "earnings":
+            zh, en, source = f"{when} 公布财报。", f"Results were reported on {when}.", "financials"
+        else:
+            firm, grade = item.get("firm") or "", item.get("to_grade") or ""
+            zh, en, source = (
+                f"{when} {firm} 更新评级 {grade}。",
+                f"On {when}, {firm} updated its rating{(' to ' + grade) if grade else ''}.",
+                "analysts",
+            )
+        # When both observations share a returned tool page, its evidence covers
+        # both, including on a four-line reading with a separate news lead.
+        if facts and "news" in latest:
+            if facts[0].evidence.evidence_id == result["evidence_id"]:
+                facts[0].zh += " " + zh
+                facts[0].en += " " + en
+            continue
+        facts.append(
+            line(kind, zh, en, result, source, "news_and_events", **arguments, lens="analyst")
+        )
+    if "news" in latest:
+        item, _ = latest["news"]
+        when = item["local_date"]
+        news = line(
+            "headline",
+            f"{when} 新闻线索：{item['title_zh']}",
+            f"Dated lead, {when}: {item['title_en']}",
+            item,
+            "publisher",
+            "news_and_events",
+            **arguments,
+            lens="analyst",
+            url=item["source_url"] or "",
+        )
+        news.evidence.publisher = str(item["publisher"])[:80]
+        facts.append(news)
+    if not facts:
+        facts.append(
+            line(
+                "before",
+                "成交前一周未查到可核实的财报、评级或新闻。",
+                "No verified results, rating change or headline was found in the preceding week.",
+                page,
+                "disclosure",
                 "news_and_events",
-                **event_args,
+                **arguments,
                 lens="analyst",
-                url=event.get("source_url") or "",
             )
-            if kind == "news":
-                evidence.evidence.publisher = str(event["publisher"])[:80]
-            facts.append(evidence)
-        if not facts:
-            facts.append(
-                line(
-                    "before",
-                    "成交前一周未查到可核实的财报、评级或新闻。",
-                    "No verified results, rating change or headline was found in the preceding week.",
-                    event_result,
-                    "disclosure",
-                    "news_and_events",
-                    **event_args,
-                    lens="analyst",
-                )
-            )
-    return [*facts, after, last]
+        )
+    return facts
 
 
 def habit_line(key, result, horizon, scope):
@@ -263,6 +289,7 @@ def targets(job: JobRecord, read: RoleTools):
     if (
         job.status != "succeeded"
         or not job.snapshot_run_id
+        or job.scope not in {"all", "accounts"}
         or job.trigger not in {"nightly", "research", "reconciliation", "on_demand"}
     ):
         return []

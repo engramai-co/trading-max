@@ -3604,8 +3604,6 @@ export interface components {
             date: string;
             /** Effect Gbp */
             effect_gbp: number | null;
-            /** Execution Price Gbp */
-            execution_price_gbp?: number | null;
             hindsight: components["schemas"]["Timing"] | null;
             /** Horizon */
             horizon: string;
@@ -3617,10 +3615,16 @@ export interface components {
             name?: string | null;
             /** Observed Days */
             observed_days: number | null;
+            /** Prior Close Date */
+            prior_close_date?: string | null;
+            /** Prior Close Gbp */
+            prior_close_gbp?: number | null;
             /** Scope */
             scope: string;
             /** Security Return */
             security_return?: number | null;
+            /** Settled Per Share Gbp */
+            settled_per_share_gbp?: number | null;
             /** Side */
             side: string;
             /** Ticker */

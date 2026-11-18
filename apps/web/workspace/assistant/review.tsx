@@ -6,7 +6,8 @@ import { CaretRight } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { accountName, useWorkspaceProfile } from "../profile";
 import { useCopy } from "../foundation";
-import type { ReviewScope, ScopedDecision } from "../review-board";
+import { decisionHref, type ReviewScope, type ScopedDecision } from "../review-board";
+import Link from "../link";
 import type { Horizon } from "../review-decisions";
 import { decisionContext, isHabit, toolHorizon, toolScope, type Habit } from "../review-patterns";
 import { DigestRow, EvidenceLink, FollowUps, InlineReading, ReadingLines } from "./cards";
@@ -122,7 +123,19 @@ export function ReviewHabits({
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const phone = useMediaQuery("(max-width: 767px)");
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState(() => {
+    try {
+      return localStorage.getItem("tm-reading-review-habits-phone") === "open";
+    } catch {
+      return false;
+    }
+  });
+  const showSheet = (value: boolean) => {
+    setSheet(value);
+    try {
+      localStorage.setItem("tm-reading-review-habits-phone", value ? "open" : "closed");
+    } catch {}
+  };
   const opener = useRef<HTMLButtonElement>(null);
   const request = useMemo(
     () => ({ role: "habits", context: { scope: toolScope(scope) }, snapshotId: snapshot }),
@@ -177,7 +190,7 @@ export function ReviewHabits({
               aria-pressed={key === habit}
               onClick={() => {
                 onSelect(key);
-                setSheet(false);
+                showSheet(false);
                 opener.current?.focus();
               }}
             >
@@ -198,17 +211,20 @@ export function ReviewHabits({
         <button
           className="mx-digest mx-phone-habits"
           ref={opener}
-          onClick={() => setSheet(true)}
+          onClick={() => showSheet(true)}
           aria-expanded={sheet}
         >
-          <span aria-hidden="true">✦</span> {card.title} · {card.object}
+          <span aria-hidden="true">✦</span> <strong>{card.title}</strong> · {card.object}
+          {reading?.lines[0] && (
+            <span className="mx-digest-summary">{t(reading.lines[0].zh, reading.lines[0].en)}</span>
+          )}
           <CaretRight aria-hidden="true" size={14} />
         </button>
         {sheet && (
           <InlineReading
             card={card}
             onClose={() => {
-              setSheet(false);
+              showSheet(false);
               opener.current?.focus();
             }}
           >
@@ -284,6 +300,11 @@ export function DecisionReading({
             </p>
           ))}
           <ReadingStatus run={run} />
+          {(run.state === "error" || run.state === "empty") && (
+            <Link className="mx-text-link" href={decisionHref(row.account, row)}>
+              {t("查看这笔决定", "View this decision")} →
+            </Link>
+          )}
         </>
       )}
     </InlineReading>

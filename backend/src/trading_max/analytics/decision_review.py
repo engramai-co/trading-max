@@ -383,6 +383,9 @@ def build_decision_review(
                 if horizon_return is not None:
                     ending = _market_close(market, sessions, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
+        prior_index = quoted.searchsorted(stamp, side="left") - 1
+        prior_day = quoted[prior_index] if prior_index >= 0 else None
+        prior_close = _on_day(security.closes, prior_day) if prior_day in final else None
         for side, (amount, shares) in legs.items():
             if not amount:
                 unscored += 1
@@ -410,7 +413,11 @@ def build_decision_review(
                     "kind": "T" if traded_both else side[0].upper(),
                     "quantity": _round(shares, 6),
                     "amount_gbp": _round(amount),
-                    "execution_price_gbp": _round(amount / shares, 4) if shares > 0 else None,
+                    "prior_close_gbp": _round(prior_close, 4),
+                    "prior_close_date": prior_day.date().isoformat()
+                    if prior_close is not None
+                    else None,
+                    "settled_per_share_gbp": _round(amount / shares, 4) if shares > 0 else None,
                     "listing": security.symbol,
                     "return_horizon": _round(horizon_return, 6),
                     "effect_horizon_gbp": None

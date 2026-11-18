@@ -101,12 +101,14 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     summaries = {}
     for key, group in groups.items():
         effects = [money for money, _ in group if money is not None]
-        returns = [value for _, value in group if value is not None]
+        returns = [value for money, value in group if money is not None and value is not None]
         summaries[key] = {
             "count": len(group),
             "evaluated": len(effects),
             "effect_gbp": round(sum(effects), 2) if effects else None,
-            "mean_return": sum(returns) / len(returns) if returns else None,
+            "mean_return": sum(returns) / len(returns)
+            if returns and len(returns) == len(effects)
+            else None,
         }
     version = sha256(json.dumps(revision, separators=(",", ":")).encode()).hexdigest()[:24]
     return read.result(

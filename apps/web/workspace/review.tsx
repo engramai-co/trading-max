@@ -205,7 +205,7 @@ export function ReviewWorkspace() {
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
-                  <DecisionExtremes expansion={expansion} rows={filtered} horizon={horizon} showAccount={shown === "all"} />
+                  {habit !== "untraded_fall" && <DecisionExtremes expansion={expansion} rows={filtered} horizon={horizon} showAccount={shown === "all"} />}
                 </>
               ) : (
                 <Panel>
