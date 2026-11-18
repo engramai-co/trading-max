@@ -506,7 +506,9 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
         rows = _reported_dividends(ticker, financials.get("evidence", {}))
     else:
         data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-        rows = _public(ticker, data, upcoming=True)
+        # Reported earnings remain citable after they leave the upcoming calendar.
+        data.update({NEWS_KEY: {}, FINANCIALS: {}})
+        rows = _public(ticker, data, upcoming=kind != "earnings")
     for row in rows:
         if not row or row["kind"] != kind:
             continue

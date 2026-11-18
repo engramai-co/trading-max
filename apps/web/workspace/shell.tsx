@@ -429,7 +429,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   return (
     <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen} data-assistant-open={assistant.open || undefined}>
       <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
-      <a className="mx-skip" href="#main-content">
+      <a className="mx-skip" href="#main-content" inert={assistantOverlay || undefined}>
         {t("跳到正文", "Skip to content")}
       </a>
       <aside className="mx-sidebar" inert={assistantOverlay || undefined}>
@@ -476,7 +476,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {children}
         </main>
       </div>
-      <AssistantPanel page={active?.href.slice(1) || "overview"} search={routeSearch} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
+      <AssistantPanel overlay={assistantOverlay} page={active?.href.slice(1) || "overview"} search={routeSearch} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
       <nav inert={assistantOverlay || undefined}
         className="mx-mobile-dock"
         aria-label={t("快捷导航", "Quick navigation")}

@@ -497,7 +497,16 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    if run_id is not None:
+    retained_account = (
+        run_id is not None
+        and view == "account-analysis"
+        and detail == "summary"
+        and account in {"A", "B"}
+        and scope is None
+        and range is None
+        and projection == "returns"
+    )
+    if run_id is not None and not retained_account:
         holdings = view in {"holdings-positions", "holdings-lookthrough"}
         valid_holdings = (
             holdings
@@ -520,9 +529,9 @@ def dashboard_lens(
                 else _retained_analytics(store, manifest, scope or "total", projection)
             ),
         )
-    manifest = latest_or_503(request)
+    manifest = _dashboard_manifest(request, run_id)
     dashboard_data = request.app.state.cached_dashboard(
-        manifest, include_history=detail != "summary"
+        manifest, include_history=detail != "summary", retained=retained_account
     )
     base = {
         "view": view,

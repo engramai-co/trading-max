@@ -197,6 +197,9 @@ def create_app(
     # the same run. Keep both, plus the previous run while a new one warms, so
     # moving between pages never rebuilds the projection the last page evicted.
     dashboard_cache: SingleFlightCache[tuple[str, bool], DashboardResponse] = SingleFlightCache(4)
+    retained_dashboard_cache: SingleFlightCache[tuple[str, bool], DashboardResponse] = (
+        SingleFlightCache(2)
+    )
     research_cache_lock = threading.Lock()
     research_cache_run_id: str | None = None
     research_cache: dict[
@@ -209,9 +212,10 @@ def create_app(
     history_reader = HistoryReader(store)
 
     def cached_dashboard(
-        manifest: SnapshotManifest, *, include_history: bool = True
+        manifest: SnapshotManifest, *, include_history: bool = True, retained: bool = False
     ) -> DashboardResponse:
-        return dashboard_cache.get_or_compute(
+        cache = retained_dashboard_cache if retained else dashboard_cache
+        return cache.get_or_compute(
             (manifest.run_id, include_history),
             lambda: DashboardResponse.model_validate(
                 build_dashboard_data(store, manifest, include_history=include_history),

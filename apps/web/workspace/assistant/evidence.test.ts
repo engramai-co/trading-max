@@ -1,6 +1,7 @@
 import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { dividendAmount } from "@/lib/dividend-disclosure";
+import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
 import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText } from "./evidence";
@@ -345,5 +346,49 @@ it("withholds historical amounts with missing currency or units in the reply and
     const output = {...historicalDividend, data:{...historicalDividend.data,items:[incomplete]}};
     expect(verifiedLines(fieldReply("news_and_events",output,"/data/items/0/amount"))).toEqual([]);
     expect(dividendAmount(incomplete.amount,incomplete.currency,incomplete.unit,"en")).toBeNull();
+  }
+});
+
+it("resolves each published historical event date to its source in mixed replies", () => {
+  const items = historicalEvents.data.items;
+  const expected = [
+    ["dividend_pay", "disclosure"], ["news", "publisher"], ["ex_dividend", "disclosure"], ["own_trade", "broker"],
+    ["rating_change", "analysts"], ["filing", "disclosure"], ["earnings", "financials"], ["dividend", "disclosure"],
+  ];
+  expect(items.map(row => row.kind)).toEqual(expected.map(([kind]) => kind));
+  for (const offset of [0, 4]) {
+    const rows = items.slice(offset, offset + 4);
+    const message = fieldReply("news_and_events", historicalEvents, "/data/items/0/date");
+    message.parts[1] = {type:"text", text:rows.map((_, i) =>
+      `{{/data/items/${offset + i}/date}} [${historicalEvents.evidence_id}]`).join("\n")};
+    const lines = verifiedLines(message, "en");
+    expect(lines).toHaveLength(rows.length);
+    rows.forEach((row, index) => {
+      const {text, evidence} = lines[index];
+      expect(text).toContain(row.date);
+      expect(text).toContain(row.title_en);
+      expect(evidence?.source).toBe(expected[offset + index][1]);
+      const href = evidenceHref(evidence!);
+      if (row.kind === "news" || row.kind === "filing" || row.kind === "rating_change") {
+        expect(href).toBe(row.source_url);
+        if (row.kind === "news") expect(evidence?.publisher).toBe(row.publisher);
+      } else if (row.kind === "own_trade") {
+        const url = new URL(href!, "http://localhost");
+        expect(url.pathname).toBe("/review");
+        expect(Object.fromEntries(url.searchParams)).toEqual({account:"A", decision:"2026-11-25.buy.ALFA", snapshotId:historicalEvents.snapshot_id});
+      } else {
+        expect(Object.fromEntries(new URL(href!, "http://localhost").searchParams)).toMatchObject({
+          event:row.kind === "ex_dividend" ? "exDividend" : row.kind,
+          ticker:row.ticker, snapshotId:historicalEvents.snapshot_id, calendarEventId:row.evidence_id,
+        });
+      }
+    });
+  }
+});
+
+it("withholds Broker links without an investing account and a decision identity", () => {
+  const args = {scope:"invest", side:"buy", date:"2026-11-25", ticker:"ALFA", event:"own_trade", eventId:"ev_trade", snapshotId:"original"};
+  for (const missing of [{scope:"broker_total"}, {scope:"cfd"}, {side:""}, {date:""}, {ticker:""}, {eventId:""}, {snapshotId:""}]) {
+    expect(evidenceHref({tool:"news_and_events", source:"broker", evidenceId:"ev_source", arguments:{...args,...missing}})).toBeNull();
   }
 });
