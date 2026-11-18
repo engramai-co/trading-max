@@ -11,6 +11,7 @@ from trading_max.research.fund_references import us_fund
 from trading_max.research.held_funds import observed_product
 from trading_max.research.technical import analyze_ticker
 from trading_max.research.venues import (
+    VenueClaim,
     VenueConflict,
     provider_claim,
     resolve_venue,
@@ -55,7 +56,12 @@ def public_lens(
             series = (
                 price_reader.alpaca_etf(ticker, "1d") if reference else None
             ) or price_reader.get(ticker, "1d", market_etf=True)
-            venue = resolve_venue(ticker, *claims, *series.venue_claims)
+            history_claims = (
+                *claims,
+                *series.venue_claims,
+                VenueClaim("identity", series.published_bar_ticker or series.ticker, ticker),
+            )
+            venue = resolve_venue(ticker, *history_claims)
             if venue.conflict:
                 raise VenueConflict("public quote belongs to another venue")
             frame = pd.DataFrame(
@@ -71,7 +77,7 @@ def public_lens(
                     tz=ZoneInfo(series.timezone or "UTC"),
                 ),
             ).astype(float)
-            frame.attrs.update(asset_type=asset_type, exchange=series.exchange_calendar)
+            frame.attrs.update(asset_type=asset_type, venue_claims=history_claims, ticker=ticker)
             artifact = analyze_ticker(
                 ticker, ticker, frame, {}, currency=series.currency, requested_period="10y"
             )

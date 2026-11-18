@@ -192,7 +192,7 @@ def _freshness(artifact: ArtifactInfo, now: datetime) -> tuple[float | None, str
     return age, "stale"
 
 
-def _market_rows(raw: JsonObject) -> list[JsonObject]:
+def _market_rows(raw: JsonObject, *, with_claims=False) -> list[JsonObject]:
     typed_technical = raw.get("technical")
     if isinstance(typed_technical, dict):
         return [
@@ -200,6 +200,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
                 "ticker": str(row.get("ticker") or ""),
                 "currency": str(row.get("currency") or ""),
                 "spot": row.get("price"),
+                **({"_venue_claims": row_claims(row.get("ticker"), row)} if with_claims else {}),
                 "held": False,
                 "asOf": row.get("as_of") or raw.get("as_of"),
             }
@@ -209,6 +210,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
     return [
         {
             "ticker": str(row.get("t")),
+            **({"_venue_claims": row_claims(row.get("t"), row)} if with_claims else {}),
             "currency": str(row.get("ccy") or ""),
             "spot": row.get("spot"),
             "enterpriseValue": row.get("ev"),
@@ -222,6 +224,9 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
         }
         for row in raw.get("rows", [])
     ]
+
+
+_market_rows_with_claims = partial(_market_rows, with_claims=True)
 
 
 def _fundamentals_rows(raw: JsonObject) -> list[JsonObject]:
@@ -659,7 +664,7 @@ class ResearchLedger:
         rows = self._cached_rows(
             manifest,
             CURRENT_MARKET_KEY,
-            _market_rows,
+            _market_rows_with_claims,
             fallback_key=LEGACY_MARKET_KEY,
         )
         # Compact quote metadata lives in fundamentals. Older technical batches
@@ -676,7 +681,7 @@ class ResearchLedger:
             quote_currency, quote_divisor = major_quote_unit(quote_currency)
             enriched.append(
                 {
-                    **row,
+                    **{key: value for key, value in row.items() if key != "_venue_claims"},
                     "currency": quote_currency or row.get("currency") or "",
                     **{
                         target: (
@@ -2465,6 +2470,17 @@ class ResearchLedger:
         ):
             if row:
                 claims.extend(row_claims(published, row))
+        market = exact_row(
+            self._cached_rows(
+                manifest,
+                CURRENT_MARKET_KEY,
+                _market_rows_with_claims,
+                fallback_key=LEGACY_MARKET_KEY,
+            ),
+            published,
+        )
+        if market:
+            claims.extend(market["_venue_claims"])
         if listing:
             claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
             claims.append(watchlist_claim(listing.ticker, listing.exchange))

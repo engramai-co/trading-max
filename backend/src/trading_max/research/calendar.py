@@ -150,9 +150,21 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
 
 
 def _frame_calendar(attrs, ticker=None, exchange=None):
+    if not (
+        exchange
+        or attrs.get("exchange")
+        or attrs.get("provider_venue")
+        or attrs.get("venue_claims")
+        or attrs.get("mic")
+    ):
+        # A requested symbol alone does not attest that the fetched frame is its session.
+        return None
     requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
     return resolve_venue(
-        requested, *row_claims(requested, attrs), provider_claim(exchange)
+        requested,
+        *row_claims(requested, attrs),
+        *attrs.get("venue_claims", ()),
+        provider_claim(exchange),
     ).calendar
 
 
