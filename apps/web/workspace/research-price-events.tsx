@@ -29,7 +29,7 @@ export function ArchivedTradeRows({ marker, date }: { marker: Marker; date: stri
   return archivedTrades(marker).map(({ side, quantity, orders }) => <li key={side}>
     <time dateTime={date}>{formatCalendarDate(date, locale)}</time>
     <span>{side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} {number(quantity, 8)} {quantity === 1 ? t("股", "share") : t("股", "shares")}</span>
-    <span>{orders} {t("笔", orders === 1 ? "order" : "orders")}</span>
+    <span>{orders} {orders === 1 ? t("笔", "order") : t("笔", "orders")}</span>
     <span>{t("旧档案未记录原币金额", "Original amount unavailable in this archive")}</span>
   </li>);
 }
