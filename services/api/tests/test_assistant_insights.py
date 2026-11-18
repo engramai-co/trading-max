@@ -1748,3 +1748,52 @@ def test_evening_headline_uses_observed_german_venue(bound, venue, session):
     ]
     assert dates == ([session] if session else [])
     assert ("listing_calendar_unavailable" in reading["quality"]["issues"]) == (session is None)
+
+
+@pytest.mark.parametrize(
+    ("symbol", "name"),
+    [
+        ("SYN", "Irish"),
+        ("SYN", "Taiwan"),
+        ("SYN", "KSE"),
+        ("SYN.IR", None),
+        ("SYN.TW", None),
+        ("SYN.KS", None),
+        ("SYN.VI", "UNVERIFIED"),
+    ],
+)
+def test_legacy_venue_names_and_qualified_symbols_align_timed_leads(bound, symbol, name):
+    app, initial, _ = bound
+    store = app.state.store
+    friday = DATES[-3]
+    rows = store.read_json(initial.run_id, tools.TECHNICAL)["rows"]
+    article = {
+        "id": "story",
+        "title": "Synthetic update",
+        "publisher": "Wire",
+        "url": "https://example.test/update",
+        "date": friday,
+        "instant": friday + "T04:00:00Z",
+    }
+    payloads = {
+        tools.TECHNICAL: {"rows": [{**rows[0], "ticker": symbol, "exchange": None}]},
+        tools.FUNDAMENTALS: {"rows": [{"ticker": symbol, "metrics": {"fullExchangeName": name}}]},
+        NEWS_KEY: {"securities": {symbol: {"items": [article], "as_of": friday}}},
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    reading = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": symbol, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+        )
+        .json()
+    )
+    events = [e for day in reading["data"]["items"] for e in day["events"] if e["kind"] == "news"]
+    if name == "UNVERIFIED":
+        assert not events and "listing_calendar_unavailable" in reading["quality"]["issues"]
+    else:
+        assert [(e["date"], e["role"]) for e in events] == [(friday, "lead")]

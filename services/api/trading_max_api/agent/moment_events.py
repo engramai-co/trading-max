@@ -90,7 +90,7 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
         keys.append(FINANCIALS)
     rows = [row for row in listed_headlines(ticker, raw_rows) if row]
     exchange = series.exchange_calendar
-    if not exchange and not series.published_bar_exchange:
+    if not series.published_bar_exchange and metrics.get("fullExchangeName"):
         exchange = listing_calendar(
             ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
         )
