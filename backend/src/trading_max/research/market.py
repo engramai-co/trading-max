@@ -208,7 +208,9 @@ class MarketResearchService:
                     f"{symbol}: relative benchmark unavailable ({type(exc).__name__}: {exc})"
                 )
         try:
-            gbp_usd_frame = histories["GBPUSD=X"].result()
+            gbp_usd_frame = completed_daily_bars(
+                histories["GBPUSD=X"].result(), now=now, ticker="GBPUSD=X"
+            )
         except Exception as exc:
             gbp_usd_frame = pd.DataFrame()
             warnings.append(
@@ -216,7 +218,9 @@ class MarketResearchService:
             )
         for benchmark in ("VOO", "QQQ", "VT"):
             try:
-                frame = histories[benchmark].result()
+                frame = completed_daily_bars(
+                    histories[benchmark].result(), now=now, ticker=benchmark
+                )
                 benchmark_series[benchmark] = _gbp_benchmark_series(
                     frame,
                     gbp_usd_frame,

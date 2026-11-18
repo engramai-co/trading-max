@@ -339,7 +339,8 @@ class YFinanceResearchService:
                 if all(value is None for value in metrics.values()):
                     missing[ticker] = "provider-no-data"
                     warnings.append(f"{ticker}: Yahoo Finance returned no fundamentals")
-                    continue
+                    if not resolve_venue(ticker, *row_claims(ticker, {}, info)).conflict:
+                        continue
                 # Preserve identity even on a conflict so downstream joins cannot silently
                 # use another listing or infer a schedule from the remaining evidence.
                 for key in ("symbol", "mic", "exchange", "exchangeName", "marketSegment"):

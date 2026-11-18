@@ -18,6 +18,11 @@ class PinnedListing:
     price_row: dict | None = None
     fund_bars: bool = False
 
+    @property
+    def symbol(self):
+        """Qualified symbol for this listing, independent of the legacy bar key."""
+        return self.route if "." in self.route else self.ticker
+
     @cached_property
     def base_venue(self):
         return resolve_venue(self.requested, *self.claims, aliases=self.aliases)

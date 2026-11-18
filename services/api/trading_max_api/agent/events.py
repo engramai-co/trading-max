@@ -488,6 +488,8 @@ def event_data(deps, args, *, upcoming):
     codes = read.account_codes(args.scope)
     if not deps.manifest:
         return read.missing()
+    if deps.listing_error:
+        return read.missing(deps.listing_error)
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     issues = []
     keys = []
@@ -542,17 +544,18 @@ def event_data(deps, args, *, upcoming):
                 technical.get(requested),
                 funds.get(requested),
             )
-        ticker = pinned.ticker
+        ticker = pinned.symbol
         if args.ticker:
             trade_args = args.model_copy(update={"ticker": ticker})
         if ticker in selected_tickers:
             continue
         selected_tickers.add(ticker)
-        pinned = pinned.with_event_claims(
-            news_rows.get(ticker),
-            status_rows.get(ticker),
-            *(rows.get(ticker) for key, rows in data.items() if key != NEWS_KEY),
-        )
+        if not pinned.venue().venues:
+            pinned = pinned.with_event_claims(
+                news_rows.get(ticker),
+                status_rows.get(ticker),
+                *(rows.get(ticker) for key, rows in data.items() if key != NEWS_KEY),
+            )
         venue = pinned.venue()
         if venue.conflict:
             issues.append("listing_calendar_unavailable")
@@ -571,7 +574,12 @@ def event_data(deps, args, *, upcoming):
             issues.append("security_calendar_unavailable")
         selected = {}
         for key, rows in data.items():
-            row, rejected = pinned.event_row(rows.get(ticker))
+            parent = (
+                pinned.with_event_claims(news_rows.get(ticker), status_rows.get(ticker))
+                if key == NEWS_KEY
+                else pinned
+            )
+            row, rejected = parent.event_row(rows.get(ticker))
             if rejected:
                 issues.append("listing_calendar_unavailable")
             selected[key] = {ticker: row}

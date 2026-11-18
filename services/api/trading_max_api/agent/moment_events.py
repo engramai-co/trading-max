@@ -17,7 +17,7 @@ def listing_moment_events(
     keys = []
     issues = []
     events = []
-    ticker = series.published_bar_ticker or args.ticker
+    ticker = pinned.symbol
     if calendar:
         keys.append(EARNINGS)
     if metrics:
@@ -25,7 +25,8 @@ def listing_moment_events(
     if not calendar:
         issues.append("security_calendar_unavailable")
 
-    news, rejected = pinned.event_row(news_rows[NEWS_KEY])
+    feed_pin = pinned.with_event_claims(news_rows[NEWS_KEY], news_rows[NEWS_STATUS_KEY])
+    news, rejected = feed_pin.event_row(news_rows[NEWS_KEY])
     if rejected:
         issues.append("listing_calendar_unavailable")
     status = news_rows[NEWS_STATUS_KEY]
@@ -58,7 +59,7 @@ def listing_moment_events(
     # The pinned chart itself can be the only record of a fund distribution.
     # A payment date is distinct from an ex-date, even if both fall on one day.
     distribution_days = {e["date"] for e in events if e["kind"] in {"dividend", "ex_dividend"}}
-    if series.published_bar_ticker == ticker:
+    if series.published_bar_ticker == pinned.ticker:
         for bar in series.events:
             day = bar["date"]
             if (
@@ -76,15 +77,20 @@ def listing_moment_events(
         issues.append("security_news_unavailable")
     if status.get("error"):
         issues.append("security_news_refresh_failed")
-    raw_rows = [*_rows(news.get("items")), *_rows(evidence.get("news"))]
+    news_sources = [
+        (feed_pin, _rows(news.get("items"))),
+        (pinned.with_event_claims(evidence), _rows(evidence.get("news"))),
+    ]
+    raw_rows = [row for _, items in news_sources for row in items]
     if evidence.get("news"):
         keys.append(FINANCIALS)
     rows = []
-    for raw in raw_rows:
-        for row in listed_headlines(ticker, [raw]):
-            if row:
-                row["calendar"] = pinned.venue(*row_claims(ticker, raw)).calendar
-                rows.append(row)
+    for parent, items in news_sources:
+        for raw in items:
+            for row in listed_headlines(ticker, [raw]):
+                if row:
+                    row["calendar"] = parent.venue(*row_claims(ticker, raw)).calendar
+                    rows.append(row)
     asset_type = observed_product(
         series.published_bar_asset_type, metrics.get("quoteType"), fund=series.published_fund_row
     )

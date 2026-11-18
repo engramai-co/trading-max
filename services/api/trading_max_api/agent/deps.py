@@ -51,6 +51,7 @@ class AssistantDeps:
     price_series: PublishedPriceReader | None = None
 
     pin_listing: ListingReader | None = None
+    listing_error: str | None = None
 
     @property
     def snapshot_id(self) -> str | None:
@@ -74,14 +75,18 @@ class AssistantDepsFactory:
         manifest = self.store.latest_manifest()
         price_series = None
         pin_listing = None
+        listing_error = None
         if self.bind_price_series is not None:
             # An unreadable watchlist prevents safe chart routing for this run.
             # The other tools read their own immutable snapshot artifacts.
-            with suppress(OSError, ValueError):
+            try:
                 price_series, pin_listing = self.bind_price_series()
+            except (OSError, ValueError):
+                listing_error = "watchlist_routing_unavailable"
         return AssistantDeps(
             price_series=price_series,
             pin_listing=pin_listing,
+            listing_error=listing_error,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

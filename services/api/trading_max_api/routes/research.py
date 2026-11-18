@@ -514,7 +514,7 @@ def research_prices(
     listing = pinned.held
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
-    symbol = pinned.ticker
+    symbol = pinned.symbol
     reference = us_fund(symbol) if listing is None else None
     market_etf = is_alpaca_listing(symbol) and (
         reference is not None
@@ -735,7 +735,12 @@ def research_lens(
         if security is None:
             raise HTTPException(status_code=404, detail="unknown-security-listing")
         return public_lens(
-            security, view, detail, manifest, app_service(request, "security_prices")
+            security,
+            view,
+            detail,
+            manifest,
+            app_service(request, "security_prices"),
+            app_service(request, "research").pin_listing(ticker, manifest),
         )
     started = perf_counter()
     diagnostics: dict[str, str] = {}

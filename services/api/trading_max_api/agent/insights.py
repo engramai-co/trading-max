@@ -487,6 +487,7 @@ def dated_events(
         ),
     )
     pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
+    ticker = pinned.symbol
     source_rows = {
         key: _ticker_row(read.read(key), ticker) or {}
         for key in (
@@ -500,7 +501,8 @@ def dated_events(
         key: _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
         for key in (NEWS_KEY, NEWS_STATUS_KEY)
     }
-    pinned = pinned.with_event_claims(*source_rows.values(), *news_rows.values())
+    if not pinned.venue().venues:
+        pinned = pinned.with_event_claims(*source_rows.values(), *news_rows.values())
 
     def listing_row(key):
         row, rejected = pinned.event_row(source_rows[key])
