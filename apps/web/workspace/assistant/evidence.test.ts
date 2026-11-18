@@ -230,3 +230,17 @@ it.each([
     expect(line?.text).toBe(expected);
   }
 });
+
+it.each([
+  ["ex_dividend", "exDividend"], ["dividend_pay", "dividend_pay"], ["dividend", "dividend"],
+])("opens the exact retained %s disclosure", (kind, event) => {
+  const row = {kind, ticker:"SYNT", evidence_id:"ev_published", date:"2026-02-05",
+    title_en:"Dividend disclosure", source_url:"https://example.org/current-quote"};
+  const [line] = verifiedLines(fieldReply("upcoming_events", {snapshot_id:"saved", data:{items:[row]}}, "/data/items/0/date"));
+  expect(line.evidence?.source).toBe("disclosure");
+  const url = new URL(evidenceHref(line.evidence!)!, "http://localhost");
+  expect(url.pathname).toBe("/research");
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({
+    event, evidence:"read_research_lens", snapshotId:"saved", calendarEventId:"ev_published", ticker:"SYNT",
+  });
+});

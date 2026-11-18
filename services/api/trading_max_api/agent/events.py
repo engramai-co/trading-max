@@ -560,12 +560,15 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     """Resolve a publication's exact security event without reading the account calendar."""
     args = Scoped(scope="broker_total")
     read = _Read(deps, "upcoming_events", args, args.scope)
-    data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-    # A Review citation can identify a reported result or an individual rating action.
-    # Calendar links using the provider's research ID retain their upcoming-event scope.
-    upcoming = kind == "ex_dividend" or bool(research_event_id)
-    data.update({NEWS_KEY: {}, FINANCIALS: {}})
-    for row in _public(ticker, data, upcoming=upcoming):
+    if kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        rows = listed_dividends(ticker, {}, {}, financials.get("evidence", {}))
+    else:
+        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
+        data.update({NEWS_KEY: {}, FINANCIALS: {}})
+        upcoming = kind in {"dividend_pay", "ex_dividend"} or bool(research_event_id)
+        rows = _public(ticker, data, upcoming=upcoming)
+    for row in rows:
         if not row or row["kind"] != kind:
             continue
         local = (

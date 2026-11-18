@@ -3185,10 +3185,14 @@ export interface components {
             /** Symbol */
             symbol?: string | null;
         };
-        /** CitedItem */
-        CitedItem: {
+        /** CitedHoldingEvent */
+        CitedHoldingEvent: {
             /** Actual Eps */
             actual_eps?: number | null;
+            /** Amount */
+            amount?: number | null;
+            /** Basis */
+            basis?: string | null;
             /** Credit */
             credit?: string | null;
             /** Currency */
@@ -3213,7 +3217,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "earnings" | "ex_dividend" | "rating_change";
+            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
             /** Licence Url */
             licence_url?: string | null;
             /** Local Date */
@@ -13320,7 +13324,7 @@ export interface operations {
         parameters: {
             query: {
                 ticker: components["schemas"]["Ticker"];
-                kind: "earnings" | "ex_dividend" | "rating_change";
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
                 event_id?: string | null;
                 research_event_id?: string | null;
             };
@@ -13338,7 +13342,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CitedItem"];
+                    "application/json": components["schemas"]["CitedHoldingEvent"];
                 };
             };
             /** @description Validation Error */

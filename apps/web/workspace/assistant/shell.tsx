@@ -3,7 +3,7 @@
 import { FocusTrap } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X } from "@phosphor-icons/react";
 import Link from "../link";
 import { useCopy } from "../foundation";
@@ -32,12 +32,30 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     if (overlay) document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
   }, [close, open, overlay, searchOpen]);
+  const panel = useRef<HTMLDivElement>(null);
+  const lastControl = useRef<HTMLElement>(null);
+  const gateClose = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!ready && !pending) lastControl.current = null;
+    if (!open || searchOpen) return;
+    const active = document.activeElement;
+    // A non-modal desktop panel may revalidate while the reader is working elsewhere.
+    if (active && active !== document.body && !panel.current?.contains(active) && !active.matches("[data-assistant-trigger]")) return;
+    if (pending || !ready) {
+      gateClose.current?.focus({preventScroll:true});
+    } else if (lastControl.current?.isConnected) {
+      lastControl.current.focus({preventScroll:true});
+    }
+  }, [open, pending, ready, searchOpen]);
   if (!visited && !open) return null;
-  return <FocusTrap active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
+  return <FocusTrap innerRef={panel} active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {ready && visited && <div className="mx-assistant-thread" hidden={pending}><Sidebar {...{ page, search, scopeLabel }} /></div>}
+    {ready && visited && <div className="mx-assistant-thread" hidden={pending}
+      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} /></div>}
     {(!ready || pending) && <>
-      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button onClick={close} aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
+      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button ref={gateClose} onClick={close}
+        onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}
+        aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
       <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
         {!pending && <Link href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
       </div>

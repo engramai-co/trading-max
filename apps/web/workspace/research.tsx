@@ -1,5 +1,6 @@
 "use client";
 
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
@@ -104,7 +105,7 @@ export function ResearchWorkspace() {
   const reviewEvent = ["decision_timing_and_habits","news_and_events"].includes(params.get("evidence") ?? "") &&
     ["events","actions","ratings"].includes(params.get("analystView") ?? "");
   if (reviewEvent) return <CitedResearchEvent recorded />;
-  if (params.get("evidence") === "read_research_lens" && ["earnings", "earningsWindow", "exDividend"].includes(params.get("event") ?? "")) {
+  if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;

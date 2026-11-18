@@ -4946,7 +4946,7 @@
         "title": "CfdUnmatchedOrder",
         "type": "object"
       },
-      "CitedItem": {
+      "CitedHoldingEvent": {
         "properties": {
           "actual_eps": {
             "anyOf": [
@@ -4958,6 +4958,28 @@
               }
             ],
             "title": "Actual Eps"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
           },
           "credit": {
             "anyOf": [
@@ -5059,6 +5081,8 @@
             "enum": [
               "earnings",
               "ex_dividend",
+              "dividend_pay",
+              "dividend",
               "rating_change"
             ],
             "title": "Kind",
@@ -5223,7 +5247,7 @@
           "title_en",
           "title_zh"
         ],
-        "title": "CitedItem",
+        "title": "CitedHoldingEvent",
         "type": "object"
       },
       "ClosedTradeReview": {
@@ -31622,6 +31646,8 @@
               "enum": [
                 "earnings",
                 "ex_dividend",
+                "dividend_pay",
+                "dividend",
                 "rating_change"
               ],
               "title": "Kind",
@@ -31668,7 +31694,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CitedItem"
+                  "$ref": "#/components/schemas/CitedHoldingEvent"
                 }
               }
             },

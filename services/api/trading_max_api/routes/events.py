@@ -99,10 +99,22 @@ def upcoming(
         raise HTTPException(422, str(exc)) from None
 
 
+CitedKind = Literal["earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change"]
+
+
+class CitedHoldingEvent(UpcomingItem):
+    firm: str | None = None
+    from_grade: str | None = None
+    to_grade: str | None = None
+    kind: CitedKind
+    amount: float | None = None
+    basis: str | None = None
+
+
 class CitedEventQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ticker: Ticker
-    kind: Literal["earnings", "ex_dividend", "rating_change"]
+    kind: CitedKind
     event_id: str | None = Field(default=None, pattern=r"^ev_[A-Za-z0-9_-]{1,96}$")
     research_event_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._:-]{1,128}$")
 
@@ -113,14 +125,7 @@ class CitedEventQuery(BaseModel):
         return self
 
 
-class CitedItem(UpcomingItem):
-    kind: Literal["earnings", "ex_dividend", "rating_change"]
-    firm: str | None = None
-    from_grade: str | None = None
-    to_grade: str | None = None
-
-
-@router.get("/cited", response_model=CitedItem, response_model_exclude_unset=True)
+@router.get("/cited", response_model=CitedHoldingEvent, response_model_exclude_unset=True)
 def cited_event(
     request: Request,
     run_id: Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,100}$")],
