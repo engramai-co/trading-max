@@ -232,7 +232,10 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 if not await asyncio.to_thread(current):
                     raise ValueError("valuation-draft-review-required")
-                proposed = {key: scenario.model_dump() for key, scenario in body.scenarios.items()}
+                proposed = {
+                    key: scenario.model_dump(by_alias=False)
+                    for key, scenario in body.scenarios.items()
+                }
                 for proposal in selection.proposals:
                     proposed[proposal.scenario][proposal.field] = proposal.value
                 projected = preview(
