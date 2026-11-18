@@ -18,7 +18,7 @@ from trading_max.research.valuation_evidence import (
     Metric,
     ValuationEvidenceTools,
 )
-from trading_max.research.valuation_preview import ValuationPreviewRequest, preview
+from trading_max.research.valuation_preview import ScenarioInputs, ValuationPreviewRequest, preview
 
 from ..agent.runtime import error_code
 from ..agent.service import AssistantUnavailable
@@ -232,18 +232,17 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 if not await asyncio.to_thread(current):
                     raise ValueError("valuation-draft-review-required")
-                proposed = dict(body.scenarios)
+                proposed = {key: scenario.model_dump() for key, scenario in body.scenarios.items()}
                 for proposal in selection.proposals:
-                    scenario = proposed[proposal.scenario]
-                    proposed[proposal.scenario] = scenario.model_copy(
-                        update={proposal.field: proposal.value}
-                    )
+                    proposed[proposal.scenario][proposal.field] = proposal.value
                 projected = preview(
                     view.basis,
                     ValuationPreviewRequest(
                         family=view.basis.family,
                         horizon=body.horizon,
-                        scenarios=proposed,
+                        scenarios={
+                            key: ScenarioInputs.model_validate(row) for key, row in proposed.items()
+                        },
                         formula_version=view.formula_version,
                     ),
                 )
