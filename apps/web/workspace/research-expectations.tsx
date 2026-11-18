@@ -90,10 +90,22 @@ export function AnalystExpectations({
   const snapshotDay = targetAsOf.slice(0, 10);
   const spot = price?.price ?? quote?.price ?? market.spot ?? data.valuation?.spot;
   const spotDay = (price?.asOf ?? quote?.asOf ?? str(market.asOf)).slice(0, 10);
-  const latestObservation = snapshotDay > spotDay ? snapshotDay : spotDay;
-  const scaleForDay = targetSplitScale(currencyMatches ? prices.data : undefined, latestObservation);
-  const comparableSpot = targetAmount(spot, scaleForDay(spotDay, 1));
-  const targets = targetSnapshot(object(analyst.priceTargets), comparableSpot, scaleForDay(snapshotDay, unitScale));
+  const series = currencyMatches ? prices.data : undefined;
+  const chartDay = series?.points.at(-1)?.date.slice(0, 10) ?? "";
+  const splitScale = targetSplitScale(series);
+  const firstClose = series?.points[0]?.date.slice(0, 10);
+  const laterObservation = snapshotDay > spotDay ? snapshotDay : spotDay;
+  const bothOnChart = firstClose && spotDay >= firstClose && snapshotDay >= firstClose && laterObservation <= chartDay;
+  const comparisonDay = bothOnChart ? chartDay : laterObservation;
+  const snapshotScale = splitScale(snapshotDay, comparisonDay, unitScale);
+  const spotScale = splitScale(spotDay, comparisonDay, 1);
+  const comparable = snapshotScale != null && spotScale != null;
+  const datedSpot = targetAmount(spot, comparable ? spotScale : 1);
+  const rawTargets = object(analyst.priceTargets);
+  const targets = targetSnapshot(rawTargets, comparable ? datedSpot : null, comparable ? snapshotScale : unitScale);
+  // The chart uses the last close's share basis. Later announcements retain their dated amounts.
+  const chartScale = (day: string) => day > chartDay ? unitScale : splitScale(day, chartDay, unitScale);
+  const chartTargets = targetSnapshot(rawTargets, targetAmount(spot, splitScale(spotDay, chartDay, 1)), chartScale(snapshotDay));
   const median = targets.rows.find((row) => row.key === "median")!;
   const ratingLabels = [
     t("强烈买入", "Strong buy"),
@@ -141,7 +153,7 @@ export function AnalystExpectations({
   const history = objects(analyst.upgradesDowngrades).map(recommendationChange).flatMap((row) => {
     if (!closeDays.length || !lastTargetDay || row.date < closeDays[0] || row.date > lastTargetDay ||
         !Number.isFinite(Date.parse(row.date))) return [];
-    const target = targetAmount(row.target, scaleForDay(row.date, unitScale));
+    const target = targetAmount(row.target, chartScale(row.date));
     return target == null ? [] : [{ ...row, target }];
   });
   const targetsByDay = new Map<string, typeof history>();
@@ -163,8 +175,8 @@ export function AnalystExpectations({
   const values = [
     ...points.flatMap((p) => [numeric(p.low), numeric(p.high), numeric(p.close)]),
     ...history.map((r) => r.target),
-    targets.spot,
-    ...targets.rows.map((r) => r.value),
+    chartTargets.spot,
+    ...chartTargets.rows.map((r) => r.value),
   ].filter((v): v is number => v != null);
   const minValue = values.length ? Math.min(...values) : 0;
   const maxValue = values.length ? Math.max(...values) : 1;
@@ -280,8 +292,9 @@ export function AnalystExpectations({
                 median.change == null ? "mx-muted" : "mx-" + tone(median.change)
               }
             >
-              <b>{percent(median.change, true)}</b>{" "}
-              {t("相对现价", "vs current price")}
+              {median.value != null && datedSpot != null && !comparable
+                ? t("拆股记录待核实", "Split coverage unverified")
+                : <><b>{percent(median.change, true)}</b>{" "}{t("相对现价", "vs current price")}</>}
             </span>
           </div>
           <div className="mx-target-chart-heading">
@@ -366,13 +379,13 @@ export function AnalystExpectations({
                   hasCandles ? candleSeries(t("价格", "Price"), timeline.map((i) => candles[i] ?? [null, null, null, null]), c) : {
                     type: "line",
                     name: t("收盘价", "Close"),
-                    data: timeline.map((i) => points[i]?.close ?? null),
+                    data: points.map((point, index) => [closeDays[index], point.close]),
                     symbol: "none",
                     lineStyle: { color: c.brand, width: 2 },
                     itemStyle: { color: c.brand },
                     connectNulls: false,
                     markLine:
-                      targets.spot == null
+                      chartTargets.spot == null
                         ? undefined
                         : {
                             silent: true,
@@ -383,7 +396,7 @@ export function AnalystExpectations({
                               type: "dotted",
                               opacity: 0.55,
                             },
-                            data: [{ yAxis: targets.spot }],
+                            data: [{ yAxis: chartTargets.spot }],
                           },
                   },
                   {
@@ -397,12 +410,12 @@ export function AnalystExpectations({
                     type: "line",
                     xAxisIndex: 1,
                     yAxisIndex: 1,
-                    data: targets.range?.map((value) => [0.12, value]) ?? [],
+                    data: chartTargets.range?.map((value) => [0.12, value]) ?? [],
                     symbol: "none",
                     lineStyle: { color: c.axis, width: 10, opacity: 0.25 },
                     silent: true,
                   },
-                  ...targets.rows
+                  ...chartTargets.rows
                     .filter((row) => row.key !== "mean" && row.value != null)
                     .map((row) => ({
                       type: "scatter" as const,
@@ -436,7 +449,7 @@ export function AnalystExpectations({
           <div className="mx-target-dateline">
             <span>
               {t("现价", "Current price")}{" "}
-              <strong>{currency(targets.spot, code, 2)}</strong>
+              <strong>{currency(datedSpot, code, 2)}</strong>
             </span>
             <span>
               {spotLabel || t("价格日期未提供", "Price date unavailable")}
