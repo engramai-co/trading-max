@@ -41,7 +41,9 @@ class YFinanceQuoteProvider:
                 )
                 if frame.empty:
                     continue
-                metadata = instrument.get_history_metadata() or {}
+                # get_history_metadata() may issue another chart request.
+                history = getattr(instrument, "_price_history", None)
+                metadata = getattr(history, "_history_metadata", None) or {}
                 closes = frame["Close"].dropna()
                 if closes.empty or not metadata.get("currency") or not metadata.get("symbol"):
                     continue

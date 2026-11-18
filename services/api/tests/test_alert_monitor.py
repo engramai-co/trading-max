@@ -110,6 +110,8 @@ def test_alert_monitor_uses_separate_held_and_watchlist_intervals(
 
 
 def test_yahoo_quote_provider_reads_unit_identity_and_time_from_the_price_response(monkeypatch):
+    from types import SimpleNamespace
+
     import pandas as pd
 
     from services.api.trading_max_api.alert_monitor import YFinanceQuoteProvider
@@ -118,8 +120,13 @@ def test_yahoo_quote_provider_reads_unit_identity_and_time_from_the_price_respon
         def history(self, **kwargs):
             return pd.DataFrame({"Close": [9000.0]}, index=pd.DatetimeIndex(["2026-08-03T15:00Z"]))
 
+        def __init__(self):
+            self._price_history = SimpleNamespace(
+                _history_metadata={"symbol": "SYN.L", "exchangeName": "LSE", "currency": "GBp"}
+            )
+
         def get_history_metadata(self):
-            return {"symbol": "SYN.L", "exchangeName": "LSE", "currency": "GBp"}
+            raise AssertionError("metadata must come from the observed five-minute history")
 
     monkeypatch.setattr(
         "services.api.trading_max_api.alert_monitor.yf.Ticker", lambda symbol: Instrument()
