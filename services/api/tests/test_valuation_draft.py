@@ -286,7 +286,9 @@ def test_draft_fields_follow_the_selected_engine(desk, family):
     selected = next(
         p for p in result["proposals"] if p["scenario"] == "base" and p["category"] == "derived"
     )
-    assert selected["value"] == pytest.approx(400 / 2000 if family == "residual-income" else 400 / 4000)
+    assert selected["value"] == pytest.approx(
+        400 / 2000 if family == "residual-income" else 400 / 4000
+    )
 
 
 def test_only_deferred_evaluated_candidates_can_leave_the_run(desk, monkeypatch):

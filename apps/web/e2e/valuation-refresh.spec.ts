@@ -870,6 +870,10 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
       await editor.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
       await page.screenshot({path: join(dir,`${info.project.name}-${locale}-${scheme}.png`)});
     }
+    await editor.getByRole("link", { name: en ? "Analysts" : "分析师", exact:true }).first().click();
+    const evidence = page.locator("#draft-evidence-estimate");
+    await expect(evidence).toContainText("19%");
+    await expect(evidence.getByRole("link")).toHaveAttribute("href", /view=analyst/);
     await editor.getByRole("button", {name:(en ? "Reject " : "拒绝 ") + margin, exact:true}).click();
     await editor.getByRole("button", {name:en ? "Save model version" : "保存模型版本",exact:true}).click();
     await page.getByRole("dialog").getByRole("button",{name:en ? "Save version" : "保存版本",exact:true}).click();

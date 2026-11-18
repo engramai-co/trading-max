@@ -358,6 +358,7 @@ function ModelEditor({
       );
       setSaveOpen(false);
       drafting.reset();
+      if (payload.draftReview) await client.invalidateQueries({ queryKey: ["valuation-workbench", initial.basis.ticker] });
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
       });
@@ -669,7 +670,12 @@ function ModelEditor({
                     setDraftValue(null);
                     setInvalidInput(false);
                     setInputs(prev => ({ ...prev, [selected]: { ...prev[selected], [field.key]: next === "accepted" ? p.value : old } }));
-                    if (field.key === "revenueCagr") setReferences(refs => refs.filter(r => r.scenario !== selected));
+                    if (field.key === "revenueCagr") {
+                      setReferences(refs => [
+                        ...refs.filter(r => r.scenario !== selected),
+                        ...(next === "rejected" ? (draft.before.references ?? []).filter(r => r.scenario === selected) : []),
+                      ]);
+                    }
                   }} />;
               }
               return field.key === activeField ? (
