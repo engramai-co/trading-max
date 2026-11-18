@@ -146,7 +146,8 @@ it("keeps the selected research lens, object and evidence destination", () => {
     .toMatchObject({ page: "research", ticker: "^TEST", lens: "technical", scope: "broker_total" });
   const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
   expect(evidenceHref(story)).toBe(story.arguments.url);
-  expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}})).not.toMatch(/^javascript:/);
+  // An unsafe publisher address leaves the source word without a link.
+  expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}}) ?? "").not.toMatch(/^javascript:/);
 });
 
 describe("page readings in the sidebar", () => {

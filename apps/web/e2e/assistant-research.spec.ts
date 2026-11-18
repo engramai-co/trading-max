@@ -99,7 +99,8 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await expect(card).toHaveCount(0);
     await expect(page.locator(".mx-event-track button").filter({hasText:"B"})).not.toHaveClass(/mx-track-moment/);
     await track.click(); await expect(card.locator(".mx-reading-line")).toHaveCount(2);
-    expect(reads.filter(r=>r==="key-moment")).toHaveLength(1);
+    // Reopening rechecks the saved reading against its retained publication.
+    expect(reads.filter(r=>r==="key-moment")).toHaveLength(2);
     await card.locator(".mx-reading-actions button").first().click();
     const composer = page.locator(".mx-assistant-composer textarea");
     await expect(composer).not.toHaveValue("");
@@ -141,6 +142,10 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await page.goto("/research?ticker=SYNT&view=fundamentals");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
     await expect(digest).toBeVisible();
+    // The brief opens the reading column, ahead of the reporting-period controls and first section.
+    expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild &&
+      !!el.parentElement?.querySelector(".mx-research-context-toolbar"))).toBe(true);
+    await shot("financials");
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile?390:1440);
   });
 }
@@ -354,7 +359,7 @@ test("unavailable listing prices disclose the listing and withhold its moment co
   await page.route("**/api/backend/research/SYNT/prices?**",route =>
     route.fulfill({status:404,json:listingRefusal}));
   await page.goto("/research?ticker=SYNT&view=technical");
-  await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible({timeout:4000});
+  await expect(page.getByText("Price history unavailable for this listing")).toBeVisible({timeout:4000});
   await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
   expect(calls).toEqual([]);
 });
@@ -369,7 +374,7 @@ test("a listing refusal clears previously verified bars and moment controls", as
   page.on("request", req => { if (req.url().includes("/assistant/key-moments/")) candidates.push(req.url()); });
   await page.route("**/api/backend/research/SYNT/prices?**", route => route.fulfill({status:404,json:listingRefusal}));
   await page.getByRole("group",{name:"Price range"}).getByRole("button",{name:"1D",exact:true}).click();
-  await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible();
+  await expect(page.getByText("Price history unavailable for this listing")).toBeVisible();
   await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
   expect(candidates).toEqual([]);
 });
