@@ -2542,7 +2542,14 @@ class ResearchLedger:
     def price_venue(pinned, series):
         """Live provider claims refine the same raw price evidence as the published chart."""
         observed = series.published_bar_ticker or series.ticker
-        claims = [*series.venue_claims, VenueClaim("identity", observed, pinned.ticker)]
+        claims = [
+            *series.venue_claims,
+            VenueClaim("identity", observed, pinned.ticker),
+            *row_claims(
+                observed,
+                {"mic": series.published_bar_mic, "exchange": series.published_bar_exchange},
+            ),
+        ]
         if series.source == ALPACA_SIP:
             claims.append(VenueClaim("region", "US", observed))
         venue = pinned.venue(*claims)

@@ -610,3 +610,23 @@ def test_overview_and_historical_score_respect_the_observed_listing(bound):
         app, {tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="NYQ")]}}
     )
     assert all(point.run_id != manifest.run_id for point in app.state.research.timeline(ticker))
+
+
+def test_live_exchange_metadata_refines_the_pinned_row_even_on_an_older_series(bound, monkeypatch):
+    from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
+
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    row = base_row(app, initial, ticker, exchange="LSE")
+    publish(app, {tools.TECHNICAL: {"rows": [row]}})
+    live = ResearchPriceSeries(
+        ticker=ticker,
+        currency="GBP",
+        as_of=FRIDAY,
+        points=row["price_series"],
+        available_sessions=len(row["price_series"]),
+        published_bar_ticker=ticker,
+        published_bar_exchange="NYQ",
+    )
+    monkeypatch.setattr(app.state.security_prices, "get", lambda *args, **kwargs: live)
+    assert TestClient(app).get(f"/v1/research/{ticker}/prices?interval=15m").status_code == 404
