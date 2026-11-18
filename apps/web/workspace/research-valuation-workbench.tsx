@@ -182,26 +182,30 @@ export function ValuationWorkbench({
     />
   );
   const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
-  const missing =
-    reason === "listed-share-unit-unverified"
-      ? t("上市股数口径未核实", "Share unit unverified for this listing")
-      : reason === "currency-conversion-unavailable"
-        ? t("缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing")
-        : reason === "opening-cash-required-for-burn"
-          ? t("估算融资所需的期初现金余额缺失", "Opening cash is missing for the financing calculation")
-          : reason === "positive-common-equity-and-common-income-required"
-            ? t(
-                "需要同期普通股净利润与正的普通股净资产",
-                "Common earnings and positive common equity are required for the same period",
-              )
-            : t(
-                "此模型缺少完整同期报表、报价或上市股数",
-                "Matching statements, a quote and verified listing shares are required",
-              );
+  const shareReason = reason === "listed-share-unit-unverified"
+    ? t("上市股数口径未核实", "Share unit unverified for this listing")
+    : reason === "receipt-ratio-unverified"
+      ? t("存托凭证换股比例未核实", "Ordinary shares per receipt unverified")
+      : undefined;
+  const missing = shareReason ?? (
+    reason === "currency-conversion-unavailable"
+      ? t("缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing")
+      : reason === "opening-cash-required-for-burn"
+        ? t("估算融资所需的期初现金余额缺失", "Opening cash is missing for the financing calculation")
+        : reason === "positive-common-equity-and-common-income-required"
+          ? t(
+              "需要同期普通股净利润与正的普通股净资产",
+              "Common earnings and positive common equity are required for the same period",
+            )
+          : t(
+              "此模型缺少完整同期报表、报价或上市股数",
+              "Matching statements, a quote and verified listing shares are required",
+            )
+  );
 
   return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
     <ValuationReadout data={data} preview={preview} reading={currentReading}
-      withheldReason={reason === "listed-share-unit-unverified" && !preview ? missing : undefined}
+      withheldReason={preview ? undefined : shareReason}
       retry={query.isError ? query.refetch : undefined} refreshing={query.isFetching} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}

@@ -881,6 +881,56 @@ def test_retained_ordinary_snapshot_upgrades_without_republishing(
     )
 
 
+@pytest.mark.parametrize("family", ["cash-flow", "net-income", "residual-income"])
+@pytest.mark.parametrize(
+    ("ticker", "unit", "expected"),
+    [
+        ("SYN", "receipt", "receipt-ratio-unverified"),
+        ("SYN", "ordinary", "complete-ttm-currency-and-share-count-required"),
+        ("BABA", "receipt", "complete-ttm-currency-and-share-count-required"),
+    ],
+)
+def test_preview_distinguishes_unverified_receipt_ratio_from_missing_count(
+    tmp_path, family, ticker, unit, expected
+):
+    issuer = replace(MATURE, ticker=ticker)
+    store = ArtifactStore(tmp_path)
+
+    def inject(batches):
+        stored = batches["research/valuation.json"]["rows"][0]["assumptions"]
+        stored.update(shareUnit=unit, sharesOutstanding=None)
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 25)}
+        )
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Common Stock Equity", **dict.fromkeys(dates, 500)}
+        ]
+        if expected == "receipt-ratio-unverified":
+            raw["quarterlyBalanceSheet"].append(
+                {"index": "Ordinary Shares Number", **dict.fromkeys(dates, 100)}
+            )
+
+    _publish(store, issuer, inject=inject)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = SimpleNamespace()
+    body = {**_request().model_dump(exclude={"citations"}), "family": family}
+    with TestClient(app) as client:
+        for version in ("v1", "v2"):
+            response = client.post(f"/{version}/research/{ticker}/valuation-preview", json=body)
+            assert response.status_code == 422
+            legacy = (
+                "positive-common-equity-and-common-income-required"
+                if family == "residual-income" and ticker == "BABA"
+                else "complete-ttm-currency-and-share-count-required"
+            )
+            assert response.json()["detail"] == (expected if version == "v2" else legacy)
+
+
 @pytest.mark.parametrize("venue", [None, "OTC Markets", "NasdaqGS", "NYSE"])
 def test_receipt_requires_its_reviewed_venue(tmp_path, venue):
     issuer = replace(MATURE, ticker="BABA", share_count=800)

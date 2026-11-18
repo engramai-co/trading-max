@@ -45,16 +45,26 @@ def freeze_basis(
     name: str = "",
     is_adr: bool = False,
     ordinary_listing: bool = False,
+    legacy_reasons: bool = False,
 ) -> FrozenValuationBasis:
     period, values = statement_basis(facts, family, listing)
-    if family == "residual-income" and not period:
+    # A class or receipt can require a share count in the same period. A complete
+    # book and earnings period without that count keeps the missing-shares reason.
+    if (
+        family == "residual-income"
+        and not period
+        and (legacy_reasons or not listing or not statement_basis(facts, family)[0])
+    ):
         raise ValueError("positive-common-equity-and-common-income-required")
     if not period or not currency or not facts.currency or not spot or spot <= 0:
         raise ValueError("complete-ttm-currency-and-share-count-required")
     shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr, ordinary_listing)
     if not shares or shares <= 0:
-        if listing and ratio is None and not ordinary_listing and not is_adr:
-            raise ValueError("listed-share-unit-unverified")
+        if not legacy_reasons and listing and ratio is None:
+            if is_adr:
+                raise ValueError("receipt-ratio-unverified")
+            if not ordinary_listing:
+                raise ValueError("listed-share-unit-unverified")
         raise ValueError("complete-ttm-currency-and-share-count-required")
     if facts.currency == currency:
         fx = 1

@@ -122,6 +122,7 @@ def _valuation_preview(
             quote_id=quote.id,
             listing=quote.listing,
             name=stored.get("issuerName") or "",
+            legacy_reasons=legacy,
             is_adr=bool(stored.get("isAdr")),
             ordinary_listing=stored.get("shareUnit") == "ordinary"
             and stored.get("listing") == quote.listing,
@@ -190,10 +191,7 @@ def _valuation_preview(
                     scenarios=scenarios, family=family, references=references
                 )
     except ValueError as exc:
-        detail = str(exc)
-        if legacy and detail == "listed-share-unit-unverified":
-            detail = "complete-ttm-currency-and-share-count-required"
-        raise HTTPException(status_code=422, detail=detail) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         if legacy:
             if (

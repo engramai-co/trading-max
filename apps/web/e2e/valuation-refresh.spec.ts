@@ -607,6 +607,11 @@ for (const locale of ["en", "zh"] as const) {
     const missingUnit = locale === "en" ? "Share unit unverified for this listing" : "上市股数口径未核实";
     await expect(panel).toContainText(missingUnit);
     await expect(row).toContainText(missingUnit);
+    error = "receipt-ratio-unverified";
+    await page.reload();
+    const ratio = locale === "en" ? "Ordinary shares per receipt unverified" : "存托凭证换股比例未核实";
+    await expect(panel).toContainText(ratio);
+    await expect(row).toContainText(ratio);
     error = "complete-ttm-currency-and-share-count-required";
     await page.reload();
     await expect(panel).toContainText(locale === "en"
