@@ -372,7 +372,8 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await lenses.getByRole("tab", { name: "同类" }).click();
     await expect(page.getByRole("region", { name: "同类 ETF 对比" })).toContainText("Synthetic peer ETF");
     await page.getByText("本基金分位").click();
-    await expect(page.getByText("第 0 分位")).toBeVisible();
+    // Percentiles read as P0–P100 across Research.
+    await expect(page.locator("details").filter({ hasText: "本基金分位" }).locator(".mx-etf-evidence")).toHaveText(/^P0\s*·\s*2 只$/);
     await expect(page.getByRole("button", { name: "同类说明" })).toBeVisible();
     await shot(page, info.project.name, "peers", "dark");
     await lenses.getByRole("tab", { name: "研究记录" }).click();

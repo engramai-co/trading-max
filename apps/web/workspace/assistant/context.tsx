@@ -11,7 +11,7 @@ import type { Reading } from "./evidence";
 
 export type RoleCard = {
   role: string; title: string; object: string; questions: readonly string[]; reading?: Reading | null;
-  context?: Record<string, unknown>;
+  status?: string; context?: Record<string, unknown>;
   pendingBinding?: boolean;
   origin?: { page: string; search: string; snapshotId?: string };
 };

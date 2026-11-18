@@ -70,6 +70,8 @@ def _series(
         tuple(int(stamp.timestamp()) for stamp, _ in ordered),
         tuple(value for _, value in ordered),
         previous_close=previous_close,
+        provider_symbol=symbol,
+        currency="USD",
         timezone=NY.key,
         source=source,
     )

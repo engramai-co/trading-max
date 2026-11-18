@@ -40,7 +40,26 @@ from services.api.trading_max_api.watchlist import SecuritySearchService, Watchl
 @pytest.fixture
 def publication(tmp_path):
     store = ArtifactStore(tmp_path)
-    manifest = publish_fixture(store)
+    manifest = publish_fixture(
+        store,
+        extra_artifacts={
+            "research/security_news.json": {
+                "securities": {
+                    "TEST": {
+                        "items": [
+                            {
+                                "date": "2026-02-03",
+                                "title": "Issuer releases results",
+                                "publisher": "Example",
+                                "url": "https://example.invalid/results",
+                                "id": "synthetic-news",
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+    )
     research = ResearchLedger(store, WatchlistStore(tmp_path))
     deps = replace(
         AssistantDepsFactory(store, bind_price_series=research.bind_price_series).for_run(),
@@ -452,6 +471,7 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
     decisions["accounts"]["A"]["decisions"][0].update(before_earnings=False, basket_buy=False)
     updated = store.immutable_artifacts.put_json(key=tools.DECISIONS, payload=decisions).ref
     deps = replace(deps, manifest=republish(store, {tools.DECISIONS: updated}))
+    series = deps.price_series("TEST", deps.manifest, limit=5)
     before = _hash_state(store.data_root)
 
     def forbidden(*_args, **_kwargs):
@@ -497,6 +517,13 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
             "ticker": "TEST",
             "start": "2026-01-28",
             "end": "2026-02-03",
+        },
+        "research_position": {"ticker": "TEST", "published_series_id": series.published_series_id},
+        "research_earnings": {"ticker": "TEST"},
+        "research_headline": {
+            "ticker": "TEST",
+            "date": "2026-02-03",
+            "reference": "synthetic-news",
         },
         "news_and_events": {"scope": "invest", "start": "2026-01-01", "end": "2026-02-03"},
         "upcoming_events": {"scope": "invest", "start": "2026-02-03", "end": "2026-02-10"},

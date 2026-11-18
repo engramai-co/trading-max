@@ -834,6 +834,9 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
+    quote_exchange: str | None = None
+    observed_series_id: str | None = None
+    snapshot_id: str | None = None
     # The legacy storage key can differ from the verified listing used for external reads.
     published_bar_ticker: str | None = Field(default=None, exclude=True)
     venue_claims: tuple[VenueClaim, ...] = Field(default=(), exclude=True)
@@ -1175,6 +1178,7 @@ class ResearchLensSnapshot(ApiModel):
     options: OptionSnapshot | None = None
     options_peer: USFundPeer | None = None
     fundamentals: dict[str, Any] | None = None
+    earnings_brief_eligible: bool = False
     analyst: dict[str, Any] | None = None
     financials: dict[str, Any] | None = None
     latest_event: ResearchEvent | None = None

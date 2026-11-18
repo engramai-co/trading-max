@@ -268,6 +268,39 @@ test.describe("decision review", () => {
     await expect(more).toBeHidden();
     await expect(entry.getByRole("link")).toBeFocused();
   });
+
+  for (const locale of ["zh", "en"] as const) {
+    test("the horizon switch's help says how each window is measured, in " + locale, async ({ page }) => {
+      const zh = locale === "zh";
+      await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
+      await page.goto("/review?account=A");
+      const help = page.locator(".mx-horizon-switch").getByRole("button", { name: zh ? "对照时点说明" : "Compare at explained" });
+      await help.click();
+      const card = page.getByRole("dialog", { name: zh ? "对照时点" : "Compare at" });
+      for (const words of zh ? [
+        "每笔买卖都和“不做这笔交易”比",
+        "按英镑计、含分红的总回报",
+        "买入后总回报为正记为赚，为负记为亏；卖出后总回报为正记为少赚，为负记为少亏",
+        "“20 个交易日后”从决定当天的收盘算到之后第 20 个交易日的收盘",
+        "“至今”算到最近一个收盘",
+        "结果还不可得的决定不计入成绩，在时间轴上是零线上的空心点",
+        "还不满 20 个交易日（“至今”则是之后还没有收盘），或还在等待价格、汇率或分红的最终值",
+        "“最近”里的金额不随切换变化，总是按至今计算",
+      ] : [
+        "Each buy or sell is compared with not making that trade",
+        "by its total return in GBP over the window, dividends included",
+        "after a sell, a positive return is a gain given up and a negative one a loss avoided",
+        "“20 trading days” runs from the close on the day of the decision to the close 20 trading days later",
+        "“To date” runs to the latest close",
+        "A decision whose result is not available yet is not scored and sits as a hollow point on the timeline’s zero line",
+        "or one still waiting for the final value of a price, exchange rate or dividend",
+        "Amounts under “Recently” do not follow the switch",
+      ]) await expect(card).toContainText(words);
+      await page.keyboard.press("Escape");
+      await expect(card).toBeHidden();
+      await expect(help).toBeFocused();
+    });
+  }
 });
 
 test.describe("a link to one decision", () => {
@@ -544,6 +577,27 @@ test.describe("a link to one decision", () => {
     await expect(page.getByRole("table", { name: "结果最大的日内往返" }).getByRole("row")).toHaveCount(3);
     await expect(page.getByRole("heading", { name: "与持有期最高收盘对照", level: 2 })).toBeVisible();
     await expect(page.getByRole("table", { name: "少赚最多的已结束交易" })).toContainText("SYNA");
+  });
+
+  test("the review's angles still open as the arrows reach them, and Tab leaves from the open one", async ({ page }) => {
+    await page.goto("/review?account=A");
+    const angles = page.getByRole("tablist", { name: "复盘角度" });
+    const outcomes = angles.getByRole("tab", { name: "投资结果" });
+    const attribution = angles.getByRole("tab", { name: "盈亏归因" });
+    await expect(outcomes).toHaveAttribute("aria-selected", "true");
+    await outcomes.focus();
+    // These tabs keep automatic activation: an arrow opens the angle it reaches.
+    await page.keyboard.press("ArrowRight");
+    await expect(attribution).toBeFocused();
+    await expect(attribution).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/reviewView=attribution/);
+    await expect(attribution).toHaveAttribute("tabindex", "0");
+    await expect(outcomes).toHaveAttribute("tabindex", "-1");
+    // The open angle is the tab stop: Tab leaves the list and Shift+Tab returns to it.
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("role"))).not.toBe("tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(attribution).toBeFocused();
   });
 
   test("a decision the data no longer has leaves the normal review", async ({ page }) => {

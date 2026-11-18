@@ -1,4 +1,6 @@
 "use client";
+import dynamic from "next/dynamic";
+import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
 
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -25,7 +27,7 @@ import {
   MagnifyingGlass,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
   Empty,
@@ -36,6 +38,7 @@ import {
   Pending,
   QueryError,
   Tabs,
+  tabId,
   useCopy,
 } from "./foundation";
 import {
@@ -46,7 +49,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { IndexResearchWorkspace } from "./research-index";
-import { SecurityFinder } from "./research-finder";
+import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
@@ -99,14 +102,17 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
   return useQuery({ ...researchPriceQuery(ticker, revision, "1d", "3M"), enabled });
 }
 
+const CitedResearch = dynamic(() => import("./assistant/cited-research"));
+
 export function ResearchWorkspace() {
   const { params } = useRouteState();
   const reviewEvent = ["decision_timing_and_habits","news_and_events"].includes(params.get("evidence") ?? "") &&
     ["events","actions","ratings"].includes(params.get("analystView") ?? "");
   if (reviewEvent) return <CitedResearchEvent recorded />;
-  if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
+  if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
+  if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
 }
 
@@ -120,6 +126,12 @@ function SecurityResearchWorkspace() {
   });
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
+  // Search hands over a security that is not in the research list.
+  const handover = useSearchHandover((text) => {
+    setFinderQuery(text);
+    setFinder(true);
+  });
+  const lensPanel = useId();
   const [universeOpen, setUniverseOpen] = useState(false);
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
@@ -215,6 +227,7 @@ function SecurityResearchWorkspace() {
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
   const technicalPrice = tab === "technical";
+  const earnings = useEarningsBrief(ticker, lensName, lens.data?.runId ?? revision ?? undefined, Boolean(selected && !isFund && (lensName === "analyst" || lensName === "fundamentals")), lens.isPlaceholderData ? undefined : lens.data);
   const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
@@ -326,7 +339,10 @@ function SecurityResearchWorkspace() {
         setPinned(!pinned);
         setUniverseOpen(pinned);
       }}
-      onSearch={() => setFinder(true)}
+      onSearch={() => {
+        setFinderQuery("");
+        setFinder(true);
+      }}
     />
   );
   const universe = (
@@ -409,15 +425,6 @@ function SecurityResearchWorkspace() {
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
-          <Tooltip label={t("搜索", "Search")}>
-            <ActionIcon
-              variant="default"
-              aria-label={t("搜索", "Search")}
-              onClick={() => setFinder(true)}
-            >
-              <MagnifyingGlass size={17} />
-            </ActionIcon>
-          </Tooltip>
           {selected && (
             <SecurityActions
               held={selected.held}
@@ -559,6 +566,8 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
+                  activation="manual"
+                  panel={lensPanel}
                   onChange={(v) => update({
                     view: v === "overview" ? null : v,
                     fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
@@ -577,6 +586,8 @@ function SecurityResearchWorkspace() {
                       : shortTitles[value],
                   }))}
                 />
+                <div className="mx-research-lens" role="tabpanel" id={lensPanel}
+                  aria-labelledby={tabId(lensPanel, tab === "financials" ? "fundamentals" : tab)}>
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
                   {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
                 </Notice>}
@@ -594,6 +605,8 @@ function SecurityResearchWorkspace() {
                     : <Panel className="mx-research-wait"><Pending shape="chart" height={338} quiet /></Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
+                {tab === "overview" && displayTab === tab && !prices.isPlaceholderData && (prices.data?.publishedSeriesId || prices.data?.observedSeriesId) && <PositionReading
+                  security={{ticker: prices.data.ticker, published_series_id: (prices.data.publishedSeriesId || prices.data.observedSeriesId)!}} snapshotId={prices.data.snapshotId ?? shell.data?.status.runId ?? undefined} />}
                 {displayTab === "overview" && shown && (!isFund || selected.status !== "pending") && (runtime.status === "failed"
                   ? <QueryError retry={runtime.retry} />
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
@@ -604,6 +617,7 @@ function SecurityResearchWorkspace() {
                               key={ticker}
                               ticker={ticker}
                               runId={revision ?? ""}
+                              snapshotId={shell.data?.status.runId ?? undefined}
                               data={displayTab === "technical" ? displayData : undefined}
                               pending={lens.isPending}
                               error={lens.isError}
@@ -666,7 +680,8 @@ function SecurityResearchWorkspace() {
                             onExplore={exploreHolding}
                           />
                         ) : (
-                          <FinancialWorkbench key={ticker} data={displayData} ticker={ticker} revision={revision} preview={readOnly} />
+                          <FinancialWorkbench key={ticker} data={displayData} ticker={ticker} revision={revision} preview={readOnly}
+                            earningsBrief={tab === displayTab ? earnings : null} />
                         ))}
                       {displayTab === "financials" &&
                         (isFund ? (
@@ -683,6 +698,7 @@ function SecurityResearchWorkspace() {
                             ticker={ticker}
                             revision={revision}
                             preview={readOnly}
+                            earningsBrief={tab === displayTab ? earnings : null}
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (
@@ -694,7 +710,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? earnings : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (
@@ -708,6 +724,7 @@ function SecurityResearchWorkspace() {
                 )}
                 </div>
                 )}
+                </div>
               </>
             )}
           </div>
@@ -724,10 +741,14 @@ function SecurityResearchWorkspace() {
       </Drawer>
       <SecurityFinder
         opened={finder}
-        onClose={() => setFinder(false)}
+        onClose={() => {
+          setFinder(false);
+          handover.closed();
+        }}
         key={finderQuery}
         initial={finderQuery || (selected ? "" : ticker)}
         onSelect={(result) => {
+          handover.chosen();
           client.setQueryData(previewKey(result.ticker), result);
           update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
           setFinder(false);

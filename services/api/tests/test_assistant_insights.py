@@ -941,6 +941,9 @@ def test_live_chart_prices_fills_in_its_returned_currency(
         return ResearchPriceSeries.model_validate(
             {
                 **daily,
+                "published_bar_ticker": symbol,
+                "published_bar_exchange": daily["exchangeCalendar"],
+                "source": "Alpaca (SIP)" if provider == "alpaca_etf" else "Yahoo Finance",
                 "currency": "USD",
                 "actualInterval": interval,
                 "tradeMarkers": [],
@@ -1678,7 +1681,11 @@ def test_missing_chart_cannot_borrow_a_known_other_venue(
     app, _ = distinct_listing_events(bound, london_report=True)
     store = app.state.store
     technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
-    technical["rows"] = [row for row in technical["rows"] if row["ticker"] == published]
+    technical["rows"] = [
+        {**row, "exchange": "LSE" if published.endswith(".L") else "NYSE"}
+        for row in technical["rows"]
+        if row["ticker"] == published
+    ]
     manifest = republish(
         store,
         {

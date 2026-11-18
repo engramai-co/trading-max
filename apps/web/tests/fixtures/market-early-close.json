@@ -1,0 +1,42 @@
+{
+  "arguments": {
+    "limit": 10,
+    "cursor": 0,
+    "scope": "broker_total",
+    "market": "US",
+    "start": "2026-11-27",
+    "end": "2026-11-27",
+    "ticker": "ALFA"
+  },
+  "output": {
+    "data": {
+      "timezone": "Europe/London",
+      "start": "2026-11-27",
+      "end": "2026-11-27",
+      "items": [
+        {
+          "kind": "half_day",
+          "title_en": "XNYS early close",
+          "title_zh": "XNYS 提早收市",
+          "date": "2026-11-27",
+          "end_date": null,
+          "instant": "2026-11-27T18:00:00+00:00",
+          "ticker": null,
+          "publisher": "exchange_calendars",
+          "source_url": null,
+          "market": "XNYS",
+          "timezone": "America/New_York",
+          "evidence_id": "ev_53dea2aacd767c63",
+          "local_date": "2026-11-27",
+          "local_time": "2026-11-27T18:00:00+00:00"
+        }
+      ],
+      "total_items": 1,
+      "next_cursor": null
+    },
+    "scope": "broker_total",
+    "status": "partial",
+    "snapshot_id": "20261118T102028-772389Z-5fe18f02",
+    "evidence_id": "ev_6293bc941bfb25c7"
+  }
+}

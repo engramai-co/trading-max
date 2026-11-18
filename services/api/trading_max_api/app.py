@@ -188,6 +188,9 @@ def create_app(
             store=store,
             bind_price_series=research.bind_price_series,
             bind_page_sources=lambda: published_page_sources(app.state.indices, jobs),
+            observed_prices=research.observed_prices,
+            listing_markers=research.trade_markers,
+            index_history=lambda index, series: app.state.indices.reading_history(index, series),
         ).for_run,
         check_ready=assistant_ready,
     )
@@ -414,11 +417,18 @@ def create_app(
 
     alpaca_source = market_price_source_factory(settings.data_root, preferences, credentials)
     market_prices = SharedMarketPrices(alpaca=alpaca_source)
+
+    def assistant_enabled():
+        return preferences.get_profile().assistant_enabled
+
     jobs = TypedJobManager(
         store,
         watchlist,
         broker_profiles_loader=broker_profiles_loader(preferences),
-        market_service=MarketResearchService(prices=market_prices),
+        assistant_enabled=assistant_enabled,
+        market_service=MarketResearchService(
+            prices=market_prices, assistant_enabled=assistant_enabled
+        ),
         intraday_interval_seconds=settings.intraday_interval_seconds,
         intraday_retention_days=settings.intraday_retention_days,
         on_snapshot_published=on_snapshot_published,

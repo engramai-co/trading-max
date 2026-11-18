@@ -9,6 +9,8 @@ export function citedEventKind(event: string | null | undefined) {
       return "ex_dividend";
     case "rating_change":
     case "dividend_pay":
+    case "filing":
+    case "macro":
     case "dividend":
       return event;
     default:

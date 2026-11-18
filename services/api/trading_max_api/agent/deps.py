@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel
 from pydantic_ai import ModelRetry
+from trading_max.infrastructure import SnapshotIntegrityError
 
-from ..dashboard_models import ResearchPriceSeries
+from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
+from ..index_models import IndexHistory
 from ..models import SnapshotManifest
 from ..research_listing import PinnedListing
 from .page_sources import PageSources
@@ -26,6 +28,10 @@ ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
 DEFAULT_TIMEZONE = ZoneInfo("Europe/London")
 
 
+type MarkerReader = Callable[
+    [SnapshotManifest, str, str], tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]
+]
+
 # A missing key leaves an argument to the caller. A bound null is an explicit selection.
 type ToolBindings = dict[str, dict[str, str | int | bool | None]]
 
@@ -34,8 +40,8 @@ def bind_arguments(
     supplied: dict[str, Any], bound: dict[str, Any], schema: type[BaseModel] | None = None
 ) -> dict[str, Any]:
     supplied = supplied.copy()
-    for name, field in schema.model_fields.items() if schema else ():
-        wire = field.validation_alias
+    for name, model_field in schema.model_fields.items() if schema else ():
+        wire = model_field.validation_alias
         if isinstance(wire, str) and wire != name and name in supplied:
             value = supplied.pop(name)
             if wire in supplied and (
@@ -78,11 +84,31 @@ class AssistantDeps:
     page_hint: str | None = None
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
+    listing_markers: MarkerReader | None = None
+    observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
+    index_history: Callable[[str, str], IndexHistory | None] | None = None
 
     page_sources: PageSources | None = None
     pin_listing: ListingReader | None = None
     listing_error: str | None = None
     role_bindings: ToolBindings | None = None
+
+    def selected_listing(self, ticker: str) -> PinnedListing:
+        if self.pin_listing and self.manifest:
+            return self.pin_listing(ticker, self.manifest)
+        return PinnedListing(ticker, ticker, ticker, ())
+
+    def displayed_price_series(self, ticker: str, identity: str) -> ResearchPriceSeries | None:
+        if self.observed_prices and self.snapshot_id:
+            observed = self.observed_prices(self.snapshot_id, ticker, identity)
+            if observed:
+                return observed
+        if self.price_series and self.manifest:
+            with suppress(FileNotFoundError, ValueError, SnapshotIntegrityError):
+                series = self.price_series(ticker, self.manifest, limit=2)
+                if series.published_series_id == identity:
+                    return series
+        return None
 
     def bound_evidence(self, tool: str) -> dict[str, str | None]:
         """Use string identifiers in links, retaining null to clear an unselected filter."""
@@ -108,6 +134,9 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
+    listing_markers: MarkerReader | None = None
+    observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
+    index_history: Callable[[str, str], IndexHistory | None] | None = None
     bind_price_series: Callable[[], tuple[PublishedPriceReader, ListingReader]] | None = None
     bind_page_sources: Callable[[], PageSources] | None = None
 
@@ -128,6 +157,9 @@ class AssistantDepsFactory:
             except (OSError, ValueError):
                 listing_error = "watchlist_routing_unavailable"
         return AssistantDeps(
+            index_history=self.index_history,
+            observed_prices=self.observed_prices,
+            listing_markers=self.listing_markers,
             page_sources=self.bind_page_sources()
             if self.bind_page_sources
             and page_hint in {"holdings", "analytics", "sectors", "health"}

@@ -15,6 +15,7 @@ from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
 from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.fund_references import us_fund, us_fund_listing
 from trading_max.research.listing import resolved_quote_listing
@@ -25,6 +26,10 @@ from trading_max.research.valuation_preview import (
 )
 from trading_max.research.venues import VenueConflict, resolve_venue, row_claims
 
+from ..agent.research_citations import CitationQuery, ResearchCitation, resolve_citation
+from ..agent.research_roles import SecurityContext
+from ..agent.roles import role_registry
+from ..agent.tools import Ticker
 from ..dashboard_models import (
     PriceSeriesPoint,
     ResearchLensName,
@@ -428,12 +433,17 @@ def research_prices(
 ) -> ResearchPriceSeries:
     import re
 
-    from ..research_prices import price_window
+    from ..research_prices import price_window as project_window
+    from ..research_prices import verified_provider_claims
 
     if not re.fullmatch(r"[A-Za-z0-9^=._-]{1,32}", ticker):
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
     manifest = latest_or_503(request)
     research = app_service(request, "research")
+
+    def price_window(series, selected_window):
+        return project_window(research.observe_prices(series, manifest.run_id), selected_window)
+
     ticker = ticker.upper()
     exchanges = research.watchlist.listing_exchanges()
     pinned = research.pin_listing(ticker, manifest, exchanges=exchanges)
@@ -453,6 +463,7 @@ def research_prices(
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
         try:
+            series.venue_claims = verified_provider_claims(symbol, series)
             venue = research.price_venue(pinned, series)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
@@ -511,12 +522,13 @@ def research_prices(
             raise
         except Exception:
             series = None
-        if series is None:
+        if series is None or series.symbol.strip().upper() != reference.ticker:
             raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE)
+        currency, divisor = major_quote_unit(series.currency or "")
         points = [
             PriceSeriesPoint(
                 date=datetime.fromtimestamp(stamp, UTC).date().isoformat(),
-                close=close,
+                close=close / divisor,
                 open=None,
                 high=None,
                 low=None,
@@ -532,8 +544,10 @@ def research_prices(
             raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE)
         return live_window(
             ResearchPriceSeries(
-                ticker=reference.ticker,
-                currency="USD",
+                ticker=series.symbol.strip().upper(),
+                quote_exchange=series.exchange_name or series.full_exchange_name,
+                published_bar_ticker=series.provider_symbol,
+                currency=currency,
                 as_of=points[-1].date,
                 requested_interval=interval,
                 available_sessions=len(points),
@@ -541,7 +555,7 @@ def research_prices(
                 timezone=series.timezone,
                 source=series.source,
                 venue_claims=row_claims(
-                    series.symbol,
+                    series.provider_symbol,
                     {
                         "mic": series.mic,
                         "exchangeName": series.exchange_name,
@@ -639,6 +653,11 @@ def research_alerts(ticker: str, request: Request) -> list[ResearchAlert]:
     )
 
 
+@router.get("/v1/research/{ticker}/citation", response_model=ResearchCitation)
+def research_citation(ticker: Ticker, request: Request, query: Annotated[CitationQuery, Query()]):
+    return resolve_citation(request, ticker, query)
+
+
 @router.get(
     "/v1/research/{ticker}/lens/{view}",
     response_model=ResearchLensSnapshot,
@@ -678,6 +697,18 @@ def research_lens(
         detail=detail,
         diagnostics=diagnostics,
     )
+    if (
+        view in {"analyst", "fundamentals"}
+        and not payload.earnings_brief_eligible
+        and payload.context
+        and payload.context.asset_type not in {"ETF", "INDEX", "MUTUALFUND"}
+        and app_service(request, "settings_repository").get_profile().assistant_enabled
+    ):
+        role = role_registry()["earnings-brief"]
+        if app_service(request, "assistant_readings").publication_version(
+            role, SecurityContext(ticker=payload.ticker), payload.run_id
+        ):
+            payload = payload.model_copy(update={"earnings_brief_eligible": True})
     response.headers["Server-Timing"] = (
         f'research_lens;dur={(perf_counter() - started) * 1000:.1f}, research_cache;desc="{diagnostics.get("cache", "unknown")}"'
     )

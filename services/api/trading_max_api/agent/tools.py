@@ -1104,14 +1104,10 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
         raise ModelRetry("Earnings events are available from the analyst lens.")
     if ctx.deps.listing_error:
         return read.missing(ctx.deps.listing_error)
-    pinned = (
-        ctx.deps.pin_listing(args.ticker, ctx.deps.manifest)
-        if ctx.deps.pin_listing and ctx.deps.manifest
-        else None
-    )
-    if pinned and pinned.venue().conflict:
+    pinned = ctx.deps.selected_listing(args.ticker)
+    if pinned.venue().conflict:
         return read.missing("listing_calendar_unavailable")
-    ticker = pinned.symbol if pinned else args.ticker
+    ticker = pinned.symbol
     clocks = _stored_clocks(read, ticker)
     needed = (
         _LENS_FIELDS[args.lens].keys()
@@ -1121,9 +1117,7 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     stored = {}
     for key in needed:
         raw = read.read(key)
-        row = pinned.feed_row(partial(_ticker_row, raw)) if pinned else _ticker_row(raw, ticker)
-        if row and pinned:
-            row, _ = pinned.event_row(row)
+        row, _ = pinned.event_row(pinned.feed_row(partial(_ticker_row, raw)))
         if row:
             stored[key] = row
     if not stored:
@@ -1514,6 +1508,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         price_key_moments,
     )
     from .market_roles import global_map, market_sector, sector_headline
+    from .research_tools import research_earnings, research_headline, research_position
     from .review_patterns import review_patterns
 
     toolset = _AssistantToolset(id="trading-max-read-only")
@@ -1534,6 +1529,9 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (decision_timing_and_habits, 8),
         (review_patterns, 8),
         (price_key_moments, 8),
+        (research_earnings, 8),
+        (research_position, 8),
+        (research_headline, 8),
         (news_and_events, 8),
         (upcoming_events, 8),
         (selected_money, 10),

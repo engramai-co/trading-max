@@ -5273,7 +5273,9 @@
               "ex_dividend",
               "dividend_pay",
               "dividend",
-              "rating_change"
+              "rating_change",
+              "filing",
+              "macro"
             ],
             "title": "Kind",
             "type": "string"
@@ -9973,6 +9975,34 @@
         "title": "FinancialPeriod",
         "type": "object"
       },
+      "FollowingSession": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "return_fraction": {
+            "title": "Return Fraction",
+            "type": "number"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "date",
+          "sessions",
+          "return_fraction"
+        ],
+        "title": "FollowingSession",
+        "type": "object"
+      },
       "ForwardPeHistory": {
         "additionalProperties": false,
         "properties": {
@@ -13755,6 +13785,17 @@
             },
             "title": "Points",
             "type": "array"
+          },
+          "publishedSeriesId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedseriesid"
           },
           "range": {
             "enum": [
@@ -18728,6 +18769,17 @@
       },
       "PriceMoments": {
         "properties": {
+          "adjustment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
+          },
           "basis": {
             "title": "Basis",
             "type": "string"
@@ -18735,6 +18787,25 @@
           "end": {
             "title": "End",
             "type": "string"
+          },
+          "following": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FollowingSession"
+            },
+            "title": "Following",
+            "type": "array"
+          },
+          "index_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Range"
           },
           "interval": {
             "title": "Interval",
@@ -18746,6 +18817,17 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
           },
           "published_series_id": {
             "title": "Published Series Id",
@@ -20354,6 +20436,28 @@
         "title": "ResearchCapability",
         "type": "object"
       },
+      "ResearchCitation": {
+        "properties": {
+          "lines": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReadingLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "output": {
+            "additionalProperties": true,
+            "title": "Output",
+            "type": "object"
+          }
+        },
+        "required": [
+          "output"
+        ],
+        "title": "ResearchCitation",
+        "type": "object"
+      },
       "ResearchContext": {
         "additionalProperties": false,
         "properties": {
@@ -21061,6 +21165,11 @@
             ],
             "title": "Datarevision"
           },
+          "earningsBriefEligible": {
+            "default": false,
+            "title": "Earningsbriefeligible",
+            "type": "boolean"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/ResearchEvent"
@@ -21735,6 +21844,17 @@
             ],
             "title": "Fetchedat"
           },
+          "observedSeriesId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedseriesid"
+          },
           "points": {
             "items": {
               "$ref": "#/components/schemas/PriceSeriesPoint"
@@ -21753,6 +21873,17 @@
             ],
             "title": "Publishedseriesid"
           },
+          "quoteExchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteexchange"
+          },
           "requestedInterval": {
             "default": "1d",
             "title": "Requestedinterval",
@@ -21762,6 +21893,17 @@
             "default": "regular",
             "title": "Session",
             "type": "string"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
           },
           "source": {
             "default": "Yahoo Finance",
@@ -27394,6 +27536,22 @@
             ],
             "title": "Earningsindex"
           },
+          "notMeaningful": {
+            "anyOf": [
+              {
+                "enum": [
+                  "aboveCap",
+                  "belowFloor",
+                  "segmentJump"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notmeaningful"
+          },
           "pe": {
             "anyOf": [
               {
@@ -27656,6 +27814,9 @@
               "earnings",
               "ex_dividend",
               "dividend_pay",
+              "dividend",
+              "rating_change",
+              "filing",
               "holiday",
               "half_day"
             ],
@@ -29995,7 +30156,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.64.0"
+    "version": "1.66.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -32365,6 +32526,338 @@
           }
         },
         "summary": "Research Alerts",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/research/{ticker}/citation": {
+      "get": {
+        "operationId": "research_citation_v1_research__ticker__citation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9^=._-]{1,32}$",
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "enum": [
+                "price_key_moments",
+                "research_position",
+                "research_earnings",
+                "research_headline",
+                "news_and_events",
+                "upcoming_events"
+              ],
+              "title": "Tool",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "snapshotId",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9_-]{1,100}$",
+              "title": "Snapshotid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "evidenceId",
+            "required": true,
+            "schema": {
+              "pattern": "^ev_[a-zA-Z0-9_-]{1,80}$",
+              "title": "Evidenceid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "series",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9a-f]{20}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Series"
+            }
+          },
+          {
+            "in": "query",
+            "name": "index",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "observation",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-f0-9]{20}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Observation"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unselected",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unselected",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "eventId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Eventid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reference",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reference"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 48,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "broker_total",
+              "enum": [
+                "broker_total",
+                "invest",
+                "isa",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "default": "Europe/London",
+              "maxLength": 128,
+              "title": "Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "US",
+                    "GB",
+                    "EA",
+                    "JP",
+                    "HK",
+                    "KR"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
+            "name": "eventTicker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Ticker"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Eventticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchCitation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Citation",
         "tags": [
           "research"
         ]
@@ -35413,7 +35906,9 @@
                 "ex_dividend",
                 "dividend_pay",
                 "dividend",
-                "rating_change"
+                "rating_change",
+                "filing",
+                "macro"
               ],
               "title": "Kind",
               "type": "string"
@@ -35540,6 +36035,30 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "US",
+                    "GB",
+                    "EA",
+                    "JP",
+                    "HK",
+                    "KR"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
             }
           },
           {
@@ -36205,6 +36724,23 @@
           },
           {
             "in": "query",
+            "name": "index_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "ticker",
             "required": true,
             "schema": {
@@ -36225,6 +36761,22 @@
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/CalendarDay"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date"
             }
           },
           {

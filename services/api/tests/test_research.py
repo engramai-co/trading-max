@@ -1113,3 +1113,41 @@ def test_trailing_pe_is_scoped_to_the_valuation_lens_and_keeps_its_research_revi
         ledger.lens_snapshot("SYNTH", "valuation", after).trailing_pe_history
         == lens.trailing_pe_history
     )
+
+
+def test_a_stored_trailing_pe_series_is_served_screened(tmp_path):
+    # Published before multiples were screened: 20x and 21x, then 800x on EPS
+    # near zero, then a reading 400 times larger than the one before it.
+    readings = [(2, "2026-02-02"), (1.9, "2026-03-02"), (0.05, "2026-04-01"), (20, "2026-05-01")]
+    data = {
+        "currency": "USD",
+        "points": [
+            {"date": day, "close": 40, "pe": 40 / eps, "earningsIndex": index}
+            for index, (eps, day) in enumerate(readings)
+        ],
+        "earnings": [
+            {"effectiveDate": day, "periodEnd": "2026-03-31", "eps": eps, "method": "fourQuarters"}
+            for eps, day in readings
+        ],
+        "distribution": None,
+    }
+    store = ArtifactStore(tmp_path)
+    financials = store.immutable_artifacts.put_json(
+        key="research/financials.json",
+        payload={"rows": [{"ticker": "SYNTH", "financials": {}, "trailingPeHistory": data}]},
+    )
+    store.immutable_snapshots.publish(
+        scope="research", source="synthetic", artifacts=[financials.ref]
+    )
+    ledger = ResearchLedger(store, WatchlistStore(tmp_path))
+    served = ledger.lens_snapshot("SYNTH", "valuation", store.latest_manifest()).model_dump(
+        mode="json"
+    )["trailingPeHistory"]
+    assert [(p["pe"], p.get("notMeaningful")) for p in served["points"]] == [
+        (20, None),
+        (pytest.approx(40 / 1.9), None),
+        (None, "aboveCap"),
+        (None, "segmentJump"),
+    ]
+    assert [p["close"] for p in served["points"]] == [40, 40, 40, 40]
+    assert served["distribution"] is None

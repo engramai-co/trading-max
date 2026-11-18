@@ -468,6 +468,7 @@ def research_root(tmp_path: Path) -> Path:
                     "ticker": "BE",
                     "as_of": today,
                     "price": 200,
+                    "exchange": "NYQ",
                     "technical_score": 45,
                     "technical_state": "中性",
                     "momentum": {

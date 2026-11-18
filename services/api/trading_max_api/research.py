@@ -151,14 +151,18 @@ def retained_share_unit(
         return None
     units = (financials.get("evidence") or {}).get("listedShareUnits") or {}
     mic = venue_mic(quote.exchange)
-    if mic and stored.get("shareUnitVenue") == mic and stored.get("listing") == listing:
+    # Nasdaq's operating MIC covers all of its listing tiers, and earlier batches
+    # recorded every tier under it. Only a single recorded venue can vouch for the unit.
+    single_venue = bool(mic) and resolve_venue(None, VenueClaim("mic", mic)).venues == {mic}
+    if single_venue and stored.get("shareUnitVenue") == mic and stored.get("listing") == listing:
         if stored.get("isAdr") or stored.get("shareUnit") == "receipt":
             return "receipt"
         if stored.get("shareUnit") == "ordinary":
             return share_unit(listing, units, "Ordinary Shares")
         return None
-    # Earlier rows did not record the venue used for the catalog decision.
-    # Re-establish the unit from the pinned sources before using their counts.
+    # Earlier rows did not record the venue used for the catalog decision, or
+    # recorded only Nasdaq's operating MIC. Re-establish the unit from the pinned
+    # catalog or filing before using their counts.
     if stored.get("isAdr"):
         return "receipt"
     security_type = ""
@@ -652,7 +656,8 @@ class ResearchLedger:
         self._facts_cache: SingleFlightCache[tuple, Any] = SingleFlightCache(128)
         self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
-        self._price_series_cache: dict[tuple[str, ...], ResearchPriceSeries] = {}
+        self._observed_prices: dict[tuple[str, str, str], ResearchPriceSeries] = {}
+        self._price_series_cache: dict[tuple[str | bool, ...], ResearchPriceSeries] = {}
         self._history_lock = threading.RLock()
         self._history_signature: tuple[str | None, ...] | None = None
         self._history_manifests_cache: list[SnapshotManifest] = []
@@ -2014,6 +2019,14 @@ class ResearchLedger:
         ):
             analyst_row = event_row("analyst", _analyst_rows)
             payload.analyst = analyst_row.get("analyst") if analyst_row else None
+            # Reserve the reading row from this publication, including on the
+            # lightweight Financials response that drops the full analyst data.
+            if view in {"fundamentals", "analyst"} and not is_fund and analyst_row:
+                inputs = payload.analyst or {}
+                payload.earnings_brief_eligible = analyst_row.get("ticker") == ticker and any(
+                    inputs.get(key)
+                    for key in ("earningsEvents", "earningsEstimate", "revenueEstimate")
+                )
             if payload.analyst:
                 payload.analyst = {
                     **payload.analyst,
@@ -2585,6 +2598,57 @@ class ResearchLedger:
             alerts=self.alerts(selected_ticker, manifest),
         )
 
+    def observe_prices(self, series: ResearchPriceSeries, run_id: str) -> ResearchPriceSeries:
+        """Keep exact external daily chart observations for subsequent local, read-only inspection."""
+        if series.published_series_id or series.actual_interval != "1d" or not series.points:
+            return series.model_copy(update={"snapshot_id": run_id})
+        public = series.model_copy(update={"trade_markers": [], "snapshot_id": run_id})
+        identity = fingerprint(
+            [
+                series.ticker,
+                series.source,
+                series.adjustment,
+                series.currency,
+                series.quote_exchange or series.exchange_calendar,
+                series.events,
+                [[p.date, p.open, p.high, p.low, p.close, p.volume] for p in series.points],
+            ]
+        )
+        with self._history_lock:
+            self._observed_prices[(run_id, series.ticker, identity)] = public
+            if len(self._observed_prices) > 64:
+                del self._observed_prices[next(iter(self._observed_prices))]
+        return series.model_copy(update={"observed_series_id": identity, "snapshot_id": run_id})
+
+    def observed_prices(self, run_id: str, ticker: str, identity: str):
+        with self._history_lock:
+            return self._observed_prices.get((run_id, ticker, identity))
+
+    def retained_price_series(self, identity, ticker, manifest, *, limit=2000):
+        """Recover the chart route named by the saved series, using only its publication."""
+        rows = self._published_technicals(manifest).get("rows") or []
+        symbols = {
+            str(r["ticker"]).upper() for r in rows if isinstance(r, dict) and r.get("ticker")
+        }
+        symbols.update(fund.ticker for fund in self._held_funds(manifest))
+        aliases = {
+            symbol for symbol in symbols if _canonical_ticker(symbol) == _canonical_ticker(ticker)
+        }
+        for symbol in dict.fromkeys([ticker, *sorted(aliases)]):
+            if not any(
+                ref and published_price_series_id(ref.sha256, symbol) == identity
+                for ref in (
+                    _artifact(manifest, FUND_PRICES_KEY),
+                    _artifact(manifest, "research/technical.json"),
+                )
+            ):
+                continue
+            pinned = self.pin_listing(symbol, manifest, exchanges={})
+            series = self.price_series(symbol, manifest, limit=limit, pinned=pinned)
+            if series.published_series_id == identity:
+                return series
+        raise FileNotFoundError("cited chart unavailable")
+
     def pin_listing(self, ticker, manifest, *, exchanges=None) -> PinnedListing:
         """Select the chart row once, retaining its original symbol and all venue claims."""
         requested = ticker.strip().upper()
@@ -2665,6 +2729,9 @@ class ResearchLedger:
             )
             if evidence.venues == {"XLON"}:
                 aliases.add(published)
+            else:
+                # An unrelated bare-symbol row cannot select or veto the requested listing.
+                published, source = route, None
         claims = []
         for symbol in dict.fromkeys((requested, route, published)):
             claims.extend(exchanges.get(symbol, ()))
@@ -2728,7 +2795,11 @@ class ResearchLedger:
         if series.source == ALPACA_SIP:
             claims.append(VenueClaim("region", "US", observed))
         venue = pinned.venue(*claims)
-        if venue.conflict:
+        if venue.conflict or (
+            series.exchange_calendar
+            and venue.calendar
+            and series.exchange_calendar != venue.calendar
+        ):
             raise VenueConflict(f"incompatible venue claims for {pinned.requested}")
         series.venue_claims = (*pinned.claims, *claims)
         return venue
@@ -2805,14 +2876,22 @@ class ResearchLedger:
             raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
         fund_price = pinned.fund_bars
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
-        cache_key = (manifest.run_id, ticker, pinned.symbol, pinned.ticker)
-        if cached := self._price_series_cache.get(cache_key):
-            return _visible_price_sessions(cached, limit)
-        raw = {} if fund_price else self._published_technicals(manifest)
         source = pinned.price_row
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         bar_ticker = str(source["ticker"]).strip().upper()
+        cache_key = (
+            manifest.run_id,
+            ticker,
+            pinned.symbol,
+            pinned.ticker,
+            bar_ticker,
+            fund_price,
+            pinned.quote_unit,
+        )
+        if cached := self._price_series_cache.get(cache_key):
+            return _visible_price_sessions(cached, limit)
+        raw = {} if fund_price else self._published_technicals(manifest)
         raw_points = source.get("price_series")
         all_points = [
             PriceSeriesPoint.model_validate(point)
@@ -2826,6 +2905,7 @@ class ResearchLedger:
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
+            timezone=source.get("timezone") or None,
             published_bar_asset_type=source.get("asset_type"),
             published_fund_row=bool(fund_price),
             venue_claims=row_claims(bar_ticker, source),
