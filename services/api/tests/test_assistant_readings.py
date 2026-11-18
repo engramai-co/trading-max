@@ -246,7 +246,7 @@ def test_weekly_handoff_rejects_wrong_page_scope_and_period():
 
 def test_calendar_windows_and_dated_events_have_distinct_visible_targets(tmp_path):
     from services.api.trading_max_api.agent import tools
-    from services.api.trading_max_api.agent.overview_roles import upcoming
+    from services.api.trading_max_api.agent.overview_roles import overview_calendar
 
     store = ArtifactStore(tmp_path)
     artifacts = {
@@ -266,11 +266,10 @@ def test_calendar_windows_and_dated_events_have_distinct_visible_targets(tmp_pat
     role = role_registry()["weekly"]
 
     def facts():
-        publication(store, extra_artifacts=artifacts)
+        publication(store, extra_artifacts=artifacts, created_at=datetime(2026, 11, 18, tzinfo=UTC))
         deps = AssistantDepsFactory(store).for_run()
-        return upcoming(
-            RoleTools.pinned(deps, role.allowed_tools), datetime(2026, 11, 18, tzinfo=UTC).date()
-        )
+        first = overview_calendar(role.reader(deps, OverviewContext()))
+        return (first, *first.related)
 
     window, ex_div = facts()
     assert "2026-11-23" in window.en and "2026-11-26" in window.en
@@ -289,7 +288,7 @@ def test_calendar_windows_and_dated_events_have_distinct_visible_targets(tmp_pat
     }
     report, ex_div = facts()
     assert "2026-11-25" in report.en and "2026-11-23" not in report.en
-    assert report.evidence.arguments["eventId"] == "TEST-report"
+    assert report.evidence.arguments["researchEventId"] == "TEST-report"
 
 
 def test_follow_up_tools_read_the_original_snapshot_after_a_new_publication(tmp_path):
@@ -329,12 +328,13 @@ def test_follow_up_tools_read_the_original_snapshot_after_a_new_publication(tmp_
     assert observations == [original.run_id]
 
 
-def test_daily_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path):
+@pytest.mark.parametrize("role_id", ["daily", "weekly"])
+def test_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path, role_id):
     from pydantic_ai import ModelRetry
     from trading_max.research.calendars.refresh import MACRO_KEY
 
     from services.api.trading_max_api.agent import events, tools
-    from services.api.trading_max_api.agent.overview_roles import daily_calendar
+    from services.api.trading_max_api.agent.overview_roles import overview_calendar
 
     store = ArtifactStore(tmp_path)
     calendar = {
@@ -391,13 +391,14 @@ def test_daily_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path)
             },
         },
     )
-    role = role_registry()["daily"]
+    role = role_registry()[role_id]
     deps = AssistantDepsFactory(store).for_run(timezone="Europe/London")
     reader = role.reader(deps, OverviewContext())
     publication(store, created_at=created + timedelta(days=1))
-    first = daily_calendar(reader)
+    first = next(item for item in role.facts(reader, OverviewContext()) if item.section == "next")
     reader.attach_evidence([first])
     macro, earnings, ex = (first, *first.related)
+    assert role.cache_id.startswith("calendar:")
     assert macro.en == "2026-02-04 · JP · Consumer prices (provisional)"
     assert macro.evidence.arguments["instant"] == calendar["instant"]
     assert macro.evidence.arguments["url"] == calendar["source_url"]
@@ -415,7 +416,9 @@ def test_daily_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path)
     with pytest.raises(ModelRetry):
         reader.read(events.upcoming_events, {"start": "2025-01-01"})
 
-    missing = daily_calendar(role.reader(AssistantDepsFactory(store).for_run(), OverviewContext()))
+    missing = overview_calendar(
+        role.reader(AssistantDepsFactory(store).for_run(), OverviewContext())
+    )
     assert (
         missing.related == []
         and "No macro release" in missing.en
@@ -423,9 +426,9 @@ def test_daily_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path)
     )
 
 
-def test_daily_calendar_preserves_a_single_published_earnings_date(tmp_path):
+def test_overview_calendar_preserves_a_single_published_earnings_date(tmp_path):
     from services.api.trading_max_api.agent import tools
-    from services.api.trading_max_api.agent.overview_roles import daily_calendar
+    from services.api.trading_max_api.agent.overview_roles import overview_calendar
 
     store = ArtifactStore(tmp_path)
     publication(
@@ -438,7 +441,7 @@ def test_daily_calendar_preserves_a_single_published_earnings_date(tmp_path):
         },
     )
     deps = AssistantDepsFactory(store).for_run()
-    entry = daily_calendar(role_registry()["daily"].reader(deps, OverviewContext()))
+    entry = overview_calendar(role_registry()["daily"].reader(deps, OverviewContext()))
     assert entry.en == "2026-02-05 · TEST estimated earnings"
     assert "instant" not in entry.evidence.arguments
     assert not entry.related
