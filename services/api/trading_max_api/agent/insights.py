@@ -8,6 +8,7 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from functools import partial
 from itertools import pairwise
+from math import prod
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, Field, StringConstraints, model_validator
@@ -15,7 +16,7 @@ from trading_max.analytics.decision_review import CALCULATION_VERSION
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
-from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
+from trading_max.portfolio_math import benchmark_comparison, in_range, nav_number, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 from trading_max.research.venues import VenueConflict, row_claims
@@ -212,6 +213,28 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
             "currency": "GBP",
             "basis": "published_daily_twr",
             "range": window,
+            "window_twr_fraction": (
+                prod(1 + row["return_fraction"] for row in rows) - 1
+                if len(rows) < len(daily) - 1
+                else period_return(
+                    nav_number(daily[0], scope, "Twr"), nav_number(daily[-1], scope, "Twr")
+                )
+            ),
+            "window_benchmarks": {
+                name: result
+                for name, values in aligned.items()
+                if (
+                    result := period_return(
+                        values.get(daily[0]["date"]), values.get(daily[-1]["date"])
+                    )
+                )
+                is not None
+            },
+            "observed_intervals": len(rows),
+            "total_intervals": len(daily) - 1,
+            # Rows are chronological. A tie at the published precision selects the earliest interval.
+            "largest_move": max(rows, key=lambda row: abs(round(row["return_fraction"], 12))),
+            "worst_day": min(rows, key=lambda row: row["return_fraction"]),
             "window_start": daily[0]["date"],
             "window_end": daily[-1]["date"],
             "benchmark": args.benchmark,
@@ -358,6 +381,8 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
             "basis": raw.get(basis) if basis else "direct_and_fund_constituents",
             **coverage,
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
+            "company_table_truncated": args.dimension == "company"
+            and len(raw["positions"]) > TOP_COMPANIES,
             "company_limit": TOP_COMPANIES if args.dimension == "company" else None,
         },
         keys=[key],

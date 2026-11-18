@@ -1,14 +1,16 @@
 "use client";
 
 import { useMediaQuery } from "@mantine/hooks";
-import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy, useEscapeLayer } from "./foundation";
 import { CHINA_MAP_INDEX, globalHeatStyle, globalMarketReading, useGlobalContribution, type GlobalMapMarket } from "./global-markets-data";
 import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
+import { PageInspection } from "./assistant/inspection-entry";
+import { useAssistant } from "./assistant/context";
 import Link from "./link";
 import { heat } from "./sectors-data";
 
@@ -103,6 +105,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const pathname = usePathname();
+  const params = useSearchParams();
+  const cited = params?.get("evidence") === "global_map";
+  const region = cited ? params?.get("region") : null;
+  const observed = cited ? params?.get("observed") : null;
+  const citedId = cited ? params?.get("snapshotId") ?? undefined : undefined;
   const wide = useMediaQuery("(min-width: 1180px)") ?? false;
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
@@ -115,10 +122,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const pinned = useRef(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = hovered ?? inspection?.market ?? focused;
-  const cancelDismiss = () => {
+  const cancelDismiss = useCallback(() => {
     if (closeTimer.current != null) clearTimeout(closeTimer.current);
     closeTimer.current = null;
-  };
+  }, []);
   const close = () => {
     cancelDismiss();
     pinned.current = false;
@@ -141,6 +148,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const title = t("对 MSCI 全球的贡献", "Contribution to MSCI ACWI");
   const query = useGlobalContribution(!demo);
   const answer = query.data;
+  const {ready} = useAssistant();
+  const [openingObservation,setOpeningObservation] = useState<string | null>(null);
+  const [readingSlot,setReadingSlot] = useState<HTMLDivElement|null>(null);
+  if (ready && !openingObservation && answer?.asOf && !answer.pricesStale && !query.isError) setOpeningObservation(answer.asOf);
   const change = (value: number | null | undefined) => formatDeltaPercent(value, locale, 2);
   const pp = (value: number) => formatNumber(value * 100, locale, {
     minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero",
@@ -162,7 +173,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     ];
     return parts.join(t("，", ", "));
   };
-  const inspect = (market: MapMarket, node: MapAnchor, pin = false) => {
+  const inspect = useCallback((market: MapMarket, node: MapAnchor, pin = false) => {
     const host = mapHost.current?.getBoundingClientRect();
     // The card keeps clear of the market's visible label and pin.
     const parts = Array.from(node.querySelectorAll<SVGGraphicsElement>(".mx-global-hit, .mx-global-pin"))
@@ -180,7 +191,14 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         bottom: Math.max(...parts.map((box) => box.bottom)) - host.top,
       },
     });
-  };
+  }, [cancelDismiss]);
+  const matchesCitation = !!observed && !!answer?.asOf && Date.parse(observed) === Date.parse(answer.asOf)
+    && !answer.pricesStale && !query.isError;
+  useEffect(() => {
+    if (!matchesCitation || !region || !Object.hasOwn(MAP,region)) return;
+    const node = mapHost.current?.querySelector<MapAnchor>(`.mx-global-region[data-market="${region}"]`);
+    if (node) inspect(region as MapMarket,node,true);
+  }, [matchesCitation,region,inspect]);
   useEscapeLayer(inspection != null, () => {
     // Focus inside the card goes back to the market that opened it.
     if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
@@ -192,6 +210,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       setPlacement(null);
       return;
     }
+    const place = () => {
     const bounds = host.getBoundingClientRect();
     const labels = Array.from(host.querySelectorAll<SVGTextElement>(".mx-global-region text"))
       .filter((text) => text.closest(".mx-global-region")?.getAttribute("data-market") !== inspection.market)
@@ -199,6 +218,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       .map((box) => ({ left: box.left - bounds.left, top: box.top - bounds.top, right: box.right - bounds.left, bottom: box.bottom - bounds.top }));
     setPlacement(placeInspection(inspection.anchor, { width: card.offsetWidth, height: card.offsetHeight },
       { width: bounds.width, height: bounds.height }, labels));
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    return () => observer.disconnect();
   }, [inspection]);
   useEffect(() => {
     // A card opened by a tap or click stays in view, above the phone dock.
@@ -206,7 +230,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   }, [placement]);
   const deferDismiss = () => {
     cancelDismiss();
-    if (!pinned.current) closeTimer.current = setTimeout(close, 240);
+    if (!pinned.current) closeTimer.current = setTimeout(() => {
+      if (document.activeElement !== trigger.current && !popover.current?.contains(document.activeElement)) close();
+    }, 240);
   };
   const bindings = (market: Market) => ({
     onPointerEnter: (event: React.PointerEvent) => { if (event.pointerType !== "touch") setHovered(market); },
@@ -220,6 +246,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     event.preventDefault();
     onMarket(market);
   };
+  if (cited && !query.isPending && (!matchesCitation || !region || !answer?.markets.some(row => row.market === region))) {
+    return <Empty title={t("引用的行情记录暂不可用","Cited market observation unavailable")} />;
+  }
   if (demo) return <section className="mx-panel">
     <Empty headingLevel={2} title={t("演示不包含全球行情", "Global quotes aren’t included in the demo")} />
   </section>;
@@ -239,7 +268,18 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const inspectedContribution = rows.find(({ market }) => market === inspection?.market)?.contribution;
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
   return (
-    <section className="mx-global-panel" aria-labelledby="mx-global-title">
+    <section className="mx-global-panel" aria-labelledby="mx-global-title"
+      onKeyDownCapture={(event) => {
+        // The reading links render through a portal, so capture on their shared React ancestor.
+        if (event.key === "Tab" && event.shiftKey && event.target === popover.current?.querySelector("button, a")) {
+          event.preventDefault();
+          trigger.current?.focus();
+        }
+      }}>
+      <PageInspection key={cited ? JSON.stringify([citedId, observed]) : "latest"} role="market-map" snapshotId={citedId} object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
+        context={cited && matchesCitation ? {observed:observed!} : openingObservation && !cited ? {observed:openingObservation} : undefined} market={inspection?.market}
+        showMapLine={cited ? matchesCitation : answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
+        portal={readingSlot}/>
       <header className="mx-global-lead">
         <div className="mx-global-heading">
           <h2 id="mx-global-title">{title}</h2>
@@ -287,7 +327,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
               onKeyDown={(event) => {
                 if ((event.key === "Tab" && !event.shiftKey) && inspection?.market === market) {
                   event.preventDefault();
-                  detailLink.current?.focus();
+                  (popover.current?.querySelector<HTMLElement>("button, a") ?? detailLink.current)?.focus();
                 }
               }}>
               {market !== "hk" && <path className="mx-global-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
@@ -320,13 +360,14 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             <div><dt>{t("贡献", "Contribution")}</dt>
               <dd>{inspectedContribution == null ? contributionText(inspection.market) : pp(inspectedContribution)}</dd></div>
           </dl>
+          {ready && <div ref={setReadingSlot}/>}
           <Link ref={detailLink} href={url(inspection.market)} prefetch={false}
             onClick={(event) => open(event, inspection.market)} onKeyDown={(event) => {
-              if (event.key !== "Tab") return;
+              if (event.key !== "Tab" || event.shiftKey) return;
               const regions = Array.from(mapHost.current?.querySelectorAll<MapAnchor>(".mx-global-region") ?? []);
               const source = trigger.current;
               if (!source) return;
-              const next = event.shiftKey ? source : regions[regions.indexOf(source) + 1];
+              const next = regions[regions.indexOf(source) + 1];
               if (next) {
                 event.preventDefault();
                 next.focus();

@@ -36,6 +36,7 @@ from trading_max.research.market import MarketResearchService
 
 from .agent.background import BriefWriter, completed_publications
 from .agent.deps import AssistantDepsFactory
+from .agent.page_sources import published_page_sources
 from .agent.readings import ReadingService
 from .agent.runtime import build_assistant_agent, run_settings
 from .agent.service import AssistantService, AssistantUnavailable, BoundModel
@@ -181,7 +182,9 @@ def create_app(
         bind_model=bind_assistant_model,
         bind_background_model=partial(bind_assistant_model, background=True),
         deps_for_run=AssistantDepsFactory(
-            store=store, bind_price_series=research.bind_price_series
+            store=store,
+            bind_price_series=research.bind_price_series,
+            bind_page_sources=lambda: published_page_sources(app.state.indices, jobs),
         ).for_run,
         check_ready=assistant_ready,
     )
@@ -600,6 +603,7 @@ def create_app(
     app.state.settings = settings
     app.state.store = store
     app.state.history_reader = history_reader
+    app.state.retained_history_reader = HistoryReader(store, retained=True)
     app.state.settings_repository = preferences
     app.state.credential_store = credentials
     app.state.oauth_login = oauth_login
@@ -650,7 +654,7 @@ def create_app(
     app.state.assistant = assistant
     app.state.assistant_readings = ReadingService(assistant, assistant_database)
     app.state.validation_secret = validation_secret
-    app.state.retained_returns = SingleFlightCache(4)
+    app.state.retained_lenses = SingleFlightCache(4)
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research
     app.state.cached_research_shell = cached_research_shell

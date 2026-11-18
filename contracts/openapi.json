@@ -5554,6 +5554,9 @@
             "title": "Items",
             "type": "array"
           },
+          "largest_move": {
+            "$ref": "#/components/schemas/DailyReturn"
+          },
           "next_cursor": {
             "anyOf": [
               {
@@ -5565,13 +5568,28 @@
             ],
             "title": "Next Cursor"
           },
+          "observed_intervals": {
+            "title": "Observed Intervals",
+            "type": "integer"
+          },
           "range": {
             "title": "Range",
             "type": "string"
           },
+          "total_intervals": {
+            "title": "Total Intervals",
+            "type": "integer"
+          },
           "total_items": {
             "title": "Total Items",
             "type": "integer"
+          },
+          "window_benchmarks": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Window Benchmarks",
+            "type": "object"
           },
           "window_end": {
             "title": "Window End",
@@ -5580,6 +5598,20 @@
           "window_start": {
             "title": "Window Start",
             "type": "string"
+          },
+          "window_twr_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Twr Fraction"
+          },
+          "worst_day": {
+            "$ref": "#/components/schemas/DailyReturn"
           }
         },
         "required": [
@@ -5591,6 +5623,12 @@
           "range",
           "window_start",
           "window_end",
+          "window_twr_fraction",
+          "window_benchmarks",
+          "observed_intervals",
+          "total_intervals",
+          "largest_move",
+          "worst_day",
           "benchmark",
           "benchmark_currency",
           "benchmark_basis"
@@ -5925,6 +5963,26 @@
                 "type": "null"
               }
             ]
+          },
+          "positionAsOf": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Positionasof",
+            "type": "object"
           },
           "researchAsOf": {
             "title": "Researchasof",
@@ -6276,6 +6334,26 @@
           "policy": {
             "$ref": "#/components/schemas/PolicySummary"
           },
+          "positionAsOf": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Positionasof",
+            "type": "object"
+          },
           "researchAsOf": {
             "title": "Researchasof",
             "type": "string"
@@ -6479,6 +6557,10 @@
             ],
             "title": "Company Limit"
           },
+          "company_table_truncated": {
+            "title": "Company Table Truncated",
+            "type": "boolean"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -6579,6 +6661,7 @@
           "basis",
           "lookthrough_coverage_fraction",
           "invested_value_gbp",
+          "company_table_truncated",
           "company_limit"
         ],
         "title": "DatedExposure",
@@ -8967,6 +9050,17 @@
               }
             ],
             "title": "Code"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
           },
           "isin": {
             "anyOf": [
@@ -14542,6 +14636,18 @@
       },
       "JobRecord": {
         "properties": {
+          "attempts": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -28687,7 +28793,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.61.0"
+    "version": "1.62.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -29665,6 +29771,38 @@
           }
         },
         "summary": "Dashboard History"
+      },
+      "head": {
+        "description": "Validate a cached chart or exact page without loading its observations.",
+        "operationId": "history_retention_v1_dashboard_history_head",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "History Retention"
       }
     },
     "/v1/dashboard/lens/{view}": {
@@ -29773,6 +29911,20 @@
                 }
               ],
               "title": "Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projection",
+            "required": false,
+            "schema": {
+              "default": "returns",
+              "enum": [
+                "returns",
+                "risk"
+              ],
+              "title": "Projection",
+              "type": "string"
             }
           },
           {

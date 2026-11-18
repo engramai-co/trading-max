@@ -29,10 +29,11 @@ export async function GET(request: Request) {
   }
   try {
     const selection = { runId, range, scope } as HistorySelection;
-    const prepared = await readPreparedHistory(selection);
+    const retained = params.get("retained") === "1";
+    const { prepared, archived } = await readPreparedHistory(selection, retained);
     if (page != null) return privateJsonResponse(historyPage(prepared, Number(page)));
     const chart = openings.length ? { ...prepared.chart, openings: pnlsAt(prepared, openings) } : prepared.chart;
-    rememberDesktopSnapshot(portfolioHistoryKey(selection, openings), chart);
+    if (!retained && !archived) rememberDesktopSnapshot(portfolioHistoryKey(selection, openings), chart);
     return privateJsonResponse(chart);
   } catch (error) {
     return privateJsonResponse({ detail: "History could not be loaded. Please retry." },

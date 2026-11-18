@@ -42,12 +42,15 @@ export async function fetchReading(request: ReadingRequest, signal: AbortSignal,
     await reader.cancel().catch(() => undefined);
   }
 }
-export function useRoleReading(request: ReadingRequest, enabled: boolean) {
+export function useRoleReading(request: ReadingRequest, enabled: boolean, onLines?: (lines: Reading["lines"]) => void) {
   const assistant = useAssistant();
   return useQuery({
     queryKey: ["assistant-reading", request],
-    queryFn: ({ signal }) => fetchReading(request, signal),
+    queryFn: ({ signal }) => fetchReading(request, signal, undefined, onLines),
     enabled: assistant.ready && enabled, refetchInterval: query => request.cachedOnly && (request.latest || request.role === "habits" && !query.state.data) ? 30_000 : false,
-    refetchIntervalInBackground: false, staleTime: request.latest ? 60_000 : Infinity, retry: false,
+    refetchIntervalInBackground: false,
+    // A saved reading can outlive the publication that supports its citation.
+    refetchOnMount: request.snapshotId ? "always" : true,
+    staleTime: request.latest ? 60_000 : Infinity, retry: false,
   });
 }

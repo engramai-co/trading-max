@@ -34,6 +34,7 @@ export async function GET(
   const allowed: Record<string, Set<string>> = {
     range: new Set(["1D", "1W", "1M", "3M", "6M", "YTD", "1Y", "ALL"]),
     scope: new Set(["invest", "isa", "total", "household", "cfd"]),
+    projection: new Set(["risk"]),
     detail: new Set(["full", "summary"]),
   };
   for (const [key, values] of Object.entries(allowed)) {

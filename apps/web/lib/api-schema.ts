@@ -326,7 +326,11 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * History Retention
+         * @description Validate a cached chart or exact page without loading its observations.
+         */
+        head: operations["history_retention_v1_dashboard_history_head"];
         patch?: never;
         trace?: never;
     };
@@ -3380,16 +3384,28 @@ export interface components {
             currency: string;
             /** Items */
             items: components["schemas"]["DailyReturn"][];
+            largest_move: components["schemas"]["DailyReturn"];
             /** Next Cursor */
             next_cursor: number | null;
+            /** Observed Intervals */
+            observed_intervals: number;
             /** Range */
             range: string;
+            /** Total Intervals */
+            total_intervals: number;
             /** Total Items */
             total_items: number;
+            /** Window Benchmarks */
+            window_benchmarks: {
+                [key: string]: number;
+            };
             /** Window End */
             window_end: string;
             /** Window Start */
             window_start: string;
+            /** Window Twr Fraction */
+            window_twr_fraction: number | null;
+            worst_day: components["schemas"]["DailyReturn"];
         };
         /** DailyTracking */
         DailyTracking: {
@@ -3501,6 +3517,10 @@ export interface components {
             /** Nav */
             nav?: components["schemas"]["NavPoint"][];
             policy?: components["schemas"]["PolicySummary"] | null;
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string | null;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Reviewasof */
@@ -3585,6 +3605,10 @@ export interface components {
             /** Options */
             options: components["schemas"]["OptionSnapshot"][];
             policy: components["schemas"]["PolicySummary"];
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string | null;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Risk */
@@ -3635,6 +3659,8 @@ export interface components {
             broker_as_of: string | null;
             /** Company Limit */
             company_limit: number | null;
+            /** Company Table Truncated */
+            company_table_truncated: boolean;
             /** Currency */
             currency: string;
             /** Dimension */
@@ -4370,6 +4396,8 @@ export interface components {
             classification_status?: string | null;
             /** Code */
             code?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
             /** Isin */
             isin?: string | null;
             /** Name */
@@ -6158,6 +6186,8 @@ export interface components {
         };
         /** JobRecord */
         JobRecord: {
+            /** Attempts */
+            attempts?: number | null;
             /**
              * Createdat
              * Format: date-time
@@ -11457,6 +11487,35 @@ export interface operations {
             };
         };
     };
+    history_retention_v1_dashboard_history_head: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dashboard_lens_v1_dashboard_lens__view__get: {
         parameters: {
             query?: {
@@ -11464,6 +11523,7 @@ export interface operations {
                 account?: ("A" | "B" | "C") | null;
                 range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
                 scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
+                projection?: "returns" | "risk";
                 /** @description summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation. */
                 detail?: "full" | "summary";
             };

@@ -72,6 +72,7 @@ export function decodeTimeline(compact: CompactTimeline): CalendarTimeline {
 }
 
 export type PreparedHistory = {
+  brokerAsOf?: string;
   runId: string;
   dataRevision: string;
   sourceCount: number;
@@ -122,7 +123,7 @@ export function prepareHistory(input: HistoryInput, selection: Pick<HistorySelec
   const indexes = [...selected].sort((a, b) => a - b);
   const mapping = new Map(indexes.map((index, row) => [index, row]));
   const chart: PreparedHistory = {
-    runId: input.runId, dataRevision: input.dataRevision, sourceCount: dates.length,
+    runId: input.runId, brokerAsOf:input.brokerAsOf, dataRevision: input.dataRevision, sourceCount: dates.length,
     history: { ...history, points: indexes.map((index) => history.points[index]), timeline: encodeTimeline(history.timeline, mapping) },
     money: sliceMoney(money, indexes),
   };
