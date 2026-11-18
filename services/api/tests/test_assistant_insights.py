@@ -560,6 +560,156 @@ def test_aliased_listing_moments_match_returned_chart_identity(bound, watchliste
         assert new_run["quality"]["reason_code"] == "displayed_price_series_mismatch"
 
 
+def distinct_listing_events(bound, *, london_report=False):
+    app, manifest, _ = bound
+    store = app.state.store
+    technical = store.read_json(manifest.run_id, tools.TECHNICAL)
+    london = {**technical["rows"][0], "ticker": "SYN.L"}
+    us_bars = [
+        {**p, "close": close}
+        for p, close in zip(london["price_series"], [32, 32, 34, 30, 40], strict=True)
+    ]
+    technical["rows"] = [london, {**london, "ticker": "SYN", "price_series": us_bars}]
+    day = DATES[-1]
+    analyst = [
+        {
+            "ticker": "SYN",
+            "analyst": {
+                "earningsEvents": [{"date": day, "status": "reported", "id": "US-earnings"}],
+                "upgradesDowngrades": [{"index": day, "action": "up", "firm": "US-rating"}],
+            },
+        }
+    ]
+    if london_report:
+        analyst.append(
+            {
+                "ticker": "SYN.L",
+                "analyst": {
+                    "earningsEvents": [{"date": day, "status": "reported", "id": "London-earnings"}]
+                },
+            }
+        )
+    payloads = {
+        tools.TECHNICAL: technical,
+        tools.ANALYST: {"rows": analyst},
+        tools.FINANCIALS: {
+            "rows": [
+                {
+                    "ticker": "SYN",
+                    "financials": {"evidence": {"filings": [{"date": day, "id": "US-filing"}]}},
+                }
+            ]
+        },
+        ins.TRADE_MARKERS: {
+            "rows": [
+                {
+                    "ticker": "SYN",
+                    "date": day,
+                    "kind": "B",
+                    "accounts": ["isa"],
+                    "buy_orders": 1,
+                    "sell_orders": 0,
+                    "buy_quantity": 1,
+                    "sell_quantity": 0,
+                    "buy_average_price": 40,
+                    "sell_average_price": None,
+                }
+            ]
+        },
+    }
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(key=key, payload=raw)
+            for key, raw in payloads.items()
+        },
+    )
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN.L", name="London listing", exchange="LSE", bloomberg_ticker="", figi=""
+        )
+    )
+    return app, f"/v1/snapshots/{manifest.run_id}/insights/key-moments"
+
+
+def test_key_moments_attach_events_only_to_their_published_listing(bound):
+    app, url = distinct_listing_events(bound)
+    client = TestClient(app)
+    query = {"start": DATES[0], "end": DATES[-1], "scope": "isa"}
+    london = client.get(url, params={**query, "ticker": "SYN.L"}).json()
+    assert london["data"]["ticker"] == "SYN.L"
+    assert london["data"]["items"] == []
+    assert "earnings_events_unavailable" in london["quality"]["issues"]
+    london_chart = client.get("/v1/research/SYN.L/prices").json()
+    assert london_chart["publishedSeriesId"] == london["data"]["published_series_id"]
+    assert london_chart["tradeMarkers"] == []
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+    us = client.get(url, params={**query, "ticker": "SYN"}).json()
+    us_chart = client.get("/v1/research/SYN/prices").json()
+    assert us_chart["publishedSeriesId"] == us["data"]["published_series_id"]
+    assert [marker["ticker"] for marker in us_chart["tradeMarkers"]] == ["SYN"]
+    assert {(e["kind"], e["reference"]) for e in us["data"]["items"][0]["events"]} == {
+        ("earnings", "US-earnings"),
+        ("rating_change", "US-rating"),
+        ("filing", "US-filing"),
+        ("own_trade", "B"),
+    }
+
+
+def test_key_moment_evidence_changes_with_resolved_series(bound):
+    app, url = distinct_listing_events(bound, london_report=True)
+    client = TestClient(app)
+    query = {"ticker": "SYN", "start": DATES[0], "end": DATES[-1], "scope": "isa"}
+    london = client.get(url, params=query).json()
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+    us = client.get(url, params=query).json()
+    assert london["data"]["items"][0]["move_fraction"] == pytest.approx(30 / 33 - 1)
+    assert us["data"]["items"][0]["move_fraction"] == pytest.approx(40 / 30 - 1)
+    assert us["data"]["published_series_id"] != london["data"]["published_series_id"]
+    assert us["evidence_id"] != london["evidence_id"]
+    assert client.get(url, params=query).json()["evidence_id"] == us["evidence_id"]
+
+
+def test_broken_watchlist_only_withholds_listing_dependent_readings(bound):
+    app, manifest, _ = bound
+    client = TestClient(app, raise_server_exceptions=False)
+    base = f"/v1/snapshots/{manifest.run_id}/insights/"
+    queries = {
+        "daily-returns": {"scope": "invest"},
+        "dated-exposure": {
+            "scope": "broker_total",
+            "dimension": "country",
+            "on_or_before": DATES[-1],
+        },
+    }
+    before = {
+        path: client.get(base + path, params=params).json() for path, params in queries.items()
+    }
+    watchlist = app.state.watchlist.path
+    original = watchlist.read_bytes()
+    watchlist.write_bytes(b'{"items":[')
+    for path, params in queries.items():
+        response = client.get(base + path, params=params)
+        assert response.status_code == 200
+        assert response.json() == before[path]
+    params = {"scope": "isa", "ticker": "TEST", "start": DATES[0], "end": DATES[-1]}
+    failed = client.get(base + "key-moments", params=params)
+    assert failed.status_code == 200
+    assert failed.json()["status"] == "unavailable" and failed.json()["data"] is None
+    assert failed.json()["quality"]["reason_code"] == "published_daily_bars_unavailable"
+    assert watchlist.read_bytes() == b'{"items":['
+    watchlist.write_bytes(original)
+    assert client.get(base + "key-moments", params=params).json()["data"]["items"]
+
+
 def test_dated_gics_reports_holdings_classification_and_row_status(
     tmp_path, research_root, typed_fixture
 ):

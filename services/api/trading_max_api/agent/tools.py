@@ -242,6 +242,7 @@ class _Read:
     tool: str
     args: Args
     scope: str
+    evidence_context: str | None = None
 
     def ref(self, key: str) -> ArtifactInfo | None:
         manifest = self.deps.manifest
@@ -269,6 +270,9 @@ class _Read:
         quality: Json = {"issues": list(dict.fromkeys(issues))}
         if reason:
             quality["reason_code"] = reason
+        identity = [self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]
+        if self.evidence_context is not None:
+            identity.append(self.evidence_context)
         return {
             "status": status,
             "data": data,
@@ -278,9 +282,7 @@ class _Read:
                 _source(ref) for key in dict.fromkeys(keys) if (ref := self.ref(key)) is not None
             ],
             "quality": quality,
-            "evidence_id": _short_id(
-                "ev_", [self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]
-            ),
+            "evidence_id": _short_id("ev_", identity),
         }
 
     def missing(self, reason: str = "snapshot_missing", *, keys: Iterable[str] = ()) -> Json:

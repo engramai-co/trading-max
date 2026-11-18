@@ -141,9 +141,11 @@ Absolute moves and absolute volume z-scores rank separately across all
 visible days. Among dates with evidence, the better rank wins, with the
 earlier date breaking a tie. The chart and reading resolve the same requested
 listing, including exchange-qualified watchlist aliases. A run captures its
-aliases at the start and reads prices and events from its pinned snapshot. The series carries a
-`publishedSeriesId` bound to the price artifact and ticker. A chart caller
-passes it as `published_series_id` so a newer publication cannot be
+aliases at the start and reads prices and events from its pinned snapshot.
+Events must match the ticker on the published bar row. If the aliases cannot
+be read, key moments return an unavailable reading. Their evidence IDs include
+the resolved `publishedSeriesId`, which identifies the price artifact and ticker.
+A chart caller passes it as `published_series_id` so a newer publication cannot be
 mistaken for the chart on screen. Live or differently sampled charts
 have no matching published daily series identifier.
 
