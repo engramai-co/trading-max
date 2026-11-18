@@ -47,6 +47,7 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchPriceSeries,
     ResearchShell,
+    ResearchTradeMarker,
     TechnicalScoreSummary,
 )
 from .etf_snapshot import find_etf, read_etf_portfolio
@@ -2525,19 +2526,20 @@ class ResearchLedger:
 
         return self._facts_cache.get_or_compute((manifest.run_id, "marker_listings"), load)
 
-    def listing_trade_markers(self, manifest: SnapshotManifest, ticker: str):
-        """The chart and its readings resolve broker fills against the same pinned listing."""
+    def trade_markers(
+        self, manifest: SnapshotManifest, ticker: str, currency: str
+    ) -> tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]:
+        """Project the pinned fills for the listing and quote unit of the returned bars."""
 
         def load():
-            if not _artifact(manifest, "account/trade_markers.json"):
-                return [], None
-            payload = self._read_optional(manifest, "account/trade_markers.json")
+            key = "account/trade_markers.json"
+            raw = self._read_optional(manifest, key) if _artifact(manifest, key) else {}
             return chart_trade_markers(
-                payload, ticker, lambda: self._marker_listings(manifest, payload)
+                raw, ticker, currency, lambda: self._marker_listings(manifest, raw)
             )
 
         return self._facts_cache.get_or_compute(
-            (manifest.run_id, "listing_trade_markers", ticker), load
+            (manifest.run_id, "trade_markers", ticker, currency), load
         )
 
     def published_price_series(
@@ -2577,7 +2579,7 @@ class ResearchLedger:
             if fund_price
             else market.get("currency") or source.get("currency") or ""
         )
-        all_markers, unresolved = self.listing_trade_markers(manifest, bar_ticker)
+        all_markers, unresolved = self.trade_markers(manifest, bar_ticker, currency)
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,

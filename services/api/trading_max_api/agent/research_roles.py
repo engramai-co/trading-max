@@ -121,6 +121,9 @@ EVENTS = {
     "earnings": ("财报已公布", "Earnings reported", "financials", "analyst"),
     "rating_change": ("评级变动", "Rating change", "analysts", "analyst"),
     "filing": ("监管披露", "Regulatory filing", "disclosure", "ledger"),
+    "dividend": ("已披露股息", "Reported dividend", "disclosure", "technical"),
+    "ex_dividend": ("除息日", "Ex-dividend date", "disclosure", "technical"),
+    "dividend_pay": ("股息派发日", "Dividend payment date", "disclosure", "technical"),
     "own_trade": ("账户成交", "Account trade", "broker", "technical"),
 }
 
@@ -176,8 +179,8 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
             if story:
                 fact = line(
                     "event",
-                    f"{date} · 同日报道：{story['title']}",
-                    f"{date} · also reported: {story['title']}",
+                    f"{date} · 相关报道：{story['title']}",
+                    f"{date} · related headline: {story['title']}",
                     news,
                     "publisher",
                     "research_headline",

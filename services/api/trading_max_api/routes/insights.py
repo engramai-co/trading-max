@@ -152,6 +152,7 @@ class MomentEvent(BaseModel):
     kind: str
     reference: str
     publication_date: str | None = None
+    role: Literal["lead"] | None = None
 
 
 class Moment(BaseModel):

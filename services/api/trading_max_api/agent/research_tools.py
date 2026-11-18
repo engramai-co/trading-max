@@ -8,18 +8,18 @@ from typing import Annotated, Literal
 from pydantic import StringConstraints, model_validator
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.held_funds import FUND_PRICES_KEY
-from trading_max.research.news import NEWS_KEY
 
 from .insights import (
     TRADE_MARKERS,
     CalendarDay,
     MomentsArgs,
     dated_events,
-    moment_headlines,
     moments_data,
 )
+from .moment_events import moment_stories
 from .tools import (
     ANALYST,
+    FINANCIALS,
     FUNDAMENTALS,
     TECHNICAL,
     Args,
@@ -46,9 +46,9 @@ class PositionArgs(SecurityArgs):
     index_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")] | None = None
 
 
-def last_listing_trade(read, ticker, end, fallback=()):
+def last_listing_trade(read, ticker, end, currency, fallback=()):
     markers = (
-        read.deps.listing_markers(read.deps.manifest, ticker)[0]
+        read.deps.listing_markers(read.deps.manifest, ticker, currency or "")[0]
         if read.deps.manifest and read.deps.listing_markers
         else fallback
     )
@@ -82,7 +82,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         opening, latest = history.points[0], history.points[-1]
         end = latest.at.date().isoformat()
         trade = (
-            last_listing_trade(read, args.ticker, end)
+            last_listing_trade(read, args.ticker, end, history.currency)
             if history.index.kind == "etf-price"
             else None
         )
@@ -138,7 +138,9 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             return read.missing("displayed_price_series_mismatch")
         ticker = series.published_bar_ticker
     latest = series.points[-1]
-    last_trade = last_listing_trade(read, ticker, latest.date, series.trade_markers)
+    last_trade = last_listing_trade(
+        read, ticker, latest.date, series.currency, series.trade_markers
+    )
     previous = series.points[-2] if len(series.points) >= 2 else None
     base = (
         next((p for p in series.points if p.date == last_trade[0]), None)
@@ -180,7 +182,11 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             read, window, read.account_codes("broker_total"), series
         )
         event = max(
-            (row for row in records if row["kind"] != "own_trade" and row["date"] > last_trade[0]),
+            (
+                row
+                for row in records
+                if row["kind"] not in {"own_trade", "news"} and row["date"] > last_trade[0]
+            ),
             key=lambda row: row["date"],
             default=None,
         )
@@ -335,11 +341,13 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
             return read.missing("headline_outside_selected_moment")
         ticker = selected.get("listing") or selected["ticker"]
         published = event.get("publication_date", args.date)
+    financials = _mapped((_ticker_row(read.read(FINANCIALS), ticker) or {}).get("financials"))
+    stories, keys, _ = moment_stories(read, ticker, _mapped(financials.get("evidence")))
     row = next(
         (
             row
-            for row in moment_headlines(read, ticker)
-            if row["date"][:10] == published and (row.get("id") or row["url"]) == args.reference
+            for row in stories
+            if row["date"][:10] == published and row["reference"] == args.reference
         ),
         None,
     )
@@ -348,8 +356,11 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
     return read.result(
         data={
             "ticker": ticker,
-            **{k: row[k] for k in ("title", "publisher", "url")},
+            "title": row["title_en"],
+            "publisher": row["publisher"],
+            "url": row["source_url"],
+            "role": "lead",
             "date": row.get("instant") or row["date"],
         },
-        keys=[NEWS_KEY],
+        keys=keys,
     )

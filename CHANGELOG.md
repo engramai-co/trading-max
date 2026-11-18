@@ -7,13 +7,13 @@ All notable public Trading Max releases are recorded here.
 ### Added
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Follow-ups use the reading’s selected account, period and security. Replies show figures and coverage directly from the cited records, and name the dataset when reporting its freshness. Screen readers announce each source and any verification notice. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. The daily brief also lists dated official macro releases in your display time zone. Benchmark citations reopen the portfolio and prices from the cited publication. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
-
 - Research can open a security-specific position reading, inspect up to three event-backed price moves, and show a pre-written earnings brief in Financials and Estimates & events. Each observation links to its evidence.
-- The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.
+- The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves. Key moments include dated dividend records and headlines for the chart’s listing. A headline published after the exchange closes goes with the next session.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
-- Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trade markers appear when the snapshot identifies one matching listing.
+- Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
+- The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
 ## [1.56.0] - 2026-11-18

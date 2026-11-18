@@ -4073,6 +4073,17 @@ export interface components {
             /** Providerend */
             providerEnd: string;
         };
+        /** FollowingSession */
+        FollowingSession: {
+            /** Date */
+            date: string;
+            /** Return Fraction */
+            return_fraction: number;
+            /** Sessions */
+            sessions: number;
+            /** Start */
+            start: string;
+        };
         /** ForwardPeHistory */
         ForwardPeHistory: {
             /** Currency */
@@ -6147,6 +6158,8 @@ export interface components {
             publication_date?: string | null;
             /** Reference */
             reference: string;
+            /** Role */
+            role?: "lead" | null;
         };
         /** NavPoint */
         NavPoint: {
@@ -6628,10 +6641,17 @@ export interface components {
         };
         /** PriceMoments */
         PriceMoments: {
+            /** Adjustment */
+            adjustment?: string | null;
             /** Basis */
             basis: string;
             /** End */
             end: string;
+            /**
+             * Following
+             * @default []
+             */
+            following: components["schemas"]["FollowingSession"][];
             /** Index Range */
             index_range?: string | null;
             /** Interval */

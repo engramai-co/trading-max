@@ -137,7 +137,7 @@ def setup(tmp_path):
         store,
         bind_price_series=ledger.bind_price_series,
         observed_prices=ledger.observed_prices,
-        listing_markers=ledger.listing_trade_markers,
+        listing_markers=ledger.trade_markers,
     )
     bindings = []
 
@@ -225,13 +225,13 @@ def test_timed_news_is_attached_to_the_exchange_day_and_opens_the_original_headl
         published_series_id=series.published_series_id,
         start=DATES[0],
         end=DATES[-1],
-        date="2026-01-30",
+        date="2026-02-02",
     )
     role = role_registry()["key-moment"]
     reader = role.reader(deps, selection)
     facts = role.facts(reader, selection)
     news = next(fact for fact in facts if fact.evidence.source == "publisher")
-    assert news.en.startswith("2026-01-30") and news.evidence.arguments["url"] == STORY["url"]
+    assert news.en.startswith("2026-02-02") and news.evidence.arguments["url"] == STORY["url"]
     assert (
         reader.read(
             research.research_headline,
@@ -527,16 +527,17 @@ def test_published_technical_zone_determines_timed_headline_coverage(tmp_path, z
     if zone:
         assert series.timezone == zone
         assert any(
-            e["kind"] == "news" and e["date"] == DATES[2]
+            e["kind"] == "news" and e["date"] == DATES[3]
             for m in result["data"]["items"]
             for e in m["events"]
         )
     else:
-        assert "news_exchange_timing_unavailable" in result["quality"]["issues"]
+        assert "listing_calendar_unavailable" in result["quality"]["issues"]
 
 
 def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, monkeypatch):
     from contextlib import nullcontext
+
     from trading_max.application.event_stages import SecurityNewsStage
     from trading_max.application.stages import StageContext
     from trading_max.reference.indices import INDEX_REGISTRY

@@ -27,7 +27,7 @@ def key_moments(bars: list[dict], events: Iterable[dict], start: str, end: str) 
         day = bar["date"]
         if not start <= day <= end:
             continue
-        prior = bars[index - 1] if index and bars[index - 1]["date"] >= start else {}
+        prior = bars[index - 1] if index else {}
         opening, close = _value(prior.get("close")), _value(bar.get("close"))
         move = (
             (close - opening) / opening if opening and opening > 0 and close is not None else None

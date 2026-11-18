@@ -7,17 +7,15 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from itertools import pairwise
 from typing import Annotated, Literal
-from zoneinfo import ZoneInfo
 
-from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import listing_calendar
 from trading_max.research.held_funds import FUND_PRICES_KEY
-from trading_max.research.news import NEWS_KEY, web_url
+from trading_max.research.news import NEWS_KEY
 
 from ..dashboard import _benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -26,15 +24,18 @@ from ..projections.nav import nav_series
 from ..projections.values import csv_rows
 from ..research import published_price_series_id
 from .deps import AssistantDeps
+from .moment_events import headline_events, listing_moment_events
 from .tools import (
     ANALYST,
     BROKER,
     CODE_SCOPE,
     DECISIONS,
+    EARNINGS,
     FINANCIALS,
     FUNDAMENTALS,
     HISTORY_KEYS,
     LIVE,
+    MAX_RESULT_BYTES,
     TECHNICAL,
     Context,
     ExposureArgs,
@@ -44,6 +45,7 @@ from .tools import (
     Scoped,
     Ticker,
     _broker,
+    _bytes,
     _exposure_reading,
     _iso,
     _mapped,
@@ -463,7 +465,13 @@ TRADE_MARKERS = "account/trade_markers.json"
 
 
 def dated_events(
-    read: _Read, args: MomentsArgs, codes: set[str], series: ResearchPriceSeries | None = None
+    read: _Read,
+    args: MomentsArgs,
+    codes: set[str],
+    series: ResearchPriceSeries | None = None,
+    *,
+    calendar=None,
+    currency="",
 ) -> tuple[list[dict], list[str], list[str]]:
     """Dated evidence for the selected listing. Extra sources can supply the same event rows."""
     events = []
@@ -476,14 +484,10 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
-    def listing_rows(key):
-        return (
-            row
-            for row in _rows((read.read(key) or {}).get("rows"))
-            if str(row.get("ticker") or "").strip().upper() == args.ticker
-        )
+    def listing_row(key):
+        return _ticker_row(read.read(key), args.ticker) or {}
 
-    analyst = _mapped(next(listing_rows(ANALYST), {}).get("analyst"))
+    analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
         keys.append(ANALYST)
     if not isinstance(analyst.get("earningsEvents"), list):
@@ -501,7 +505,7 @@ def dated_events(
         if not stamp and epoch is not None and 0 <= epoch < 253402300800:
             stamp = datetime.fromtimestamp(epoch, UTC).date().isoformat()
         add(stamp, "rating_change", row.get("Firm") or row.get("firm"))
-    financials = _mapped(next(listing_rows(FINANCIALS), {}).get("financials"))
+    financials = _mapped(listing_row(FINANCIALS).get("financials"))
     filing_evidence = _mapped(financials.get("evidence"))
     filing_rows = filing_evidence.get("filings")
     if isinstance(filing_rows, list):
@@ -511,18 +515,28 @@ def dated_events(
         issues.append("filings_unavailable")
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
+    extra_events, extra_keys, extra_issues = listing_moment_events(
+        read,
+        args,
+        series.exchange_calendar if series else calendar,
+        _mapped(listing_row(EARNINGS).get("calendar")),
+        _mapped(listing_row(FUNDAMENTALS).get("metrics")),
+        filing_evidence,
+    )
+    keys.extend(extra_keys)
+    issues.extend(extra_issues)
     scopes = {CODE_SCOPE[code] for code in codes}
     if not scopes & {"invest", "isa"}:
-        return events, keys, issues
+        return [*events, *extra_events], keys, issues
     if series is not None:
         markers, unresolved = series.trade_markers, series.unresolved_trade_accounts
     elif read.deps.listing_markers and read.deps.manifest:
-        markers, unresolved = read.deps.listing_markers(read.deps.manifest, args.ticker)
+        markers, unresolved = read.deps.listing_markers(read.deps.manifest, args.ticker, currency)
     else:
         markers, unresolved = [], None
     if unresolved is None:
         issues.append("trade_markers_unavailable")
-        return events, keys, issues
+        return [*events, *extra_events], keys, issues
     keys.append(TRADE_MARKERS)
     if any(
         args.start <= day <= args.end and accounts & scopes for day, accounts in unresolved.items()
@@ -530,64 +544,14 @@ def dated_events(
         issues.append("trade_listing_unresolved")
     for row in markers:
         # The chart resolves listing identity. Limit its marker to the authorised accounts.
-        sides = {f.side for f in row.fills if f.account in scopes}
-        marker = {
-            frozenset({"buy", "sell"}): "T",
-            frozenset({"buy"}): "B",
-            frozenset({"sell"}): "S",
-        }.get(frozenset(sides))
-        if not row.fills and row.accounts and set(row.accounts) <= scopes:
-            marker = row.kind
-        if marker:
+        kinds = {"B" if f.side == "buy" else "S" for f in row.fills if f.account in scopes}
+        kinds.update(
+            kind for accounts, kind in row.aggregate_sides if accounts and accounts <= scopes
+        )
+        if kinds:
+            marker = next(iter(kinds)) if len(kinds) == 1 else "T"
             add(row.date, "own_trade", marker)
-    return events, keys, issues
-
-
-def moment_headlines(read: _Read, ticker: str) -> list[dict]:
-    stored = _mapped(_mapped((read.read(NEWS_KEY) or {}).get("securities")).get(ticker))
-    return [
-        row
-        for row in _rows(stored.get("items"))
-        if row.get("publisher")
-        and row.get("title")
-        and web_url(row.get("url"))
-        and _iso(row.get("date"))
-    ]
-
-
-def news_events(
-    read: _Read, ticker: str, *, zone=None, calendar=None
-) -> tuple[list[dict], list[str]]:
-    rows = moment_headlines(read, ticker)
-    if not zone and not calendar and any(row.get("instant") for row in rows):
-        listing = _mapped((_ticker_row(read.read(FUNDAMENTALS), ticker) or {}).get("metrics"))
-        zone = listing.get("exchangeTimezoneName")
-        calendar = listing_calendar(ticker, listing.get("fullExchangeName"), zone)
-    events = []
-    issues = set()
-    for row in rows:
-        published = row["date"][:10]
-        day = published
-        if stamp := row.get("instant"):
-            try:
-                instant = datetime.fromisoformat(stamp)
-                if instant.utcoffset() is None or not (zone or calendar):
-                    issues.add("news_exchange_timing_unavailable")
-                    continue
-                local = (
-                    ZoneInfo(zone)
-                    if zone
-                    else market_calendar(calendar, instant.year, instant.year).tz
-                )
-                day = instant.astimezone(local).date().isoformat()
-            except (CalendarError, KeyError, TypeError, ValueError, OverflowError):
-                issues.add("news_exchange_timing_unavailable")
-                continue
-        event = {"date": day, "kind": "news", "reference": str(row.get("id") or row["url"])}
-        if day != published:
-            event["publication_date"] = published
-        events.append(event)
-    return events, sorted(issues)
+    return [*events, *extra_events], keys, issues
 
 
 def selected_moments(bars, events, args: MomentsArgs) -> list[dict]:
@@ -626,17 +590,16 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         ):
             return read.missing("displayed_index_series_unavailable")
         bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
-        events, timing_issues = (
-            news_events(read, args.ticker, calendar=history.index.calendar)
-            if history.index.symbol
-            else ([], [])
-        )
         if history.index.kind == "etf-price":
-            security_events, keys, issues = dated_events(read, args, codes)
-            events.extend(security_events)
+            events, keys, issues = dated_events(
+                read, args, codes, calendar=history.index.calendar, currency=history.currency or ""
+            )
         else:
-            keys, issues = [], []
-        issues.extend(timing_issues)
+            events, keys, issues = (
+                headline_events(read, args, history.index.calendar, {})
+                if history.index.symbol
+                else ([], [], [])
+            )
         if history.state != "available":
             issues.append("index_history_" + history.state)
         moments = selected_moments(bars, events, args)
@@ -695,18 +658,14 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         args.model_copy(update={"ticker": listing}),
         codes,
         None if observed else series,
+        calendar=series.exchange_calendar or listing_calendar(listing, None, series.timezone),
+        currency=series.currency,
     )
-    headlines, timing_issues = news_events(
-        read, listing, zone=series.timezone, calendar=series.exchange_calendar
-    )
-    events.extend(headlines)
-    issues.extend(timing_issues)
-    keys.append(NEWS_KEY)
     moments = selected_moments(bars, events, args)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:
         return read.missing("no_visible_daily_bars", keys=price_keys)
-    return read.result(
+    result = read.result(
         "partial" if issues else "ok",
         data={
             "ticker": series.ticker,
@@ -723,6 +682,19 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         keys=[*price_keys, *keys],
         issues=issues,
     )
+
+    # Keep references intact, including long publisher URLs. Drop supporting
+    # rows before dropping a ranked session that has only one reference left.
+    while _bytes(result) > MAX_RESULT_BYTES:
+        if "result_byte_limit" not in result["quality"]["issues"]:
+            result["status"] = "partial"
+            result["quality"]["issues"].append("result_byte_limit")
+        longest = max(moments, key=lambda item: len(item["events"]))
+        if len(longest["events"]) > 1:
+            longest["events"].pop()
+        else:
+            moments.pop()
+    return result
 
 
 def daily_returns(ctx: Context, args: DailyArgs) -> Json:

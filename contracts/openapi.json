@@ -8116,6 +8116,34 @@
         "title": "FinancialPeriod",
         "type": "object"
       },
+      "FollowingSession": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "return_fraction": {
+            "title": "Return Fraction",
+            "type": "number"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "date",
+          "sessions",
+          "return_fraction"
+        ],
+        "title": "FollowingSession",
+        "type": "object"
+      },
       "ForwardPeHistory": {
         "additionalProperties": false,
         "properties": {
@@ -14344,6 +14372,18 @@
           "reference": {
             "title": "Reference",
             "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "const": "lead",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           }
         },
         "required": [
@@ -16119,6 +16159,17 @@
       },
       "PriceMoments": {
         "properties": {
+          "adjustment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment"
+          },
           "basis": {
             "title": "Basis",
             "type": "string"
@@ -16126,6 +16177,14 @@
           "end": {
             "title": "End",
             "type": "string"
+          },
+          "following": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FollowingSession"
+            },
+            "title": "Following",
+            "type": "array"
           },
           "index_range": {
             "anyOf": [

@@ -86,6 +86,7 @@ test.describe("chart evidence and fullscreen", () => {
       } } });
     });
     await page.goto("/research?ticker=AAPL&view=analyst");
+    await page.getByRole("heading", { name: "Quarterly EPS", exact: true }).scrollIntoViewIfNeeded();
     const chart = page.getByRole("group", { name: "Reported and estimated quarterly EPS" });
     // The live region sits beside the plot frame, inside the chart's host.
     const reading = chart.locator("xpath=../../..").locator("[data-chart-reading]");

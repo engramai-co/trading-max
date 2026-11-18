@@ -24,7 +24,7 @@ DEFAULT_TIMEZONE = ZoneInfo("Europe/London")
 
 
 type MarkerReader = Callable[
-    [SnapshotManifest, str], tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]
+    [SnapshotManifest, str, str], tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]
 ]
 
 # A missing key leaves an argument to the caller. A bound null is an explicit selection.
