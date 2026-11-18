@@ -49,16 +49,12 @@ def freeze_basis(
     period, values = statement_basis(facts, family, listing)
     if family == "residual-income" and not period:
         raise ValueError("positive-common-equity-and-common-income-required")
+    if not period or not currency or not facts.currency or not spot or spot <= 0:
+        raise ValueError("complete-ttm-currency-and-share-count-required")
     shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr, ordinary_listing)
-    if (
-        not period
-        or not shares
-        or shares <= 0
-        or not currency
-        or not facts.currency
-        or not spot
-        or spot <= 0
-    ):
+    if not shares or shares <= 0:
+        if listing and ratio is None and not ordinary_listing and not is_adr:
+            raise ValueError("listed-share-unit-unverified")
         raise ValueError("complete-ttm-currency-and-share-count-required")
     if facts.currency == currency:
         fx = 1

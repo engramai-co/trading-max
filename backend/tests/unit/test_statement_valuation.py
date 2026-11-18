@@ -285,6 +285,10 @@ def test_batch_requires_share_unit_evidence_for_the_quote(filed_listing, unit, e
     if eligible:
         assert row["assumptions"]["shareUnit"] == "ordinary"
         assert row["assumptions"]["shareUnitFiling"] == "https://issuer.invalid/cover"
+    elif unit == "receipt":
+        assert row["model_warnings"] == ["complete-ttm-currency-and-share-count-required"]
+    else:
+        assert row["model_warnings"] == ["listed-share-unit-unverified"]
 
 
 def test_class_count_requires_a_period_with_company_wide_shares():

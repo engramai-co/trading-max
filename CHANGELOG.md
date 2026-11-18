@@ -4,6 +4,9 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- The Research Desk explains when a negative equity valuation reaches the zero floor and identifies an unverified share unit when it withholds a per-share model.
+
 ## [1.57.0] - 2026-11-18
 
 ### Changed

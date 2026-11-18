@@ -1158,6 +1158,11 @@ def test_retained_share_basis_needs_positive_listing_evidence(
             ):
                 if expected_shares is None:
                     assert response.status_code == 422
+                    assert response.json()["detail"] == (
+                        "listed-share-unit-unverified"
+                        if v == "v2"
+                        else "complete-ttm-currency-and-share-count-required"
+                    )
                 else:
                     assert response.status_code == 200, response.text
                     assert response.json()["basis"]["shares"] == expected_shares

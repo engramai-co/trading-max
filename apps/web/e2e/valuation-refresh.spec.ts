@@ -564,6 +564,53 @@ test.describe("valuation refresh", () => {
 });
 
 for (const locale of ["en", "zh"] as const) {
+  test(`disclose a floored valuation and distinguish an unverified share unit · ${locale}`, async ({ page, isMobile }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    let error: string | undefined;
+    let raw = -3;
+    await page.route("**/SYNT/valuation-preview*", route => {
+      if (error) return route.fulfill({ status: 422, json: { detail: error } });
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
+      const base = p.scenarios.base;
+      base.operatingValue = raw - 1;
+      base.terminalPresentValue = 1;
+      base.equityFloorAdjustment = Math.max(0, -raw);
+      base.value = Math.max(0, raw);
+      base.upside = base.value / p.basis.spot - 1;
+      return route.fulfill({ json: { ...p, formulaVersion: "statement-equity-v2" } });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const row = page.locator(".mx-valuation-readout .mx-metric").last();
+    const cards = page.locator(".mx-scenario-cards button");
+    const reason = locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计";
+    const readout = row.locator(".mx-number-value");
+    await expect(readout).toContainText("US$0.00");
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await expect(cards.nth(1)).toContainText(locale === "en" ? "Zero floor" : "按零计");
+    await expect(cards.first()).not.toContainText(locale === "en" ? "Zero floor" : "按零计");
+    for (raw of [0, 0.003]) {
+      await page.reload();
+      await expect(readout).toContainText("US$0.00");
+      await expect(row).not.toContainText(reason);
+      await expect(cards.nth(1)).not.toContainText(locale === "en" ? "Zero floor" : "按零计");
+    }
+    const panel = page.locator("#valuation-assumptions");
+    error = "listed-share-unit-unverified";
+    await page.reload();
+    const missingUnit = locale === "en" ? "Share unit unverified for this listing" : "尚未核实该上市证券的股份单位";
+    await expect(panel).toContainText(missingUnit);
+    await expect(row).toContainText(missingUnit);
+    error = "complete-ttm-currency-and-share-count-required";
+    await page.reload();
+    await expect(panel).toContainText(locale === "en"
+      ? "Matching statements, a quote and verified listing shares are required" : "此模型缺少完整同期报表、报价或上市股数");
+  });
+}
+
+for (const locale of ["en", "zh"] as const) {
   for (const scheme of ["light", "dark"] as const) {
     test(`switch valuation family and inspect ROE · ${locale} · ${scheme}`, async ({ page }, info) => {
       test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");

@@ -88,10 +88,11 @@ function ReverseReading({ result, retry, refreshing }: { result?: Preview } & Re
     helpBasis={limits && t("求解区间", "Search range") + " " + percent(limits[0]) + " – " + percent(limits[1])} />;
 }
 
-export function ValuationReadout({ data, preview, reading, retry, refreshing }: {
+export function ValuationReadout({ data, preview, reading, retry, refreshing, withheldReason }: {
   data: ResearchLensSnapshot;
   preview?: Preview;
   reading?: ModelReading;
+  withheldReason?: string;
   retry?: () => Promise<unknown>;
   refreshing?: boolean;
 }) {
@@ -113,6 +114,10 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing }: 
       {currency(base.value, result.basis.currency, 2)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
-      note={<span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />
+      note={<>
+        <span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
+        {base && base.equityFloorAdjustment > 0 &&
+          <span className="mx-valuation-floor">{t("股权估值为负，按零计", "Negative equity value floored at zero")}</span>}
+      </>} />
   </Panel>;
 }

@@ -190,7 +190,10 @@ def _valuation_preview(
                     scenarios=scenarios, family=family, references=references
                 )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        detail = str(exc)
+        if legacy and detail == "listed-share-unit-unverified":
+            detail = "complete-ttm-currency-and-share-count-required"
+        raise HTTPException(status_code=422, detail=detail) from exc
     try:
         if legacy:
             if (
