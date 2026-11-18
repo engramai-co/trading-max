@@ -10,7 +10,7 @@ from trading_max.portfolio_math import portfolio_money, select_portfolio_history
 from . import insights, tools
 from .deps import AccountScope
 from .overview_roles import LONDON, line
-from .roles import PageRole, RoleContext, RoleTools
+from .roles import PageRole, RoleContext, RoleTools, bind_selection
 
 
 def chart_instant(value: str) -> datetime:
@@ -292,4 +292,5 @@ ATTRIBUTION = PageRole(
     AttributionContext,
     "Select one fact from each section for the selected range. Preserve benchmark currency and basis. Price and currency effects apply only to held shares.",
     attribution_facts,
+    tool_bindings=bind_selection("selected_daily", "selected_fx", "selected_money"),
 )

@@ -139,6 +139,15 @@ class BriefTarget:
     slot: str
 
 
+def bind_selection(*names: str):
+    """Each listed page tool accepts the entire validated page object as its arguments."""
+
+    def bindings(context: RoleContext, _snapshot_id: str | None) -> ToolBindings:
+        return {name: context.model_dump(mode="json") for name in names}
+
+    return bindings
+
+
 @dataclass(frozen=True)
 class PageRole:
     id: str

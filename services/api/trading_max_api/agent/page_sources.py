@@ -46,8 +46,8 @@ def published_page_sources(indices, jobs) -> PageSources:
 
     return PageSources(
         weights,
-        indices.boards.load,
-        indices.observed_world_sectors,
-        indices.observed_contribution,
+        lru_cache(maxsize=1)(indices.boards.load),
+        lru_cache(maxsize=1)(indices.observed_world_sectors),
+        lru_cache(maxsize=1)(indices.observed_contribution),
         published_job,
     )

@@ -107,12 +107,13 @@ freshness states and available valuation evidence values. For a research lens, s
 items/N/value for a typed price (with currency), technical score, expiry count,
 as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
 For page readings, select selected_money /data/pnl, exposure_benchmark /data/weight,
-daily_returns /data/window_twr_fraction, /data/worst_day/return_fraction or
+selected_exposure /data/current/weight_fraction or /data/previous/weight_fraction,
+selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction or
 /data/window_benchmarks/VOO (or QQQ, VT), holding_fx_split /data/accounts/isa/fx_effect_gbp
-(or invest, local_price_effect_gbp), market_sector /data/move or /data/breadth/up,
+(or invest, local_price_effect_gbp), selected_fx /data/fx_effect_gbp or /data/local_price_effect_gbp, market_sector /data/move or /data/breadth/up,
 global_map /data/markets/N/contribution or /data/markets/N/move, and update_issue
-/data/completed, /data/stages or /data/finished_at. Use an actual returned array index
-in place of N. A news_and_events /data/items/N/title_en is a publisher's headline;
+/data/completed, /data/stages, /data/attempts, /data/failed_stages/N/en or /data/finished_at. Use an actual returned array index
+in place of N. A sector_headline or news_and_events /data/items/N/title_en is a publisher's headline;
 keep it separate from a measured change.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},

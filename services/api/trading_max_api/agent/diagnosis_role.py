@@ -8,7 +8,7 @@ from pydantic import Field, model_validator
 
 from . import tools
 from .overview_roles import LONDON, line
-from .roles import PageRole, RoleContext, RoleTools
+from .roles import PageRole, RoleContext, RoleTools, bind_selection
 
 
 class DiagnosisContext(RoleContext):
@@ -91,7 +91,11 @@ def update_issue(ctx: tools.Context, args: DiagnosisContext):
             "finished_at": job.finished_at.astimezone(LONDON).isoformat(),
             "status": job.status,
             "failed_broker_reconciliation": mismatch,
-            "failed_stages": [s.name for s in failed if s.name in STAGES],
+            "failed_stages": [
+                {"id": s.name, "zh": STAGES[s.name][0], "en": STAGES[s.name][1]}
+                for s in failed
+                if s.name in STAGES
+            ],
             "attempts": job.attempts,
             "completed": sum(s.status == "succeeded" for s in job.stages),
             "stages": len(job.stages),
@@ -159,10 +163,10 @@ def diagnosis_facts(read: RoleTools, context: DiagnosisContext):
             f"The update {en} at {stamp}.{retry_en}",
         )
     ]
-    stages = [STAGES[key] for key in data["failed_stages"]]
+    stages = data["failed_stages"]
     if stages:
-        zh_labels = "、".join(zh for zh, _ in stages)
-        en_labels = ", ".join(en for _, en in stages)
+        zh_labels = "、".join(s["zh"] for s in stages)
+        en_labels = ", ".join(s["en"] for s in stages)
         facts.append(
             add(
                 "stages",
@@ -212,4 +216,5 @@ DIAGNOSIS = PageRole(
     "Select every section once. A possible cause is an inference, never a diagnosis of an order or a promise about the next update.",
     diagnosis_facts,
     record_anchor=diagnosis_anchor,
+    tool_bindings=bind_selection("update_issue"),
 )

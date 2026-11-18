@@ -354,7 +354,7 @@ class _Read:
             "scope": self.scope,
             **(
                 {"bound_arguments": self.deps.bound_evidence(self.tool)}
-                if self.deps.role_bindings is not None
+                if self.deps.role_bindings is not None and self.tool in self.deps.role_bindings
                 else {}
             ),
             "sources": [

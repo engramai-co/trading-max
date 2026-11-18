@@ -9,7 +9,7 @@ from ..index_models import GlobalMapMarket
 from ..sector_models import SectorGroupingKind, SectorMarketCode
 from . import events, tools
 from .overview_roles import line
-from .roles import LinkedObservation, PageRole, RoleContext, RoleTools
+from .roles import LinkedObservation, PageRole, RoleContext, RoleTools, bind_selection
 
 
 class MarketContext(RoleContext):
@@ -24,6 +24,7 @@ class MarketContext(RoleContext):
 
 
 class RegionalMapContext(MarketContext):
+    variant_fields = frozenset({"market"})
     market: GlobalMapMarket | None = None
 
 
@@ -240,11 +241,18 @@ def global_map(ctx: tools.Context, args: RegionalMapContext):
     )
 
 
-def map_facts(read: RoleTools, context: MarketContext):
+def map_facts(read: RoleTools, context: RegionalMapContext):
     result = read.read(global_map, context)
     data = result.get("data") or {}
     if not data.get("markets"):
         return []
+    variants = {}
+    for row in data["markets"]:
+        market = row["market"]
+        selection = context.model_copy(update={"market": market})
+        variant = read.for_variant(selection).read(global_map, selection)
+        if markets := (variant.get("data") or {}).get("markets"):
+            variants[market] = (markets[0], variant)
     # Each selected editorial angle covers every market in the inspected map.
     facts = []
     for section in ("contribution", "move"):
@@ -258,7 +266,7 @@ def map_facts(read: RoleTools, context: MarketContext):
             metric=section,
             **context.model_dump(exclude_none=True),
         )
-        for m in data["markets"]:
+        for m, variant in variants.values():
             day = data["day"]
             if m["not_open"]:
                 zh, en = (
@@ -284,7 +292,10 @@ def map_facts(read: RoleTools, context: MarketContext):
                 zh=zh,
                 en=en,
                 evidence=item.evidence.model_copy(
-                    update={"arguments": {**item.evidence.arguments, "market": m["market"]}}
+                    update={
+                        "evidence_id": variant["evidence_id"],
+                        "arguments": {**item.evidence.arguments, "market": m["market"]},
+                    }
                 ),
             )
         # The model sees the observations behind both editorial angles in one run.
@@ -303,6 +314,7 @@ MARKET_ROLES = (
         SectorContext,
         "Choose one observation from each section, up to four. Keep news as a separate dated lead, never an explanation for a move.",
         sector_facts,
+        tool_bindings=bind_selection("market_sector", "sector_headline"),
     ),
     PageRole(
         "market-map",
@@ -311,5 +323,6 @@ MARKET_ROLES = (
         RegionalMapContext,
         "Order the two regional-map angles by relevance, starting with estimated contribution where published.",
         map_facts,
+        tool_bindings=bind_selection("global_map"),
     ),
 )

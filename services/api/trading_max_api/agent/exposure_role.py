@@ -12,7 +12,7 @@ from trading_max.infrastructure.world_sector_weights import WorldSectorWeights
 
 from . import insights, tools
 from .overview_roles import LONDON, line
-from .roles import PageRole, RoleContext, RoleTools
+from .roles import PageRole, RoleContext, RoleTools, bind_selection
 
 
 class ExposureContext(RoleContext):
@@ -306,4 +306,5 @@ EXPOSURE = PageRole(
     "Select one verified observation per section. Preserve the dates, coverage and distinct portfolio and benchmark bases.",
     exposure_facts,
     data_version=exposure_version,
+    tool_bindings=bind_selection("selected_exposure", "exposure_benchmark"),
 )
