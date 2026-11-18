@@ -90,6 +90,10 @@ revision. Settings names the recipient and asks for consent again when the
 provider or local endpoint changes. Turning the assistant off or withdrawing
 consent cancels active turns. Every outgoing provider request, including each
 retry, checks the bound preferences and integration against the workspace.
+Chats and saved-model tests share a cancellation token for the selected
+connection. Changing that connection advances its persisted revision. Queued
+requests check the revision before sending HTTP headers and again before sending
+the body. A saved API key must match the integration's recorded fingerprint.
 Clients granting consent to a local model must send the endpoint shown to the
 user in `expectedConsentDestination`. A changed endpoint returns a conflict.
 Turning the assistant off retains consent. Both actions keep conversations

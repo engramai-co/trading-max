@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic_ai import CancellationToken
 from pydantic_ai.providers.openai_codex import OpenAICodexCredentialSource
 from trading_max.llm import ModelConnection
 from trading_max.synthesis.providers import create_provider
@@ -17,7 +19,7 @@ from .assistant_settings import (
     validate_assistant_integration,
 )
 from .config import Settings
-from .credentials import CredentialStore, CredentialStoreError
+from .credentials import CredentialStore, CredentialStoreError, secret_fingerprint
 from .llm_routing import (
     DEFAULT_ROUTE,
     PROVIDER_REGISTRY,
@@ -53,6 +55,7 @@ class AssistantConnection:
     preferences_revision: int
     consent_revision: int
     before_request: Callable[[], None] = field(repr=False, compare=False)
+    cancellation_token: CancellationToken = field(repr=False, compare=False)
 
     def to_model_connection(self) -> ModelConnection:
         return ModelConnection(
@@ -62,6 +65,7 @@ class AssistantConnection:
             api_key=self.api_key,
             codex_credentials=self.codex_credentials,
             before_request=self.before_request,
+            cancellation_token=self.cancellation_token,
         )
 
 
@@ -69,6 +73,7 @@ def assistant_provider_credentials(
     settings: Settings,
     spec: ProviderSpec,
     credentials: CredentialStore,
+    fingerprint: str | None,
 ) -> tuple[str | None, OpenAICodexCredentialSource | None]:
     """Read an API key or obtain the credential source for a stored OAuth connection."""
     try:
@@ -84,7 +89,12 @@ def assistant_provider_credentials(
             "configure the assistant provider in Settings",
         )
     if spec.auth_method != "oauth":
+        if secret_fingerprint(key) != fingerprint:
+            raise ProviderRuntimeError(
+                "assistant_settings_changed", "the saved key does not match the selected connection"
+            )
         return key, None
+    # OAuth grants rotate independently of integration metadata at the provider's pinned origin.
     try:
         return None, OAuthCredentialVault(settings.data_root, credentials).credential_source()
     except CredentialStoreError:
@@ -100,8 +110,8 @@ def assistant_provider_credentials(
 
 def _consented_assistant_route(
     preferences: SettingsRepository, requested_route: str | None
-) -> tuple[AssistantPreferences, LLMRoute, IntegrationSummary, str]:
-    current = preferences.get_assistant_preferences()
+) -> tuple[AssistantPreferences, LLMRoute, IntegrationSummary, str, CancellationToken]:
+    current, integration, access = preferences.assistant_connection_snapshot()
     if not current.enabled:
         raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
     if current.accepted_consent_revision != ASSISTANT_CONSENT_REVISION:
@@ -110,9 +120,7 @@ def _consented_assistant_route(
         )
     try:
         route = parse_assistant_route(current.route)
-        integration, base_url = validate_assistant_integration(
-            route, preferences.get_integration(route.provider)
-        )
+        integration, base_url = validate_assistant_integration(route, integration)
     except AssistantSettingsError as exc:
         raise ProviderRuntimeError(exc.code, str(exc)) from None
     if current.accepted_destination != base_url or (
@@ -121,7 +129,7 @@ def _consented_assistant_route(
         raise ProviderRuntimeError(
             "assistant_consent_required", "review the selected assistant destination"
         )
-    return current, route, integration, base_url
+    return current, route, integration, base_url, access
 
 
 def resolve_assistant_connection(
@@ -135,24 +143,42 @@ def resolve_assistant_connection(
 
     Run in a worker thread: the credential manager is synchronous.
     """
-    current, route, integration, base_url = _consented_assistant_route(preferences, requested_route)
+    current, route, integration, base_url, access = _consented_assistant_route(
+        preferences, requested_route
+    )
 
     def before_request() -> None:
-        latest, _, latest_integration, _ = _consented_assistant_route(preferences, route.route_id)
+        try:
+            enabled, consent, revision, integration_revision = preferences.assistant_dispatch_state(
+                integration.integration_id
+            )
+        except sqlite3.Error:
+            raise ProviderRuntimeError(
+                "assistant_settings_changed", "the current assistant settings could not be verified"
+            ) from None
+        if not enabled:
+            raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
         if (
-            latest.revision != current.revision
-            or latest_integration.revision != integration.revision
+            consent != ASSISTANT_CONSENT_REVISION
+            or revision != current.revision
+            or integration_revision != integration.revision
+            or access.cancelled
         ):
             raise ProviderRuntimeError(
                 "assistant_settings_changed", "start a new turn with the current settings"
             )
 
     spec = PROVIDER_REGISTRY[route.provider]
+    # A credential lookup can block while another request changes the endpoint.
+    before_request()
     key, codex_credentials = (
         (None, None)
         if spec.auth_method == "optional_api_key" and not integration.credential_fingerprint
-        else assistant_provider_credentials(settings, spec, credentials)
+        else assistant_provider_credentials(
+            settings, spec, credentials, integration.credential_fingerprint
+        )
     )
+    before_request()
     return AssistantConnection(
         provider=route.provider,
         model=route.model,
@@ -165,6 +191,7 @@ def resolve_assistant_connection(
         preferences_revision=current.revision,
         consent_revision=ASSISTANT_CONSENT_REVISION,
         before_request=before_request,
+        cancellation_token=access,
     )
 
 

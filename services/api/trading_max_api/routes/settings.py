@@ -784,17 +784,13 @@ def save_assistant_settings(
     body: AssistantPreferencesUpdate, request: Request
 ) -> AssistantSettingsResponse:
     repository = app_service(request, "settings_repository")
-    # Finish cancellation before a concurrent enable can admit new turns.
-    with app_service(request, "assistant_settings_lock"):
-        try:
-            preferences = repository.save_assistant_preferences(body)
-        except AssistantSettingsError as exc:
-            raise HTTPException(
-                status_code=409 if exc.code == "assistant_preferences_conflict" else 422,
-                detail={"code": exc.code, "message": str(exc)},
-            ) from None
-        if not preferences.enabled:
-            app_service(request, "assistant").cancel_active_turns()
+    try:
+        preferences = repository.save_assistant_preferences(body)
+    except AssistantSettingsError as exc:
+        raise HTTPException(
+            status_code=409 if exc.code == "assistant_preferences_conflict" else 422,
+            detail={"code": exc.code, "message": str(exc)},
+        ) from None
     return _assistant_settings(request, preferences)
 
 

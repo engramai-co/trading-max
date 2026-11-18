@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from pydantic_ai import CancellationToken
 from trading_max.infrastructure import SqliteDatabase
 
 from .assistant_settings import (
@@ -79,8 +82,20 @@ class SettingsRepository:
 
     def __init__(self, data_root: Path) -> None:
         self.database = SqliteDatabase(data_root / "trading_max.db", migrations_dir=MIGRATIONS)
+        self._assistant_access = CancellationToken()
+        # Dispatch reads one row without waiting for a writer or sharing its transaction.
+        self._dispatch_reader = sqlite3.connect(
+            self.database.path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=0,
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        self._dispatch_lock = threading.Lock()
 
     def close(self) -> None:
+        with self._dispatch_lock:
+            self._dispatch_reader.close()
         self.database.close()
 
     @staticmethod
@@ -370,6 +385,41 @@ class SettingsRepository:
             ).fetchone()
         return self._assistant_preferences(row)
 
+    def assistant_connection_snapshot(
+        self,
+    ) -> tuple[AssistantPreferences, IntegrationSummary | None, CancellationToken]:
+        with self.database.transaction():
+            current = self.get_assistant_preferences()
+            provider = (current.route or "").partition("/")[0]
+            integration = self.get_integration(provider) if provider else None
+            return current, integration, self._assistant_access
+
+    def assistant_dispatch_state(
+        self, integration_id: str
+    ) -> tuple[int, int | None, int, int | None]:
+        with self._dispatch_lock:
+            return self._dispatch_reader.execute(
+                """SELECT p.enabled, p.accepted_consent_revision, p.revision, i.revision
+                   FROM assistant_preferences p LEFT JOIN integration_settings i ON i.integration_id = ?
+                   WHERE p.preference_id = 'local'""",
+                (integration_id,),
+            ).fetchone()
+
+    def _cancel_assistant_access(self) -> None:
+        # Called under the same writer lock as the preferences and integration changes.
+        previous, self._assistant_access = self._assistant_access, CancellationToken()
+        previous.cancel()
+
+    def _assistant_integration_changed(self, connection: sqlite3.Connection, provider: str) -> None:
+        if (
+            provider in PROVIDER_REGISTRY
+            and connection.execute(
+                "UPDATE assistant_preferences SET revision = revision + 1, updated_at = ? WHERE route LIKE ?",
+                (_iso(), provider + "/%"),
+            ).rowcount
+        ):
+            self._cancel_assistant_access()
+
     def save_assistant_preferences(
         self,
         update: AssistantPreferencesUpdate,
@@ -495,6 +545,7 @@ class SettingsRepository:
                 revision=revision,
                 metadata={"enabled": enabled, "accepted_consent_revision": consent},
             )
+            self._cancel_assistant_access()
             return self._assistant_preferences(row)
 
     def get_route_policy(self) -> LLMRoutePolicy:
@@ -666,11 +717,12 @@ class SettingsRepository:
                 # A replacement endpoint needs fresh consent even if the model ID stays the same.
                 connection.execute(
                     """UPDATE assistant_preferences SET enabled = 0, accepted_consent_revision = NULL,
-                       accepted_destination = NULL, accepted_at = NULL, updated_at = ?, revision = revision + 1
+                       accepted_destination = NULL, accepted_at = NULL
                        WHERE route LIKE ? AND accepted_consent_revision IS NOT NULL
                        AND accepted_destination IS NOT ?""",
-                    (now, provider + "/%", base_url or spec.base_url),
+                    (provider + "/%", base_url or spec.base_url),
                 )
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor=actor,
@@ -714,6 +766,7 @@ class SettingsRepository:
             ).fetchone()
             if row is None:
                 raise ValueError("integration is not configured")
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor="local",
@@ -745,6 +798,7 @@ class SettingsRepository:
                 "DELETE FROM integration_settings WHERE integration_id = ?",
                 (integration_id,),
             )
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor=actor,

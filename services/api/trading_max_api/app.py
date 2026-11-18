@@ -96,6 +96,7 @@ from .watchlist import SecuritySearchService, WatchlistStore
 _ASSISTANT_REFUSAL_STATUS = {
     "assistant_disabled": 403,
     "assistant_consent_required": 403,
+    "assistant_settings_changed": 403,
     "credential_store_unavailable": 503,
 }
 
@@ -143,7 +144,7 @@ def create_app(
             raise AssistantUnavailable(exc.code, status) from None
         except ProviderError as exc:
             raise AssistantUnavailable(exc.code, 409) from None
-        return BoundModel(model, run_settings(connection.reasoning))
+        return BoundModel(model, run_settings(connection.reasoning), connection.cancellation_token)
 
     async def assistant_ready() -> dict[str, object]:
         try:
@@ -607,7 +608,6 @@ def create_app(
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.assistant = assistant
-    app.state.assistant_settings_lock = threading.Lock()
     app.state.validation_secret = validation_secret
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research

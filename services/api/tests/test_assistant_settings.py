@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import anyio
+import httpcore2
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +21,11 @@ from services.api.trading_max_api.agent.runtime import build_assistant_agent
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.assistant_settings import ASSISTANT_CONSENT_REVISION
 from services.api.trading_max_api.config import Settings
-from services.api.trading_max_api.credentials import CredentialStoreError, InMemoryCredentialStore
+from services.api.trading_max_api.credentials import (
+    CredentialStoreError,
+    InMemoryCredentialStore,
+    secret_fingerprint,
+)
 from services.api.trading_max_api.llm_routing import (
     LLMRouteError,
     parse_route,
@@ -208,7 +213,7 @@ def _register(
         enabled=True,
         model=model,
         base_url=base_url or provider_spec(provider).base_url,
-        credential_fingerprint="synthetic-fingerprint" if key else None,
+        credential_fingerprint=secret_fingerprint("synthetic-secret") if key else None,
         test_status="succeeded",
     )
 
@@ -657,9 +662,9 @@ def test_replacing_a_local_endpoint_invalidates_saved_and_pending_consent(assist
     assert [attempt.base_url for attempt in attempts] == [replacement]
 
 
-@pytest.mark.parametrize("withdraw", [False, True], ids=["turn-off", "withdraw-consent"])
+@pytest.mark.parametrize("change", ["turn-off", "withdraw-consent", "replace-endpoint"])
 def test_settings_cancel_an_active_turn_before_its_tool_result_is_sent(
-    assistant_client, monkeypatch, withdraw
+    assistant_client, monkeypatch, change
 ):
     client, _, _ = assistant_client
     repository = client.app.state.settings_repository
@@ -706,8 +711,21 @@ def test_settings_cancel_an_active_turn_before_its_tool_result_is_sent(
         pending = pool.submit(client.post, "/v1/assistant/chat", json=turn, headers=_AUTH)
         try:
             assert entered.wait(5)
-            change = {"acceptedConsentRevision": None} if withdraw else {"enabled": False}
-            assert client.put(_PREFERENCES, json=change, headers=_AUTH).status_code == 200
+            if change == "replace-endpoint":
+                _register(
+                    repository,
+                    "ollama",
+                    "local-model",
+                    key=False,
+                    base_url="http://127.0.0.1:8456/v1",
+                )
+            else:
+                update = (
+                    {"acceptedConsentRevision": None}
+                    if change == "withdraw-consent"
+                    else {"enabled": False}
+                )
+                assert client.put(_PREFERENCES, json=update, headers=_AUTH).status_code == 200
             assert stopped.wait(5), (
                 "the active tool should be cancelled without waiting for its result"
             )
@@ -740,48 +758,264 @@ def test_a_bound_connection_checks_current_consent_and_generation_on_every_reque
         bound.before_request()
 
 
-def test_saved_probe_rechecks_consent_before_sending_its_tool_result(assistant_client, monkeypatch):
+def test_consent_and_integration_come_from_one_read_snapshot(assistant_client, monkeypatch):
     client, _, _ = assistant_client
     repo = client.app.state.settings_repository
     _register(repo, "ollama", "local-model", key=False)
     _enable(repo, "ollama/local-model")
-    requests = []
+    preferences_read, resume = threading.Event(), threading.Event()
+    get_integration = repo.get_integration
 
-    def provider(request):
-        requests.append(json.loads(request.content))
-        # Another writer withdraws consent while the provider is preparing its tool call.
-        repo.save_assistant_preferences(AssistantPreferencesUpdate(accepted_consent_revision=None))
-        tool = {"name": "connection_check", "arguments": '{"value":"ok"}'}
-        return httpx2.Response(
-            200,
-            json={
-                "id": "synthetic",
-                "object": "chat.completion",
-                "created": 1,
-                "model": "local-model",
+    def pause_before_integration(provider):
+        preferences_read.set()
+        assert resume.wait(8)
+        return get_integration(provider)
+
+    monkeypatch.setattr(repo, "get_integration", pause_before_integration)
+    writer = SettingsRepository(repo.database.path.parent)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(repo.assistant_connection_snapshot)
+            try:
+                assert preferences_read.wait(5)
+                _register(
+                    writer, "ollama", "local-model", key=False, base_url="http://127.0.0.1:8456/v1"
+                )
+            finally:
+                resume.set()
+            current, integration, _ = pending.result(timeout=5)
+        assert current.enabled
+        assert (
+            current.accepted_destination == integration.base_url == provider_spec("ollama").base_url
+        )
+        assert not repo.assistant_dispatch_state(integration.integration_id)[0]
+    finally:
+        writer.close()
+
+
+def test_recreating_the_selected_integration_cannot_reuse_an_old_turn(assistant_client):
+    client, _, credentials = assistant_client
+    repo = client.app.state.settings_repository
+    _register(repo, "ollama", "local-model", key=False)
+    _enable(repo, "ollama/local-model")
+    bound = resolve_assistant_connection(client.app.state.settings, repo, credentials)
+    writer = SettingsRepository(repo.database.path.parent)
+    try:
+        _register(writer, "lmstudio", "another-model", key=False)
+        bound.before_request()
+        writer.remove_integration(provider="ollama", profile=None)
+        _register(writer, "ollama", "local-model", key=False)
+        assert writer.get_integration("ollama").revision == bound.provider_revision
+        with pytest.raises(ProviderRuntimeError, match="assistant_settings_changed"):
+            bound.before_request()
+    finally:
+        writer.close()
+
+
+def _tool_response(*, chat: bool) -> bytes:
+    name, arguments = ("read_amount", "{}") if chat else ("connection_check", '{"value":"ok"}')
+    call = {"id": "read", "type": "function", "function": {"name": name, "arguments": arguments}}
+    response = {"id": "synthetic", "created": 1, "model": "local-model"}
+    if chat:
+        response["object"] = "chat.completion.chunk"
+        chunks = [
+            {
+                **response,
                 "choices": [
                     {
                         "index": 0,
-                        "finish_reason": "tool_calls",
-                        "message": {
-                            "role": "assistant",
-                            "tool_calls": [{"id": "check", "type": "function", "function": tool}],
-                        },
+                        "delta": {"role": "assistant", "tool_calls": [{"index": 0, **call}]},
+                        "finish_reason": None,
                     }
                 ],
             },
-        )
+            {
+                **response,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+                "usage": {"prompt_tokens": 8, "completion_tokens": 4, "total_tokens": 12},
+            },
+        ]
+        data = "".join(f"data: {json.dumps(chunk)}\n\n" for chunk in chunks) + "data: [DONE]\n\n"
+        content_type = "text/event-stream"
+    else:
+        response["object"] = "chat.completion"
+        response["choices"] = [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "tool_calls": [call]},
+                "finish_reason": "tool_calls",
+            }
+        ]
+        data = json.dumps(response)
+        content_type = "application/json"
+    body = data.encode()
+    return (
+        "HTTP/1.1 200 OK\r\nConnection: close\r\n"
+        f"Content-Type: {content_type}\r\nContent-Length: {len(body)}\r\n\r\n"
+    ).encode() + body
 
-    monkeypatch.setattr(
-        "trading_max.llm.model._base_transport", lambda: httpx2.MockTransport(provider)
-    )
+
+@pytest.mark.parametrize(
+    ("chat", "headers_sent"),
+    [(False, False), (True, False), (True, True)],
+    ids=[
+        "withdraw-saved-probe",
+        "replace-endpoint-before-chat-headers",
+        "replace-endpoint-before-chat-body",
+    ],
+)
+def test_queued_tool_result_rechecks_access_at_wire_dispatch(
+    assistant_client, monkeypatch, chat, headers_sent
+):
+    client, _, _ = assistant_client
+    repo = client.app.state.settings_repository
+    _register(repo, "ollama", "local-model", key=False)
+    _enable(repo, "ollama/local-model")
+    waiting = threading.Event()
+    resume = threading.Event()
+    second_writes = []
+    read = []
+
+    def read_amount() -> str:
+        """Read a synthetic amount."""
+        read.append(True)
+        return "synthetic amount"
+
+    async def wait_for_change():
+        waiting.set()
+        await anyio.to_thread.run_sync(resume.wait, abandon_on_cancel=True)
+
+    class SecondStream(httpcore2.AsyncMockStream):
+        async def write(self, buffer, **kwargs):
+            part = "headers" if buffer.startswith(b"POST ") else "body"
+            second_writes.append(part)
+            if headers_sent and part == "headers":
+                await wait_for_change()
+
+    class Network(httpcore2.AsyncMockBackend):
+        initial = True
+
+        async def connect_tcp(self, **kwargs):
+            if self.initial:
+                self.initial = False
+                return httpcore2.AsyncMockStream([_tool_response(chat=chat)])
+            if not headers_sent:
+                await wait_for_change()
+            return SecondStream([])
+
+    def transport():
+        native = httpx2.AsyncHTTPTransport(trust_env=False)
+        native._pool._network_backend = Network([])  # noqa: SLF001 - substitute only the network
+        return native
+
+    monkeypatch.setattr("trading_max.llm.model._base_transport", transport)
     monkeypatch.setattr(
         "services.api.trading_max_api.routes.settings.check_assistant_connection",
         check_assistant_connection,
     )
-    result = client.post(
-        f"{_provider_path('ollama')}/test?saved=true", headers=_AUTH, json={"model": "local-model"}
-    )
-    assert result.status_code == 403
-    assert result.json()["detail"]["code"] == "assistant_disabled"
-    assert len(requests) == 1 and requests[0]["tools"][0]["function"]["name"] == "connection_check"
+    if chat:
+        client.app.state.assistant.agent = build_assistant_agent([FunctionToolset([read_amount])])
+        path = "/v1/assistant/chat"
+        body = {
+            "trigger": "submit-message",
+            "id": "queued",
+            "messages": [
+                {
+                    "id": "u1",
+                    "role": "user",
+                    "parts": [{"type": "text", "text": "Read the synthetic amount"}],
+                }
+            ],
+        }
+    else:
+        path = f"{_provider_path('ollama')}/test?saved=true"
+        body = {"model": "local-model"}
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(client.post, path, headers=_AUTH, json=body)
+        try:
+            assert waiting.wait(8)
+            if chat:
+                assert read == [True]
+                # An independent repository has no access to the active run's in-memory token.
+                writer = SettingsRepository(repo.database.path.parent)
+                try:
+                    _register(
+                        writer,
+                        "ollama",
+                        "local-model",
+                        key=False,
+                        base_url="http://127.0.0.1:8456/v1",
+                    )
+                finally:
+                    writer.close()
+            else:
+                client.put(
+                    _PREFERENCES, json={"acceptedConsentRevision": None}, headers=_AUTH
+                ).raise_for_status()
+                # Cancelling the probe releases it even if the connection never becomes ready.
+                assert pending.result(timeout=5).status_code == 403
+        finally:
+            resume.set()
+        response = pending.result(timeout=5)
+    if chat:
+        assert response.status_code == 200 and "assistant_disabled" in response.text
+    assert second_writes == (["headers"] if headers_sent else [])
+
+
+def test_saved_probe_rejects_a_replacement_key_before_its_metadata_is_saved(
+    assistant_client, monkeypatch
+):
+    client, attempts, credentials = assistant_client
+    repo = client.app.state.settings_repository
+    provider, model = "ollama", "local-model"
+    path = _provider_path(provider)
+    credentials.put("ollama:default", "synthetic-secret")
+    _register(repo, provider, model)
+    _enable(repo, f"{provider}/{model}")
+    new_url = "http://127.0.0.1:8456/v1"
+    candidate = {"model": model, "baseUrl": new_url, "apiKey": "replacement-key"}
+    tested = client.post(f"{path}/test", headers=_AUTH, json=candidate)
+    tested.raise_for_status()
+    receipt = tested.json()["validationToken"]
+    attempts.clear()
+
+    key_written, finish_save = threading.Event(), threading.Event()
+    put = credentials.put
+
+    def pause_after_put(reference, value):
+        put(reference, value)
+        key_written.set()
+        assert finish_save.wait(8)
+
+    monkeypatch.setattr(credentials, "put", pause_after_put)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(
+            client.put, path, headers=_AUTH, json={**candidate, "validationToken": receipt}
+        )
+        try:
+            assert key_written.wait(5)
+            assert repo.get_integration(provider).base_url == provider_spec(provider).base_url
+            result = client.post(f"{path}/test?saved=true", headers=_AUTH, json={"model": model})
+            assert result.status_code == 403
+            assert result.json()["detail"]["code"] == "assistant_settings_changed"
+            assert not client.get("/v1/assistant/status").json()["ready"]
+            assert attempts == []
+        finally:
+            finish_save.set()
+        pending.result(timeout=5).raise_for_status()
+
+    client.put(
+        _PREFERENCES,
+        headers=_AUTH,
+        json={
+            "route": f"{provider}/{model}",
+            "enabled": True,
+            "acceptedConsentRevision": _CONSENT,
+            "expectedConsentDestination": new_url,
+        },
+    ).raise_for_status()
+    client.post(f"{path}/test?saved=true", headers=_AUTH, json={"model": model}).raise_for_status()
+    assert [(attempt.base_url, attempt.api_key) for attempt in attempts] == [
+        (new_url, candidate["apiKey"])
+    ]

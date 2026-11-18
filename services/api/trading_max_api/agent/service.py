@@ -62,6 +62,7 @@ class AssistantUnavailable(RuntimeError):
 class BoundModel:
     model: Model
     settings: ModelSettings
+    cancellation_token: CancellationToken | None = None
 
 
 class DepsForRun(Protocol):
@@ -185,12 +186,6 @@ class AssistantService:
     # was abandoned before streaming began, so expire it after the run timeout.
     _active: dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
-    _access: CancellationToken = field(default_factory=CancellationToken, init=False, repr=False)
-
-    def cancel_active_turns(self) -> None:
-        previous, self._access = self._access, CancellationToken()
-        previous.cancel()
-
     def _release(self, conversation_id: str) -> None:
         self._active.pop(conversation_id, None)
 
@@ -228,7 +223,6 @@ class AssistantService:
             raise
 
     async def _run(self, request: Request, conversation_id: str, context: ChatContext) -> Response:
-        access = self._access
         try:
             bound = await self.bind_model()
         except AssistantUnavailable as exc:
@@ -253,7 +247,7 @@ class AssistantService:
                 sdk_version=SDK_VERSION,
                 model=model,
                 model_settings=bound.settings,
-                cancellation_token=access,
+                cancellation_token=bound.cancellation_token,
                 deps=deps,
                 instructions=run_context(
                     now=self.clock(),
