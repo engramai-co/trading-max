@@ -794,7 +794,7 @@ def test_large_review_history_keeps_the_publication_lock_brief(desk, monkeypatch
     response = client.post(PATH + "/models", json=body)
     assert response.is_success
     assert len(durations) == 1
-    # Checks the lock's scope, not runner speed: validating the history under the lock takes seconds.
+    # Checks the lock's scope, not runner speed: the whole request with this history takes over a second.
     assert durations[0] < 0.5
 
 
