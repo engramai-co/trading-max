@@ -1,6 +1,6 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import type { components } from "@/lib/api-schema";
-import { keepPreviousData, queryOptions, skipToken } from "@tanstack/react-query";
+import { queryOptions, skipToken } from "@tanstack/react-query";
 import { ApiError, api, jsonRequest } from "@/workspace/data";
 import type { Preview, ScenarioInput } from "./research-facts";
 import type { ResearchPrice } from "./research-price-basis";
@@ -138,15 +138,19 @@ export function sortedLocks(locked: LockedInput[]) {
 /**
  * How the saved version a reader started from moves to the proposal in the
  * editor: a deterministic comparison that never saves or contacts a model.
+ * Each publication is compared afresh. While an edit is compared, the last
+ * comparison stays on screen, but never one made with an earlier publication.
  */
 export function valuationMaintenanceQuery(
   initial: Preview,
   modelId: string | undefined,
   request: PreviewRequest,
   locked: LockedInput[],
+  publication: string | null | undefined,
   enabled: boolean,
 ) {
   const { basis } = initial;
+  const run = publication ?? null;
   const body = {
     modelId,
     horizon: request.horizon,
@@ -159,6 +163,7 @@ export function valuationMaintenanceQuery(
       "valuation-maintenance",
       basis.ticker,
       initial.id,
+      run,
       [basis.spotSource, basis.spot, basis.spotAsOf],
       JSON.stringify(body),
     ],
@@ -170,6 +175,6 @@ export function valuationMaintenanceQuery(
     enabled: enabled && Boolean(modelId),
     staleTime: Infinity,
     retry: false,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, query) => (query?.queryKey[3] === run ? previous : undefined),
   });
 }

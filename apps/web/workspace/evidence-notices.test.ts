@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noticeKinds, noticeLine, shownEvidence, type EvidenceNotice } from "./evidence-notices";
+import { noticeKinds, noticeLine, predatesNotice, shownEvidence, type EvidenceNotice } from "./evidence-notices";
 
 const zh = (a: string) => a;
 const en = (_: string, b: string) => b;
@@ -45,5 +45,17 @@ describe("evidence notices", () => {
     expect(shownEvidence(notice, { modelId: "saved-version" })).toBeUndefined();
     expect(shownEvidence(notice, { modelId: "another-version", evidenceKeys: keys })).toBeUndefined();
     expect(shownEvidence(undefined, { modelId: "saved-version", evidenceKeys: keys })).toBeUndefined();
+  });
+
+  it("compares again on opening only when the comparison predates evidence its notice names", () => {
+    const keys = notice.items.map((item) => item.key);
+    expect(predatesNotice({ modelId: "saved-version", evidenceKeys: keys }, notice)).toBe(false);
+    // Made before the consensus moved, the comparison does not show that move.
+    expect(predatesNotice({ modelId: "saved-version", evidenceKeys: keys.slice(0, 2) }, notice)).toBe(true);
+    expect(predatesNotice({ modelId: "saved-version" }, notice)).toBe(true);
+    // Nothing to compare again for: no notice, no comparison yet, or another version's notice.
+    expect(predatesNotice({ modelId: "saved-version", evidenceKeys: [] }, undefined)).toBe(false);
+    expect(predatesNotice(undefined, notice)).toBe(false);
+    expect(predatesNotice({ modelId: "another-version", evidenceKeys: [] }, notice)).toBe(false);
   });
 });

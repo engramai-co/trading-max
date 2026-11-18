@@ -25,7 +25,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
-import { evidenceNoticesQuery, noticeKinds, shownEvidence, useEvidenceNotice, useEvidenceSeen } from "./evidence-notices";
+import { evidenceNoticesQuery, noticeKinds, predatesNotice, shownEvidence, useEvidenceNotice, useEvidenceSeen } from "./evidence-notices";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import type { InputField } from "./valuation-maintenance";
 import { quoteValue } from "./financial-values";
@@ -453,11 +453,25 @@ function ModelEditor({
     onDirty(dirty);
     return () => onDirty(false);
   }, [dirty, onDirty]);
-  const review = useQuery(valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked,
-    reviewOpen && !invalidInput));
-  // Only evidence the open comparison shows is settled: never a placeholder kept from
-  // earlier inputs, nor evidence a newer notice names that the comparison does not.
-  const shown = reviewOpen && !review.isPlaceholderData ? shownEvidence(unopened, review.data) : undefined;
+  // The comparison follows the publication this page shows, so one reopened after a new
+  // publication is made again.
+  const reviewQuery = valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked, publication,
+    reviewOpen && !invalidInput);
+  const review = useQuery(reviewQuery);
+  // Only evidence a settled comparison shows is settled: never a placeholder kept from
+  // earlier inputs, one being made again, nor evidence a newer notice names that it does not.
+  const shown = reviewOpen && !review.isPlaceholderData && !review.isFetching
+    ? shownEvidence(unopened, review.data) : undefined;
+  const toggleReview = () => {
+    loadEvidence();
+    focusReview.current = !reviewOpen;
+    // A notice can name evidence of a publication this page has not loaded yet. A comparison
+    // made before it does not show that evidence, so opening it compares again.
+    if (!reviewOpen && !invalidInput && !review.isPlaceholderData && predatesNotice(review.data, unopened)) {
+      void client.resetQueries({ queryKey: reviewQuery.queryKey, exact: true });
+    }
+    setReviewOpen(!reviewOpen);
+  };
   useEffect(() => {
     if (!shown) return;
     const key = shown.modelId + "\u0000" + shown.items.map((item) => item.key).join("\u0000");
@@ -689,7 +703,7 @@ function ModelEditor({
           aria-expanded={reviewOpen} aria-controls="valuation-evidence"
           aria-describedby={unopened ? "valuation-evidence-notice" : undefined}
           onPointerEnter={loadEvidence} onFocus={loadEvidence}
-          onClick={() => { loadEvidence(); focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
+          onClick={toggleReview}>
           {t("看新证据", "See new evidence")}
           {unopened && <span className="mx-evidence-dot" aria-hidden="true" />}
         </Button>

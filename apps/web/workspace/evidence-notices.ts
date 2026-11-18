@@ -63,6 +63,19 @@ export function shownEvidence(
   return items.length ? { ...notice, items } : undefined;
 }
 
+/**
+ * Whether a comparison of the same version predates evidence its notice names: made before
+ * that evidence arrived, it does not show it, so opening the comparison makes it again.
+ */
+export function predatesNotice(
+  review: { modelId: string; evidenceKeys?: string[] } | undefined,
+  notice: EvidenceNotice | undefined,
+) {
+  if (!notice || !review || review.modelId !== notice.modelId) return false;
+  const keys = new Set(review.evidenceKeys ?? []);
+  return notice.items.some((item) => !keys.has(item.key));
+}
+
 const kindNames = { statements: ["新报表", "New statements"], restatement: ["重述", "Restatement"] } as const;
 
 function itemName(item: Item, t: Copy) {

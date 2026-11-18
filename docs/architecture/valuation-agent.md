@@ -170,11 +170,14 @@ Each piece of evidence has a stable key, and the comparison behind See new
 evidence names the keys it shows. Opening it records those keys
 (`POST /v1/valuation/evidence-notices/{ticker}/seen`), so the same report or move
 is announced once, however many publications repeat it. Evidence that arrives
-after a comparison was made stays announced until a comparison shows it. A
-version saved afterwards starts without a notice. Company guidance has no
-source in the research data; it shows through new statements and consensus
-revisions. A security whose comparison cannot run has no notice. An open page
-fetches its notices again when a new publication arrives.
+after a comparison was made stays announced until a comparison shows it.
+Reopened after a new publication, or with a notice that names evidence its
+last comparison does not show, See new evidence compares again; the earlier
+comparison is not shown meanwhile. A version saved afterwards starts without a
+notice. Company guidance has no source in the research data; it shows through
+new statements and consensus revisions. A security whose comparison cannot run
+has no notice. An open page fetches its notices again when a new publication
+arrives.
 
 A dot marks a notice in the research list, beside See new evidence and in the
 journal's model versions. Notices are computed on request on this machine.

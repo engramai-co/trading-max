@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { capture, desk, preview, saved, savedModel } from "./valuation-desk";
+import { capture, desk, lens, preview, saved, savedModel } from "./valuation-desk";
 
 // Notices of new evidence on the synthetic desk in valuation-desk.ts. Every response is fabricated.
 test.beforeEach(async ({ page }) => {
@@ -105,6 +105,106 @@ test("evidence that arrives after the comparison opened stays marked until a com
   compared = [...keys, later.key];
   await editor.getByLabel("Revenue growth · years 1–5", { exact: true }).fill("12");
   await page.clock.fastForward(2_000);
+  await expect.poll(() => state.seen).toEqual([{ modelId: savedModel.id, keys: [later.key] }]);
+  await expect(toggle.locator(".mx-evidence-dot")).toHaveCount(0);
+});
+
+test("reopened without an edit, a comparison that predates its notice is made again", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.clock.install();
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const later = { key: "statements:ttm:2026-12-31", kind: "statements", periodId: "ttm:2026-12-31" };
+  let compared = keys;
+  const state = await desk(page, { amend: (review) => ({ ...review, evidenceKeys: compared }) });
+  let current = { enabled: true, runId: "synthetic-run", notices: [] as object[] };
+  await page.route("**/api/backend/valuation/evidence-notices", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/backend/valuation/evidence-notices/*/seen", (route) => {
+    state.seen.push(route.request().postDataJSON());
+    current = { ...current, notices: [] };
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const toggle = page.locator("#valuation-assumptions").getByRole("button", { name: "See new evidence", exact: true });
+  await toggle.click();
+  await expect(page.locator("#valuation-evidence table")).toBeVisible();
+  await toggle.click();
+  await expect(page.locator("#valuation-evidence")).toHaveCount(0);
+  const comparisons = state.reviews.length;
+  // The notice is ahead of the publication this page shows; the service already shows its evidence.
+  current = { enabled: true, runId: "next-run", notices: [{ ...notice, items: [later] }] };
+  compared = [...keys, later.key];
+  const refreshed = page.waitForResponse((response) => response.url().endsWith("/valuation/evidence-notices"));
+  await page.clock.fastForward(61_000);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+  });
+  await refreshed;
+  await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
+  expect(state.reviews.length).toBe(comparisons);
+  // Reopened with every assumption as it was, the evidence is compared again and exactly the new report settles.
+  await toggle.click();
+  await expect.poll(() => state.reviews.length).toBe(comparisons + 1);
+  await expect.poll(() => state.seen).toEqual([{ modelId: savedModel.id, keys: [later.key] }]);
+  await expect(toggle.locator(".mx-evidence-dot")).toHaveCount(0);
+});
+
+test("reopened after a consensus-only publication, the evidence is compared with the new consensus", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.clock.install();
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  let run = "synthetic-run";
+  // The publication moves only the EPS consensus, three steps from the saved 2.50.
+  const later = { key: "consensusEps:2027-09-30:USD:3", kind: "estimate", metric: "consensusEps", periodEnd: "2027-09-30",
+    currency: "USD", saved: 2.5, current: 2.95, asOf: "2026-11-04T22:00:00Z" };
+  const state = await desk(page, { amend: (review) => run === "synthetic-run" ? review : {
+    ...review, evidenceKeys: [later.key], estimates: [{ metric: later.metric, periodEnd: later.periodEnd,
+      currency: later.currency, saved: later.saved, current: later.current, savedAsOf: "2026-08-02T21:00:00Z",
+      currentAsOf: later.asOf }],
+  } });
+  await page.route("**/api/backend/health", (route) => route.fulfill({ json: {
+    service: "trading_max-api", status: "ok", latestRunId: run } }));
+  await page.route("**/api/backend/valuation/evidence-notices", (route) => route.fulfill({ json: {
+    enabled: true, runId: run, notices: run === "synthetic-run" ? [] : [{ ...notice, items: [later] }] } }));
+  await page.route("**/api/backend/valuation/evidence-notices/*/seen", (route) => {
+    state.seen.push(route.request().postDataJSON());
+    return route.fulfill({ json: { enabled: true, runId: run, notices: [] } });
+  });
+  const shellResponse = page.waitForResponse((response) => response.url().endsWith("/research/shell"));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const shell = await (await shellResponse).json();
+  const toggle = page.locator("#valuation-assumptions").getByRole("button", { name: "See new evidence", exact: true });
+  const evidence = page.locator("#valuation-evidence");
+  await toggle.click();
+  await expect(evidence.getByText("2.50 → 2.70 USD")).toBeVisible();
+  await toggle.click();
+  const comparisons = state.reviews.length;
+  // The research data keeps its statements and quote; only the publication and its consensus are new.
+  run = "consensus-update";
+  await page.route("**/api/backend/research/shell", (route) => route.fulfill({ json: { ...shell,
+    status: { ...shell.status, runId: run },
+    instruments: shell.instruments.map((item: object) => ({ ...item, lastRunId: run })) } }));
+  await page.route(/\/api\/backend\/research\/SYNT\/lens\/(\w+)/, (route) =>
+    route.fulfill({ json: { ...lens(/lens\/(\w+)/.exec(route.request().url())![1]), runId: run } }));
+  // The next comparison waits, to show what the panel holds while it is made.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/SYNT/valuation-maintenance", async (route) => {
+    await held;
+    return route.fallback();
+  });
+  const checked = page.waitForResponse((response) => response.url().endsWith("/health"));
+  await page.clock.fastForward(61_000);
+  await checked;
+  await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
+  // Reopened without an edit, the evidence is compared again, and the earlier comparison is not shown meanwhile.
+  await toggle.click();
+  await expect(evidence.getByRole("status", { name: "Comparing with the saved version…" })).toBeVisible();
+  await expect(evidence.getByText("2.50 → 2.70 USD")).toHaveCount(0);
+  expect(state.seen).toEqual([]);
+  release();
+  await expect(evidence.getByText("2.50 → 2.95 USD")).toBeVisible();
+  expect(state.reviews.length).toBe(comparisons + 1);
   await expect.poll(() => state.seen).toEqual([{ modelId: savedModel.id, keys: [later.key] }]);
   await expect(toggle.locator(".mx-evidence-dot")).toHaveCount(0);
 });
