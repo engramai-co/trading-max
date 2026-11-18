@@ -2498,12 +2498,17 @@ class ResearchLedger:
         markets = self._cached_rows(
             manifest, CURRENT_MARKET_KEY, _market_rows_with_claims, fallback_key=LEGACY_MARKET_KEY
         )
-        for symbol in dict.fromkeys((route, published)):
+        fund_rows = [
+            row
+            for key in (FUND_PRICE_DIRECTORY_KEY, FUND_PRICES_KEY)
+            if _artifact(manifest, key)
+            for row in self._cached_rows(manifest, key, _fundamentals_rows)
+        ]
+        for symbol in dict.fromkeys((requested, route, published)):
             for row in (
                 exact_row(technicals.get("rows") or [], symbol),
                 exact_row(fundamentals, symbol),
-                self._fund_price(manifest, symbol, None),
-                self._fund_price(manifest, symbol, None, with_points=True),
+                *(row for row in fund_rows if row.get("ticker") == symbol),
             ):
                 if row:
                     claims.extend(row_claims(symbol, row))

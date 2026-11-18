@@ -21,7 +21,7 @@ class PinnedListing:
     @property
     def symbol(self):
         """Qualified symbol for this listing, independent of the legacy bar key."""
-        return self.route if "." in self.route else self.ticker
+        return next((s for s in (self.requested, self.route, self.ticker) if "." in s), self.ticker)
 
     @cached_property
     def base_venue(self):

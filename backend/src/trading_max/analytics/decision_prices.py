@@ -268,6 +268,8 @@ class CachedDailyHistory:
             claims.extend(row_claims(symbol, frame.attrs))
             claims.extend(frame.attrs.get("venue_claims", ()))
         frame.attrs["venue_claims"] = tuple(dict.fromkeys(claims))
+        provider = frame.attrs.get("provider_venue") or previous.get("provider_venue") or {}
+        frame.attrs["provider_venue"] = provider
         venue = frame_venue(frame.attrs, symbol)
         if venue.conflict:
             raise VenueConflict("incompatible decision history")
@@ -275,6 +277,7 @@ class CachedDailyHistory:
             "venue_claims": frame.attrs["venue_claims"],
             "exchange": str(frame.attrs.get("exchange") or previous.get("exchange") or ""),
             "calendar": venue.calendar,
+            "provider_venue": yahoo_venue_metadata(provider),
         }
         return self._rows(completed_daily_bars(frame, now=_utc(now), ticker=symbol)), identity
 
@@ -284,6 +287,7 @@ class CachedDailyHistory:
             "venue_claims": tuple(VenueClaim(*claim) for claim in cached.get("venue_claims", ())),
             "exchange": cached.get("exchange", ""),
             "calendar": cached.get("calendar"),
+            "provider_venue": cached.get("provider_venue", {}),
         }
 
     def read_cached(self, symbol: str, start: date, end: date) -> pd.DataFrame:

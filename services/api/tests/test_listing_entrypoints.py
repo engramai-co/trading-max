@@ -143,10 +143,13 @@ def test_london_watchlist_cannot_displace_an_exact_new_york_price_row(bound):
     )
 
 
-def test_verified_legacy_london_price_alias_keeps_qualified_london_events(bound):
+@pytest.mark.parametrize("stored_watch_symbol", ["SYN.L", "SYN"])
+def test_verified_legacy_london_price_alias_keeps_qualified_london_events(
+    bound, stored_watch_symbol
+):
     app, initial, _ = bound
     ticker = "SYN.L"
-    watch(app, ticker, "LSE")
+    watch(app, stored_watch_symbol, "LSE")
     exhibit = raw_row(app, initial, "SYN", exchange="LSE", currency="GBP")
     day = DATES[-3]
     publish(
@@ -447,15 +450,17 @@ def test_frankfurt_conflict_withholds_all_published_chart_dependents_and_london_
         assert bool((moments.get("data") or {}).get("items")) is present
 
 
+@pytest.mark.parametrize("matching_first", [False, True])
 def test_held_fund_keeps_conflicting_exact_bar_claims_even_when_isin_mic_filter_rejects_row(
-    bound, monkeypatch
+    bound, monkeypatch, matching_first
 ):
     app, initial, _ = bound
     ticker = "SYN.L"
     row = raw_row(app, initial, ticker, exchange="NYQ", mic="XNYS", isin="SYNTH")
     listing = FundListingIdentity("SYNTH", "XLON", "SYN", ticker, "LSE")
     monkeypatch.setattr(app.state.research, "_held_funds", lambda _: {listing: {}})
-    publish(app, **{FUND_PRICES_KEY: {"rows": [row]}})
+    rows = [{**row, "exchange": "LSE", "mic": "XLON"}, row] if matching_first else [row]
+    publish(app, **{FUND_PRICES_KEY: {"rows": rows}})
 
     def live(*args, **kwargs):
         return ResearchPriceSeries(
@@ -630,12 +635,13 @@ def test_published_benchmark_uses_completed_bars_on_both_legs(monkeypatch):
     assert result.benchmark_series["VOO"][-1]["date"] < "2026-11-27"
 
 
+@pytest.mark.parametrize("stored_watch_symbol", ["SYN.L", "SYN"])
 def test_live_london_request_uses_qualified_provider_symbol_with_bare_legacy_bars(
-    bound, monkeypatch
+    bound, monkeypatch, stored_watch_symbol
 ):
     app, initial, _ = bound
     ticker = "SYN.L"
-    watch(app, ticker, "LSE")
+    watch(app, stored_watch_symbol, "LSE")
     row = raw_row(app, initial, "SYN", exchange="LSE", currency="GBP")
     publish(app, **{tools.TECHNICAL: {"rows": [row]}})
     asked = []

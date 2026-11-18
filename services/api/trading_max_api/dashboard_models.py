@@ -834,7 +834,7 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
-    # The route ticker can be an alias. Event readers join the actual published bar row.
+    # The legacy storage key can differ from the verified listing used for external reads.
     published_bar_ticker: str | None = Field(default=None, exclude=True)
     venue_claims: tuple[VenueClaim, ...] = Field(default=(), exclude=True)
     published_fund_row: bool = Field(default=False, exclude=True)

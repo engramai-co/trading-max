@@ -162,7 +162,9 @@ def frame_venue(attrs, ticker=None, exchange=None):
         exchange
         or attrs.get("exchange")
         or attrs.get("provider_venue")
-        or attrs.get("venue_claims")
+        or any(
+            claim.source not in {"symbol", "identity"} for claim in attrs.get("venue_claims", ())
+        )
         or attrs.get("mic")
     ):
         # A requested symbol alone does not attest that the fetched frame is its session.
