@@ -127,3 +127,33 @@ it("opens the earnings and ratings sections from their own evidence", () => {
     expect(url.hash).toBe("#research-" + section);
   }
 });
+
+it.each([
+  ["en", "Technical data", "Stale", "Earnings data", "Missing"],
+  ["zh", "技术指标", "已过时", "业绩数据", "缺失"],
+] as const)("identifies each freshness dataset and its state in %s", (locale, technical, stale, earnings, missing) => {
+  const output = {scope:"invest", sources:[{as_of:"2026-11-01"}], data:{ticker:"SYNT", items:[
+    {dataset:"technical", state:"stale", as_of:"2026-11-01"},
+    {dataset:"earnings", state:"missing", as_of:null},
+  ]}};
+  const reply = fieldReply("data_freshness", output, "/data/items/0/state");
+  reply.parts[1] = {type:"text", text:"{{/data/items/0/state}} [ev_local]\n{{/data/items/1/state}} [ev_local]"};
+  const [first, second] = verifiedLines(reply, locale);
+  for (const text of ["SYNT", technical, stale, "2026-11-01"]) expect(first.text).toContain(text);
+  for (const text of ["SYNT", earnings, missing]) expect(second.text).toContain(text);
+  expect(second.text).not.toContain("2026-11-01");
+});
+
+it("restores the server-bound selection from a completed tool when the model omitted it", () => {
+  const message: UIMessage = {id:"role",role:"assistant",parts:[{type:"dynamic-tool",toolName:"list_holdings",toolCallId:"c",state:"output-available",
+    input:{args:{sort:"value"}},output:{evidence_id:"ev_selected",bound_arguments:{scope:"isa",ticker:"SYNT",snapshotId:"older",ordinal:"0"}}}]};
+  expect(messageEvidence(message).get("ev_selected")?.arguments).toEqual({scope:"isa",ticker:"SYNT",snapshotId:"older",ordinal:"0",sort:"value"});
+});
+
+it("keeps the selected benchmark window in the link when observations cover fewer dates", () => {
+  const message = fieldReply("compare_benchmarks", {bound_arguments:{scope:"isa",start:"2026-10-01",end:"2026-11-01"},
+    data:{start:"2026-10-02",end:"2026-10-30",portfolio_twr_fraction:0.02}}, "/data/portfolio_twr_fraction");
+  const [line] = verifiedLines(message);
+  expect(line.text).toContain("2026-10-02 – 2026-10-30");
+  expect(line.evidence?.arguments).toMatchObject({scope:"isa",start:"2026-10-01",end:"2026-11-01"});
+});

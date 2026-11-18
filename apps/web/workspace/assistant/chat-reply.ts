@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
 import { object, str } from "../data";
-import { completedEvidence, type Evidence } from "./evidence";
+import { completedEvidence, evidenceArguments, type Evidence } from "./evidence";
 import { inferenceText, renderToolField } from "./figures";
 import { reviewFieldLocation } from "./review-figures";
 
@@ -31,11 +31,11 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
         evidence = {...evidence, arguments:{...evidence.arguments, ...review}};
       } else if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
         const data = object(source.output.data);
-        evidence = {...evidence, arguments:{...evidence.arguments, metric:"period_pnl_gbp",
-          start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}};
+        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, metric:"period_pnl_gbp",
+          start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}, source.output)};
       } else if (evidence.tool === "compare_benchmarks") {
         const data = object(source.output.data);
-        evidence = {...evidence, arguments:{...evidence.arguments, start:str(data.start), end:str(data.end)}};
+        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end)}, source.output)};
       }
       result.push({text, evidence});
     }

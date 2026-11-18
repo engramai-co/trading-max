@@ -63,7 +63,7 @@ fallback to another provider.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
+| POST | `/v1/assistant/chat?page=&tz=&format=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
 | GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
@@ -250,12 +250,35 @@ with the next question. A follow-up keeps the reading's page, account, period,
 object and immutable snapshot across navigation and when restoring a stopped
 draft.
 
-The sidebar requests two to four references. For example,
+A role can declare `tool_bindings(context, snapshot_id)`. Its input is the
+validated role object and the immutable publication used by the turn. It
+returns one entry per enabled tool, with that tool's argument names and selected
+values. For example, a selected-money reading can bind `scope`, `start` and
+`end` from the chart. Use the tool's actual field names, converting identifiers
+where its schema requires it. An empty argument map enables a tool without
+pinning its arguments. Omitting a tool excludes it for the selection, and every
+enabled tool must belong to the role's allowlist.
+
+The registry omits pinned fields from the model's tool schema, supplies omitted
+values and rejects a conflicting value before execution. The same checks apply
+to deterministic reads through `RoleTools.read`, including reads used to derive
+a data version. Facts can pass a dictionary containing only free arguments.
+Bound selections and the snapshot travel in the result's `bound_arguments`
+and in streamed, saved and reopened evidence links. Named display variants
+declare the selectable dimensions in `RoleContext.variant_fields` and use
+`reader.for_variant(validated_context)` on the same snapshot. Their
+evidence stays with the variant. A role adopting bindings starts a separate
+reading cache so older answers cannot supply unverified selections.
+
+The chat route defaults to `format=prose` and streams a tool-grounded answer
+in the user's language. The sidebar passes `format=references` to request
+two to four references for the current turn. For example,
 `{{/data/period_pnl_gbp}} [ev_example]` selects the dated GBP net P&L from
 that completed tool call. The client resolves the field in the current turn
 and formats its metric, amount, unit, window and coverage. Qualitative lines
 select a bilingual interpretation such as `{{cash-flows}} [inference]`.
-The transcript and its completion announcement use the same verifier.
+Completion announcements include the same source words as the transcript.
+A withheld reply announces the localised verification notice.
 Unknown fields, conflicting IDs and model-authored prose make the whole
 reply unverifiable, including replies reopened from conversation history.
 

@@ -10,11 +10,11 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, UsageLimits
+from pydantic_ai import Agent, ModelRetry, UsageLimits
 from trading_max.infrastructure import SqliteDatabase
 
 from .deps import AssistantDeps
-from .roles import PageRole, ReadingLine, RoleContext, RoleReading, RoleTools
+from .roles import PageRole, ReadingLine, RoleContext, RoleReading
 from .runtime import error_code
 from .service import RUN_TIMEOUT_SECONDS, AssistantService, AssistantUnavailable
 
@@ -46,7 +46,7 @@ class ReadingService:
         self, role: PageRole, context: RoleContext, version: str | None, *, scheduled: bool = False
     ) -> RoleReading | None:
         key = (
-            ("scheduled:" + role.id) if scheduled or version is None else role.id,
+            ("scheduled:" + role.cache_id) if scheduled or version is None else role.cache_id,
             role.object_key(context),
         )
         with self.database.read() as db:
@@ -105,10 +105,14 @@ class ReadingService:
         if not status["ready"]:
             yield ReadingEvent(type="error", code=status.get("code") or "assistant_unavailable")
             return
-        tools = RoleTools.pinned(deps, role.allowed_tools)
-        version = deps.snapshot_id
-        if not latest and version and role.data_version:
-            version = await asyncio.to_thread(role.data_version, tools, context)
+        try:
+            tools = role.reader(deps, context)
+            version = deps.snapshot_id
+            if not latest and version and role.data_version:
+                version = await asyncio.to_thread(role.data_version, tools, context)
+        except (ModelRetry, ValueError):
+            yield ReadingEvent(type="error", code="assistant_context_invalid")
+            return
         if not latest and not version:
             yield ReadingEvent(type="empty")
             return
@@ -135,7 +139,7 @@ class ReadingService:
             yield ReadingEvent(type="empty")
             return
         key = (
-            ("scheduled:" + role.id) if scheduled else role.id,
+            ("scheduled:" + role.cache_id) if scheduled else role.cache_id,
             role.object_key(context),
             version,
         )
@@ -148,6 +152,7 @@ class ReadingService:
         try:
             yield ReadingEvent(type="reading")
             facts = await asyncio.to_thread(role.facts, tools, context)
+            tools.attach_evidence(facts)
             if len(facts) < 2:
                 yield ReadingEvent(type="empty")
                 return

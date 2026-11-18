@@ -19,9 +19,10 @@ async function fixtures(page: Page, ready = true) {
         line("next","financials","read_research_lens","2 月 4 日 · SYNT 财报","4 February · SYNT earnings")],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
+      const {scope, range, snapshotId} = route.request().postDataJSON().context;
       const chunks = [{type:"start", messageId:"a1"}, {type:"start-step"},
-        {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{args:{scope:"broker_total",range:"1W"}}},
-        {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",data:{period_pnl_gbp:21.5,window_start:"2026-11-09",window_end:"2026-11-13",coverage:"partial"}}},
+        {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{}},
+        {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",scope,snapshot_id:snapshotId,bound_arguments:{scope,range,snapshotId},data:{period_pnl_gbp:21.5,window_start:"2026-11-12",window_end:"2026-11-13",coverage:"partial"}}},
         {type:"text-start",id:"t1"},
         {type:"text-delta",id:"t1",delta:"{{/data/period_pnl_gbp}} [ev_period]\n{{cash-flows}} [inference]"},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
       return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
@@ -54,17 +55,23 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   await question.click();
   const input = page.locator(".mx-assistant-composer textarea");
   await expect(input).toHaveValue(wording);
-  const sent = page.waitForRequest(r => r.url().endsWith("/assistant/chat"));
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
   await input.press("Enter");
-  const body = (await sent).postDataJSON();
+  const request = await sent;
+  const body = request.postDataJSON();
   expect(body.context).toMatchObject({page:"overview",role:"daily",scope:"broker_total"});
   expect(body.messages).toHaveLength(1);
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
   const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
   await expect(liveReply).toHaveCount(1);
   await expect(liveReply).toContainText("本期净盈亏 £21.50");
-  await expect(liveReply).toContainText("2026-11-09 – 2026-11-13");
+  await expect(liveReply).toContainText("2026-11-12 – 2026-11-13");
+  const moneyLink = page.locator(".mx-turn-assistant").getByRole("link", {name:"账户"});
+  await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance");
   await expect(liveReply).toContainText("覆盖不完整");
+  const visible = await page.locator(".mx-turn-assistant .mx-reading-line").allInnerTexts();
+  await expect(liveReply).toHaveText(visible.join(" "));
+  expect(new URL(request.url()).searchParams.get("format")).toBe("references");
   await expect(page.locator(".mx-turn-assistant")).not.toContainText("{{");
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-verified-figure.png")});
   await input.fill("Draft retained");
@@ -133,7 +140,7 @@ test("stopping a turn restores its question and evidence points to the selected 
   await fixtures(page);
   let finish: () => void = () => {};
   const hold = new Promise<void>(resolve => { finish = resolve; });
-  await page.route("**/api/backend/assistant/chat", async route => {
+  await page.route("**/api/backend/assistant/chat*", async route => {
     await hold;
     await route.abort().catch(() => undefined);
   });
@@ -172,10 +179,10 @@ test("weekly follow-ups retain the reading context after navigation and stop", a
   }
   let release: () => void = () => {};
   const held = new Promise<void>(resolve => {release = resolve;});
-  await page.route("**/api/backend/assistant/chat", async route => {await held; await route.abort().catch(() => {});});
+  await page.route("**/api/backend/assistant/chat*", async route => {await held; await route.abort().catch(() => {});});
   try {
     for (let i = 0; i < 2; i++) {
-      const sent = page.waitForRequest(r => r.url().endsWith("/assistant/chat"));
+      const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
       await input.press("Enter");
       expect((await sent).postDataJSON().context).toMatchObject({role:"weekly",page:"overview",scope:"broker_total",range:"1W",snapshotId:"synthetic",object:{benchmark:"VOO"}});
       await page.getByRole("button",{name:"停止", exact:true}).click();
@@ -198,13 +205,16 @@ test("an open Overview discovers a scheduled reading without starting a model ru
   await expect(page.locator(".mx-digest-summary")).toHaveText(/修订 [2-9]/);
 });
 test("uncited or invented chat evidence stays out of the transcript and announcement", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await fixtures(page);
   const chunks = [{type:"start",messageId:"bad"}, {type:"text-start",id:"t"}, {type:"text-delta",id:"t",delta:"Invented fact.\nAnother claim [ev_missing]"}, {type:"text-end",id:"t"}, {type:"finish",finishReason:"stop"}];
-  await page.route("**/api/backend/assistant/chat", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"}));
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"}));
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   await page.locator(".mx-assistant-questions button").first().click();
-  await expect(page.locator(".mx-turn-assistant")).toContainText("无法核实");
+  const notice = "This reply could not be verified.";
+  await expect(page.locator(".mx-turn-assistant")).toHaveText(notice);
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText(notice);
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("Invented fact");
 });
 
@@ -248,13 +258,43 @@ test("neither chat nor its live region repeats a false amount with a genuine cit
     {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",data:{period_pnl_gbp:21.5,currency:"GBP",coverage:"partial"}}},
     {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"Net P&L was £9,999,999 with complete coverage [ev_period]\n{{other-drivers}} [inference]"},
     {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
-  await page.route("**/api/backend/assistant/chat", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
     body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"}));
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   await page.locator(".mx-assistant-questions button").first().click();
   await expect(page.locator(".mx-turn-assistant")).toContainText("无法核实");
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("9,999,999");
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toBeEmpty();
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("无法核实这次回复。");
   if (info.project.name === "desktop" && process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"false-figure-withheld.png")});
 });
+
+for (const locale of ["zh", "en"] as const) {
+  test("freshness replies name the cited datasets in " + locale, async ({page}, info) => {
+    await page.addInitScript(lang => localStorage.setItem("trading_max-locale", lang), locale);
+    await fixtures(page);
+    const chunks = [
+      {type:"start", messageId:"freshness"}, {type:"start-step"},
+      {type:"tool-input-available", toolCallId:"f", toolName:"data_freshness", input:{args:{domain:"research", scope:"invest", ticker:"SYNT"}}},
+      {type:"tool-output-available", toolCallId:"f", output:{evidence_id:"ev_fresh", status:"ok", scope:"invest", data:{
+        ticker:"SYNT", items:[{dataset:"technical", state:"stale", as_of:"2026-11-01"}, {dataset:"earnings", state:"missing", as_of:null}],
+      }}},
+      {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/items/0/state}} [ev_fresh]\n{{/data/items/1/state}} [ev_fresh]"},
+      {type:"text-end", id:"t"}, {type:"finish-step"}, {type:"finish", finishReason:"stop"},
+    ];
+    await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+      headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+      body:chunks.map(c => "data: " + JSON.stringify(c) + "\n\n").join("") + "data: [DONE]\n\n",
+    }));
+    await page.goto("/");
+    await page.locator("[data-assistant-trigger]").click();
+    const input = page.locator(".mx-assistant-composer textarea");
+    await input.fill(locale === "zh" ? "SYNT 的哪些数据需要更新？" : "Which SYNT datasets need an update?");
+    await input.press("Enter");
+    const rows = page.locator(".mx-turn-assistant .mx-reading-line");
+    await expect(rows.nth(0)).toContainText(locale === "zh" ? "技术指标 · 已过时" : "Technical data · Stale");
+    await expect(rows.nth(1)).toContainText(locale === "zh" ? "业绩数据 · 缺失" : "Earnings data · Missing");
+    await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText((await rows.allInnerTexts()).join(" "));
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-"+locale+"-freshness.png")});
+  });
+}

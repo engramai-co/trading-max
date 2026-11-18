@@ -26493,6 +26493,22 @@
         "operationId": "assistant_chat_v1_assistant_chat_post",
         "parameters": [
           {
+            "description": "Return prose or field references for the workspace sidebar.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "prose",
+              "description": "Return prose or field references for the workspace sidebar.",
+              "enum": [
+                "prose",
+                "references"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
