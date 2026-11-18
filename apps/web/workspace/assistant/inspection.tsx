@@ -92,6 +92,7 @@ export type InspectionProps = {
   showMapLine?: boolean;
   portal?: HTMLElement | null;
   onUpdate?: () => void;
+  unavailable?: boolean;
 };
 
 export function Inspection({
@@ -103,7 +104,7 @@ export function Inspection({
   anchored,
   market,
   showMapLine,
-  portal, onUpdate,
+  portal, onUpdate, unavailable,
 }: InspectionProps) {
   const t = useCopy();
   const { continueInSidebar } = useAssistant();
@@ -133,7 +134,7 @@ export function Inspection({
   } | null>(null);
   const query = useRoleReading(
     request,
-    Boolean(context) && !updated && stopped !== key && closed !== key,
+    Boolean(context) && !unavailable && !updated && stopped !== key && closed !== key,
     (lines) => setPartial({ key, lines }),
   );
   const client = useQueryClient();
@@ -163,7 +164,7 @@ export function Inspection({
     }),
     [page, request, snapshotId, query.data?.snapshotId],
   );
-  const bound = !expired && Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
+  const bound = !unavailable && !expired && Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
   const card = useMemo<RoleCard>(
     () => ({
       role: hasContext && bound ? role : "",
@@ -226,9 +227,9 @@ export function Inspection({
   };
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
-    <Container card={card} onClose={close}>
+    <Container card={card} onClose={close} focusClose={unavailable}>
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
-      {!reading ? (
+      {unavailable ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p> : !reading ? (
         <div className="mx-inspection-status" role="status">
           {query.isFetching && partial?.key === key && (
             <ReadingLines card={card} lines={partial.lines} />

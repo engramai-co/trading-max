@@ -4,7 +4,7 @@ import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import Link from "../link";
@@ -42,13 +42,17 @@ export function FollowUps({ card, onContinue }: { card: RoleCard; onContinue?: (
     <button disabled={card.pendingBinding} className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
   </div>;
 }
-type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void };
+type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void; focusClose?: boolean };
 function ReadingContent({ card, children }: ReadingContainerProps) {
   return <section className="mx-inline-reading"><CardTitle card={card} />{children ?? <ReadingLines card={card} />}<FollowUps card={card} /></section>;
 }
-function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onClose: () => void}) {
+function ReadingSheet({ card, children, onClose, focusClose }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const trigger = useRef(document.activeElement);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusClose) closeButton.current?.focus({preventScroll:true});
+  }, [focusClose]);
   function dismiss() {
     onClose();
     const element = trigger.current;
@@ -58,16 +62,16 @@ function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onCl
     });
   }
   return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title} · {card.object}</span>}
-    returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}
+    returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{ref:closeButton,"aria-label":t("关闭解读", "Close reading")}}
     classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
     {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
   </Drawer>;
 }
-export function InlineReading({ card, children, onClose }: ReadingContainerProps) {
+export function InlineReading({ card, children, onClose, focusClose }: ReadingContainerProps) {
   const { ready } = useAssistant();
   const phone = useMediaQuery("(max-width: 767px)");
   if (!ready) return null;
-  return phone && onClose ? <ReadingSheet card={card} onClose={onClose}>{children}</ReadingSheet>
+  return phone && onClose ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose}>{children}</ReadingSheet>
     : <ReadingContent card={card}>{children}</ReadingContent>;
 }
 /** Mount beside a selected point in its positioned inspection surface. */

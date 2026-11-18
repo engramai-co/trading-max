@@ -203,9 +203,9 @@ export function PerformanceContent({
   const endpointsPresent = selectedWindow && points.some(p=>p.date===selectedWindow.start) && points.some(p=>p.date===selectedWindow.end);
   const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
   const newestId = current && publicationOf(current);
-  const inspection = selectedWindow && !endpointsPresent && shown
-    ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p>
-    : <PageInspection key={selectedWindow?.snapshotId} role="attribution" snapshotId={selectedWindow?.snapshotId ?? plottedId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
+  const inspection = <PageInspection key={selectedWindow?.snapshotId} role="attribution"
+      unavailable={Boolean(selectedWindow && !endpointsPresent && shown)}
+      snapshotId={selectedWindow?.snapshotId ?? plottedId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
       context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
       onUpdate={activeRange && newestId && activeRange.snapshotId !== newestId ? () => setSelectionRange({...activeRange,snapshotId:newestId}) : undefined}
       onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;

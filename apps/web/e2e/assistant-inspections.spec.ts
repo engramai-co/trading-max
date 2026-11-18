@@ -705,6 +705,33 @@ test("same-page Returns citations take precedence over a brush and follow browse
   await expect(card).toContainText("2026-01-05 – 2026-01-16");
 });
 
+test("a missing endpoint in the updated phone reading keeps the dialog and focuses recovery", async ({page,isMobile})=>{
+  test.skip(!isMobile);
+  await page.setViewportSize({width:390,height:844});
+  const calls=await setup(page,"en",false);
+  let id=runId;
+  await page.route("**/api/backend/health",route=>route.fulfill({json:{service:"trading_max-api",status:"ok",latestRunId:id}}));
+  await page.route("**/dashboard/lens/analytics?**",route=>{
+    const data=backendFixture(new URL(route.request().url())) as DashboardLens;
+    return route.fulfill({json:{...data,runId:id,nav:id===runId?data.nav:data.nav?.slice(0,-1)}});
+  });
+  await page.clock.install();
+  await Promise.all([page.waitForResponse(r=>r.url().endsWith("/assistant/status")),page.goto("/analytics?view=returns&range=3M")]);
+  await expect(page.getByRole("heading",{name:"Return comparison",exact:true})).toBeAttached();
+  await page.getByRole("button",{name:"YTD",exact:true}).click();
+  const sheet=page.getByRole("dialog");
+  await expect(sheet).toContainText("time-weighted");
+  id="new-publication";
+  const changed=page.waitForResponse(r=>r.url().includes("/dashboard/lens/analytics?"));
+  await page.clock.fastForward(65_000);
+  await changed;
+  await sheet.getByRole("button",{name:"Read updated records"}).click();
+  await expect(sheet.getByRole("status")).toHaveText("Cited interval unavailable");
+  await expect(sheet.getByRole("button",{name:"Close reading"})).toBeFocused();
+  expect(calls.some(c=>c.snapshotId===id)).toBe(false);
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-updated-endpoint-unavailable.png")});
+});
+
 for (const view of ["holdings","money","returns","risk"] as const) {
   test(`opens the cited ${view} using the retained dashboard API`, async ({page,request})=>{
     const calls=await setup(page,"en",false);
