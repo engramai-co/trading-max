@@ -198,7 +198,9 @@ def test_money_range_pins_full_cadence_gbp_and_missing_endpoints(tmp_path):
     }
     assert all("unavailable" in f.en or "No QQQ comparison" in f.en for f in facts if f != pnl)
     no_opening = context.model_copy(update={"start": "2026-02-03T11:59:00Z"})
-    assert not any(f.section == "return" for f in role.facts(read, no_opening))
+    assert "could be verified" in next(
+        f.en for f in role.facts(read, no_opening) if f.section == "return"
+    )
     with pytest.raises(ValidationError):
         AttributionContext(**{**context.model_dump(), "start": "2026-W06-2"})
 

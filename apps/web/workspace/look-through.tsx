@@ -512,7 +512,7 @@ function Exposure({
               onClear={clearFilters}
             />
             {chart === "pie" && <AllocationComposition
-              key={`companies-${snapshot}`}
+              key={ready ? "companies" : `companies-${snapshot}`}
               companies
               onInspect={ready ? inspect : undefined} reading={role}
               rows={companyComposition.rows}
@@ -747,7 +747,7 @@ function Exposure({
             </Group>
             {chart === "pie" && <AllocationComposition
               onInspect={ready ? inspect : undefined} reading={role}
-              key={`${view}-${snapshot}`}
+              key={ready ? view : `${view}-${snapshot}`}
               rows={allocations.map((row) => ({
                 name: allocationLabel(row),category: categoryKey(row),
                 value: numeric(row.valueGbp),

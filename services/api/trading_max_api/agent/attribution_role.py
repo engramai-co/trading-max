@@ -143,11 +143,15 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 f"{key} {value:+.2%}" for key, value in data["window_benchmarks"].items()
             )
             basis = f"{data['benchmark_currency']} · {data['benchmark_basis']}"
+            requested = {"VOO", "QQQ", "VT"} if context.benchmark == "ALL" else {context.benchmark}
+            missing = ", ".join(sorted(requested - data["window_benchmarks"].keys()))
+            missing_en = f" {missing} has no comparison for this window." if missing else ""
+            missing_zh = f" {missing} 暂无同区间对比。" if missing else ""
             facts.append(
                 observed(
                     "benchmark",
-                    f"同期基准 {comparisons}（{basis}）。",
-                    f"Same-period benchmark returns were {comparisons} ({basis}).",
+                    f"同期基准 {comparisons}（{basis}）。{missing_zh}",
+                    f"Same-period benchmark returns were {comparisons} ({basis}).{missing_en}",
                     "market",
                 )
             )
@@ -167,6 +171,17 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                     "return",
                     f"所选区间的净盈亏为 £{pnl:+,.2f}{zh}。",
                     f"Cash-flow-adjusted net P&L was £{pnl:+,.2f}{en}.",
+                    "account",
+                    amount,
+                    "selected_money",
+                )
+            )
+        elif not any(f.section == "return" for f in facts):
+            facts.append(
+                observed(
+                    "return",
+                    "所选区间没有可核实的组合收益或净盈亏。",
+                    "Neither portfolio return nor net P&L could be verified for these endpoints.",
                     "account",
                     amount,
                     "selected_money",
