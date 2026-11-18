@@ -3,7 +3,7 @@
 import asyncio
 import json
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -541,7 +541,9 @@ def test_published_technical_zone_determines_timed_headline_coverage(tmp_path, z
 
 def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, monkeypatch):
     from contextlib import nullcontext
+    from unittest.mock import Mock
 
+    from trading_max.application import event_stages
     from trading_max.application.event_stages import SecurityNewsStage
     from trading_max.application.stages import StageContext
     from trading_max.reference.indices import INDEX_REGISTRY
@@ -570,10 +572,21 @@ def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, mon
             else []
         ),
     )
-    result = stage.run(StageContext(job_id="synthetic", scope="research", tickers=("OTHER",)))
+    monkeypatch.setattr(
+        event_stages, "datetime", Mock(now=lambda tz: datetime(2026, 2, 3, 17, tzinfo=UTC))
+    )
+    result = stage.run(
+        StageContext(job_id="synthetic", scope="research", trigger="research", tickers=("OTHER",))
+    )
     stories = store.immutable_artifacts.get_json(result.artifacts[0].artifact_id).payload
     assert spec.symbol in stories["securities"]
-    publication(store, extra_artifacts={NEWS_KEY: stories})
+    publication(
+        store,
+        extra_artifacts={
+            ref.key: store.immutable_artifacts.get_json(ref.artifact_id).payload
+            for ref in result.artifacts
+        },
+    )
     history = SimpleNamespace(
         index=spec,
         range="3M",
@@ -593,7 +606,9 @@ def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, mon
         start=DATES[0],
         end=DATES[-1],
     )
-    assert [m["date"] for m in insights.moments_data(deps, args)["data"]["items"]] == [DATES[2]]
+    reading = insights.moments_data(deps, args)
+    assert [m["date"] for m in reading["data"]["items"]] == [DATES[2]]
+    assert "security_news_unavailable" not in reading["quality"]["issues"]
 
 
 def test_published_consensus_delta_keeps_both_dates_and_fiscal_identity(tmp_path):
