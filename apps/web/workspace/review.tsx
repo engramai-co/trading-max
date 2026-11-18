@@ -107,7 +107,7 @@ export function ReviewWorkspace() {
   const scope = reviewScope(params.get("account"));
   const all = scope === "all";
   const snapshotId = params.get("snapshotId");
-  const overview = useDashboardLens("review", undefined, all, undefined, snapshotId ?? undefined);
+  const overview = useDashboardLens("review", undefined, all, snapshotId ? ACCOUNT_REVIEW_SELECTION : undefined, snapshotId ?? undefined);
   const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
   const query = all ? overview : single;
   const current = useMemo(

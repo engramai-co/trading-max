@@ -10,6 +10,7 @@ function line(section: string, source: string, tool: string, zh: string, en: str
 async function fixtures(page: Page, ready = true) {
   await page.route("**/api/backend/**", route => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/profile")) return route.fulfill({json:{...backendFixture(url) as object,assistantEnabled:ready}});
     if (url.pathname.endsWith("/assistant/status")) return route.fulfill({json:{ ready, code: ready ? null : "assistant_disabled" }});
     if (url.pathname.endsWith("/reading")) return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result",reading:{
       role: url.pathname.includes("weekly") ? "weekly" : "daily", version:"synthetic", asOf:"2026-01-30T20:00:00Z",
@@ -21,9 +22,9 @@ async function fixtures(page: Page, ready = true) {
             date:"2026-02-03",instant:"2026-02-04T08:30:00+09:00",url:"https://example.org/calendar"}},
           related:[
             {...line("next","financials","upcoming_events","2026-02-04 – 2026-02-06 · SYNT 预计财报","2026-02-04 – 2026-02-06 · SYNT estimated earnings"),
-              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
+              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{snapshotId:"saved",eventId:"ev_window",date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
             {...line("next","disclosure","upcoming_events","2026-02-09 · SYNT 除息","2026-02-09 · SYNT ex-dividend"),
-              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
+              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{snapshotId:"saved",eventId:"ev_ex",date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
           ]}],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
@@ -42,14 +43,17 @@ async function fixtures(page: Page, ready = true) {
   await page.route("**/api/logos/**", route => route.abort());
 }
 test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Requires an isolated web build.");
-test("disabled entry explains consent and links to Settings", async ({ page }) => {
+test("disabled entry explains consent and links to Settings", async ({ page }, info) => {
   await fixtures(page, false);
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   const panel = page.locator("#mx-assistant-panel");
   await expect(panel.getByRole("link")).toHaveAttribute("href", "/settings?tab=assistant");
   await expect(panel).toContainText("设置");
+  await expect(panel.getByRole("link")).toBeInViewport();
+  await expect(panel).toHaveCSS("position","fixed");
   await expect(page.locator(".mx-digest")).toHaveCount(0);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-disabled-settings-hint.png")});
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
 });
@@ -245,13 +249,8 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await page.goto("/analytics?view=money&range=1W&moneyFrom=2026-01-26&moneyTo=2026-01-30&snapshotId=older&evidence=period_performance");
   expect(new URL((await history).url()).searchParams.get("range")).toBe("1W");
   await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
-  await page.route("**/api/backend/research/SYNT/lens/overview?**", route => {
-    const data = backendFixture(new URL(route.request().url())) as Record<string,unknown>;
-    return route.fulfill({json:{...data,fundamentals:{metrics:{exDividendDate:Date.parse("2026-11-28")/1000}}}});
-  });
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
-  await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");
-  await expect(page.locator("[data-reading-event]")).toContainText("除息日期");
+  await expect(page.locator("[data-reading-event]")).toContainText("引用的数据版本或事件暂不可用");
 });
 
 test("keyboard Back from History restores focus inside the tablet sidebar", async ({page}, info) => {
@@ -354,4 +353,107 @@ test("a saved benchmark citation reopens its portfolio and prices and discloses 
   await expect(page.getByText("Cited publication unavailable", {exact:true})).toBeVisible();
   await expect(result).toHaveCount(0);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
+});
+
+test("earnings citations reopen the exact retained row and disclose expiry", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  let expired = false;
+  await page.route("**/api/backend/publications/saved/events/upcoming?**", route => route.fulfill(expired
+    ? {status:404,json:{detail:"snapshot not found"}} : {json:{snapshot_id:"saved",data:{items:[
+      {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
+    ]}}}));
+  await page.goto("/");
+  await page.locator(".mx-digest [aria-expanded]").click();
+  const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
+  await expect(link).toHaveAttribute("href", /snapshotId=saved/);
+  await link.click();
+  const target = page.locator("[data-reading-event]");
+  await expect(target).toContainText("2026-02-04 – 2026-02-06");
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-retained-earnings.png")});
+  expired = true;
+  await page.reload();
+  await expect(target).toContainText("Cited publication or event unavailable");
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-earnings.png")});
+});
+
+test("disabled Overview matches main's cold request and script counts", async ({browser}, info) => {
+  const main = process.env.PLAYWRIGHT_MAIN_BASE_URL;
+  test.skip(!main, "Supply the matching main build for the cold-load comparison.");
+  async function cold(origin: string, hint: boolean) {
+    const page = await browser.newPage({viewport:info.project.use.viewport, serviceWorkers:"block"});
+    const requests: string[] = [], scripts: string[] = [];
+    const sizes: Promise<number>[] = [];
+    await fixtures(page, false);
+    page.on("request", request => {
+      const {pathname} = new URL(request.url());
+      if (pathname.startsWith("/api/")) requests.push(pathname);
+    });
+    page.on("response", response => {
+      if (response.ok() && response.request().resourceType() === "script") {
+        scripts.push(new URL(response.url()).pathname);
+        sizes.push(response.body().then(body => body.length));
+      }
+    });
+    await page.goto(origin);
+    await expect(page.locator(".mx-overview-totals")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const coldScripts = scripts.length;
+    if (hint) {
+      await page.locator("[data-assistant-trigger]").click();
+      await expect(page.locator("#mx-assistant-panel a")).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      expect.soft(scripts.slice(coldScripts), "scripts downloaded by the Settings hint").toEqual([]);
+    }
+    const scriptBytes = (await Promise.all(sizes)).reduce((total,n) => total+n,0);
+    await page.close();
+    return {requests:requests.sort(), scripts:coldScripts, scriptBytes};
+  }
+  const baseline = await cold(main!, false);
+  const actual = await cold(process.env.PLAYWRIGHT_BASE_URL!, true);
+  await info.attach("cold-load-counts",{body:JSON.stringify({baseline,actual}),contentType:"application/json"});
+  expect.soft(actual.requests).toEqual(baseline.requests);
+  expect(actual.scripts).toBeLessThanOrEqual(baseline.scripts);
+});
+
+test("a calendar follow-up cites its Tokyo release and the published earnings row", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("trading_max-locale","en");
+    localStorage.setItem("trading_max-time-zone","Asia/Tokyo");
+  });
+  const eventRows = [
+    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/calendar"},
+    {kind:"earnings",ticker:"SYNT",evidence_id:"ev_report",research_event_id:"report-1",title_en:"Earnings",date:"2026-02-04"},
+  ];
+  const chunks = [{type:"start",messageId:"calendar"},{type:"start-step"},
+    {type:"tool-input-available",toolCallId:"cal",toolName:"upcoming_events",input:{}},
+    {type:"tool-output-available",toolCallId:"cal",output:{evidence_id:"ev_results",snapshot_id:"saved",status:"ok",data:{items:eventRows}}},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"{{/data/items/0/date}} [ev_results]\n{{/data/items/1/date}} [ev_results]"},
+    {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(c => "data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n",
+  }));
+  await page.goto("/");
+  const digest = page.locator(".mx-digest");
+  await digest.getByRole("button",{name:"Weekly"}).click();
+  await digest.locator("[aria-expanded]").click();
+  await expect(digest).toContainText(/4 Feb 2026.*08:30/);
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) {
+    await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
+    await expect(digest.getByText("Coming up", {exact:true})).toBeInViewport();
+    await page.screenshot({path:join(shots,info.project.name+"-weekly-calendar.png")});
+  }
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("Which release and earnings date are coming up?");
+  await input.press("Enter");
+  const reply = page.locator(".mx-turn-assistant");
+  await expect(reply).toContainText(/Consumer prices.*4 Feb 2026.*08:30/);
+  await expect(reply.getByRole("link",{name:"Calendar"})).toHaveAttribute("href","https://example.org/calendar");
+  await expect(reply.getByRole("link",{name:"Financials"})).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-calendar-followup.png")});
 });

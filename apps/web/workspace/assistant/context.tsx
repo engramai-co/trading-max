@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { useWorkspaceProfile } from "../profile";
 import { api } from "../data";
 import { assistantSettingsKey } from "../assistant-settings";
 import type { AssistantSettings } from "@/lib/types";
@@ -35,11 +36,7 @@ export function usePageRole(card: RoleCard | null) {
 }
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [painted, setPainted] = useState(false);
-  useEffect(() => {
-    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => setPainted(true)); });
-    return () => cancelAnimationFrame(frame);
-  }, []);
+  const profile = useWorkspaceProfile();
   const [pageCard, setPageCard] = useState<RoleCard | null>(null);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   // Settings writes through this shared query key. A new revision immediately
@@ -47,11 +44,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const settings = useQuery<AssistantSettings>({
     queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
+  const optedIn = settings.data ? settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision :
+    profile.data?.assistantEnabled;
+  // Earlier servers only expose readiness via status. Resolve it on explicit open.
+  const checkStatus = optedIn === true || (optedIn === undefined && open && !profile.isPending);
   const status = useQuery({ queryKey: ["assistant-status", settings.data?.revision ?? null],
     queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
-    enabled: painted || open, staleTime: 30_000, retry: false, networkMode: "always",
+    enabled: checkStatus, staleTime: 30_000, retry: false, networkMode: "always",
   });
-  const ready = !status.isError && Boolean(status.data?.ready) && (!settings.data || settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision);
+  const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
   const close = useCallback(() => {
     setOpen(false);
     requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-assistant-trigger]")?.focus({ preventScroll: true }));
@@ -74,7 +75,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, pending: status.isPending, code: status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, pending: profile.isPending || (checkStatus && status.isPending), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }

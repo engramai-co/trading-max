@@ -9,7 +9,7 @@ import { useLocale } from "@/components/locale-provider";
 import { ASSISTANT_NAME, conversationsErasedEvent } from "../assistant-settings";
 import { api } from "../data";
 import { useCopy } from "../foundation";
-import Link from "../link";
+import { errorLabel } from "./status-label";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
 import { verifiedLines } from "./chat-reply";
@@ -37,12 +37,6 @@ function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean
   return lines.map((line, i) => <p className="mx-reading-line" key={i}>{line.text}{" "}
     {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{sourceLabel(null, t)}</span>}
   </p>);
-}
-function errorLabel(code: string, t: ReturnType<typeof useCopy>) {
-  if (code === "assistant_busy" || code === "provider_rate_limited") return t("服务繁忙，稍后重试。", "The service is busy. Try again shortly.");
-  if (code === "assistant_consent_required" || code === "assistant_disabled") return t("请在设置中启用助手并确认数据共享。", "Enable the assistant and confirm data sharing in Settings.");
-  if (code === "provider_auth_failed" || code === "provider_not_configured") return t("请在设置中检查模型连接。", "Check the model connection in Settings.");
-  return t("这次解读未能完成。", "This reading could not be completed.");
 }
 function failureCode(message: string) {
   if (/^[a-z_]{1,64}$/.test(message)) return message;
@@ -170,8 +164,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
     {(error || conversations.isError) && <p role="alert">{t("无法读取或更新对话。", "Could not read or update the conversation.")}</p>}</div></>;
 }
 export default function AssistantSidebar({ page, search, scopeLabel }: { page: string; search: string; scopeLabel: string }) {
-  const t = useCopy();
-  const { ready, pending, code, close, handoff } = useAssistant();
+  const { handoff } = useAssistant();
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
   const [history, setHistory] = useState(false);
   const fresh = () => setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
@@ -183,10 +176,6 @@ export default function AssistantSidebar({ page, search, scopeLabel }: { page: s
     window.addEventListener(conversationsErasedEvent, erased);
     return () => window.removeEventListener(conversationsErasedEvent, erased);
   }, [handoff?.sequence]);
-  if (!ready) return <>
-    <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button></div>
-    <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…", "Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
-    {!pending && <Link href="/settings?tab=assistant" onClick={close} className="mx-text-link">{t("打开设置", "Open Settings")} →</Link>}</div></>;
   return <>
     <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...{page, search, scopeLabel, initial, history}} onNew={fresh} onHistory={() => setHistory(true)} /></div>
     {history && <History back={() => setHistory(false)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistory(false); }}

@@ -153,7 +153,7 @@ async function serve(page: Page, context: () => Context) {
       coverageStartDate: null, coverageEndDate: null, latestEventAt: null, lastImportedAt: null, staleAfterDays: 14, isStale: false,
       accountStatus: "active", staleRemindersEnabled: true, warnings: [],
     } });
-    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {} } : {} });
+    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {}, assistantEnabled: true } : {} });
   });
 }
 
