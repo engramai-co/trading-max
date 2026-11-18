@@ -531,6 +531,9 @@ def research_estimate_history(
     return app_service(request, "estimate_history").list(ticker, limit=limit)
 
 
+LISTING_PRICES_UNAVAILABLE = "security-price-history-unavailable"
+
+
 @router.get(
     "/v1/research/{ticker}/prices",
     response_model=ResearchPriceSeries,
@@ -571,7 +574,7 @@ def research_prices(
         try:
             venue = research.price_venue(selected, series, manifest)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         series.exchange_calendar = venue.calendar
         series.points = series.points[-limit:]
         series.coverage_start = series.points[0].date if series.points else None
@@ -591,7 +594,7 @@ def research_prices(
         try:
             published = research.listing_prices(selected, manifest, limit=limit)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except FileNotFoundError:
             published = None
         if published:
@@ -614,7 +617,7 @@ def research_prices(
             )
             return live_window(public)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
@@ -622,13 +625,13 @@ def research_prices(
         try:
             series = app_service(request, "market_prices").history(reference.ticker)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
             series = None
         if series is None or series.symbol.strip().upper() != reference.ticker:
-            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE)
         points = [
             PriceSeriesPoint(
                 date=datetime.fromtimestamp(stamp, UTC).date().isoformat(),
@@ -645,7 +648,7 @@ def research_prices(
             if close is not None
         ]
         if not points:
-            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE)
         return live_window(
             ResearchPriceSeries(
                 ticker=series.symbol.strip().upper(),
@@ -679,7 +682,7 @@ def research_prices(
             result = security_prices.get(symbol, interval, market_etf=market_etf)
             return live_window(result)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
@@ -692,7 +695,7 @@ def research_prices(
         result.coverage_end = result.points[-1].date if result.points else None
         return price_window(result, window)
     except VenueConflict as exc:
-        raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
     except FileNotFoundError as exc:
         try:
             result = security_prices.get(
@@ -702,13 +705,11 @@ def research_prices(
             result.coverage_reason = fallback_reason
             return live_window(result)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
-            raise HTTPException(
-                status_code=404, detail="security-price-history-unavailable"
-            ) from exc
+            raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
 
 
 @router.get(
