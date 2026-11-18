@@ -309,7 +309,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
           w={240}
           aria-label={t("修订对应的报告期", "Revision fiscal period")}
           value={key(selected)}
-          onChange={(v) => update({ forecastPeriod: v })}
+          onChange={(v) => update({ forecastPeriod: v }, { focusResearchSection: false })}
           data={trend.map((r) => ({
             value: key(r),
             label: forecastPeriodLabel(a, key(r), t),

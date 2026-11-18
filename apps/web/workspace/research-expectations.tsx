@@ -103,8 +103,8 @@ export function AnalystExpectations({
   const datedSpot = targetAmount(spot, comparable ? spotScale : 1);
   const rawTargets = object(analyst.priceTargets);
   const targets = targetSnapshot(rawTargets, comparable ? datedSpot : null, comparable ? snapshotScale : unitScale);
-  // The chart uses the last close's share basis. Later announcements retain their dated amounts.
-  const chartScale = (day: string) => day > chartDay ? unitScale : splitScale(day, chartDay, unitScale);
+  // Every plotted amount uses the last close's verified share basis.
+  const chartScale = (day: string) => splitScale(day, chartDay, unitScale);
   const chartTargets = targetSnapshot(rawTargets, targetAmount(spot, splitScale(spotDay, chartDay, 1)), chartScale(snapshotDay));
   const median = targets.rows.find((row) => row.key === "median")!;
   const ratingLabels = [
@@ -153,9 +153,11 @@ export function AnalystExpectations({
   const history = objects(analyst.upgradesDowngrades).map(recommendationChange).flatMap((row) => {
     if (!closeDays.length || !lastTargetDay || row.date < closeDays[0] || row.date > lastTargetDay ||
         !Number.isFinite(Date.parse(row.date))) return [];
-    const target = targetAmount(row.target, chartScale(row.date));
-    return target == null ? [] : [{ ...row, target }];
+    const announced = targetAmount(row.target, unitScale);
+    const plotted = targetAmount(row.target, chartScale(row.date));
+    return announced == null ? [] : [{ ...row, announced, plotted }];
   });
+  const firmPoints = history.flatMap<[string, number]>((row) => row.plotted == null ? [] : [[row.date, row.plotted]]);
   const targetsByDay = new Map<string, typeof history>();
   for (const record of history) {
     const group = targetsByDay.get(record.date) ?? [];
@@ -174,7 +176,7 @@ export function AnalystExpectations({
     : spotDay && formatCalendarDate(spotDay, locale);
   const values = [
     ...points.flatMap((p) => [numeric(p.low), numeric(p.high), numeric(p.close)]),
-    ...history.map((r) => r.target),
+    ...firmPoints.map(([, amount]) => amount),
     chartTargets.spot,
     ...chartTargets.rows.map((r) => r.value),
   ].filter((v): v is number => v != null);
@@ -276,8 +278,8 @@ export function AnalystExpectations({
                   )}
                 </p>
                 <DataBasis>{t(
-                  "日线价格已按拆股和分红调整。图中目标价按后续拆股换算，机构行动保留公布时的每股目标。目标快照日期见图上方，价格涨跌相对前一交易日收盘。",
-                  "Daily prices reflect splits and dividends. Chart targets reflect subsequent splits. Institutional actions show each target as announced. The target snapshot is dated above the chart. Price changes use the previous close.",
+                  "日线价格已按拆股和分红调整。图中仅绘制能换算至最近收盘日每股口径的目标价。拆股记录不足时，可在对应日期的读数和机构行动中查看公布时的目标价。价格涨跌相对前一交易日收盘。",
+                  "Daily prices reflect splits and dividends. The chart plots targets that can be adjusted to the latest close’s share basis. When split history is incomplete, the dated reading and institutional actions show the amount as announced. Price changes use the previous close.",
                 )}</DataBasis>
               </Help>
             </div>
@@ -298,7 +300,7 @@ export function AnalystExpectations({
             </span>
           </div>
           <div className="mx-target-chart-heading">
-            <span>{t("近 12 个月价格", "12-month prices")}<small className="mx-target-key" style={history.length ? undefined : { visibility: "hidden" }}>{t("历史目标价", "Firm targets")}</small></span>
+            <span>{t("近 12 个月价格", "12-month prices")}<small className="mx-target-key" style={firmPoints.length ? undefined : { visibility: "hidden" }}>{t("历史目标价", "Firm targets")}</small></span>
             <span>{t("远期目标价快照", "Forward target snapshot")}
               {targetAsOf && <time dateTime={targetAsOf}> · {formatCalendarDate(targetAsOf, locale)}</time>}
             </span>
@@ -329,7 +331,8 @@ export function AnalystExpectations({
                   const day = days[index];
                   const time = formatCalendarDate(day, locale);
                   const indicators = (targetsByDay.get(day) ?? []).map((row) => ({
-                    label: row.firm + " · " + t("目标价", "Target"), value: fixed(row.target),
+                    label: row.firm + " · " + t("目标价", "Target"),
+                    value: row.plotted != null ? fixed(row.plotted) : fixed(row.announced) + t(" · 公布时", " · as announced"),
                   }));
                   const i = timeline[index];
                   if (i < 0 || (hasCandles && candles[i][0] == null)) return { time, groups: [indicators] };
@@ -402,7 +405,7 @@ export function AnalystExpectations({
                   {
                     type: "scatter",
                     name: t("历史目标价", "Historical firm targets"),
-                    data: history.map((row) => [row.date, row.target]),
+                    data: firmPoints,
                     symbolSize: 6,
                     itemStyle: { color: c.axis },
                   },
