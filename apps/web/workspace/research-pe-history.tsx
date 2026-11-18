@@ -11,7 +11,7 @@ import type { ChartReadout, Reading, ReadingItem } from "./chart-readout";
 import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { epsFigure } from "./reading-figures";
-import { quoteValue } from "./financial-values";
+import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
@@ -41,8 +41,8 @@ function peReading(
       flag: eps?.method === "derivedFourthQuarter" ? t("推算 Q4", "Inferred Q4") : undefined,
       primary: { value: value(eps?.eps) },
       groups: [[...rank,
-        { label: t("收盘价", "Close"), value: quoteValue(point.trailing.close, trailing.currency) },
-        { label: "EPS (TTM)", value: epsFigure(eps?.eps) }]],
+        { label: t("收盘价", "Close"), value: quoteValue(point.trailing.close, trailing.currency, { style: "figure" }) },
+        { label: "EPS (TTM)", value: epsFigure(quoteAmount(eps?.eps, trailing.currency)) }]],
     };
   }
   if (point.forward && forward) {
@@ -52,8 +52,8 @@ function peReading(
       flag: vendor ? t("备用口径", "Fallback") : undefined,
       primary: { value: value(point.forward.eps) },
       groups: [[...rank,
-        { label: t("价格", "Price"), value: quoteValue(point.forward.price, forward.currency) },
-        { label: vendor ? t("远期 EPS", "Forward EPS") : "EPS (NTM)", value: epsFigure(point.forward.eps) }]],
+        { label: t("价格", "Price"), value: quoteValue(point.forward.price, forward.currency, { style: "figure" }) },
+        { label: vendor ? t("远期 EPS", "Forward EPS") : "EPS (NTM)", value: epsFigure(quoteAmount(point.forward.eps, forward.currency)) }]],
     };
   }
   return null;
@@ -216,6 +216,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
   const validDates = points
     .filter((point) => point.pe != null && (isTrailing || !distribution || point.segment === latest?.segment))
     .map((point) => point.date);
+  const unit = quoteUnit((isTrailing ? trailing : forward)?.currency).currency;
   const span = validDates.length ? `${date(validDates[0])} – ${date(validDates.at(-1)!)}` : undefined;
 
   return (
@@ -269,6 +270,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
           "Yahoo 本财年和下一财年一致预期 EPS 与价格的存档，备用口径为存档中的 Yahoo forwardPE。每个交易所当地日期取最后一条存档，从已有记录起画。",
           "Archived Yahoo current- and next-fiscal-year consensus EPS and price; the fallback is archived Yahoo forwardPE. Each exchange-local date uses its last stored observation, starting with the archive.",
         )}
+        {unit && <>{" "}{t("价格与每股收益币种：", "Price and EPS currency: ")}{unit}.</>}
         {span && <>{" "}{t("样本：", "Sample: ")}{span}{t("。", ".")}</>}
       </>}
     >

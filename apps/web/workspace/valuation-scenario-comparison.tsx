@@ -5,7 +5,8 @@ import type { ECharts } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
 import { DeferredPlot } from "./research-reading";
-import { currency, percent, tone } from "@/workspace/data";
+import { quoteValue } from "./financial-values";
+import { percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 
@@ -87,7 +88,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
     <div className="mx-scenario-comparison" onPointerEnter={bind}>
       <div className="mx-scenario-spot">
         <span>{t("现价", "Current price")}</span>
-        <strong>{currency(preview.basis.spot, preview.basis.currency, 2)}</strong>
+        <strong>{quoteValue(preview.basis.spot, preview.basis.currency)}</strong>
       </div>
       <div className="mx-scenario-cards" role="group" aria-label={t("选择估值情景", "Select a valuation scenario")}>
         {keys.map((key) => {
@@ -97,7 +98,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
             <span>{name(key)}</span>
-            <strong>{currency(scenario.value, preview.basis.currency, 2)}</strong>
+            <strong>{quoteValue(scenario.value, preview.basis.currency)}</strong>
             <span className={`mx-${tone(scenario.upside)}`}>{percent(scenario.upside, true, 2)}</span>
           </button>;
         })}

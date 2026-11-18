@@ -21,7 +21,8 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
+import { quoteValue } from "./financial-values";
+import { api, compact, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import {
   Empty,
@@ -371,11 +372,10 @@ function ModelEditor({
                     {t("相对初始假设", "vs initial assumptions")}
                   </span>
                   <strong>
-                    {currency(
+                    {quoteValue(
                       current.value -
                         initialAtHorizon.scenarios[selected].value,
                       result.basis.currency,
-                      2,
                     )}{" "}
                     / {t("股", "share")}
                   </strong>
@@ -419,10 +419,9 @@ function ModelEditor({
                         {percent(result.scenarios[k].inputs.discountRate)}
                       </td>
                       <td>
-                        {currency(
+                        {quoteValue(
                           result.scenarios[k].value,
                           result.basis.currency,
-                          2,
                         )}
                       </td>
                     </tr>
@@ -721,7 +720,7 @@ function ModelEditor({
             [t("预测年限", "Horizon"), `${horizon}Y`],
             [
               scenarioNames[selected],
-              currency(current.value, result.basis.currency, 2),
+              quoteValue(current.value, result.basis.currency),
             ],
           ]}
         />

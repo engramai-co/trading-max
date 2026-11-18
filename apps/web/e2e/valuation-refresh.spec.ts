@@ -341,6 +341,17 @@ test.describe("valuation refresh", () => {
     await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
   });
 
+  test("the valuation spot and scenario prices use the preview’s quote unit", async ({ page }) => {
+    await synthetic(page, false);
+    await page.route("**/api/backend/research/SYNT/valuation-preview", (route) => {
+      const data = preview("SYNT", 3100, "2026-02-03", false, {});
+      return route.fulfill({ json: { ...data, basis: { ...data.basis, currency: "GBp" } } });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    await expect(page.locator(".mx-scenario-spot strong")).toHaveText("£31.00");
+    await expect(page.locator(".mx-scenario-cards strong").first()).toHaveText("£1.50");
+  });
+
   test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page, isMobile }, testInfo) => {
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
