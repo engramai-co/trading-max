@@ -13386,6 +13386,7 @@ export interface operations {
                 ticker: components["schemas"]["Ticker"];
                 start: components["schemas"]["CalendarDay"];
                 end: components["schemas"]["CalendarDay"];
+                date?: components["schemas"]["CalendarDay"] | null;
                 published_series_id?: string | null;
             };
             header?: never;
