@@ -177,11 +177,15 @@ export function PerformanceContent({
   const points = comparison?.points ?? availablePoints;
   const identity = [view,scope,actualRange,data?.runId,benchmark,start,end].join("|");
   const brush = ready ? (a:string,b:string) => {setPhoneRange(null); setSelectionRange({start:a,end:b,identity});} : undefined;
-  const phoneIdentity = [view,scope,actualRange,data?.runId].join("|");
+  // A tap chooses a range before its publication is known. Pin the first matching chart.
+  const phoneIdentity = [view,requestedScope,requestedRange].join("|");
+  if (phoneRange === phoneIdentity && shown && !rangeMismatch && points.length > 1) {
+    setSelectionRange({start:points[0].date,end:points.at(-1)!.date,identity});
+    setPhoneRange(null);
+  }
   const linkedFrom = params.get("inspectFrom"), linkedTo=params.get("inspectTo");
   const citedWindow = params.get("snapshotId")===data?.runId && linkedFrom && linkedTo && points.some(point=>point.date===linkedFrom) && points.some(point=>point.date===linkedTo) ? {start:linkedFrom,end:linkedTo} : null;
-  const selectedWindow = selectionRange?.identity===identity ? selectionRange
-    : phoneRange===phoneIdentity && points.length > 1 && !rangeMismatch ? {start:points[0].date,end:points.at(-1)!.date} : citedWindow;
+  const selectedWindow = selectionRange?.identity===identity ? selectionRange : citedWindow;
   const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
   const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
     context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
@@ -395,7 +399,7 @@ export function PerformanceContent({
                   : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}
                 <DashboardRanges value={requestedRange} onChange={(value) => {
                   if (ready && window.matchMedia("(max-width: 767px)").matches) {
-                    setSelectionRange(null); setPhoneRange([view,scope,value,data?.runId].join("|"));
+                    setSelectionRange(null); setPhoneRange([view,requestedScope,value].join("|"));
                   }
                   update({range:value,returnFrom:null,returnTo:null});
                 }}

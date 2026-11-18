@@ -322,6 +322,12 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           onPointerEnter={cancelDismiss} onPointerLeave={() => {
             if (!popover.current?.contains(document.activeElement)) deferDismiss();
           }}
+          onKeyDown={(event) => {
+            if (event.key === "Tab" && event.shiftKey && event.target === event.currentTarget.querySelector("button, a")) {
+              event.preventDefault();
+              trigger.current?.focus();
+            }
+          }}
           onFocus={cancelDismiss} onBlur={(event) => {
             if (event.relatedTarget instanceof Element &&
               (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.matches(".mx-global-region"))) return;
@@ -341,11 +347,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           {ready && <div ref={setReadingSlot}/>}
           <Link ref={detailLink} href={url(inspection.market)} prefetch={false}
             onClick={(event) => open(event, inspection.market)} onKeyDown={(event) => {
-              if (event.key !== "Tab" || event.shiftKey && readingSlot?.querySelector("button")) return;
+              if (event.key !== "Tab" || event.shiftKey) return;
               const regions = Array.from(mapHost.current?.querySelectorAll<MapAnchor>(".mx-global-region") ?? []);
               const source = trigger.current;
               if (!source) return;
-              const next = event.shiftKey ? source : regions[regions.indexOf(source) + 1];
+              const next = regions[regions.indexOf(source) + 1];
               if (next) {
                 event.preventDefault();
                 next.focus();
