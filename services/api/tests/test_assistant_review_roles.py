@@ -266,13 +266,14 @@ def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path):
     from zoneinfo import ZoneInfo
 
     _, publish, row, _ = setup_review(tmp_path)
-    row["first_fill_at"] = "2026-02-03T02:00:00Z"
+    row["first_fill_at"] = "2026-02-03T14:00:00Z"
     deps = publish()
     items = [
         {"date": "2026-02-02", "title": "Date only, order uncertain"},
         {"instant": "2026-02-02T22:00:00Z", "title": "Verified before the fill"},
         {"instant": "2026-02-03T01:00:00Z", "title": "Earlier on the recorded trade date"},
-        {"instant": "2026-02-03T03:00:00Z", "title": "Later than the fill"},
+        {"instant": "2026-02-03T15:00:00Z", "title": "Later than the fill"},
+        {"instant": "2026-02-02T23:30:00-05:00", "title": "Trade day in UTC"},
     ]
     for i, item in enumerate(items):
         item.update(publisher="Synthetic", url=f"https://example.org/synthetic/{i}")

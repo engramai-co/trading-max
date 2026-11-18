@@ -254,19 +254,21 @@ def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill
         if not item:
             continue
         kind = item["kind"]
-        if kind == "news" and item["date"] >= day:
-            continue
         if kind not in {"news", "rating_change"} and not (
             kind == "earnings" and item.get("status") == "reported"
         ):
             continue
         if item["instant"]:
             stamp = datetime.fromisoformat(item["instant"])
+            if kind == "news" and stamp.astimezone(UTC).date() >= trade_day:
+                continue
             if not start <= stamp < cutoff:
                 continue
             local_date = stamp.astimezone(read.deps.timezone).date()
         else:
             local_date = date.fromisoformat(item["date"])
+            if kind == "news" and local_date >= trade_day:
+                continue
             # With no publisher zone, even the end of this day in UTC−12 must precede the fill.
             stamp = datetime.combine(local_date, time.min, UTC)
             if local_date < start.date() or stamp + timedelta(hours=36) > cutoff:
