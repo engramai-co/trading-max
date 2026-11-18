@@ -47,6 +47,7 @@ export function HistoryChart({
   emptyDescription,
   notes,
   fullscreen = false,
+  onBrush,
 }: {
   dates: string[];
   lines: ChartLine[];
@@ -59,6 +60,7 @@ export function HistoryChart({
   emptyDescription?: string;
   notes?: string[];
   fullscreen?: boolean;
+  onBrush?: (start: string, end: string) => void;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -155,6 +157,10 @@ export function HistoryChart({
         label={label}
         readout={readout}
         fullscreen={fullscreen}
+        onBrush={onBrush && ((start,end) => {
+          const a=observations.get(start), b=observations.get(end);
+          if (a!=null && b!=null) onBrush(dates[a], dates[b]);
+        })}
         height={height}
         option={(c) => ({
           xAxis: {

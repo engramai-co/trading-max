@@ -142,6 +142,15 @@ class BriefTarget:
     slot: str
 
 
+def bind_selection(*names: str):
+    """Each listed page tool accepts the entire validated page object as its arguments."""
+
+    def bindings(context: RoleContext, _snapshot_id: str | None) -> ToolBindings:
+        return {name: context.model_dump(mode="json") for name in names}
+
+    return bindings
+
+
 @dataclass(frozen=True)
 class PageRole:
     id: str
@@ -157,6 +166,8 @@ class PageRole:
     publication_targets: Callable[[JobRecord, RoleTools], list[BriefTarget]] | None = None
     data_version: Callable[[RoleTools, Any], str] | None = None
 
+    # A terminal operational record can precede a workspace's first publication.
+    record_anchor: Callable[[RoleTools, Any], tuple[str, datetime] | None] | None = None
     # Reuse the model’s section order while repricing a running outcome from the pinned data.
     refresh_cached_facts: bool = False
     tool_bindings: Callable[[Any, str | None], ToolBindings] | None = None
@@ -198,7 +209,21 @@ class PageRole:
 
 
 def role_registry() -> dict[str, PageRole]:
+    from .attribution_role import ATTRIBUTION
+    from .diagnosis_role import DIAGNOSIS
+    from .exposure_role import EXPOSURE
+    from .market_roles import MARKET_ROLES
     from .overview_roles import OVERVIEW_ROLES
     from .review_roles import REVIEW_ROLES
 
-    return {role.id: role for role in (*OVERVIEW_ROLES, *REVIEW_ROLES)}
+    return {
+        role.id: role
+        for role in (
+            *OVERVIEW_ROLES,
+            EXPOSURE,
+            ATTRIBUTION,
+            DIAGNOSIS,
+            *MARKET_ROLES,
+            *REVIEW_ROLES,
+        )
+    }

@@ -24,8 +24,14 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  selected_exposure: ["/holdings","exposure"], selected_daily: ["/analytics","account"],
+  selected_fx: ["/analytics","holdings"], sector_headline: ["/sectors","publisher"],
+  selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
+  dated_exposure: ["/holdings","exposure"], exposure_benchmark: ["/holdings","exposure"],
+  market_sector: ["/sectors","market"], global_map: ["/sectors","market"], update_issue: ["/health","health"],
+  news_and_events: ["/research","disclosure"], data_freshness: ["/health", "health"],
+  upcoming_events: ["/health", "calendar"],
   decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"],
-  data_freshness: ["/health", "health"], upcoming_events: ["/health", "calendar"], news_and_events: ["/research", "disclosure"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
@@ -57,6 +63,11 @@ export function evidenceHref(ref: Evidence): string | null {
   const decisionEvent = ref.tool === "decision_timing_and_habits" && a.lens === "analyst" && Boolean(a.listing);
   const path = decisionEvent ? "/research" : entry[0];
   const params = new URLSearchParams();
+  if (a.snapshotId && ["/holdings","/sectors"].includes(path)) params.set("snapshotId",a.snapshotId);
+  if (ref.source === "inference") return null;
+  if (ref.source === "publisher" && a.url) {
+    try {const url = new URL(a.url); return ["https:","http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;} catch {return null;}
+  }
   const eventSource = decisionEvent || ref.tool === "news_and_events";
   if (eventSource && a.url && /^https:\/\//i.test(a.url)) {
     try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
@@ -73,6 +84,10 @@ export function evidenceHref(ref: Evidence): string | null {
   }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
+    if (["daily_returns","selected_money","holding_fx_split","selected_daily","selected_fx"].includes(ref.tool) && a.start && a.end) {
+      params.set("view",a.view ?? "returns"); params.set("inspectFrom",a.start); params.set("inspectTo",a.end);
+      if (a.snapshotId) params.set("snapshotId",a.snapshotId);
+    }
     if (a.range) params.set("range", a.range);
     if (a.metric === "period_pnl_gbp" && a.start && a.end && a.snapshotId) {
       params.set("moneyFrom", a.start);
@@ -84,7 +99,7 @@ export function evidenceHref(ref: Evidence): string | null {
       if (!a.snapshotId) return null;
       params.set("snapshotId", a.snapshotId);
     }
-    if (ref.tool === "compare_benchmarks" && a.start && a.end) {
+    if (ref.tool === "compare_benchmarks" && a.start && a.end && a.start.length === 10 && a.end.length === 10) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);
     }
@@ -93,7 +108,26 @@ export function evidenceHref(ref: Evidence): string | null {
     if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
     else if (path !== "/holdings" && path !== "/review") params.set("scope", a.scope);
   }
-  if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
+  if (["lookthrough_exposure","dated_exposure","exposure_benchmark","selected_exposure"].includes(ref.tool)) {
+    params.set("view","lookthrough");
+    if (a.dimension) params.set("dimension",a.dimension);
+    if (a.category) params.set("category",a.category);
+    if (a.group) params.set("group", a.group);
+    if (a.entityId) params.set("entityId", a.entityId);
+    if (ref.tool === "exposure_benchmark") {
+      for (const field of ["benchmarkSource","benchmarkAsOf","benchmarkObservation"]) {
+        if (a[field]) params.set(field,a[field]);
+      }
+    }
+  }
+  if (path === "/sectors") {
+    params.set("market",ref.tool==="global_map" ? "global" : a.market ?? "global");
+    if (a.sector) {params.set("sector",a.sector); if(a.market === "global") params.set("view","sectors");}
+    if (ref.tool === "global_map" && a.market) params.set("region",a.market);
+    if (a.observed) params.set("observed",a.observed);
+    if (a.grouping) params.set("grouping",a.grouping);
+  }
+  if (ref.tool === "update_issue" && a.job) params.set("job",a.job);
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
     const ticker = decisionEvent ? a.listing : a.ticker;
@@ -174,6 +208,7 @@ export function chatContext(page: string, search: string, timezone: string) {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
     ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
+    ...(page==="analytics" && ["VOO","QQQ","VT","ALL"].includes(params.get("benchmark") ?? "") ? {benchmark:params.get("benchmark")} : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
   };
@@ -183,8 +218,11 @@ export function chatContext(page: string, search: string, timezone: string) {
 export function observationText(line: components["schemas"]["LinkedObservation"], locale: "zh" | "en", timeZone: string) {
   const text = line[locale];
   const args = line.evidence.arguments;
-  if (line.evidence.tool !== "upcoming_events" || !args?.instant || !args.date || !text.startsWith(args.date)) return text;
+  if (!args?.instant) return text;
+  const day = line.evidence.tool === "sector_headline" ? args.start
+    : line.evidence.tool === "upcoming_events" ? args.date : null;
+  if (!day || !text.startsWith(day)) return text;
   const instant = new Date(args.instant);
   if (!Number.isFinite(instant.valueOf())) return text;
-  return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(args.date.length);
+  return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(day.length);
 }

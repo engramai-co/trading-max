@@ -157,8 +157,9 @@ type RefreshJobStage = Omit<
 
 export type RefreshJob = Omit<
   Concrete<ApiSchemas["JobRecord"]>,
-  "schemaVersion" | "stages"
+  "schemaVersion" | "stages" | "attempts"
 > & {
+  attempts?: number | null;
   schemaVersion?: number;
   stages: RefreshJobStage[];
 };

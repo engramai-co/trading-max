@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, select a look-through allocation, performance range or market sector for a sourced reading. Citations reopen the selected object and publication while available. Daily attribution identifies its observed intervals and largest move. Global map cards explain the selected market, and Data status can explain a failed update or stale snapshot.
+
+### Fixed
+- Holdings citations keep the dated benchmark weight. Money, Returns and Risk reopen the cited publication and interval. Archived Holdings shows the broker’s GBP amounts. An individual Money account keeps its carried balance on the same published dates after archiving. Its chart and exact rows still open if another account’s ledger is missing. Both become unavailable when the publication expires. Position prices keep their own observation time when a newer broker balance arrives. An undated quote shows “Time unavailable” in Holdings and MaxAI replies. Risk keeps the cited account’s drawdown peak. When updated data loses an endpoint, the phone reading announces the missing interval and returns focus to the range control on dismissal. If Read range disappears, focus returns to the Risk profile tab.
+
 ## [1.61.0] - 2026-11-18
 
 ### Added

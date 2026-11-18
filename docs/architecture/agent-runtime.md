@@ -313,6 +313,36 @@ declare the selectable dimensions in `RoleContext.variant_fields` and use
 evidence stays with the variant. A role adopting bindings starts a separate
 reading cache so older answers cannot supply unverified selections.
 
+The Holdings tool returns the selected category or group and searches retained
+observations at least thirty days old for a matching classification and invested-value
+denominator. Company selections carry the published entity ID. Legacy rows need a
+unique match. An absent category has zero historical weight only when the complete
+classified table reconciles to invested assets. A benchmark weight citation carries
+its fund, observation date and a fingerprint of the selected weight. The source can
+correct a figure for the same date. Reopening that citation requires the same
+observation or reports its expiry.
+
+Holdings and Risk use dedicated retained projections. Positions include the selected
+broker accounts' position observation timestamps. Account balances carry the broker’s
+balance timestamp, including updates whose positions failed reconciliation. Risk reads
+the selected accounts’ NAV, TWR and drawdown to identify the peak and trough. Money
+requests the pinned portfolio history directly. The API index and the web’s prepared
+history have separate, bounded live and retained caches. A manifest check validates
+retained chart and exact-page hits before the web returns cached records.
+Returns binds the account, requested range, benchmark and both chart
+endpoints to the publication plotted by the chart. Daily returns report observed and
+total interval counts, the lowest day and the largest absolute daily move. Ties at
+published precision select the earliest interval. Portfolio TWR and ranks report
+portfolio interval coverage. Each benchmark return uses its two observed endpoint prices. The FX comparison requires matching
+valuations for every account included in the selected total. A date-only daily NAV cannot establish an intraday FX valuation instant.
+The market map projects each market from the opening board in one reading request.
+A sector headline uses the selected board's leading constituent and the exchange's local session date.
+
+A failed or interrupted refresh can precede the first snapshot. Its diagnosis uses
+the public terminal job record, completion timestamp, recorded attempts and
+allowlisted stage names. The reading stays cached for that job across subsequent
+publications. Broker reconciliation explanations label possible causes as inferences.
+
 The chat route defaults to `format=prose` and streams a tool-grounded answer
 in the user's language. The sidebar passes `format=references` to request
 two to four references for the current turn. For example,

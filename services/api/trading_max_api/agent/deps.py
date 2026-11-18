@@ -15,6 +15,7 @@ from pydantic_ai import ModelRetry
 from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
 from ..research_listing import PinnedListing
+from .page_sources import PageSources
 
 ListingReader = Callable[[str, SnapshotManifest], PinnedListing]
 
@@ -53,7 +54,7 @@ def bind_arguments(
 class AssistantSnapshotReader(Protocol):
     """Only the immutable read surface is needed by the assistant."""
 
-    def load_manifest(self, run_id: str) -> SnapshotManifest: ...
+    def load_manifest(self, run_id: str, *, require_retained: bool = False) -> SnapshotManifest: ...
     def read_json(self, run_id: str, key: str) -> dict: ...
     def read_text(self, run_id: str, key: str) -> str: ...
 
@@ -78,6 +79,7 @@ class AssistantDeps:
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
 
+    page_sources: PageSources | None = None
     pin_listing: ListingReader | None = None
     listing_error: str | None = None
     role_bindings: ToolBindings | None = None
@@ -107,6 +109,7 @@ class AssistantDepsFactory:
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
     bind_price_series: Callable[[], tuple[PublishedPriceReader, ListingReader]] | None = None
+    bind_page_sources: Callable[[], PageSources] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -125,6 +128,10 @@ class AssistantDepsFactory:
             except (OSError, ValueError):
                 listing_error = "watchlist_routing_unavailable"
         return AssistantDeps(
+            page_sources=self.bind_page_sources()
+            if self.bind_page_sources
+            and page_hint in {"holdings", "analytics", "sectors", "health"}
+            else None,
             price_series=price_series,
             pin_listing=pin_listing,
             listing_error=listing_error,

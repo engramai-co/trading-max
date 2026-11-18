@@ -183,6 +183,7 @@ class JobStageRecord(ApiModel):
 
 
 class JobRecord(ApiModel):
+    attempts: int | None = Field(default=None, ge=0)
     schema_version: int = 2
     job_id: str
     scope: JobScope

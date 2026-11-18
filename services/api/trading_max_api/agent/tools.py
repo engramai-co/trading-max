@@ -43,7 +43,7 @@ from ..dashboard_models import NavPoint
 from ..history_projection import HistoryRange, portfolio_day, scope_points, window_start
 from ..history_reader import load_history
 from ..models import ArtifactInfo
-from ..projections.broker import overlay_live_broker_snapshot
+from ..projections.broker import overlay_live_broker_snapshot, positions_observed_at
 from ..research import _freshness
 from ..valuation_evidence import freeze_valuation_evidence
 from .deps import AccountScope, AssistantDeps, bind_arguments
@@ -251,11 +251,26 @@ class _BoundedValidator:
         return self.inner.validate_python(self._bind(value) if self.bound else value, **kwargs)
 
 
+PAGE_TOOLS = {
+    "selected_exposure": "holdings",
+    "selected_daily": "analytics",
+    "selected_fx": "analytics",
+    "exposure_benchmark": "holdings",
+    "selected_money": "analytics",
+    "market_sector": "sectors",
+    "sector_headline": "sectors",
+    "global_map": "sectors",
+    "update_issue": "health",
+}
+
+
 class _AssistantToolset(FunctionToolset[AssistantDeps]):
     async def get_tools(self, ctx: Context):
         return {
             name: replace(tool, args_validator=_BoundedValidator(tool.args_validator))
             for name, tool in (await super().get_tools(ctx)).items()
+            if name not in PAGE_TOOLS
+            or (ctx.deps.page_sources and PAGE_TOOLS[name] == ctx.deps.page_hint)
         }
 
 
@@ -356,7 +371,7 @@ class _Read:
             "scope": self.scope,
             **(
                 {"bound_arguments": self.deps.bound_evidence(self.tool)}
-                if self.deps.role_bindings is not None
+                if self.deps.role_bindings is not None and self.tool in self.deps.role_bindings
                 else {}
             ),
             "sources": [
@@ -605,9 +620,10 @@ def _position_rows(
             issues.append("positions_not_published")
             continue
         found = True
+        observed_at = _iso(positions_observed_at(account))
         if observed_accounts is not None:
             observed_accounts[CODE_SCOPE[code]] = {
-                "as_of": _iso(account.get("positions_observed_at")) or _account_time(account),
+                "as_of": observed_at,
                 "since": None,
             }
         for row in _rows(positions):
@@ -624,8 +640,7 @@ def _position_rows(
                 {
                     **bounded,
                     "scope": CODE_SCOPE[code],
-                    "observed_at": _iso(account.get("positions_observed_at"))
-                    or _account_time(account),
+                    "observed_at": observed_at,
                 }
             )
     return rows, keys, issues if found else ["positions_not_published"]
@@ -677,6 +692,7 @@ def _exposure_reading(
         }
         if dimension == "company":
             item.update(
+                entity_id=_text(row.get("entityId"), 512),
                 ticker=_text(row.get("ticker"), 64),
                 isin=_text(row.get("isin"), 64),
             )
@@ -757,7 +773,7 @@ def _intraday_window(
         return []
     if range_name in {"ALL", "2Y"}:
         # The wire API does not accept 2Y; full data is lossless for that client range.
-        return scope_points(intraday, scope)
+        return intraday
 
     def stamp(point: NavPoint) -> datetime:
         value = datetime.fromisoformat(point.date)
@@ -778,14 +794,11 @@ def _intraday_window(
         )
     )
     start = window_start(latest, cast(HistoryRange, range_name))
-    selected = [
-        point for point in intraday if portfolio_day(point.date) >= start or point in anchors
-    ]
-    return scope_points(selected, scope)
+    return [point for point in intraday if portfolio_day(point.date) >= start or point in anchors]
 
 
 def _history_input(
-    read: _Read, scope: AccountScope, range_name: Range
+    read: _Read, scope: AccountScope, range_name: Range, *, include_total_accounts: bool = False
 ) -> tuple[HistoryInput, list[str]] | None:
     """Read the web history input without opening its mutable derived cache."""
     manifest = read.deps.manifest
@@ -797,10 +810,12 @@ def _history_input(
         return None
     as_of = _iso(broker.get("generated_at_utc")) or manifest.created_at.isoformat()
     try:
-        daily, intraday = load_history(read.deps.store, manifest)
         math_scope = _math_scope(scope)
+        daily, intraday = load_history(read.deps.store, manifest, scope=math_scope)
         intraday = _intraday_window(intraday, daily, as_of, range_name, math_scope)
-        daily = scope_points(daily, math_scope)
+        if not (scope == "broker_total" and include_total_accounts):
+            daily = scope_points(daily, math_scope)
+            intraday = scope_points(intraday, math_scope)
     except (FileNotFoundError, SnapshotIntegrityError, TypeError, ValueError, KeyError):
         return None
     keys = [BROKER, *(key for key in (LIVE,) if live)]
@@ -1487,7 +1502,10 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
+    from .attribution_role import selected_daily, selected_fx, selected_money
+    from .diagnosis_role import update_issue
     from .events import news_and_events, upcoming_events
+    from .exposure_role import exposure_benchmark, selected_exposure
     from .insights import (
         daily_returns,
         dated_exposure,
@@ -1495,6 +1513,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         holding_fx_split,
         price_key_moments,
     )
+    from .market_roles import global_map, market_sector, sector_headline
     from .review_patterns import review_patterns
 
     toolset = _AssistantToolset(id="trading-max-read-only")
@@ -1517,6 +1536,15 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (price_key_moments, 8),
         (news_and_events, 8),
         (upcoming_events, 8),
+        (selected_money, 10),
+        (selected_daily, 10),
+        (selected_fx, 5),
+        (selected_exposure, 10),
+        (market_sector, 5),
+        (sector_headline, 8),
+        (global_map, 5),
+        (exposure_benchmark, 5),
+        (update_issue, 5),
     ):
         toolset.add_function(function, takes_ctx=True, timeout=timeout, strict=True)
     return toolset

@@ -10,7 +10,7 @@ from trading_max.research.listing import broker_listing
 
 from .artifacts import ArtifactStore
 from .models import SnapshotManifest
-from .projections.broker import overlay_live_broker_snapshot
+from .projections.broker import overlay_live_broker_snapshot, positions_observed_at
 from .projections.day_change import holding_day_changes
 from .projections.listings import HoldingListingCalendars
 from .projections.nav import intraday_nav_points, latest_daily_return, latest_twr, nav_series
@@ -18,7 +18,7 @@ from .projections.research import option_rows, technical_rows, valuation_rows
 from .projections.values import JsonObject, nullable_number, number_value
 
 
-def _risk_metrics(raw: JsonObject) -> JsonObject:
+def risk_metrics(raw: JsonObject) -> JsonObject:
     benchmark = str(raw.get("benchmark_ticker") or "VOO")
     return {
         "sharpe": nullable_number(raw.get("sharpe_sonia")),
@@ -148,136 +148,39 @@ def _normalize_account_analysis_payload(payload: JsonObject) -> JsonObject:
     return {**payload, "accounts": normalized_accounts}
 
 
-def build_dashboard_data(
-    store: ArtifactStore,
-    manifest: SnapshotManifest | None = None,
-    *,
-    include_history: bool = True,
-) -> JsonObject:
-    manifest = manifest or store.latest_manifest()
-    if manifest is None:
-        raise FileNotFoundError("no snapshot has been published")
-    run_id = manifest.run_id
-    broker = store.read_json(run_id, "account/broker_snapshot_metrics.json")
-    try:
-        live_broker = store.read_json(run_id, "account/intraday/broker_values.json")
-    except (FileNotFoundError, TypeError, ValueError):
-        live_broker = None
-    broker = overlay_live_broker_snapshot(broker, live_broker)
-    account_codes = tuple(code for code in ("A", "B") if code in broker["accounts"])
-    synthetic = store.read_json(run_id, "account/synthetic_nav_metrics.json")
-    policy_raw = store.read_json(run_id, "account/policy_metrics.json")
-    # Account refreshes are independently publishable.  A fresh installation
-    # therefore has a useful portfolio snapshot before its first research run.
-    # Keep the account dashboard available and expose empty research summaries
-    # until that separately versioned scope has been published.
-    try:
-        technical_raw = store.read_json(run_id, "research/technical.json")
-    except FileNotFoundError:
-        technical_raw = {"as_of": "", "rows": []}
-    try:
-        valuation_raw = store.read_json(run_id, "research/valuation.json")
-    except FileNotFoundError:
-        valuation_raw = {"as_of": "", "rows": []}
-    try:
-        options_raw = store.read_json(run_id, "research/options.json")
-    except FileNotFoundError:
-        options_raw = technical_raw
-    # The canonical broker snapshot defines the participating accounts. An
-    # unconnected account has no NAV, while a missing connected NAV is an error.
-    account_nav = {
-        code: store.read_text(run_id, f"account/nav/daily_nav_{code.lower()}.csv")
-        for code in account_codes
-    }
-    nav_a, nav_b = account_nav.get("A", ""), account_nav.get("B", "")
-    try:
-        nav_c = store.read_text(run_id, "account/nav/daily_nav_c.csv")
-    except FileNotFoundError:
-        nav_c = None
-    try:
-        cfd_metrics_raw = store.read_json(run_id, "account/cfd_metrics.json")
-    except FileNotFoundError:
-        cfd_metrics_raw = None
-    try:
-        cfd_analysis_raw = store.read_json(run_id, "account/cfd_analysis.json")
-    except FileNotFoundError:
-        cfd_analysis_raw = None
-    intraday_nav = None
-    cash_flows: dict[str, JsonObject] = {}
-    if include_history:
-        try:
-            intraday_nav = store.read_json(
-                run_id,
-                "account/nav/valuation_history.json",
-            )
-        except (FileNotFoundError, TypeError, ValueError):
-            try:
-                intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
-            except (FileNotFoundError, TypeError, ValueError):
-                intraday_nav = None
-        for profile, code in (("invest", "a"), ("isa", "b")):
-            with suppress(FileNotFoundError, TypeError, ValueError):
-                cash_flows[profile] = store.read_json(run_id, f"account/nav/cash_flows_{code}.json")
-    try:
-        account_analysis_raw = store.read_json(run_id, "account/analysis_metrics.json")
-    except FileNotFoundError:
-        account_analysis_raw = {}
-    else:
-        # Immutable snapshots can outlive the API vocabulary that produced
-        # them. Keep the snapshot readable without rewriting source evidence.
-        account_analysis_raw = _normalize_account_analysis_payload(account_analysis_raw)
-    try:
-        account_reviews_raw = store.read_json(run_id, "account/account_reviews.json")
-    except FileNotFoundError:
-        account_reviews_raw = {}
-    try:
-        realized_report = store.read_json(run_id, "account/realized_metrics.json")
-    except FileNotFoundError:
-        realized_report = {}
-    try:
-        capital_recovery = store.read_json(run_id, "account/capital_recovery.json")
-    except FileNotFoundError:
-        capital_recovery = None
+def published_lookthrough(store: ArtifactStore, run_id: str) -> JsonObject:
+    lookthrough = store.read_json(run_id, "account/lookthrough_metrics.json")
+    # Older immutable snapshots predate the industry allocation. Keep them
+    # readable rather than coupling dashboard deployment to a full rerun.
+    lookthrough.setdefault(
+        "industryBasis", "official fund sector allocation / direct equity sector"
+    )
+    lookthrough.setdefault("industryAllocation", [])
+    lookthrough.setdefault(
+        "gicsSubIndustryBasis",
+        "GICS sub-industry assigned by the versioned security master",
+    )
+    lookthrough.setdefault("gicsCoveragePct", 0.0)
+    lookthrough.setdefault(
+        "gicsPortfolioCoveragePct",
+        lookthrough.get("gicsCoveragePct", 0.0),
+    )
+    lookthrough.setdefault("gicsEligibleValueGbp", 0.0)
+    lookthrough.setdefault("gicsClassifiedValueGbp", 0.0)
+    lookthrough.setdefault("gicsPendingValueGbp", 0.0)
+    lookthrough.setdefault("gicsNotApplicableValueGbp", 0.0)
+    lookthrough.setdefault("gicsSubIndustryAllocation", [])
+    return lookthrough
 
-    total_value = sum(
-        number_value(broker["accounts"][account].get("total_value_gbp"))
-        for account in account_codes
-    )
-    total_invested = sum(
-        number_value(broker["accounts"][account].get("investments_value_gbp"))
-        for account in account_codes
-    )
-    total_cash = sum(
-        number_value(broker["accounts"][account].get("cash_gbp")) for account in account_codes
-    )
-    try:
-        lookthrough = store.read_json(run_id, "account/lookthrough_metrics.json")
-    except FileNotFoundError:
-        lookthrough = _empty_lookthrough(
-            invested_value=total_invested,
-            cash_value=total_cash,
-        )
-    else:
-        # Older immutable snapshots predate the industry allocation. Keep them
-        # readable rather than coupling dashboard deployment to a full rerun.
-        lookthrough.setdefault(
-            "industryBasis", "official fund sector allocation / direct equity sector"
-        )
-        lookthrough.setdefault("industryAllocation", [])
-        lookthrough.setdefault(
-            "gicsSubIndustryBasis",
-            "GICS sub-industry assigned by the versioned security master",
-        )
-        lookthrough.setdefault("gicsCoveragePct", 0.0)
-        lookthrough.setdefault(
-            "gicsPortfolioCoveragePct",
-            lookthrough.get("gicsCoveragePct", 0.0),
-        )
-        lookthrough.setdefault("gicsEligibleValueGbp", 0.0)
-        lookthrough.setdefault("gicsClassifiedValueGbp", 0.0)
-        lookthrough.setdefault("gicsPendingValueGbp", 0.0)
-        lookthrough.setdefault("gicsNotApplicableValueGbp", 0.0)
-        lookthrough.setdefault("gicsSubIndustryAllocation", [])
+
+def published_positions(
+    store: ArtifactStore,
+    run_id: str,
+    broker: JsonObject,
+    account_codes,
+    total_value: float,
+    lookthrough: JsonObject,
+) -> list[JsonObject]:
     fund_identities = _fund_identities(lookthrough)
     catalog = CatalogSecurityMaster.default()
     with suppress(FileNotFoundError):
@@ -378,6 +281,120 @@ def build_dashboard_data(
                 }
             )
     holdings.sort(key=lambda item: item["currentValueGbp"], reverse=True)
+    return holdings
+
+
+def published_broker(store: ArtifactStore, run_id: str) -> JsonObject:
+    broker = store.read_json(run_id, "account/broker_snapshot_metrics.json")
+    try:
+        live_broker = store.read_json(run_id, "account/intraday/broker_values.json")
+    except (FileNotFoundError, TypeError, ValueError):
+        live_broker = None
+    return overlay_live_broker_snapshot(broker, live_broker)
+
+
+def build_dashboard_data(
+    store: ArtifactStore,
+    manifest: SnapshotManifest | None = None,
+    *,
+    include_history: bool = True,
+) -> JsonObject:
+    manifest = manifest or store.latest_manifest()
+    if manifest is None:
+        raise FileNotFoundError("no snapshot has been published")
+    run_id = manifest.run_id
+    broker = published_broker(store, run_id)
+    account_codes = tuple(code for code in ("A", "B") if code in broker["accounts"])
+    synthetic = store.read_json(run_id, "account/synthetic_nav_metrics.json")
+    policy_raw = store.read_json(run_id, "account/policy_metrics.json")
+    # Account refreshes are independently publishable.  A fresh installation
+    # therefore has a useful portfolio snapshot before its first research run.
+    # Keep the account dashboard available and expose empty research summaries
+    # until that separately versioned scope has been published.
+    try:
+        technical_raw = store.read_json(run_id, "research/technical.json")
+    except FileNotFoundError:
+        technical_raw = {"as_of": "", "rows": []}
+    try:
+        valuation_raw = store.read_json(run_id, "research/valuation.json")
+    except FileNotFoundError:
+        valuation_raw = {"as_of": "", "rows": []}
+    try:
+        options_raw = store.read_json(run_id, "research/options.json")
+    except FileNotFoundError:
+        options_raw = technical_raw
+    # The canonical broker snapshot defines the participating accounts. An
+    # unconnected account has no NAV, while a missing connected NAV is an error.
+    account_nav = {
+        code: store.read_text(run_id, f"account/nav/daily_nav_{code.lower()}.csv")
+        for code in account_codes
+    }
+    nav_a, nav_b = account_nav.get("A", ""), account_nav.get("B", "")
+    try:
+        nav_c = store.read_text(run_id, "account/nav/daily_nav_c.csv")
+    except FileNotFoundError:
+        nav_c = None
+    try:
+        cfd_metrics_raw = store.read_json(run_id, "account/cfd_metrics.json")
+    except FileNotFoundError:
+        cfd_metrics_raw = None
+    try:
+        cfd_analysis_raw = store.read_json(run_id, "account/cfd_analysis.json")
+    except FileNotFoundError:
+        cfd_analysis_raw = None
+    intraday_nav = None
+    cash_flows: dict[str, JsonObject] = {}
+    if include_history:
+        try:
+            intraday_nav = store.read_json(
+                run_id,
+                "account/nav/valuation_history.json",
+            )
+        except (FileNotFoundError, TypeError, ValueError):
+            try:
+                intraday_nav = store.read_json(run_id, "account/nav/intraday_anchors.json")
+            except (FileNotFoundError, TypeError, ValueError):
+                intraday_nav = None
+        for profile, code in (("invest", "a"), ("isa", "b")):
+            with suppress(FileNotFoundError, TypeError, ValueError):
+                cash_flows[profile] = store.read_json(run_id, f"account/nav/cash_flows_{code}.json")
+    try:
+        account_analysis_raw = store.read_json(run_id, "account/analysis_metrics.json")
+    except FileNotFoundError:
+        account_analysis_raw = {}
+    else:
+        # Immutable snapshots can outlive the API vocabulary that produced
+        # them. Keep the snapshot readable without rewriting source evidence.
+        account_analysis_raw = _normalize_account_analysis_payload(account_analysis_raw)
+    try:
+        account_reviews_raw = store.read_json(run_id, "account/account_reviews.json")
+    except FileNotFoundError:
+        account_reviews_raw = {}
+    try:
+        realized_report = store.read_json(run_id, "account/realized_metrics.json")
+    except FileNotFoundError:
+        realized_report = {}
+    try:
+        capital_recovery = store.read_json(run_id, "account/capital_recovery.json")
+    except FileNotFoundError:
+        capital_recovery = None
+
+    total_value = sum(
+        number_value(broker["accounts"][account].get("total_value_gbp"))
+        for account in account_codes
+    )
+    total_invested = sum(
+        number_value(broker["accounts"][account].get("investments_value_gbp"))
+        for account in account_codes
+    )
+    total_cash = sum(
+        number_value(broker["accounts"][account].get("cash_gbp")) for account in account_codes
+    )
+    try:
+        lookthrough = published_lookthrough(store, run_id)
+    except FileNotFoundError:
+        lookthrough = _empty_lookthrough(invested_value=total_invested, cash_value=total_cash)
+    holdings = published_positions(store, run_id, broker, account_codes, total_value, lookthrough)
 
     account_names = {"A": "Invest", "B": "Stocks ISA"}
     daily_returns = {
@@ -533,6 +550,9 @@ def build_dashboard_data(
     return {
         "generatedAt": updated,
         "brokerAsOf": str(broker.get("generated_at_utc") or ""),
+        "positionAsOf": {
+            code: positions_observed_at(broker["accounts"][code]) for code in account_codes
+        },
         "researchAsOf": research_as_of,
         "totalValueGbp": total_value,
         "householdTotalValueGbp": (
@@ -562,7 +582,7 @@ def build_dashboard_data(
         # Neither source certifies cash-flow-adjusted returns.
         "nav": nav_series(nav_a, nav_b, nav_c),
         "intradayNav": intraday_nav_points(intraday_nav, cash_flows),
-        "risk": {code: _risk_metrics(synthetic[code]) for code in account_codes},
+        "risk": {code: risk_metrics(synthetic[code]) for code in account_codes},
         "benchmarkSeries": benchmark_series(technical_raw),
         "technical": technical,
         "options": option_rows(options_raw),

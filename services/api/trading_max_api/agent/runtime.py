@@ -74,6 +74,24 @@ End your own non-numeric reasoning with [inference]. Keep news on a separate lin
 never the cause of a price move. Give dates and times in the user's timezone."""
 
 
+@dataclass(kw_only=True)
+class TurnLimits(UsageLimits):
+    """Keep the framework's stored lifetime counters and apply budgets to this turn."""
+
+    opening: RunUsage | None = None
+
+    def check_before_request(self, usage: RunUsage) -> None:
+        if self.opening is None:
+            self.opening = copy(usage)
+            if self.request_limit is not None:
+                self.request_limit += usage.requests
+            if self.tool_calls_limit is not None:
+                self.tool_calls_limit += usage.tool_calls
+            if self.total_tokens_limit is not None:
+                self.total_tokens_limit += usage.total_tokens
+        super().check_before_request(usage)
+
+
 # The sidebar resolves these references against completed tool outputs in this turn.
 # Offline evaluations and other text-only callers use the default prose format.
 SIDEBAR_FORMAT = """
@@ -93,6 +111,15 @@ as-of date, sector, industry or country. For Review, select /data/items/N/securi
 /data/items/N/market_return or /data/items/N/hindsight/missed_gbp from decision_timing_and_habits.
 For review_patterns select /data/groups/GROUP/count, evaluated, mean_return or effect_gbp
 using the actual habit key from its result. Use {{/status}} if values are unavailable.
+For page readings, select selected_money /data/pnl, exposure_benchmark /data/weight,
+selected_exposure /data/current/weight_fraction or /data/previous/weight_fraction,
+selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction, /data/largest_move/return_fraction (largest absolute daily move) or
+/data/window_benchmarks/VOO (or QQQ, VT), holding_fx_split /data/accounts/isa/fx_effect_gbp
+(or invest, local_price_effect_gbp), selected_fx /data/fx_effect_gbp or /data/local_price_effect_gbp, market_sector /data/move or /data/breadth/up,
+global_map /data/markets/N/contribution or /data/markets/N/move, and update_issue
+/data/completed, /data/stages, /data/attempts, /data/failed_stages/N/en or /data/finished_at. Use an actual returned array index
+in place of N. A sector_headline or news_and_events /data/items/N/title_en is a publisher's headline;
+keep it separate from a measured change.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},
 {{valuation}}, {{history}}, {{insufficient-evidence}}. End it with a space and [inference].
@@ -100,24 +127,6 @@ For example:
 {{/data/period_pnl_gbp}} [ev_1a2b]
 {{cash-flows}} [inference]
 """
-
-
-@dataclass(kw_only=True)
-class TurnLimits(UsageLimits):
-    """Keep the framework's stored lifetime counters and apply budgets to this turn."""
-
-    opening: RunUsage | None = None
-
-    def check_before_request(self, usage: RunUsage) -> None:
-        if self.opening is None:
-            self.opening = copy(usage)
-            if self.request_limit is not None:
-                self.request_limit += usage.requests
-            if self.tool_calls_limit is not None:
-                self.tool_calls_limit += usage.tool_calls
-            if self.total_tokens_limit is not None:
-                self.total_tokens_limit += usage.total_tokens
-        super().check_before_request(usage)
 
 
 def build_assistant_agent(toolsets: Sequence[AbstractToolset]) -> Agent:
