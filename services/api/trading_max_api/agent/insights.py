@@ -10,6 +10,7 @@ from itertools import pairwise
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, Field, StringConstraints, model_validator
+from trading_max.analytics.decision_review import CALCULATION_VERSION
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
@@ -404,7 +405,11 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             )
             suffix = "horizon" if horizon == "20_sessions" else "to_date"
             effect = _number(row.get(f"effect_{suffix}_gbp")) if usable else None
-            timing = _mapped(row.get(f"hindsight_{suffix}")) if effect is not None else {}
+            timing = (
+                _mapped(row.get(f"hindsight_{suffix}"))
+                if effect is not None and account.get("calculation_version") == CALCULATION_VERSION
+                else {}
+            )
             rows.append(
                 {
                     "scope": CODE_SCOPE[code],

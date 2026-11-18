@@ -302,8 +302,14 @@ def targets(job: JobRecord, read: RoleTools):
     return result
 
 
+class DecisionRole(PageRole):
+    @property
+    def cache_id(self):
+        return "observed-prices:" + super().cache_id
+
+
 REVIEW_ROLES = (
-    PageRole(
+    DecisionRole(
         "decision",
         "review",
         frozenset({"decision_timing_and_habits"}),

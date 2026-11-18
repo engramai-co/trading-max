@@ -1120,7 +1120,15 @@ def test_hindsight_includes_dividends_and_stops_at_the_selected_close():
         )
     )
     identity = trades["SecurityIdentity"].iloc[0]
-    security = SecurityPrices(identity, "NVDA", "NVDA Inc", "NVDA", closes, dividends=dividends)
+    security = SecurityPrices(
+        identity,
+        "NVDA",
+        "NVDA Inc",
+        "NVDA",
+        closes,
+        dividends=dividends,
+        observed_closes_gbp=closes,
+    )
     buy, sell = build_decision_review(trades, {identity: security}, as_of=closes.index[-1])[
         "decisions"
     ]
@@ -1231,3 +1239,27 @@ def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
     assert missing["quantity"] == 1 and missing["amount_gbp"] == 100
     assert missing.get("effect_to_date_gbp") is None and missing.get("unpriced")
     assert review["coverage"]["scored"] == 1
+
+
+@pytest.mark.parametrize("gap", ["middle", "baseline", "end"])
+def test_hindsight_uses_only_observed_trade_prices(gap):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    missing = {"middle": dates[3], "baseline": dates[2], "end": dates[-1]}[gap]
+    quotes = pd.Series(127.5, index=dates).drop(missing)
+    rates = pd.Series(1.25, index=dates)
+    rates.loc[missing] = 0.625
+    review = _review_from_quotes(
+        [
+            _usd_fill("2026-02-02T14:00:00Z", "Market buy", 1, 102),
+            _usd_fill("2026-02-04T14:00:00Z", "Market sell", 1, 102),
+        ],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        now="2026-03-06T12:00:00Z",
+        rates=rates,
+    )
+    sell = review["decisions"][-1]["hindsight_to_date"]
+    if gap == "middle":
+        assert sell["best_close_gbp"] == 102 and sell["missed_gbp"] == 0
+    else:
+        assert sell is None

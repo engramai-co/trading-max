@@ -40,7 +40,7 @@ from trading_max.analytics.decision_prices import SecurityPrices
 from trading_max.analytics.review_evidence import HoldingMove
 from trading_max.research.calendar import market_calendar
 
-CALCULATION_VERSION = "decisions-v6"
+CALCULATION_VERSION = "decisions-v7"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -119,7 +119,11 @@ def _hindsight(
     days = days[(days >= opening) & (days <= end)]
     if len(days) < 2 or not days.isin(security.final_days).all():
         return None
-    prices = security.closes.loc[days]
+    prices = security.observed_closes_gbp.reindex(days)
+    prices = prices[(prices > 0) & np.isfinite(prices)]
+    if opening not in prices.index or end not in prices.index:
+        return None
+    days = prices.index
     dividends = security.dividends
     if dividends.empty:
         dividends = pd.Series(0.0, index=days)
