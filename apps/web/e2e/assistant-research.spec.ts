@@ -58,16 +58,18 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) 
   return readings;
 };
 test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Requires a local web build.");
+test.beforeEach(async ({page,isMobile}) => {
+  if (isMobile) await page.setViewportSize({width:390,height:844});
+});
 
 for (const language of ["zh","en"]) for (const theme of ["light","dark"] as const) {
   test(`research cards ${language} ${theme}`, async ({page,isMobile},info) => {
-    if (isMobile) await page.setViewportSize({width:390,height:844});
     await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
     await page.addInitScript(lang => localStorage.setItem("trading_max-locale",lang),language);
     const reads = await fixtures(page);
     const shot = async (name:string) => {
       const folder=process.env.ASSISTANT_SCREENSHOTS;
-      if (folder) await page.screenshot({path:join(folder,[info.project.name,language,theme,name].join("-")+".png")});
+      if (folder) await page.screenshot({scale:"css",path:join(folder,[info.project.name,language,theme,name].join("-")+".png")});
     };
     await page.goto("/research?ticker=SYNT");
     await expect(page.locator(".mx-tech-preview-grid")).toBeVisible();
@@ -220,7 +222,7 @@ test("each crowded daily marker is reachable at its candle", async ({page,isMobi
     await markers.nth(i).click({trial:true});
     await expect(markers.nth(i)).toHaveText(String(i+1));
   }
-  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"desktop-adjacent-moments.png")});
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,"desktop-adjacent-moments.png")});
 });
 
 test("a saved index field reopens its exact series and discloses expiry", async ({page},info) => {
@@ -241,7 +243,7 @@ test("a saved index field reopens its exact series and discloses expiry", async 
   await page.reload();
   await expect(page.getByText("Cited research observation unavailable.")).toBeVisible();
   await expect(page.getByText(/4\.10%/)).toHaveCount(0);
-  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-expired-research.png")});
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-expired-research.png")});
 });
 
 test("estimate-only brief dates the observation independently of the snapshot", async ({page}) => {
