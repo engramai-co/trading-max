@@ -1,0 +1,62 @@
+{
+  "status": "partial",
+  "data": {
+    "timezone": "Europe/London",
+    "start": "2026-01-06",
+    "end": "2026-01-06",
+    "news_basis": "Headlines are dated leads. A price move's cause is unverified.",
+    "items": [
+      {
+        "kind": "dividend",
+        "title_en": "Dividend",
+        "title_zh": "股息",
+        "date": "2026-01-06",
+        "end_date": null,
+        "instant": null,
+        "ticker": "SYNT",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/SYNT/",
+        "amount": 0.375,
+        "currency": "USD",
+        "unit": "per_share",
+        "basis": "provider-adjusted-per-share",
+        "evidence_id": "ev_ee46785c54bc9138",
+        "local_date": "2026-01-06",
+        "local_time": null
+      }
+    ],
+    "total_items": 1,
+    "next_cursor": null
+  },
+  "snapshot_id": "20261118T072332-787384Z-8b797246",
+  "scope": "invest",
+  "sources": [
+    {
+      "source_id": "src_448cc17a13f265c8",
+      "as_of": "2026-11-18T07:23:32.785265+00:00"
+    },
+    {
+      "source_id": "src_c63aecc25ee4470e",
+      "as_of": "2026-11-18T07:23:32.785809+00:00"
+    },
+    {
+      "source_id": "src_009c85063faafc0b",
+      "as_of": "2026-11-18T07:23:32.786852+00:00"
+    },
+    {
+      "source_id": "src_10d92559e6950234",
+      "as_of": "2026-11-18T07:23:32.784046+00:00"
+    },
+    {
+      "source_id": "src_0183e49004f2b001",
+      "as_of": "2026-11-18T07:23:32.784848+00:00"
+    }
+  ],
+  "quality": {
+    "issues": [
+      "security_calendar_unavailable",
+      "trade_markers_unavailable"
+    ]
+  },
+  "evidence_id": "ev_0c4da3c603973b41"
+}

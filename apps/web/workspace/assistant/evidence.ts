@@ -29,12 +29,12 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
   dated_exposure: ["/holdings","exposure"], exposure_benchmark: ["/holdings","exposure"],
   market_sector: ["/sectors","market"], global_map: ["/sectors","market"], update_issue: ["/health","health"],
-  news_and_events: ["/research","publisher"], data_freshness: ["/health", "health"],
+  news_and_events: ["/research","disclosure"], data_freshness: ["/health", "health"],
   upcoming_events: ["/health", "calendar"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events") {
+  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.event === "dividend")) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
