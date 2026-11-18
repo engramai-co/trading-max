@@ -102,7 +102,11 @@ def calendar_name(exchange: str | None) -> str | None:
     mic = venue_mic(exchange)
     if mic == "XKOS":
         return "XKRX"
-    return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic or EXCHANGES.get("".join(str(exchange or "").upper().split()))
+    return (
+        "XNYS"
+        if mic in {"XNAS", "XASE", "ARCX"}
+        else mic or EXCHANGES.get("".join(str(exchange or "").upper().split()))
+    )
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:

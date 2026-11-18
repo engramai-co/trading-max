@@ -21,7 +21,17 @@ class UpcomingQuery(EventArgs):
 
 
 class UpcomingItem(BaseModel):
-    kind: Literal["macro", "earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change", "filing", "holiday", "half_day"]
+    kind: Literal[
+        "macro",
+        "earnings",
+        "ex_dividend",
+        "dividend_pay",
+        "dividend",
+        "rating_change",
+        "filing",
+        "holiday",
+        "half_day",
+    ]
     evidence_id: str
     research_event_id: str | None = None
     date: str
@@ -102,7 +112,9 @@ def upcoming(
 class CitedEventQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ticker: Ticker
-    kind: Literal["earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change", "filing", "macro"]
+    kind: Literal[
+        "earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change", "filing", "macro"
+    ]
     event_id: str | None = Field(default=None, pattern=r"^ev_[A-Za-z0-9_-]{1,96}$")
     research_event_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._:-]{1,128}$")
 
