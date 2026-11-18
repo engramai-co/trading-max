@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 from .facts import FinancialFacts, FinancialPeriod, MetricObservation, number
+from .listing import REVIEWED_RECEIPTS
 
 Family = Literal["cash-flow", "net-income", "residual-income"]
 PeriodChoice = Literal[
@@ -22,7 +23,7 @@ def period_choice(facts: FinancialFacts, period: FinancialPeriod) -> PeriodChoic
     return "latest-four-quarters" if period.provider_end == latest else "previous-four-quarters"
 
 
-RECEIPT_RATIOS = {"US:TSM": 5, "US:ARM": 1, "US:NOK": 1, "US:BABA": 8}
+RECEIPT_RATIOS = {listing: ratio for listing, (_, ratio) in REVIEWED_RECEIPTS.items()}
 
 EXCLUDED_ASSETS = {"ETF", "ETP", "MUTUALFUND", "INDEX"}
 # Exact US listings. See docs/architecture/valuation-model.md for filing references.
@@ -97,12 +98,12 @@ def statement_basis(
         if RECEIPT_RATIOS.get(listing, 1) != 1 and (not ordinary or ordinary.value <= 0):
             continue
         revenue = values.get("revenue")
-        if revenue and revenue.value == 0:
-            return p, values
         if family == "residual-income":
             book = values.get("commonEquity")
             if book and book.value > 0 and "commonIncome" in values:
                 return p, values
+        elif revenue and revenue.value == 0:
+            return p, values
         elif revenue and revenue.value > 0:
             if family == "net-income" and ("commonIncome" in values or "netIncome" in values):
                 return p, values
@@ -114,6 +115,46 @@ def statement_basis(
                 # window and fiscal year has been exhausted.
                 incomplete_cash = (p, values)
     return incomplete_cash
+
+
+def legacy_cashflow_worksheet(row: Mapping[str, Any]) -> bool:
+    """Identify a completed pre-share-unit worksheet in a retained publication."""
+    stored = row.get("assumptions") or {}
+    if {"shareUnit", "listing", "family", "isAdr"} & stored.keys():
+        return False
+    if row.get("method") not in {
+        None,
+        "",
+        "levered-fcf-exit-scenarios",
+        "explicit-preprofit-exit-scenarios",
+    }:
+        return False
+    scenarios = row.get("scenarios") or {}
+    fields = ("revenueCagr", "targetFcfMargin", "discountRate", "exitFcfMultiple", "shareCagr")
+    return set(scenarios) == {"bear", "base", "bull"} and all(
+        isinstance(params, Mapping)
+        and all(number(params.get(field)) is not None for field in fields)
+        for params in scenarios.values()
+    )
+
+
+def ordinary_share_basis(
+    stored: Mapping[str, Any],
+    listing: str | None,
+    *,
+    filed_unit: str | None,
+    legacy_worksheet: bool,
+    same_currency_equity: bool,
+) -> bool:
+    if not listing or stored.get("isAdr"):
+        return False
+    if "shareUnit" in stored:
+        return stored["shareUnit"] == "ordinary" and stored.get("listing") == listing
+    if filed_unit is not None:
+        return filed_unit == "ordinary"
+    # Preserve the count on an already published, same-currency operating
+    # worksheet until the batch replaces it. Receipt rules still run first.
+    return legacy_worksheet and same_currency_equity
 
 
 def listing_shares(

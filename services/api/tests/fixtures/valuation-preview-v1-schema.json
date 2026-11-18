@@ -1,0 +1,529 @@
+{
+  "$ref": "#/components/schemas/ValuationPreview",
+  "components": {
+    "schemas": {
+      "ValuationPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/FrozenValuationBasis"
+          },
+          "defaultSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "saved-model",
+                  "configured-scenarios",
+                  "sector-template",
+                  "user-input"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultsource"
+          },
+          "formulaVersion": {
+            "default": "equity-proxy-projection-v1",
+            "title": "Formulaversion",
+            "type": "string"
+          },
+          "horizon": {
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impliedGrowth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowth"
+          },
+          "impliedGrowthBound": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below",
+                  "above"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthbound"
+          },
+          "impliedGrowthReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthreason"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioProjection"
+            },
+            "title": "Scenarios",
+            "type": "object"
+          },
+          "sensitivity": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityCell"
+            },
+            "title": "Sensitivity",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "basis",
+          "horizon",
+          "scenarios",
+          "sensitivity",
+          "impliedGrowth"
+        ],
+        "title": "ValuationPreview",
+        "type": "object"
+      },
+      "FrozenValuationBasis": {
+        "additionalProperties": false,
+        "properties": {
+          "cashFlowType": {
+            "const": "operating-cash-flow-less-capex-equity-proxy",
+            "default": "operating-cash-flow-less-capex-equity-proxy",
+            "title": "Cashflowtype",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "dataVersion": {
+            "title": "Dataversion",
+            "type": "string"
+          },
+          "discountRateType": {
+            "const": "cost-of-equity",
+            "default": "cost-of-equity",
+            "title": "Discountratetype",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "quoteId": {
+            "title": "Quoteid",
+            "type": "string"
+          },
+          "revenue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revenue",
+            "type": "number"
+          },
+          "shares": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shares",
+            "type": "number"
+          },
+          "spot": {
+            "exclusiveMinimum": 0.0,
+            "title": "Spot",
+            "type": "number"
+          },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
+          "spotSource": {
+            "default": "quote",
+            "enum": [
+              "quote",
+              "broker"
+            ],
+            "title": "Spotsource",
+            "type": "string"
+          },
+          "startMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Startmargin",
+            "type": "number"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "quoteId",
+          "dataVersion",
+          "currency",
+          "spot",
+          "revenue",
+          "shares",
+          "startMargin"
+        ],
+        "title": "FrozenValuationBasis",
+        "type": "object"
+      },
+      "EvidenceRef": {
+        "additionalProperties": false,
+        "properties": {
+          "accession": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accession"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedat"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "field",
+          "version"
+        ],
+        "title": "EvidenceRef",
+        "type": "object"
+      },
+      "AssumptionReference": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment": {
+            "default": 0,
+            "title": "Adjustment",
+            "type": "number"
+          },
+          "asOf": {
+            "title": "Asof",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "metric": {
+            "const": "revenueGrowth",
+            "default": "revenueGrowth",
+            "title": "Metric",
+            "type": "string"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "referenceValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencevalue"
+          },
+          "scenario": {
+            "enum": [
+              "bear",
+              "base",
+              "bull"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          },
+          "source": {
+            "default": "yahoo-finance-consensus",
+            "enum": [
+              "yahoo-finance-consensus",
+              "historical-revenue-cagr"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "scenario",
+          "period",
+          "asOf",
+          "value"
+        ],
+        "title": "AssumptionReference",
+        "type": "object"
+      },
+      "ScenarioProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "equityFloorAdjustment": {
+            "default": 0,
+            "title": "Equityflooradjustment",
+            "type": "number"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/ScenarioInputs"
+          },
+          "operatingValue": {
+            "title": "Operatingvalue",
+            "type": "number"
+          },
+          "terminalContribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalcontribution"
+          },
+          "terminalPresentValue": {
+            "title": "Terminalpresentvalue",
+            "type": "number"
+          },
+          "terminalValue": {
+            "title": "Terminalvalue",
+            "type": "number"
+          },
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/ProjectionYear"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "inputs",
+          "years",
+          "operatingValue",
+          "terminalValue",
+          "terminalPresentValue",
+          "terminalContribution",
+          "value",
+          "upside"
+        ],
+        "title": "ScenarioProjection",
+        "type": "object"
+      },
+      "ScenarioInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "discountRate": {
+            "maximum": 0.6,
+            "minimum": 0.01,
+            "title": "Discountrate",
+            "type": "number"
+          },
+          "exitFcfMultiple": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Exitfcfmultiple",
+            "type": "number"
+          },
+          "revenueCagr": {
+            "maximum": 2.0,
+            "minimum": -0.8,
+            "title": "Revenuecagr",
+            "type": "number"
+          },
+          "shareCagr": {
+            "maximum": 1.0,
+            "minimum": -0.3,
+            "title": "Sharecagr",
+            "type": "number"
+          },
+          "targetFcfMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Targetfcfmargin",
+            "type": "number"
+          }
+        },
+        "required": [
+          "revenueCagr",
+          "targetFcfMargin",
+          "discountRate",
+          "exitFcfMultiple",
+          "shareCagr"
+        ],
+        "title": "ScenarioInputs",
+        "type": "object"
+      },
+      "ProjectionYear": {
+        "additionalProperties": false,
+        "properties": {
+          "cashflowPerShare": {
+            "title": "Cashflowpershare",
+            "type": "number"
+          },
+          "discountFactor": {
+            "title": "Discountfactor",
+            "type": "number"
+          },
+          "fcfMargin": {
+            "title": "Fcfmargin",
+            "type": "number"
+          },
+          "freeCashflow": {
+            "title": "Freecashflow",
+            "type": "number"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "presentValue": {
+            "title": "Presentvalue",
+            "type": "number"
+          },
+          "revenue": {
+            "title": "Revenue",
+            "type": "number"
+          },
+          "shares": {
+            "title": "Shares",
+            "type": "number"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "growth",
+          "revenue",
+          "fcfMargin",
+          "freeCashflow",
+          "shares",
+          "cashflowPerShare",
+          "discountFactor",
+          "presentValue"
+        ],
+        "title": "ProjectionYear",
+        "type": "object"
+      },
+      "SensitivityCell": {
+        "additionalProperties": false,
+        "properties": {
+          "discountRate": {
+            "title": "Discountrate",
+            "type": "number"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "growth",
+          "discountRate",
+          "value",
+          "upside"
+        ],
+        "title": "SensitivityCell",
+        "type": "object"
+      }
+    }
+  }
+}

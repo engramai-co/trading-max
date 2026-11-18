@@ -14394,38 +14394,11 @@
       "OperatingBasis": {
         "additionalProperties": false,
         "properties": {
-          "bookPerShare": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bookpershare"
-          },
           "cashFlowType": {
+            "const": "operating-cash-flow-less-capex-equity-proxy",
             "default": "operating-cash-flow-less-capex-equity-proxy",
-            "enum": [
-              "operating-cash-flow-less-capex-equity-proxy",
-              "net-income-proxy",
-              "residual-income"
-            ],
             "title": "Cashflowtype",
             "type": "string"
-          },
-          "commonEarnings": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Commonearnings"
           },
           "currency": {
             "title": "Currency",
@@ -14448,90 +14421,9 @@
             "title": "Evidence",
             "type": "array"
           },
-          "family": {
-            "const": "cash-flow",
-            "default": "cash-flow",
-            "title": "Family",
-            "type": "string"
-          },
-          "fxRate": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fxrate"
-          },
-          "openingCash": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openingcash"
-          },
-          "ordinaryPerReceipt": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ordinaryperreceipt"
-          },
-          "periodChoice": {
-            "anyOf": [
-              {
-                "enum": [
-                  "latest-four-quarters",
-                  "previous-four-quarters",
-                  "latest-fiscal-year",
-                  "previous-fiscal-year"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Periodchoice"
-          },
-          "periodId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Periodid"
-          },
           "quoteId": {
             "title": "Quoteid",
             "type": "string"
-          },
-          "reportingCurrency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reportingcurrency"
           },
           "revenue": {
             "exclusiveMinimum": 0.0,
@@ -14618,17 +14510,6 @@
             ],
             "title": "Terminalcontribution"
           },
-          "terminalPremiumPresentValue": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Terminalpremiumpresentvalue"
-          },
           "terminalPresentValue": {
             "title": "Terminalpresentvalue",
             "type": "number"
@@ -14673,46 +14554,13 @@
             "title": "Cashflowpershare",
             "type": "number"
           },
-          "closingBook": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Closingbook"
-          },
           "discountFactor": {
             "title": "Discountfactor",
             "type": "number"
           },
-          "earningsPerShare": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Earningspershare"
-          },
           "fcfMargin": {
             "title": "Fcfmargin",
             "type": "number"
-          },
-          "financing": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Financing"
           },
           "freeCashflow": {
             "title": "Freecashflow",
@@ -14729,17 +14577,6 @@
           "revenue": {
             "title": "Revenue",
             "type": "number"
-          },
-          "roe": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Roe"
           },
           "shares": {
             "title": "Shares",
@@ -14779,39 +14616,6 @@
             "title": "Exitfcfmultiple",
             "type": "number"
           },
-          "initialRoe": {
-            "anyOf": [
-              {
-                "maximum": 2.0,
-                "minimum": -0.8,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Initialroe"
-          },
-          "payout": {
-            "anyOf": [
-              {
-                "maximum": 1.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payout"
-          },
-          "rampYears": {
-            "default": 3,
-            "maximum": 10.0,
-            "minimum": 1.0,
-            "title": "Rampyears",
-            "type": "integer"
-          },
           "revenueCagr": {
             "maximum": 2.0,
             "minimum": -0.8,
@@ -14829,19 +14633,6 @@
             "minimum": -1.0,
             "title": "Targetfcfmargin",
             "type": "number"
-          },
-          "terminalPb": {
-            "anyOf": [
-              {
-                "maximum": 15.0,
-                "minimum": 0.0,
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Terminalpb"
           }
         },
         "required": [
@@ -14879,10 +14670,6 @@
           },
           "formulaVersion": {
             "default": "equity-proxy-projection-v1",
-            "enum": [
-              "equity-proxy-projection-v1",
-              "statement-equity-v2"
-            ],
             "title": "Formulaversion",
             "type": "string"
           },
@@ -14942,96 +14729,9 @@
             "title": "References",
             "type": "array"
           },
-          "reverseBound": {
-            "anyOf": [
-              {
-                "enum": [
-                  "below",
-                  "above"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reversebound"
-          },
-          "reverseInputs": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScenarioInputs"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reverseLimits": {
-            "anyOf": [
-              {
-                "maxItems": 2,
-                "minItems": 2,
-                "prefixItems": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "number"
-                  }
-                ],
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reverselimits"
-          },
-          "reverseMetric": {
-            "default": "revenue-growth",
-            "enum": [
-              "revenue-growth",
-              "target-margin",
-              "initial-roe",
-              "year-five-revenue"
-            ],
-            "title": "Reversemetric",
-            "type": "string"
-          },
-          "reverseReason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reversereason"
-          },
-          "reverseValue": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reversevalue"
-          },
           "scenarios": {
             "additionalProperties": {
               "$ref": "#/components/schemas/OperatingProjection"
-            },
-            "minProperties": 3,
-            "propertyNames": {
-              "enum": [
-                "bear",
-                "base",
-                "bull"
-              ]
             },
             "title": "Scenarios",
             "type": "object"

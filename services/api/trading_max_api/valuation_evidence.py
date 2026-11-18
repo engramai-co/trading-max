@@ -20,7 +20,9 @@ from trading_max.research.facts import (
 from trading_max.research.valuation_basis import (
     EXCLUDED_ASSETS,
     classify,
+    legacy_cashflow_worksheet,
     listing_shares,
+    ordinary_share_basis,
     period_choice,
     statement_basis,
 )
@@ -162,7 +164,8 @@ def _read_row(
                 "family": stored.get("family"),
                 "isAdr": stored.get("isAdr"),
                 "listing": stored.get("listing"),
-                "shareUnit": stored.get("shareUnit"),
+                **({"shareUnit": stored["shareUnit"]} if "shareUnit" in stored else {}),
+                "legacyWorksheet": legacy_cashflow_worksheet(row),
                 "sharesOutstanding": stored.get("sharesOutstanding"),
                 "fxRate": stored.get("fxRate"),
                 "financialFactsVersion": stored.get("financialFactsVersion"),
@@ -527,7 +530,15 @@ def freeze_valuation_evidence(
         _positive(stored.get("sharesOutstanding")),
         selected,
         bool(stored.get("isAdr")),
-        stored.get("shareUnit") == "ordinary" and stored.get("listing") == binding.listing,
+        ordinary_share_basis(
+            stored,
+            binding.listing,
+            filed_unit=((raw.get("evidence") or {}).get("listedShareUnits") or {}).get(
+                binding.listing
+            ),
+            legacy_worksheet=bool(stored.get("legacyWorksheet")),
+            same_currency_equity=quote_type == "EQUITY" and aligned and report == quoted,
+        ),
     )
     recent = [
         period
@@ -684,8 +695,9 @@ def freeze_valuation_evidence(
         source="research-valuation",
         quality="derived",
     )
+    period_metric = Metric.BOOK if family == "residual-income" else Metric.REVENUE
     disclose_period = ttm and any(
-        r.metric == Metric.REVENUE and r.group == EvidenceGroup.BASIS and r.state == "available"
+        r.metric == period_metric and r.group == EvidenceGroup.BASIS and r.state == "available"
         for r in capture.rows
     )
     return FrozenValuationEvidence(

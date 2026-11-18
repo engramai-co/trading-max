@@ -59,12 +59,6 @@ def freeze_basis(
     flow = values.get("freeCashflow") if family == "cash-flow" else income
     revenue = values["revenue"].value if "revenue" in values else None
     book = values.get("commonEquity") if family == "residual-income" else None
-    if (
-        family == "residual-income"
-        and revenue
-        and (not book or book.value <= 0 or not values.get("commonIncome"))
-    ):
-        raise ValueError("positive-common-equity-and-common-income-required")
     cash = values.get("cash") if family == "cash-flow" else None
     return FrozenValuationBasis(
         ticker=ticker,
@@ -78,9 +72,11 @@ def freeze_basis(
         period_id=period.id,
         period_choice=period_choice(facts, period),
         family=family,
-        revenue=revenue * fx if revenue is not None else None,
+        revenue=revenue * fx if revenue is not None and revenue >= 0 else None,
         common_earnings=income.value * fx if family == "residual-income" and income else None,
-        start_margin=flow.value / revenue if flow and revenue else 0,
+        start_margin=flow.value / revenue
+        if family != "residual-income" and flow and revenue
+        else 0,
         opening_cash=cash.value * fx if cash and cash.value >= 0 else None,
         book_per_share=book.value * fx / shares if book and book.value > 0 else None,
         ordinary_per_receipt=ratio,
@@ -147,7 +143,7 @@ def scenario_defaults(
 ):
     from .fundamentals import _scenario_params
 
-    growth, references = annual_growth(facts)
+    growth, references = (None, []) if basis.family == "residual-income" else annual_growth(facts)
     growth_base = max(-0.1, min(profile.growth_cap, growth)) if growth is not None else None
     margin = min(basis.start_margin, profile.margin_cap)
     if margin < 0.03:
@@ -176,7 +172,7 @@ def scenario_defaults(
             "share_cagr": params["shareCagr"],
             "ramp_years": ramp,
         }
-        if basis.family == "residual-income" and basis.revenue != 0 and basis.book_per_share:
+        if basis.family == "residual-income":
             # Reported annualised common earnings divided by period-end common equity.
             roe = basis.common_earnings / (basis.book_per_share * basis.shares)
             fields = {

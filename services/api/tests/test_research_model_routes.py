@@ -1,9 +1,12 @@
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 from trading_max.research.facts import ResearchContext, build_financial_facts, make_quote
 
 from services.api.trading_max_api.artifacts import ArtifactStore
@@ -120,7 +123,12 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
         assert saved.status_code == 200, saved.text
         assert len(saved.json()["models"]) == 1
         assert saved.json()["models"][0]["reason"] == "Growth converges to the historical range"
-        assert saved.json()["models"][0]["preview"]["scenarios"] == result.json()["scenarios"]
+        full = client.post("/v2/research/TEST/valuation-preview", json=body)
+        assert full.status_code == 200
+        assert saved.json()["models"][0]["preview"]["scenarios"] == full.json()["scenarios"]
+        assert (
+            full.json()["scenarios"]["base"]["value"] == result.json()["scenarios"]["base"]["value"]
+        )
         reopened = client.get("/v1/research/TEST/valuation-preview")
         assert reopened.status_code == 200
         assert reopened.json()["horizon"] == 10
@@ -391,7 +399,14 @@ def test_published_preview_client_and_family_aware_opt_in(tmp_path, case):
                         isinstance(year[k], (float, int))
                         for k in ("growth", "revenue", "fcfMargin", "freeCashflow")
                     )
-            assert client.post("/v1" + path, json={"scenarios": inputs}).status_code == 200
+            posted = client.post("/v1" + path, json={"scenarios": inputs})
+            assert posted.status_code == 200
+            # Frozen response contract published at 3d152ecb.
+            contract = json.loads(
+                (Path(__file__).parent / "fixtures/valuation-preview-v1-schema.json").read_text()
+            )
+            for payload in (legacy, posted.json()):
+                Draft202012Validator(contract).validate(payload)
         else:
             assert old.status_code == 422
         modern = client.get("/v2" + path)

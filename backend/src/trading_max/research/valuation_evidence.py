@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from hashlib import sha256
@@ -449,12 +450,12 @@ class ValuationEvidenceTools:
         family = self._frozen.family
         income_metric = Metric.FREE_CASHFLOW if family == "cash-flow" else Metric.EARNINGS
         required = {Metric.SPOT, Metric.SHARES, Metric.FX}
-        if family != "residual-income" or Metric.REVENUE in fields:
+        if family == "residual-income":
+            required.update((Metric.BOOK, Metric.EARNINGS))
+        else:
             required.add(Metric.REVENUE)
-        if Metric.REVENUE not in fields or fields[Metric.REVENUE].value != 0:
-            required.add(income_metric)
-            if family == "residual-income":
-                required.add(Metric.BOOK)
+            if Metric.REVENUE not in fields or fields[Metric.REVENUE].value != 0:
+                required.add(income_metric)
         if not self._frozen.binding.permitted_fields >= required:
             return BasisResult(state="missing", reason="fields-not-permitted", items=items)
         if self._frozen.eligibility in {"fund", "financial"}:
@@ -480,7 +481,7 @@ class ValuationEvidenceTools:
             fields.get(Metric.BOOK),
             fields.get(Metric.CASH),
         )
-        statement = revenue or book
+        statement = book if family == "residual-income" else revenue
         if (
             not spot.currency
             or not statement
@@ -493,19 +494,25 @@ class ValuationEvidenceTools:
             or not self._frozen.quote_id
             or any(
                 row and (row.currency != statement.currency or row.period != statement.period)
-                for row in (flow, cash, book)
+                for row in (flow, cash, book, revenue)
             )
         ):
             raise EvidenceScopeError("inconsistent valuation basis")
-        if min(spot.value, shares.value, fx.value) <= 0 or (revenue and revenue.value < 0):
+        if min(spot.value, shares.value, fx.value) <= 0 or (
+            family != "residual-income" and revenue and revenue.value < 0
+        ):
             raise EvidenceScopeError("invalid valuation basis")
         if book and book.value <= 0:
             return BasisResult(
                 state="unsupported", reason="positive-common-equity-required", items=items
             )
-        margin = flow.value / revenue.value if flow and revenue and revenue.value else 0
+        margin = (
+            flow.value / revenue.value
+            if family != "residual-income" and flow and revenue and revenue.value
+            else 0
+        )
         converted = revenue.value * fx.value if revenue else None
-        if converted is not None and not 0 <= converted < float("inf"):
+        if converted is not None and not math.isfinite(converted):
             return BasisResult(
                 state="unsupported", reason="projection-outside-numeric-range", items=items
             )
@@ -544,7 +551,7 @@ class ValuationEvidenceTools:
             opening_cash=cash.value * fx.value if cash and cash.value >= 0 else None,
             book_per_share=book.value * fx.value / shares.value if book else None,
             ordinary_per_receipt=self._frozen.ordinary_per_receipt,
-            revenue=converted,
+            revenue=converted if converted is not None and converted >= 0 else None,
             shares=shares.value,
             start_margin=margin,
         )

@@ -23,7 +23,6 @@ from trading_max.research.fundamentals import _sector_profile
 from trading_max.research.statement_valuation import freeze_basis, scenario_defaults
 from trading_max.research.valuation_basis import EXCLUDED_ASSETS, Family, classify
 from trading_max.research.valuation_preview import (
-    OperatingValuationPreview,
     ScenarioInputs,
     ValuationPreview,
     ValuationPreviewRequest,
@@ -64,6 +63,7 @@ from ..research_journal import (
     ResearchNoteInput,
 )
 from ..research_public import public_lens
+from ..valuation_preview_v1 import OperatingValuationPreview
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
 
@@ -224,7 +224,7 @@ def _operating_preview(result: ValuationPreview) -> OperatingValuationPreview:
         or not -1 <= result.basis.start_margin <= 1
     ):
         raise HTTPException(status_code=422, detail="family-aware-valuation-preview-required")
-    return OperatingValuationPreview.model_validate(result.model_dump())
+    return OperatingValuationPreview.model_validate(result, from_attributes=True)
 
 
 @router.get("/v1/research/{ticker}/valuation-preview", response_model=OperatingValuationPreview)

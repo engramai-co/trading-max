@@ -363,7 +363,7 @@ def preview(basis: FrozenValuationBasis, request: ValuationPreviewRequest) -> Va
         "references": request.references,
         "implied_growth": None,
     }
-    if basis.revenue == 0:
+    if basis.family != "residual-income" and basis.revenue == 0:
         # Pure reverse reading: no interim payouts, positive year-five margin
         # and terminal multiple. All the market value is backed by terminal earnings.
         if None in (base.target_fcf_margin, base.exit_fcf_multiple, base.share_cagr):
@@ -448,35 +448,3 @@ def preview(basis: FrozenValuationBasis, request: ValuationPreviewRequest) -> Va
         reverse_limits=limits,
         reverse_reason=reason,
     )
-
-
-# The published v1 client requires operating assumptions and numeric rows for
-# every scenario. The family-aware desk uses the separate v2 preview routes.
-class OperatingScenarioInputs(ScenarioInputs):
-    revenue_cagr: float = Field(ge=-0.8, le=2)
-    target_fcf_margin: float = Field(ge=-1, le=1)
-    exit_fcf_multiple: float = Field(ge=0, le=100)
-    share_cagr: float = Field(ge=-0.3, le=1)
-
-
-class OperatingBasis(FrozenValuationBasis):
-    family: Literal["cash-flow"] = "cash-flow"
-    revenue: float = Field(gt=0)
-    start_margin: float = Field(ge=-1, le=1)
-
-
-class OperatingProjectionYear(ProjectionYear):
-    growth: float
-    revenue: float
-    fcf_margin: float
-    free_cashflow: float
-
-
-class OperatingProjection(ScenarioProjection):
-    inputs: OperatingScenarioInputs
-    years: list[OperatingProjectionYear]
-
-
-class OperatingValuationPreview(ValuationPreview):
-    basis: OperatingBasis
-    scenarios: dict[Literal["bear", "base", "bull"], OperatingProjection] = Field(min_length=3)

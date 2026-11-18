@@ -42,11 +42,10 @@ handle.
 The evaluator shares the desk's versioned statement forecast. Frozen evidence
 binds a family before the caller supplies scenarios. The family selects cash
 flow, earnings, or common book and residual income. A residual-income basis
-uses common earnings and book for the same period even when revenue is
-unreported. Its terminal contribution uses the full discounted exit price.
+uses common earnings and book for the same period regardless of reported revenue. Its terminal contribution uses the full discounted exit price.
 Model draft clients can compare this evaluation with the explicit
 `/v2/research/{ticker}/valuation-preview` contract. Missing cash is disclosed
-when a cash-flow scenario requires financing. Reported zero revenue produces
+when a cash-flow scenario requires financing. Reported zero revenue in a cash-flow or net-income model produces
 a reverse reading without a scenario range. The public quote remains the
 only spot available to these tools. The same frozen evidence, formula and
 proposed scenarios reproduce the worksheets. Tests compare annual worksheet

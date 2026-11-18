@@ -6065,16 +6065,12 @@ export interface components {
         };
         /** OperatingBasis */
         OperatingBasis: {
-            /** Bookpershare */
-            bookPerShare?: number | null;
             /**
              * Cashflowtype
              * @default operating-cash-flow-less-capex-equity-proxy
-             * @enum {string}
+             * @constant
              */
-            cashFlowType: "operating-cash-flow-less-capex-equity-proxy" | "net-income-proxy" | "residual-income";
-            /** Commonearnings */
-            commonEarnings?: number | null;
+            cashFlowType: "operating-cash-flow-less-capex-equity-proxy";
             /** Currency */
             currency: string;
             /** Dataversion */
@@ -6087,26 +6083,8 @@ export interface components {
             discountRateType: "cost-of-equity";
             /** Evidence */
             evidence?: components["schemas"]["EvidenceRef"][];
-            /**
-             * Family
-             * @default cash-flow
-             * @constant
-             */
-            family: "cash-flow";
-            /** Fxrate */
-            fxRate?: number | null;
-            /** Openingcash */
-            openingCash?: number | null;
-            /** Ordinaryperreceipt */
-            ordinaryPerReceipt?: number | null;
-            /** Periodchoice */
-            periodChoice?: ("latest-four-quarters" | "previous-four-quarters" | "latest-fiscal-year" | "previous-fiscal-year") | null;
-            /** Periodid */
-            periodId?: string | null;
             /** Quoteid */
             quoteId: string;
-            /** Reportingcurrency */
-            reportingCurrency?: string | null;
             /** Revenue */
             revenue: number;
             /** Shares */
@@ -6138,8 +6116,6 @@ export interface components {
             operatingValue: number;
             /** Terminalcontribution */
             terminalContribution: number | null;
-            /** Terminalpremiumpresentvalue */
-            terminalPremiumPresentValue?: number | null;
             /** Terminalpresentvalue */
             terminalPresentValue: number;
             /** Terminalvalue */
@@ -6155,16 +6131,10 @@ export interface components {
         OperatingProjectionYear: {
             /** Cashflowpershare */
             cashflowPerShare: number;
-            /** Closingbook */
-            closingBook?: number | null;
             /** Discountfactor */
             discountFactor: number;
-            /** Earningspershare */
-            earningsPerShare?: number | null;
             /** Fcfmargin */
             fcfMargin: number;
-            /** Financing */
-            financing?: number | null;
             /** Freecashflow */
             freeCashflow: number;
             /** Growth */
@@ -6173,8 +6143,6 @@ export interface components {
             presentValue: number;
             /** Revenue */
             revenue: number;
-            /** Roe */
-            roe?: number | null;
             /** Shares */
             shares: number;
             /** Year */
@@ -6186,23 +6154,12 @@ export interface components {
             discountRate: number;
             /** Exitfcfmultiple */
             exitFcfMultiple: number;
-            /** Initialroe */
-            initialRoe?: number | null;
-            /** Payout */
-            payout?: number | null;
-            /**
-             * Rampyears
-             * @default 3
-             */
-            rampYears: number;
             /** Revenuecagr */
             revenueCagr: number;
             /** Sharecagr */
             shareCagr: number;
             /** Targetfcfmargin */
             targetFcfMargin: number;
-            /** Terminalpb */
-            terminalPb?: number | null;
         };
         /** OperatingValuationPreview */
         OperatingValuationPreview: {
@@ -6212,9 +6169,8 @@ export interface components {
             /**
              * Formulaversion
              * @default equity-proxy-projection-v1
-             * @enum {string}
              */
-            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
+            formulaVersion: string;
             /**
              * Horizon
              * @enum {integer}
@@ -6230,24 +6186,6 @@ export interface components {
             impliedGrowthReason?: string | null;
             /** References */
             references?: components["schemas"]["AssumptionReference"][];
-            /** Reversebound */
-            reverseBound?: ("below" | "above") | null;
-            reverseInputs?: components["schemas"]["ScenarioInputs"] | null;
-            /** Reverselimits */
-            reverseLimits?: [
-                number,
-                number
-            ] | null;
-            /**
-             * Reversemetric
-             * @default revenue-growth
-             * @enum {string}
-             */
-            reverseMetric: "revenue-growth" | "target-margin" | "initial-roe" | "year-five-revenue";
-            /** Reversereason */
-            reverseReason?: string | null;
-            /** Reversevalue */
-            reverseValue?: number | null;
             /** Scenarios */
             scenarios: {
                 [key: string]: components["schemas"]["OperatingProjection"];

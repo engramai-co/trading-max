@@ -11,27 +11,29 @@ uses its own published technical price. Analyst targets remain market references
 
 `GET` and `POST /v2/research/{ticker}/valuation-preview` expose the family-aware
 contract. GET accepts an optional `family` query parameter. POST carries the
-family and formula version in the request body. A zero-revenue response has
+family and formula version in the request body. An operating model with reported zero revenue has
 empty scenarios and sensitivity and a year-five revenue requirement. A
 residual-income year exposes ROE, book and earnings, with nullable operating
 fields. Its terminal present value is the discounted sale price, with the
 premium in `terminalPremiumPresentValue`.
 
 The v1 preview routes serve cash-flow worksheets with three complete scenarios
-and numeric annual operating fields. A family or basis the published v1 client
+and numeric annual operating fields. GET and POST serialize the original v1 response types, including the nested inputs and projection years. A family or basis the published v1 client
 cannot display returns HTTP 422. Saved versions continue to record their own
 formula and worksheet.
 
 ## Eligibility and input identity
 
 Funds and indices have no company valuation. A missing revenue observation
-and reported zero revenue have different meanings. Only a reported zero
-can support the reverse-only model below.
+and reported zero revenue have different meanings for cash flow and net income.
+Only a reported zero can support their reverse-only model below.
 
 For each family, try the most recent complete four-quarter window, then earlier
 complete windows, then fiscal years from newest to oldest. A cash-burning
 period needs its closing cash balance. Residual income needs matched common
-earnings and positive common equity and can use a period with missing revenue.
+earnings and positive common equity. Revenue can be missing, zero or negative.
+The optional nonnegative revenue input can be empty on a residual-income
+worksheet, and the financial statements retain any signed revenue observation.
 The four quarters must be consecutive. Revenue and cash flow (or earnings) must belong to the same
 period. Balances use the closing observation for that period. The desk names
 the chosen period and its end date. Unknown inputs stay missing.
@@ -55,7 +57,20 @@ verified one-to-one line. The current reviewed US listings are
 [Nokia, one per ADS](https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf).
 Unidentified listings, ambiguous share classes and unknown receipt ratios
 withhold the per-share result. Multi-share receipts require a period with
-positive reported ordinary shares.
+positive reported ordinary shares. The quote must name the reviewed NYSE venue
+for TSM, BABA and NOK, or Nasdaq for ARM. A US time zone cannot identify
+that venue. On European listings the venue corroborates the quoted suffix,
+including Copenhagen (`.CO`) and Stockholm (`.ST`).
+
+Retained pre-share-unit snapshots can be read before the first new batch.
+For an exact equity listing, first use a share-unit designation in the
+retained filing. Without that designation, carry forward the old share count
+only for a same-currency equity worksheet with all three published sets of
+cash-flow inputs and no family, listing or share-unit fields. The former
+desk could project those inputs even when a batch value was absent.
+Receipt designations in the issuer name and the reviewed receipt table still
+apply. The next publication supplies explicit listing and share-unit fields,
+including an empty share unit when verification is inconclusive.
 
 ## Selecting a family
 

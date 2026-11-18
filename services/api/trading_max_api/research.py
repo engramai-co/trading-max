@@ -35,7 +35,11 @@ from trading_max.research.held_funds import (
 from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 from trading_max.research.trailing_pe import TrailingPeHistory
-from trading_max.research.valuation_basis import classify
+from trading_max.research.valuation_basis import (
+    classify,
+    legacy_cashflow_worksheet,
+    ordinary_share_basis,
+)
 
 from .artifacts import ArtifactStore
 from .dashboard_models import (
@@ -1776,6 +1780,16 @@ class ResearchLedger:
             )
             if valuation and view == "valuation" and not valuation["assumptions"].get("family"):
                 family, classification = classify(ticker, "", raw)
+                units = (raw.get("evidence") or {}).get("listedShareUnits") or {}
+                ordinary = ordinary_share_basis(
+                    valuation["assumptions"],
+                    quote.listing,
+                    filed_unit=units.get(quote.listing),
+                    legacy_worksheet=legacy_cashflow_worksheet(valuation),
+                    same_currency_equity=asset_type == "EQUITY"
+                    and payload.financial_facts is not None
+                    and valuation["currency"] == quote.currency == payload.financial_facts.currency,
+                )
                 valuation = {
                     **valuation,
                     "assumptions": {
@@ -1783,6 +1797,10 @@ class ResearchLedger:
                         "family": family,
                         "classification": classification,
                         "issuerName": fundamental.get("name") or "",
+                        "listing": quote.listing
+                        if ordinary
+                        else valuation["assumptions"].get("listing"),
+                        "shareUnit": "ordinary" if ordinary else None,
                     },
                 }
             payload.valuation = valuation
