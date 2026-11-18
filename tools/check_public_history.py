@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -72,14 +73,13 @@ def git(*arguments: str, check: bool = True) -> str:
         cwd=ROOT,
         check=check,
         capture_output=True,
-        text=True,
     )
-    return result.stdout
+    return os.fsdecode(result.stdout)
 
 
 def historical_paths() -> set[str]:
-    output = git("log", "--all", "--name-only", "--pretty=format:")
-    return {line.strip() for line in output.splitlines() if line.strip()}
+    output = git("log", "--all", "--name-only", "-z", "--pretty=format:")
+    return {path for path in output.split("\0") if path}
 
 
 def path_violations() -> list[str]:

@@ -44,6 +44,38 @@ def test_dated_events_route_does_not_allow_other_snapshot_files(monkeypatch) -> 
     ]
 
 
+def test_public_history_keeps_route_filenames_verbatim(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(check_public_history, "ROOT", tmp_path)
+    git = check_public_history.git
+    git("init", "--quiet")
+    git("config", "core.ignorecase", "false")
+    (tmp_path / "source").write_text("export {};\n")
+    blob = git("hash-object", "-w", "source").strip()
+    handler = "apps/web/app/api/backend/snapshots/[runId]/events/upcoming/route.ts"
+    variants = [handler + " ", handler.replace("route.ts", "Route.ts"), handler + "\r\ncopy"]
+
+    # Populate Git's index directly so all names can coexist on case-insensitive filesystems.
+    for path in [handler, *variants]:
+        git("update-index", "--add", "--cacheinfo", f"100644,{blob},{path}")
+    git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.org",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "--quiet",
+        "-m",
+        "Record snapshot route variants",
+    )
+
+    assert check_public_history.historical_paths() == {handler, *variants}
+    assert check_public_history.path_violations() == [
+        f"{path}: runtime or generated material exists in history" for path in sorted(variants)
+    ]
+
+
 def test_public_release_baseline_is_exactly_one_zero_zero() -> None:
     validate_initial_version("1.0.0")
     with pytest.raises(ReleaseContractError):
