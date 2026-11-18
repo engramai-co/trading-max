@@ -16,8 +16,6 @@ const keys = ["bear", "base", "bull"] as const;
 export function ValuationSensitivity({ result }: { result: Preview }) {
   const t = useCopy();
   return (
-    <details className="mx-model-detail">
-      <summary>{t("敏感性分析", "Sensitivity analysis")}</summary>
       <Panel
         title={t("增长 × 折现率", "Growth × cost of equity")}
         action={
@@ -69,7 +67,6 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
           </table>
         </div>
       </Panel>
-    </details>
   );
 }
 
@@ -90,10 +87,6 @@ export function ValuationWorksheet({
   const t = useCopy();
   const { locale } = useLocale();
   return (
-    <details className="mx-model-detail">
-      <summary>
-        {t("年度计算底稿与来源", "Annual worksheet & sources")}
-      </summary>
       <Panel
         title={t("年度计算底稿", "Annual projection")}
         action={
@@ -255,7 +248,6 @@ export function ValuationWorksheet({
           </ul>
         </details>
       </Panel>
-    </details>
   );
 }
 

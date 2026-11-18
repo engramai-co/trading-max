@@ -7,7 +7,7 @@ import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
-import { estimateGroups } from "./research-display";
+import { estimateGroups, shortForecastPeriod } from "./research-display";
 import { useRouteState } from "./route-state";
 
 /** Fiscal periods always carry their year, so neighbouring columns read alike. */
@@ -102,103 +102,40 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                 : code
                   ? currency(value, code, 2)
                   : number(value, 2);
+          type Row = (typeof rows)[number];
+          const fields = [
+            { label: t("平均预期", "Average"), read: (r: Row) => format(r.avg, str(r.currency)) },
+            { label: t("预期区间", "Range"), read: (r: Row) => <>{format(r.low, str(r.currency))}<span className="mx-range-separator">—</span>{format(r.high, str(r.currency))}</> },
+            { label: t("去年同期", "Year ago"), read: (r: Row) => format(r[measure.prior], str(r.currency)) },
+            { label: t("同比增长", "YoY growth"), read: (r: Row) => <span className={"mx-" + tone(r.growth)}>{percent(r.growth, true, 1)}</span> },
+            { label: t("分析师人数", "Analysts"), read: (r: Row) => number(r.numberOfAnalysts, 0) },
+            ...(measure.revenue && period === "year" ? [{ label: t("估值参考", "Valuation reference"), read: (r: Row) =>
+              numeric(r.growth) == null ? "—" : <Button size="compact-xs" variant="subtle"
+                onClick={() => update({ view: "valuation", valuationView: "scenario", estimateRef: str(r.period ?? r.index) })}>
+                {t("带入模型参考", "Use as model reference")}</Button> }] : []),
+          ];
+          const unit = (row: Row) => codes.length !== 1 && <small>{str(row.currency) || t("币种未提供", "Currency unavailable")}</small>;
           return (
             <section key={measure.title}>
               <h3>{measure.title}</h3>
-              {rows.length ? (
-                <div
-                  className="mx-table-wrap"
-                  tabIndex={0}
-                  role="region"
-                  aria-label={measure.title + t("预期", " estimates")}
-                >
+              {rows.length ? <>
+                <div className="mx-table-wrap mx-wide-records" tabIndex={0} role="region" aria-label={measure.title + t("预期", " estimates")}>
                   <table className="mx-table mx-forecast-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{t("报告期", "Period")}</th>
-                        {rows.map((row, i) => (
-                          <th scope="col" key={i}>
-                            {label(row.period ?? row.index)}
-                            {codes.length !== 1 && (
-                              <small>
-                                {str(row.currency) ||
-                                  t("币种未提供", "Currency unavailable")}
-                              </small>
-                            )}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="mx-forecast-average">
-                        <th scope="row">{t("平均预期", "Average")}</th>
-                        {rows.map((row, i) => (
-                          <td key={i}>{format(row.avg, str(row.currency))}</td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <th scope="row">{t("预期区间", "Range")}</th>
-                        {rows.map((row, i) => (
-                          <td key={i}>
-                            {format(row.low, str(row.currency))}
-                            <span className="mx-range-separator">—</span>
-                            {format(row.high, str(row.currency))}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <th scope="row">{t("去年同期", "Year ago")}</th>
-                        {rows.map((row, i) => (
-                          <td key={i}>
-                            {format(row[measure.prior], str(row.currency))}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <th scope="row">{t("同比增长", "YoY growth")}</th>
-                        {rows.map((row, i) => (
-                          <td key={i} className={"mx-" + tone(row.growth)}>
-                            {percent(row.growth, true, 1)}
-                          </td>
-                        ))}
-                      </tr>
-                      <tr>
-                        <th scope="row">{t("分析师人数", "Analysts")}</th>
-                        {rows.map((row, i) => (
-                          <td key={i}>{number(row.numberOfAnalysts, 0)}</td>
-                        ))}
-                      </tr>
-                      {measure.revenue && period === "year" && (
-                        <tr>
-                          <th scope="row">
-                            {t("估值参考", "Valuation reference")}
-                          </th>
-                          {rows.map((row, i) => (
-                            <td key={i}>
-                              {numeric(row.growth) != null ? (
-                                <Button
-                                  size="compact-xs"
-                                  variant="subtle"
-                                  onClick={() =>
-                                    update({
-                                      view: "valuation",
-                                      estimateRef: str(row.period ?? row.index),
-                                    })
-                                  }
-                                >
-                                  {t("带入模型参考", "Use as model reference")}
-                                </Button>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      )}
-                    </tbody>
+                    <thead><tr><th scope="col">{t("报告期", "Period")}</th>
+                      {rows.map((row, i) => <th scope="col" key={i}>{label(row.period ?? row.index)}{unit(row)}</th>)}
+                    </tr></thead>
+                    <tbody>{fields.map((field, index) => <tr key={field.label} className={index === 0 ? "mx-forecast-average" : undefined}>
+                      <th scope="row">{field.label}</th>{rows.map((row, i) => <td key={i}>{field.read(row)}</td>)}
+                    </tr>)}</tbody>
                   </table>
                 </div>
-              ) : (
+                <div className="mx-compact-records">
+                  {rows.map((row, i) => <section key={i}>
+                    <h4><abbr title={label(row.period ?? row.index)}>{shortForecastPeriod(analyst, row.period ?? row.index) ?? label(row.period ?? row.index)}</abbr> {unit(row)}</h4>
+                    <dl>{fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.read(row)}</dd></div>)}</dl>
+                  </section>)}
+                </div>
+              </> : (
                 <Empty
                   title={t("这个周期暂无预期", "No estimates for this period")}
                 />

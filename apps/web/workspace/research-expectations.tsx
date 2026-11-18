@@ -5,8 +5,8 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate, formatDateTime } from "@/ui/formatters";
-import { ratingSummary, recommendationChange, targetSnapshot } from "./analyst-data";
-import { Plot } from "./charts";
+import { ratingSummary, recommendationChange, targetAmount, targetSnapshot, targetSplitScale, targetUnitScale } from "./analyst-data";
+import { DeferredPlot } from "./research-reading";
 import { candleSeries, candleValues, priceReading } from "./research-price-candles";
 import { fixed, volume } from "./reading-format";
 import { DataBasis } from "./reading-card";
@@ -81,11 +81,19 @@ export function AnalystExpectations({
   const analyst = object(data.analyst),
     market = object(data.market);
   const summary = ratingSummary(objects(analyst.recommendations));
-  const targets = targetSnapshot(
-    object(analyst.priceTargets),
-    price?.price ?? data.context?.quote.price ?? market.spot ?? data.valuation?.spot,
-  );
-  const code = price?.currency ?? data.context?.quote.currency ?? str(market.currency);
+  const quote = data.context?.quote;
+  const code = price?.currency ?? quote?.currency ?? str(market.currency);
+  const prices = useQuery(researchPriceQuery(data.ticker, revision ?? data.runId));
+  const currencyMatches = prices.data?.currency === code;
+  const unitScale = targetUnitScale(quote?.quoteUnit, code);
+  const targetAsOf = str(analyst.asOf);
+  const snapshotDay = targetAsOf.slice(0, 10);
+  const spot = price?.price ?? quote?.price ?? market.spot ?? data.valuation?.spot;
+  const spotDay = (price?.asOf ?? quote?.asOf ?? str(market.asOf)).slice(0, 10);
+  const latestObservation = snapshotDay > spotDay ? snapshotDay : spotDay;
+  const scaleForDay = targetSplitScale(currencyMatches ? prices.data : undefined, latestObservation);
+  const comparableSpot = targetAmount(spot, scaleForDay(spotDay, 1));
+  const targets = targetSnapshot(object(analyst.priceTargets), comparableSpot, scaleForDay(snapshotDay, unitScale));
   const median = targets.rows.find((row) => row.key === "median")!;
   const ratingLabels = [
     t("强烈买入", "Strong buy"),
@@ -117,13 +125,11 @@ export function AnalystExpectations({
   const historicalPeriod = /^-\d+m$/.test(summary.period)
     ? Math.abs(parseInt(summary.period))
     : null;
-  const prices = useQuery(researchPriceQuery(data.ticker, revision ?? data.runId));
-  const currencyMatches = prices.data?.currency === code;
   const points = currencyMatches
     ? inRange(prices.data?.points ?? [], "1Y")
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
-  const days = points.map((point) => point.date.slice(0, 10));
+  const closeDays = points.map((point) => point.date.slice(0, 10));
   // The price axis names months on their first trading day; the first label and each January carry the year.
   const monthLabel = (day: string, index: number) => index === 0
     ? formatDate(day, locale, { year: "numeric", month: "short", timeZone: "UTC" })
@@ -131,22 +137,32 @@ export function AnalystExpectations({
       : formatDate(day, locale, { month: "short", timeZone: "UTC" });
   const candles = candleValues(points);
   const hasCandles = candles.some((bar) => bar[0] != null);
-  const targetAsOf = str(analyst.asOf);
-  const history = objects(analyst.upgradesDowngrades).map(recommendationChange)
-    .filter((row) => Date.parse(row.date) > 0 && row.target != null && row.target > 0)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const targetDates = [...new Set(history.map((row) => row.date))];
-  const byDate = new Map(targetDates.map((date) => [date, history.filter((row) => row.date === date)]));
+  const lastTargetDay = Number.isFinite(Date.parse(snapshotDay)) ? snapshotDay : priceDate;
+  const history = objects(analyst.upgradesDowngrades).map(recommendationChange).flatMap((row) => {
+    if (!closeDays.length || !lastTargetDay || row.date < closeDays[0] || row.date > lastTargetDay ||
+        !Number.isFinite(Date.parse(row.date))) return [];
+    const target = targetAmount(row.target, scaleForDay(row.date, unitScale));
+    return target == null ? [] : [{ ...row, target }];
+  });
+  const targetsByDay = new Map<string, typeof history>();
+  for (const record of history) {
+    const group = targetsByDay.get(record.date) ?? [];
+    group.push(record);
+    targetsByDay.set(record.date, group);
+  }
+  const days = [...new Set([...closeDays, ...targetsByDay.keys()])].sort();
+  const closeIndex = new Map(closeDays.map((day, index) => [day, index]));
+  const timeline = days.map((day) => closeIndex.get(day) ?? -1);
+  const hasReading = (index: number) => targetsByDay.has(days[index]) ||
+    (timeline[index] >= 0 && (!hasCandles || candles[timeline[index]][0] != null));
   const priceLabels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   // A broker price carries its own time; a market spot carries its session date.
-  const spotDate = price?.source === "broker" && price.asOf
-    ? price.asOf.slice(0, 10)
-    : str(market.asOf).slice(0, 10);
   const spotLabel = price?.source === "broker" && price.asOf
     ? formatDateTime(price.asOf, locale, timeZone)
-    : spotDate && formatCalendarDate(spotDate, locale);
+    : spotDay && formatCalendarDate(spotDay, locale);
   const values = [
     ...points.flatMap((p) => [numeric(p.low), numeric(p.high), numeric(p.close)]),
+    ...history.map((r) => r.target),
     targets.spot,
     ...targets.rows.map((r) => r.value),
   ].filter((v): v is number => v != null);
@@ -188,14 +204,7 @@ export function AnalystExpectations({
             </div>
           </div>
           <div className="mx-consensus-verdict">
-            <strong
-              style={{
-                color:
-                  summary.score == null
-                    ? undefined
-                    : `var(--mx-rating-${Math.round(summary.score) - 1})`,
-              }}
-            >
+            <strong>
               {consensus}
             </strong>
             <span>
@@ -240,12 +249,12 @@ export function AnalystExpectations({
         >
           <div className="mx-expectations-heading">
             <div className="mx-panel-title">
-              <h2>{t("价格与市场预期", "Price & expectations")}</h2>
+              <h2>{t("目标价中位数", "Median price target")}</h2>
               <Help label={t("价格与市场预期", "Price & expectations")}>
                 <p>
                   {t(
-                    "左侧是已记录的近 12 个月价格，右侧是分析师目标价快照，两者使用同一价格刻度。机构目标价通常参考未来约 12 个月，本快照没有统一到期日，也不提供逐月预测。",
-                    "The left shows up to 12 months of recorded prices. The right shows current analyst targets on the same price scale. Targets typically look about 12 months ahead, but this snapshot has no common expiry and supplies no monthly forecast.",
+                    "左侧是近 12 个月价格和按公布日期标出的机构目标价，右侧是分析师目标价快照，两者使用同一价格刻度。机构目标价通常参考未来约 12 个月，本快照没有统一到期日，也不提供逐月预测。",
+                    "The left shows up to 12 months of prices with firm targets on their announcement dates. The right shows current analyst targets on the same price scale. Targets typically look about 12 months ahead, but this snapshot has no common expiry and supplies no monthly forecast.",
                   )}
                 </p>
                 <p>
@@ -255,8 +264,8 @@ export function AnalystExpectations({
                   )}
                 </p>
                 <DataBasis>{t(
-                  "价格为拆股及分红调整后的日线，币种见标题右侧；目标价是分析师目标的快照，日期见图上方。读数里的涨跌相对前一交易日收盘。",
-                  "Daily split- and dividend-adjusted prices in the currency beside the title; targets are a snapshot of analyst targets, dated above the chart. A reading's change is from the previous close.",
+                  "日线价格已按拆股和分红调整。图中目标价按后续拆股换算，机构行动保留公布时的每股目标。目标快照日期见图上方，价格涨跌相对前一交易日收盘。",
+                  "Daily prices reflect splits and dividends. Chart targets reflect subsequent splits. Institutional actions show each target as announced. The target snapshot is dated above the chart. Price changes use the previous close.",
                 )}</DataBasis>
               </Help>
             </div>
@@ -264,9 +273,6 @@ export function AnalystExpectations({
           </div>
           <div className="mx-target-summary">
             <div>
-              <span className="mx-metric-label">
-                {t("目标价中位数", "Median price target")}
-              </span>
               <strong>{currency(median.value, code, 2)}</strong>
             </div>
             <span
@@ -279,7 +285,7 @@ export function AnalystExpectations({
             </span>
           </div>
           <div className="mx-target-chart-heading">
-            <span>{t("近 12 个月价格", "12-month price history")}</span>
+            <span>{t("近 12 个月价格", "12-month prices")}<small className="mx-target-key" style={history.length ? undefined : { visibility: "hidden" }}>{t("历史目标价", "Firm targets")}</small></span>
             <span>{t("远期目标价快照", "Forward target snapshot")}
               {targetAsOf && <time dateTime={targetAsOf}> · {formatCalendarDate(targetAsOf, locale)}</time>}
             </span>
@@ -295,7 +301,7 @@ export function AnalystExpectations({
                 )}
               </div>
             )}
-            <Plot
+            <DeferredPlot
               research
               label={t(
                 "历史价格与分析师目标区间，共用价格刻度，目标快照无时间轴",
@@ -304,22 +310,25 @@ export function AnalystExpectations({
               height={232}
               readout={points.length ? {
                 gridIndexes: [0],
-                positions: points.flatMap((_, index) => !hasCandles || candles[index][0] != null ? [index] : []),
+                positions: days.flatMap((_, index) => hasReading(index) ? [index] : []),
                 latest: fixed(points.at(-1)!.close),
-                read: (index) => priceReading({
-                  bar: points[index],
-                  previous: index > 0 ? points[index - 1].close : null,
-                  time: formatCalendarDate(points[index].date, locale),
-                  candle: hasCandles,
-                  volume: points[index].volume == null ? undefined : volume(points[index].volume, locale),
-                  labels: priceLabels,
-                }),
-                gap: (index) => hasCandles && candles[Math.round(index)]?.[0] == null,
+                read: (index) => {
+                  const day = days[index];
+                  const time = formatCalendarDate(day, locale);
+                  const indicators = (targetsByDay.get(day) ?? []).map((row) => ({
+                    label: row.firm + " · " + t("目标价", "Target"), value: fixed(row.target),
+                  }));
+                  const i = timeline[index];
+                  if (i < 0 || (hasCandles && candles[i][0] == null)) return { time, groups: [indicators] };
+                  return priceReading({ bar: points[i], previous: points[i - 1]?.close, time, indicators,
+                    candle: hasCandles, volume: points[i].volume == null ? undefined : volume(points[i].volume, locale), labels: priceLabels });
+                },
+                gap: (index) => !hasReading(Math.round(index)),
               } : undefined}
               option={(c) => ({
                 grid: [
-                  { left: 40, right: "39%", top: 16, bottom: 28 },
-                  { left: "72%", right: 12, top: 16, bottom: 28 },
+                  { left: 40, right: 88, top: 16, bottom: 28 },
+                  { right: 12, width: 65, top: 16, bottom: 28 },
                 ],
                 xAxis: [
                   {
@@ -354,10 +363,10 @@ export function AnalystExpectations({
                   { type: "value", gridIndex: 1, ...axis, show: false },
                 ],
                 series: [
-                  hasCandles ? candleSeries(t("价格", "Price"), candles, c) : {
+                  hasCandles ? candleSeries(t("价格", "Price"), timeline.map((i) => candles[i] ?? [null, null, null, null]), c) : {
                     type: "line",
                     name: t("收盘价", "Close"),
-                    data: points.map((p) => p.close),
+                    data: timeline.map((i) => points[i]?.close ?? null),
                     symbol: "none",
                     lineStyle: { color: c.brand, width: 2 },
                     itemStyle: { color: c.brand },
@@ -376,6 +385,13 @@ export function AnalystExpectations({
                             },
                             data: [{ yAxis: targets.spot }],
                           },
+                  },
+                  {
+                    type: "scatter",
+                    name: t("历史目标价", "Historical firm targets"),
+                    data: history.map((row) => [row.date, row.target]),
+                    symbolSize: 6,
+                    itemStyle: { color: c.axis },
                   },
                   {
                     type: "line",
@@ -398,11 +414,7 @@ export function AnalystExpectations({
                       symbolSize: row.key === "median" ? 12 : 7,
                       itemStyle: {
                         color:
-                          row.key === "median"
-                            ? c.text
-                            : row.change != null && row.change < 0
-                              ? c.negative
-                              : c.positive,
+                          row.key === "median" ? c.text : c.axis,
                         opacity: 1,
                       },
                       label: {
@@ -430,6 +442,8 @@ export function AnalystExpectations({
               {spotLabel || t("价格日期未提供", "Price date unavailable")}
             </span>
           </div>
+          <details className="mx-chart-data">
+            <summary>{t("目标价明细", "Price target details")}</summary>
           <div
             className="mx-target-values"
             role="region"
@@ -485,29 +499,13 @@ export function AnalystExpectations({
               </tbody>
             </table>
           </div>
-          {history.length > 0 && <section className="mx-target-history" aria-label={t("历史目标价", "Historical price targets")}>
-            <h3>{t("历史目标价", "Historical price targets")}</h3>
-            <Plot research height={195} label={t("机构历史目标价", "Historical firm targets")} readout={{
-              positions: targetDates.map((_, index) => index),
-              latest: t("机构记录", "Firm records"),
-              // One row per firm; past three, the card counts the rest.
-              read: (index) => {
-                const date = targetDates[index];
-                return { time: formatCalendarDate(date, locale), groups: [byDate.get(date)!.map((row) => ({ label: row.firm, value: fixed(row.target) }))] };
-              },
-            }} option={(c) => ({
-              grid: { top: 14, right: 16, bottom: 27, left: 45 },
-              xAxis: { type: "category", data: targetDates, axisLabel: { formatter: (date: string) => formatCalendarDate(date, locale) } },
-              yAxis: { type: "value", scale: true, splitNumber: 3 },
-              series: [{ type: "scatter", data: history.map((row) => [row.date, row.target]), itemStyle: { color: c.text }, symbolSize: 7 }],
-            })} />
-          </section>}
+          </details>
           {targets.rows.some((row) => row.value == null) && (
             <p className="mx-target-availability">
               {t("部分目标价未提供", "Some price targets are unavailable")}
             </p>
           )}
-          {priceDate && spotDate && priceDate !== spotDate && (
+          {priceDate && spotDay && priceDate !== spotDay && (
             <p className="mx-target-availability">
               {t("历史价格截至 ", "Price history through ") + priceDate}
             </p>

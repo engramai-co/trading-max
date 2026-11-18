@@ -6,7 +6,7 @@ import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate } from "@/ui/formatters";
 import { compact, number } from "@/workspace/data";
 import type { EChartsOption } from "echarts";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { ChartReadout, Reading, ReadingItem } from "./chart-readout";
 import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
@@ -15,7 +15,7 @@ import { fixed } from "./reading-format";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
-type Basis = "trailing" | "forward";
+type Basis = "trailing" | "forward" | "sales";
 type Point = {
   date: string;
   pe: number | null;
@@ -61,7 +61,7 @@ function peReading(
 
 const dayMs = 86_400_000;
 
-export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | null; forward?: Forward | null }) {
+export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trailing?: Trailing | null; forward?: Forward | null; sales: ReactNode; disclosure: ReactNode }) {
   const t = useCopy();
   const { locale } = useLocale();
   const colours = useChartColours();
@@ -220,20 +220,21 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
 
   return (
     <Panel
-      title={t("P/E 历史", "P/E history")}
+      title={t("历史估值", "Historical valuation")}
       className="mx-pe-history"
       action={
         <div className="mx-pe-history-controls">
           <Segments
-            label={t("P/E 口径", "P/E basis")}
+            label={t("历史估值口径", "Historical valuation basis")}
             value={basis}
             onChange={choose}
             options={[
               { value: "trailing", label: t("滚动 P/E", "Trailing P/E"), short: "TTM" },
               { value: "forward", label: "NTM P/E", short: "NTM" },
+              { value: "sales", label: t("市销率", "P/S"), short: "P/S" },
             ]}
           />
-          {distribution && <Segments
+          {basis !== "sales" && distribution && <Segments
             label={t("历史分布区间", "Historical distribution band")}
             value={mode}
             onChange={setMode}
@@ -244,7 +245,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           />}
         </div>
       }
-      help={<>
+      help={basis !== "sales" && <>
         <p>{isTrailing ? t(
           "每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。",
           "Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap.",
@@ -271,7 +272,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
         {span && <>{" "}{t("样本：", "Sample: ")}{span}{t("。", ".")}</>}
       </>}
     >
-      {!plot.observed.length ? (
+      {basis === "sales" ? sales : !plot.observed.length ? (
         <Empty title={emptyReason} />
       ) : (
         <>
@@ -293,6 +294,7 @@ export function PeHistoryChart({ trailing, forward }: { trailing?: Trailing | nu
           />
         </>
       )}
+      {basis !== "sales" && <details className="mx-chart-data"><summary>{t("披露时的估值", "Valuation at disclosure")}</summary>{disclosure}</details>}
     </Panel>
   );
 }
