@@ -128,7 +128,7 @@ describe("page readings in the sidebar", () => {
     ["global_map","/data/markets/1/move",["US","-1.00%","2026-02-03"]],
     ["update_issue","/data/finished_at",["Update ended","17:00"]],
     ["daily_returns","/data/worst_day/return_fraction",["Lowest observed daily return","-7.27%","2026-02-02","2026-02-03"]],
-    ["daily_returns","/data/window_benchmarks/VOO",["VOO","GBP","adjusted_price_gbp","+8.00%"]],
+    ["daily_returns","/data/window_benchmarks/VOO",["VOO","GBP","adjusted prices","+8.00%"]],
   ] as const)("renders the captured %s field %s", (tool, pointer, fragments) => {
     const output = {...pageOutputs[tool], evidence_id:"ev_local"};
     const [line] = verifiedLines(fieldReply(tool,output,pointer));

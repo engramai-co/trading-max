@@ -308,3 +308,156 @@ def test_benchmark_published_after_the_portfolio_observation_is_unavailable(tmp_
     )
     facts = role.facts(read, role.context_schema(dimension="country", category="United States"))
     assert "No comparable MSCI ACWI" in next(f.en for f in facts if f.section == "benchmark")
+
+
+def test_daily_close_selection_rejects_intraday_fx_on_the_same_dates():
+    context = AttributionContext(scope="isa", benchmark="QQQ", start=DATES[0], end=DATES[-1])
+    assert not matches(f"{DATES[0]}T09:00:00Z", f"{DATES[-1]}T09:00:00Z", context)
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+def test_exposure_history_requires_comparable_basis_and_denominator(tmp_path, compatible):
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.agent import tools
+    from services.api.trading_max_api.agent.deps import AssistantDepsFactory
+    from services.api.trading_max_api.artifacts import ArtifactStore
+
+    def data(day, basis, fraction, value):
+        return {
+            "available": True,
+            "brokerAsOf": day + "T16:00:00Z",
+            "countryBasis": basis,
+            "investedValueGbp": 1000,
+            "countryAllocation": [
+                {"country": "United States", "allocationPct": fraction, "valueGbp": value}
+            ],
+        }
+
+    store = ArtifactStore(tmp_path)
+    history = {
+        tools.LOOKTHROUGH: data(DATES[-1], "risk", 0.5, 500),
+        "account/exposure_history/2026-01-04.json": data("2026-01-04", "venue", 0.2, 200),
+        "account/exposure_history/2026-01-03.json": data("2026-01-03", "risk", 0.3, 150),
+    }
+    if compatible:
+        history["account/exposure_history/2026-01-02.json"] = data("2026-01-02", "risk", 0.48, 480)
+    publication(store, extra_artifacts=history)
+    role = role_registry()["exposure"]
+    read = RoleTools.pinned(AssistantDepsFactory(store).for_run(), role.allowed_tools)
+    context = role.context_schema(dimension="country", category="United States")
+    previous = next(f for f in role.facts(read, context) if f.section == "history")
+    if compatible:
+        assert "48.00%" in previous.en and "+2.00 pp" in previous.en
+        assert previous.evidence.arguments["start"] == "2026-01-02"
+    else:
+        assert "No comparable" in previous.en
+
+
+@pytest.mark.parametrize("with_publication", [False, True])
+def test_failed_refresh_is_diagnosed_from_its_terminal_record(tmp_path, with_publication):
+    from services.api.trading_max_api.models import JobStageRecord
+
+    service, deps, *_ = sample(tmp_path)
+    job = (
+        inputs()
+        .job("example")
+        .model_copy(
+            update={
+                "error": None,
+                "finished_at": datetime(2026, 2, 5, 13, tzinfo=UTC),
+                "stages": [
+                    JobStageRecord(
+                        name="research.fundamentals",
+                        label="PRIVATE",
+                        status="failed",
+                        error="PRIVATE",
+                    )
+                ],
+            }
+        )
+    )
+    deps = replace(
+        deps,
+        manifest=deps.manifest if with_publication else None,
+        page_sources=replace(inputs(), job=lambda job_id: job),
+    )
+
+    async def bind():
+        return BoundModel(TestModel(custom_output_args={"indices": [0, 1]}), {})
+
+    service.assistant.bind_model = bind
+    role = role_registry()["diagnosis"]
+    context = role.context_schema(issue="job", job="example")
+
+    async def run():
+        return [e async for e in service.events(role, context, deps)]
+
+    event = asyncio.run(run())[-1]
+    assert event.type == "result", event
+    assert event.reading.as_of == job.finished_at
+    assert (
+        "Fundamentals" in event.reading.model_dump_json()
+        and "PRIVATE" not in event.reading.model_dump_json()
+    )
+    assert "基本面" in event.reading.model_dump_json()
+    assert event.reading.version != deps.snapshot_id
+
+
+def test_benchmark_basis_is_localized_and_original_is_cited(tmp_path):
+    _, deps, *_ = sample(tmp_path)
+    role = role_registry()["attribution"]
+    facts = role.facts(
+        RoleTools.pinned(deps, role.allowed_tools),
+        AttributionContext(scope="invest", start=DATES[0], end=DATES[-1], benchmark="VOO"),
+    )
+    benchmark = next(f for f in facts if f.section == "benchmark")
+    assert "adjusted prices" in benchmark.en and "复权价格" in benchmark.zh
+    assert benchmark.evidence.arguments["benchmark_basis"] == "adjusted_price_gbp"
+
+
+@pytest.mark.parametrize("called_scope", ["invest", "isa"])
+def test_follow_up_cannot_read_money_for_another_selection(tmp_path, called_scope):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from services.api.tests.test_assistant_runtime import (
+        answer_after_tool,
+        events,
+        make_app,
+        user_turn,
+    )
+    from services.api.trading_max_api.agent.runtime import build_assistant_agent
+    from services.api.trading_max_api.agent.tools import build_assistant_toolset
+
+    _, deps, *_ = sample(tmp_path)
+    selected = {
+        "scope": "isa",
+        "range": "1D",
+        "view": "money",
+        "benchmark": "QQQ",
+        "start": "2026-02-03T12:00:00Z",
+        "end": STAMP,
+    }
+    stream, _ = answer_after_tool("selected_money", json.dumps({**selected, "scope": called_scope}))
+    app, service = make_app(tmp_path, stream)
+    service.agent = build_assistant_agent([build_assistant_toolset()])
+    service.deps_for_run = lambda page, tz: replace(deps, page_sources=inputs(), page_hint=page)
+    body = user_turn("money-followup", "u", "What was my net P&L?")
+    body["context"] = {
+        "role": "attribution",
+        "page": "analytics",
+        "scope": "isa",
+        "range": "1D",
+        "benchmark": "QQQ",
+        "object": selected,
+        "snapshotId": deps.snapshot_id,
+    }
+    response = TestClient(app).post("/v1/assistant/chat?format=references", json=body)
+    outputs = [e["output"] for e in events(response.text) if e["type"] == "tool-output-available"]
+    if called_scope == "isa":
+        assert outputs and outputs[0]["data"]["pnl"] == -80
+    else:
+        assert not any(
+            isinstance(o, dict) and (o.get("data") or {}).get("pnl") is not None for o in outputs
+        )

@@ -384,7 +384,7 @@ for (const locale of ["en", "zh"] as const) {
         t("哪些步骤已完成？", "Which steps completed?"),
       );
       const sent = page.waitForRequest((req) =>
-        req.url().endsWith("/assistant/chat"),
+        new URL(req.url()).pathname.endsWith("/assistant/chat"),
       );
       await composer.press("Enter");
       expect((await sent).postDataJSON().context).toMatchObject({
@@ -467,7 +467,7 @@ test("keyboard range survives a failed reading, stop and retry", async ({
     const composer = page.locator(".mx-assistant-composer textarea");
     await expect(composer).toHaveValue("Which day moved most?");
     const sent = page.waitForRequest((req) =>
-      req.url().endsWith("/assistant/chat"),
+      new URL(req.url()).pathname.endsWith("/assistant/chat"),
     );
     await composer.press("Enter");
     expect((await sent).postDataJSON().context).toMatchObject({
@@ -482,4 +482,41 @@ test("keyboard range survives a failed reading, stop and retry", async ({
   } finally {
     release();
   }
+});
+
+test("phone range opens the reading for the satisfying publication", async ({page, isMobile}) => {
+  test.skip(!isMobile);
+  const calls = await setup(page, "en", false);
+  await page.route("**/dashboard/lens/analytics?**", route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("range") !== "YTD") return route.fallback();
+    return route.fulfill({ json: { ...(backendFixture(url) as object), runId: "revised" } });
+  });
+  await page.goto("/analytics?view=returns&range=3M&benchmark=QQQ");
+  await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
+  await page.getByRole("group",{name:"Performance range"}).getByRole("button",{name:"YTD",exact:true}).click();
+  await expect(page.locator(".mx-reading-sheet")).toContainText("time-weighted");
+  expect(calls.filter(c=>c.role==="attribution")).toMatchObject([{snapshotId:"revised",context:{range:"YTD",scope:"broker_total"}}]);
+});
+
+test("map card tabs back to the inspected market and forward to its neighbour", async ({page, isMobile}) => {
+  test.skip(isMobile);
+  const calls = await setup(page,"en",false);
+  await page.goto("/sectors?market=global");
+  await expect.poll(()=>calls.filter(c=>c.role==="market-map").length).toBe(1);
+  const region = page.locator(".mx-global-region[data-market=jp]");
+  await region.focus();
+  const card = page.locator(".mx-global-inspection");
+  await expect(card.locator(".mx-map-reading")).toContainText("MSCI ACWI");
+  const controls = card.locator("button, a");
+  await region.press("Tab");
+  await expect(controls.first()).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(region).toBeFocused();
+  await region.press("Tab");
+  for (let i=0;i<await controls.count();i++){
+    await expect(controls.nth(i)).toBeFocused();
+    await page.keyboard.press("Tab");
+  }
+  await expect(page.locator(".mx-global-region[data-market=jp] + .mx-global-region")).toBeFocused();
 });
